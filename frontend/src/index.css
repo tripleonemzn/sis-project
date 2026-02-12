@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+body { background-color: #f9fafb; color: #111827; }
+
+@media print {
+  @page { size: A4 portrait; margin: 8mm }
+  html, body { background: #fff !important; color: #000 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important }
+  aside, nav, .bg-white.border-b, .no-print, .print\:hidden { display: none !important }
+  .bg-gray-50, .shadow-lg, .shadow, .bg-gray-100, .bg-white { background: transparent !important; box-shadow: none !important }
+  form, input, textarea, button, select { display: none !important }
+  body * { visibility: hidden !important }
+  .print-only, .print-only * { visibility: visible !important }
+  .print-only { position: absolute; left: 0; top: 0; width: calc(100% - 16mm); box-sizing: border-box; padding: 8mm 10mm !important; margin: 0 auto !important }
+  .print-header { text-align: center; margin-bottom: 10mm }
+  .print-logo { width: 76px; height: auto; display: block; margin: 0 auto 8px }
+  .print-title { font-size: 15pt; font-weight: 700; margin-bottom: 6mm }
+  .print-content { font-size: 10pt; line-height: 1.45 }
+  .print-list { counter-reset: item; list-style: none; padding-left: 0; margin: 0 }
+  .print-list li { margin: 8px 0; display: block }
+  .print-list .label { display: inline-block; width: 28%; vertical-align: top; font-weight: 600; padding-right: 6px }
+  .print-list .value { display: inline-block; width: 70% }
+  .print-list .value-block { margin-top: 4px; margin-left: 36% }
+  .sub-item { display: flex; gap: 8px; margin-bottom: 3px }
+  .sub-label { width: 110px; font-weight: 700 }
+  .sub-value { flex: 1 }
+  body, html { background: #fff !important }
+}
+
+@media screen {
+  .print-only { display: none }
+}
+
+@keyframes slowZoom {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.05); }
+}
+
+.zoom-slow {
+  animation: slowZoom 10s ease-in-out infinite alternate;
+}
+
+/* Pointer cursor for interactive elements */
+a, button, [role="button"] {
+  cursor: pointer;
+}

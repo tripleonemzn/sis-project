@@ -1,0 +1,34 @@
+{
+  "internships": [
+    {
+      "id": 3,
+      "studentId": 1205,
+      "academicYearId": 4,
+      "companyName": "PT Maju Sejahtera Alami",
+      "companyAddress": "Jalan jalan",
+      "companyLatitude": null,
+      "companyLongitude": null,
+      "mentorName": null,
+      "mentorPhone": null,
+      "teacherId": null,
+      "startDate": "2026-02-09T00:00:00.000Z",
+      "endDate": "2026-04-10T00:00:00.000Z",
+      "status": "DEFENSE_SCHEDULED",
+      "finalGrade": null,
+      "certificateUrl": null,
+      "acceptanceLetterUrl": "/api/uploads/internships/1770376931154-44084381.pdf",
+      "rejectionReason": null,
+      "reportUrl": null,
+      "examinerId": 926,
+      "defenseDate": "2026-02-07T09:00:00.000Z",
+      "defenseRoom": "Ruang 5A",
+      "defenseScore": null,
+      "defenseNotes": null,
+      "createdAt": "2026-02-06T03:22:22.317Z",
+      "updatedAt": "2026-02-07T00:52:04.028Z"
+    }
+  ],
+  "journals": [],
+  "attendances": [],
+  "timestamp": "2026-02-07T00:58:25.460Z"
+}

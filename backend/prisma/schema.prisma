@@ -1,0 +1,1527 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                       Int                            @id @default(autoincrement())
+  username                 String                         @unique
+  password                 String
+  name                     String
+  role                     Role
+  createdAt                DateTime                       @default(now())
+  updatedAt                DateTime                       @updatedAt
+  nip                      String?
+  nis                      String?
+  gender                   Gender?
+  email                    String?
+  phone                    String?
+  address                  String?
+  photo                    String?
+  classId                  Int?
+  additionalDuties         AdditionalDuty[]
+  birthDate                DateTime?
+  birthPlace               String?
+  nisn                     String?                        @unique
+  studentStatus            StudentStatus                  @default(ACTIVE)
+  verificationCode         String?
+  verificationExpires      DateTime?
+  verificationMethod       VerificationMethod             @default(NONE)
+  verificationStatus       VerificationStatus             @default(PENDING)
+  appointmentDate          DateTime?
+  appointmentDecree        String?
+  dusun                    String?
+  employeeStatus           String?
+  institution              String?
+  motherName               String?
+  nik                      String?
+  nuptk                    String?
+  postalCode               String?
+  ptkType                  String?
+  rt                       String?
+  rw                       String?
+  subdistrict              String?
+  village                  String?
+  childNumber              Int?
+  fatherIncome             String?
+  fatherName               String?
+  fatherOccupation         String?
+  guardianName             String?
+  guardianOccupation       String?
+  guardianPhone            String?
+  motherIncome             String?
+  motherOccupation         String?
+  religion                 String?
+  siblingsCount            Int?
+  preferences              Json?
+  examinerMajorId          Int?
+  assignments              Assignment[]
+  attendances              AttendanceRecord[]
+  approvedBudgets          BudgetRequest[]                @relation("BudgetApprover")
+  assignedBudgets          BudgetRequest[]                @relation("BudgetAssignedApprover")
+  requestedBudgets         BudgetRequest[]                @relation("BudgetRequester")
+  teacherClasses           Class[]                        @relation("ClassTeacher")
+  cpTpAnalyses             CpTpAnalysis[]
+  dailyAttendances         DailyAttendance[]
+  ekskulEnrollments        EkstrakurikulerEnrollment[]
+  examAnswers              ExamAnswer[]
+  createdExamPackets       ExamPacket[]                   @relation("ExamAuthor")
+  proctoringReports        ExamProctoringReport[]
+  proctoredExams           ExamSchedule[]                 @relation("ExamProctor")
+  examScores               ExamScore[]
+  assignedSittings         ExamSittingStudent[]
+  proctoredSittings        ExamSitting[]                  @relation("SittingProctor")
+  materials                Material[]
+  notifications            Notification[]
+  p5Assessments            P5Assessment[]
+  payments                 Payment[]
+  pklAssessments           PklAssessment[]
+  reportNotes              ReportNote[]
+  achievements             StudentAchievement[]
+  examSessions             StudentExamSession[]
+  studentGrades            StudentGrade[]
+  submissions              Submission[]
+  teacherAssignments       TeacherAssignment[]
+  documents                TeacherDocument[]
+  teachingDevices          TeachingDevice[]
+  trainingSubmissions      TrainingAssignmentSubmission[]
+  trainingClassesTeaching  TrainingClass[]                @relation("TrainingInstructor")
+  trainingEnrollments      TrainingEnrollment[]
+  trainingExamAnswers      TrainingExamAnswer[]
+  trainingExamScores       TrainingExamScore[]
+  ukkAssessmentsAsExaminer UkkAssessment[]                @relation("AssessmentExaminer")
+  ukkAssessmentsAsStudent  UkkAssessment[]                @relation("StudentUkk")
+  createdUkkSchemes        UkkScheme[]                    @relation("SchemeCreator")
+  studentClass             Class?                         @relation("StudentClass", fields: [classId], references: [id])
+  examinerMajor            Major?                         @relation("ExaminerMajor", fields: [examinerMajorId], references: [id])
+  approvedWorkPrograms     WorkProgram[]                  @relation("WorkProgramApprover")
+  ekskulTutorAssignments   EkstrakurikulerTutorAssignment[]
+  ledClasses               Class[]                        @relation("ClassPresident")
+  assignedWorkPrograms     WorkProgram[]                  @relation("WorkProgramAssignedApprover")
+  workPrograms             WorkProgram[]                  @relation("WorkProgramOwner")
+  managedMajors            Major[]                        @relation("MajorHeads")
+  children                 User[]                         @relation("ParentChildren")
+  parents                  User[]                         @relation("ParentChildren")
+  assignedUkkSchemes       UkkScheme[]                    @relation("SchemeAssignedExaminers")
+  behaviors                StudentBehavior[]
+  studentExamRestrictions  StudentExamRestriction[]
+  studentPermissions       StudentPermission[]            @relation("StudentPermissions")
+  approvedPermissions      StudentPermission[]            @relation("PermissionApprover")
+  createdQuestionBanks     QuestionBank[]                 @relation("BankAuthor")
+  
+  // Internship Relations
+  internships              Internship[]                   @relation("StudentInternship")
+  guidedInternships        Internship[]                   @relation("TeacherInternship")
+  examinedInternships      Internship[]                   @relation("ExaminerInternship")
+
+  @@map("users")
+}
+
+model StudentBehavior {
+  id             Int          @id @default(autoincrement())
+  studentId      Int
+  classId        Int
+  academicYearId Int
+  date           DateTime
+  type           BehaviorType
+  category       String?
+  description    String
+  point          Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  student        User         @relation(fields: [studentId], references: [id])
+  class          Class        @relation(fields: [classId], references: [id])
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  @@map("student_behaviors")
+}
+
+model StudentExamRestriction {
+  id             Int          @id @default(autoincrement())
+  studentId      Int
+  academicYearId Int
+  semester       Semester
+  examType       ExamType
+  isBlocked      Boolean      @default(false)
+  reason         String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  student        User         @relation(fields: [studentId], references: [id])
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  @@unique([studentId, academicYearId, semester, examType])
+  @@map("student_exam_restrictions")
+}
+
+enum BehaviorType {
+  POSITIVE
+  NEGATIVE
+}
+
+model AcademicYear {
+  id                 Int                 @id @default(autoincrement())
+  name               String              @unique
+  isActive           Boolean             @default(false)
+  pklEligibleGrades  String?             // Comma separated grades: "XI,XII"
+  createdAt          DateTime            @default(now())
+  semester1End       DateTime
+  semester1Start     DateTime
+  semester2End       DateTime
+  semester2Start     DateTime
+  updatedAt          DateTime            @updatedAt
+  academicEvents     AcademicEvent[]
+  assignments        Assignment[]
+  attendances        Attendance[]
+  budgetRequests     BudgetRequest[]
+  classes            Class[]
+  cpTpAnalyses       CpTpAnalysis[]
+  dailyAttendances   DailyAttendance[]
+  examPackets        ExamPacket[]
+  examSchedules      ExamSchedule[]
+  examSittings       ExamSitting[]
+  exams              Exam[]
+  materials          Material[]
+  p5Projects         P5Project[]
+  questionBanks      QuestionBank[]
+  reportNotes        ReportNote[]
+  scheduleEntries    ScheduleEntry[]
+  scheduleTimeConfig ScheduleTimeConfig?
+  studentGrades      StudentGrade[]
+  subjectKkms        SubjectKKM[]
+  teacherAssignments TeacherAssignment[]
+  teachingDevices    TeachingDevice[]
+  trainingClasses    TrainingClass[]
+  ukkAssessments     UkkAssessment[]
+  ukkSchemes         UkkScheme[]
+  workPrograms       WorkProgram[]
+  studentBehaviors   StudentBehavior[]
+  studentExamRestrictions StudentExamRestriction[]
+  studentPermissions      StudentPermission[]
+  reportDates             ReportDate[]
+  ekskulTutorAssignments EkstrakurikulerTutorAssignment[]
+  ekskulEnrollments      EkstrakurikulerEnrollment[]
+  internships            Internship[]
+
+  @@map("academic_years")
+}
+
+model StudentPermission {
+  id             Int              @id @default(autoincrement())
+  studentId      Int
+  academicYearId Int
+  type           PermissionType
+  startDate      DateTime
+  endDate        DateTime
+  reason         String?
+  fileUrl        String?
+  status         ApprovalStatus   @default(PENDING)
+  approvalNote   String?
+  approvedById   Int?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  student        User             @relation("StudentPermissions", fields: [studentId], references: [id])
+  academicYear   AcademicYear     @relation(fields: [academicYearId], references: [id])
+  approvedBy     User?            @relation("PermissionApprover", fields: [approvedById], references: [id])
+
+  @@map("student_permissions")
+}
+
+enum PermissionType {
+  SICK
+  PERMISSION
+  OTHER
+}
+
+model ScheduleTimeConfig {
+  id             Int          @id @default(autoincrement())
+  academicYearId Int          @unique
+  config         Json
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  @@map("schedule_time_configs")
+}
+
+model AcademicEvent {
+  id             Int               @id @default(autoincrement())
+  academicYearId Int
+  title          String
+  type           AcademicEventType
+  startDate      DateTime
+  endDate        DateTime
+  semester       Semester?
+  isHoliday      Boolean           @default(false)
+  description    String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  academicYear   AcademicYear      @relation(fields: [academicYearId], references: [id])
+
+  @@map("academic_events")
+}
+
+model Major {
+  id           Int           @id @default(autoincrement())
+  name         String
+  code         String        @unique
+  description  String?
+  classes      Class[]
+  ukkSchemes   UkkScheme[]
+  examiners    User[]        @relation("ExaminerMajor")
+  workPrograms WorkProgram[]
+  heads        User[]        @relation("MajorHeads")
+
+  @@map("majors")
+}
+
+model Class {
+  id                 Int                 @id @default(autoincrement())
+  name               String
+  level              String
+  majorId            Int
+  academicYearId     Int
+  teacherId          Int?
+  presidentId        Int?
+  assignments        Assignment[]
+  attendances        Attendance[]
+  academicYear       AcademicYear        @relation(fields: [academicYearId], references: [id])
+  major              Major               @relation(fields: [majorId], references: [id])
+  teacher            User?               @relation("ClassTeacher", fields: [teacherId], references: [id])
+  president          User?               @relation("ClassPresident", fields: [presidentId], references: [id])
+  dailyAttendances   DailyAttendance[]
+  examSchedules      ExamSchedule[]
+  materials          Material[]
+  scheduleEntries    ScheduleEntry[]
+  teacherAssignments TeacherAssignment[]
+  students           User[]              @relation("StudentClass")
+  studentBehaviors   StudentBehavior[]
+
+  @@map("classes")
+}
+
+model Subject {
+  id                 Int                 @id @default(autoincrement())
+  name               String
+  code               String              @unique
+  description        String?
+  parentId           Int?
+  categoryId         Int?
+  assignments        Assignment[]
+  attendances        Attendance[]
+  cpTpAnalyses       CpTpAnalysis[]
+  examPackets        ExamPacket[]
+  examSchedules      ExamSchedule[]
+  exams              Exam[]
+  gradeComponents    GradeComponent[]
+  materials          Material[]
+  questionBanks      QuestionBank[]
+  reportGrades       ReportGrade[]
+  studentGrades      StudentGrade[]
+  kkms               SubjectKKM[]
+  category           SubjectCategory?    @relation(fields: [categoryId], references: [id])
+  parent             Subject?            @relation("SubjectHierarchy", fields: [parentId], references: [id])
+  children           Subject[]           @relation("SubjectHierarchy")
+  teacherAssignments TeacherAssignment[]
+  teachingDevices    TeachingDevice[]
+  ukkAssessments     UkkAssessment[]
+  ukkSchemes         UkkScheme[]
+
+  @@map("subjects")
+}
+
+model SubjectCategory {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique
+  name        String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  subjects    Subject[]
+
+  @@map("subject_categories")
+}
+
+model SubjectKKM {
+  id             Int           @id @default(autoincrement())
+  subjectId      Int
+  classLevel     String
+  kkm            Int
+  academicYearId Int?
+  academicYear   AcademicYear? @relation(fields: [academicYearId], references: [id])
+  subject        Subject       @relation(fields: [subjectId], references: [id])
+
+  @@unique([subjectId, classLevel, academicYearId])
+  @@map("subject_kkms")
+}
+
+model TeacherAssignment {
+  id                   Int             @id @default(autoincrement())
+  teacherId            Int
+  classId              Int
+  subjectId            Int
+  academicYearId       Int
+  kkm                  Int             @default(75)
+  competencyThresholds Json?
+  scheduleEntries      ScheduleEntry[]
+  academicYear         AcademicYear    @relation(fields: [academicYearId], references: [id])
+  class                Class           @relation(fields: [classId], references: [id])
+  subject              Subject         @relation(fields: [subjectId], references: [id])
+  teacher              User            @relation(fields: [teacherId], references: [id])
+
+  @@map("teacher_assignments")
+}
+
+model ScheduleEntry {
+  id                  Int               @id @default(autoincrement())
+  academicYearId      Int
+  classId             Int
+  teacherAssignmentId Int
+  dayOfWeek           DayOfWeek
+  period              Int
+  room                String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  academicYear        AcademicYear      @relation(fields: [academicYearId], references: [id])
+  class               Class             @relation(fields: [classId], references: [id])
+  teacherAssignment   TeacherAssignment @relation(fields: [teacherAssignmentId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, academicYearId, dayOfWeek, period])
+  @@map("schedule_entries")
+}
+
+model Material {
+  id             Int           @id @default(autoincrement())
+  title          String
+  description    String?
+  fileUrl        String?
+  youtubeUrl     String?
+  createdAt      DateTime      @default(now())
+  subjectId      Int
+  academicYearId Int?
+  classId        Int?
+  fileName       String?
+  fileSize       Int?
+  fileType       String?
+  isPublished    Boolean       @default(true)
+  teacherId      Int?
+  academicYear   AcademicYear? @relation(fields: [academicYearId], references: [id])
+  class          Class?        @relation(fields: [classId], references: [id])
+  subject        Subject       @relation(fields: [subjectId], references: [id])
+  teacher        User?         @relation(fields: [teacherId], references: [id])
+
+  @@map("materials")
+}
+
+model Assignment {
+  id             Int          @id @default(autoincrement())
+  title          String
+  description    String?
+  dueDate        DateTime
+  createdAt      DateTime     @default(now())
+  teacherId      Int
+  subjectId      Int
+  classId        Int
+  academicYearId Int
+  parentId       Int?
+  allowResubmit  Boolean      @default(true)
+  fileName       String?
+  fileUrl        String?
+  isPublished    Boolean      @default(true)
+  maxScore       Int          @default(100)
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  class          Class        @relation(fields: [classId], references: [id])
+  parent         Assignment?  @relation("AssignmentHierarchy", fields: [parentId], references: [id])
+  children       Assignment[] @relation("AssignmentHierarchy")
+  subject        Subject      @relation(fields: [subjectId], references: [id])
+  teacher        User         @relation(fields: [teacherId], references: [id])
+  submissions    Submission[]
+
+  @@map("assignments")
+}
+
+model Submission {
+  id           Int        @id @default(autoincrement())
+  assignmentId Int
+  studentId    Int
+  fileUrl      String?
+  content      String?
+  submittedAt  DateTime   @default(now())
+  score        Float?
+  feedback     String?
+  fileName     String?
+  fileSize     Int?
+  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+  student      User       @relation(fields: [studentId], references: [id])
+
+  @@map("submissions")
+}
+
+model QuestionBank {
+  id             Int          @id @default(autoincrement())
+  title          String
+  subjectId      Int
+  classLevel     String?
+  academicYearId Int
+  semester       Semester     @default(ODD)
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  subject        Subject      @relation(fields: [subjectId], references: [id])
+  questions      Question[]
+  authorId       Int?
+  author         User?        @relation("BankAuthor", fields: [authorId], references: [id])
+
+  @@map("question_banks")
+}
+
+model Question {
+  id        Int          @id @default(autoincrement())
+  bankId    Int
+  type      QuestionType
+  content   String
+  options   Json?
+  answerKey String?
+  points    Int          @default(1)
+  mediaUrl  String?
+  mediaType String?
+  bank      QuestionBank @relation(fields: [bankId], references: [id])
+
+  @@map("questions")
+}
+
+model Exam {
+  id             Int          @id @default(autoincrement())
+  title          String
+  description    String?
+  startTime      DateTime
+  endTime        DateTime
+  duration       Int
+  subjectId      Int
+  academicYearId Int
+  questions      Json?
+  category       ExamCategory @default(ACADEMIC)
+  semester       Semester     @default(ODD)
+  examAnswers    ExamAnswer[]
+  examScores     ExamScore[]
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  subject        Subject      @relation(fields: [subjectId], references: [id])
+
+  @@map("exams")
+}
+
+model ExamAnswer {
+  id          Int      @id @default(autoincrement())
+  examId      Int
+  studentId   Int
+  answers     Json
+  submittedAt DateTime @default(now())
+  exam        Exam     @relation(fields: [examId], references: [id])
+  student     User     @relation(fields: [studentId], references: [id])
+
+  @@map("exam_answers")
+}
+
+model ExamScore {
+  id        Int     @id @default(autoincrement())
+  examId    Int
+  studentId Int
+  score     Float
+  grade     String?
+  exam      Exam    @relation(fields: [examId], references: [id])
+  student   User    @relation(fields: [studentId], references: [id])
+
+  @@map("exam_scores")
+}
+
+model Attendance {
+  id             Int                @id @default(autoincrement())
+  date           DateTime
+  classId        Int
+  subjectId      Int
+  academicYearId Int
+  records        AttendanceRecord[]
+  academicYear   AcademicYear       @relation(fields: [academicYearId], references: [id])
+  class          Class              @relation(fields: [classId], references: [id])
+  subject        Subject            @relation(fields: [subjectId], references: [id])
+
+  @@map("attendances")
+}
+
+model AttendanceRecord {
+  id           Int              @id @default(autoincrement())
+  attendanceId Int
+  studentId    Int
+  status       AttendanceStatus
+  note         String?
+  attendance   Attendance       @relation(fields: [attendanceId], references: [id])
+  student      User             @relation(fields: [studentId], references: [id])
+
+  @@map("attendance_records")
+}
+
+model DailyAttendance {
+  id             Int              @id @default(autoincrement())
+  date           DateTime
+  studentId      Int
+  classId        Int
+  academicYearId Int
+  status         AttendanceStatus
+  note           String?
+  academicYear   AcademicYear     @relation(fields: [academicYearId], references: [id])
+  class          Class            @relation(fields: [classId], references: [id])
+  student        User             @relation(fields: [studentId], references: [id])
+
+  @@map("daily_attendances")
+}
+
+model GradeComponent {
+  id            Int                @id @default(autoincrement())
+  name          String
+  weight        Float
+  isActive      Boolean            @default(true)
+  subjectId     Int
+  type          GradeComponentType
+  subject       Subject            @relation(fields: [subjectId], references: [id])
+  studentGrades StudentGrade[]
+
+  @@map("grade_components")
+}
+
+model StudentGrade {
+  id             Int            @id @default(autoincrement())
+  studentId      Int
+  subjectId      Int
+  componentId    Int
+  academicYearId Int
+  score          Float
+  nf1            Float?
+  nf2            Float?
+  nf3            Float?
+  nf4            Float?
+  nf5            Float?
+  nf6            Float?
+  semester       Semester
+  academicYear   AcademicYear   @relation(fields: [academicYearId], references: [id])
+  component      GradeComponent @relation(fields: [componentId], references: [id])
+  student        User           @relation(fields: [studentId], references: [id])
+  subject        Subject        @relation(fields: [subjectId], references: [id])
+
+  @@map("student_grades")
+}
+
+model ReportDate {
+  id             Int          @id @default(autoincrement())
+  academicYearId Int
+  semester       Semester
+  reportType     ExamType     // SBTS, SAS, SAT
+  place          String       // e.g. "Bekasi"
+  date           DateTime     // e.g. 2024-12-20
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  @@unique([academicYearId, semester, reportType])
+  @@map("report_dates")
+}
+
+model ReportGrade {
+  id             Int      @id @default(autoincrement())
+  studentId      Int
+  subjectId      Int
+  academicYearId Int
+  finalScore     Float
+  predicate      String?
+  description    String?  @map("competency_desc")
+  formatifScore  Float?   @map("formatif_score")
+  sasScore       Float?   @map("sas_score")
+  sbtsScore      Float?   @map("sbts_score")
+  semester       Semester
+  usScore        Float?
+  subject        Subject  @relation(fields: [subjectId], references: [id])
+
+  @@map("report_grades")
+}
+
+model ReportNote {
+  id             Int          @id @default(autoincrement())
+  studentId      Int
+  academicYearId Int
+  note           String
+  type           String
+  semester       Semester
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  student        User         @relation(fields: [studentId], references: [id])
+
+  @@map("report_notes")
+}
+
+model Ekstrakurikuler {
+  id          Int                         @id @default(autoincrement())
+  name        String
+  description String?
+  enrollments EkstrakurikulerEnrollment[]
+  tutorAssignments EkstrakurikulerTutorAssignment[]
+
+  @@map("ekstrakurikulers")
+}
+
+model EkstrakurikulerEnrollment {
+  id             Int             @id @default(autoincrement())
+  ekskulId       Int
+  studentId      Int
+  academicYearId Int
+
+  grade          String?
+  description    String?
+
+  gradeSbtsOdd   String?
+  descSbtsOdd    String?
+  gradeSas       String?
+  descSas        String?
+  gradeSbtsEven  String?
+  descSbtsEven   String?
+  gradeSat       String?
+  descSat        String?
+
+  ekskul         Ekstrakurikuler @relation(fields: [ekskulId], references: [id])
+  student        User            @relation(fields: [studentId], references: [id])
+  academicYear   AcademicYear    @relation(fields: [academicYearId], references: [id])
+
+  @@map("ekstrakurikuler_enrollments")
+}
+
+model EkstrakurikulerTutorAssignment {
+  id             Int             @id @default(autoincrement())
+  tutorId        Int
+  ekskulId       Int
+  academicYearId Int
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  
+  tutor          User            @relation(fields: [tutorId], references: [id])
+  ekskul         Ekstrakurikuler @relation(fields: [ekskulId], references: [id])
+  academicYear   AcademicYear    @relation(fields: [academicYearId], references: [id])
+  
+  @@unique([tutorId, ekskulId, academicYearId], map: "ekstrakurikuler_tutor_assignments_tutorId_ekskulId_academic_key")
+  @@map("ekstrakurikuler_tutor_assignments")
+}
+
+model P5Project {
+  id             Int            @id @default(autoincrement())
+  title          String
+  description    String?
+  theme          String
+  academicYearId Int
+  assessments    P5Assessment[]
+  academicYear   AcademicYear   @relation(fields: [academicYearId], references: [id])
+
+  @@map("p5_projects")
+}
+
+model P5Assessment {
+  id        Int       @id @default(autoincrement())
+  projectId Int
+  studentId Int
+  score     String?
+  note      String?
+  project   P5Project @relation(fields: [projectId], references: [id])
+  student   User      @relation(fields: [studentId], references: [id])
+
+  @@map("p5_assessments")
+}
+
+model PklAssessment {
+  id           Int     @id @default(autoincrement())
+  studentId    Int
+  industryName String
+  duration     String
+  score        Float
+  predicate    String?
+  student      User    @relation(fields: [studentId], references: [id])
+
+  @@map("pkl_assessments")
+}
+
+model StudentAchievement {
+  id        Int     @id @default(autoincrement())
+  studentId Int
+  name      String
+  level     String
+  year      Int
+  rank      String?
+  organizer String?
+  student   User    @relation(fields: [studentId], references: [id])
+
+  @@map("student_achievements")
+}
+
+model TrainingClass {
+  id             Int                  @id @default(autoincrement())
+  description    String?
+  academicYearId Int
+  endDate        DateTime?
+  instructorId   Int?
+  startDate      DateTime?
+  isActive       Boolean              @default(true)
+  maxCapacity    Int?
+  name           String
+  assignments    TrainingAssignment[]
+  academicYear   AcademicYear         @relation(fields: [academicYearId], references: [id])
+  instructor     User?                @relation("TrainingInstructor", fields: [instructorId], references: [id])
+  enrollments    TrainingEnrollment[]
+  exams          TrainingExam[]
+  materials      TrainingMaterial[]
+
+  @@map("training_classes")
+}
+
+model TrainingEnrollment {
+  id         Int           @id @default(autoincrement())
+  trainingId Int
+  studentId  Int
+  createdAt  DateTime      @default(now())
+  student    User          @relation(fields: [studentId], references: [id])
+  training   TrainingClass @relation(fields: [trainingId], references: [id])
+
+  @@map("training_enrollments")
+}
+
+model TrainingMaterial {
+  id         Int           @id @default(autoincrement())
+  title      String
+  trainingId Int
+  fileUrl    String?
+  training   TrainingClass @relation(fields: [trainingId], references: [id])
+
+  @@map("training_materials")
+}
+
+model TrainingAssignment {
+  id          Int                            @id @default(autoincrement())
+  title       String
+  trainingId  Int
+  submissions TrainingAssignmentSubmission[]
+  training    TrainingClass                  @relation(fields: [trainingId], references: [id])
+
+  @@map("training_assignments")
+}
+
+model TrainingAssignmentSubmission {
+  id           Int                @id @default(autoincrement())
+  assignmentId Int
+  studentId    Int
+  fileUrl      String?
+  score        Float?
+  assignment   TrainingAssignment @relation(fields: [assignmentId], references: [id])
+  student      User               @relation(fields: [studentId], references: [id])
+
+  @@map("training_assignment_submissions")
+}
+
+model TrainingExam {
+  id          Int                  @id @default(autoincrement())
+  title       String
+  trainingId  Int
+  questions   Json
+  examAnswers TrainingExamAnswer[]
+  examScores  TrainingExamScore[]
+  training    TrainingClass        @relation(fields: [trainingId], references: [id])
+
+  @@map("training_exams")
+}
+
+model TrainingExamAnswer {
+  id        Int          @id @default(autoincrement())
+  examId    Int
+  studentId Int
+  answers   Json
+  exam      TrainingExam @relation(fields: [examId], references: [id])
+  student   User         @relation(fields: [studentId], references: [id])
+
+  @@map("training_exam_answers")
+}
+
+model TrainingExamScore {
+  id        Int          @id @default(autoincrement())
+  examId    Int
+  studentId Int
+  score     Float
+  exam      TrainingExam @relation(fields: [examId], references: [id])
+  student   User         @relation(fields: [studentId], references: [id])
+
+  @@map("training_exam_scores")
+}
+
+model TeachingDevice {
+  id             Int                @id @default(autoincrement())
+  teacherId      Int
+  subjectId      Int
+  academicYearId Int
+  type           TeachingDeviceType
+  phase          TeachingPhase      @default(F)
+  title          String
+  fileUrl        String
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  fileName       String?
+  academicYear   AcademicYear       @relation(fields: [academicYearId], references: [id])
+  subject        Subject            @relation(fields: [subjectId], references: [id])
+  teacher        User               @relation(fields: [teacherId], references: [id])
+
+  @@map("teaching_devices")
+}
+
+model TeacherDocument {
+  id        Int      @id @default(autoincrement())
+  fileUrl   String
+  teacherId Int
+  createdAt DateTime @default(now())
+  title     String
+  category  String
+  updatedAt DateTime @updatedAt
+  year      Int?
+  teacher   User     @relation(fields: [teacherId], references: [id])
+
+  @@map("teacher_documents")
+}
+
+model WorkProgram {
+  id                 Int               @id @default(autoincrement())
+  title              String
+  description        String?
+  academicYearId     Int
+  majorId            Int?
+  approvedById       Int?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  additionalDuty     String
+  approvalStatus     String            @default("DRAFT")
+  approvedAt         DateTime?
+  assignedApproverId Int?
+  endWeek            Int
+  feedback           String?
+  isApproved         Boolean           @default(false)
+  month              Int
+  ownerId            Int
+  semester           Semester
+  startWeek          Int
+  budgetRequests     BudgetRequest[]
+  items              WorkProgramItem[]
+  academicYear       AcademicYear      @relation(fields: [academicYearId], references: [id])
+  approvedBy         User?             @relation("WorkProgramApprover", fields: [approvedById], references: [id])
+  assignedApprover   User?             @relation("WorkProgramAssignedApprover", fields: [assignedApproverId], references: [id])
+  major              Major?            @relation(fields: [majorId], references: [id])
+  owner              User              @relation("WorkProgramOwner", fields: [ownerId], references: [id])
+
+  @@map("work_programs")
+}
+
+model WorkProgramItem {
+  id            Int                 @id @default(autoincrement())
+  workProgramId Int
+  description   String
+  targetDate    DateTime?
+  isCompleted   Boolean             @default(false)
+  completedAt   DateTime?
+  note          String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  budgets       WorkProgramBudget[]
+  workProgram   WorkProgram         @relation(fields: [workProgramId], references: [id], onDelete: Cascade)
+
+  @@map("work_program_items")
+}
+
+model WorkProgramBudget {
+  id          Int             @id @default(autoincrement())
+  itemId      Int
+  description String
+  amount      Float
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  item        WorkProgramItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@map("work_program_budgets")
+}
+
+model BudgetRequest {
+  id              Int            @id @default(autoincrement())
+  title           String
+  description     String
+  academicYearId  Int
+  workProgramId   Int?
+  requesterId     Int
+  approvedById    Int?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  additionalDuty  AdditionalDuty
+  approvalStatus  ApprovalStatus @default(PENDING)
+  approverId      Int?
+  brand           String?
+  executionTime   String?
+  quantity        Int
+  rejectionReason String?
+  totalAmount     Float
+  unitPrice       Float
+  academicYear    AcademicYear   @relation(fields: [academicYearId], references: [id])
+  approvedBy      User?          @relation("BudgetApprover", fields: [approvedById], references: [id])
+  approver        User?          @relation("BudgetAssignedApprover", fields: [approverId], references: [id])
+  requester       User           @relation("BudgetRequester", fields: [requesterId], references: [id])
+  workProgram     WorkProgram?   @relation(fields: [workProgramId], references: [id])
+
+  @@map("budget_requests")
+}
+
+model Payment {
+  id        Int           @id @default(autoincrement())
+  studentId Int
+  amount    Float
+  status    PaymentStatus @default(PENDING)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  type      PaymentType
+  student   User          @relation(fields: [studentId], references: [id])
+
+  @@map("payments")
+}
+
+model ExamPacket {
+  id             Int            @id @default(autoincrement())
+  title          String
+  subjectId      Int
+  authorId       Int
+  academicYearId Int
+  questions      Json?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  description    String?
+  duration       Int
+  instructions   String?
+  kkm            Float          @default(75)
+  semester       Semester       @default(ODD)
+  type           ExamType
+  academicYear   AcademicYear   @relation(fields: [academicYearId], references: [id])
+  author         User           @relation("ExamAuthor", fields: [authorId], references: [id])
+  subject        Subject        @relation(fields: [subjectId], references: [id])
+  schedules      ExamSchedule[]
+
+  @@map("exam_packets")
+}
+
+model ExamSchedule {
+  id                Int                    @id @default(autoincrement())
+  classId           Int
+  subjectId         Int?
+  startTime         DateTime
+  endTime           DateTime
+  proctorId         Int?
+  academicYearId    Int?
+  token             String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  isActive          Boolean                @default(true)
+  packetId          Int?
+  semester          Semester               @default(ODD)
+  room              String?
+  examType          String?
+  proctoringReports ExamProctoringReport[]
+  academicYear      AcademicYear?          @relation(fields: [academicYearId], references: [id])
+  class             Class                  @relation(fields: [classId], references: [id])
+  packet            ExamPacket?            @relation(fields: [packetId], references: [id])
+  proctor           User?                  @relation("ExamProctor", fields: [proctorId], references: [id])
+  subject           Subject?               @relation(fields: [subjectId], references: [id])
+  sessions          StudentExamSession[]
+
+  @@map("exam_schedules")
+}
+
+model ExamProctoringReport {
+  id                  Int          @id @default(autoincrement())
+  proctorId           Int
+  notes               String?
+  incident            String?
+  createdAt           DateTime     @default(now())
+  scheduleId          Int
+  signedAt            DateTime     @default(now())
+  studentCountAbsent  Int          @default(0)
+  studentCountPresent Int          @default(0)
+  updatedAt           DateTime     @updatedAt
+  proctor             User         @relation(fields: [proctorId], references: [id])
+  schedule            ExamSchedule @relation(fields: [scheduleId], references: [id])
+
+  @@map("exam_proctoring_reports")
+}
+
+model StudentExamSession {
+  id         Int               @id @default(autoincrement())
+  studentId  Int
+  startTime  DateTime          @default(now())
+  endTime    DateTime?
+  answers    Json?
+  score      Float?
+  scheduleId Int
+  submitTime DateTime?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  status     ExamSessionStatus @default(IN_PROGRESS)
+  schedule   ExamSchedule      @relation(fields: [scheduleId], references: [id])
+  student    User              @relation(fields: [studentId], references: [id])
+
+  @@map("student_exam_sessions")
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  type      String   @default("INFO")
+  createdAt DateTime @default(now())
+  data      Json?
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+model ExamSitting {
+  id             Int                  @id @default(autoincrement())
+  academicYearId Int
+  proctorId      Int?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  endTime        DateTime?
+  examType       String
+  roomName       String
+  semester       Semester?
+  startTime      DateTime?
+  students       ExamSittingStudent[]
+  academicYear   AcademicYear         @relation(fields: [academicYearId], references: [id])
+  proctor        User?                @relation("SittingProctor", fields: [proctorId], references: [id])
+
+  @@map("exam_sittings")
+}
+
+model ExamSittingStudent {
+  id        Int         @id @default(autoincrement())
+  studentId Int
+  sittingId Int
+  sitting   ExamSitting @relation(fields: [sittingId], references: [id], onDelete: Cascade)
+  student   User        @relation(fields: [studentId], references: [id])
+
+  @@unique([sittingId, studentId])
+  @@map("exam_sitting_students")
+}
+
+model UkkScheme {
+  id                Int          @id @default(autoincrement())
+  name              String
+  subjectId         Int
+  majorId           Int?
+  academicYearId    Int
+  examinerId        Int
+  criteria          Json
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  academicYear      AcademicYear @relation(fields: [academicYearId], references: [id])
+  examiner          User         @relation("SchemeCreator", fields: [examinerId], references: [id])
+  major             Major?       @relation(fields: [majorId], references: [id])
+  subject           Subject      @relation(fields: [subjectId], references: [id])
+  assignedExaminers User[]       @relation("SchemeAssignedExaminers")
+
+  @@map("ukk_schemes")
+}
+
+model UkkAssessment {
+  id             Int          @id @default(autoincrement())
+  studentId      Int
+  subjectId      Int
+  academicYearId Int
+  examinerId     Int
+  criteria       Json
+  scores         Json
+  finalScore     Float
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  examiner       User         @relation("AssessmentExaminer", fields: [examinerId], references: [id])
+  student        User         @relation("StudentUkk", fields: [studentId], references: [id])
+  subject        Subject      @relation(fields: [subjectId], references: [id])
+
+  @@map("ukk_assessments")
+}
+
+model CpTpAnalysis {
+  id             Int          @id @default(autoincrement())
+  teacherId      Int
+  subjectId      Int
+  level          String
+  academicYearId Int
+  phase          String
+  content        Json
+  principalName  String?
+  titimangsa     String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  subject        Subject      @relation(fields: [subjectId], references: [id])
+  teacher        User         @relation(fields: [teacherId], references: [id])
+
+  @@unique([teacherId, subjectId, level, academicYearId])
+  @@map("cp_tp_analyses")
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+  PRINCIPAL
+  STAFF
+  PARENT
+  CALON_SISWA
+  UMUM
+  EXAMINER
+  EXTRACURRICULAR_TUTOR
+}
+
+enum VerificationMethod {
+  NONE
+  EMAIL
+  SMS
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  PARTIAL
+  CANCELLED
+}
+
+enum PaymentType {
+  MONTHLY
+  ONE_TIME
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum AdditionalDuty {
+  WAKASEK_KURIKULUM
+  WAKASEK_KESISWAAN
+  WAKASEK_SARPRAS
+  WAKASEK_HUMAS
+  KAPROG
+  WALI_KELAS
+  PEMBINA_OSIS
+  PEMBINA_EKSKUL
+  KEPALA_LAB
+  KEPALA_PERPUSTAKAAN
+  TIM_BOS
+  BENDAHARA
+  BP_BK
+  SEKRETARIS_KURIKULUM
+  SEKRETARIS_KESISWAAN
+  SEKRETARIS_SARPRAS
+  SEKRETARIS_HUMAS
+  IT_CENTER
+}
+
+enum CurriculumType {
+  MERDEKA
+  K13
+}
+
+enum TeachingDeviceType {
+  CP
+  TP
+  ATP
+  MODUL_AJAR
+  BAHAN_AJAR
+  ASESMEN
+  PROTA
+  PROMES
+  JURNAL
+}
+
+enum TeachingPhase {
+  E
+  F
+}
+
+enum Semester {
+  ODD
+  EVEN
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+}
+
+enum AcademicEventType {
+  LIBUR_NASIONAL
+  LIBUR_SEKOLAH
+  UJIAN_PTS
+  UJIAN_PAS
+  UJIAN_PAT
+  MPLS
+  RAPORT
+  KEGIATAN_SEKOLAH
+  LAINNYA
+  RAPOR
+}
+
+enum StudentStatus {
+  ACTIVE
+  GRADUATED
+  MOVED
+  DROPPED_OUT
+}
+
+enum ExamCategory {
+  ACADEMIC
+  ADMISSION_STUDENT
+  ADMISSION_GENERAL
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  ESSAY
+  COMPLEX_MULTIPLE_CHOICE
+  TRUE_FALSE
+  MATCHING
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  SICK
+  PERMISSION
+  LATE
+}
+
+enum GradeComponentType {
+  FORMATIVE
+  MIDTERM
+  FINAL
+  SKILL
+  US_PRACTICE
+  US_THEORY
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ExamType {
+  FORMATIF
+  SBTS
+  SAS
+  SAT
+  US_PRACTICE
+  US_THEORY
+}
+
+enum ExamSessionStatus {
+  IN_PROGRESS
+  COMPLETED
+  TIMEOUT
+}
+
+model Internship {
+  id             Int              @id @default(autoincrement())
+  studentId      Int
+  academicYearId Int
+  companyName    String
+  companyAddress String?
+  companyLatitude Float?
+  companyLongitude Float?
+  mentorName     String?
+  mentorPhone    String?
+  mentorEmail    String?
+  accessCode     String?          @unique
+  accessCodeExpiresAt DateTime?
+  teacherId      Int?
+  startDate      DateTime?
+  endDate        DateTime?
+  status         InternshipStatus @default(PROPOSED)
+  finalGrade     Float?
+  certificateUrl String?
+  acceptanceLetterUrl String?
+  rejectionReason     String?
+  
+  // Report Fields
+  reportTitle     String?
+  reportUrl       String?
+  schoolApprovalDate String?  // Added for approval sheet date
+  lastActiveTab      String?  // Added for UI persistence
+  examinerId      Int?
+  defenseDate     DateTime?
+  defenseRoom     String?
+  
+  // Detailed Scores
+  scorePresentation  Float?
+  scoreUnderstanding Float?
+  scoreRelevance     Float?
+  scoreSystematics   Float?
+  
+  defenseScore    Float?
+  defenseNotes    String?
+  
+  // Industry Score (70%)
+  industryScore   Float?
+
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  student        User             @relation("StudentInternship", fields: [studentId], references: [id])
+  academicYear   AcademicYear     @relation(fields: [academicYearId], references: [id])
+  teacher        User?            @relation("TeacherInternship", fields: [teacherId], references: [id])
+  examiner       User?            @relation("ExaminerInternship", fields: [examinerId], references: [id])
+  journals       InternshipJournal[]
+  attendances    InternshipAttendance[]
+  grades         InternshipGrade[]
+
+  @@map("internships")
+}
+
+model InternshipAssessmentComponent {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  weight      Float    @default(1.0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  grades      InternshipGrade[]
+
+  @@map("internship_assessment_components")
+}
+
+model InternshipGrade {
+  id           Int                         @id @default(autoincrement())
+  internshipId Int
+  componentId  Int
+  score        Float
+
+  internship   Internship                  @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+  component    InternshipAssessmentComponent @relation(fields: [componentId], references: [id])
+
+  createdAt    DateTime                    @default(now())
+  updatedAt    DateTime                    @updatedAt
+
+  @@unique([internshipId, componentId])
+  @@map("internship_grades")
+}
+
+model InternshipJournal {
+  id           Int                @id @default(autoincrement())
+  internshipId Int
+  date         DateTime
+  activity     String             @db.Text
+  imageUrl     String?
+  status       VerificationStatus @default(PENDING)
+  feedback     String?
+
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  internship   Internship         @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+
+  @@map("internship_journals")
+}
+
+model InternshipAttendance {
+  id           Int              @id @default(autoincrement())
+  internshipId Int
+  date         DateTime
+  status       AttendanceStatus
+  checkInTime  DateTime?
+  checkOutTime DateTime?
+  imageUrl     String?
+  latitude     Float?
+  longitude    Float?
+  note         String?
+
+  internship   Internship       @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+
+  @@unique([internshipId, date])
+  @@map("internship_attendances")
+}
+
+enum InternshipStatus {
+  PROPOSED
+  WAITING_ACCEPTANCE_LETTER
+  APPROVED
+  ACTIVE
+  REPORT_SUBMITTED
+  DEFENSE_SCHEDULED
+  DEFENSE_COMPLETED
+  COMPLETED
+  REJECTED
+  CANCELED
+}
+
+model IndustryPartner {
+  id                Int       @id @default(autoincrement())
+  name              String
+  address           String
+  city              String?
+  sector            String?
+  contactPerson     String?
+  phone             String?
+  email             String?
+  website           String?
+  cooperationStatus CooperationStatus @default(PROSES)
+  mouDocumentUrl    String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  jobVacancies      JobVacancy[]
+
+  @@map("industry_partners")
+}
+
+model JobVacancy {
+  id                Int       @id @default(autoincrement())
+  title             String
+  companyName       String?
+  description       String?   @db.Text
+  requirements      String?   @db.Text
+  registrationLink  String?
+  deadline          DateTime?
+  isOpen            Boolean   @default(true)
+  industryPartnerId Int?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  industryPartner   IndustryPartner? @relation(fields: [industryPartnerId], references: [id])
+
+  @@map("job_vacancies")
+}
+
+enum CooperationStatus {
+  AKTIF
+  NON_AKTIF
+  PROSES
+}
