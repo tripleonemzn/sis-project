@@ -88,7 +88,40 @@ Perubahan/eksekusi tambahan yang sudah dilakukan:
      - final exit sekarang benar mengikuti status gagal.
    - Verifikasi:
      - `OTA_MAX_ATTEMPTS=1 ... publish-ota-update.sh ...`
-     - output `__EXIT_CODE=1` saat gagal DNS (sesuai ekspektasi).
+   - output `__EXIT_CODE=1` saat gagal DNS (sesuai ekspektasi).
+
+## Update Lanjutan (2026-02-22 00:05 UTC)
+
+Tujuan batch ini: polishing UI dashboard mobile lintas role sebelum publish OTA (submenu iconized, avatar profile, dan header info akademik).
+
+Perubahan tambahan yang sudah dilakukan:
+1. Redesign menu dashboard lintas role menjadi icon-first (bukan card list)
+   - File: `app/(app)/home.tsx`
+   - Perubahan:
+     - submenu pada setiap kategori sekarang tampil sebagai grid button icon untuk pindah cepat antar sub-menu.
+     - quick actions non-teacher juga diubah ke icon buttons.
+     - statistik dashboard yang sebelumnya card juga dirender dengan pola icon badge agar visual konsisten.
+   - Dampak:
+     - berlaku untuk semua role karena seluruh navigasi dashboard berbasis `getGroupedRoleMenu()` dirender dari satu screen home.
+
+2. Header atas: lingkaran dijadikan foto profil + metadata akademik
+   - File: `app/(app)/home.tsx`
+   - Perubahan:
+     - avatar lingkaran atas sekarang menampilkan foto profil user (fallback inisial).
+     - di samping avatar ditambahkan:
+       - `Tahun Ajaran Aktif`
+       - tanggal/hari saat ini format Indonesia (seperti kebutuhan web).
+     - tahun ajaran aktif diambil dari endpoint aktif + fallback sumber data role.
+
+3. Footer floating circle: ganti icon search menjadi avatar profil
+   - File: `app/(app)/home.tsx`
+   - Perubahan:
+     - tombol lingkaran tengah footer sekarang menampilkan foto profil user (fallback inisial), bukan icon search.
+     - aksi diarahkan ke halaman profil.
+
+Validasi yang sudah dijalankan setelah patch:
+- `npm run typecheck` (sukses)
+- `npm run audit:parity` (sukses)
 
 ## Update Lanjutan (2026-02-21 03:30 UTC)
 

@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Platform,
   Pressable,
   RefreshControl,
@@ -23,6 +24,7 @@ import { getGroupedRoleMenu, RoleMenuGroup, RoleMenuItem } from '../../src/featu
 import { useTeacherAssignmentsQuery } from '../../src/features/teacherAssignments/useTeacherAssignmentsQuery';
 import { scheduleApi } from '../../src/features/schedule/scheduleApi';
 import type { DayOfWeek, ScheduleEntry } from '../../src/features/schedule/types';
+import { academicYearApi } from '../../src/features/academicYear/academicYearApi';
 import { adminApi } from '../../src/features/admin/adminApi';
 import { principalApi } from '../../src/features/principal/principalApi';
 import { staffApi } from '../../src/features/staff/staffApi';
@@ -30,18 +32,24 @@ import { useParentFinanceOverviewQuery } from '../../src/features/parent/usePare
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { applyAppUpdate, checkAppUpdate } from '../../src/features/appUpdate/updateService';
 import { BRAND_COLORS } from '../../src/config/brand';
+import { ENV } from '../../src/config/env';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifyInfo, notifySuccess } from '../../src/lib/ui/feedback';
 import type { AuthUser } from '../../src/features/auth/types';
 
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
-type DashboardStatItem = { label: string; value: string; color: string; menuKey?: string };
+type DashboardStatItem = { label: string; value: string; color: string; icon?: FeatherIconName; menuKey?: string };
 type DashboardIconStatItem = {
   label: string;
   value: string;
   color: string;
   icon: FeatherIconName;
   menuKey?: string;
+};
+type MenuIconTone = {
+  bg: string;
+  border: string;
+  fg: string;
 };
 
 const getTeachingHourValue = (entry: ScheduleEntry) =>
@@ -64,12 +72,46 @@ const CARD_ACCENTS = [
   BRAND_COLORS.pink,
   BRAND_COLORS.sky,
 ];
+const MENU_ICON_TONES: MenuIconTone[] = [
+  { bg: '#eff6ff', border: '#bfdbfe', fg: '#1d4ed8' },
+  { bg: '#ecfeff', border: '#a5f3fc', fg: '#0e7490' },
+  { bg: '#f0fdf4', border: '#bbf7d0', fg: '#15803d' },
+  { bg: '#fff7ed', border: '#fed7aa', fg: '#c2410c' },
+  { bg: '#faf5ff', border: '#e9d5ff', fg: '#7e22ce' },
+  { bg: '#fef2f2', border: '#fecaca', fg: '#b91c1c' },
+];
 
 const JS_DAY_TO_SCHEDULE_DAY: DayOfWeek[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 
 function defaultSemesterByDate(): 'ODD' | 'EVEN' {
   const month = new Date().getMonth() + 1;
   return month >= 7 ? 'ODD' : 'EVEN';
+}
+
+function resolveMediaUrl(path?: string | null) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  const webBaseUrl = ENV.API_BASE_URL.replace(/\/api\/?$/, '');
+  return path.startsWith('/') ? `${webBaseUrl}${path}` : `${webBaseUrl}/${path}`;
+}
+
+function toAvatarInitial(name: string) {
+  const normalized = String(name || '').trim();
+  if (!normalized) return 'U';
+  return normalized.charAt(0).toUpperCase();
+}
+
+function hashText(input: string) {
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash << 5) - hash + input.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function getMenuIconTone(menuKey: string): MenuIconTone {
+  return MENU_ICON_TONES[hashText(menuKey) % MENU_ICON_TONES.length];
 }
 
 const getMenuIcon = (menu: RoleMenuItem): FeatherIconName => {
@@ -117,6 +159,63 @@ const getMenuSubtitle = (menu: RoleMenuItem) => {
   if (menu.webPath) return 'Buka modul versi web';
   return 'Modul ini akan segera tersedia';
 };
+
+const getStatIcon = (item: DashboardStatItem, linkedMenu?: RoleMenuItem): FeatherIconName => {
+  if (item.icon) return item.icon;
+  if (linkedMenu) return getMenuIcon(linkedMenu);
+
+  const key = `${item.label} ${item.value}`.toLowerCase();
+  if (key.includes('siswa') || key.includes('anak')) return 'users';
+  if (key.includes('guru')) return 'user-check';
+  if (key.includes('kelas')) return 'layers';
+  if (key.includes('mapel')) return 'book-open';
+  if (key.includes('jurusan')) return 'grid';
+  if (key.includes('keuangan') || key.includes('nominal') || key.includes('tagihan')) return 'credit-card';
+  if (key.includes('hadir') || key.includes('absensi')) return 'check-square';
+  if (key.includes('rata') || key.includes('nilai') || key.includes('ranking')) return 'bar-chart-2';
+  if (key.includes('assignment')) return 'clipboard';
+  return 'circle';
+};
+
+function AvatarCircle({
+  name,
+  photoUrl,
+  size,
+  backgroundColor,
+  textColor,
+  borderColor,
+}: {
+  name: string;
+  photoUrl?: string | null;
+  size: number;
+  backgroundColor: string;
+  textColor: string;
+  borderColor?: string;
+}) {
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 999,
+        overflow: 'hidden',
+        backgroundColor,
+        borderWidth: borderColor ? 2 : 0,
+        borderColor: borderColor || 'transparent',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {photoUrl ? (
+        <Image source={{ uri: photoUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+      ) : (
+        <Text style={{ color: textColor, fontWeight: '700', fontSize: Math.max(12, Math.floor(size * 0.36)) }}>
+          {toAvatarInitial(name)}
+        </Text>
+      )}
+    </View>
+  );
+}
 
 const ROLE_PRIMARY_ACTION_KEYS: Record<string, string[]> = {
   STUDENT: ['student-schedule', 'student-learning', 'student-grade-history'],
@@ -174,6 +273,18 @@ export default function HomeScreen() {
     [profile],
   );
   const teacherAssignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user: profile });
+  const activeAcademicYearQuery = useQuery({
+    queryKey: ['mobile-home-active-academic-year', profile.id],
+    enabled: isAuthenticated,
+    staleTime: 1000 * 60 * 10,
+    queryFn: async () => {
+      try {
+        return await academicYearApi.getActive();
+      } catch {
+        return null;
+      }
+    },
+  });
 
   const teacherScheduleQuery = useQuery({
     queryKey: ['mobile-home-teacher-schedule', profile.id, teacherAssignmentsQuery.data?.activeYear?.id],
@@ -355,12 +466,12 @@ export default function HomeScreen() {
     const stats = adminStatsQuery.data;
     if (!stats) return [];
     return [
-      { label: 'Siswa', value: String(stats.students), color: BRAND_COLORS.blue, menuKey: 'admin-user-student' },
-      { label: 'Guru', value: String(stats.teachers), color: BRAND_COLORS.navy, menuKey: 'admin-user-teacher' },
-      { label: 'Kelas', value: String(stats.classes), color: BRAND_COLORS.teal, menuKey: 'admin-classes' },
-      { label: 'Mapel', value: String(stats.subjects), color: BRAND_COLORS.gold, menuKey: 'admin-subjects' },
-      { label: 'Jurusan', value: String(stats.majors), color: BRAND_COLORS.pink, menuKey: 'admin-majors' },
-      { label: 'Assignment', value: String(stats.assignments), color: BRAND_COLORS.sky, menuKey: 'admin-teacher-assignment' },
+      { label: 'Siswa', value: String(stats.students), color: BRAND_COLORS.blue, icon: 'users', menuKey: 'admin-user-student' },
+      { label: 'Guru', value: String(stats.teachers), color: BRAND_COLORS.navy, icon: 'user-check', menuKey: 'admin-user-teacher' },
+      { label: 'Kelas', value: String(stats.classes), color: BRAND_COLORS.teal, icon: 'layers', menuKey: 'admin-classes' },
+      { label: 'Mapel', value: String(stats.subjects), color: BRAND_COLORS.gold, icon: 'book-open', menuKey: 'admin-subjects' },
+      { label: 'Jurusan', value: String(stats.majors), color: BRAND_COLORS.pink, icon: 'grid', menuKey: 'admin-majors' },
+      { label: 'Assignment', value: String(stats.assignments), color: BRAND_COLORS.sky, icon: 'clipboard', menuKey: 'admin-teacher-assignment' },
     ];
   }, [adminStatsQuery.data]);
 
@@ -368,10 +479,16 @@ export default function HomeScreen() {
     const stats = principalStatsQuery.data;
     if (!stats) return [];
     return [
-      { label: 'Rata-rata Sekolah', value: stats.schoolAverage.toFixed(2), color: BRAND_COLORS.navy, menuKey: 'principal-reports' },
-      { label: 'Total Siswa', value: String(stats.totalStudents), color: BRAND_COLORS.blue, menuKey: 'principal-students' },
-      { label: 'Total Jurusan', value: String(stats.totalMajors), color: BRAND_COLORS.teal, menuKey: 'principal-reports' },
-      { label: 'Top Siswa', value: String(stats.topStudents), color: BRAND_COLORS.gold, menuKey: 'principal-reports' },
+      {
+        label: 'Rata-rata Sekolah',
+        value: stats.schoolAverage.toFixed(2),
+        color: BRAND_COLORS.navy,
+        icon: 'bar-chart-2',
+        menuKey: 'principal-reports',
+      },
+      { label: 'Total Siswa', value: String(stats.totalStudents), color: BRAND_COLORS.blue, icon: 'users', menuKey: 'principal-students' },
+      { label: 'Total Jurusan', value: String(stats.totalMajors), color: BRAND_COLORS.teal, icon: 'grid', menuKey: 'principal-reports' },
+      { label: 'Top Siswa', value: String(stats.topStudents), color: BRAND_COLORS.gold, icon: 'award', menuKey: 'principal-reports' },
     ];
   }, [principalStatsQuery.data]);
 
@@ -379,15 +496,16 @@ export default function HomeScreen() {
     const stats = staffStatsQuery.data;
     if (!stats) return [];
     return [
-      { label: 'Total Siswa', value: String(stats.students), color: BRAND_COLORS.blue, menuKey: 'staff-students' },
-      { label: 'Pengajuan', value: String(stats.budgets), color: BRAND_COLORS.navy, menuKey: 'staff-payments' },
-      { label: 'Menunggu', value: String(stats.pending), color: BRAND_COLORS.gold, menuKey: 'staff-payments' },
-      { label: 'Disetujui', value: String(stats.approved), color: BRAND_COLORS.teal, menuKey: 'staff-payments' },
-      { label: 'Ditolak', value: String(stats.rejected), color: BRAND_COLORS.pink, menuKey: 'staff-payments' },
+      { label: 'Total Siswa', value: String(stats.students), color: BRAND_COLORS.blue, icon: 'users', menuKey: 'staff-students' },
+      { label: 'Pengajuan', value: String(stats.budgets), color: BRAND_COLORS.navy, icon: 'file-text', menuKey: 'staff-payments' },
+      { label: 'Menunggu', value: String(stats.pending), color: BRAND_COLORS.gold, icon: 'clock', menuKey: 'staff-payments' },
+      { label: 'Disetujui', value: String(stats.approved), color: BRAND_COLORS.teal, icon: 'check-circle', menuKey: 'staff-payments' },
+      { label: 'Ditolak', value: String(stats.rejected), color: BRAND_COLORS.pink, icon: 'x-circle', menuKey: 'staff-payments' },
       {
         label: 'Nominal',
         value: `Rp ${Math.round(stats.totalAmount).toLocaleString('id-ID')}`,
         color: BRAND_COLORS.sky,
+        icon: 'credit-card',
         menuKey: 'staff-payments',
       },
     ];
@@ -397,13 +515,26 @@ export default function HomeScreen() {
     const summary = parentOverviewQuery.data?.overview.summary;
     if (!summary) return [];
     return [
-      { label: 'Jumlah Anak', value: String(summary.childCount), color: BRAND_COLORS.blue, menuKey: 'child-progress' },
-      { label: 'Total Tagihan', value: `Rp ${Math.round(summary.totalAmount).toLocaleString('id-ID')}`, color: BRAND_COLORS.navy, menuKey: 'parent-finance' },
-      { label: 'Sudah Bayar', value: `Rp ${Math.round(summary.paidAmount).toLocaleString('id-ID')}`, color: BRAND_COLORS.teal, menuKey: 'parent-finance' },
+      { label: 'Jumlah Anak', value: String(summary.childCount), color: BRAND_COLORS.blue, icon: 'users', menuKey: 'child-progress' },
+      {
+        label: 'Total Tagihan',
+        value: `Rp ${Math.round(summary.totalAmount).toLocaleString('id-ID')}`,
+        color: BRAND_COLORS.navy,
+        icon: 'file-text',
+        menuKey: 'parent-finance',
+      },
+      {
+        label: 'Sudah Bayar',
+        value: `Rp ${Math.round(summary.paidAmount).toLocaleString('id-ID')}`,
+        color: BRAND_COLORS.teal,
+        icon: 'check-circle',
+        menuKey: 'parent-finance',
+      },
       {
         label: 'Belum Lunas',
         value: `Rp ${Math.round(summary.pendingAmount + summary.partialAmount).toLocaleString('id-ID')}`,
         color: BRAND_COLORS.gold,
+        icon: 'alert-circle',
         menuKey: 'parent-finance',
       },
     ];
@@ -411,20 +542,52 @@ export default function HomeScreen() {
 
   const studentStatCards: DashboardStatItem[] = useMemo(
     () => [
-      { label: 'Role', value: profile.role, color: BRAND_COLORS.blue },
-      { label: 'Kelas', value: profile.studentClass?.name || '-', color: BRAND_COLORS.navy, menuKey: 'student-schedule' },
+      { label: 'Role', value: profile.role, color: BRAND_COLORS.blue, icon: 'shield' },
+      {
+        label: 'Kelas',
+        value: profile.studentClass?.name || '-',
+        color: BRAND_COLORS.navy,
+        icon: 'layers',
+        menuKey: 'student-schedule',
+      },
       {
         label: 'Jurusan',
         value: profile.studentClass?.major?.code || profile.studentClass?.major?.name || '-',
         color: BRAND_COLORS.teal,
+        icon: 'grid',
         menuKey: 'student-learning',
       },
-      { label: 'Status', value: profile.studentStatus || '-', color: BRAND_COLORS.gold, menuKey: 'student-grade-history' },
+      {
+        label: 'Status',
+        value: profile.studentStatus || '-',
+        color: BRAND_COLORS.gold,
+        icon: 'activity',
+        menuKey: 'student-grade-history',
+      },
     ],
     [profile.role, profile.studentClass?.name, profile.studentClass?.major?.code, profile.studentClass?.major?.name, profile.studentStatus],
   );
 
   const displayName = (profile.name?.trim() || profile.username || 'Pengguna').trim();
+  const profilePhotoUrl = useMemo(() => resolveMediaUrl(profile.photo), [profile.photo]);
+  const activeAcademicYearLabel = useMemo(() => {
+    return (
+      activeAcademicYearQuery.data?.name ||
+      teacherAssignmentsQuery.data?.activeYear?.name ||
+      adminStatsQuery.data?.activeYearName ||
+      '-'
+    );
+  }, [activeAcademicYearQuery.data?.name, teacherAssignmentsQuery.data?.activeYear?.name, adminStatsQuery.data?.activeYearName]);
+  const todayLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString('id-ID', {
+        weekday: 'long',
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      }),
+    [],
+  );
   const todayTeacherSchedules = useMemo(() => {
     if (profile.role !== 'TEACHER') return [];
     const now = new Date();
@@ -651,53 +814,68 @@ export default function HomeScreen() {
     }
   };
 
-  const renderStatGrid = (items: DashboardStatItem[]) => (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
-      {items.map((item) => {
-        const linkedMenu = item.menuKey ? menuItemByKey.get(item.menuKey) : undefined;
-        const isOpeningThisMenu = linkedMenu ? openingMenuKey === linkedMenu.key : false;
-        return (
-          <View key={item.label} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-            <Pressable
-              disabled={!linkedMenu || isMenuTransitioning}
-              onPress={() => {
-                if (!linkedMenu) return;
-                void handleMenuPress(linkedMenu);
-              }}
-              onLongPress={() => {
-                if (!linkedMenu?.webPath) return;
-                void handleMenuWebPress(linkedMenu);
-              }}
-              delayLongPress={220}
-              style={({ pressed }) => ({
-                backgroundColor: `${item.color}18`,
-                borderWidth: 1,
-                borderColor: `${item.color}40`,
-                borderRadius: 10,
-                paddingVertical: 9,
-                paddingHorizontal: 6,
-                minHeight: 66,
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: pressed || isOpeningThisMenu ? 0.82 : 1,
-              })}
-            >
-              {isOpeningThisMenu ? (
-                <ActivityIndicator size="small" color={item.color} />
-              ) : (
-                <Text style={{ color: item.color, fontWeight: '700', fontSize: item.value.length > 10 ? 13 : 18 }}>
+  const renderStatGrid = (items: DashboardStatItem[]) => {
+    const columns = items.length > 4 ? 3 : 4;
+    const itemWidth = `${100 / columns}%` as `${number}%`;
+    return (
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
+        {items.map((item) => {
+          const linkedMenu = item.menuKey ? menuItemByKey.get(item.menuKey) : undefined;
+          const isOpeningThisMenu = linkedMenu ? openingMenuKey === linkedMenu.key : false;
+          const iconName = getStatIcon(item, linkedMenu);
+          const tone = getMenuIconTone(item.label);
+
+          return (
+            <View key={item.label} style={{ width: itemWidth, paddingHorizontal: 4, marginBottom: 10 }}>
+              <Pressable
+                disabled={!linkedMenu || isMenuTransitioning}
+                onPress={() => {
+                  if (!linkedMenu) return;
+                  void handleMenuPress(linkedMenu);
+                }}
+                onLongPress={() => {
+                  if (!linkedMenu?.webPath) return;
+                  void handleMenuWebPress(linkedMenu);
+                }}
+                delayLongPress={220}
+                style={({ pressed }) => ({
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingVertical: 4,
+                  opacity: pressed || isOpeningThisMenu ? 0.82 : 1,
+                })}
+              >
+                <View
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 999,
+                    backgroundColor: tone.bg,
+                    borderWidth: 1,
+                    borderColor: tone.border,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {isOpeningThisMenu ? (
+                    <ActivityIndicator size="small" color={tone.fg} />
+                  ) : (
+                    <Feather name={iconName} size={17} color={tone.fg} />
+                  )}
+                </View>
+                <Text style={{ color: item.color, fontWeight: '700', fontSize: item.value.length > 12 ? 12 : 15, marginTop: 6 }}>
                   {item.value}
                 </Text>
-              )}
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2, textAlign: 'center' }}>
-                {isOpeningThisMenu ? 'Membuka modul...' : item.label}
-              </Text>
-            </Pressable>
-          </View>
-        );
-      })}
-    </View>
-  );
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 10, textAlign: 'center' }} numberOfLines={2}>
+                  {isOpeningThisMenu ? 'Membuka...' : item.label}
+                </Text>
+              </Pressable>
+            </View>
+          );
+        })}
+      </View>
+    );
+  };
 
   const renderIconStatGrid = (items: DashboardIconStatItem[]) => (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
@@ -828,29 +1006,31 @@ export default function HomeScreen() {
         }}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void handleRefresh()} />}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
-          <Pressable
-            onPress={() => router.push('/profile')}
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 999,
-              backgroundColor: BRAND_COLORS.navy,
-              borderWidth: 2,
-              borderColor: '#d2dcf8',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{ color: BRAND_COLORS.white, fontWeight: '700', fontSize: 15 }}>
-              {displayName[0]?.toUpperCase() || 'U'}
-            </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Pressable onPress={() => router.push('/profile')} style={{ marginRight: 12 }}>
+            <AvatarCircle
+              name={displayName}
+              photoUrl={profilePhotoUrl}
+              size={52}
+              backgroundColor={BRAND_COLORS.navy}
+              textColor={BRAND_COLORS.white}
+              borderColor="#d2dcf8"
+            />
           </Pressable>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Tahun Ajaran Aktif</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 14 }}>
+              {activeAcademicYearLabel}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+              {todayLabel}
+            </Text>
+          </View>
         </View>
 
         <Text
           style={{
-            marginTop: 14,
+            marginTop: 12,
             color: BRAND_COLORS.textDark,
             fontSize: 24,
             fontWeight: '700',
@@ -1150,9 +1330,10 @@ export default function HomeScreen() {
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
               {roleQuickMenus.map((menu) => {
                 const icon = getMenuIcon(menu);
+                const tone = getMenuIconTone(menu.key);
                 const isOpeningThisMenu = openingMenuKey === menu.key;
                 return (
-                  <View key={menu.key} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                  <View key={menu.key} style={{ width: '33.3333%', paddingHorizontal: 4, marginBottom: 10 }}>
                     <Pressable
                       disabled={isMenuTransitioning}
                       onPress={() => {
@@ -1164,42 +1345,37 @@ export default function HomeScreen() {
                       }}
                       delayLongPress={220}
                       style={({ pressed }) => ({
-                        borderRadius: 10,
-                        borderWidth: 1,
-                        borderColor: '#d6e2f7',
-                        backgroundColor: '#f8fbff',
-                        paddingHorizontal: 10,
-                        paddingVertical: 10,
+                        paddingHorizontal: 6,
+                        paddingVertical: 6,
+                        alignItems: 'center',
+                        justifyContent: 'center',
                         opacity: pressed || isOpeningThisMenu ? 0.82 : 1,
                       })}
                     >
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <View
-                          style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: 999,
-                            backgroundColor: '#e9f1ff',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            marginRight: 8,
-                          }}
-                        >
-                          {isOpeningThisMenu ? (
-                            <ActivityIndicator size="small" color={BRAND_COLORS.navy} />
-                          ) : (
-                            <Feather name={icon} size={14} color={BRAND_COLORS.navy} />
-                          )}
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 12 }} numberOfLines={1}>
-                            {menu.label}
-                          </Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 10, marginTop: 1 }} numberOfLines={1}>
-                            {isOpeningThisMenu ? 'Membuka modul...' : 'Buka modul'}
-                          </Text>
-                        </View>
+                      <View
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 999,
+                          backgroundColor: tone.bg,
+                          borderWidth: 1,
+                          borderColor: tone.border,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {isOpeningThisMenu ? (
+                          <ActivityIndicator size="small" color={tone.fg} />
+                        ) : (
+                          <Feather name={icon} size={18} color={tone.fg} />
+                        )}
                       </View>
+                      <Text
+                        style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 11, marginTop: 5, textAlign: 'center' }}
+                        numberOfLines={2}
+                      >
+                        {isOpeningThisMenu ? 'Membuka...' : menu.label}
+                      </Text>
                     </Pressable>
                   </View>
                 );
@@ -1313,13 +1489,15 @@ export default function HomeScreen() {
           const accent = CARD_ACCENTS[groupIndex % CARD_ACCENTS.length];
           const groupIcon = getGroupIcon(group);
           const isOpen = openGroupKey === group.key;
+          const submenuColumns = group.items.length <= 2 ? 2 : 3;
+          const submenuWidth = `${100 / submenuColumns}%` as `${number}%`;
 
           return (
             <View
               key={group.key}
               style={{
                 backgroundColor: BRAND_COLORS.white,
-                borderRadius: 18,
+                borderRadius: 16,
                 borderWidth: 1,
                 borderColor: '#d6e0f2',
                 marginBottom: 11,
@@ -1333,36 +1511,31 @@ export default function HomeScreen() {
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
                   borderBottomWidth: isOpen ? 1 : 0,
                   borderBottomColor: '#e8eefb',
                 }}
               >
                 <View
                   style={{
-                    width: 76,
-                    height: 72,
-                    backgroundColor: `${accent}1F`,
+                    width: 40,
+                    height: 40,
+                    borderRadius: 999,
+                    backgroundColor: `${accent}20`,
+                    borderWidth: 1,
+                    borderColor: `${accent}4A`,
                     alignItems: 'center',
                     justifyContent: 'center',
+                    marginRight: 10,
                   }}
                 >
-                  <View
-                    style={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: 999,
-                      backgroundColor: accent,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Feather name={groupIcon} size={18} color={BRAND_COLORS.white} />
-                  </View>
+                  <Feather name={groupIcon} size={18} color={accent} />
                 </View>
 
-                <View style={{ flex: 1, paddingHorizontal: 13 }}>
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>{group.label}</Text>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>{group.label}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
                     {group.items.length} submenu
                   </Text>
                 </View>
@@ -1373,61 +1546,67 @@ export default function HomeScreen() {
               </Pressable>
 
               {isOpen ? (
-                <View style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
-                  {group.items.map((menu) => {
-                    const menuIcon = getMenuIcon(menu);
-                    return (
-                      <Pressable
-                        key={menu.key}
-                        disabled={isMenuTransitioning}
-                        onPress={() => {
-                          void handleMenuPress(menu);
-                        }}
-                        onLongPress={() => {
-                          if (!menu.webPath) return;
-                          void handleMenuWebPress(menu);
-                        }}
-                        delayLongPress={220}
-                        style={({ pressed }) => ({
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          backgroundColor: '#f8fbff',
-                          borderWidth: 1,
-                          borderColor: '#dce6f8',
-                          borderRadius: 12,
-                          paddingVertical: 10,
-                          paddingHorizontal: 10,
-                          marginBottom: 8,
-                          opacity: pressed || openingMenuKey === menu.key ? 0.82 : 1,
-                        })}
-                      >
-                        <View
-                          style={{
-                            width: 30,
-                            height: 30,
-                            borderRadius: 999,
-                            backgroundColor: `${accent}26`,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            marginRight: 10,
-                          }}
-                        >
-                          <Feather name={menuIcon} size={14} color={accent} />
+                <View style={{ paddingHorizontal: 8, paddingVertical: 10 }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
+                    {group.items.map((menu) => {
+                      const tone = getMenuIconTone(menu.key);
+                      const isOpeningThisMenu = openingMenuKey === menu.key;
+                      const menuIcon = getMenuIcon(menu);
+                      return (
+                        <View key={menu.key} style={{ width: submenuWidth, paddingHorizontal: 4, marginBottom: 10 }}>
+                          <Pressable
+                            disabled={isMenuTransitioning}
+                            onPress={() => {
+                              void handleMenuPress(menu);
+                            }}
+                            onLongPress={() => {
+                              if (!menu.webPath) return;
+                              void handleMenuWebPress(menu);
+                            }}
+                            delayLongPress={220}
+                            style={({ pressed }) => ({
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              paddingHorizontal: 6,
+                              paddingVertical: 5,
+                              opacity: pressed || isOpeningThisMenu ? 0.82 : 1,
+                            })}
+                          >
+                            <View
+                              style={{
+                                width: 46,
+                                height: 46,
+                                borderRadius: 999,
+                                backgroundColor: tone.bg,
+                                borderWidth: 1,
+                                borderColor: tone.border,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              {isOpeningThisMenu ? (
+                                <ActivityIndicator size="small" color={tone.fg} />
+                              ) : (
+                                <Feather name={menuIcon} size={18} color={tone.fg} />
+                              )}
+                            </View>
+                            <Text
+                              style={{
+                                color: BRAND_COLORS.textDark,
+                                fontWeight: '700',
+                                fontSize: 11,
+                                marginTop: 6,
+                                textAlign: 'center',
+                              }}
+                              numberOfLines={2}
+                            >
+                              {isOpeningThisMenu ? 'Membuka...' : menu.label}
+                            </Text>
+                          </Pressable>
                         </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 14 }}>{menu.label}</Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
-                            {getMenuSubtitle(menu)}
-                          </Text>
-                        </View>
-                        {openingMenuKey === menu.key ? (
-                          <ActivityIndicator size="small" color={BRAND_COLORS.textMuted} />
-                        ) : (
-                          <Feather name="chevron-right" size={16} color={BRAND_COLORS.textMuted} />
-                        )}
-                      </Pressable>
-                    );
-                  })}
+                      );
+                    })}
+                  </View>
                 </View>
               ) : null}
             </View>
@@ -1489,7 +1668,7 @@ export default function HomeScreen() {
         </View>
 
         <Pressable
-          onPress={() => void handleRefresh()}
+          onPress={() => router.push('/profile')}
           style={{
             position: 'absolute',
             alignSelf: 'center',
@@ -1497,14 +1676,20 @@ export default function HomeScreen() {
             width: 52,
             height: 52,
             borderRadius: 999,
-            backgroundColor: BRAND_COLORS.sky,
+            backgroundColor: '#ffffff',
             borderWidth: 5,
             borderColor: '#e9eefb',
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Feather name="search" size={20} color={BRAND_COLORS.white} />
+          <AvatarCircle
+            name={displayName}
+            photoUrl={profilePhotoUrl}
+            size={42}
+            backgroundColor={BRAND_COLORS.navy}
+            textColor={BRAND_COLORS.white}
+          />
         </Pressable>
       </View>
     </View>
