@@ -1,0 +1,34 @@
+{
+  "cli": {
+    "version": ">= 12.0.0"
+  },
+  "build": {
+    "internal": {
+      "distribution": "internal",
+      "channel": "pilot",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "internal-live": {
+      "distribution": "internal",
+      "channel": "pilot-live",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "channel": "staging",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {
+      "channel": "production",
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
+  }
+}

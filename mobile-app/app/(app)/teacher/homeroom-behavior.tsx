@@ -1,0 +1,941 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Redirect, useRouter } from 'expo-router';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { QueryStateView } from '../../../src/components/QueryStateView';
+import { BRAND_COLORS } from '../../../src/config/brand';
+import { useAuth } from '../../../src/features/auth/AuthProvider';
+import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
+import { adminApi } from '../../../src/features/admin/adminApi';
+import { kesiswaanApi } from '../../../src/features/kesiswaan/kesiswaanApi';
+import { KesiswaanBehavior, KesiswaanBehaviorType } from '../../../src/features/kesiswaan/types';
+import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
+import { notifyApiError, notifyInfo, notifySuccess } from '../../../src/lib/ui/feedback';
+
+type TypeFilter = 'ALL' | KesiswaanBehaviorType;
+
+type BehaviorFormState = {
+  studentId: number | null;
+  date: string;
+  type: KesiswaanBehaviorType;
+  category: string;
+  description: string;
+  point: string;
+};
+
+function todayIsoDate() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function createDefaultForm(): BehaviorFormState {
+  return {
+    studentId: null,
+    date: todayIsoDate(),
+    type: 'POSITIVE',
+    category: '',
+    description: '',
+    point: '0',
+  };
+}
+
+function isHomeroomTeacher(duties?: string[], classesCount?: number) {
+  if ((classesCount || 0) > 0) return true;
+  const normalized = (duties || []).map((item) => item.trim().toUpperCase());
+  return normalized.includes('WALI_KELAS');
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function typeStyle(type: KesiswaanBehaviorType) {
+  if (type === 'POSITIVE') return { text: '#15803d', border: '#86efac', bg: '#dcfce7', label: 'Positif' };
+  return { text: '#b91c1c', border: '#fca5a5', bg: '#fee2e2', label: 'Negatif' };
+}
+
+function FilterChip({
+  active,
+  label,
+  onPress,
+}: {
+  active: boolean;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        borderWidth: 1,
+        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
+        backgroundColor: active ? '#e9f1ff' : '#fff',
+        borderRadius: 999,
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+      }}
+    >
+      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
+  return (
+    <View
+      style={{
+        backgroundColor: '#fff',
+        borderWidth: 1,
+        borderColor: '#dbe7fb',
+        borderRadius: 12,
+        padding: 12,
+        flex: 1,
+      }}
+    >
+      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 22, marginTop: 4 }}>{value}</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
+    </View>
+  );
+}
+
+export default function TeacherHomeroomBehaviorScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+  const { isAuthenticated, isLoading, user } = useAuth();
+  const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+
+  const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
+  const [search, setSearch] = useState('');
+  const [editingBehaviorId, setEditingBehaviorId] = useState<number | null>(null);
+  const [form, setForm] = useState<BehaviorFormState>(createDefaultForm());
+  const [showForm, setShowForm] = useState(false);
+
+  const isAllowed = user?.role === 'TEACHER' && isHomeroomTeacher(user?.additionalDuties, user?.teacherClasses?.length);
+
+  const activeYearQuery = useQuery({
+    queryKey: ['mobile-homeroom-behavior-active-year'],
+    enabled: isAuthenticated && user?.role === 'TEACHER',
+    queryFn: async () => {
+      try {
+        return await academicYearApi.getActive();
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  const classesQuery = useQuery({
+    queryKey: ['mobile-homeroom-behavior-classes', user?.id, activeYearQuery.data?.id],
+    enabled: isAuthenticated && !!isAllowed && !!user?.id && !!activeYearQuery.data?.id,
+    queryFn: async () => {
+      const result = await adminApi.listClasses({
+        page: 1,
+        limit: 300,
+        academicYearId: activeYearQuery.data?.id,
+        teacherId: user?.id,
+      });
+      return result.items;
+    },
+  });
+
+  const classItems = classesQuery.data || [];
+  const selectedClass = classItems.find((item) => item.id === selectedClassId) || null;
+
+  useEffect(() => {
+    if (selectedClassId || classItems.length === 0) return;
+    setSelectedClassId(classItems[0].id);
+  }, [selectedClassId, classItems]);
+
+  const classDetailQuery = useQuery({
+    queryKey: ['mobile-homeroom-behavior-class-detail', selectedClassId],
+    enabled: isAuthenticated && !!isAllowed && !!selectedClassId,
+    queryFn: async () => adminApi.getClassById(Number(selectedClassId)),
+  });
+
+  const students = classDetailQuery.data?.students || [];
+
+  useEffect(() => {
+    if (!students.length) return;
+    if (form.studentId) return;
+    setForm((prev) => ({ ...prev, studentId: students[0].id }));
+  }, [students, form.studentId]);
+
+  const behaviorsQuery = useQuery({
+    queryKey: [
+      'mobile-homeroom-behaviors',
+      selectedClassId,
+      activeYearQuery.data?.id,
+      typeFilter,
+      search,
+    ],
+    enabled: isAuthenticated && !!isAllowed && !!selectedClassId && !!activeYearQuery.data?.id,
+    queryFn: async () =>
+      kesiswaanApi.getBehaviors({
+        classId: Number(selectedClassId),
+        academicYearId: Number(activeYearQuery.data?.id),
+        type: typeFilter === 'ALL' ? undefined : typeFilter,
+        search: search.trim() || undefined,
+        page: 1,
+        limit: 250,
+      }),
+  });
+
+  const behaviors = behaviorsQuery.data?.behaviors || [];
+
+  const resetForm = () => {
+    setEditingBehaviorId(null);
+    setForm({
+      ...createDefaultForm(),
+      studentId: students[0]?.id ?? null,
+    });
+  };
+
+  const createMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedClassId || !activeYearQuery.data?.id || !form.studentId) {
+        throw new Error('Data kelas, tahun ajaran, atau siswa belum lengkap.');
+      }
+
+      const point = Math.abs(Math.trunc(Number(form.point || 0)));
+      if (!Number.isFinite(point)) {
+        throw new Error('Poin perilaku tidak valid.');
+      }
+
+      return kesiswaanApi.createBehavior({
+        studentId: form.studentId,
+        classId: Number(selectedClassId),
+        academicYearId: Number(activeYearQuery.data.id),
+        date: form.date,
+        type: form.type,
+        category: form.category.trim() || undefined,
+        description: form.description.trim(),
+        point,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['mobile-homeroom-behaviors'] });
+      notifySuccess('Catatan perilaku berhasil ditambahkan.');
+      resetForm();
+      setShowForm(false);
+    },
+    onError: (error: any) => {
+      notifyApiError(error, 'Gagal menambahkan catatan perilaku.');
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: () => {
+      if (!editingBehaviorId) throw new Error('Data catatan tidak ditemukan.');
+
+      const point = Math.abs(Math.trunc(Number(form.point || 0)));
+      if (!Number.isFinite(point)) {
+        throw new Error('Poin perilaku tidak valid.');
+      }
+
+      return kesiswaanApi.updateBehavior(editingBehaviorId, {
+        date: form.date,
+        type: form.type,
+        category: form.category.trim() || undefined,
+        description: form.description.trim(),
+        point,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['mobile-homeroom-behaviors'] });
+      notifySuccess('Catatan perilaku berhasil diperbarui.');
+      resetForm();
+      setShowForm(false);
+    },
+    onError: (error: any) => {
+      notifyApiError(error, 'Gagal memperbarui catatan perilaku.');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (behaviorId: number) => kesiswaanApi.deleteBehavior(behaviorId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['mobile-homeroom-behaviors'] });
+      notifySuccess('Catatan perilaku berhasil dihapus.');
+      if (editingBehaviorId) {
+        resetForm();
+      }
+    },
+    onError: (error: any) => {
+      notifyApiError(error, 'Gagal menghapus catatan perilaku.');
+    },
+  });
+
+  const summary = useMemo(() => {
+    const result = {
+      total: behaviors.length,
+      positive: 0,
+      negative: 0,
+      positivePoints: 0,
+      negativePoints: 0,
+    };
+    for (const item of behaviors) {
+      const point = Math.abs(Number(item.point || 0));
+      if (item.type === 'POSITIVE') {
+        result.positive += 1;
+        result.positivePoints += point;
+      } else {
+        result.negative += 1;
+        result.negativePoints += point;
+      }
+    }
+    return result;
+  }, [behaviors]);
+
+  const selectedStudent = students.find((student) => student.id === form.studentId) || null;
+
+  const handleSubmit = () => {
+    if (!form.studentId) {
+      notifyInfo('Pilih siswa terlebih dahulu.', { title: 'Validasi' });
+      return;
+    }
+    if (!form.date || Number.isNaN(new Date(form.date).getTime())) {
+      notifyInfo('Tanggal tidak valid. Gunakan format YYYY-MM-DD.', { title: 'Validasi' });
+      return;
+    }
+    if (!form.description.trim()) {
+      notifyInfo('Deskripsi perilaku wajib diisi.', { title: 'Validasi' });
+      return;
+    }
+
+    if (editingBehaviorId) {
+      updateMutation.mutate();
+    } else {
+      createMutation.mutate();
+    }
+  };
+
+  const startEdit = (item: KesiswaanBehavior) => {
+    setEditingBehaviorId(item.id);
+    setForm({
+      studentId: item.studentId,
+      date: item.date.split('T')[0] || todayIsoDate(),
+      type: item.type,
+      category: item.category || '',
+      description: item.description || '',
+      point: String(Math.abs(Number(item.point || 0))),
+    });
+    setShowForm(true);
+  };
+
+  const handleDelete = (item: KesiswaanBehavior) => {
+    Alert.alert('Hapus Catatan', `Hapus catatan perilaku untuk ${item.student?.name || 'siswa ini'}?`, [
+      { text: 'Batal', style: 'cancel' },
+      {
+        text: 'Hapus',
+        style: 'destructive',
+        onPress: () => deleteMutation.mutate(item.id),
+      },
+    ]);
+  };
+
+  const isSaving = createMutation.isPending || updateMutation.isPending;
+  const isMutating = isSaving || deleteMutation.isPending;
+
+  if (isLoading) return <AppLoadingScreen message="Memuat perilaku wali kelas..." />;
+  if (!isAuthenticated) return <Redirect href="/welcome" />;
+
+  if (user?.role !== 'TEACHER') {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Wali Kelas Perilaku</Text>
+        <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
+        <Pressable
+          onPress={() => router.replace('/home')}
+          style={{
+            marginTop: 16,
+            backgroundColor: BRAND_COLORS.blue,
+            borderRadius: 10,
+            paddingVertical: 12,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+        </Pressable>
+      </ScrollView>
+    );
+  }
+
+  if (!isAllowed) {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+          Wali Kelas Perilaku
+        </Text>
+        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
+          Modul ini tersedia untuk wali kelas yang memiliki kelas aktif.
+        </Text>
+        <QueryStateView type="error" message="Anda tidak memiliki hak akses untuk modul ini." />
+        <Pressable
+          onPress={() => router.replace('/home')}
+          style={{
+            marginTop: 16,
+            backgroundColor: BRAND_COLORS.blue,
+            borderRadius: 10,
+            paddingVertical: 12,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+        </Pressable>
+      </ScrollView>
+    );
+  }
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: '#f8fafc' }}
+      contentContainerStyle={pagePadding}
+      refreshControl={
+        <RefreshControl
+          refreshing={
+            activeYearQuery.isFetching ||
+            classesQuery.isFetching ||
+            classDetailQuery.isFetching ||
+            behaviorsQuery.isFetching
+          }
+          onRefresh={() => {
+            void activeYearQuery.refetch();
+            void classesQuery.refetch();
+            void classDetailQuery.refetch();
+            void behaviorsQuery.refetch();
+          }}
+        />
+      }
+    >
+      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        Wali Kelas Perilaku
+      </Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
+        Kelola catatan perilaku positif dan negatif siswa kelas wali.
+      </Text>
+
+      {activeYearQuery.data?.name ? (
+        <View
+          style={{
+            backgroundColor: '#fff',
+            borderWidth: 1,
+            borderColor: '#dbe7fb',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: '#64748b', fontSize: 12 }}>Tahun Ajaran Aktif</Text>
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 2 }}>{activeYearQuery.data.name}</Text>
+        </View>
+      ) : null}
+
+      {classesQuery.isLoading ? <QueryStateView type="loading" message="Memuat kelas wali..." /> : null}
+      {classesQuery.isError ? (
+        <QueryStateView type="error" message="Gagal memuat kelas wali." onRetry={() => classesQuery.refetch()} />
+      ) : null}
+
+      {!classesQuery.isLoading && !classesQuery.isError ? (
+        classItems.length > 0 ? (
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Pilih Kelas</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
+              {classItems.map((classItem) => {
+                const selected = selectedClassId === classItem.id;
+                return (
+                  <View key={classItem.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                    <Pressable
+                      onPress={() => setSelectedClassId(classItem.id)}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',
+                        backgroundColor: selected ? '#e9f1ff' : '#fff',
+                        borderRadius: 10,
+                        paddingVertical: 10,
+                        paddingHorizontal: 10,
+                      }}
+                    >
+                      <Text
+                        numberOfLines={1}
+                        style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}
+                      >
+                        {classItem.name}
+                      </Text>
+                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        {classItem.major?.code || classItem.major?.name || '-'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ) : (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderStyle: 'dashed',
+              borderRadius: 10,
+              padding: 16,
+              backgroundColor: '#fff',
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>
+              Tidak ada kelas wali
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              Anda belum terdaftar sebagai wali kelas di tahun ajaran aktif.
+            </Text>
+          </View>
+        )
+      ) : null}
+
+      {selectedClass ? (
+        <View
+          style={{
+            backgroundColor: '#fff',
+            borderWidth: 1,
+            borderColor: '#dbe7fb',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>{selectedClass.name}</Text>
+          <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>
+            {selectedClass.major?.name || '-'} • Wali: {selectedClass.teacher?.name || '-'}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+        <SummaryCard title="Total Catatan" value={`${summary.total}`} subtitle="Sesuai filter saat ini" />
+        <SummaryCard
+          title="Positif / Negatif"
+          value={`${summary.positive} / ${summary.negative}`}
+          subtitle={`Poin +${summary.positivePoints} / -${summary.negativePoints}`}
+        />
+      </View>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <Pressable
+          onPress={() => {
+            if (showForm) {
+              setShowForm(false);
+              resetForm();
+              return;
+            }
+            setShowForm(true);
+          }}
+          style={{
+            flex: 1,
+            borderRadius: 10,
+            backgroundColor: showForm ? '#ef4444' : BRAND_COLORS.blue,
+            paddingVertical: 11,
+            alignItems: 'center',
+            flexDirection: 'row',
+            justifyContent: 'center',
+            gap: 8,
+          }}
+        >
+          <Feather name={showForm ? 'x' : 'plus'} size={16} color="#fff" />
+          <Text style={{ color: '#fff', fontWeight: '700' }}>{showForm ? 'Tutup Form' : 'Tambah Catatan'}</Text>
+        </Pressable>
+      </View>
+
+      {showForm ? (
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#dbe7fb',
+            borderRadius: 12,
+            backgroundColor: '#fff',
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 10 }}>
+            {editingBehaviorId ? 'Edit Catatan Perilaku' : 'Tambah Catatan Perilaku'}
+          </Text>
+
+          <Text style={{ color: '#334155', fontWeight: '600', marginBottom: 6 }}>Siswa</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 10 }}>
+            {students.length > 0 ? (
+              students.map((student) => {
+                const selected = form.studentId === student.id;
+                return (
+                  <View key={student.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                    <Pressable
+                      disabled={!!editingBehaviorId}
+                      onPress={() =>
+                        setForm((prev) => ({
+                          ...prev,
+                          studentId: student.id,
+                        }))
+                      }
+                      style={{
+                        borderWidth: 1,
+                        borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',
+                        backgroundColor: selected ? '#e9f1ff' : '#fff',
+                        borderRadius: 9,
+                        paddingVertical: 8,
+                        paddingHorizontal: 8,
+                        opacity: editingBehaviorId ? 0.75 : 1,
+                      }}
+                    >
+                      <Text numberOfLines={1} style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}>
+                        {student.name}
+                      </Text>
+                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 11 }}>
+                        NIS: {student.nis || '-'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                );
+              })
+            ) : (
+              <View
+                style={{
+                  width: '100%',
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderStyle: 'dashed',
+                  borderRadius: 10,
+                  backgroundColor: '#fff',
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada siswa pada kelas ini.</Text>
+              </View>
+            )}
+          </View>
+
+          <Text style={{ color: '#334155', fontWeight: '600', marginBottom: 6 }}>Tanggal (YYYY-MM-DD)</Text>
+          <TextInput
+            value={form.date}
+            onChangeText={(value) => setForm((prev) => ({ ...prev, date: value }))}
+            placeholder="2026-02-19"
+            placeholderTextColor="#94a3b8"
+            style={{
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 8,
+              paddingHorizontal: 10,
+              paddingVertical: 9,
+              color: BRAND_COLORS.textDark,
+              backgroundColor: '#f8fbff',
+              marginBottom: 10,
+            }}
+          />
+
+          <Text style={{ color: '#334155', fontWeight: '600', marginBottom: 6 }}>Jenis Perilaku</Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+            <Pressable
+              onPress={() => setForm((prev) => ({ ...prev, type: 'POSITIVE' }))}
+              style={{
+                flex: 1,
+                borderWidth: 1,
+                borderColor: form.type === 'POSITIVE' ? '#86efac' : '#d5e1f5',
+                borderRadius: 8,
+                backgroundColor: form.type === 'POSITIVE' ? '#dcfce7' : '#fff',
+                alignItems: 'center',
+                paddingVertical: 9,
+              }}
+            >
+              <Text style={{ color: form.type === 'POSITIVE' ? '#166534' : BRAND_COLORS.textMuted, fontWeight: '700' }}>
+                Positif
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setForm((prev) => ({ ...prev, type: 'NEGATIVE' }))}
+              style={{
+                flex: 1,
+                borderWidth: 1,
+                borderColor: form.type === 'NEGATIVE' ? '#fca5a5' : '#d5e1f5',
+                borderRadius: 8,
+                backgroundColor: form.type === 'NEGATIVE' ? '#fee2e2' : '#fff',
+                alignItems: 'center',
+                paddingVertical: 9,
+              }}
+            >
+              <Text style={{ color: form.type === 'NEGATIVE' ? '#b91c1c' : BRAND_COLORS.textMuted, fontWeight: '700' }}>
+                Negatif
+              </Text>
+            </Pressable>
+          </View>
+
+          <Text style={{ color: '#334155', fontWeight: '600', marginBottom: 6 }}>Kategori</Text>
+          <TextInput
+            value={form.category}
+            onChangeText={(value) => setForm((prev) => ({ ...prev, category: value }))}
+            placeholder="Contoh: Disiplin, Kejujuran, Tata Tertib"
+            placeholderTextColor="#94a3b8"
+            style={{
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 8,
+              paddingHorizontal: 10,
+              paddingVertical: 9,
+              color: BRAND_COLORS.textDark,
+              backgroundColor: '#f8fbff',
+              marginBottom: 10,
+            }}
+          />
+
+          <Text style={{ color: '#334155', fontWeight: '600', marginBottom: 6 }}>Deskripsi</Text>
+          <TextInput
+            value={form.description}
+            onChangeText={(value) => setForm((prev) => ({ ...prev, description: value }))}
+            placeholder="Uraikan detail perilaku siswa"
+            placeholderTextColor="#94a3b8"
+            multiline
+            style={{
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 8,
+              paddingHorizontal: 10,
+              paddingVertical: 9,
+              color: BRAND_COLORS.textDark,
+              backgroundColor: '#f8fbff',
+              minHeight: 90,
+              textAlignVertical: 'top',
+              marginBottom: 10,
+            }}
+          />
+
+          <Text style={{ color: '#334155', fontWeight: '600', marginBottom: 6 }}>Poin</Text>
+          <TextInput
+            value={form.point}
+            onChangeText={(value) => setForm((prev) => ({ ...prev, point: value }))}
+            placeholder="0"
+            placeholderTextColor="#94a3b8"
+            keyboardType="numeric"
+            style={{
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 8,
+              paddingHorizontal: 10,
+              paddingVertical: 9,
+              color: BRAND_COLORS.textDark,
+              backgroundColor: '#f8fbff',
+              marginBottom: 10,
+            }}
+          />
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              onPress={handleSubmit}
+              disabled={isSaving}
+              style={{
+                flex: 1,
+                borderRadius: 8,
+                backgroundColor: BRAND_COLORS.blue,
+                alignItems: 'center',
+                paddingVertical: 11,
+                opacity: isSaving ? 0.7 : 1,
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>
+                {isSaving ? 'Menyimpan...' : editingBehaviorId ? 'Simpan Perubahan' : 'Tambah Catatan'}
+              </Text>
+            </Pressable>
+            {editingBehaviorId ? (
+              <Pressable
+                onPress={() => {
+                  resetForm();
+                  setShowForm(false);
+                }}
+                style={{
+                  flex: 1,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#fff',
+                }}
+              >
+                <Text style={{ color: '#334155', fontWeight: '700' }}>Batal Edit</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          borderWidth: 1,
+          borderColor: '#d5e0f5',
+          borderRadius: 10,
+          paddingHorizontal: 10,
+          backgroundColor: '#fff',
+          marginBottom: 10,
+        }}
+      >
+        <Feather name="search" size={16} color={BRAND_COLORS.textMuted} />
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Cari nama siswa / NIS / NISN"
+          placeholderTextColor="#8ea0bf"
+          style={{
+            flex: 1,
+            paddingVertical: 11,
+            paddingHorizontal: 9,
+            color: BRAND_COLORS.textDark,
+          }}
+        />
+      </View>
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+        <FilterChip active={typeFilter === 'ALL'} label="Semua Jenis" onPress={() => setTypeFilter('ALL')} />
+        <FilterChip active={typeFilter === 'POSITIVE'} label="Positif" onPress={() => setTypeFilter('POSITIVE')} />
+        <FilterChip active={typeFilter === 'NEGATIVE'} label="Negatif" onPress={() => setTypeFilter('NEGATIVE')} />
+      </View>
+
+      {classDetailQuery.isLoading ? <QueryStateView type="loading" message="Memuat data siswa kelas..." /> : null}
+      {classDetailQuery.isError ? (
+        <QueryStateView type="error" message="Gagal memuat data siswa kelas." onRetry={() => classDetailQuery.refetch()} />
+      ) : null}
+      {behaviorsQuery.isLoading ? <QueryStateView type="loading" message="Mengambil riwayat perilaku siswa..." /> : null}
+      {behaviorsQuery.isError ? (
+        <QueryStateView type="error" message="Gagal memuat riwayat perilaku." onRetry={() => behaviorsQuery.refetch()} />
+      ) : null}
+
+      {!behaviorsQuery.isLoading && !behaviorsQuery.isError ? (
+        behaviors.length > 0 ? (
+          behaviors.map((item) => {
+            const style = typeStyle(item.type);
+            const points = Math.abs(Number(item.point || 0));
+            return (
+              <View
+                key={item.id}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 12,
+                  backgroundColor: '#fff',
+                  padding: 12,
+                  marginBottom: 10,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                    marginBottom: 6,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
+                      {item.student?.name || '-'}
+                    </Text>
+                    <Text style={{ color: '#64748b', marginTop: 2 }}>
+                      NIS: {item.student?.nis || '-'} • NISN: {item.student?.nisn || '-'}
+                    </Text>
+                    <Text style={{ color: '#64748b', marginTop: 2 }}>Tanggal: {formatDate(item.date)}</Text>
+                  </View>
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: style.border,
+                      backgroundColor: style.bg,
+                      borderRadius: 999,
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                    }}
+                  >
+                    <Text style={{ color: style.text, fontWeight: '700', fontSize: 11 }}>{style.label}</Text>
+                  </View>
+                </View>
+
+                <Text style={{ color: '#475569', marginBottom: 2 }}>
+                  Kategori: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{item.category || '-'}</Text>
+                </Text>
+                <Text style={{ color: '#475569', marginBottom: 2 }}>
+                  Deskripsi: <Text style={{ color: BRAND_COLORS.textDark }}>{item.description || '-'}</Text>
+                </Text>
+                <Text style={{ color: style.text, fontWeight: '700', marginBottom: 8 }}>
+                  Poin: {item.type === 'POSITIVE' ? '+' : '-'}
+                  {points}
+                </Text>
+
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Pressable
+                    onPress={() => startEdit(item)}
+                    disabled={isMutating}
+                    style={{
+                      flex: 1,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: '#93c5fd',
+                      backgroundColor: '#eff6ff',
+                      alignItems: 'center',
+                      paddingVertical: 9,
+                      opacity: isMutating ? 0.7 : 1,
+                    }}
+                  >
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Edit</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => handleDelete(item)}
+                    disabled={isMutating}
+                    style={{
+                      flex: 1,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: '#fca5a5',
+                      backgroundColor: '#fff1f2',
+                      alignItems: 'center',
+                      paddingVertical: 9,
+                      opacity: isMutating ? 0.7 : 1,
+                    }}
+                  >
+                    <Text style={{ color: '#b91c1c', fontWeight: '700' }}>Hapus</Text>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })
+        ) : (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderStyle: 'dashed',
+              borderRadius: 10,
+              padding: 16,
+              backgroundColor: '#fff',
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data perilaku siswa pada kelas ini.</Text>
+          </View>
+        )
+      ) : null}
+
+    </ScrollView>
+  );
+}

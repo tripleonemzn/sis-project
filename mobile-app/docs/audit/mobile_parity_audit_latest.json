@@ -1,0 +1,1423 @@
+{
+  "generatedAt": "2026-02-21T14:44:53.068Z",
+  "perRoleSummary": [
+    {
+      "role": "ADMIN",
+      "total": 29,
+      "nativeOnly": 29,
+      "nativeWithWebFallback": 0,
+      "webBridgeRoute": 0,
+      "webOnlyNoRoute": 0,
+      "hasOpenUrlInRouteTree": 0
+    },
+    {
+      "role": "CALON_SISWA",
+      "total": 2,
+      "nativeOnly": 2,
+      "nativeWithWebFallback": 0,
+      "webBridgeRoute": 0,
+      "webOnlyNoRoute": 0,
+      "hasOpenUrlInRouteTree": 0
+    },
+    {
+      "role": "EXAMINER",
+      "total": 4,
+      "nativeOnly": 4,
+      "nativeWithWebFallback": 0,
+      "webBridgeRoute": 0,
+      "webOnlyNoRoute": 0,
+      "hasOpenUrlInRouteTree": 0
+    },
+    {
+      "role": "EXTRACURRICULAR_TUTOR",
+      "total": 3,
+      "nativeOnly": 3,
+      "nativeWithWebFallback": 0,
+      "webBridgeRoute": 0,
+      "webOnlyNoRoute": 0,
+      "hasOpenUrlInRouteTree": 0
+    },
+    {
+      "role": "PARENT",
+      "total": 4,
+      "nativeOnly": 4,
+      "nativeWithWebFallback": 0,
+      "webBridgeRoute": 0,
+      "webOnlyNoRoute": 0,
+      "hasOpenUrlInRouteTree": 0
+    },
+    {
+      "role": "PRINCIPAL",
+      "total": 6,
+      "nativeOnly": 6,
+      "nativeWithWebFallback": 0,
+      "webBridgeRoute": 0,
+      "webOnlyNoRoute": 0,
+      "hasOpenUrlInRouteTree": 0
+    },
+    {
+      "role": "STAFF",
+      "total": 4,
+      "nativeOnly": 4,
+      "nativeWithWebFallback": 0,
+      "webBridgeRoute": 0,
+      "webOnlyNoRoute": 0,
+      "hasOpenUrlInRouteTree": 0
+    },
+    {
+      "role": "STUDENT",
+      "total": 18,
+      "nativeOnly": 18,
+      "nativeWithWebFallback": 0,
+      "webBridgeRoute": 0,
+      "webOnlyNoRoute": 0,
+      "hasOpenUrlInRouteTree": 0
+    },
+    {
+      "role": "TEACHER",
+      "total": 58,
+      "nativeOnly": 58,
+      "nativeWithWebFallback": 0,
+      "webBridgeRoute": 0,
+      "webOnlyNoRoute": 0,
+      "hasOpenUrlInRouteTree": 0
+    },
+    {
+      "role": "UMUM",
+      "total": 2,
+      "nativeOnly": 2,
+      "nativeWithWebFallback": 0,
+      "webBridgeRoute": 0,
+      "webOnlyNoRoute": 0,
+      "hasOpenUrlInRouteTree": 0
+    }
+  ],
+  "perRoleDetails": {
+    "ADMIN": [
+      {
+        "key": "admin-dashboard",
+        "label": "Dashboard",
+        "route": "/home",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/home.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-academic-years",
+        "label": "Tahun Ajaran",
+        "route": "/admin/academic?section=academic-years",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/academic.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-majors",
+        "label": "Kompetensi Keahlian",
+        "route": "/admin/master-data?section=majors",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/master-data.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-classes",
+        "label": "Kelas",
+        "route": "/admin/master-data?section=classes",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/master-data.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-training-classes",
+        "label": "Kelas Training",
+        "route": "/admin/master-data?section=training-classes",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/master-data.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-subjects",
+        "label": "Mata Pelajaran",
+        "route": "/admin/master-data?section=subjects",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/master-data.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-subject-categories",
+        "label": "Kategori Mapel",
+        "route": "/admin/master-data?section=subject-categories",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/master-data.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-extracurriculars",
+        "label": "Ekstrakurikuler",
+        "route": "/admin/master-data?section=extracurriculars",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/master-data.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-user-admin",
+        "label": "Kelola Admin",
+        "route": "/admin/user-management?role=ADMIN",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/user-management.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-user-principal",
+        "label": "Kelola Kepsek",
+        "route": "/admin/user-management?role=PRINCIPAL",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/user-management.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-user-staff",
+        "label": "Kelola Staff",
+        "route": "/admin/user-management?role=STAFF",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/user-management.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-user-examiner",
+        "label": "Kelola Penguji",
+        "route": "/admin/user-management?role=EXAMINER",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/user-management.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-user-tutor",
+        "label": "Kelola Pembina Ekskul",
+        "route": "/admin/user-management?role=EXTRACURRICULAR_TUTOR",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/user-management.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-user-parent",
+        "label": "Kelola Orang Tua",
+        "route": "/admin/user-management?role=PARENT",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/user-management.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-user-teacher",
+        "label": "Kelola Guru",
+        "route": "/admin/user-management?role=TEACHER",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/user-management.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-user-student",
+        "label": "Kelola Siswa",
+        "route": "/admin/user-management?role=STUDENT",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/user-management.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-user-verify",
+        "label": "Verifikasi Akun",
+        "route": "/admin/user-management?verification=PENDING",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/user-management.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-teacher-assignment",
+        "label": "Assignment Guru",
+        "route": "/admin/academic?section=teacher-assignments",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/academic.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-import-export",
+        "label": "Export/Import",
+        "route": "/admin/user-management?section=import-export",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/user-management.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-academic-calendar",
+        "label": "Kalender Akademik",
+        "route": "/admin/academic?section=academic-calendar",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/academic.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-schedule",
+        "label": "Jadwal Pelajaran",
+        "route": "/admin/academic?section=schedule",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/academic.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-teaching-load",
+        "label": "Rekap Jam Mengajar",
+        "route": "/admin/academic?section=teaching-load",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/academic.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-kkm",
+        "label": "Data KKM",
+        "route": "/admin/academic?section=kkm",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/academic.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-attendance-recap",
+        "label": "Rekap Absensi",
+        "route": "/admin/academic?section=attendance-recap",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/academic.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-report-cards",
+        "label": "Laporan / Rapor",
+        "route": "/admin/academic?section=report-cards",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/academic.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-question-bank",
+        "label": "Bank Soal",
+        "route": "/admin/academic?section=question-bank",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/academic.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-exam-sessions",
+        "label": "Sesi Ujian",
+        "route": "/admin/academic?section=exam-sessions",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/academic.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-school-profile",
+        "label": "Profil Sekolah",
+        "route": "/profile",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/profile.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-password",
+        "label": "Ubah Password",
+        "route": "/profile",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/profile.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      }
+    ],
+    "CALON_SISWA": [
+      {
+        "key": "candidate-application",
+        "label": "Status Pendaftaran",
+        "route": "/candidate/application",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/candidate/application.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "candidate-information",
+        "label": "Informasi PPDB",
+        "route": "/candidate/information",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/candidate/information.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      }
+    ],
+    "EXAMINER": [
+      {
+        "key": "examiner-dashboard",
+        "label": "Dashboard",
+        "route": "/home",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/home.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "examiner-schemes",
+        "label": "Data Skema",
+        "route": "/examiner/schemes",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/examiner/schemes.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "assessment",
+        "label": "Penilaian UKK",
+        "route": "/examiner/assessment",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/examiner/assessment.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "examiner-profile",
+        "label": "Profil",
+        "route": "/profile",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/profile.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      }
+    ],
+    "EXTRACURRICULAR_TUTOR": [
+      {
+        "key": "tutor-dashboard",
+        "label": "Dashboard",
+        "route": "/tutor/dashboard",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/tutor/dashboard.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "tutor-members",
+        "label": "Anggota & Nilai",
+        "route": "/tutor/members",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/tutor/members.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "tutor-profile",
+        "label": "Profil",
+        "route": "/profile",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/profile.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      }
+    ],
+    "PARENT": [
+      {
+        "key": "parent-dashboard",
+        "label": "Dashboard",
+        "route": "/parent/overview",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/parent/overview.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "child-progress",
+        "label": "Data Anak",
+        "route": "/parent/children",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/parent/children.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "parent-finance",
+        "label": "Keuangan",
+        "route": "/parent/finance",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/parent/finance.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "child-attendance",
+        "label": "Absensi Anak",
+        "route": "/parent/attendance",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/parent/attendance.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      }
+    ],
+    "PRINCIPAL": [
+      {
+        "key": "principal-dashboard",
+        "label": "Dashboard",
+        "route": "/principal/overview",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/principal/overview.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "principal-reports",
+        "label": "Rapor & Ranking",
+        "route": "/principal/overview",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/principal/overview.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "principal-attendance",
+        "label": "Rekap Absensi",
+        "route": "/principal/attendance",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/principal/attendance.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "principal-finance-requests",
+        "label": "Pengajuan Anggaran",
+        "route": "/principal/approvals",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/principal/approvals.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "principal-students",
+        "label": "Data Siswa",
+        "route": "/principal/students",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/principal/students.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "principal-teachers",
+        "label": "Data Guru",
+        "route": "/principal/teachers",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/principal/teachers.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      }
+    ],
+    "STAFF": [
+      {
+        "key": "staff-dashboard",
+        "label": "Dashboard",
+        "route": "/home",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/home.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "staff-payments",
+        "label": "Pembayaran (SPP)",
+        "route": "/staff/payments",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/staff/payments.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "staff-students",
+        "label": "Data Siswa",
+        "route": "/staff/students",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/staff/students.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "staff-admin",
+        "label": "Administrasi",
+        "route": "/staff/admin",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/staff/admin.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      }
+    ],
+    "STUDENT": [
+      {
+        "key": "student-dashboard",
+        "label": "Dashboard",
+        "route": "/home",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/home.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-extracurricular",
+        "label": "Ekstrakurikuler",
+        "route": "/student/extracurricular",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/student/extracurricular.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-schedule",
+        "label": "Jadwal Pelajaran",
+        "route": "/schedule",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/schedule.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-learning",
+        "label": "Materi & Tugas",
+        "route": "/learning",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/learning.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-attendance-history",
+        "label": "Riwayat Kehadiran",
+        "route": "/attendance",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/attendance.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-permissions",
+        "label": "Perizinan",
+        "route": "/permissions",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/permissions.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-class-attendance",
+        "label": "Presensi Kelas",
+        "route": "/student/class-attendance",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/student/class-attendance.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-pkl-dashboard",
+        "label": "Dashboard PKL",
+        "route": "/student/internship?tab=OVERVIEW",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/student/internship.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-pkl-journal",
+        "label": "Jurnal Harian",
+        "route": "/student/internship?tab=JOURNAL",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/student/internship.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-pkl-attendance",
+        "label": "Absensi PKL",
+        "route": "/student/internship?tab=ATTENDANCE",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/student/internship.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-pkl-report",
+        "label": "Laporan PKL",
+        "route": "/student/internship?tab=REPORT",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/student/internship.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-exam-formatif",
+        "label": "Formatif (Quiz)",
+        "route": "/exams",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/exams.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-exam-sbts",
+        "label": "SBTS",
+        "route": "/exams",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/exams.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-exam-sas",
+        "label": "SAS",
+        "route": "/exams",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/exams.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-exam-sat",
+        "label": "SAT",
+        "route": "/exams",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/exams.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-grade-history",
+        "label": "Riwayat Nilai",
+        "route": "/grades",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/grades.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-finance",
+        "label": "Keuangan",
+        "route": "/student/finance",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/student/finance.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "student-profile-web",
+        "label": "Profile",
+        "route": "/profile",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/profile.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      }
+    ],
+    "TEACHER": [
+      {
+        "key": "teacher-dashboard",
+        "label": "Dashboard",
+        "route": "/home",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/home.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teaching-schedule",
+        "label": "Jadwal Mengajar",
+        "route": "/schedule",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/schedule.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-classes",
+        "label": "Kelas & Mapel",
+        "route": "/teacher/classes",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/classes.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "attendance-teacher",
+        "label": "Presensi Siswa",
+        "route": "/teacher/attendance",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/attendance.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-materials",
+        "label": "Materi & Tugas",
+        "route": "/teacher/materials",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/materials.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "grade-input",
+        "label": "Input Nilai",
+        "route": "/teacher/grades",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/grades.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-report-subjects",
+        "label": "Rapor Mapel",
+        "route": "/teacher/report-subjects",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/report-subjects.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-cp",
+        "label": "Capaian Pembelajaran (CP)",
+        "route": "/teacher/learning-cp",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/learning-cp.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-atp",
+        "label": "Alur Tujuan Pembelajaran (ATP)",
+        "route": "/teacher/learning-atp",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/learning-atp.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-prota",
+        "label": "Program Tahunan",
+        "route": "/teacher/learning-prota",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/learning-prota.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-promes",
+        "label": "Program Semester",
+        "route": "/teacher/learning-promes",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/learning-promes.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-modules",
+        "label": "Modul Ajar",
+        "route": "/teacher/learning-modules",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/learning-modules.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-kktp",
+        "label": "Kriteria Ketercapaian Tujuan Pembelajaran (KKTP)",
+        "route": "/teacher/learning-kktp",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/learning-kktp.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-proctoring",
+        "label": "Jadwal Mengawas",
+        "route": "/teacher/proctoring",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/proctoring/index.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-exam-formatif",
+        "label": "Formatif (Quiz)",
+        "route": "/teacher/exams-formatif",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/exams-formatif.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-exam-sbts",
+        "label": "SBTS",
+        "route": "/teacher/exams-sbts",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/exams-sbts.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-exam-sas",
+        "label": "SAS",
+        "route": "/teacher/exams-sas",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/exams-sas.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-exam-sat",
+        "label": "SAT",
+        "route": "/teacher/exams-sat",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/exams-sat.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-exam-bank",
+        "label": "Bank Soal",
+        "route": "/teacher/exams-bank",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/exams-bank.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-homeroom-attendance",
+        "label": "Rekap Presensi",
+        "route": "/teacher/homeroom-attendance",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/homeroom-attendance.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-homeroom-behavior",
+        "label": "Catatan Perilaku",
+        "route": "/teacher/homeroom-behavior",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/homeroom-behavior.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-homeroom-permissions",
+        "label": "Persetujuan Izin",
+        "route": "/teacher/homeroom-permissions",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/homeroom-permissions.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-homeroom-sbts",
+        "label": "Rapor SBTS",
+        "route": "/teacher/homeroom-sbts",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/homeroom-sbts.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-homeroom-sas",
+        "label": "Rapor SAS",
+        "route": "/teacher/homeroom-sas",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/homeroom-sas.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-homeroom-sat",
+        "label": "Rapor SAT",
+        "route": "/teacher/homeroom-sat",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/homeroom-sat.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-training-classes",
+        "label": "Daftar Kelas",
+        "route": "/teacher/training-classes",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/training-classes.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-training-attendance",
+        "label": "Presensi Training",
+        "route": "/teacher/training-attendance",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/training-attendance.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-training-grades",
+        "label": "Nilai Training",
+        "route": "/teacher/training-grades",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/training-grades.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-training-materials",
+        "label": "Materi & Tugas",
+        "route": "/teacher/training-materials",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/training-materials.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-training-reports",
+        "label": "Laporan Training",
+        "route": "/teacher/training-reports",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/training-reports.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-work-program",
+        "label": "Program Kerja",
+        "route": "/teacher/work-program",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/work-program.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-kakom-classes",
+        "label": "Kelas Kompetensi",
+        "route": "/teacher/kakom-classes",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/kakom-classes.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-kakom-pkl",
+        "label": "Monitoring PKL",
+        "route": "/teacher/kakom-pkl",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/kakom-pkl.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-kakom-partners",
+        "label": "Mitra Industri & BKK",
+        "route": "/teacher/kakom-partners",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/kakom-partners.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-wakakur-approvals-work-program",
+        "label": "Persetujuan Program Kerja",
+        "route": "/teacher/wakakur-work-program-approvals",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/wakakur-work-program-approvals.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-wakakur-curriculum",
+        "label": "Kelola Kurikulum",
+        "route": "/teacher/wakakur-curriculum",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/wakakur-curriculum.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-wakakur-exams",
+        "label": "Kelola Ujian",
+        "route": "/teacher/wakakur-exams",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/wakakur-exams.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-wakakur-performance",
+        "label": "Monitoring Kinerja",
+        "route": "/teacher/wakakur-performance",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/wakakur-performance.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-wakakur-approvals",
+        "label": "Persetujuan",
+        "route": "/teacher/wakakur-work-program-approvals",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/wakakur-work-program-approvals.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-wakakur-reports",
+        "label": "Laporan Akademik",
+        "route": "/teacher/wakakur-performance",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/wakakur-performance.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-wakasis-students",
+        "label": "Kelola Kesiswaan",
+        "route": "/teacher/wakasis-students",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/wakasis-students.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-wakasis-performance",
+        "label": "Monitoring Kinerja",
+        "route": "/teacher/wakasis-performance",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/wakasis-performance.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-wakasis-approvals",
+        "label": "Persetujuan",
+        "route": "/teacher/wakasis-approvals",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/wakasis-approvals.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-wakasis-reports",
+        "label": "Laporan Kesiswaan",
+        "route": "/teacher/wakasis-reports",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/wakasis-reports.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-sarpras-inventory",
+        "label": "Aset Sekolah",
+        "route": "/teacher/sarpras-inventory",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/sarpras-inventory.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-sarpras-budgets",
+        "label": "Persetujuan Anggaran",
+        "route": "/teacher/sarpras-budgets",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/sarpras-budgets.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-sarpras-reports",
+        "label": "Laporan",
+        "route": "/teacher/sarpras-reports",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/sarpras-reports.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-humas-settings",
+        "label": "Pengaturan PKL",
+        "route": "/teacher/humas-settings",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/humas-settings.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-humas-approval",
+        "label": "Persetujuan PKL",
+        "route": "/teacher/humas-approval",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/humas-approval.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-humas-components",
+        "label": "Nilai PKL",
+        "route": "/teacher/humas-components",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/humas-components.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-humas-journals",
+        "label": "Monitoring Jurnal",
+        "route": "/teacher/humas-journals",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/humas-journals.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-humas-partners",
+        "label": "Mitra Industri",
+        "route": "/teacher/humas-partners",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/humas-partners.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-humas-reports",
+        "label": "Laporan",
+        "route": "/teacher/humas-reports",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/humas-reports.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-head-lab-inventory",
+        "label": "Inventaris Lab",
+        "route": "/teacher/head-lab-inventory",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/head-lab-inventory.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-head-lab-schedule",
+        "label": "Jadwal Lab",
+        "route": "/teacher/head-lab-schedule",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/head-lab-schedule.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-head-lab-incidents",
+        "label": "Laporan Insiden",
+        "route": "/teacher/head-lab-incidents",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/head-lab-incidents.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-head-library-inventory",
+        "label": "Inventaris Perpustakaan",
+        "route": "/teacher/head-library-inventory",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/teacher/head-library-inventory.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-profile",
+        "label": "Profil",
+        "route": "/profile",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/profile.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      }
+    ],
+    "UMUM": [
+      {
+        "key": "public-information",
+        "label": "Informasi Sekolah",
+        "route": "/public/information",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/public/information.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "public-registration",
+        "label": "Pendaftaran Umum",
+        "route": "/public/registration",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/public/registration.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      }
+    ]
+  },
+  "globalOpenUrlUsages": [
+    {
+      "file": "app/(app)/web-module/[moduleKey].tsx",
+      "line": 48
+    }
+  ]
+}

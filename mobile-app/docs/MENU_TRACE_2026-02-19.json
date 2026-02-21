@@ -1,0 +1,2831 @@
+{
+  "generatedAt": "2026-02-19T21:21:36.202Z",
+  "roleMenus": {
+    "STUDENT": [
+      {
+        "key": "student-dashboard",
+        "label": "Dashboard",
+        "route": null,
+        "webPath": "/student"
+      },
+      {
+        "key": "student-extracurricular",
+        "label": "Ekstrakurikuler",
+        "route": null,
+        "webPath": "/student/extracurricular"
+      },
+      {
+        "key": "student-schedule",
+        "label": "Jadwal Pelajaran",
+        "route": "/schedule",
+        "webPath": "/student/schedule"
+      },
+      {
+        "key": "student-learning",
+        "label": "Materi & Tugas",
+        "route": "/learning",
+        "webPath": "/student/learning"
+      },
+      {
+        "key": "student-attendance-history",
+        "label": "Riwayat Kehadiran",
+        "route": "/attendance",
+        "webPath": "/student/attendance"
+      },
+      {
+        "key": "student-permissions",
+        "label": "Perizinan",
+        "route": "/permissions",
+        "webPath": "/student/permissions"
+      },
+      {
+        "key": "student-class-attendance",
+        "label": "Presensi Kelas",
+        "route": null,
+        "webPath": "/student/class-attendance"
+      },
+      {
+        "key": "student-pkl-dashboard",
+        "label": "Dashboard PKL",
+        "route": null,
+        "webPath": "/student/internship/dashboard"
+      },
+      {
+        "key": "student-pkl-journal",
+        "label": "Jurnal Harian",
+        "route": null,
+        "webPath": "/student/internship/journals"
+      },
+      {
+        "key": "student-pkl-attendance",
+        "label": "Absensi PKL",
+        "route": null,
+        "webPath": "/student/internship/attendance"
+      },
+      {
+        "key": "student-pkl-report",
+        "label": "Laporan PKL",
+        "route": null,
+        "webPath": "/student/internship/report"
+      },
+      {
+        "key": "student-exam-formatif",
+        "label": "Formatif (Quiz)",
+        "route": null,
+        "webPath": "/student/exams/formatif"
+      },
+      {
+        "key": "student-exam-sbts",
+        "label": "SBTS",
+        "route": null,
+        "webPath": "/student/exams/sbts"
+      },
+      {
+        "key": "student-exam-sas",
+        "label": "SAS",
+        "route": null,
+        "webPath": "/student/exams/sas"
+      },
+      {
+        "key": "student-exam-sat",
+        "label": "SAT",
+        "route": null,
+        "webPath": "/student/exams/sat"
+      },
+      {
+        "key": "student-grade-history",
+        "label": "Riwayat Nilai",
+        "route": "/grades",
+        "webPath": "/student/grades"
+      },
+      {
+        "key": "student-finance",
+        "label": "Keuangan",
+        "route": null,
+        "webPath": "/student/finance"
+      },
+      {
+        "key": "student-profile-web",
+        "label": "Profile",
+        "route": "/profile",
+        "webPath": "/student/profile"
+      }
+    ],
+    "TEACHER": [
+      {
+        "key": "teacher-dashboard",
+        "label": "Dashboard",
+        "route": "/home",
+        "webPath": "/teacher"
+      },
+      {
+        "key": "teaching-schedule",
+        "label": "Jadwal Mengajar",
+        "route": "/schedule",
+        "webPath": "/teacher/schedule"
+      },
+      {
+        "key": "teacher-classes",
+        "label": "Kelas & Mapel",
+        "route": "/teacher/classes",
+        "webPath": "/teacher/classes"
+      },
+      {
+        "key": "attendance-teacher",
+        "label": "Presensi Siswa",
+        "route": "/teacher/attendance",
+        "webPath": "/teacher/attendance"
+      },
+      {
+        "key": "teacher-materials",
+        "label": "Materi & Tugas",
+        "route": "/teacher/materials",
+        "webPath": "/teacher/materials"
+      },
+      {
+        "key": "grade-input",
+        "label": "Input Nilai",
+        "route": "/teacher/grades",
+        "webPath": "/teacher/grades"
+      },
+      {
+        "key": "teacher-report-subjects",
+        "label": "Rapor Mapel",
+        "route": "/teacher/report-subjects",
+        "webPath": "/teacher/report-subjects"
+      },
+      {
+        "key": "teacher-cp",
+        "label": "Capaian Pembelajaran (CP)",
+        "route": "/teacher/learning-cp",
+        "webPath": "/teacher/learning-resources/cp"
+      },
+      {
+        "key": "teacher-atp",
+        "label": "Alur Tujuan Pembelajaran (ATP)",
+        "route": "/teacher/learning-atp",
+        "webPath": "/teacher/learning-resources/atp"
+      },
+      {
+        "key": "teacher-prota",
+        "label": "Program Tahunan",
+        "route": "/teacher/learning-prota",
+        "webPath": "/teacher/learning-resources/prota"
+      },
+      {
+        "key": "teacher-promes",
+        "label": "Program Semester",
+        "route": "/teacher/learning-promes",
+        "webPath": "/teacher/learning-resources/promes"
+      },
+      {
+        "key": "teacher-modules",
+        "label": "Modul Ajar",
+        "route": "/teacher/learning-modules",
+        "webPath": "/teacher/learning-resources/modules"
+      },
+      {
+        "key": "teacher-kktp",
+        "label": "Kriteria Ketercapaian Tujuan Pembelajaran (KKTP)",
+        "route": "/teacher/learning-kktp",
+        "webPath": "/teacher/learning-resources/kktp"
+      },
+      {
+        "key": "teacher-proctoring",
+        "label": "Jadwal Mengawas",
+        "route": "/teacher/proctoring",
+        "webPath": "/teacher/proctoring"
+      },
+      {
+        "key": "teacher-exam-formatif",
+        "label": "Formatif (Quiz)",
+        "route": "/teacher/exams-formatif",
+        "webPath": "/teacher/exams/formatif"
+      },
+      {
+        "key": "teacher-exam-sbts",
+        "label": "SBTS",
+        "route": "/teacher/exams-sbts",
+        "webPath": "/teacher/exams/sbts"
+      },
+      {
+        "key": "teacher-exam-sas",
+        "label": "SAS",
+        "route": "/teacher/exams-sas",
+        "webPath": "/teacher/exams/sas"
+      },
+      {
+        "key": "teacher-exam-sat",
+        "label": "SAT",
+        "route": "/teacher/exams-sat",
+        "webPath": "/teacher/exams/sat"
+      },
+      {
+        "key": "teacher-exam-bank",
+        "label": "Bank Soal",
+        "route": "/teacher/exams-bank",
+        "webPath": "/teacher/exams/bank"
+      },
+      {
+        "key": "teacher-homeroom-attendance",
+        "label": "Rekap Presensi",
+        "route": "/teacher/homeroom-attendance",
+        "webPath": "/teacher/wali-kelas/attendance"
+      },
+      {
+        "key": "teacher-homeroom-behavior",
+        "label": "Catatan Perilaku",
+        "route": "/teacher/homeroom-behavior",
+        "webPath": "/teacher/wali-kelas/behavior"
+      },
+      {
+        "key": "teacher-homeroom-permissions",
+        "label": "Persetujuan Izin",
+        "route": "/teacher/homeroom-permissions",
+        "webPath": "/teacher/wali-kelas/permissions"
+      },
+      {
+        "key": "teacher-homeroom-sbts",
+        "label": "Rapor SBTS",
+        "route": "/teacher/homeroom-sbts",
+        "webPath": "/teacher/wali-kelas/rapor-sbts"
+      },
+      {
+        "key": "teacher-homeroom-sas",
+        "label": "Rapor SAS",
+        "route": "/teacher/homeroom-sas",
+        "webPath": "/teacher/wali-kelas/rapor-sas"
+      },
+      {
+        "key": "teacher-homeroom-sat",
+        "label": "Rapor SAT",
+        "route": "/teacher/homeroom-sat",
+        "webPath": "/teacher/wali-kelas/rapor-sat"
+      },
+      {
+        "key": "teacher-training-classes",
+        "label": "Daftar Kelas",
+        "route": "/teacher/training-classes",
+        "webPath": "/teacher/training/classes"
+      },
+      {
+        "key": "teacher-training-attendance",
+        "label": "Presensi Training",
+        "route": "/teacher/training-attendance",
+        "webPath": "/teacher/training/attendance"
+      },
+      {
+        "key": "teacher-training-grades",
+        "label": "Nilai Training",
+        "route": "/teacher/training-grades",
+        "webPath": "/teacher/training/grades"
+      },
+      {
+        "key": "teacher-training-materials",
+        "label": "Materi & Tugas",
+        "route": "/teacher/training-materials",
+        "webPath": "/teacher/training/materials"
+      },
+      {
+        "key": "teacher-training-reports",
+        "label": "Laporan Training",
+        "route": "/teacher/training-reports",
+        "webPath": "/teacher/training/reports"
+      },
+      {
+        "key": "teacher-work-program",
+        "label": "Program Kerja",
+        "route": "/teacher/work-program",
+        "webPath": "/teacher/work-programs"
+      },
+      {
+        "key": "teacher-kakom-classes",
+        "label": "Kelas Kompetensi",
+        "route": "/teacher/kakom-classes",
+        "webPath": "/teacher/head-program/classes"
+      },
+      {
+        "key": "teacher-kakom-pkl",
+        "label": "Monitoring PKL",
+        "route": "/teacher/kakom-pkl",
+        "webPath": "/teacher/head-program/pkl"
+      },
+      {
+        "key": "teacher-kakom-partners",
+        "label": "Mitra Industri & BKK",
+        "route": "/teacher/kakom-partners",
+        "webPath": "/teacher/head-program/partners"
+      },
+      {
+        "key": "teacher-wakakur-approvals-work-program",
+        "label": "Persetujuan Program Kerja",
+        "route": "/teacher/wakakur-work-program-approvals",
+        "webPath": "/teacher/wakasek/work-program-approvals"
+      },
+      {
+        "key": "teacher-wakakur-curriculum",
+        "label": "Kelola Kurikulum",
+        "route": "/teacher/wakakur-curriculum",
+        "webPath": "/teacher/wakasek/curriculum"
+      },
+      {
+        "key": "teacher-wakakur-exams",
+        "label": "Kelola Ujian",
+        "route": "/teacher/wakakur-exams",
+        "webPath": "/teacher/wakasek/exams"
+      },
+      {
+        "key": "teacher-wakakur-performance",
+        "label": "Monitoring Kinerja",
+        "route": "/teacher/wakakur-performance",
+        "webPath": "/teacher/wakasek/performance"
+      },
+      {
+        "key": "teacher-wakakur-approvals",
+        "label": "Persetujuan",
+        "route": "/teacher/wakakur-work-program-approvals",
+        "webPath": "/teacher/wakasek/approvals"
+      },
+      {
+        "key": "teacher-wakakur-reports",
+        "label": "Laporan Akademik",
+        "route": "/teacher/wakakur-performance",
+        "webPath": "/teacher/wakasek/reports"
+      },
+      {
+        "key": "teacher-wakasis-students",
+        "label": "Kelola Kesiswaan",
+        "route": "/teacher/wakasis-students",
+        "webPath": "/teacher/wakasek/students"
+      },
+      {
+        "key": "teacher-wakasis-performance",
+        "label": "Monitoring Kinerja",
+        "route": "/teacher/wakasis-performance",
+        "webPath": "/teacher/wakasek/student-performance"
+      },
+      {
+        "key": "teacher-wakasis-approvals",
+        "label": "Persetujuan",
+        "route": "/teacher/wakasis-approvals",
+        "webPath": "/teacher/wakasek/student-approvals"
+      },
+      {
+        "key": "teacher-wakasis-reports",
+        "label": "Laporan Kesiswaan",
+        "route": "/teacher/wakasis-reports",
+        "webPath": "/teacher/wakasek/student-reports"
+      },
+      {
+        "key": "teacher-sarpras-inventory",
+        "label": "Aset Sekolah",
+        "route": "/teacher/sarpras-inventory",
+        "webPath": "/teacher/sarpras/inventory"
+      },
+      {
+        "key": "teacher-sarpras-budgets",
+        "label": "Persetujuan Anggaran",
+        "route": "/teacher/sarpras-budgets",
+        "webPath": "/teacher/sarpras/budgets"
+      },
+      {
+        "key": "teacher-sarpras-reports",
+        "label": "Laporan",
+        "route": "/teacher/sarpras-reports",
+        "webPath": "/teacher/sarpras/reports"
+      },
+      {
+        "key": "teacher-humas-settings",
+        "label": "Pengaturan PKL",
+        "route": "/teacher/humas-settings",
+        "webPath": "/teacher/humas/settings"
+      },
+      {
+        "key": "teacher-humas-approval",
+        "label": "Persetujuan PKL",
+        "route": "/teacher/humas-approval",
+        "webPath": "/teacher/internship/approval"
+      },
+      {
+        "key": "teacher-humas-components",
+        "label": "Nilai PKL",
+        "route": "/teacher/humas-components",
+        "webPath": "/teacher/wakasek/internship-components"
+      },
+      {
+        "key": "teacher-humas-journals",
+        "label": "Monitoring Jurnal",
+        "route": "/teacher/humas-journals",
+        "webPath": "/teacher/wakasek/journal-monitoring"
+      },
+      {
+        "key": "teacher-humas-partners",
+        "label": "Mitra Industri",
+        "route": "/teacher/humas-partners",
+        "webPath": "/teacher/humas/partners"
+      },
+      {
+        "key": "teacher-humas-reports",
+        "label": "Laporan",
+        "route": "/teacher/humas-reports",
+        "webPath": "/teacher/humas/reports"
+      },
+      {
+        "key": "teacher-head-lab-inventory",
+        "label": "Inventaris Lab",
+        "route": "/teacher/head-lab-inventory",
+        "webPath": "/teacher/head-lab/inventory?filter=lab"
+      },
+      {
+        "key": "teacher-head-lab-schedule",
+        "label": "Jadwal Lab",
+        "route": "/teacher/head-lab-schedule",
+        "webPath": "/teacher/head-lab/schedule"
+      },
+      {
+        "key": "teacher-head-lab-incidents",
+        "label": "Laporan Insiden",
+        "route": "/teacher/head-lab-incidents",
+        "webPath": "/teacher/head-lab/incidents"
+      },
+      {
+        "key": "teacher-head-library-inventory",
+        "label": "Inventaris Perpustakaan",
+        "route": "/teacher/head-library-inventory",
+        "webPath": "/teacher/head-library/inventory?filter=library"
+      },
+      {
+        "key": "teacher-profile",
+        "label": "Profil",
+        "route": "/profile",
+        "webPath": "/teacher/profile"
+      }
+    ],
+    "ADMIN": [
+      {
+        "key": "admin-dashboard",
+        "label": "Dashboard",
+        "route": null,
+        "webPath": "/admin"
+      },
+      {
+        "key": "admin-academic-years",
+        "label": "Tahun Ajaran",
+        "route": null,
+        "webPath": "/admin/academic-years"
+      },
+      {
+        "key": "admin-majors",
+        "label": "Kompetensi Keahlian",
+        "route": null,
+        "webPath": "/admin/majors"
+      },
+      {
+        "key": "admin-classes",
+        "label": "Kelas",
+        "route": null,
+        "webPath": "/admin/classes"
+      },
+      {
+        "key": "admin-training-classes",
+        "label": "Kelas Training",
+        "route": null,
+        "webPath": "/admin/training-classes"
+      },
+      {
+        "key": "admin-subjects",
+        "label": "Mata Pelajaran",
+        "route": null,
+        "webPath": "/admin/subjects"
+      },
+      {
+        "key": "admin-subject-categories",
+        "label": "Kategori Mapel",
+        "route": null,
+        "webPath": "/admin/subject-categories"
+      },
+      {
+        "key": "admin-extracurriculars",
+        "label": "Ekstrakurikuler",
+        "route": null,
+        "webPath": "/admin/extracurriculars"
+      },
+      {
+        "key": "admin-user-admin",
+        "label": "Kelola Admin",
+        "route": null,
+        "webPath": "/admin/admin-users"
+      },
+      {
+        "key": "admin-user-principal",
+        "label": "Kelola Kepsek",
+        "route": null,
+        "webPath": "/admin/principal-users"
+      },
+      {
+        "key": "admin-user-staff",
+        "label": "Kelola Staff",
+        "route": null,
+        "webPath": "/admin/staff-users"
+      },
+      {
+        "key": "admin-user-examiner",
+        "label": "Kelola Penguji",
+        "route": null,
+        "webPath": "/admin/examiner-users"
+      },
+      {
+        "key": "admin-user-tutor",
+        "label": "Kelola Pembina Ekskul",
+        "route": null,
+        "webPath": "/admin/tutor-users"
+      },
+      {
+        "key": "admin-user-parent",
+        "label": "Kelola Orang Tua",
+        "route": null,
+        "webPath": "/admin/parent-users"
+      },
+      {
+        "key": "admin-user-teacher",
+        "label": "Kelola Guru",
+        "route": null,
+        "webPath": "/admin/teachers"
+      },
+      {
+        "key": "admin-user-student",
+        "label": "Kelola Siswa",
+        "route": null,
+        "webPath": "/admin/students"
+      },
+      {
+        "key": "admin-user-verify",
+        "label": "Verifikasi Akun",
+        "route": null,
+        "webPath": "/admin/user-verification"
+      },
+      {
+        "key": "admin-teacher-assignment",
+        "label": "Assignment Guru",
+        "route": null,
+        "webPath": "/admin/teacher-assignments"
+      },
+      {
+        "key": "admin-import-export",
+        "label": "Export/Import",
+        "route": null,
+        "webPath": "/admin/import-export"
+      },
+      {
+        "key": "admin-academic-calendar",
+        "label": "Kalender Akademik",
+        "route": null,
+        "webPath": "/admin/academic-calendar"
+      },
+      {
+        "key": "admin-schedule",
+        "label": "Jadwal Pelajaran",
+        "route": null,
+        "webPath": "/admin/schedule"
+      },
+      {
+        "key": "admin-teaching-load",
+        "label": "Rekap Jam Mengajar",
+        "route": null,
+        "webPath": "/admin/teaching-load"
+      },
+      {
+        "key": "admin-kkm",
+        "label": "Data KKM",
+        "route": null,
+        "webPath": "/admin/kkm"
+      },
+      {
+        "key": "admin-attendance-recap",
+        "label": "Rekap Absensi",
+        "route": null,
+        "webPath": "/admin/attendance"
+      },
+      {
+        "key": "admin-report-cards",
+        "label": "Laporan / Rapor",
+        "route": null,
+        "webPath": "/admin/report-cards"
+      },
+      {
+        "key": "admin-question-bank",
+        "label": "Bank Soal",
+        "route": null,
+        "webPath": "/admin/question-bank"
+      },
+      {
+        "key": "admin-exam-sessions",
+        "label": "Sesi Ujian",
+        "route": null,
+        "webPath": "/admin/exam-sessions"
+      },
+      {
+        "key": "admin-school-profile",
+        "label": "Profil Sekolah",
+        "route": null,
+        "webPath": "/admin/settings/profile"
+      },
+      {
+        "key": "admin-password",
+        "label": "Ubah Password",
+        "route": null,
+        "webPath": "/admin/settings/password"
+      }
+    ],
+    "EXAMINER": [
+      {
+        "key": "examiner-dashboard",
+        "label": "Dashboard",
+        "route": null,
+        "webPath": "/examiner/dashboard"
+      },
+      {
+        "key": "examiner-schemes",
+        "label": "Data Skema",
+        "route": "/examiner/schemes",
+        "webPath": "/examiner/schemes"
+      },
+      {
+        "key": "assessment",
+        "label": "Penilaian UKK",
+        "route": "/examiner/assessment",
+        "webPath": "/examiner/ukk-assessment"
+      },
+      {
+        "key": "examiner-profile",
+        "label": "Profil",
+        "route": "/profile",
+        "webPath": "/examiner/profile"
+      }
+    ],
+    "PRINCIPAL": [
+      {
+        "key": "principal-dashboard",
+        "label": "Dashboard",
+        "route": "/principal/overview",
+        "webPath": "/principal"
+      },
+      {
+        "key": "principal-reports",
+        "label": "Rapor & Ranking",
+        "route": "/principal/overview",
+        "webPath": "/principal/academic/reports"
+      },
+      {
+        "key": "principal-attendance",
+        "label": "Rekap Absensi",
+        "route": "/principal/attendance",
+        "webPath": "/principal/academic/attendance"
+      },
+      {
+        "key": "principal-finance-requests",
+        "label": "Pengajuan Anggaran",
+        "route": "/principal/approvals",
+        "webPath": "/principal/finance/requests"
+      },
+      {
+        "key": "principal-students",
+        "label": "Data Siswa",
+        "route": null,
+        "webPath": "/principal/students"
+      },
+      {
+        "key": "principal-teachers",
+        "label": "Data Guru",
+        "route": null,
+        "webPath": "/principal/teachers"
+      }
+    ],
+    "STAFF": [
+      {
+        "key": "staff-dashboard",
+        "label": "Dashboard",
+        "route": null,
+        "webPath": "/staff"
+      },
+      {
+        "key": "staff-payments",
+        "label": "Pembayaran (SPP)",
+        "route": "/staff/payments",
+        "webPath": "/staff/payments"
+      },
+      {
+        "key": "staff-students",
+        "label": "Data Siswa",
+        "route": "/staff/students",
+        "webPath": "/staff/students"
+      },
+      {
+        "key": "staff-admin",
+        "label": "Administrasi",
+        "route": null,
+        "webPath": "/staff/admin"
+      }
+    ],
+    "PARENT": [
+      {
+        "key": "parent-dashboard",
+        "label": "Dashboard",
+        "route": null,
+        "webPath": "/parent"
+      },
+      {
+        "key": "child-progress",
+        "label": "Data Anak",
+        "route": "/parent/children",
+        "webPath": "/parent/children"
+      },
+      {
+        "key": "parent-finance",
+        "label": "Keuangan",
+        "route": "/parent/finance",
+        "webPath": "/parent/finance"
+      },
+      {
+        "key": "child-attendance",
+        "label": "Absensi Anak",
+        "route": "/parent/attendance",
+        "webPath": "/parent/attendance"
+      }
+    ],
+    "CALON_SISWA": [
+      {
+        "key": "candidate-application",
+        "label": "Status Pendaftaran",
+        "route": null,
+        "webPath": "/register"
+      },
+      {
+        "key": "candidate-information",
+        "label": "Informasi PPDB",
+        "route": null,
+        "webPath": "/"
+      }
+    ],
+    "UMUM": [
+      {
+        "key": "public-information",
+        "label": "Informasi Sekolah",
+        "route": null,
+        "webPath": "/"
+      },
+      {
+        "key": "public-registration",
+        "label": "Pendaftaran Umum",
+        "route": null,
+        "webPath": "/register"
+      }
+    ],
+    "EXTRACURRICULAR_TUTOR": [
+      {
+        "key": "tutor-dashboard",
+        "label": "Dashboard",
+        "route": null,
+        "webPath": "/tutor"
+      },
+      {
+        "key": "tutor-members",
+        "label": "Anggota & Nilai",
+        "route": null,
+        "webPath": "/tutor/members"
+      },
+      {
+        "key": "tutor-profile",
+        "label": "Profil",
+        "route": "/profile",
+        "webPath": "/tutor/profile"
+      }
+    ]
+  },
+  "roleGroups": {
+    "STUDENT": [
+      {
+        "key": "dashboard",
+        "label": "Dashboard",
+        "menuKeys": [
+          "student-dashboard"
+        ]
+      },
+      {
+        "key": "extracurricular",
+        "label": "Ekstrakurikuler",
+        "menuKeys": [
+          "student-extracurricular"
+        ]
+      },
+      {
+        "key": "academic",
+        "label": "AKADEMIK",
+        "menuKeys": [
+          "student-schedule",
+          "student-learning",
+          "student-attendance-history",
+          "student-permissions",
+          "student-class-attendance"
+        ]
+      },
+      {
+        "key": "internship",
+        "label": "PKL (PRAKERIN)",
+        "menuKeys": [
+          "student-pkl-dashboard",
+          "student-pkl-journal",
+          "student-pkl-attendance",
+          "student-pkl-report"
+        ]
+      },
+      {
+        "key": "exams",
+        "label": "UJIAN ONLINE",
+        "menuKeys": [
+          "student-exam-formatif",
+          "student-exam-sbts",
+          "student-exam-sas",
+          "student-exam-sat"
+        ]
+      },
+      {
+        "key": "grades",
+        "label": "NILAI SAYA",
+        "menuKeys": [
+          "student-grade-history"
+        ]
+      },
+      {
+        "key": "administration",
+        "label": "ADMINISTRASI",
+        "menuKeys": [
+          "student-finance"
+        ]
+      },
+      {
+        "key": "settings",
+        "label": "PENGATURAN",
+        "menuKeys": [
+          "student-profile-web"
+        ]
+      }
+    ],
+    "TEACHER": [
+      {
+        "key": "dashboard",
+        "label": "Dashboard",
+        "menuKeys": [
+          "teacher-dashboard"
+        ]
+      },
+      {
+        "key": "academic",
+        "label": "AKADEMIK",
+        "menuKeys": [
+          "teaching-schedule",
+          "teacher-classes",
+          "attendance-teacher",
+          "teacher-materials",
+          "grade-input",
+          "teacher-report-subjects"
+        ]
+      },
+      {
+        "key": "teaching-resources",
+        "label": "PERANGKAT AJAR",
+        "menuKeys": [
+          "teacher-cp",
+          "teacher-atp",
+          "teacher-prota",
+          "teacher-promes",
+          "teacher-modules",
+          "teacher-kktp"
+        ]
+      },
+      {
+        "key": "exams",
+        "label": "UJIAN",
+        "menuKeys": [
+          "teacher-proctoring",
+          "teacher-exam-formatif",
+          "teacher-exam-sbts",
+          "teacher-exam-sas",
+          "teacher-exam-sat",
+          "teacher-exam-bank"
+        ]
+      },
+      {
+        "key": "homeroom",
+        "label": "WALI KELAS",
+        "menuKeys": [
+          "teacher-homeroom-attendance",
+          "teacher-homeroom-behavior",
+          "teacher-homeroom-permissions",
+          "teacher-homeroom-sbts",
+          "teacher-homeroom-sas",
+          "teacher-homeroom-sat"
+        ]
+      },
+      {
+        "key": "training",
+        "label": "KELAS TRAINING",
+        "menuKeys": [
+          "teacher-training-classes",
+          "teacher-training-attendance",
+          "teacher-training-grades",
+          "teacher-training-materials",
+          "teacher-training-reports"
+        ]
+      },
+      {
+        "key": "kakom",
+        "label": "KAKOM",
+        "menuKeys": [
+          "teacher-work-program",
+          "teacher-kakom-classes",
+          "teacher-kakom-pkl",
+          "teacher-kakom-partners"
+        ]
+      },
+      {
+        "key": "wakakur",
+        "label": "WAKASEK KURIKULUM",
+        "menuKeys": [
+          "teacher-wakakur-approvals-work-program",
+          "teacher-wakakur-curriculum",
+          "teacher-wakakur-exams",
+          "teacher-wakakur-performance",
+          "teacher-wakakur-approvals",
+          "teacher-wakakur-reports"
+        ]
+      },
+      {
+        "key": "wakasis",
+        "label": "WAKASEK KESISWAAN",
+        "menuKeys": [
+          "teacher-wakasis-students",
+          "teacher-wakasis-performance",
+          "teacher-wakasis-approvals",
+          "teacher-wakasis-reports"
+        ]
+      },
+      {
+        "key": "sarpras",
+        "label": "WAKASEK SARPRAS",
+        "menuKeys": [
+          "teacher-sarpras-inventory",
+          "teacher-sarpras-budgets",
+          "teacher-sarpras-reports"
+        ]
+      },
+      {
+        "key": "humas",
+        "label": "WAKASEK HUMAS",
+        "menuKeys": [
+          "teacher-humas-settings",
+          "teacher-humas-approval",
+          "teacher-humas-components",
+          "teacher-humas-journals",
+          "teacher-humas-partners",
+          "teacher-humas-reports"
+        ]
+      },
+      {
+        "key": "head-lab",
+        "label": "KEPALA LAB",
+        "menuKeys": [
+          "teacher-head-lab-inventory",
+          "teacher-head-lab-schedule",
+          "teacher-head-lab-incidents"
+        ]
+      },
+      {
+        "key": "head-library",
+        "label": "KEPALA PERPUSTAKAAN",
+        "menuKeys": [
+          "teacher-head-library-inventory"
+        ]
+      },
+      {
+        "key": "settings",
+        "label": "PENGATURAN",
+        "menuKeys": [
+          "teacher-profile"
+        ]
+      }
+    ],
+    "ADMIN": [
+      {
+        "key": "dashboard",
+        "label": "Dashboard",
+        "menuKeys": [
+          "admin-dashboard"
+        ]
+      },
+      {
+        "key": "master-data",
+        "label": "MASTER DATA",
+        "menuKeys": [
+          "admin-academic-years",
+          "admin-majors",
+          "admin-classes",
+          "admin-training-classes",
+          "admin-subjects",
+          "admin-subject-categories",
+          "admin-extracurriculars"
+        ]
+      },
+      {
+        "key": "user-management",
+        "label": "USER MANAGEMENT",
+        "menuKeys": [
+          "admin-user-admin",
+          "admin-user-principal",
+          "admin-user-staff",
+          "admin-user-examiner",
+          "admin-user-tutor",
+          "admin-user-parent",
+          "admin-user-teacher",
+          "admin-user-student",
+          "admin-user-verify",
+          "admin-teacher-assignment",
+          "admin-import-export"
+        ]
+      },
+      {
+        "key": "academic",
+        "label": "AKADEMIK",
+        "menuKeys": [
+          "admin-academic-calendar",
+          "admin-schedule",
+          "admin-teaching-load",
+          "admin-kkm",
+          "admin-attendance-recap",
+          "admin-report-cards"
+        ]
+      },
+      {
+        "key": "cbt",
+        "label": "UJIAN & CBT",
+        "menuKeys": [
+          "admin-question-bank",
+          "admin-exam-sessions"
+        ]
+      },
+      {
+        "key": "settings",
+        "label": "PENGATURAN",
+        "menuKeys": [
+          "admin-school-profile",
+          "admin-password"
+        ]
+      }
+    ],
+    "PRINCIPAL": [
+      {
+        "key": "dashboard",
+        "label": "Dashboard",
+        "menuKeys": [
+          "principal-dashboard"
+        ]
+      },
+      {
+        "key": "academic",
+        "label": "AKADEMIK",
+        "menuKeys": [
+          "principal-reports",
+          "principal-attendance"
+        ]
+      },
+      {
+        "key": "finance",
+        "label": "KEUANGAN",
+        "menuKeys": [
+          "principal-finance-requests"
+        ]
+      },
+      {
+        "key": "students",
+        "label": "KESISWAAN",
+        "menuKeys": [
+          "principal-students"
+        ]
+      },
+      {
+        "key": "teachers",
+        "label": "SDM GURU",
+        "menuKeys": [
+          "principal-teachers"
+        ]
+      }
+    ],
+    "STAFF": [
+      {
+        "key": "dashboard",
+        "label": "Dashboard",
+        "menuKeys": [
+          "staff-dashboard"
+        ]
+      },
+      {
+        "key": "payments",
+        "label": "Pembayaran (SPP)",
+        "menuKeys": [
+          "staff-payments"
+        ]
+      },
+      {
+        "key": "students",
+        "label": "Data Siswa",
+        "menuKeys": [
+          "staff-students"
+        ]
+      },
+      {
+        "key": "administration",
+        "label": "Administrasi",
+        "menuKeys": [
+          "staff-admin"
+        ]
+      }
+    ],
+    "PARENT": [
+      {
+        "key": "dashboard",
+        "label": "Dashboard",
+        "menuKeys": [
+          "parent-dashboard"
+        ]
+      },
+      {
+        "key": "children",
+        "label": "Data Anak",
+        "menuKeys": [
+          "child-progress"
+        ]
+      },
+      {
+        "key": "finance",
+        "label": "Keuangan",
+        "menuKeys": [
+          "parent-finance"
+        ]
+      },
+      {
+        "key": "attendance",
+        "label": "Absensi Anak",
+        "menuKeys": [
+          "child-attendance"
+        ]
+      }
+    ],
+    "EXAMINER": [
+      {
+        "key": "dashboard",
+        "label": "Dashboard",
+        "menuKeys": [
+          "examiner-dashboard"
+        ]
+      },
+      {
+        "key": "schemes",
+        "label": "Data Skema",
+        "menuKeys": [
+          "examiner-schemes"
+        ]
+      },
+      {
+        "key": "assessment",
+        "label": "Penilaian UKK",
+        "menuKeys": [
+          "assessment"
+        ]
+      },
+      {
+        "key": "settings",
+        "label": "PENGATURAN",
+        "menuKeys": [
+          "examiner-profile"
+        ]
+      }
+    ],
+    "EXTRACURRICULAR_TUTOR": [
+      {
+        "key": "dashboard",
+        "label": "Dashboard",
+        "menuKeys": [
+          "tutor-dashboard"
+        ]
+      },
+      {
+        "key": "members",
+        "label": "Anggota & Nilai",
+        "menuKeys": [
+          "tutor-members"
+        ]
+      },
+      {
+        "key": "settings",
+        "label": "PENGATURAN",
+        "menuKeys": [
+          "tutor-profile"
+        ]
+      }
+    ],
+    "CALON_SISWA": [
+      {
+        "key": "information",
+        "label": "Informasi",
+        "menuKeys": [
+          "candidate-information"
+        ]
+      },
+      {
+        "key": "registration",
+        "label": "Pendaftaran",
+        "menuKeys": [
+          "candidate-application"
+        ]
+      }
+    ],
+    "UMUM": [
+      {
+        "key": "information",
+        "label": "Informasi",
+        "menuKeys": [
+          "public-information"
+        ]
+      },
+      {
+        "key": "registration",
+        "label": "Pendaftaran",
+        "menuKeys": [
+          "public-registration"
+        ]
+      }
+    ]
+  },
+  "rows": [
+    {
+      "role": "STUDENT",
+      "key": "student-dashboard",
+      "label": "Dashboard",
+      "route": null,
+      "webPath": "/student",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-extracurricular",
+      "label": "Ekstrakurikuler",
+      "route": null,
+      "webPath": "/student/extracurricular",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-schedule",
+      "label": "Jadwal Pelajaran",
+      "route": "/schedule",
+      "webPath": "/student/schedule",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/schedule.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-learning",
+      "label": "Materi & Tugas",
+      "route": "/learning",
+      "webPath": "/student/learning",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/learning.tsx",
+      "fileExists": true,
+      "mutating": true,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-attendance-history",
+      "label": "Riwayat Kehadiran",
+      "route": "/attendance",
+      "webPath": "/student/attendance",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/attendance.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-permissions",
+      "label": "Perizinan",
+      "route": "/permissions",
+      "webPath": "/student/permissions",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/permissions.tsx",
+      "fileExists": true,
+      "mutating": true,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-class-attendance",
+      "label": "Presensi Kelas",
+      "route": null,
+      "webPath": "/student/class-attendance",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-pkl-dashboard",
+      "label": "Dashboard PKL",
+      "route": null,
+      "webPath": "/student/internship/dashboard",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-pkl-journal",
+      "label": "Jurnal Harian",
+      "route": null,
+      "webPath": "/student/internship/journals",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-pkl-attendance",
+      "label": "Absensi PKL",
+      "route": null,
+      "webPath": "/student/internship/attendance",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-pkl-report",
+      "label": "Laporan PKL",
+      "route": null,
+      "webPath": "/student/internship/report",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-exam-formatif",
+      "label": "Formatif (Quiz)",
+      "route": null,
+      "webPath": "/student/exams/formatif",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-exam-sbts",
+      "label": "SBTS",
+      "route": null,
+      "webPath": "/student/exams/sbts",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-exam-sas",
+      "label": "SAS",
+      "route": null,
+      "webPath": "/student/exams/sas",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-exam-sat",
+      "label": "SAT",
+      "route": null,
+      "webPath": "/student/exams/sat",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-grade-history",
+      "label": "Riwayat Nilai",
+      "route": "/grades",
+      "webPath": "/student/grades",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/grades.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-finance",
+      "label": "Keuangan",
+      "route": null,
+      "webPath": "/student/finance",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STUDENT",
+      "key": "student-profile-web",
+      "label": "Profile",
+      "route": "/profile",
+      "webPath": "/student/profile",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/profile.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-dashboard",
+      "label": "Dashboard",
+      "route": "/home",
+      "webPath": "/teacher",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/home.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teaching-schedule",
+      "label": "Jadwal Mengajar",
+      "route": "/schedule",
+      "webPath": "/teacher/schedule",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/schedule.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-classes",
+      "label": "Kelas & Mapel",
+      "route": "/teacher/classes",
+      "webPath": "/teacher/classes",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/classes.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "attendance-teacher",
+      "label": "Presensi Siswa",
+      "route": "/teacher/attendance",
+      "webPath": "/teacher/attendance",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/attendance.tsx",
+      "fileExists": true,
+      "mutating": true,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-materials",
+      "label": "Materi & Tugas",
+      "route": "/teacher/materials",
+      "webPath": "/teacher/materials",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/materials.tsx",
+      "fileExists": true,
+      "mutating": true,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "grade-input",
+      "label": "Input Nilai",
+      "route": "/teacher/grades",
+      "webPath": "/teacher/grades",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/grades.tsx",
+      "fileExists": true,
+      "mutating": true,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-report-subjects",
+      "label": "Rapor Mapel",
+      "route": "/teacher/report-subjects",
+      "webPath": "/teacher/report-subjects",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/report-subjects.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-cp",
+      "label": "Capaian Pembelajaran (CP)",
+      "route": "/teacher/learning-cp",
+      "webPath": "/teacher/learning-resources/cp",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/learning-cp.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-atp",
+      "label": "Alur Tujuan Pembelajaran (ATP)",
+      "route": "/teacher/learning-atp",
+      "webPath": "/teacher/learning-resources/atp",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/learning-atp.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-prota",
+      "label": "Program Tahunan",
+      "route": "/teacher/learning-prota",
+      "webPath": "/teacher/learning-resources/prota",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/learning-prota.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-promes",
+      "label": "Program Semester",
+      "route": "/teacher/learning-promes",
+      "webPath": "/teacher/learning-resources/promes",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/learning-promes.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-modules",
+      "label": "Modul Ajar",
+      "route": "/teacher/learning-modules",
+      "webPath": "/teacher/learning-resources/modules",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/learning-modules.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-kktp",
+      "label": "Kriteria Ketercapaian Tujuan Pembelajaran (KKTP)",
+      "route": "/teacher/learning-kktp",
+      "webPath": "/teacher/learning-resources/kktp",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/learning-kktp.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-proctoring",
+      "label": "Jadwal Mengawas",
+      "route": "/teacher/proctoring",
+      "webPath": "/teacher/proctoring",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/proctoring/index.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-exam-formatif",
+      "label": "Formatif (Quiz)",
+      "route": "/teacher/exams-formatif",
+      "webPath": "/teacher/exams/formatif",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/exams-formatif.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-exam-sbts",
+      "label": "SBTS",
+      "route": "/teacher/exams-sbts",
+      "webPath": "/teacher/exams/sbts",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/exams-sbts.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-exam-sas",
+      "label": "SAS",
+      "route": "/teacher/exams-sas",
+      "webPath": "/teacher/exams/sas",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/exams-sas.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-exam-sat",
+      "label": "SAT",
+      "route": "/teacher/exams-sat",
+      "webPath": "/teacher/exams/sat",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/exams-sat.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-exam-bank",
+      "label": "Bank Soal",
+      "route": "/teacher/exams-bank",
+      "webPath": "/teacher/exams/bank",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/exams-bank.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-homeroom-attendance",
+      "label": "Rekap Presensi",
+      "route": "/teacher/homeroom-attendance",
+      "webPath": "/teacher/wali-kelas/attendance",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/homeroom-attendance.tsx",
+      "fileExists": true,
+      "mutating": true,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-homeroom-behavior",
+      "label": "Catatan Perilaku",
+      "route": "/teacher/homeroom-behavior",
+      "webPath": "/teacher/wali-kelas/behavior",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/homeroom-behavior.tsx",
+      "fileExists": true,
+      "mutating": true,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-homeroom-permissions",
+      "label": "Persetujuan Izin",
+      "route": "/teacher/homeroom-permissions",
+      "webPath": "/teacher/wali-kelas/permissions",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/homeroom-permissions.tsx",
+      "fileExists": true,
+      "mutating": true,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-homeroom-sbts",
+      "label": "Rapor SBTS",
+      "route": "/teacher/homeroom-sbts",
+      "webPath": "/teacher/wali-kelas/rapor-sbts",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/homeroom-sbts.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-homeroom-sas",
+      "label": "Rapor SAS",
+      "route": "/teacher/homeroom-sas",
+      "webPath": "/teacher/wali-kelas/rapor-sas",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/homeroom-sas.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-homeroom-sat",
+      "label": "Rapor SAT",
+      "route": "/teacher/homeroom-sat",
+      "webPath": "/teacher/wali-kelas/rapor-sat",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/homeroom-sat.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-training-classes",
+      "label": "Daftar Kelas",
+      "route": "/teacher/training-classes",
+      "webPath": "/teacher/training/classes",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/training-classes.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-training-attendance",
+      "label": "Presensi Training",
+      "route": "/teacher/training-attendance",
+      "webPath": "/teacher/training/attendance",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/training-attendance.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-training-grades",
+      "label": "Nilai Training",
+      "route": "/teacher/training-grades",
+      "webPath": "/teacher/training/grades",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/training-grades.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-training-materials",
+      "label": "Materi & Tugas",
+      "route": "/teacher/training-materials",
+      "webPath": "/teacher/training/materials",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/training-materials.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-training-reports",
+      "label": "Laporan Training",
+      "route": "/teacher/training-reports",
+      "webPath": "/teacher/training/reports",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/training-reports.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-work-program",
+      "label": "Program Kerja",
+      "route": "/teacher/work-program",
+      "webPath": "/teacher/work-programs",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/work-program.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-kakom-classes",
+      "label": "Kelas Kompetensi",
+      "route": "/teacher/kakom-classes",
+      "webPath": "/teacher/head-program/classes",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/kakom-classes.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-kakom-pkl",
+      "label": "Monitoring PKL",
+      "route": "/teacher/kakom-pkl",
+      "webPath": "/teacher/head-program/pkl",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/kakom-pkl.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-kakom-partners",
+      "label": "Mitra Industri & BKK",
+      "route": "/teacher/kakom-partners",
+      "webPath": "/teacher/head-program/partners",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/kakom-partners.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-wakakur-approvals-work-program",
+      "label": "Persetujuan Program Kerja",
+      "route": "/teacher/wakakur-work-program-approvals",
+      "webPath": "/teacher/wakasek/work-program-approvals",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/wakakur-work-program-approvals.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-wakakur-curriculum",
+      "label": "Kelola Kurikulum",
+      "route": "/teacher/wakakur-curriculum",
+      "webPath": "/teacher/wakasek/curriculum",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/wakakur-curriculum.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-wakakur-exams",
+      "label": "Kelola Ujian",
+      "route": "/teacher/wakakur-exams",
+      "webPath": "/teacher/wakasek/exams",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/wakakur-exams.tsx",
+      "fileExists": true,
+      "mutating": true,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-wakakur-performance",
+      "label": "Monitoring Kinerja",
+      "route": "/teacher/wakakur-performance",
+      "webPath": "/teacher/wakasek/performance",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/wakakur-performance.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-wakakur-approvals",
+      "label": "Persetujuan",
+      "route": "/teacher/wakakur-work-program-approvals",
+      "webPath": "/teacher/wakasek/approvals",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/wakakur-work-program-approvals.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-wakakur-reports",
+      "label": "Laporan Akademik",
+      "route": "/teacher/wakakur-performance",
+      "webPath": "/teacher/wakasek/reports",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/wakakur-performance.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-wakasis-students",
+      "label": "Kelola Kesiswaan",
+      "route": "/teacher/wakasis-students",
+      "webPath": "/teacher/wakasek/students",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/wakasis-students.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-wakasis-performance",
+      "label": "Monitoring Kinerja",
+      "route": "/teacher/wakasis-performance",
+      "webPath": "/teacher/wakasek/student-performance",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/wakasis-performance.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-wakasis-approvals",
+      "label": "Persetujuan",
+      "route": "/teacher/wakasis-approvals",
+      "webPath": "/teacher/wakasek/student-approvals",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/wakasis-approvals.tsx",
+      "fileExists": true,
+      "mutating": true,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-wakasis-reports",
+      "label": "Laporan Kesiswaan",
+      "route": "/teacher/wakasis-reports",
+      "webPath": "/teacher/wakasek/student-reports",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/wakasis-reports.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-sarpras-inventory",
+      "label": "Aset Sekolah",
+      "route": "/teacher/sarpras-inventory",
+      "webPath": "/teacher/sarpras/inventory",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/sarpras-inventory.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-sarpras-budgets",
+      "label": "Persetujuan Anggaran",
+      "route": "/teacher/sarpras-budgets",
+      "webPath": "/teacher/sarpras/budgets",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/sarpras-budgets.tsx",
+      "fileExists": true,
+      "mutating": true,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-sarpras-reports",
+      "label": "Laporan",
+      "route": "/teacher/sarpras-reports",
+      "webPath": "/teacher/sarpras/reports",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/sarpras-reports.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-humas-settings",
+      "label": "Pengaturan PKL",
+      "route": "/teacher/humas-settings",
+      "webPath": "/teacher/humas/settings",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/humas-settings.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-humas-approval",
+      "label": "Persetujuan PKL",
+      "route": "/teacher/humas-approval",
+      "webPath": "/teacher/internship/approval",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/humas-approval.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-humas-components",
+      "label": "Nilai PKL",
+      "route": "/teacher/humas-components",
+      "webPath": "/teacher/wakasek/internship-components",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/humas-components.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-humas-journals",
+      "label": "Monitoring Jurnal",
+      "route": "/teacher/humas-journals",
+      "webPath": "/teacher/wakasek/journal-monitoring",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/humas-journals.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-humas-partners",
+      "label": "Mitra Industri",
+      "route": "/teacher/humas-partners",
+      "webPath": "/teacher/humas/partners",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/humas-partners.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-humas-reports",
+      "label": "Laporan",
+      "route": "/teacher/humas-reports",
+      "webPath": "/teacher/humas/reports",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/humas-reports.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-head-lab-inventory",
+      "label": "Inventaris Lab",
+      "route": "/teacher/head-lab-inventory",
+      "webPath": "/teacher/head-lab/inventory?filter=lab",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/head-lab-inventory.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-head-lab-schedule",
+      "label": "Jadwal Lab",
+      "route": "/teacher/head-lab-schedule",
+      "webPath": "/teacher/head-lab/schedule",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/head-lab-schedule.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-head-lab-incidents",
+      "label": "Laporan Insiden",
+      "route": "/teacher/head-lab-incidents",
+      "webPath": "/teacher/head-lab/incidents",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/head-lab-incidents.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-head-library-inventory",
+      "label": "Inventaris Perpustakaan",
+      "route": "/teacher/head-library-inventory",
+      "webPath": "/teacher/head-library/inventory?filter=library",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/teacher/head-library-inventory.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "TEACHER",
+      "key": "teacher-profile",
+      "label": "Profil",
+      "route": "/profile",
+      "webPath": "/teacher/profile",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/profile.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-dashboard",
+      "label": "Dashboard",
+      "route": null,
+      "webPath": "/admin",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-academic-years",
+      "label": "Tahun Ajaran",
+      "route": null,
+      "webPath": "/admin/academic-years",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-majors",
+      "label": "Kompetensi Keahlian",
+      "route": null,
+      "webPath": "/admin/majors",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-classes",
+      "label": "Kelas",
+      "route": null,
+      "webPath": "/admin/classes",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-training-classes",
+      "label": "Kelas Training",
+      "route": null,
+      "webPath": "/admin/training-classes",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-subjects",
+      "label": "Mata Pelajaran",
+      "route": null,
+      "webPath": "/admin/subjects",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-subject-categories",
+      "label": "Kategori Mapel",
+      "route": null,
+      "webPath": "/admin/subject-categories",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-extracurriculars",
+      "label": "Ekstrakurikuler",
+      "route": null,
+      "webPath": "/admin/extracurriculars",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-user-admin",
+      "label": "Kelola Admin",
+      "route": null,
+      "webPath": "/admin/admin-users",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-user-principal",
+      "label": "Kelola Kepsek",
+      "route": null,
+      "webPath": "/admin/principal-users",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-user-staff",
+      "label": "Kelola Staff",
+      "route": null,
+      "webPath": "/admin/staff-users",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-user-examiner",
+      "label": "Kelola Penguji",
+      "route": null,
+      "webPath": "/admin/examiner-users",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-user-tutor",
+      "label": "Kelola Pembina Ekskul",
+      "route": null,
+      "webPath": "/admin/tutor-users",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-user-parent",
+      "label": "Kelola Orang Tua",
+      "route": null,
+      "webPath": "/admin/parent-users",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-user-teacher",
+      "label": "Kelola Guru",
+      "route": null,
+      "webPath": "/admin/teachers",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-user-student",
+      "label": "Kelola Siswa",
+      "route": null,
+      "webPath": "/admin/students",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-user-verify",
+      "label": "Verifikasi Akun",
+      "route": null,
+      "webPath": "/admin/user-verification",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-teacher-assignment",
+      "label": "Assignment Guru",
+      "route": null,
+      "webPath": "/admin/teacher-assignments",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-import-export",
+      "label": "Export/Import",
+      "route": null,
+      "webPath": "/admin/import-export",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-academic-calendar",
+      "label": "Kalender Akademik",
+      "route": null,
+      "webPath": "/admin/academic-calendar",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-schedule",
+      "label": "Jadwal Pelajaran",
+      "route": null,
+      "webPath": "/admin/schedule",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-teaching-load",
+      "label": "Rekap Jam Mengajar",
+      "route": null,
+      "webPath": "/admin/teaching-load",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-kkm",
+      "label": "Data KKM",
+      "route": null,
+      "webPath": "/admin/kkm",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-attendance-recap",
+      "label": "Rekap Absensi",
+      "route": null,
+      "webPath": "/admin/attendance",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-report-cards",
+      "label": "Laporan / Rapor",
+      "route": null,
+      "webPath": "/admin/report-cards",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-question-bank",
+      "label": "Bank Soal",
+      "route": null,
+      "webPath": "/admin/question-bank",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-exam-sessions",
+      "label": "Sesi Ujian",
+      "route": null,
+      "webPath": "/admin/exam-sessions",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-school-profile",
+      "label": "Profil Sekolah",
+      "route": null,
+      "webPath": "/admin/settings/profile",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "ADMIN",
+      "key": "admin-password",
+      "label": "Ubah Password",
+      "route": null,
+      "webPath": "/admin/settings/password",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "EXAMINER",
+      "key": "examiner-dashboard",
+      "label": "Dashboard",
+      "route": null,
+      "webPath": "/examiner/dashboard",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "EXAMINER",
+      "key": "examiner-schemes",
+      "label": "Data Skema",
+      "route": "/examiner/schemes",
+      "webPath": "/examiner/schemes",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/examiner/schemes.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "EXAMINER",
+      "key": "assessment",
+      "label": "Penilaian UKK",
+      "route": "/examiner/assessment",
+      "webPath": "/examiner/ukk-assessment",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/examiner/assessment.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "EXAMINER",
+      "key": "examiner-profile",
+      "label": "Profil",
+      "route": "/profile",
+      "webPath": "/examiner/profile",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/profile.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "PRINCIPAL",
+      "key": "principal-dashboard",
+      "label": "Dashboard",
+      "route": "/principal/overview",
+      "webPath": "/principal",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/principal/overview.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "PRINCIPAL",
+      "key": "principal-reports",
+      "label": "Rapor & Ranking",
+      "route": "/principal/overview",
+      "webPath": "/principal/academic/reports",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/principal/overview.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "PRINCIPAL",
+      "key": "principal-attendance",
+      "label": "Rekap Absensi",
+      "route": "/principal/attendance",
+      "webPath": "/principal/academic/attendance",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/principal/attendance.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "PRINCIPAL",
+      "key": "principal-finance-requests",
+      "label": "Pengajuan Anggaran",
+      "route": "/principal/approvals",
+      "webPath": "/principal/finance/requests",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/principal/approvals.tsx",
+      "fileExists": true,
+      "mutating": true,
+      "webBridgeUi": false
+    },
+    {
+      "role": "PRINCIPAL",
+      "key": "principal-students",
+      "label": "Data Siswa",
+      "route": null,
+      "webPath": "/principal/students",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "PRINCIPAL",
+      "key": "principal-teachers",
+      "label": "Data Guru",
+      "route": null,
+      "webPath": "/principal/teachers",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STAFF",
+      "key": "staff-dashboard",
+      "label": "Dashboard",
+      "route": null,
+      "webPath": "/staff",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STAFF",
+      "key": "staff-payments",
+      "label": "Pembayaran (SPP)",
+      "route": "/staff/payments",
+      "webPath": "/staff/payments",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/staff/payments.tsx",
+      "fileExists": true,
+      "mutating": true,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STAFF",
+      "key": "staff-students",
+      "label": "Data Siswa",
+      "route": "/staff/students",
+      "webPath": "/staff/students",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/staff/students.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "STAFF",
+      "key": "staff-admin",
+      "label": "Administrasi",
+      "route": null,
+      "webPath": "/staff/admin",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "PARENT",
+      "key": "parent-dashboard",
+      "label": "Dashboard",
+      "route": null,
+      "webPath": "/parent",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "PARENT",
+      "key": "child-progress",
+      "label": "Data Anak",
+      "route": "/parent/children",
+      "webPath": "/parent/children",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/parent/children.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "PARENT",
+      "key": "parent-finance",
+      "label": "Keuangan",
+      "route": "/parent/finance",
+      "webPath": "/parent/finance",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/parent/finance.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": true
+    },
+    {
+      "role": "PARENT",
+      "key": "child-attendance",
+      "label": "Absensi Anak",
+      "route": "/parent/attendance",
+      "webPath": "/parent/attendance",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/parent/attendance.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "CALON_SISWA",
+      "key": "candidate-application",
+      "label": "Status Pendaftaran",
+      "route": null,
+      "webPath": "/register",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "CALON_SISWA",
+      "key": "candidate-information",
+      "label": "Informasi PPDB",
+      "route": null,
+      "webPath": "/",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "UMUM",
+      "key": "public-information",
+      "label": "Informasi Sekolah",
+      "route": null,
+      "webPath": "/",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "UMUM",
+      "key": "public-registration",
+      "label": "Pendaftaran Umum",
+      "route": null,
+      "webPath": "/register",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "EXTRACURRICULAR_TUTOR",
+      "key": "tutor-dashboard",
+      "label": "Dashboard",
+      "route": null,
+      "webPath": "/tutor",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "EXTRACURRICULAR_TUTOR",
+      "key": "tutor-members",
+      "label": "Anggota & Nilai",
+      "route": null,
+      "webPath": "/tutor/members",
+      "mode": "web-bridge",
+      "file": null,
+      "fileExists": false,
+      "mutating": false,
+      "webBridgeUi": false
+    },
+    {
+      "role": "EXTRACURRICULAR_TUTOR",
+      "key": "tutor-profile",
+      "label": "Profil",
+      "route": "/profile",
+      "webPath": "/tutor/profile",
+      "mode": "hybrid",
+      "file": "mobile-app/app/(app)/profile.tsx",
+      "fileExists": true,
+      "mutating": false,
+      "webBridgeUi": false
+    }
+  ]
+}

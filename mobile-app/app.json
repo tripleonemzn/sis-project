@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "SIS KGB2",
+    "slug": "sis-kgb2-mobile",
+    "version": "0.1.0",
+    "icon": "./src/assets/logo_sis_kgb2_icon_square.png",
+    "orientation": "portrait",
+    "scheme": "siskgb2",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "android": {
+      "package": "id.siskgb2.mobile",
+      "versionCode": 2,
+      "permissions": [
+        "POST_NOTIFICATIONS"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./src/assets/logo_sis_kgb2_icon_adaptive_foreground.png",
+        "backgroundColor": "#1f3f8f"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "id.siskgb2.mobile",
+      "buildNumber": "1"
+    },
+    "plugins": [
+      "expo-notifications",
+      "expo-font"
+    ],
+    "updates": {
+      "url": "https://u.expo.dev/cc9265c5-45b0-4964-8ed2-3e7a996b8c5a",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "cc9265c5-45b0-4964-8ed2-3e7a996b8c5a"
+      }
+    }
+  }
+}

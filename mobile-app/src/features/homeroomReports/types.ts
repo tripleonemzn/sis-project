@@ -1,0 +1,157 @@
+export type HomeroomReportType = 'SBTS' | 'SAS' | 'SAT';
+export type HomeroomSemester = 'ODD' | 'EVEN';
+
+export type HomeroomStudentSummary = {
+  id: number;
+  name: string;
+  nis?: string | null;
+  nisn?: string | null;
+};
+
+export type HomeroomLedgerSubject = {
+  id: number;
+  name: string;
+  code: string;
+};
+
+export type HomeroomLedgerGrade = {
+  nf1: number | null;
+  nf2: number | null;
+  nf3: number | null;
+  formatif: number | null;
+  sbts: number | null;
+  finalScore: number | null;
+  predicate: string | null;
+  description: string | null;
+};
+
+export type HomeroomLedgerStudent = HomeroomStudentSummary & {
+  grades: Record<number, HomeroomLedgerGrade>;
+};
+
+export type HomeroomLedgerData = {
+  subjects: HomeroomLedgerSubject[];
+  students: HomeroomLedgerStudent[];
+};
+
+export type HomeroomExtracurricularGrade = {
+  id: number;
+  ekskulName: string;
+  grade: string;
+  description: string;
+};
+
+export type HomeroomAchievement = {
+  id: number;
+  name: string;
+  rank: string;
+  level: string;
+};
+
+export type HomeroomExtracurricularStudent = HomeroomStudentSummary & {
+  attendance: {
+    s: number;
+    i: number;
+    a: number;
+  };
+  catatan: string;
+  extracurriculars: HomeroomExtracurricularGrade[];
+  achievements: HomeroomAchievement[];
+};
+
+export type HomeroomRankingRow = {
+  rank: number;
+  totalScore: number;
+  averageScore: number;
+  subjectCount: number;
+  student: HomeroomStudentSummary;
+};
+
+export type HomeroomRankingData = {
+  className: string;
+  academicYear: string;
+  semester: HomeroomSemester;
+  homeroomTeacher?: {
+    id: number;
+    name: string;
+    username?: string | null;
+  } | null;
+  principalName: string;
+  principalNip: string;
+  rankings: HomeroomRankingRow[];
+};
+
+export type HomeroomStudentReportSubjectCell = {
+  score: number | null;
+  predicate: string | null;
+  description?: string | null;
+};
+
+export type HomeroomStudentReportSubjectRow = {
+  id?: number;
+  no?: number | string;
+  name: string;
+  kkm?: number | null;
+  isHeader?: boolean;
+  rowCount?: number;
+  skipNoColumn?: boolean;
+  teacherName?: string | null;
+  col1?: HomeroomStudentReportSubjectCell | null;
+  col2?: HomeroomStudentReportSubjectCell | null;
+  final?: HomeroomStudentReportSubjectCell | null;
+  formatif?: HomeroomStudentReportSubjectCell | null;
+  sbts?: HomeroomStudentReportSubjectCell | null;
+  description?: string | null;
+};
+
+export type HomeroomStudentReportData = {
+  header: {
+    schoolName: string;
+    semester: string;
+    academicYear: string;
+    studentName: string;
+    nis: string;
+    nisn: string;
+    class: string;
+    major: string;
+    fase?: string;
+  };
+  body: {
+    groups: Record<'A' | 'B' | 'C', HomeroomStudentReportSubjectRow[]>;
+    extracurriculars?: Array<{
+      name: string;
+      grade: string;
+      description: string;
+    }>;
+    achievements?: Array<{
+      name: string;
+      description: string;
+    }>;
+    attendance?: {
+      sick: number;
+      permission: number;
+      absent: number;
+    };
+    homeroomNote?: string;
+  };
+  footer: {
+    date?: string;
+    place?: string;
+    signatures?: {
+      parent?: {
+        title?: string;
+        name?: string;
+      };
+      homeroom?: {
+        title?: string;
+        name?: string;
+        nip?: string;
+      };
+      principal?: {
+        title?: string;
+        name?: string;
+        nip?: string;
+      };
+    };
+  };
+};

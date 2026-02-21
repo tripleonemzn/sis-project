@@ -1,0 +1,58 @@
+export type LearningMaterial = {
+  id: number;
+  title: string;
+  description: string | null;
+  fileUrl: string | null;
+  fileName: string | null;
+  fileSize: number | null;
+  fileType: string | null;
+  youtubeUrl?: string | null;
+  createdAt: string;
+  subject: {
+    id: number;
+    name: string;
+    code: string;
+  };
+  teacher: {
+    id: number;
+    name: string;
+  };
+};
+
+export type LearningAssignment = {
+  id: number;
+  title: string;
+  description: string | null;
+  fileUrl: string | null;
+  fileName: string | null;
+  dueDate: string;
+  maxScore: number;
+  allowResubmit: boolean;
+  createdAt: string;
+  subject: {
+    id: number;
+    name: string;
+    code: string;
+  };
+  teacher: {
+    id: number;
+    name: string;
+  };
+};
+
+export type LearningSubmission = {
+  id: number;
+  assignmentId: number;
+  studentId: number;
+  content: string | null;
+  fileUrl: string | null;
+  fileName: string | null;
+  fileSize?: number | null;
+  score: number | null;
+  feedback: string | null;
+  submittedAt: string;
+};
+
+export type AssignmentWithSubmission = LearningAssignment & {
+  submission?: LearningSubmission | null;
+};

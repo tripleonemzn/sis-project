@@ -1,0 +1,374 @@
+import { useMemo, useState } from 'react';
+import { Redirect, useRouter } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
+import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
+import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
+import { QueryStateView } from '../../../../src/components/QueryStateView';
+import { BRAND_COLORS } from '../../../../src/config/brand';
+import { useAuth } from '../../../../src/features/auth/AuthProvider';
+import { proctoringApi } from '../../../../src/features/proctoring/proctoringApi';
+import { ProctorScheduleSummary } from '../../../../src/features/proctoring/types';
+import { getStandardPagePadding } from '../../../../src/lib/ui/pageLayout';
+
+type TimeFilter = 'TODAY' | 'UPCOMING' | 'HISTORY';
+type ModeFilter = 'PROCTOR' | 'AUTHOR';
+
+function normalizeExamType(raw?: string | null) {
+  const value = String(raw || '').toUpperCase();
+  if (value === 'QUIZ') return 'FORMATIF';
+  if (value === 'FORMATIF' || value === 'SBTS' || value === 'SAS' || value === 'SAT') return value;
+  return '-';
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function scheduleStatusLabel(schedule: ProctorScheduleSummary) {
+  const now = Date.now();
+  const start = new Date(schedule.startTime).getTime();
+  const end = new Date(schedule.endTime).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 'Tidak Valid';
+  if (now < start) return 'Akan Datang';
+  if (now >= start && now <= end) return 'Sedang Berlangsung';
+  return 'Selesai';
+}
+
+function scheduleStatusStyle(status: string) {
+  if (status === 'Sedang Berlangsung') return { text: '#166534', border: '#86efac', bg: '#dcfce7' };
+  if (status === 'Akan Datang') return { text: '#1d4ed8', border: '#93c5fd', bg: '#dbeafe' };
+  return { text: '#475569', border: '#cbd5e1', bg: '#f1f5f9' };
+}
+
+function matchTimeFilter(schedule: ProctorScheduleSummary, filter: TimeFilter) {
+  const now = new Date();
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(now);
+  todayEnd.setHours(23, 59, 59, 999);
+  const examDate = new Date(schedule.startTime);
+  if (Number.isNaN(examDate.getTime())) return false;
+
+  if (filter === 'TODAY') return examDate >= todayStart && examDate <= todayEnd;
+  if (filter === 'UPCOMING') return examDate > todayEnd;
+  return examDate < todayStart;
+}
+
+function FilterChip({
+  active,
+  label,
+  onPress,
+}: {
+  active: boolean;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        borderWidth: 1,
+        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
+        backgroundColor: active ? '#e9f1ff' : '#fff',
+        borderRadius: 999,
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+      }}
+    >
+      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
+  return (
+    <View
+      style={{
+        backgroundColor: '#fff',
+        borderWidth: 1,
+        borderColor: '#dbe7fb',
+        borderRadius: 12,
+        padding: 12,
+        flex: 1,
+      }}
+    >
+      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
+      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 4 }}>{value}</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
+    </View>
+  );
+}
+
+export default function TeacherProctoringScheduleScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { isAuthenticated, isLoading, user } = useAuth();
+  const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('TODAY');
+  const [modeFilter, setModeFilter] = useState<ModeFilter>('PROCTOR');
+  const [search, setSearch] = useState('');
+
+  const scheduleQuery = useQuery({
+    queryKey: ['mobile-proctoring-schedules', modeFilter],
+    enabled: isAuthenticated && user?.role === 'TEACHER',
+    queryFn: async () =>
+      proctoringApi.getSchedules({
+        mode: modeFilter === 'AUTHOR' ? 'author' : 'proctor',
+      }),
+  });
+
+  const filteredRows = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return (scheduleQuery.data || [])
+      .filter((item) => item.packet !== null)
+      .filter((item) => matchTimeFilter(item, timeFilter))
+      .filter((item) => {
+        if (!query) return true;
+        const type = normalizeExamType(item.packet?.type);
+        const values = [
+          item.packet?.title || '',
+          item.packet?.subject?.name || '',
+          item.class?.name || '',
+          item.room || '',
+          type,
+        ];
+        return values.some((value) => value.toLowerCase().includes(query));
+      })
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+  }, [scheduleQuery.data, search, timeFilter]);
+
+  const summary = useMemo(() => {
+    const all = scheduleQuery.data || [];
+    const activeNow = all.filter((item) => scheduleStatusLabel(item) === 'Sedang Berlangsung').length;
+    const totalParticipants = all.reduce((acc, item) => acc + Number(item._count?.sessions || 0), 0);
+    return {
+      total: all.length,
+      activeNow,
+      totalParticipants,
+    };
+  }, [scheduleQuery.data]);
+
+  if (isLoading) return <AppLoadingScreen message="Memuat jadwal mengawas..." />;
+  if (!isAuthenticated) return <Redirect href="/welcome" />;
+
+  if (user?.role !== 'TEACHER') {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Jadwal Mengawas</Text>
+        <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
+      </ScrollView>
+    );
+  }
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: '#f8fafc' }}
+      contentContainerStyle={pagePadding}
+      refreshControl={
+        <RefreshControl
+          refreshing={scheduleQuery.isFetching}
+          onRefresh={() => {
+            void scheduleQuery.refetch();
+          }}
+        />
+      }
+    >
+      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Jadwal Mengawas</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
+        Pantau jadwal ujian yang ditugaskan kepada Anda sebagai pengawas atau penulis soal.
+      </Text>
+
+      <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
+        <View style={{ flex: 1, paddingHorizontal: 4 }}>
+          <SummaryCard title="Total Jadwal" value={String(summary.total)} subtitle="Semua jadwal aktif" />
+        </View>
+        <View style={{ flex: 1, paddingHorizontal: 4 }}>
+          <SummaryCard title="Sedang Jalan" value={String(summary.activeNow)} subtitle="Sesi aktif saat ini" />
+        </View>
+        <View style={{ flex: 1, paddingHorizontal: 4 }}>
+          <SummaryCard
+            title="Peserta Aktif"
+            value={String(summary.totalParticipants)}
+            subtitle="Total sesi siswa"
+          />
+        </View>
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#dbe7fb',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 10,
+        }}
+      >
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Mode Akses</Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <FilterChip active={modeFilter === 'PROCTOR'} label="Sebagai Pengawas" onPress={() => setModeFilter('PROCTOR')} />
+          <FilterChip active={modeFilter === 'AUTHOR'} label="Sebagai Penulis" onPress={() => setModeFilter('AUTHOR')} />
+        </View>
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#dbe7fb',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 10,
+        }}
+      >
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Waktu</Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <FilterChip active={timeFilter === 'TODAY'} label="Hari Ini" onPress={() => setTimeFilter('TODAY')} />
+          <FilterChip active={timeFilter === 'UPCOMING'} label="Akan Datang" onPress={() => setTimeFilter('UPCOMING')} />
+          <FilterChip active={timeFilter === 'HISTORY'} label="Riwayat" onPress={() => setTimeFilter('HISTORY')} />
+        </View>
+      </View>
+
+      <View
+        style={{
+          borderWidth: 1,
+          borderColor: '#cbd5e1',
+          borderRadius: 10,
+          backgroundColor: '#fff',
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 10,
+          paddingVertical: 10,
+          marginBottom: 10,
+        }}
+      >
+        <Feather name="search" size={16} color="#64748b" />
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Cari judul ujian, mapel, kelas, ruangan..."
+          style={{ flex: 1, marginLeft: 8, color: '#0f172a' }}
+          placeholderTextColor="#94a3b8"
+          autoCapitalize="none"
+        />
+      </View>
+
+      {scheduleQuery.isLoading ? <QueryStateView type="loading" message="Memuat jadwal ujian..." /> : null}
+      {scheduleQuery.isError ? (
+        <QueryStateView
+          type="error"
+          message="Gagal memuat jadwal mengawas."
+          onRetry={() => {
+            void scheduleQuery.refetch();
+          }}
+        />
+      ) : null}
+
+      {!scheduleQuery.isLoading && !scheduleQuery.isError ? (
+        filteredRows.length > 0 ? (
+          filteredRows.map((schedule) => {
+            const status = scheduleStatusLabel(schedule);
+            const statusStyle = scheduleStatusStyle(status);
+            const type = normalizeExamType(schedule.packet?.type);
+            return (
+              <View
+                key={schedule.id}
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 10,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                      {schedule.packet?.title || 'Paket Tidak Ditemukan'}
+                    </Text>
+                    <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                      {schedule.packet?.subject?.name || '-'} • {schedule.class?.name || '-'}
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: statusStyle.border,
+                      backgroundColor: statusStyle.bg,
+                      borderRadius: 999,
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                    }}
+                  >
+                    <Text style={{ color: statusStyle.text, fontWeight: '700', fontSize: 11 }}>{status}</Text>
+                  </View>
+                </View>
+
+                <View style={{ marginTop: 8 }}>
+                  <Text style={{ color: '#334155', fontSize: 12 }}>
+                    Tipe: {type} • Peserta aktif: {schedule._count?.sessions || 0}
+                  </Text>
+                  <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                    Mulai: {formatDateTime(schedule.startTime)}
+                  </Text>
+                  <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                    Selesai: {formatDateTime(schedule.endTime)}
+                  </Text>
+                  <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                    Ruangan: {schedule.room || 'Belum ditentukan'}
+                  </Text>
+                </View>
+
+                <Pressable
+                  onPress={() => router.push(`/teacher/proctoring/${schedule.id}` as never)}
+                  style={{
+                    marginTop: 10,
+                    backgroundColor: BRAND_COLORS.blue,
+                    borderRadius: 8,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>Pantau Ujian</Text>
+                </Pressable>
+              </View>
+            );
+          })
+        ) : (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderStyle: 'dashed',
+              borderRadius: 10,
+              backgroundColor: '#fff',
+              padding: 14,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>
+              Tidak ada jadwal ujian
+            </Text>
+            <Text style={{ color: '#64748b' }}>
+              Belum ada jadwal sesuai mode, waktu, dan pencarian yang dipilih.
+            </Text>
+          </View>
+        )
+      ) : null}
+
+    </ScrollView>
+  );
+}
