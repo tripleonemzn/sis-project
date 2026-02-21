@@ -10,6 +10,7 @@ import {
   LayoutGrid,
   Layers,
   ClipboardList,
+  History,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import React from 'react';
@@ -691,6 +692,33 @@ export const AdminDashboard = () => {
                       </p>
                     </div>
                     <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-semibold text-orange-600 bg-orange-50 group-hover:bg-orange-500 group-hover:text-white transition-colors">
+                      Buka Menu
+                      <ArrowUpRight size={14} />
+                    </span>
+                  </div>
+                </Link>
+                <Link
+                  to="/admin/audit-logs"
+                  className="group rounded-2xl border border-gray-100 bg-gray-50/60 p-4 flex flex-col justify-between hover:bg-white hover:border-violet-200 hover:shadow-[0_10px_25px_-8px_rgba(124,58,237,0.35)] transition-all duration-200"
+                >
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold tracking-[0.12em] text-violet-500 mb-1">AUDIT</p>
+                      <h4 className="text-sm font-semibold text-gray-800">Riwayat Audit</h4>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Jejak perubahan kurikulum: mapel, kategori, dan assignment guru.
+                      </p>
+                    </div>
+                    <div className="w-9 h-9 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center group-hover:bg-violet-600 group-hover:text-white transition-colors">
+                      <History size={18} />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[11px] text-gray-500">CATATAN AUDIT</p>
+                      <p className="text-lg font-bold text-gray-400">-</p>
+                    </div>
+                    <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-semibold text-violet-600 bg-violet-50 group-hover:bg-violet-600 group-hover:text-white transition-colors">
                       Buka Menu
                       <ArrowUpRight size={14} />
                     </span>

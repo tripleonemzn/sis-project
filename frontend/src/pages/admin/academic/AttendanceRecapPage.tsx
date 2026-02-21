@@ -455,8 +455,8 @@ export const AttendanceRecapPage = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-            <div className="lg:col-span-2 bg-white rounded-xl shadow-md border-0 overflow-hidden">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+            <div className="lg:col-span-2 bg-white rounded-xl shadow-md border-0 overflow-hidden h-full flex flex-col">
               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900">
@@ -478,7 +478,7 @@ export const AttendanceRecapPage = () => {
                   </div>
                 )}
               </div>
-              <div className="overflow-x-auto">
+              <div className="flex-1 overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-100">
                   <thead className="bg-gray-50">
                     <tr>
@@ -564,7 +564,7 @@ export const AttendanceRecapPage = () => {
               </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-md border-0 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-md border-0 overflow-hidden h-full flex flex-col">
               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900">
@@ -580,7 +580,7 @@ export const AttendanceRecapPage = () => {
                   Belum ada data telat untuk kelas dan tahun ajaran ini.
                 </div>
               ) : (
-                <div className="max-h-[420px] overflow-y-auto">
+                <div className="flex-1 overflow-y-auto">
                   <table className="min-w-full divide-y divide-gray-100">
                     <thead className="bg-gray-50">
                       <tr>

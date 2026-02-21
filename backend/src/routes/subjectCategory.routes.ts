@@ -14,8 +14,7 @@ router.use(authMiddleware);
 
 router.get('/', getSubjectCategories);
 
-// Only ADMIN can manage categories
-router.use(roleMiddleware(['ADMIN']));
+router.use(roleMiddleware(['ADMIN', 'TEACHER']));
 router.post('/', createSubjectCategory);
 router.patch('/:id', updateSubjectCategory);
 router.delete('/:id', deleteSubjectCategory);

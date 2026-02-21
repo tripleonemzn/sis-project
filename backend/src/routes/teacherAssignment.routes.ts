@@ -13,10 +13,10 @@ const router = Router();
 
 router.use(authMiddleware);
 
-router.get('/', roleMiddleware(['ADMIN', 'TEACHER', 'EXAMINER']), getTeacherAssignments);
-router.get('/:id', roleMiddleware(['ADMIN', 'TEACHER', 'EXAMINER']), getTeacherAssignmentById);
+router.get('/', roleMiddleware(['ADMIN', 'TEACHER', 'EXAMINER', 'PRINCIPAL']), getTeacherAssignments);
+router.get('/:id', roleMiddleware(['ADMIN', 'TEACHER', 'EXAMINER', 'PRINCIPAL']), getTeacherAssignmentById);
 router.put('/:id/competency', roleMiddleware(['ADMIN', 'TEACHER']), updateCompetencyThresholds);
-router.post('/', roleMiddleware(['ADMIN']), createTeacherAssignments);
-router.delete('/:id', roleMiddleware(['ADMIN']), deleteTeacherAssignment);
+router.post('/', roleMiddleware(['ADMIN', 'TEACHER']), createTeacherAssignments);
+router.delete('/:id', roleMiddleware(['ADMIN', 'TEACHER']), deleteTeacherAssignment);
 
 export default router;

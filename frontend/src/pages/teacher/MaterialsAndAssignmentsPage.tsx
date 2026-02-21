@@ -617,33 +617,36 @@ export default function MaterialsAndAssignmentsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
+      {/* Tabs */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6">
+        <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
           <button
             onClick={() => setActiveTab('materials')}
-            className={clsx(
-              'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2',
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
               activeTab === 'materials'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            )}
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+            }`}
           >
-            <BookOpen className="w-4 h-4" />
-            Materi Ajar
+            <div className="flex items-center gap-2">
+              <BookOpen className="w-4 h-4" />
+              <span>Materi Ajar</span>
+            </div>
           </button>
           <button
             onClick={() => setActiveTab('assignments')}
-            className={clsx(
-              'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2',
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
               activeTab === 'assignments'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            )}
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+            }`}
           >
-            <ClipboardList className="w-4 h-4" />
-            Tugas Siswa
+            <div className="flex items-center gap-2">
+              <ClipboardList className="w-4 h-4" />
+              <span>Tugas Siswa</span>
+            </div>
           </button>
-        </nav>
+        </div>
       </div>
 
       {/* Filters */}
@@ -931,8 +934,8 @@ export default function MaterialsAndAssignmentsPage() {
 
       {/* Material Modal */}
       {showMaterialModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={() => setShowMaterialModal(false)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white">
               <h2 className="text-xl font-bold text-gray-900">
                 {editingMaterial ? 'Edit Materi' : 'Tambah Materi Baru'}
@@ -1070,8 +1073,8 @@ export default function MaterialsAndAssignmentsPage() {
 
       {/* Assignment Modal */}
       {showAssignmentModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={() => setShowAssignmentModal(false)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white">
               <h2 className="text-xl font-bold text-gray-900">
                 {editingAssignment ? 'Edit Tugas' : 'Tambah Tugas Baru'}
@@ -1241,8 +1244,8 @@ export default function MaterialsAndAssignmentsPage() {
 
       {/* Copy Modal */}
       {showCopyModal && (copyingMaterial || copyingAssignment) && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={() => setShowCopyModal(false)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b border-gray-200 flex items-center justify-between">
               <h2 className="text-xl font-bold text-gray-900">
                 Salin {copyingMaterial ? 'Materi' : 'Tugas'} ke Kelas Lain

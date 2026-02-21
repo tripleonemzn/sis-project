@@ -14,7 +14,7 @@ router.use(authMiddleware);
 
 router.get('/', roleMiddleware(['ADMIN', 'TEACHER', 'EXAMINER', 'STUDENT']), listSchedules);
 router.get('/teaching-summary', roleMiddleware(['ADMIN', 'TEACHER']), getTeachingLoadSummary);
-router.post('/', roleMiddleware(['ADMIN']), createScheduleEntry);
-router.delete('/:id', roleMiddleware(['ADMIN']), deleteScheduleEntry);
+router.post('/', roleMiddleware(['ADMIN', 'TEACHER']), createScheduleEntry);
+router.delete('/:id', roleMiddleware(['ADMIN', 'TEACHER']), deleteScheduleEntry);
 
 export default router;

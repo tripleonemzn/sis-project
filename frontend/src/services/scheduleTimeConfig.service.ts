@@ -1,12 +1,17 @@
 import api from './api';
 
+export type PeriodType = 'TEACHING' | 'UPACARA' | 'ISTIRAHAT' | 'TADARUS' | 'OTHER';
+
+export type ScheduleTimeConfigPayload = {
+  periodTimes: Record<string, Record<number, string>>;
+  periodNotes: Record<string, Record<number, string>>;
+  periodTypes?: Record<string, Record<number, PeriodType>>;
+};
+
 export type ScheduleTimeConfig = {
   id: number;
   academicYearId: number;
-  config: {
-    periodTimes: Record<string, Record<number, string>>;
-    periodNotes: Record<string, Record<number, string>>;
-  };
+  config: ScheduleTimeConfigPayload;
   createdAt: string;
   updatedAt: string;
 };
@@ -18,7 +23,7 @@ export const scheduleTimeConfigService = {
     return response.data.data;
   },
 
-  saveConfig: async (academicYearId: number, config: { periodTimes: Record<string, Record<number, string>>; periodNotes: Record<string, Record<number, string>> }) => {
+  saveConfig: async (academicYearId: number, config: ScheduleTimeConfigPayload) => {
     const response = await api.post('/schedule-time-configs', {
       academicYearId,
       config,

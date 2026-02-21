@@ -36,6 +36,11 @@ import tutorRoutes from './tutor.routes';
 import studentExtracurricularRoutes from './studentExtracurricular.routes';
 import internshipRoutes from './internship.routes';
 import humasRoutes from './humas.routes';
+import auditRoutes from './audit.routes';
+import inventoryRoutes from './inventory.routes';
+import budgetLpjRoutes from './budgetLpj.routes';
+import paymentRoutes from './payment.routes';
+import mobileUpdateRoutes from './mobileUpdate.routes';
 
 const router = Router();
 
@@ -76,5 +81,10 @@ router.use('/tutor', tutorRoutes);
 router.use('/student/extracurriculars', studentExtracurricularRoutes);
 router.use('/internships', internshipRoutes);
 router.use('/humas', humasRoutes);
+router.use('/audit', auditRoutes);
+router.use('/inventory', inventoryRoutes);
+router.use('/budget-lpj', budgetLpjRoutes);
+router.use('/payments', paymentRoutes);
+router.use('/mobile-updates', mobileUpdateRoutes);
 
 export default router;

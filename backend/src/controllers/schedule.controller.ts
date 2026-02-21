@@ -36,9 +36,108 @@ const scheduleEntryIdSchema = z.object({
   id: z.coerce.number().int(),
 });
 
+async function buildSchedulePeriodResolver(academicYearId: number) {
+  const timeConfig = await (prisma as any).scheduleTimeConfig.findUnique({
+    where: { academicYearId },
+  });
+  const periodNotes = (timeConfig as any)?.config?.periodNotes || {};
+  const periodTypes = (timeConfig as any)?.config?.periodTypes || {};
+
+  const resolvePeriodType = (day: string, period: number): string => {
+    const type = periodTypes[day]?.[period];
+    if (type) {
+      const t = String(type).toUpperCase();
+      if (
+        t === 'TEACHING' ||
+        t === 'UPACARA' ||
+        t === 'ISTIRAHAT' ||
+        t === 'TADARUS' ||
+        t === 'OTHER'
+      ) {
+        return t;
+      }
+    }
+
+    const note = periodNotes[day]?.[period];
+    if (!note) {
+      return 'TEACHING';
+    }
+
+    const n = String(note).toUpperCase();
+    if (n.includes('UPACARA')) {
+      return 'UPACARA';
+    }
+    if (n.includes('ISTIRAHAT')) {
+      return 'ISTIRAHAT';
+    }
+    if (n.includes('TADARUS')) {
+      return 'TADARUS';
+    }
+    return 'TEACHING';
+  };
+
+  const isNonTeachingPeriod = (day: string, period: number) => {
+    const type = resolvePeriodType(day, period);
+    return type !== 'TEACHING';
+  };
+
+  const teachingHourCache = new Map<string, number | null>();
+  const getTeachingHour = (day: string, period: number) => {
+    const cacheKey = `${day}-${period}`;
+    if (teachingHourCache.has(cacheKey)) {
+      return teachingHourCache.get(cacheKey) ?? null;
+    }
+
+    if (isNonTeachingPeriod(day, period)) {
+      teachingHourCache.set(cacheKey, null);
+      return null;
+    }
+
+    let teachingCounter = 0;
+    for (let p = 1; p <= period; p += 1) {
+      if (!isNonTeachingPeriod(day, p)) {
+        teachingCounter += 1;
+      }
+    }
+
+    const teachingHour = teachingCounter > 0 ? teachingCounter : null;
+    teachingHourCache.set(cacheKey, teachingHour);
+    return teachingHour;
+  };
+
+  return {
+    resolvePeriodType,
+    isNonTeachingPeriod,
+    getTeachingHour,
+  };
+}
+
 export const createScheduleEntry = asyncHandler(async (req: Request, res: Response) => {
   const { academicYearId, classId, teacherAssignmentId, dayOfWeek, period, room } =
     createScheduleEntrySchema.parse(req.body);
+
+  const authUser = (req as any).user;
+  const dutyUser = await prisma.user.findUnique({
+    where: { id: authUser.id },
+    select: { role: true, additionalDuties: true },
+  });
+  if (!dutyUser) {
+    res.status(401).json(new ApiResponse(401, null, 'Tidak memiliki otorisasi'));
+    return;
+  }
+  if (dutyUser.role !== 'ADMIN') {
+    const duties = (dutyUser.additionalDuties || []).map((d: any) =>
+      String(d).trim().toUpperCase(),
+    );
+    const allowed =
+      duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
+    if (!allowed) {
+      res
+        .status(403)
+        .json(new ApiResponse(403, null, 'Anda tidak memiliki hak akses untuk mengelola jadwal pelajaran'));
+      return;
+    }
+  }
 
   const assignment = await prisma.teacherAssignment.findUnique({
     where: { id: teacherAssignmentId },
@@ -191,9 +290,17 @@ export const listSchedules = asyncHandler(async (req: Request, res: Response) =>
     },
   });
 
+  const periodResolver = await buildSchedulePeriodResolver(academicYearId);
+  const entriesWithTeachingHour = entries.map((entry: any) => ({
+    ...entry,
+    teachingHour: periodResolver.getTeachingHour(entry.dayOfWeek as string, entry.period),
+  }));
+
   res
     .status(200)
-    .json(new ApiResponse(200, { entries }, 'Data jadwal pelajaran berhasil diambil'));
+    .json(
+      new ApiResponse(200, { entries: entriesWithTeachingHour }, 'Data jadwal pelajaran berhasil diambil'),
+    );
 });
 
 export const getTeachingLoadSummary = asyncHandler(async (req: Request, res: Response) => {
@@ -231,18 +338,7 @@ export const getTeachingLoadSummary = asyncHandler(async (req: Request, res: Res
     },
   });
 
-  // Fetch schedule time config to exclude non-teaching periods
-  const timeConfig = await (prisma as any).scheduleTimeConfig.findUnique({
-    where: { academicYearId },
-  });
-  
-  const periodNotes = timeConfig?.config?.periodNotes || {};
-
-  const isNonTeachingNote = (note: string | undefined) => {
-    if (!note) return false;
-    const n = note.toUpperCase();
-    return n.includes('UPACARA') || n.includes('ISTIRAHAT') || n.includes('TADARUS');
-  };
+  const periodResolver = await buildSchedulePeriodResolver(academicYearId);
 
   type SubjectSummary = {
     subjectId: number;
@@ -269,12 +365,9 @@ export const getTeachingLoadSummary = asyncHandler(async (req: Request, res: Res
   const teacherSubjectMaps = new Map<number, Map<number, { classIds: Set<number>; sessions: number }>>();
 
   for (const entry of entries) {
-    // Check if this entry falls on a non-teaching period
-    const day = entry.dayOfWeek;
+    const day = entry.dayOfWeek as string;
     const period = entry.period;
-    const note = periodNotes[day]?.[period];
-    
-    if (isNonTeachingNote(note)) {
+    if (periodResolver.isNonTeachingPeriod(day, period)) {
       continue;
     }
 
@@ -382,6 +475,29 @@ export const getTeachingLoadSummary = asyncHandler(async (req: Request, res: Res
 
 export const deleteScheduleEntry = asyncHandler(async (req: Request, res: Response) => {
   const { id } = scheduleEntryIdSchema.parse(req.params);
+
+  const authUser = (req as any).user;
+  const dutyUser = await prisma.user.findUnique({
+    where: { id: authUser.id },
+    select: { role: true, additionalDuties: true },
+  });
+  if (!dutyUser) {
+    res.status(401).json(new ApiResponse(401, null, 'Tidak memiliki otorisasi'));
+    return;
+  }
+  if (dutyUser.role !== 'ADMIN') {
+    const duties = (dutyUser.additionalDuties || []).map((d: any) =>
+      String(d).trim().toUpperCase(),
+    );
+    const allowed =
+      duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
+    if (!allowed) {
+      res
+        .status(403)
+        .json(new ApiResponse(403, null, 'Anda tidak memiliki hak akses untuk mengelola jadwal pelajaran'));
+      return;
+    }
+  }
 
   await (prisma as any).scheduleEntry.delete({
     where: { id },

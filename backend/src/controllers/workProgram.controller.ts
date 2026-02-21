@@ -24,6 +24,8 @@ const createWorkProgramSchema = z.object({
   month: z.number().int().min(1).max(12),
   startWeek: z.number().int().min(1).max(5),
   endWeek: z.number().int().min(1).max(5),
+  startMonth: z.number().int().min(1).max(12).optional(),
+  endMonth: z.number().int().min(1).max(12).optional(),
 });
 
 const updateWorkProgramSchema = createWorkProgramSchema.partial();
@@ -66,13 +68,9 @@ const itemIdSchema = z.object({
   id: z.coerce.number().int(),
 });
 
-const createBudgetSchema = z.object({
-  description: z.string().min(1, 'Deskripsi anggaran wajib diisi'),
-  amount: z.number().min(0, 'Jumlah anggaran tidak boleh negatif'),
-});
-
-const budgetIdSchema = z.object({
-  id: z.coerce.number().int(),
+const updateApprovalStatusSchema = z.object({
+  status: z.enum(['APPROVED', 'REJECTED']),
+  feedback: z.string().optional().nullable(),
 });
 
 const ensureTeacherHasDuty = async (userId: number, duty: AdditionalDuty) => {
@@ -171,16 +169,17 @@ export const getWorkPrograms = asyncHandler(async (req: Request, res: Response) 
             isActive: true,
           },
         },
+        assignedApprover: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+            additionalDuties: true,
+          },
+        },
         items: {
           orderBy: {
             id: 'asc',
-          },
-          include: {
-            budgets: {
-              orderBy: {
-                id: 'asc',
-              },
-            },
           },
         },
       },
@@ -217,10 +216,34 @@ export const createWorkProgram = asyncHandler(async (req: Request, res: Response
     throw new ApiError(403, 'Hanya guru yang dapat membuat program kerja');
   }
 
+  // Prevent Secretary from creating work program
+  if (body.additionalDuty.startsWith('SEKRETARIS_')) {
+    throw new ApiError(403, 'Sekretaris tidak memiliki kewenangan membuat program kerja');
+  }
+
   await ensureTeacherHasDuty(authUser.id, body.additionalDuty);
 
-  if (body.majorId) {
-    await ensureTeacherManagesMajor(authUser.id, body.majorId);
+  let resolvedMajorId = body.majorId ?? null;
+
+  if (body.additionalDuty === 'KAPROG') {
+    const owner = await prisma.user.findUnique({
+      where: { id: authUser.id },
+      select: {
+        managedMajors: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    if (owner && !resolvedMajorId && owner.managedMajors.length === 1) {
+      resolvedMajorId = owner.managedMajors[0].id;
+    }
+  }
+
+  if (resolvedMajorId) {
+    await ensureTeacherManagesMajor(authUser.id, resolvedMajorId);
   }
 
   // Determine Approver
@@ -247,11 +270,13 @@ export const createWorkProgram = asyncHandler(async (req: Request, res: Response
       description: body.description,
       academicYearId: body.academicYearId,
       additionalDuty: body.additionalDuty,
-      majorId: body.majorId,
+      majorId: resolvedMajorId,
       semester: body.semester,
       month: body.month,
       startWeek: body.startWeek,
       endWeek: body.endWeek,
+      startMonth: typeof body.startMonth === 'number' ? body.startMonth : body.month,
+      endMonth: typeof body.endMonth === 'number' ? body.endMonth : body.month,
       ownerId: authUser.id,
       assignedApproverId: approverId, // Set approver
       approvalStatus: 'PENDING',
@@ -304,6 +329,14 @@ export const updateWorkProgram = asyncHandler(async (req: Request, res: Response
       month: body.month ?? program.month,
       startWeek: body.startWeek ?? program.startWeek,
       endWeek: body.endWeek ?? program.endWeek,
+      startMonth:
+        typeof body.startMonth === 'number'
+          ? body.startMonth
+          : program.startMonth ?? program.month,
+      endMonth:
+        typeof body.endMonth === 'number'
+          ? body.endMonth
+          : program.endMonth ?? program.month,
     },
   });
 
@@ -483,97 +516,217 @@ export const deleteWorkProgramItem = asyncHandler(
   },
 );
 
-export const createWorkProgramBudget = asyncHandler(
+export const getPendingWorkProgramsForApprover = asyncHandler(
   async (req: Request, res: Response) => {
-    const { id } = itemIdSchema.parse(req.params);
-    const body = createBudgetSchema.parse(req.body);
-
     const authUser = (req as any).user as { id: number; role: string } | undefined;
 
     if (!authUser) {
       throw new ApiError(401, 'Tidak memiliki otorisasi');
     }
 
-    const item = await prisma.workProgramItem.findUnique({
-      where: { id },
-      include: {
-        workProgram: true,
+    const where: any = {
+      approvalStatus: 'PENDING',
+    };
+
+    const user = await prisma.user.findUnique({
+      where: { id: authUser.id },
+      select: {
+        role: true,
+        additionalDuties: true,
       },
     });
 
-    if (!item) {
-      throw new ApiError(404, 'Kegiatan program kerja tidak ditemukan');
+    if (!user) {
+      throw new ApiError(401, 'Tidak memiliki otorisasi');
     }
 
-    if (
-      authUser.role === 'TEACHER' &&
-      item.workProgram.ownerId !== authUser.id
-    ) {
-      throw new ApiError(403, 'Anda tidak berhak mengajukan anggaran untuk kegiatan ini');
-    }
-
-    if (item.workProgram.additionalDuty.startsWith('SEKRETARIS_')) {
-      throw new ApiError(
-        403,
-        'Jabatan sekretaris tidak dapat mengajukan anggaran',
+    if (user.role === 'PRINCIPAL') {
+      where.assignedApproverId = authUser.id;
+    } else if (user.role === 'TEACHER') {
+      const duties = (user.additionalDuties || []).map((d: any) =>
+        String(d).trim().toUpperCase(),
       );
+      const isWakasekKurikulum = duties.includes('WAKASEK_KURIKULUM');
+      if (!isWakasekKurikulum) {
+        throw new ApiError(403, 'Anda tidak memiliki akses persetujuan program kerja');
+      }
+      where.assignedApproverId = authUser.id;
+    } else {
+      throw new ApiError(403, 'Anda tidak memiliki akses persetujuan program kerja');
     }
 
-    await ensureTeacherHasDuty(item.workProgram.ownerId, item.workProgram.additionalDuty as AdditionalDuty);
-
-    const budget = await prisma.workProgramBudget.create({
-      data: {
-        itemId: item.id,
-        description: body.description,
-        amount: body.amount,
-      },
-    });
-
-    res
-      .status(201)
-      .json(new ApiResponse(201, budget, 'Anggaran program kerja berhasil diajukan'));
-  },
-);
-
-export const deleteWorkProgramBudget = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { id } = budgetIdSchema.parse(req.params);
-
-    const authUser = (req as any).user as { id: number; role: string } | undefined;
-
-    if (!authUser) {
-      throw new ApiError(401, 'Tidak memiliki otorisasi');
-    }
-
-    const budget = await prisma.workProgramBudget.findUnique({
-      where: { id },
+    const programsRaw = await prisma.workProgram.findMany({
+      where,
+      orderBy: [
+        { academicYear: { name: 'desc' } },
+        { additionalDuty: 'asc' },
+        { title: 'asc' },
+      ],
       include: {
-        item: {
-          include: {
-            workProgram: true,
+        academicYear: true,
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            managedMajors: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+              },
+            },
           },
         },
+        major: true,
       },
     });
 
-    if (!budget) {
-      throw new ApiError(404, 'Anggaran program kerja tidak ditemukan');
+    const ownerMajorUsage = new Map<
+      number,
+      {
+        usedMajorIds: Set<number>;
+        managedMajors: { id: number; name: string; code: string | null }[];
+      }
+    >();
+
+    for (const p of programsRaw as any[]) {
+      if (!p.owner) continue;
+      const ownerId = p.owner.id as number;
+      let entry = ownerMajorUsage.get(ownerId);
+      if (!entry) {
+        entry = {
+          usedMajorIds: new Set<number>(),
+          managedMajors: (p.owner.managedMajors || []).map((m: any) => ({
+            id: m.id,
+            name: m.name,
+            code: m.code ?? null,
+          })),
+        };
+        ownerMajorUsage.set(ownerId, entry);
+      }
+      if (p.major && typeof p.major.id === 'number') {
+        entry.usedMajorIds.add(p.major.id as number);
+      }
     }
 
-    if (
-      authUser.role === 'TEACHER' &&
-      budget.item.workProgram.ownerId !== authUser.id
-    ) {
-      throw new ApiError(403, 'Anda tidak berhak menghapus anggaran ini');
-    }
+    const programs = programsRaw.map((p: any) => {
+      if (!p.major && p.additionalDuty === 'KAPROG' && p.owner) {
+        const entry = ownerMajorUsage.get(p.owner.id);
+        const managed = entry?.managedMajors || [];
 
-    await prisma.workProgramBudget.delete({
-      where: { id },
+        if (managed.length === 1) {
+          const m = managed[0];
+          return {
+            ...p,
+            major: m,
+            majorId: m.id,
+          };
+        }
+
+        if (managed.length === 2 && entry) {
+          const usedIds = entry.usedMajorIds;
+          if (usedIds.size === 1) {
+            const usedId = Array.from(usedIds)[0];
+            const other = managed.find((m) => m.id !== usedId);
+            if (other) {
+              return {
+                ...p,
+                major: other,
+                majorId: other.id,
+              };
+            }
+          }
+        }
+      }
+
+      return p;
     });
 
     res
       .status(200)
-      .json(new ApiResponse(200, null, 'Anggaran program kerja berhasil dihapus'));
+      .json(
+        new ApiResponse(
+          200,
+          programs,
+          'Data program kerja menunggu persetujuan berhasil diambil',
+        ),
+      );
   },
 );
 
+export const updateWorkProgramApprovalStatus = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = workProgramIdSchema.parse(req.params);
+    const body = updateApprovalStatusSchema.parse(req.body);
+
+    const authUser = (req as any).user as { id: number; role: string } | undefined;
+
+    if (!authUser) {
+      throw new ApiError(401, 'Tidak memiliki otorisasi');
+    }
+
+    const program = await prisma.workProgram.findUnique({
+      where: { id },
+    });
+
+    if (!program) {
+      throw new ApiError(404, 'Program kerja tidak ditemukan');
+    }
+
+    if (program.assignedApproverId !== authUser.id) {
+      throw new ApiError(403, 'Anda tidak berhak mengubah status program kerja ini');
+    }
+
+    const dutyUser = await prisma.user.findUnique({
+      where: { id: authUser.id },
+      select: {
+        role: true,
+        additionalDuties: true,
+      },
+    });
+
+    if (!dutyUser) {
+      throw new ApiError(401, 'Tidak memiliki otorisasi');
+    }
+
+    const duties = (dutyUser.additionalDuties || []).map((d: any) =>
+      String(d).trim().toUpperCase(),
+    );
+
+    const isWakasekKurikulum =
+      dutyUser.role === 'TEACHER' && duties.includes('WAKASEK_KURIKULUM');
+    const isPrincipal = dutyUser.role === 'PRINCIPAL';
+
+    const updateData: any = {
+      feedback: body.feedback ?? null,
+    };
+
+    if (isWakasekKurikulum && body.status === 'APPROVED' && !program.isApproved) {
+      const principal = await prisma.user.findFirst({
+        where: { role: 'PRINCIPAL' },
+      });
+
+      updateData.assignedApproverId = principal?.id ?? null;
+      updateData.approvalStatus = 'PENDING';
+      updateData.approvedById = authUser.id;
+      updateData.approvedAt = new Date();
+    } else if (isPrincipal || body.status === 'REJECTED') {
+      updateData.approvalStatus = body.status;
+      updateData.approvedById = authUser.id;
+      updateData.approvedAt = new Date();
+      updateData.isApproved = body.status === 'APPROVED';
+      updateData.assignedApproverId = null;
+    } else {
+      throw new ApiError(403, 'Anda tidak memiliki akses untuk mengubah status program kerja ini');
+    }
+
+    const updated = await prisma.workProgram.update({
+      where: { id },
+      data: updateData,
+    });
+
+    res
+      .status(200)
+      .json(new ApiResponse(200, updated, 'Status program kerja berhasil diperbarui'));
+  },
+);

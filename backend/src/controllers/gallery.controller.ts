@@ -2,11 +2,11 @@ import { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { ApiResponse, asyncHandler } from '../utils/api';
-
-const baseDir = path.resolve(process.cwd(), '../foto_kegiatan');
-const descriptionFile = path.join(baseDir, 'deskripsi foto.txt');
+import { resolveGalleryDir } from '../utils/galleryPath';
 
 export const getGallery = asyncHandler(async (req: Request, res: Response) => {
+  const baseDir = resolveGalleryDir();
+  const descriptionFile = path.join(baseDir, 'deskripsi foto.txt');
   const files = await fs.promises.readdir(baseDir);
 
   const imageFiles = files

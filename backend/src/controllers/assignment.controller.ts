@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { ApiError, asyncHandler, ApiResponse } from '../utils/api';
 
@@ -212,9 +213,10 @@ export const updateAssignment = asyncHandler(async (req: Request, res: Response)
 // Delete assignment
 export const deleteAssignment = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const assignmentId = parseInt(id);
 
   const assignment = await prisma.assignment.findUnique({
-    where: { id: parseInt(id) }
+    where: { id: assignmentId }
   });
 
   if (!assignment) {
@@ -223,9 +225,16 @@ export const deleteAssignment = asyncHandler(async (req: Request, res: Response)
 
   // TODO: Delete associated file if exists
 
-  await prisma.assignment.delete({
-    where: { id: parseInt(id) }
-  });
+  try {
+    await prisma.assignment.delete({
+      where: { id: assignmentId }
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+      throw new ApiError(400, 'Tugas tidak dapat dihapus karena sudah memiliki data pengumpulan siswa.');
+    }
+    throw error;
+  }
 
   res.status(200).json(new ApiResponse(200, null, 'Tugas berhasil dihapus'));
 });

@@ -55,3 +55,8 @@ export const permissionUpload = multer({
   storage: createStorage('permissions'),
   limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
 });
+
+export const budgetLpjUpload = multer({
+  storage: createStorage('budget-lpj'),
+  limits: { fileSize: 500 * 1024 }, // 500KB
+});

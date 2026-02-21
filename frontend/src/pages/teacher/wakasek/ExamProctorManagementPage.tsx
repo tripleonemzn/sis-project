@@ -495,16 +495,17 @@ const ExamProctorManagementPage = () => {
         
         <div className="flex flex-wrap items-center gap-4 mt-6">
           {/* Filters */}
-          <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-lg border border-gray-200">
+          <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
             {(['SBTS', 'SAS', 'SAT'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                  activeTab === tab
-                    ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                }`}
+                className={`
+                  px-4 py-2 text-sm font-medium rounded-md transition-colors
+                  ${activeTab === tab
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
+                `}
               >
                 {tab}
               </button>

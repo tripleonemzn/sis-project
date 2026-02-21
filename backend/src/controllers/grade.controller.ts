@@ -1140,19 +1140,39 @@ export const getStudentReportCard = async (req: Request, res: Response) => {
   try {
     const { student_id, academic_year_id, semester } = req.query
     const user = (req as any).user;
+    const targetStudentId = Number(student_id);
 
     if (!student_id || !academic_year_id || !semester) {
       throw new ApiError(400, 'student_id, academic_year_id, and semester are required')
     }
 
     // Security: Students can only view their own report card
-    if (user.role === 'STUDENT' && Number(student_id) !== user.id) {
+    if (user.role === 'STUDENT' && targetStudentId !== user.id) {
       throw new ApiError(403, 'Forbidden: You can only view your own report card')
+    }
+
+    // Security: Parents can only view their linked children
+    if (user.role === 'PARENT') {
+      const parent = await prisma.user.findUnique({
+        where: { id: Number(user.id) },
+        select: {
+          children: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      });
+
+      const childIds = new Set((parent?.children || []).map((child) => child.id));
+      if (!childIds.has(targetStudentId)) {
+        throw new ApiError(403, 'Forbidden: You can only view report card of your linked child')
+      }
     }
 
     // Get student info
     const student = await prisma.user.findUnique({
-      where: { id: Number(student_id) },
+      where: { id: targetStudentId },
       include: {
         studentClass: {
           include: {
@@ -1170,7 +1190,7 @@ export const getStudentReportCard = async (req: Request, res: Response) => {
     // Get report grades
     const reportGrades = await prisma.reportGrade.findMany({
       where: {
-        studentId: Number(student_id),
+        studentId: targetStudentId,
         academicYearId: Number(academic_year_id),
         semester: semester as Semester
       },
@@ -1186,7 +1206,7 @@ export const getStudentReportCard = async (req: Request, res: Response) => {
     // Note: Assuming schema does not have a unique constraint, using findFirst
     const reportNotes = await prisma.reportNote.findFirst({
       where: {
-        studentId: Number(student_id),
+        studentId: targetStudentId,
         academicYearId: Number(academic_year_id),
         semester: semester as Semester
       }
@@ -1201,7 +1221,7 @@ export const getStudentReportCard = async (req: Request, res: Response) => {
       include: {
         records: {
           where: {
-            studentId: Number(student_id)
+            studentId: targetStudentId
           }
         }
       }
@@ -1244,6 +1264,7 @@ export const getStudentReportCard = async (req: Request, res: Response) => {
     }, 'Student report card retrieved successfully')
   } catch (error) {
     console.error('Get student report card error:', error)
+    if (error instanceof ApiError) throw error
     throw new ApiError(500, 'Failed to retrieve student report card')
   }
 }

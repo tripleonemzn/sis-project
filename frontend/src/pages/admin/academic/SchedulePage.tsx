@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { academicYearService, type AcademicYear } from '../../../services/academicYear.service';
 import { teacherAssignmentService, type TeacherAssignment } from '../../../services/teacherAssignment.service';
-import { scheduleTimeConfigService } from '../../../services/scheduleTimeConfig.service';
+import { scheduleTimeConfigService, type PeriodType } from '../../../services/scheduleTimeConfig.service';
 import { scheduleService, type ScheduleEntry, type DayOfWeek } from '../../../services/schedule.service';
+import { inventoryService, type Room, type RoomCategory } from '../../../services/inventory.service';
 import { Calendar, Loader2, BookOpen, Users, Search, Trash2, X, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -21,6 +22,7 @@ const DAY_LABELS: Record<string, string> = {
   WEDNESDAY: 'Rabu',
   THURSDAY: 'Kamis',
   FRIDAY: 'Jumat',
+  SATURDAY: 'Sabtu',
 };
 
 const DAY_ORDER: DayOfWeek[] = [
@@ -29,6 +31,15 @@ const DAY_ORDER: DayOfWeek[] = [
   'WEDNESDAY',
   'THURSDAY',
   'FRIDAY',
+];
+
+const ALL_DAYS: DayOfWeek[] = [
+  'MONDAY',
+  'TUESDAY',
+  'WEDNESDAY',
+  'THURSDAY',
+  'FRIDAY',
+  'SATURDAY',
 ];
 
 const BASE_TIMES_BY_DAY: Record<DayOfWeek, Record<number, string>> = {
@@ -135,6 +146,32 @@ const DEFAULT_PERIOD_NOTES: Record<string, Record<number, string>> = {
   },
 };
 
+const DEFAULT_PERIOD_TYPES: Record<string, Record<number, PeriodType>> = {};
+DAY_ORDER.forEach((day) => {
+  const times = DEFAULT_PERIOD_TIMES[day] || {};
+  const notes = DEFAULT_PERIOD_NOTES[day] || {};
+  const dayTypes: Record<number, PeriodType> = {};
+  Object.keys(times).forEach((key) => {
+    const period = Number(key);
+    const note = notes[period];
+    if (!note) {
+      dayTypes[period] = 'TEACHING';
+    } else {
+      const n = String(note).toUpperCase();
+      if (n.includes('UPACARA')) {
+        dayTypes[period] = 'UPACARA';
+      } else if (n.includes('ISTIRAHAT')) {
+        dayTypes[period] = 'ISTIRAHAT';
+      } else if (n.includes('TADARUS')) {
+        dayTypes[period] = 'TADARUS';
+      } else {
+        dayTypes[period] = 'OTHER';
+      }
+    }
+  });
+  DEFAULT_PERIOD_TYPES[day] = dayTypes;
+});
+
 const INITIAL_MAX_PERIOD = Math.max(
   ...Object.values(BASE_TIMES_BY_DAY).flatMap((map) =>
     Object.keys(map).map(Number),
@@ -143,7 +180,6 @@ const INITIAL_MAX_PERIOD = Math.max(
 
 export const SchedulePage = () => {
   const queryClient = useQueryClient();
-  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<number | ''>('');
   const [search, setSearch] = useState('');
   const [selectedClassId, setSelectedClassId] = useState<number | ''>('');
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
@@ -152,8 +188,10 @@ export const SchedulePage = () => {
   const [formEndPeriod, setFormEndPeriod] = useState<number | ''>('');
   const [formTeacherAssignmentId, setFormTeacherAssignmentId] = useState<number | ''>('');
   const [formRoom, setFormRoom] = useState('');
+  const [selectedRoomId, setSelectedRoomId] = useState<number | ''>('');
   const [periodTimes, setPeriodTimes] = useState<Record<string, Record<number, string>>>(DEFAULT_PERIOD_TIMES);
   const [periodNotes, setPeriodNotes] = useState<Record<string, Record<number, string>>>(DEFAULT_PERIOD_NOTES);
+  const [periodTypes, setPeriodTypes] = useState<Record<string, Record<number, PeriodType>>>(DEFAULT_PERIOD_TYPES);
   const [isEditingTimes, setIsEditingTimes] = useState(false);
   const [editingDay, setEditingDay] = useState<DayOfWeek>('MONDAY');
 
@@ -194,7 +232,7 @@ export const SchedulePage = () => {
 
   const activeAcademicYearId = activeAcademicYear?.id ?? null;
 
-  const effectiveAcademicYearId = selectedAcademicYearId || activeAcademicYearId;
+  const effectiveAcademicYearId = activeAcademicYearId;
 
   const { data: scheduleConfig } = useQuery({
     queryKey: ['schedule-time-config', effectiveAcademicYearId],
@@ -202,12 +240,99 @@ export const SchedulePage = () => {
     enabled: !!effectiveAcademicYearId,
   });
 
-  useEffect(() => {
-    if (scheduleConfig) {
-      if (scheduleConfig.config.periodTimes) setPeriodTimes(scheduleConfig.config.periodTimes);
-      if (scheduleConfig.config.periodNotes) setPeriodNotes(scheduleConfig.config.periodNotes);
+  // Sarpras: Ambil kategori & ruangan untuk integrasi pilihan Ruang
+  const { data: roomCategoriesData } = useQuery({
+    queryKey: ['room-categories'],
+    queryFn: () => inventoryService.getRoomCategories(),
+  });
+
+  const roomCategories: RoomCategory[] = useMemo(
+    () => roomCategoriesData?.data || roomCategoriesData || [],
+    [roomCategoriesData],
+  );
+
+  const targetCategoryIds = useMemo(() => {
+    return roomCategories
+      .filter((c) => {
+        const n = (c.name || '').toLowerCase();
+        return (
+          n.includes('kelas') ||
+          n.includes('praktik') ||
+          n.includes('lab') ||
+          n.includes('laboratorium') ||
+          n.includes('olahraga')
+        );
+      })
+      .map((c) => c.id);
+  }, [roomCategories]);
+
+  const categoryNameMap = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const c of roomCategories) {
+      map.set(c.id, c.name);
     }
+    return map;
+  }, [roomCategories]);
+
+  const { data: roomsData } = useQuery({
+    queryKey: ['rooms'],
+    queryFn: () => inventoryService.getRooms(),
+  });
+
+  const allRooms: Room[] = useMemo(
+    () => roomsData?.data || roomsData || [],
+    [roomsData],
+  );
+
+  const sarprasRooms: Room[] = useMemo(() => {
+    if (!targetCategoryIds.length) return allRooms;
+    return allRooms.filter((r) => targetCategoryIds.includes(r.categoryId));
+  }, [allRooms, targetCategoryIds]);
+
+  useEffect(() => {
+    if (!scheduleConfig) {
+      return;
+    }
+    if (scheduleConfig.config.periodTimes) {
+      setPeriodTimes(scheduleConfig.config.periodTimes);
+    }
+    if (scheduleConfig.config.periodNotes) {
+      setPeriodNotes(scheduleConfig.config.periodNotes);
+    }
+    if (scheduleConfig.config.periodTypes) {
+      setPeriodTypes(scheduleConfig.config.periodTypes);
+      return;
+    }
+    const times = scheduleConfig.config.periodTimes || {};
+    const notes = scheduleConfig.config.periodNotes || {};
+    const nextTypes: Record<string, Record<number, PeriodType>> = {};
+    Object.keys(times).forEach((dayKey) => {
+      const dayTimes = times[dayKey] || {};
+      const dayNotes = (notes as any)[dayKey] || {};
+      const dayTypes: Record<number, PeriodType> = {};
+      Object.keys(dayTimes).forEach((periodKey) => {
+        const period = Number(periodKey);
+        const note = dayNotes[period];
+        if (!note) {
+          dayTypes[period] = 'TEACHING';
+        } else {
+          const n = String(note).toUpperCase();
+          if (n.includes('UPACARA')) {
+            dayTypes[period] = 'UPACARA';
+          } else if (n.includes('ISTIRAHAT')) {
+            dayTypes[period] = 'ISTIRAHAT';
+          } else if (n.includes('TADARUS')) {
+            dayTypes[period] = 'TADARUS';
+          } else {
+            dayTypes[period] = 'OTHER';
+          }
+        }
+      });
+      nextTypes[dayKey] = dayTypes;
+    });
+    setPeriodTypes(nextTypes);
   }, [scheduleConfig]);
+
 
   const saveConfigMutation = useMutation({
     mutationFn: (data: { academicYearId: number, config: any }) =>
@@ -335,6 +460,37 @@ export const SchedulePage = () => {
     [scheduleData],
   );
 
+  const scheduleDays: DayOfWeek[] = useMemo(() => {
+    const fromConfig = Object.keys(periodTimes) as DayOfWeek[];
+    const fromEntries = Array.from(
+      new Set(scheduleEntries.map((e) => e.dayOfWeek)),
+    ) as DayOfWeek[];
+    const set = new Set<DayOfWeek>();
+    for (const day of ALL_DAYS) {
+      if (fromConfig.includes(day) || fromEntries.includes(day)) {
+        set.add(day);
+      }
+    }
+    const result: DayOfWeek[] = [];
+    for (const day of ALL_DAYS) {
+      if (set.has(day)) {
+        result.push(day);
+      }
+    }
+    if (result.length === 0) {
+      return DAY_ORDER;
+    }
+    return result;
+  }, [periodTimes, scheduleEntries]);
+
+  useEffect(() => {
+    if (!scheduleDays.includes(editingDay)) {
+      if (scheduleDays.length > 0) {
+        setEditingDay(scheduleDays[0]);
+      }
+    }
+  }, [scheduleDays, editingDay]);
+
   const classAssignments = useMemo(
     () =>
       assignments.filter((a) => a.class.id === (effectiveClassId || 0)),
@@ -346,8 +502,8 @@ export const SchedulePage = () => {
       (max, entry) => (entry.period > max ? entry.period : max),
       0,
     );
-    const maxConfigured = DAY_ORDER.reduce((max, day) => {
-      const periods = Object.keys(periodTimes[day] || {}).map(Number);
+    const maxConfigured = Object.keys(periodTimes).reduce((max, dayKey) => {
+      const periods = Object.keys(periodTimes[dayKey] || {}).map(Number);
       if (!periods.length) {
         return max;
       }
@@ -364,15 +520,29 @@ export const SchedulePage = () => {
     return n.includes('UPACARA') || n.includes('ISTIRAHAT') || n.includes('TADARUS');
   };
 
+  const isNonTeachingPeriod = (day: DayOfWeek, period: number) => {
+    const typeRaw = periodTypes[day]?.[period];
+    if (typeRaw) {
+      const t = String(typeRaw).toUpperCase();
+      if (t === 'TEACHING') {
+        return false;
+      }
+      if (t === 'UPACARA' || t === 'ISTIRAHAT' || t === 'TADARUS' || t === 'OTHER') {
+        return true;
+      }
+    }
+    const note = periodNotes[day]?.[period];
+    return isNonTeachingNote(note);
+  };
+
   const getTeachingHour = (day: DayOfWeek, currentPeriod: number) => {
     let teachingCounter = 0;
     for (let p = 1; p <= currentPeriod; p++) {
-      const note = periodNotes[day]?.[p];
-      if (!isNonTeachingNote(note)) {
+      if (!isNonTeachingPeriod(day, p)) {
         teachingCounter++;
       }
       if (p === currentPeriod) {
-        return isNonTeachingNote(note) ? null : teachingCounter;
+        return isNonTeachingPeriod(day, p) ? null : teachingCounter;
       }
     }
     return null;
@@ -382,8 +552,7 @@ export const SchedulePage = () => {
     let teachingCounter = 0;
     // Iterate up to a reasonable max (e.g. maxPeriod + some buffer)
     for (let p = 1; p <= maxPeriod + 5; p++) {
-      const note = periodNotes[day]?.[p];
-      if (!isNonTeachingNote(note)) {
+      if (!isNonTeachingPeriod(day, p)) {
         teachingCounter++;
       }
       if (teachingCounter === targetTeachingHour) {
@@ -464,20 +633,7 @@ export const SchedulePage = () => {
             <Clock className="w-4 h-4" />
             <span>Input Jadwal Perjam Per Kelas</span>
           </button>
-          <div className="flex items-center gap-2">
-            <select
-              value={effectiveAcademicYearId || ''}
-              onChange={(e) => setSelectedAcademicYearId(Number(e.target.value))}
-              className="px-4 py-2 rounded-lg bg-blue-50 text-blue-700 text-sm border border-blue-100 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              {!academicYears.length && <option value="">Loading...</option>}
-              {academicYears.map((ay) => (
-                <option key={ay.id} value={ay.id}>
-                  Tahun Ajaran {ay.name} {ay.isActive ? '(Aktif)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+          
         </div>
       </div>
 
@@ -606,8 +762,8 @@ export const SchedulePage = () => {
       </div>
 
       {isScheduleModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30" onClick={() => setIsScheduleModalOpen(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">
@@ -694,12 +850,63 @@ export const SchedulePage = () => {
                         onChange={(e) => setEditingDay(e.target.value as DayOfWeek)}
                         className="px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-xs font-medium text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       >
-                        {DAY_ORDER.map((day) => (
+                        {scheduleDays.map((day) => (
                           <option key={day} value={day}>
                             {DAY_LABELS[day]}
                           </option>
                         ))}
                       </select>
+                      {ALL_DAYS.filter((day) => !scheduleDays.includes(day)).length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const remaining = ALL_DAYS.filter(
+                              (day) => !scheduleDays.includes(day),
+                            );
+                            const newDay = remaining[0];
+                            if (!newDay) {
+                              return;
+                            }
+                            setPeriodTimes((prev) => ({
+                              ...prev,
+                              [newDay]: { ...(BASE_TIMES_BY_DAY[newDay] || {}) },
+                            }));
+                            setPeriodNotes((prev) => ({
+                              ...prev,
+                              [newDay]: { ...(DEFAULT_PERIOD_NOTES[newDay] || {}) },
+                            }));
+                            const baseTimes = BASE_TIMES_BY_DAY[newDay] || {};
+                            const baseNotes = DEFAULT_PERIOD_NOTES[newDay] || {};
+                            const dayTypes: Record<number, PeriodType> = {};
+                            Object.keys(baseTimes).forEach((key) => {
+                              const period = Number(key);
+                              const note = (baseNotes as any)[period];
+                              if (!note) {
+                                dayTypes[period] = 'TEACHING';
+                              } else {
+                                const n = String(note).toUpperCase();
+                                if (n.includes('UPACARA')) {
+                                  dayTypes[period] = 'UPACARA';
+                                } else if (n.includes('ISTIRAHAT')) {
+                                  dayTypes[period] = 'ISTIRAHAT';
+                                } else if (n.includes('TADARUS')) {
+                                  dayTypes[period] = 'TADARUS';
+                                } else {
+                                  dayTypes[period] = 'OTHER';
+                                }
+                              }
+                            });
+                            setPeriodTypes((prev) => ({
+                              ...prev,
+                              [newDay]: dayTypes,
+                            }));
+                            setEditingDay(newDay);
+                          }}
+                          className="px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+                        >
+                          Tambah Hari
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => {
@@ -710,6 +917,10 @@ export const SchedulePage = () => {
                           setPeriodNotes((prev) => ({
                             ...prev,
                             [editingDay]: { ...(DEFAULT_PERIOD_NOTES[editingDay] || {}) },
+                          }));
+                          setPeriodTypes((prev) => ({
+                            ...prev,
+                            [editingDay]: { ...(DEFAULT_PERIOD_TYPES[editingDay] || {}) },
                           }));
                         }}
                         className="px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
@@ -725,28 +936,46 @@ export const SchedulePage = () => {
                       .map((period) => {
                         const teachingHour = getTeachingHour(editingDay, period);
                         const note = periodNotes[editingDay]?.[period];
+                        const type = periodTypes[editingDay]?.[period] || 'TEACHING';
+                        const upperType = String(type).toUpperCase();
+                        let label: string;
+                        if (upperType === 'TEACHING') {
+                          label = teachingHour
+                            ? `Jam Pelajaran ke ${teachingHour}`
+                            : `Jam Pelajaran (Slot ${period})`;
+                        } else if (upperType === 'UPACARA') {
+                          label = 'Upacara';
+                        } else if (upperType === 'ISTIRAHAT') {
+                          label = 'Istirahat';
+                        } else if (upperType === 'TADARUS') {
+                          label = 'Tadarus / Doa Pagi';
+                        } else {
+                          label = note || `Non Pelajaran (Slot ${period})`;
+                        }
                         return (
                           <div key={period} className="flex flex-col">
                             <span className="text-xs font-medium text-gray-700 mb-1 flex items-center justify-between">
                               <span>
-                                {teachingHour
-                                  ? `Jam Pelajaran ke ${teachingHour}`
-                                  : note || `Slot ${period}`}{' '}
-                                ({DAY_LABELS[editingDay]})
+                                {label} ({DAY_LABELS[editingDay]})
                               </span>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setPeriodTimes((prev) => {
-                                    const nextDay = { ...(prev[editingDay] || {}) };
-                                    delete nextDay[period];
-                                    return { ...prev, [editingDay]: nextDay };
-                                  });
-                                  setPeriodNotes((prev) => {
-                                    const nextDay = { ...(prev[editingDay] || {}) };
-                                    delete nextDay[period];
-                                    return { ...prev, [editingDay]: nextDay };
-                                  });
+                                setPeriodTimes((prev) => {
+                                  const nextDay = { ...(prev[editingDay] || {}) };
+                                  delete nextDay[period];
+                                  return { ...prev, [editingDay]: nextDay };
+                                });
+                                setPeriodNotes((prev) => {
+                                  const nextDay = { ...(prev[editingDay] || {}) };
+                                  delete nextDay[period];
+                                  return { ...prev, [editingDay]: nextDay };
+                                });
+                                setPeriodTypes((prev) => {
+                                  const nextDay = { ...(prev[editingDay] || {}) };
+                                  delete nextDay[period];
+                                  return { ...prev, [editingDay]: nextDay };
+                                });
                                 }}
                                 className="ml-2 text-[10px] text-red-500 hover:text-red-600"
                               >
@@ -770,23 +999,27 @@ export const SchedulePage = () => {
                               }
                               placeholder="07.00 - 07.45"
                             />
-                            <input
-                              type="text"
-                              id={`schedule-note-${editingDay}-${period}`}
-                              name={`schedule-note-${editingDay}-${period}`}
-                              className="mt-2 px-3 py-1.5 border border-dashed border-gray-300 rounded-lg text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-gray-700"
-                              value={periodNotes[editingDay]?.[period] || ''}
+                            <select
+                              id={`schedule-type-${editingDay}-${period}`}
+                              name={`schedule-type-${editingDay}-${period}`}
+                              className="mt-2 px-3 py-1.5 border border-gray-300 rounded-lg text-[11px] bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-gray-700"
+                              value={periodTypes[editingDay]?.[period] || 'TEACHING'}
                               onChange={(e) =>
-                                setPeriodNotes((prev) => ({
+                                setPeriodTypes((prev) => ({
                                   ...prev,
                                   [editingDay]: {
                                     ...(prev[editingDay] || {}),
-                                    [period]: e.target.value,
+                                    [period]: e.target.value as PeriodType,
                                   },
                                 }))
                               }
-                              placeholder="Keterangan (UPACARA, ISTIRAHAT, TADARUS, dll)"
-                            />
+                            >
+                              <option value="TEACHING">Jam Pelajaran</option>
+                              <option value="UPACARA">Upacara</option>
+                              <option value="ISTIRAHAT">Istirahat</option>
+                              <option value="TADARUS">Tadarus / Doa Pagi</option>
+                              <option value="OTHER">Lainnya (Non Pelajaran)</option>
+                            </select>
                           </div>
                         );
                       })}
@@ -806,6 +1039,13 @@ export const SchedulePage = () => {
                             [next]: '',
                           },
                         }));
+                        setPeriodTypes((prev) => ({
+                          ...prev,
+                          [editingDay]: {
+                            ...(prev[editingDay] || {}),
+                            [next]: 'TEACHING',
+                          },
+                        }));
                       }}
                       className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-dashed border-blue-300 text-blue-700 hover:bg-blue-50"
                     >
@@ -821,6 +1061,7 @@ export const SchedulePage = () => {
                           }
                           setPeriodTimes(DEFAULT_PERIOD_TIMES);
                           setPeriodNotes(DEFAULT_PERIOD_NOTES);
+                          setPeriodTypes(DEFAULT_PERIOD_TYPES);
                         }}
                         className="px-3 py-2 rounded-lg bg-red-100 text-red-700 text-sm font-medium hover:bg-red-200 transition-colors shadow-sm"
                       >
@@ -838,6 +1079,7 @@ export const SchedulePage = () => {
                             config: {
                               periodTimes,
                               periodNotes,
+                              periodTypes,
                             },
                           });
                         }}
@@ -1046,14 +1288,36 @@ export const SchedulePage = () => {
                         >
                           Ruang (opsional)
                         </label>
-                        <input
-                          type="text"
+                        <select
                           id="schedule-room"
                           name="schedule-room"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                          value={formRoom}
-                          onChange={(e) => setFormRoom(e.target.value)}
-                        />
+                          value={selectedRoomId}
+                          onChange={(e) => {
+                            const val = e.target.value ? Number(e.target.value) : '';
+                            setSelectedRoomId(val);
+                            if (val === '') {
+                              setFormRoom('');
+                            } else {
+                              const room = sarprasRooms.find((r) => r.id === val);
+                              setFormRoom(room ? room.name : '');
+                            }
+                          }}
+                        >
+                          <option value="">
+                            {sarprasRooms.length === 0
+                              ? 'Tidak ada data ruangan'
+                              : 'Pilih Ruangan'}
+                          </option>
+                          {sarprasRooms.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.name}
+                              {categoryNameMap.get(r.categoryId)
+                                ? ` — ${categoryNameMap.get(r.categoryId)}`
+                                : ''}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                   </form>
@@ -1080,7 +1344,7 @@ export const SchedulePage = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 bg-white">
-                      {DAY_ORDER.map((day) => {
+                      {scheduleDays.map((day) => {
                         const periodsConfigured = Object.keys(periodTimes[day] || {}).map(Number);
                         const maxConfigured = periodsConfigured.length > 0 ? Math.max(...periodsConfigured) : 0;
                         

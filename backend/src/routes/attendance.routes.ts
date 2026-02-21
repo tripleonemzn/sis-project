@@ -20,7 +20,7 @@ router.get('/daily', roleMiddleware(['ADMIN', 'TEACHER', 'PRINCIPAL', 'STUDENT']
 router.post('/daily', roleMiddleware(['ADMIN', 'TEACHER', 'PRINCIPAL', 'STUDENT']), saveDailyAttendance);
 
 // Student History (Accessible by Student)
-router.get('/student-history', roleMiddleware(['STUDENT']), getStudentAttendanceHistory);
+router.get('/student-history', roleMiddleware(['STUDENT', 'PARENT']), getStudentAttendanceHistory);
 
 // Routes restricted to Staff/Teachers
 router.use(roleMiddleware(['ADMIN', 'TEACHER', 'PRINCIPAL']));

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useOutletContext } from 'react-router-dom';
 import { userService } from '../../../services/user.service';
@@ -11,10 +11,7 @@ import {
   AlertCircle,
   Download,
   Filter,
-  Check,
-  ChevronDown,
   Loader2,
-  UserCheck,
   ClipboardList,
   Search,
   ChevronLeft,
@@ -40,9 +37,6 @@ export const HomeroomAttendancePage = () => {
   const [activeTab, setActiveTab] = useState<'daily_log' | 'recap' | 'late'>('daily_log');
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [semesterFilter, setSemesterFilter] = useState<SemesterFilter>('ALL');
-  const [isPresidentDropdownOpen, setIsPresidentDropdownOpen] = useState(false);
-  const [selectedPresidentId, setSelectedPresidentId] = useState<number | null>(null);
-  const [presidentSearch, setPresidentSearch] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
@@ -51,7 +45,7 @@ export const HomeroomAttendancePage = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [attendanceRecords, setAttendanceRecords] = useState<Record<number, { status: string; note: string }>>({});
 
-  const dropdownRef = useRef<HTMLDivElement>(null);
+
   
   const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<{ user: any, activeYear: any }>() || {};
 
@@ -148,37 +142,11 @@ export const HomeroomAttendancePage = () => {
 
   const isLoadingClass = isLoadingClassSummary || isLoadingClassDetails;
 
-  // Update local state when class data is loaded
-  useEffect(() => {
-    if (homeroomClass) {
-      if (homeroomClass.president?.id) {
-        setSelectedPresidentId(homeroomClass.president.id);
-      } else if (homeroomClass.presidentId) {
-        setSelectedPresidentId(homeroomClass.presidentId);
-      } else {
-        setSelectedPresidentId(null);
-      }
-    }
-  }, [homeroomClass]);
-
   // Reset pagination when tab changes
   useEffect(() => {
     setPage(1);
     setSearch('');
   }, [activeTab]);
-
-  // Click outside listener for dropdown
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsPresidentDropdownOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
 
   // 5. Fetch Daily Recap
   const { data: dailyRecapData, isLoading: isLoadingDaily } = useQuery({
@@ -212,25 +180,9 @@ export const HomeroomAttendancePage = () => {
     enabled: !!homeroomClass && activeTab === 'daily_log',
   });
 
-  // 8. Mutation for updating President
-  const updatePresidentMutation = useMutation({
-    mutationFn: (presidentId: number) => classService.updatePresident(homeroomClass!.id, presidentId),
-    onSuccess: (data) => {
-      toast.success('Ketua Murid berhasil diperbarui');
-      queryClient.invalidateQueries({ queryKey: ['homeroom-class-details'] });
-      setIsPresidentDropdownOpen(false);
-      setSelectedPresidentId(data.data.presidentId);
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal memperbarui Ketua Murid');
-    },
-  });
 
-  const handlePresidentSelect = (studentId: number) => {
-    if (homeroomClass) {
-      updatePresidentMutation.mutate(studentId);
-    }
-  };
+
+
 
   // Sync attendanceRecords when dailyLogData changes or editing starts
   useEffect(() => {
@@ -344,8 +296,7 @@ export const HomeroomAttendancePage = () => {
     );
   }
 
-  // Get student list from class details for dropdown
-  const studentList = homeroomClass.students || [];
+
 
   // Pagination Logic
   const getCurrentData = () => {
@@ -433,69 +384,6 @@ export const HomeroomAttendancePage = () => {
                 </div>
               </button>
             </div>
-            
-            <div className="relative flex items-center gap-2" ref={dropdownRef}>
-                <span className="text-sm font-medium text-gray-700 whitespace-nowrap">Ketua Murid:</span>
-                <div className="relative">
-                  <div
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent cursor-pointer flex justify-between items-center text-sm min-w-[300px]"
-                    onClick={() => setIsPresidentDropdownOpen(!isPresidentDropdownOpen)}
-                  >
-                    <div className="flex items-center">
-                      <UserCheck className="w-4 h-4 text-gray-500 mr-2" />
-                      <span className={selectedPresidentId ? 'text-gray-900' : 'text-gray-500'}>
-                        {selectedPresidentId 
-                          ? studentList.find((s: any) => s.id === selectedPresidentId)?.name || 'Pilih Ketua Murid'
-                          : 'Pilih Ketua Murid'}
-                      </span>
-                    </div>
-                    <ChevronDown className="w-4 h-4 text-gray-500 ml-2" />
-                  </div>
-                  
-                  {isPresidentDropdownOpen && (
-                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      <div className="p-2 sticky top-0 bg-white border-b border-gray-100">
-                        <div className="relative">
-                          <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                          <input
-                            type="text"
-                            className="w-full pl-8 pr-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
-                            placeholder="Cari siswa..."
-                            value={presidentSearch}
-                            onChange={(e) => setPresidentSearch(e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                            autoFocus
-                          />
-                        </div>
-                      </div>
-                      {studentList.filter((s: any) => s.name.toLowerCase().includes(presidentSearch.toLowerCase())).length > 0 ? (
-                        studentList
-                          .filter((s: any) => s.name.toLowerCase().includes(presidentSearch.toLowerCase()))
-                          .map((student: any) => (
-                          <div
-                            key={student.id}
-                            className={`px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm flex justify-between items-center ${
-                              selectedPresidentId === student.id ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
-                            }`}
-                            onClick={() => {
-                                handlePresidentSelect(student.id);
-                                setIsPresidentDropdownOpen(false);
-                                setPresidentSearch(''); // Reset search
-                            }}
-                          >
-                            <span>{student.name}</span>
-                            {selectedPresidentId === student.id && (
-                                <Check className="h-4 w-4 text-blue-600" />
-                            )}
-                          </div>
-                        ))
-                      ) : (
-                        <div className="px-3 py-2 text-gray-500 text-sm text-center">Siswa tidak ditemukan</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
           </div>
 
           {activeTab === 'daily_log' && (

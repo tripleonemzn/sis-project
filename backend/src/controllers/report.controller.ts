@@ -10,13 +10,236 @@ const classReportQuerySchema = z.object({
   academicYearId: z.coerce.number().int().optional(),
 });
 
-
-
 const rankingQuerySchema = z.object({
   classId: z.coerce.number().int(),
   academicYearId: z.coerce.number().int().optional(),
   semester: z.nativeEnum(Semester),
 });
+
+const principalAcademicOverviewQuerySchema = z.object({
+  academicYearId: z.coerce.number().int().optional(),
+  semester: z.nativeEnum(Semester).optional(),
+});
+
+export const getPrincipalAcademicOverview = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { academicYearId, semester } = principalAcademicOverviewQuerySchema.parse(
+      req.query,
+    );
+
+    let academicYear = null as any;
+
+    if (academicYearId) {
+      academicYear = await prisma.academicYear.findUnique({
+        where: { id: academicYearId },
+      });
+    } else {
+      academicYear = await prisma.academicYear.findFirst({
+        where: { isActive: true },
+      });
+    }
+
+    if (!academicYear) {
+      throw new ApiError(404, 'Tahun ajaran aktif tidak ditemukan');
+    }
+
+    const where: any = {
+      academicYearId: academicYear.id,
+    };
+
+    if (semester) {
+      where.semester = semester;
+    }
+
+    const gradeGroups = await prisma.reportGrade.groupBy({
+      by: ['studentId'],
+      where,
+      _avg: {
+        finalScore: true,
+      },
+    });
+
+    if (!gradeGroups.length) {
+      res.status(200).json(
+        new ApiResponse(
+          200,
+          {
+            academicYear: {
+              id: academicYear.id,
+              name: academicYear.name,
+            },
+            semester: semester ?? null,
+            topStudents: [],
+            majors: [],
+          },
+          'Belum ada data nilai untuk filter ini',
+        ),
+      );
+      return;
+    }
+
+    const studentIds = gradeGroups.map((g) => g.studentId);
+
+    const students = await prisma.user.findMany({
+      where: {
+        id: {
+          in: studentIds,
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        nis: true,
+        nisn: true,
+        studentClass: {
+          select: {
+            id: true,
+            name: true,
+            level: true,
+            major: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const studentMap = new Map<number, any>();
+    students.forEach((s) => {
+      studentMap.set(s.id, s);
+    });
+
+    const enriched: {
+      studentId: number;
+      averageScore: number;
+      student: any;
+    }[] = [];
+
+    gradeGroups.forEach((g) => {
+      const avg = g._avg.finalScore;
+      const s = studentMap.get(g.studentId);
+
+      if (avg == null || !s || !s.studentClass || !s.studentClass.major) {
+        return;
+      }
+
+      const roundedAvg = Math.round(avg * 10) / 10;
+
+      enriched.push({
+        studentId: g.studentId,
+        averageScore: roundedAvg,
+        student: s,
+      });
+    });
+
+    if (!enriched.length) {
+      res.status(200).json(
+        new ApiResponse(
+          200,
+          {
+            academicYear: {
+              id: academicYear.id,
+              name: academicYear.name,
+            },
+            semester: semester ?? null,
+            topStudents: [],
+            majors: [],
+          },
+          'Belum ada data nilai untuk filter ini',
+        ),
+      );
+      return;
+    }
+
+    const majorMap = new Map<
+      number,
+      {
+        majorId: number;
+        name: string;
+        code: string;
+        totalStudents: number;
+        totalScore: number;
+      }
+    >();
+
+    enriched.forEach((item) => {
+      const major = item.student.studentClass.major;
+      const existing =
+        majorMap.get(major.id) ||
+        ({
+          majorId: major.id,
+          name: major.name,
+          code: major.code,
+          totalStudents: 0,
+          totalScore: 0,
+        } as any);
+
+      existing.totalStudents += 1;
+      existing.totalScore += item.averageScore;
+
+      majorMap.set(major.id, existing);
+    });
+
+    const majors = Array.from(majorMap.values())
+      .map((m) => {
+        const averageScore =
+          m.totalStudents > 0 ? Math.round((m.totalScore / m.totalStudents) * 10) / 10 : 0;
+        return {
+          majorId: m.majorId,
+          name: m.name,
+          code: m.code,
+          totalStudents: m.totalStudents,
+          averageScore,
+        };
+      })
+      .sort((a, b) => b.averageScore - a.averageScore);
+
+    const topStudents = [...enriched]
+      .sort((a, b) => b.averageScore - a.averageScore)
+      .slice(0, 3)
+      .map((item) => ({
+        studentId: item.studentId,
+        name: item.student.name,
+        nis: item.student.nis,
+        nisn: item.student.nisn,
+        averageScore: item.averageScore,
+        class: item.student.studentClass
+          ? {
+              id: item.student.studentClass.id,
+              name: item.student.studentClass.name,
+              level: item.student.studentClass.level,
+            }
+          : null,
+        major: item.student.studentClass?.major
+          ? {
+              id: item.student.studentClass.major.id,
+              name: item.student.studentClass.major.name,
+              code: item.student.studentClass.major.code,
+            }
+          : null,
+      }));
+
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          academicYear: {
+            id: academicYear.id,
+            name: academicYear.name,
+          },
+          semester: semester ?? null,
+          topStudents,
+          majors,
+        },
+        'Ringkasan akademik berhasil diambil',
+      ),
+    );
+  },
+);
 
 export const getClassRankings = asyncHandler(async (req: Request, res: Response) => {
   const { classId, academicYearId, semester } = rankingQuerySchema.parse(req.query);

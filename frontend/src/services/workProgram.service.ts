@@ -19,12 +19,6 @@ export type AdditionalDuty =
   | 'BENDAHARA'
   | 'BP_BK';
 
-export interface WorkProgramBudget {
-  id: number;
-  description: string;
-  amount: number;
-}
-
 export interface WorkProgramItem {
   id: number;
   description: string;
@@ -32,7 +26,6 @@ export interface WorkProgramItem {
   isCompleted: boolean;
   completedAt: string | null;
   note?: string | null;
-  budgets: WorkProgramBudget[];
 }
 
 export interface WorkProgram {
@@ -49,11 +42,21 @@ export interface WorkProgram {
   majorId?: number | null;
   semester?: 'ODD' | 'EVEN' | null;
   month?: number | null;
+  startMonth?: number | null;
+  endMonth?: number | null;
   startWeek?: number | null;
   endWeek?: number | null;
   approverId?: number | null;
   approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  feedback?: string | null;
+  assignedApprover?: {
+    id: number;
+    name: string;
+    role: string;
+    additionalDuties?: AdditionalDuty[] | null;
+  } | null;
   items: WorkProgramItem[];
+  createdAt: string;
 }
 
 export interface WorkProgramPagination {
@@ -98,7 +101,9 @@ export const workProgramService = {
     additionalDuty: AdditionalDuty;
     majorId?: number;
     semester?: 'ODD' | 'EVEN' | null;
-    month?: number;
+    month?: number | null;
+    startMonth?: number | null;
+    endMonth?: number | null;
     startWeek?: number;
     endWeek?: number;
   }) => {
@@ -144,16 +149,15 @@ export const workProgramService = {
     const response = await api.delete(`/work-programs/items/${itemId}`);
     return response.data;
   },
-  addBudget: async (
-    itemId: number,
-    data: { description: string; amount: number },
-  ) => {
-    const response = await api.post(`/work-programs/items/${itemId}/budgets`, data);
-    return response.data;
+  listPendingForApproval: async () => {
+    const response = await api.get('/work-programs/pending');
+    return response.data as { data: any[] };
   },
-  removeBudget: async (budgetId: number) => {
-    const response = await api.delete(`/work-programs/budgets/${budgetId}`);
+  updateApprovalStatus: async (
+    id: number,
+    data: { status: 'APPROVED' | 'REJECTED'; feedback?: string },
+  ) => {
+    const response = await api.post(`/work-programs/${id}/approval`, data);
     return response.data;
   },
 };
-

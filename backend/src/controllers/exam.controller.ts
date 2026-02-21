@@ -379,7 +379,56 @@ export const updateSchedule = asyncHandler(async (req: Request, res: Response) =
 
 export const deleteSchedule = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
-    await prisma.examSchedule.delete({ where: { id: parseInt(id) } });
+    const scheduleId = parseInt(id);
+
+    // Check schedule and packet existence
+    const schedule = await prisma.examSchedule.findUnique({
+        where: { id: scheduleId },
+        include: { packet: true }
+    });
+
+    if (!schedule) {
+        throw new ApiError(404, 'Jadwal tidak ditemukan');
+    }
+
+    // Only block if packet exists AND has content AND has completed sessions
+    // If packet is missing or has no questions, we allow cleanup of broken schedules
+    if (schedule.packet) {
+        const questions = schedule.packet.questions as any;
+        const hasQuestions = questions && Array.isArray(questions) && questions.length > 0;
+
+        if (hasQuestions) {
+            const completedSessions = await prisma.studentExamSession.count({
+                where: {
+                    scheduleId,
+                    status: 'COMPLETED'
+                }
+            });
+
+            if (completedSessions > 0) {
+                throw new ApiError(400, 'Tidak dapat menghapus jadwal yang sudah memiliki hasil ujian siswa.');
+            }
+        }
+    }
+
+    // Delete dependencies in transaction
+    await prisma.$transaction(async (tx) => {
+        // Delete sessions (in-progress or others)
+        await tx.studentExamSession.deleteMany({
+            where: { scheduleId }
+        });
+
+        // Delete proctoring reports
+        await tx.examProctoringReport.deleteMany({
+            where: { scheduleId }
+        });
+
+        // Delete schedule
+        await tx.examSchedule.delete({
+            where: { id: scheduleId }
+        });
+    });
+
     res.json(new ApiResponse(200, null, 'Exam schedule deleted successfully'));
 });
 

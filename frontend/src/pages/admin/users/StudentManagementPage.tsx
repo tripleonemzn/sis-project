@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userService } from '../../../services/user.service';
+import { authService } from '../../../services/auth.service';
 import { classService, type Class } from '../../../services/class.service';
 import { uploadService } from '../../../services/upload.service';
 import type { User, UserDocumentInput } from '../../../types/auth';
@@ -89,6 +90,13 @@ export const StudentManagementPage = () => {
   const classDropdownRef = useRef<HTMLDivElement | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: authData } = useQuery({
+    queryKey: ['me'],
+    queryFn: authService.getMe,
+    staleTime: 1000 * 60 * 5,
+  });
+  const isAdmin = authData?.data?.role === 'ADMIN';
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -574,16 +582,27 @@ export const StudentManagementPage = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label htmlFor="nisn" className="block text-sm font-medium text-gray-700 mb-1">
-                        Username <span className="text-red-500">*</span>
+                        Username (NISN) <span className="text-red-500">*</span>
                       </label>
-                      <input
-                        id="nisn"
-                        {...register('nisn')}
-                        autoComplete="off"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="Username (Gunakan NISN)"
-                      />
-                      {errors.nisn && <p className="mt-1 text-xs text-red-600">{errors.nisn.message}</p>}
+                      {isAdmin ? (
+                        <>
+                          <input
+                            id="nisn"
+                            {...register('nisn')}
+                            autoComplete="off"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Username (Gunakan NISN)"
+                          />
+                          {errors.nisn && <p className="mt-1 text-xs text-red-600">{errors.nisn.message}</p>}
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-full px-3 py-2 border border-gray-200 bg-gray-50 rounded-lg text-gray-600 font-medium">
+                            {watch('nisn') || '-'}
+                          </div>
+                          <input type="hidden" {...register('nisn')} />
+                        </>
+                      )}
                     </div>
                     <div>
                       <label htmlFor="student-name" className="block text-sm font-medium text-gray-700 mb-1">
@@ -602,16 +621,24 @@ export const StudentManagementPage = () => {
                       <label htmlFor="student-password" className="block text-sm font-medium text-gray-700 mb-1">
                         Password
                       </label>
-                      <input
-                        id="student-password"
-                        type="password"
-                        {...register('password')}
-                        autoComplete="new-password"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder={editingId ? 'Kosongkan jika tidak diubah' : 'Kosongkan untuk password default smkskgb2'}
-                      />
-                      {errors.password && (
-                        <p className="mt-1 text-xs text-red-600">{errors.password.message}</p>
+                      {isAdmin ? (
+                        <>
+                          <input
+                            id="student-password"
+                            type="password"
+                            {...register('password')}
+                            autoComplete="new-password"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder={editingId ? 'Kosongkan jika tidak diubah' : 'Kosongkan untuk password default smkskgb2'}
+                          />
+                          {errors.password && (
+                            <p className="mt-1 text-xs text-red-600">{errors.password.message}</p>
+                          )}
+                        </>
+                      ) : (
+                        <div className="w-full px-3 py-2 border border-gray-200 bg-gray-50 rounded-lg text-gray-500 italic text-sm">
+                          Hanya Admin yang dapat mengubah password
+                        </div>
                       )}
                     </div>
                     <div className="flex flex-col items-start gap-2">

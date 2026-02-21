@@ -268,9 +268,9 @@ const ExamScheduleManagementPage = () => {
       await api.delete(`/exams/schedules/${id}`);
       toast.success('Jadwal berhasil dihapus');
       setSchedules(prev => prev.filter(s => s.id !== id));
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting schedule:', error);
-      toast.error('Gagal menghapus jadwal');
+      toast.error(error.response?.data?.message || 'Gagal menghapus jadwal');
     }
   };
 
@@ -310,7 +310,7 @@ const ExamScheduleManagementPage = () => {
       if (!groups[key]) {
         groups[key] = {
           key,
-          subjectName: schedule.subject?.name || schedule.packet?.subject?.name || '-',
+          subjectName: schedule.subject?.name || schedule.packet?.subject?.name || (schedule.packet ? 'Unknown Subject' : 'Jadwal Tanpa Soal'),
           subjectCode: schedule.subject?.code || '-',
           startTime: schedule.startTime,
           endTime: schedule.endTime,
@@ -359,20 +359,23 @@ const ExamScheduleManagementPage = () => {
         </div>
 
         {/* Tabs */}
-        <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg w-fit mt-6">
-          {(['SBTS', 'SAS', 'SAT'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === tab 
-                  ? 'bg-white text-blue-600 shadow-sm' 
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mt-6">
+          <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
+            {(['SBTS', 'SAS', 'SAT'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`
+                  px-4 py-2 text-sm font-medium rounded-md transition-colors
+                  ${activeTab === tab
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
+                `}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

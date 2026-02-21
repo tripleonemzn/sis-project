@@ -6,6 +6,7 @@ import {
   type AcademicEvent,
   type AcademicEventType,
   type AcademicEventSemester,
+  type AcademicEventListResponse,
 } from '../../../services/academicEvent.service';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
@@ -81,7 +82,6 @@ export const AcademicCalendarPage = () => {
 
   const {
     data: academicYearData,
-    isLoading: isLoadingYears,
   } = useQuery({
     queryKey: ['academic-years', 'all'],
     queryFn: () => academicYearService.list({ page: 1, limit: 100 }),
@@ -97,19 +97,16 @@ export const AcademicCalendarPage = () => {
     if (!academicYears.length) {
       return '';
     }
-
     if (selectedAcademicYearId) {
       const exists = academicYears.some((ay) => ay.id === selectedAcademicYearId);
       if (exists) {
         return selectedAcademicYearId;
       }
     }
-
     const active = academicYears.find((ay) => ay.isActive);
     if (active) {
       return active.id;
     }
-
     return academicYears[0]?.id ?? '';
   }, [academicYears, selectedAcademicYearId]);
 
@@ -117,7 +114,7 @@ export const AcademicCalendarPage = () => {
     data: eventsResponse,
     isLoading: isLoadingEvents,
     isFetching: isFetchingEvents,
-  } = useQuery({
+  } = useQuery<{ data: AcademicEventListResponse }>({
     queryKey: ['academic-events', effectiveAcademicYearId, semesterFilter, typeFilter],
     queryFn: () =>
       academicEventService.list({
@@ -266,7 +263,7 @@ export const AcademicCalendarPage = () => {
     deleteMutation.mutate(item.id);
   };
 
-  const loading = isLoadingYears || isLoadingEvents || isFetchingEvents;
+  const loading = isLoadingEvents || isFetchingEvents;
 
   const selectedYear = useMemo(
     () => academicYears.find((ay) => ay.id === effectiveAcademicYearId),
@@ -309,7 +306,7 @@ export const AcademicCalendarPage = () => {
               setShowForm((prev) => !prev);
             }}
             className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={!effectiveAcademicYearId || loading}
+            disabled={!effectiveAcademicYearId}
           >
             {showForm ? (
               <>
@@ -414,174 +411,32 @@ export const AcademicCalendarPage = () => {
       </div>
 
       {showForm && (
-        <div className="bg-white rounded-xl shadow-md border-0 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-800 border-b border-gray-100 pb-3 mb-4">
-            {editingId ? 'Edit Event Kalender Akademik' : 'Tambah Event Kalender Akademik'}
-          </h2>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label
-                  htmlFor="academicYearId"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Tahun Ajaran
-                </label>
-                <select
-                  id="academicYearId"
-                  {...register('academicYearId', { valueAsNumber: true })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Pilih Tahun Ajaran</option>
-                  {academicYears.map((ay) => (
-                    <option key={ay.id} value={ay.id}>
-                      {ay.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.academicYearId && (
-                  <p className="text-red-500 text-xs mt-1">
-                    {errors.academicYearId.message}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label
-                  htmlFor="type"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Jenis Event
-                </label>
-                <select
-                  id="type"
-                  {...register('type')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  {EVENT_TYPES.filter((t) => t.value !== 'ALL').map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-                {errors.type && (
-                  <p className="text-red-500 text-xs mt-1">{errors.type.message}</p>
-                )}
-              </div>
-
-              <div>
-                <label
-                  htmlFor="semester"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Semester (opsional)
-                </label>
-                <select
-                  id="semester"
-                  {...register('semester')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Semua</option>
-                  <option value="ODD">Ganjil</option>
-                  <option value="EVEN">Genap</option>
-                </select>
-                {errors.semester && (
-                  <p className="text-red-500 text-xs mt-1">{errors.semester.message}</p>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label
-                  htmlFor="startDate"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Tanggal Mulai
-                </label>
-                <input
-                  id="startDate"
-                  type="date"
-                  {...register('startDate')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-                {errors.startDate && (
-                  <p className="text-red-500 text-xs mt-1">{errors.startDate.message}</p>
-                )}
-              </div>
-              <div>
-                <label
-                  htmlFor="endDate"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Tanggal Berakhir
-                </label>
-                <input
-                  id="endDate"
-                  type="date"
-                  {...register('endDate')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-                {errors.endDate && (
-                  <p className="text-red-500 text-xs mt-1">{errors.endDate.message}</p>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label
-                  htmlFor="title"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Judul Event
-                </label>
-                <input
-                  id="title"
-                  {...register('title')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Contoh: Libur Idul Fitri 1447 H"
-                />
-                {errors.title && (
-                  <p className="text-red-500 text-xs mt-1">{errors.title.message}</p>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 mt-6">
-                <input
-                  id="isHoliday"
-                  type="checkbox"
-                  {...register('isHoliday')}
-                  className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                />
-                <label htmlFor="isHoliday" className="text-sm text-gray-700">
-                  Tandai sebagai hari libur sekolah
-                </label>
-              </div>
-            </div>
-
-            <div>
-              <label
-                htmlFor="description"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Deskripsi (opsional)
-              </label>
-              <textarea
-                id="description"
-                rows={3}
-                {...register('description')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Catatan tambahan, misalnya sumber aturan atau detail pelaksanaan."
-              />
-              {errors.description && (
-                <p className="text-red-500 text-xs mt-1">
-                  {errors.description.message}
-                </p>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
+        <div
+          className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4"
+          onClick={() => {
+            setShowForm(false);
+            setEditingId(null);
+            reset({
+              academicYearId:
+                typeof effectiveAcademicYearId === 'number' ? effectiveAcademicYearId : 0,
+              title: '',
+              type: 'LIBUR_NASIONAL',
+              startDate: '',
+              endDate: '',
+              semester: null,
+              isHoliday: false,
+              description: '',
+            });
+          }}
+        >
+          <div
+            className="bg-white rounded shadow-md w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-800">
+                {editingId ? 'Edit Event Kalender Akademik' : 'Tambah Event Kalender Akademik'}
+              </h2>
               <button
                 type="button"
                 onClick={() => {
@@ -589,9 +444,7 @@ export const AcademicCalendarPage = () => {
                   setEditingId(null);
                   reset({
                     academicYearId:
-                      typeof effectiveAcademicYearId === 'number'
-                        ? effectiveAcademicYearId
-                        : 0,
+                      typeof effectiveAcademicYearId === 'number' ? effectiveAcademicYearId : 0,
                     title: '',
                     type: 'LIBUR_NASIONAL',
                     startDate: '',
@@ -601,37 +454,196 @@ export const AcademicCalendarPage = () => {
                     description: '',
                   });
                 }}
-                className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="p-2 text-gray-500 hover:text-gray-700"
+                aria-label="Tutup"
               >
-                Batal
-              </button>
-              <button
-                type="submit"
-                disabled={createMutation.isPending || updateMutation.isPending}
-                className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {(createMutation.isPending || updateMutation.isPending) && (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                )}
-                {editingId ? 'Simpan Perubahan' : 'Simpan Event'}
+                <X className="w-4 h-4" />
               </button>
             </div>
-          </form>
-        </div>
-      )}
+            <div className="px-5 py-4">
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                <div className="grid grid-cols-1 gap-4">
+                  <div>
+                    <label
+                      htmlFor="academicYearId"
+                      className="block text-sm text-gray-700 mb-1"
+                    >
+                      Tahun Ajaran
+                    </label>
+                    <select
+                      id="academicYearId"
+                      {...register('academicYearId', { valueAsNumber: true })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Pilih Tahun Ajaran</option>
+                      {academicYears.map((ay) => (
+                        <option key={ay.id} value={ay.id}>
+                          {ay.name}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.academicYearId && (
+                      <p className="text-red-500 text-xs mt-1">
+                        {errors.academicYearId.message}
+                      </p>
+                    )}
+                  </div>
 
-      {loading && (
-        <div className="bg-white rounded-xl shadow-md border-0 p-12 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-            <p className="text-gray-500 text-sm">
-              Memuat data kalender akademik, mohon tunggu sebentar.
-            </p>
+                  <div>
+                    <label htmlFor="type" className="block text-sm text-gray-700 mb-1">
+                      Jenis Event
+                    </label>
+                    <select
+                      id="type"
+                      {...register('type')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      {EVENT_TYPES.filter((t) => t.value !== 'ALL').map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.type && (
+                      <p className="text-red-500 text-xs mt-1">{errors.type.message}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label htmlFor="semester" className="block text-sm text-gray-700 mb-1">
+                      Semester (opsional)
+                    </label>
+                    <select
+                      id="semester"
+                      {...register('semester')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Semua</option>
+                      <option value="ODD">Ganjil</option>
+                      <option value="EVEN">Genap</option>
+                    </select>
+                    {errors.semester && (
+                      <p className="text-red-500 text-xs mt-1">{errors.semester.message}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="startDate" className="block text-sm text-gray-700 mb-1">
+                      Tanggal Mulai
+                    </label>
+                    <input
+                      id="startDate"
+                      type="date"
+                      {...register('startDate')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    {errors.startDate && (
+                      <p className="text-red-500 text-xs mt-1">{errors.startDate.message}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label htmlFor="endDate" className="block text-sm text-gray-700 mb-1">
+                      Tanggal Berakhir
+                    </label>
+                    <input
+                      id="endDate"
+                      type="date"
+                      {...register('endDate')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    {errors.endDate && (
+                      <p className="text-red-500 text-xs mt-1">{errors.endDate.message}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="title" className="block text-sm text-gray-700 mb-1">
+                    Judul Event
+                  </label>
+                  <input
+                    id="title"
+                    {...register('title')}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Contoh: Libur Idul Fitri 1447 H"
+                  />
+                  {errors.title && (
+                    <p className="text-red-500 text-xs mt-1">{errors.title.message}</p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    id="isHoliday"
+                    type="checkbox"
+                    {...register('isHoliday')}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                  />
+                  <label htmlFor="isHoliday" className="text-sm text-gray-700">
+                    Tandai sebagai hari libur sekolah
+                  </label>
+                </div>
+
+                <div>
+                  <label htmlFor="description" className="block text-sm text-gray-700 mb-1">
+                    Deskripsi (opsional)
+                  </label>
+                  <textarea
+                    id="description"
+                    rows={3}
+                    {...register('description')}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Catatan tambahan, misalnya sumber aturan atau detail pelaksanaan."
+                  />
+                  {errors.description && (
+                    <p className="text-red-500 text-xs mt-1">{errors.description.message}</p>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowForm(false);
+                      setEditingId(null);
+                      reset({
+                        academicYearId:
+                          typeof effectiveAcademicYearId === 'number'
+                            ? effectiveAcademicYearId
+                            : 0,
+                        title: '',
+                        type: 'LIBUR_NASIONAL',
+                        startDate: '',
+                        endDate: '',
+                        semester: null,
+                        isHoliday: false,
+                        description: '',
+                      });
+                    }}
+                    className="inline-flex items-center justify-center px-4 py-2 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={createMutation.isPending || updateMutation.isPending}
+                    className="inline-flex items-center justify-center px-4 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {(createMutation.isPending || updateMutation.isPending) && (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    )}
+                    {editingId ? 'Simpan Perubahan' : 'Simpan Event'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
 
-      {!loading && (!events || events.length === 0) && effectiveAcademicYearId && (
+      {effectiveAcademicYearId && (!events || events.length === 0) && (
         <div className="bg-white rounded-xl shadow-md border-0 p-12 flex flex-col items-center justify-center text-center">
           <CalendarRange className="w-12 h-12 text-gray-400 mb-3" />
           <p className="text-gray-700 font-medium mb-1">

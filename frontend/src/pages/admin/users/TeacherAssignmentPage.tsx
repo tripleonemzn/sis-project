@@ -123,8 +123,7 @@ export const TeacherAssignmentPage = () => {
     };
   }, []);
 
-  const selectedSubject = subjects.find((s) => s.id === selectedSubjectId);
-  const selectedClasses = classes.filter((c) => selectedClassIds.includes(c.id));
+
 
   const sortedTeachers = [...teachers].sort((a, b) =>
     a.name.localeCompare(b.name, 'id'),
@@ -306,17 +305,7 @@ export const TeacherAssignmentPage = () => {
     }
   };
 
-  const getKkmForClass = (subject: Subject, classItem: Class): number | null => {
-    const level = classItem.level as 'X' | 'XI' | 'XII';
-    const fromArray = subject.kkms?.find((k) => k.classLevel === level)?.kkm;
-    if (typeof fromArray === 'number') {
-      return fromArray;
-    }
-    if (level === 'X' && typeof subject.kkmX === 'number') return subject.kkmX;
-    if (level === 'XI' && typeof subject.kkmXI === 'number') return subject.kkmXI;
-    if (level === 'XII' && typeof subject.kkmXII === 'number') return subject.kkmXII;
-    return null;
-  };
+
 
   return (
     <div className="space-y-6">
@@ -325,7 +314,6 @@ export const TeacherAssignmentPage = () => {
           <h1 className="text-2xl font-bold text-gray-900">Kelola Assignment Guru</h1>
           <p className="text-gray-500">Penugasan guru ke kelas dan mata pelajaran.</p>
         </div>
-        {!showForm && (
           <button
             type="button"
             onClick={() => {
@@ -345,287 +333,9 @@ export const TeacherAssignmentPage = () => {
             <Plus size={18} />
             Tambah Assignment Guru
           </button>
-        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-md border-0 overflow-hidden">
-        {showForm ? (
-          <div className="p-6 space-y-4">
-            <h2 className="text-lg font-semibold text-gray-800 border-b border-gray-100 pb-3">
-              Tambah Assignment Guru
-            </h2>
-            <form
-              className="space-y-4"
-              onSubmit={handleSubmit(onSubmit)}
-              onReset={() => {
-                reset();
-                setSelectedTeacherId(null);
-                setSelectedSubjectId(null);
-                setSelectedClassIds([]);
-              }}
-            >
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label htmlFor="academicYearId" className="block text-sm font-medium text-gray-700 mb-1">
-                    Tahun Ajaran
-                  </label>
-                  <select
-                    id="academicYearId"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    {...register('academicYearId', { valueAsNumber: true })}
-                    defaultValue={activeYear?.id ?? ''}
-                  >
-                    {activeYear ? (
-                      <option value={activeYear.id}>{activeYear.name}</option>
-                    ) : (
-                      <option value="">Pilih tahun ajaran</option>
-                    )}
-                  </select>
-                  {errors.academicYearId && (
-                    <p className="mt-1 text-xs text-red-600">{errors.academicYearId.message}</p>
-                  )}
-                </div>
-
-                <div className="relative" ref={teacherDropdownRef}>
-                  <label htmlFor="teacherId" className="block text-sm font-medium text-gray-700 mb-1">
-                    Pilih Guru
-                  </label>
-                  <input
-                    id="teacherId"
-                    type="hidden"
-                    autoComplete="off"
-                    {...register('teacherId', { valueAsNumber: true })}
-                  />
-                  <div
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent cursor-pointer flex justify-between items-center text-sm"
-                    onClick={() => setIsTeacherDropdownOpen((open) => !open)}
-                  >
-                    <span className={selectedTeacherId ? 'text-gray-900' : 'text-gray-500'}>
-                      {selectedTeacherId
-                        ? teachers.find((t) => t.id === selectedTeacherId)?.name || 'Pilih Guru'
-                        : 'Pilih Guru'}
-                    </span>
-                    <ChevronDown size={16} className="text-gray-500" />
-                  </div>
-                  {isTeacherDropdownOpen && (
-                    <div className="relative">
-                      <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                        <div className="p-2 sticky top-0 bg-white border-b border-gray-100">
-                          <input
-                            type="text"
-                            id="teacherSearch"
-                            name="teacherSearch"
-                            aria-label="Cari guru"
-                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
-                            placeholder="Cari guru..."
-                            value={teacherSearch}
-                            onChange={(e) => setTeacherSearch(e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                            autoFocus
-                          />
-                        </div>
-                        {filteredTeachers.map((t) => {
-                          const isSelected = selectedTeacherId === t.id;
-                          return (
-                            <div
-                              key={t.id}
-                              className={`px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm ${
-                                isSelected ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
-                              }`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedTeacherId(t.id);
-                                setValue('teacherId', t.id, { shouldValidate: true });
-                                setIsTeacherDropdownOpen(false);
-                                setTeacherSearch(''); // Reset search
-                              }}
-                            >
-                              {t.name}
-                            </div>
-                          );
-                        })}
-                        {filteredTeachers.length === 0 && (
-                          <div className="px-3 py-2 text-gray-500 text-sm text-center">
-                            Guru tidak ditemukan
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {errors.teacherId && (
-                    <p className="mt-1 text-xs text-red-600">{errors.teacherId.message}</p>
-                  )}
-                </div>
-
-                <div className="relative" ref={subjectDropdownRef}>
-                  <label htmlFor="subjectId" className="block text-sm font-medium text-gray-700 mb-1">
-                    Pilih Mata Pelajaran
-                  </label>
-                  <input
-                    id="subjectId"
-                    type="hidden"
-                    autoComplete="off"
-                    {...register('subjectId', { valueAsNumber: true })}
-                  />
-                  <div
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent cursor-pointer flex justify-between items-center text-sm"
-                    onClick={() => setIsSubjectDropdownOpen((open) => !open)}
-                  >
-                    <span className={selectedSubjectId ? 'text-gray-900' : 'text-gray-500'}>
-                      {selectedSubjectId
-                        ? (() => {
-                            const subj = subjects.find((s) => s.id === selectedSubjectId);
-                            return subj ? `${subj.code} - ${subj.name}` : 'Pilih Mata Pelajaran';
-                          })()
-                        : 'Pilih Mata Pelajaran'}
-                    </span>
-                    <ChevronDown size={16} className="text-gray-500" />
-                  </div>
-                  {isSubjectDropdownOpen && (
-                    <div className="relative">
-                      <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                        <div className="p-2 sticky top-0 bg-white border-b border-gray-100">
-                          <input
-                            type="text"
-                            id="subjectSearch"
-                            name="subjectSearch"
-                            aria-label="Cari mata pelajaran"
-                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
-                            placeholder="Cari mapel..."
-                            value={subjectSearch}
-                            onChange={(e) => setSubjectSearch(e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                            autoFocus
-                          />
-                        </div>
-                        {filteredSubjects.map((s) => {
-                          const isSelected = selectedSubjectId === s.id;
-                          return (
-                            <div
-                              key={s.id}
-                              className={`px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm ${
-                                isSelected ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
-                              }`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedSubjectId(s.id);
-                                setValue('subjectId', s.id, { shouldValidate: true });
-                                setIsSubjectDropdownOpen(false);
-                                setSubjectSearch(''); // Reset search
-                              }}
-                            >
-                              {s.code} - {s.name}
-                            </div>
-                          );
-                        })}
-                        {filteredSubjects.length === 0 && (
-                          <div className="px-3 py-2 text-gray-500 text-sm text-center">
-                            Mata pelajaran tidak ditemukan
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {errors.subjectId && (
-                    <p className="mt-1 text-xs text-red-600">{errors.subjectId.message}</p>
-                  )}
-                  <p className="mt-1 text-xs text-gray-500">
-                    KKM akan mengikuti data pada menu Mata Pelajaran sesuai tingkat kelas.
-                  </p>
-                </div>
-
-                <div className="md:col-span-3">
-                  <label htmlFor="classIds" className="block text-sm font-medium text-gray-700 mb-1">
-                    Pilih Kelas
-                  </label>
-                  <input
-                    id="classIds"
-                    type="hidden"
-                    autoComplete="off"
-                    {...register('classIds')}
-                  />
-                  <div className="mt-2 border border-gray-200 rounded-lg p-3 bg-gray-50">
-                    {classes?.length === 0 ? (
-                      <p className="text-xs text-gray-500">Belum ada data kelas.</p>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                        {classes.map((c) => {
-                          const checked = selectedClassIds.includes(c.id);
-                          return (
-                            <label key={c.id} className="inline-flex items-center gap-2 text-sm text-gray-700">
-                              <input
-                                type="checkbox"
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                checked={checked}
-                                onChange={(e) => {
-                                  const current = selectedClassIds || [];
-                                  const next = e.target.checked
-                                    ? [...current, c.id]
-                                    : current.filter((id: number) => id !== c.id);
-                                  setSelectedClassIds(next);
-                                  setValue('classIds', next, { shouldValidate: true });
-                                }}
-                              />
-                              <span>{c.name}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                  {errors.classIds && (
-                    <p className="mt-1 text-xs text-red-600">{errors.classIds.message as string}</p>
-                  )}
-                </div>
-              </div>
-
-              {selectedSubject && selectedClasses.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                    <div className="text-sm font-medium text-gray-700 mb-2">KKM Otomatis per Kelas</div>
-                    <ul className="space-y-1 text-sm text-gray-700">
-                      {selectedClasses.map((c) => {
-                        const kkm = getKkmForClass(selectedSubject, c);
-                        return (
-                          <li key={c.id} className="flex justify-between">
-                            <span>{c.name}</span>
-                            <span className="font-semibold">{kkm ?? '-'}</span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center gap-2 pt-2">
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50"
-                >
-                  {isSubmitting && <Loader2 size={16} className="animate-spin" />}
-                  Simpan Penugasan
-                </button>
-                <button
-                  type="reset"
-                  disabled={isSubmitting}
-                  className="px-4 py-2 rounded-lg border text-sm hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Reset
-                </button>
-                <button
-                  type="button"
-                  disabled={isSubmitting}
-                  onClick={() => setShowForm(false)}
-                  className="px-4 py-2 rounded-lg border text-sm hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Batal
-                </button>
-              </div>
-            </form>
-          </div>
-        ) : (
           <>
             <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row gap-4 justify-between items-center bg-gray-50/50">
               <div className="relative w-full sm:w-72">
@@ -796,8 +506,201 @@ export const TeacherAssignmentPage = () => {
               </>
             )}
           </>
-        )}
       </div>
+
+      {showForm && (
+        <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+            onClick={() => {
+                setShowForm(false);
+                reset();
+                setSelectedTeacherId(null);
+                setSelectedSubjectId(null);
+                setSelectedClassIds([]);
+            }}
+        >
+            <div 
+                className="bg-white rounded-xl shadow-lg w-full max-w-2xl mx-4 overflow-hidden max-h-[90vh] flex flex-col"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                    <h2 className="text-lg font-semibold text-gray-800">
+                        {selectedTeacherId ? 'Edit Assignment Guru' : 'Tambah Assignment Guru'}
+                    </h2>
+                    <button 
+                        onClick={() => {
+                            setShowForm(false);
+                            reset();
+                            setSelectedTeacherId(null);
+                            setSelectedSubjectId(null);
+                            setSelectedClassIds([]);
+                        }}
+                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                        <ChevronLeft size={20} className="rotate-180" />
+                    </button>
+                </div>
+                
+                <div className="p-6 overflow-y-auto">
+                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+                        <input type="hidden" {...register('academicYearId', { valueAsNumber: true })} />
+
+                        <div className="relative" ref={teacherDropdownRef}>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Guru</label>
+                            <div
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg flex items-center justify-between cursor-pointer bg-white"
+                                onClick={() => setIsTeacherDropdownOpen(!isTeacherDropdownOpen)}
+                            >
+                                <span className={selectedTeacherId ? 'text-gray-900' : 'text-gray-500'}>
+                                    {teachers.find(t => t.id === selectedTeacherId)?.name || 'Pilih Guru'}
+                                </span>
+                                <ChevronDown size={16} className="text-gray-400" />
+                            </div>
+                            {isTeacherDropdownOpen && (
+                                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                    <div className="p-2 sticky top-0 bg-white border-b border-gray-100">
+                                        <input
+                                            type="text"
+                                            className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                            placeholder="Cari guru..."
+                                            value={teacherSearch}
+                                            onChange={(e) => setTeacherSearch(e.target.value)}
+                                            onClick={(e) => e.stopPropagation()}
+                                        />
+                                    </div>
+                                    {filteredTeachers.map((teacher) => (
+                                        <div
+                                            key={teacher.id}
+                                            className="px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                                            onClick={() => {
+                                                setValue('teacherId', teacher.id);
+                                                setSelectedTeacherId(teacher.id);
+                                                setIsTeacherDropdownOpen(false);
+                                            }}
+                                        >
+                                            <div className="font-medium text-gray-900">{teacher.name}</div>
+                                            <div className="text-xs text-gray-500">{teacher.username}</div>
+                                        </div>
+                                    ))}
+                                    {filteredTeachers.length === 0 && (
+                                        <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                                            Tidak ada guru ditemukan
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            {errors.teacherId && <p className="text-red-500 text-xs mt-1">{errors.teacherId.message}</p>}
+                        </div>
+
+                        <div className="relative" ref={subjectDropdownRef}>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Mata Pelajaran</label>
+                            <div
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg flex items-center justify-between cursor-pointer bg-white"
+                                onClick={() => setIsSubjectDropdownOpen(!isSubjectDropdownOpen)}
+                            >
+                                <span className={selectedSubjectId ? 'text-gray-900' : 'text-gray-500'}>
+                                    {subjects.find(s => s.id === selectedSubjectId)?.name || 'Pilih Mata Pelajaran'}
+                                </span>
+                                <ChevronDown size={16} className="text-gray-400" />
+                            </div>
+                            {isSubjectDropdownOpen && (
+                                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                    <div className="p-2 sticky top-0 bg-white border-b border-gray-100">
+                                        <input
+                                            type="text"
+                                            className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                            placeholder="Cari mapel..."
+                                            value={subjectSearch}
+                                            onChange={(e) => setSubjectSearch(e.target.value)}
+                                            onClick={(e) => e.stopPropagation()}
+                                        />
+                                    </div>
+                                    {filteredSubjects.map((subject) => (
+                                        <div
+                                            key={subject.id}
+                                            className="px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                                            onClick={() => {
+                                                setValue('subjectId', subject.id);
+                                                setSelectedSubjectId(subject.id);
+                                                setIsSubjectDropdownOpen(false);
+                                            }}
+                                        >
+                                            <div className="font-medium text-gray-900">{subject.name}</div>
+                                            <div className="text-xs text-gray-500">{subject.code}</div>
+                                        </div>
+                                    ))}
+                                    {filteredSubjects.length === 0 && (
+                                        <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                                            Tidak ada mapel ditemukan
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            {errors.subjectId && <p className="text-red-500 text-xs mt-1">{errors.subjectId.message}</p>}
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Kelas</label>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-60 overflow-y-auto p-2 border border-gray-200 rounded-lg">
+                                {classes.map((cls) => (
+                                    <label
+                                        key={cls.id}
+                                        className={`
+                                            flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors text-sm
+                                            ${selectedClassIds.includes(cls.id)
+                                                ? 'bg-blue-50 border-blue-200 text-blue-700'
+                                                : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}
+                                        `}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            value={cls.id}
+                                            checked={selectedClassIds.includes(cls.id)}
+                                            onChange={(e) => {
+                                                const checked = e.target.checked;
+                                                const newIds = checked
+                                                    ? [...selectedClassIds, cls.id]
+                                                    : selectedClassIds.filter((id) => id !== cls.id);
+                                                setSelectedClassIds(newIds);
+                                                setValue('classIds', newIds);
+                                            }}
+                                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span>{cls.name}</span>
+                                    </label>
+                                ))}
+                            </div>
+                            {errors.classIds && <p className="text-red-500 text-xs mt-1">{errors.classIds.message}</p>}
+                        </div>
+
+                        <div className="flex gap-2 pt-4 justify-end border-t border-gray-100">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowForm(false);
+                                    reset();
+                                    setSelectedTeacherId(null);
+                                    setSelectedSubjectId(null);
+                                    setSelectedClassIds([]);
+                                }}
+                                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                            >
+                                {isSubmitting && <Loader2 size={18} className="animate-spin" />}
+                                Simpan
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 }

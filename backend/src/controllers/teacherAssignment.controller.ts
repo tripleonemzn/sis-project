@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import { writeAuditLog } from '../utils/auditLog';
 
 const createTeacherAssignmentsSchema = z.object({
   academicYearId: z.number().int(),
@@ -37,10 +38,19 @@ export const updateCompetencyThresholds = asyncHandler(async (req: Request, res:
   const { id } = teacherAssignmentIdSchema.parse(req.params);
   const { competencyThresholds } = updateCompetencySchema.parse(req.body);
 
+  const before = await prisma.teacherAssignment.findUnique({ where: { id } });
   const assignment = await prisma.teacherAssignment.update({
     where: { id },
     data: { competencyThresholds },
   });
+
+  const authUser = (req as any).user;
+  const dutyUser = await prisma.user.findUnique({
+    where: { id: authUser.id },
+    select: { role: true, additionalDuties: true },
+  });
+  const dutiesArr = (dutyUser?.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+  await writeAuditLog(authUser.id, dutyUser?.role || authUser.role, dutiesArr, 'UPDATE', 'TEACHER_ASSIGNMENT_COMPETENCY', id, before, assignment, (req.body as any)?.reason);
 
   res.status(200).json(new ApiResponse(200, assignment, 'Deskripsi capaian kompetensi berhasil disimpan'));
 });
@@ -77,6 +87,21 @@ export const getTeacherAssignmentById = asyncHandler(async (req: Request, res: R
 });
 
 export const createTeacherAssignments = asyncHandler(async (req: Request, res: Response) => {
+  const authUser = (req as any).user;
+  const dutyUser = await prisma.user.findUnique({
+    where: { id: authUser.id },
+    select: { role: true, additionalDuties: true },
+  });
+  if (!dutyUser) {
+    throw new ApiError(401, 'Tidak memiliki otorisasi');
+  }
+  if (dutyUser.role !== 'ADMIN') {
+    const duties = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+    const allowed = duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
+    if (!allowed) {
+      throw new ApiError(403, 'Anda tidak memiliki hak akses untuk mengelola assignment guru');
+    }
+  }
   const { academicYearId, teacherId, subjectId, classIds } = createTeacherAssignmentsSchema.parse(req.body);
 
   const classes = await prisma.class.findMany({
@@ -164,6 +189,9 @@ export const createTeacherAssignments = asyncHandler(async (req: Request, res: R
     });
   }
 
+  const dutiesArr2 = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+  await writeAuditLog(authUser.id, dutyUser.role, dutiesArr2, 'UPSERT', 'TEACHER_ASSIGNMENTS', undefined, null, { academicYearId, teacherId, subjectId, classIds }, (req.body as any)?.reason);
+
   res
     .status(201)
     .json(new ApiResponse(201, { assignments }, 'Penugasan guru berhasil disimpan'));
@@ -188,7 +216,23 @@ export const getTeacherAssignments = asyncHandler(async (req: Request, res: Resp
   }
 
   if (user && user.role === 'TEACHER') {
-    where.teacherId = user.id;
+    const dutyUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { additionalDuties: true },
+    });
+    const duties = (dutyUser?.additionalDuties || []).map((d: any) =>
+      String(d).trim().toUpperCase(),
+    );
+    const isCurriculum =
+      duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
+
+    if (isCurriculum) {
+      if (teacherId) {
+        where.teacherId = teacherId;
+      }
+    } else {
+      where.teacherId = user.id;
+    }
   } else if (teacherId) {
     where.teacherId = teacherId;
   }
@@ -240,6 +284,7 @@ export const getTeacherAssignments = asyncHandler(async (req: Request, res: Resp
       take: limit,
       orderBy: [
         { academicYear: { name: 'desc' } },
+        { subject: { name: 'asc' } },
         { class: { level: 'asc' } },
         { class: { name: 'asc' } },
         { subject: { code: 'asc' } },
@@ -293,11 +338,27 @@ export const getTeacherAssignments = asyncHandler(async (req: Request, res: Resp
 
 export const deleteTeacherAssignment = asyncHandler(
   async (req: Request, res: Response) => {
+    const authUser = (req as any).user;
+    const dutyUser = await prisma.user.findUnique({
+      where: { id: authUser.id },
+      select: { role: true, additionalDuties: true },
+    });
+    if (!dutyUser) {
+      throw new ApiError(401, 'Tidak memiliki otorisasi');
+    }
+    if (dutyUser.role !== 'ADMIN') {
+      const duties = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+      const allowed = duties.includes('WAKASEK_KURIKULUM');
+      if (!allowed) {
+        throw new ApiError(403, 'Anda tidak memiliki hak akses untuk menghapus assignment guru');
+      }
+    }
     const { id } = teacherAssignmentIdSchema.parse(req.params);
 
-    await prisma.teacherAssignment.delete({
-      where: { id },
-    });
+    const before = await prisma.teacherAssignment.findUnique({ where: { id } });
+    await prisma.teacherAssignment.delete({ where: { id } });
+    const dutiesArr3 = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+    await writeAuditLog(authUser.id, dutyUser.role, dutiesArr3, 'DELETE', 'TEACHER_ASSIGNMENT', id, before, null, (req.body as any)?.reason);
 
     res
       .status(200)

@@ -2,7 +2,7 @@ import { useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useOutletContext } from 'react-router-dom';
 import { teacherAssignmentService } from '../../services/teacherAssignment.service';
-import { scheduleService } from '../../services/schedule.service';
+import { scheduleService, type DayOfWeek } from '../../services/schedule.service';
 import { scheduleTimeConfigService } from '../../services/scheduleTimeConfig.service';
 import { authService } from '../../services/auth.service';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
@@ -38,7 +38,7 @@ export const TeacherDashboard = () => {
   });
   const isExaminer = user.role === 'EXAMINER';
 
-  const { data: assignmentsData, isLoading: isLoadingAssignments, refetch: refetchAssignments } = useQuery({
+  const { isLoading: isLoadingAssignments, refetch: refetchAssignments } = useQuery({
     queryKey: ['teacher-assignments-dashboard', activeAcademicYearId, user.id],
     queryFn: () =>
       teacherAssignmentService.list({
@@ -73,47 +73,163 @@ export const TeacherDashboard = () => {
     enabled: !!activeAcademicYearId,
   });
 
-  const assignments = useMemo(() => {
-    const list = assignmentsData?.data?.assignments || [];
-    return [...list].sort((a: any, b: any) => {
-      const subjectDiff = a.subject.name.localeCompare(b.subject.name);
-      if (subjectDiff !== 0) return subjectDiff;
-      return a.class.name.localeCompare(b.class.name, undefined, { numeric: true });
-    });
-  }, [assignmentsData]);
-  
-  const totalHours = useMemo(() => {
-    if (!scheduleData?.data?.entries) return 0;
-    
-    let count = 0;
-    const entries = scheduleData.data.entries;
-    const periodNotes = timeConfig?.config?.periodNotes || {};
-
-    for (const entry of entries) {
-       const note = periodNotes[entry.dayOfWeek]?.[entry.period];
-       const n = note ? note.toUpperCase() : '';
-       if (!n.includes('UPACARA') && !n.includes('ISTIRAHAT') && !n.includes('TADARUS')) {
-         count++;
-       }
+  const isNonTeaching = (day: DayOfWeek, period: number) => {
+    const cfg: any = timeConfig?.config;
+    const types = cfg?.periodTypes || {};
+    const typeRaw = types[day]?.[period];
+    if (typeRaw) {
+      const t = String(typeRaw).toUpperCase();
+      if (t === 'UPACARA' || t === 'ISTIRAHAT' || t === 'TADARUS' || t === 'OTHER') {
+        return true;
+      }
+      if (t === 'TEACHING') {
+        return false;
+      }
     }
-    return count;
-  }, [scheduleData, timeConfig]);
+    const note = cfg?.periodNotes?.[day]?.[period];
+    if (!note) {
+      return false;
+    }
+    const n = String(note).toUpperCase();
+    if (n.includes('UPACARA')) {
+      return true;
+    }
+    if (n.includes('ISTIRAHAT')) {
+      return true;
+    }
+    if (n.includes('TADARUS')) {
+      return true;
+    }
+    return false;
+  };
 
-  const uniqueClasses = new Set(assignments.map((a: any) => a.class.id)).size;
-  const uniqueSubjects = new Set(assignments.map((a: any) => a.subject.id)).size;
-  
-  const todaySchedule = useMemo(() => {
+  const getTeachingHour = (day: DayOfWeek, currentPeriod: number) => {
+    let teachingCounter = 0;
+    for (let p = 1; p <= currentPeriod; p += 1) {
+      if (!isNonTeaching(day, p)) {
+        teachingCounter += 1;
+      }
+    }
+    if (isNonTeaching(day, currentPeriod)) {
+      return null;
+    }
+    return teachingCounter > 0 ? teachingCounter : null;
+  };
+
+  const teachingEntries = useMemo(() => {
     const entries = scheduleData?.data?.entries;
     if (!Array.isArray(entries)) return [];
-    
-    // Get current day of week (0=Sunday, 1=Monday, etc.)
-    const days = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
-    const currentDay = days[new Date().getDay()];
-    
-    return entries
-      .filter((entry: any) => entry.dayOfWeek === currentDay)
-      .sort((a: any, b: any) => a.period - b.period);
-  }, [scheduleData]);
+    return entries.filter((entry: any) => {
+      if (entry.teachingHour === null) {
+        return false;
+      }
+      if (typeof entry.teachingHour === 'number') {
+        return true;
+      }
+      return !isNonTeaching(entry.dayOfWeek as DayOfWeek, entry.period);
+    });
+  }, [scheduleData, timeConfig]);
+
+  const totalHours = useMemo(() => {
+    return teachingEntries.length;
+  }, [teachingEntries]);
+
+  const uniqueClasses = useMemo(
+    () =>
+      new Set(
+        teachingEntries
+          .map((e: any) => e.teacherAssignment?.class?.id)
+          .filter((id: any) => id != null),
+      ).size,
+    [teachingEntries],
+  );
+
+  const uniqueSubjects = useMemo(
+    () =>
+      new Set(
+        teachingEntries
+          .map((e: any) => e.teacherAssignment?.subject?.id)
+          .filter((id: any) => id != null),
+      ).size,
+    [teachingEntries],
+  );
+  
+  const todayScheduleBlocks = useMemo(() => {
+    const entries = scheduleData?.data?.entries;
+    if (!Array.isArray(entries)) return [];
+
+    const now = new Date();
+    const jsDay = now.getDay();
+    if (jsDay === 0) {
+      return [];
+    }
+    const days: DayOfWeek[] = [
+      'MONDAY',
+      'TUESDAY',
+      'WEDNESDAY',
+      'THURSDAY',
+      'FRIDAY',
+      'SATURDAY',
+    ];
+    const currentDay = days[jsDay - 1];
+
+    const filtered = entries.filter(
+      (entry: any) =>
+        entry.dayOfWeek === currentDay &&
+        (entry.teachingHour === null
+          ? false
+          : typeof entry.teachingHour === 'number'
+          ? true
+          : !isNonTeaching(entry.dayOfWeek as DayOfWeek, entry.period)),
+    );
+
+    filtered.sort((a: any, b: any) => {
+      const aHour = typeof a.teachingHour === 'number' ? a.teachingHour : a.period;
+      const bHour = typeof b.teachingHour === 'number' ? b.teachingHour : b.period;
+      return aHour - bHour;
+    });
+
+    const blocks: any[] = [];
+
+    for (const entry of filtered) {
+      const teachingHour =
+        typeof entry.teachingHour === 'number'
+          ? entry.teachingHour
+          : getTeachingHour(entry.dayOfWeek as DayOfWeek, entry.period);
+      if (!teachingHour) {
+        continue;
+      }
+
+      const subject = entry.teacherAssignment?.subject || null;
+      const cls = entry.teacherAssignment?.class || null;
+      const room = entry.room || '-';
+
+      const last = blocks[blocks.length - 1];
+      const canMerge =
+        last &&
+        last.subject?.id === subject?.id &&
+        last.class?.id === cls?.id &&
+        last.room === room &&
+        teachingHour === last.endHour + 1;
+
+      if (!canMerge) {
+        blocks.push({
+          subject,
+          class: cls,
+          room,
+          dayOfWeek: entry.dayOfWeek,
+          entries: [entry],
+          startHour: teachingHour,
+          endHour: teachingHour,
+        });
+      } else {
+        last.entries.push(entry);
+        last.endHour = teachingHour;
+      }
+    }
+
+    return blocks;
+  }, [scheduleData, timeConfig]);
 
   if (isYearError) {
     return (
@@ -261,25 +377,75 @@ export const TeacherDashboard = () => {
           </div>
 
           <div className="space-y-4">
-            {todaySchedule.length > 0 ? (
-              todaySchedule.map((schedule: any) => (
-                <div key={schedule.id} className="flex items-center gap-4 p-4 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors">
-                  <div className="w-16 h-16 rounded-lg bg-blue-50 flex flex-col items-center justify-center text-blue-600">
-                    <span className="text-xs font-medium">Jam Ke</span>
-                    <span className="text-xl font-bold">{schedule.period}</span>
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900">{schedule.subject?.name}</h3>
-                    <p className="text-sm text-gray-500">{schedule.class?.name}</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
-                      <Clock size={14} />
-                      {schedule.startTime} - {schedule.endTime}
+            {todayScheduleBlocks.length > 0 ? (
+              todayScheduleBlocks.map((block: any, index: number) => {
+                const cfg: any = timeConfig?.config;
+                const entries = block.entries || [];
+                const first = entries[0];
+                const last = entries[entries.length - 1] || first;
+
+                const firstTimeRaw =
+                  cfg?.periodTimes?.[first?.dayOfWeek]?.[first?.period] ||
+                  (first?.startTime && first?.endTime
+                    ? `${first.startTime} - ${first.endTime}`
+                    : '');
+                const lastTimeRaw =
+                  cfg?.periodTimes?.[last?.dayOfWeek]?.[last?.period] ||
+                  (last?.startTime && last?.endTime
+                    ? `${last.startTime} - ${last.endTime}`
+                    : '');
+
+                let timeRange = '-';
+                if (firstTimeRaw && lastTimeRaw && firstTimeRaw.includes('-') && lastTimeRaw.includes('-')) {
+                  const start = firstTimeRaw.split('-')[0].trim();
+                  const end = lastTimeRaw.split('-')[1].trim();
+                  timeRange = `${start} - ${end}`;
+                } else {
+                  timeRange = firstTimeRaw || lastTimeRaw || '-';
+                }
+
+                const subjectName = block.subject?.name || '-';
+                const subjectCode = block.subject?.code || '';
+                const className = block.class?.name || '-';
+                const room = block.room || '-';
+                const periodCount = entries.length;
+
+                const labelIndex =
+                  block.startHour === block.endHour
+                    ? `${block.startHour}`
+                    : `${block.startHour}-${block.endHour}`;
+
+                return (
+                  <div
+                    key={`${subjectCode}-${className}-${index}-${block.startHour}-${block.endHour}`}
+                    className="flex items-center gap-4 p-4 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="w-16 h-16 rounded-lg bg-blue-50 flex flex-col items-center justify-center text-blue-600">
+                      <span className="text-xs font-medium">Jam Ke</span>
+                      <span className="text-xl font-bold">{labelIndex}</span>
+                      {periodCount > 1 && (
+                        <span className="mt-0.5 text-[10px] text-blue-500 font-semibold">
+                          {periodCount} JP
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900">
+                        {subjectCode ? `${subjectCode} • ${subjectName}` : subjectName}
+                      </h3>
+                      <p className="text-sm text-gray-500 mt-1">
+                        Kelas {className} • Ruang {room}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
+                        <Clock size={14} />
+                        {timeRange}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">
                 <Calendar className="w-8 h-8 text-gray-400 mx-auto mb-2" />

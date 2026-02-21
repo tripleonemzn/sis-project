@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { z } from 'zod';
+import { writeAuditLog } from '../utils/auditLog';
 
 const subjectCategorySchema = z.object({
   code: z.string().min(1, 'Kode kategori wajib diisi'),
@@ -23,6 +24,21 @@ export const getSubjectCategories = asyncHandler(async (req: Request, res: Respo
 });
 
 export const createSubjectCategory = asyncHandler(async (req: Request, res: Response) => {
+  const authUser = (req as any).user;
+  const dutyUser = await prisma.user.findUnique({
+    where: { id: authUser.id },
+    select: { role: true, additionalDuties: true },
+  });
+  if (!dutyUser) {
+    throw new ApiError(401, 'Tidak memiliki otorisasi');
+  }
+  if (dutyUser.role !== 'ADMIN') {
+    const duties = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+    const allowed = duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
+    if (!allowed) {
+      throw new ApiError(403, 'Anda tidak memiliki hak akses untuk mengelola kategori mata pelajaran');
+    }
+  }
   const body = subjectCategorySchema.parse(req.body);
 
   const existing = await prisma.subjectCategory.findUnique({
@@ -37,10 +53,28 @@ export const createSubjectCategory = asyncHandler(async (req: Request, res: Resp
     data: body,
   });
 
+  const dutiesArr = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+  await writeAuditLog(authUser.id, dutyUser.role, dutiesArr, 'CREATE', 'SUBJECT_CATEGORY', category.id, null, category, (req.body as any)?.reason);
+
   res.status(201).json(new ApiResponse(201, category, 'Kategori mata pelajaran berhasil dibuat'));
 });
 
 export const updateSubjectCategory = asyncHandler(async (req: Request, res: Response) => {
+  const authUser = (req as any).user;
+  const dutyUser = await prisma.user.findUnique({
+    where: { id: authUser.id },
+    select: { role: true, additionalDuties: true },
+  });
+  if (!dutyUser) {
+    throw new ApiError(401, 'Tidak memiliki otorisasi');
+  }
+  if (dutyUser.role !== 'ADMIN') {
+    const duties = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+    const allowed = duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
+    if (!allowed) {
+      throw new ApiError(403, 'Anda tidak memiliki hak akses untuk mengelola kategori mata pelajaran');
+    }
+  }
   const { id } = req.params;
   const body = subjectCategorySchema.partial().parse(req.body);
 
@@ -66,10 +100,28 @@ export const updateSubjectCategory = asyncHandler(async (req: Request, res: Resp
     data: body,
   });
 
+  const dutiesArr2 = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+  await writeAuditLog(authUser.id, dutyUser.role, dutiesArr2, 'UPDATE', 'SUBJECT_CATEGORY', Number(id), existing, updated, (req.body as any)?.reason);
+
   res.status(200).json(new ApiResponse(200, updated, 'Kategori berhasil diperbarui'));
 });
 
 export const deleteSubjectCategory = asyncHandler(async (req: Request, res: Response) => {
+  const authUser = (req as any).user;
+  const dutyUser = await prisma.user.findUnique({
+    where: { id: authUser.id },
+    select: { role: true, additionalDuties: true },
+  });
+  if (!dutyUser) {
+    throw new ApiError(401, 'Tidak memiliki otorisasi');
+  }
+  if (dutyUser.role !== 'ADMIN') {
+    const duties = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+    const allowed = duties.includes('WAKASEK_KURIKULUM');
+    if (!allowed) {
+      throw new ApiError(403, 'Anda tidak memiliki hak akses untuk mengelola kategori mata pelajaran');
+    }
+  }
   const { id } = req.params;
 
   const category = await prisma.subjectCategory.findUnique({
@@ -92,6 +144,9 @@ export const deleteSubjectCategory = asyncHandler(async (req: Request, res: Resp
   await prisma.subjectCategory.delete({
     where: { id: Number(id) },
   });
+
+  const dutiesArr3 = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+  await writeAuditLog(authUser.id, dutyUser.role, dutiesArr3, 'DELETE', 'SUBJECT_CATEGORY', Number(id), category, null, (req.body as any)?.reason);
 
   res.status(200).json(new ApiResponse(200, null, 'Kategori berhasil dihapus'));
 });

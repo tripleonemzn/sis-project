@@ -22,6 +22,7 @@ type DaySchedule = {
   label: string;
   entries: {
     period: number;
+    teachingHour: number;
     entry: ScheduleEntry;
   }[];
 };
@@ -81,6 +82,15 @@ export const TeacherSchedulePage = () => {
     [assignmentsData],
   );
 
+  const scheduledAssignments: TeacherAssignment[] = useMemo(
+    () =>
+      assignments.filter((a: any) => {
+        const count = (a as any)._count?.scheduleEntries ?? 0;
+        return count > 0;
+      }),
+    [assignments],
+  );
+
   const {
     data: scheduleData,
     isLoading: isLoadingSchedule,
@@ -106,43 +116,54 @@ export const TeacherSchedulePage = () => {
   });
 
   const isNonTeaching = (day: DayOfWeek, period: number) => {
-     // @ts-ignore - periodNotes access might be tricky with types
-     const note = timeConfig?.config?.periodNotes?.[day]?.[period];
-     if (!note) return false;
-     const n = note.toUpperCase();
-     return n.includes('UPACARA') || n.includes('ISTIRAHAT') || n.includes('TADARUS');
-  }
-
-  const groups: TeachingGroup[] = useMemo(() => {
-    const map = new Map<string, TeachingGroup>();
-
-    for (const a of assignments) {
-      const level = a.class.level;
-      const key = `${a.subject.id}-${level}`;
-      const existing = map.get(key);
-
-      if (!existing) {
-        map.set(key, {
-          subject: a.subject,
-          level,
-          classes: [{ id: a.class.id, name: a.class.name }],
-        });
-      } else if (!existing.classes.some((c) => c.id === a.class.id)) {
-        existing.classes.push({ id: a.class.id, name: a.class.name });
+    const cfg: any = timeConfig?.config;
+    const types = cfg?.periodTypes || {};
+    const typeRaw = types[day]?.[period];
+    if (typeRaw) {
+      const t = String(typeRaw).toUpperCase();
+      if (t === 'UPACARA' || t === 'ISTIRAHAT' || t === 'TADARUS' || t === 'OTHER') {
+        return true;
+      }
+      if (t === 'TEACHING') {
+        return false;
       }
     }
+    const note = cfg?.periodNotes?.[day]?.[period];
+    if (!note) {
+      return false;
+    }
+    const n = String(note).toUpperCase();
+    if (n.includes('UPACARA')) {
+      return true;
+    }
+    if (n.includes('ISTIRAHAT')) {
+      return true;
+    }
+    if (n.includes('TADARUS')) {
+      return true;
+    }
+    return false;
+  };
 
-    return Array.from(map.values()).sort((a, b) => {
-      if (a.subject.code === b.subject.code) {
-        return a.level.localeCompare(b.level, 'id');
+  const getTeachingHour = (day: DayOfWeek, currentPeriod: number) => {
+    let teachingCounter = 0;
+    for (let p = 1; p <= currentPeriod; p += 1) {
+      if (!isNonTeaching(day, p)) {
+        teachingCounter += 1;
       }
-      return a.subject.code.localeCompare(b.subject.code, 'id');
-    });
-  }, [assignments]);
+    }
+    if (isNonTeaching(day, currentPeriod)) {
+      return null;
+    }
+    return teachingCounter > 0 ? teachingCounter : null;
+  };
 
   const totalStudents = useMemo(() => {
-    return assignments.reduce((sum, a) => sum + (a.class._count?.students || 0), 0);
-  }, [assignments]);
+    return scheduledAssignments.reduce(
+      (sum, a) => sum + (a.class._count?.students || 0),
+      0,
+    );
+  }, [scheduledAssignments]);
 
   const daySchedules: DaySchedule[] = useMemo(() => {
     const map = new Map<DayOfWeek, DaySchedule>();
@@ -157,8 +178,12 @@ export const TeacherSchedulePage = () => {
 
     for (const entry of scheduleEntries) {
       const day = entry.dayOfWeek;
-      // Skip non-teaching periods (Upacara, Istirahat, etc)
-      if (isNonTeaching(day, entry.period)) {
+      const teachingHour =
+        typeof entry.teachingHour === 'number'
+          ? entry.teachingHour
+          : getTeachingHour(day, entry.period);
+      // Skip non-teaching periods (Upacara, Istirahat, dll)
+      if (!teachingHour) {
         continue;
       }
 
@@ -168,6 +193,7 @@ export const TeacherSchedulePage = () => {
       }
       daySchedule.entries.push({
         period: entry.period,
+        teachingHour,
         entry,
       });
     }
@@ -175,7 +201,7 @@ export const TeacherSchedulePage = () => {
     for (const day of DAY_ORDER) {
       const ds = map.get(day);
       if (ds) {
-        ds.entries.sort((a, b) => a.period - b.period);
+        ds.entries.sort((a, b) => a.teachingHour - b.teachingHour);
       }
     }
 
@@ -183,6 +209,35 @@ export const TeacherSchedulePage = () => {
       (ds) => ds.entries.length > 0,
     );
   }, [scheduleEntries, timeConfig]);
+
+  const groups: TeachingGroup[] = useMemo(() => {
+    const map = new Map<string, TeachingGroup>();
+
+    for (const a of scheduledAssignments) {
+      const level = a.class.level;
+      const key = `${a.subject.id}-${level}`;
+      const existing = map.get(key);
+
+      const cls = { id: a.class.id, name: a.class.name };
+
+      if (!existing) {
+        map.set(key, {
+          subject: a.subject,
+          level,
+          classes: [cls],
+        });
+      } else if (!existing.classes.some((c) => c.id === cls.id)) {
+        existing.classes.push(cls);
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.subject.code === b.subject.code) {
+        return a.level.localeCompare(b.level, 'id');
+      }
+      return a.subject.code.localeCompare(b.subject.code, 'id');
+    });
+  }, [scheduledAssignments]);
 
   const hasLevel2Schedule = daySchedules.length > 0;
 
@@ -216,7 +271,7 @@ export const TeacherSchedulePage = () => {
           <div>
             <p className="text-xs text-gray-500 font-medium">Mapel Diampu</p>
             <p className="text-2xl font-bold text-gray-900">
-              {new Set(assignments.map((a) => a.subject.id)).size}
+              {new Set(scheduledAssignments.map((a) => a.subject.id)).size}
             </p>
           </div>
         </div>
@@ -227,7 +282,7 @@ export const TeacherSchedulePage = () => {
           <div>
             <p className="text-xs text-gray-500 font-medium">Kelas Ajar</p>
             <p className="text-2xl font-bold text-gray-900">
-              {new Set(assignments.map((a) => a.class.id)).size}
+              {new Set(scheduledAssignments.map((a) => a.class.id)).size}
             </p>
           </div>
         </div>
@@ -357,8 +412,8 @@ export const TeacherSchedulePage = () => {
 
       {/* Modal Detail Jadwal */}
       {selectedDayDetail && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={() => setSelectedDayDetail(null)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white">
               <div>
                 <h2 className="text-xl font-bold text-gray-900">{selectedDayDetail.label}</h2>
@@ -373,7 +428,7 @@ export const TeacherSchedulePage = () => {
             </div>
             
             <div className="flex-1 overflow-y-auto p-6 space-y-3">
-              {selectedDayDetail.entries.map(({ period, entry }) => {
+              {selectedDayDetail.entries.map(({ period, teachingHour, entry }) => {
                  const timeRange = timeConfig?.config?.periodTimes?.[entry.dayOfWeek]?.[period] || '-';
                  return (
                   <div
@@ -381,7 +436,9 @@ export const TeacherSchedulePage = () => {
                     className="flex gap-4 p-4 border border-gray-100 rounded-xl bg-gray-50/50 hover:bg-white hover:shadow-sm hover:border-blue-200 transition-all"
                   >
                     <div className="min-w-[100px] flex flex-col justify-center border-r border-gray-200 pr-4">
-                      <div className="text-sm font-bold text-gray-900">Jam Ke {period}</div>
+                      <div className="text-sm font-bold text-gray-900">
+                        Jam Ke {teachingHour ?? '-'}
+                      </div>
                       <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1.5 bg-white px-2 py-1 rounded-md border border-gray-100 w-fit">
                         <Clock size={12} />
                         <span className="font-mono">{timeRange}</span>

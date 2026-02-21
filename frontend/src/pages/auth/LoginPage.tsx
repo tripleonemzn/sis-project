@@ -32,6 +32,7 @@ export const LoginPage = () => {
   const queryClient = useQueryClient();
   const [showPassword, setShowPassword] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [brokenSources, setBrokenSources] = useState<Set<string>>(new Set());
   const [gallery, setGallery] = useState<{ url: string; description: string }[]>([]);
   const assetBase = useMemo(() => {
     if (typeof window === 'undefined') return '';
@@ -60,6 +61,17 @@ export const LoginPage = () => {
     () => (gallerySources.length > 0 ? gallerySources : staticSources),
     [gallerySources, staticSources],
   );
+  const activeDisplaySources = useMemo(
+    () => activeSources.filter((src) => !brokenSources.has(src)),
+    [activeSources, brokenSources],
+  );
+  const sourceDescriptionMap = useMemo(() => {
+    const map = new Map<string, string>();
+    gallerySources.forEach((src, idx) => {
+      map.set(src, gallery[idx]?.description || '');
+    });
+    return map;
+  }, [gallerySources, gallery]);
 
   // Gunakan slide berbasis gradien vektor elegan (bisa diganti gambar)
   const slides = useMemo(
@@ -80,39 +92,36 @@ export const LoginPage = () => {
   }, []);
 
   useEffect(() => {
-    const length = activeSources.length > 0 ? activeSources.length : slides.length;
-    let tid: number | undefined;
-    let cancelled = false;
-    
-    const step = (current: number) => {
-      const next = (current + 1) % length;
-      // Gunakan delay tetap 3500ms untuk semua transisi
-      const delay = 3500;
-      
-      tid = window.setTimeout(() => {
-        if (cancelled) return;
-        setActiveIndex(next);
-        step(next);
-      }, delay);
-    };
-    
-    step(activeIndex);
-    
-    return () => {
-      cancelled = true;
-      if (tid) clearTimeout(tid);
-    };
-  }, [activeSources, slides]);
+    setBrokenSources(new Set());
+  }, [activeSources]);
+
+  // Jaga agar index selalu valid saat sumber gambar berubah.
+  useEffect(() => {
+    const length = activeDisplaySources.length > 0 ? activeDisplaySources.length : slides.length;
+    setActiveIndex((prev) => (prev >= length ? 0 : prev));
+  }, [activeDisplaySources.length, slides.length]);
+
+  useEffect(() => {
+    const length = activeDisplaySources.length > 0 ? activeDisplaySources.length : slides.length;
+    if (length <= 1) return;
+
+    // Gunakan interval tetap agar transisi antar slide konsisten, termasuk reset last -> first.
+    const intervalId = window.setInterval(() => {
+      setActiveIndex((prev) => (prev >= length - 1 ? 0 : prev + 1));
+    }, 3500);
+
+    return () => clearInterval(intervalId);
+  }, [activeDisplaySources.length, slides.length]);
   
   // Preload images agar tidak delay saat transisi
   useEffect(() => {
-    if (activeSources.length > 0) {
-      activeSources.forEach((src) => {
+    if (activeDisplaySources.length > 0) {
+      activeDisplaySources.forEach((src) => {
         const img = new Image();
         img.src = src;
       });
     }
-  }, [activeSources]);
+  }, [activeDisplaySources]);
 
   const {
     register,
@@ -182,13 +191,52 @@ export const LoginPage = () => {
 
   return (
     <div className="min-h-screen w-full relative overflow-hidden">
-      {/* Background Image */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: "url('/background_sis.png')" }}
+      {/* Lightweight background dengan palet dari logo KGB2 */}
+      <div className="absolute inset-0 bg-[#16306f]" />
+      <div
+        className="absolute inset-0"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 14% 18%, rgba(116, 195, 192, 0.26) 0%, transparent 46%), radial-gradient(circle at 86% 16%, rgba(243, 191, 36, 0.2) 0%, transparent 42%), radial-gradient(circle at 50% 86%, rgba(255, 0, 119, 0.18) 0%, transparent 48%), linear-gradient(128deg, #17357c 0%, #2f4c9d 48%, #2a7f96 100%)',
+        }}
       />
-      {/* Overlay transparan agar konten tetap terbaca jelas */}
-      <div className="absolute inset-0 bg-black/10" />
+      <div className="absolute -top-24 -left-16 h-80 w-80 rounded-full bg-[#74c3c0]/20 blur-3xl" />
+      <div className="absolute top-16 right-0 h-96 w-96 rounded-full bg-[#f3bf24]/20 blur-3xl" />
+      <div className="absolute -bottom-24 left-1/3 h-96 w-96 rounded-full bg-[#ff0077]/15 blur-3xl" />
+      <div className="pointer-events-none select-none absolute inset-0">
+        <img
+          src="/logo_sis_kgb2.png"
+          alt=""
+          aria-hidden="true"
+          className="absolute -left-8 top-[8%] w-24 sm:w-28 md:w-36 lg:w-40 object-contain opacity-20 rotate-[-10deg]"
+        />
+        <img
+          src="/logo_sis_kgb2.png"
+          alt=""
+          aria-hidden="true"
+          className="absolute left-[5%] bottom-[9%] w-40 sm:w-48 md:w-64 lg:w-72 object-contain opacity-20 rotate-[8deg]"
+        />
+        <img
+          src="/logo_sis_kgb2.png"
+          alt=""
+          aria-hidden="true"
+          className="absolute left-1/2 top-1/2 w-[min(48vw,620px)] -translate-x-1/2 -translate-y-1/2 object-contain opacity-20"
+        />
+        <img
+          src="/logo_sis_kgb2.png"
+          alt=""
+          aria-hidden="true"
+          className="absolute -right-8 top-[10%] w-48 sm:w-56 md:w-72 lg:w-[22rem] object-contain opacity-20 rotate-[12deg]"
+        />
+        <img
+          src="/logo_sis_kgb2.png"
+          alt=""
+          aria-hidden="true"
+          className="absolute right-[5%] bottom-[12%] w-20 sm:w-24 md:w-32 lg:w-36 object-contain opacity-20 rotate-[-9deg]"
+        />
+      </div>
+      {/* Overlay tipis agar kontras konten tetap stabil */}
+      <div className="absolute inset-0 bg-[#102451]/20" />
 
       <div className="relative flex min-h-screen flex-col">
         <div className="flex-1 container mx-auto px-4 py-2 flex flex-col justify-center">
@@ -293,21 +341,25 @@ export const LoginPage = () => {
 
             <div className="hidden md:flex md:col-span-3 items-center justify-start">
               <div className="relative h-[520px] w-full max-w-3xl rounded-2xl overflow-hidden border border-white/40 shadow-xl">
-                {activeSources.length > 0
-                  ? activeSources.map((src, idx) => (
+                {activeDisplaySources.length > 0
+                  ? activeDisplaySources.map((src, idx) => (
                       <img
-                        key={src}
+                        key={`${src}-${idx}`}
                         src={src}
-                        alt={gallery.length > 0 ? (gallery[idx]?.description || 'Foto kegiatan') : 'Foto kegiatan'}
+                        alt={sourceDescriptionMap.get(src) || 'Foto kegiatan'}
                         className="absolute inset-0 w-full h-full object-cover transition-opacity ease-in-out"
                         style={{ 
                           opacity: idx === activeIndex ? 1 : 0,
                           zIndex: idx === activeIndex ? 10 : 0,
                           transitionDuration: '700ms'
                         }}
-                        onError={(e) => {
-                          const el = e.currentTarget;
-                          el.style.display = 'none';
+                        onError={() => {
+                          setBrokenSources((prev) => {
+                            if (prev.has(src)) return prev;
+                            const next = new Set(prev);
+                            next.add(src);
+                            return next;
+                          });
                         }}
                       />
                     ))
@@ -322,11 +374,13 @@ export const LoginPage = () => {
                         }}
                       />
                     ))}
-                <div className="absolute inset-0 bg-black/20" />
-                {gallery.length > 0 && activeSources.length > 0 && (
-                  <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent px-6 py-4">
+                <div className="absolute inset-0 z-20 bg-black/20" />
+                {activeDisplaySources.length > 0 && (
+                  <div className="absolute bottom-0 inset-x-0 z-30 bg-gradient-to-t from-black/70 via-black/40 to-transparent px-6 py-4">
                     <p className="text-sm text-white/90 text-center">
-                      {formatPhotoDescription(gallery[activeIndex]?.description)}
+                      {formatPhotoDescription(
+                        sourceDescriptionMap.get(activeDisplaySources[activeIndex]) || '',
+                      ) || 'Kegiatan SMKS Karya Guna Bhakti 2'}
                     </p>
                   </div>
                 )}

@@ -14,13 +14,15 @@ const router = Router();
 
 // Apply auth middleware to all routes
 router.use(authMiddleware);
-router.use(roleMiddleware(['ADMIN', 'TEACHER']));
 
-router.get('/', getClasses);
-router.get('/:id', getClassById);
-router.post('/', createClass);
-router.put('/:id', updateClass);
-router.put('/:id/president', updateClassPresident);
-router.delete('/:id', deleteClass);
+// Read-only access for Admin, Teacher, and Principal
+router.get('/', roleMiddleware(['ADMIN', 'TEACHER', 'PRINCIPAL']), getClasses);
+router.get('/:id', roleMiddleware(['ADMIN', 'TEACHER', 'PRINCIPAL']), getClassById);
+
+// Modification routes restricted to Admin and Teacher
+router.post('/', roleMiddleware(['ADMIN', 'TEACHER']), createClass);
+router.put('/:id', roleMiddleware(['ADMIN', 'TEACHER']), updateClass);
+router.put('/:id/president', roleMiddleware(['ADMIN', 'TEACHER']), updateClassPresident);
+router.delete('/:id', roleMiddleware(['ADMIN', 'TEACHER']), deleteClass);
 
 export default router;

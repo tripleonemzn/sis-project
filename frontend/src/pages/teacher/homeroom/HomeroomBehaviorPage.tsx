@@ -236,28 +236,30 @@ export const HomeroomBehaviorPage = () => {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+        <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
+          <button
+            onClick={() => setActiveTab('behavior_log')}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeTab === 'behavior_log'
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <ClipboardList size={16} />
+              <span>Riwayat Perilaku</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
       {/* Main Card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        {/* Tabs & Filter Header */}
+        {/* Actions & Filter Header */}
         <div className="border-b border-gray-200 bg-gray-50 p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-            <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200">
-              <button
-                onClick={() => setActiveTab('behavior_log')}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                  activeTab === 'behavior_log'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <ClipboardList size={16} />
-                  <span>Riwayat Perilaku</span>
-                </div>
-              </button>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end xl:ml-auto">
             <button
               onClick={() => {
                 resetForm();
@@ -479,8 +481,8 @@ export const HomeroomBehaviorPage = () => {
 
       {/* Form Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div key={isModalOpen ? 'open' : 'closed'} className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30" onClick={() => setIsModalOpen(false)}>
+          <div key={isModalOpen ? 'open' : 'closed'} className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
               <h3 className="text-lg font-semibold text-gray-900">
                 {editingId ? 'Edit Catatan Perilaku' : 'Tambah Catatan Perilaku'}

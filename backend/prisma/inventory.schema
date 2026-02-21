@@ -1,0 +1,46 @@
+
+// Inventory Module
+model Room {
+  id          Int       @id @default(autoincrement())
+  name        String
+  type        RoomType
+  capacity    Int?
+  location    String?
+  condition   String?   // BAIK, RUSAK_RINGAN, RUSAK_BERAT
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  items       InventoryItem[]
+
+  @@map("rooms")
+}
+
+enum RoomType {
+  CLASSROOM
+  LAB
+  SPORTS
+  WORSHIP
+  OFFICE
+  OTHER
+}
+
+model InventoryItem {
+  id          Int       @id @default(autoincrement())
+  roomId      Int
+  name        String
+  code        String?
+  brand       String?
+  quantity    Int       @default(1)
+  condition   String?   // BAIK, RUSAK_RINGAN, RUSAK_BERAT
+  purchaseDate DateTime?
+  price       Float?
+  source      String?
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  room        Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@map("inventory_items")
+}

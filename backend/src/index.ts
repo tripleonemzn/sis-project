@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import routes from './routes';
 import path from 'path';
+import { resolveGalleryDir } from './utils/galleryPath';
 
 dotenv.config();
 
@@ -18,7 +19,7 @@ app.use(helmet({
 app.use(express.json());
 
 // Serve static files for public gallery "foto_kegiatan"
-const fotoKegiatanDir = path.resolve(process.cwd(), '../foto_kegiatan');
+const fotoKegiatanDir = resolveGalleryDir();
 app.use('/foto_kegiatan', express.static(fotoKegiatanDir));
 
 // Serve uploads directory

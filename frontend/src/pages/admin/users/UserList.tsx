@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userService } from '../../../services/user.service';
+import { authService } from '../../../services/auth.service';
 import { uploadService } from '../../../services/upload.service';
 import { majorService, type Major } from '../../../services/major.service';
 import type { User, UserDocumentInput, UserWrite } from '../../../types/auth';
@@ -135,6 +136,13 @@ export const UserList = ({ fixedRole, title, description }: UserListProps) => {
   const childDropdownRef = useRef<HTMLDivElement | null>(null);
   
   const queryClient = useQueryClient();
+
+  const { data: authData } = useQuery({
+    queryKey: ['me'],
+    queryFn: authService.getMe,
+    staleTime: 1000 * 60 * 5,
+  });
+  const isAdmin = authData?.data?.role === 'ADMIN';
 
   const { data: usersData, isLoading } = useQuery<{ data: User[] }>({
     queryKey: ['users'],
@@ -736,14 +744,25 @@ export const UserList = ({ fixedRole, title, description }: UserListProps) => {
                       <label htmlFor="user-username" className="block text-sm font-medium text-gray-700 mb-1">
                         Username <span className="text-red-500">*</span>
                       </label>
-                      <input
-                        id="user-username"
-                        {...register('username')}
-                        autoComplete="username"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="username untuk login"
-                      />
-                      {errors.username && <p className="mt-1 text-xs text-red-600">{errors.username.message}</p>}
+                      {isAdmin ? (
+                        <>
+                          <input
+                            id="user-username"
+                            {...register('username')}
+                            autoComplete="username"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="username untuk login"
+                          />
+                          {errors.username && <p className="mt-1 text-xs text-red-600">{errors.username.message}</p>}
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-full px-3 py-2 border border-gray-200 bg-gray-50 rounded-lg text-gray-600 font-medium">
+                            {watch('username') || '-'}
+                          </div>
+                          <input type="hidden" {...register('username')} />
+                        </>
+                      )}
                     </div>
                     <div>
                       <label htmlFor="user-name" className="block text-sm font-medium text-gray-700 mb-1">
@@ -762,15 +781,23 @@ export const UserList = ({ fixedRole, title, description }: UserListProps) => {
                       <label htmlFor="user-password" className="block text-sm font-medium text-gray-700 mb-1">
                         Password
                       </label>
-                      <input
-                        id="user-password"
-                        type="password"
-                        {...register('password')}
-                        autoComplete="new-password"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder={editingUser ? 'Kosongkan jika tidak diubah' : 'Password untuk login'}
-                      />
-                      {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password.message}</p>}
+                      {isAdmin ? (
+                        <>
+                          <input
+                            id="user-password"
+                            type="password"
+                            {...register('password')}
+                            autoComplete="new-password"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder={editingUser ? 'Kosongkan jika tidak diubah' : 'Password untuk login'}
+                          />
+                          {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password.message}</p>}
+                        </>
+                      ) : (
+                        <div className="w-full px-3 py-2 border border-gray-200 bg-gray-50 rounded-lg text-gray-500 italic text-sm">
+                          Hanya Admin yang dapat mengubah password
+                        </div>
+                      )}
                     </div>
                     {fixedRole === 'EXAMINER' && (
                       <div>

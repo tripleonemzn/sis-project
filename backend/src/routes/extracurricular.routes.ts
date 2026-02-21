@@ -1,12 +1,14 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth';
 import { roleMiddleware } from '../middleware/role';
+import { dutyMiddleware } from '../middleware/duty';
 import { getExtracurriculars, createExtracurricular, updateExtracurricular, deleteExtracurricular, getAssignments, assignTutor, removeAssignment } from '../controllers/extracurricular.controller';
 
 const router = Router();
 
 router.use(authMiddleware);
-router.use(roleMiddleware(['ADMIN']));
+router.use(roleMiddleware(['ADMIN', 'TEACHER']));
+router.use(dutyMiddleware(['WAKASEK_KESISWAAN', 'SEKRETARIS_KESISWAAN']));
 
 router.get('/assignments', getAssignments);
 router.post('/assignments', assignTutor);

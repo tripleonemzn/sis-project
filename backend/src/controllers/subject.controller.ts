@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { z } from 'zod';
+import { writeAuditLog } from '../utils/auditLog';
 
 const subjectSchema = z.object({
   name: z.string().min(1, 'Nama mata pelajaran wajib diisi'),
@@ -109,6 +110,21 @@ export const getSubjectById = asyncHandler(async (req: Request, res: Response) =
 });
 
 export const createSubject = asyncHandler(async (req: Request, res: Response) => {
+  const authUser = (req as any).user;
+  const dutyUser = await prisma.user.findUnique({
+    where: { id: authUser.id },
+    select: { role: true, additionalDuties: true },
+  });
+  if (!dutyUser) {
+    throw new ApiError(401, 'Tidak memiliki otorisasi');
+  }
+  if (dutyUser.role !== 'ADMIN') {
+    const duties = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+    const allowed = duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
+    if (!allowed) {
+      throw new ApiError(403, 'Anda tidak memiliki hak akses untuk mengelola mata pelajaran');
+    }
+  }
   const body = subjectSchema.parse(req.body);
 
   const existingCode = await prisma.subject.findUnique({
@@ -165,10 +181,28 @@ export const createSubject = asyncHandler(async (req: Request, res: Response) =>
     }
   }
 
+  const dutiesArr = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+  await writeAuditLog(authUser.id, dutyUser.role, dutiesArr, 'CREATE', 'SUBJECT', subject.id, null, subject, (req.body as any)?.reason);
+
   res.status(201).json(new ApiResponse(201, subject, 'Mata pelajaran berhasil dibuat'));
 });
 
 export const updateSubject = asyncHandler(async (req: Request, res: Response) => {
+  const authUser = (req as any).user;
+  const dutyUser = await prisma.user.findUnique({
+    where: { id: authUser.id },
+    select: { role: true, additionalDuties: true },
+  });
+  if (!dutyUser) {
+    throw new ApiError(401, 'Tidak memiliki otorisasi');
+  }
+  if (dutyUser.role !== 'ADMIN') {
+    const duties = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+    const allowed = duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
+    if (!allowed) {
+      throw new ApiError(403, 'Anda tidak memiliki hak akses untuk mengelola mata pelajaran');
+    }
+  }
   const { id } = req.params;
   const body = subjectSchema.partial().parse(req.body);
 
@@ -273,10 +307,28 @@ export const updateSubject = asyncHandler(async (req: Request, res: Response) =>
   await upsertKKM('XI', kkmXI);
   await upsertKKM('XII', kkmXII);
 
+  const dutiesArr2 = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+  await writeAuditLog(authUser.id, dutyUser.role, dutiesArr2, 'UPDATE', 'SUBJECT', Number(id), existingSubject, updatedSubject, (req.body as any)?.reason);
+
   res.status(200).json(new ApiResponse(200, updatedSubject, 'Mata pelajaran berhasil diperbarui'));
 });
 
 export const deleteSubject = asyncHandler(async (req: Request, res: Response) => {
+  const authUser = (req as any).user;
+  const dutyUser = await prisma.user.findUnique({
+    where: { id: authUser.id },
+    select: { role: true, additionalDuties: true },
+  });
+  if (!dutyUser) {
+    throw new ApiError(401, 'Tidak memiliki otorisasi');
+  }
+  if (dutyUser.role !== 'ADMIN') {
+    const duties = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+    const allowed = duties.includes('WAKASEK_KURIKULUM');
+    if (!allowed) {
+      throw new ApiError(403, 'Anda tidak memiliki hak akses untuk mengelola mata pelajaran');
+    }
+  }
   const { id } = req.params;
 
   const subject = await prisma.subject.findUnique({
@@ -317,6 +369,9 @@ export const deleteSubject = asyncHandler(async (req: Request, res: Response) =>
   await prisma.subject.delete({
     where: { id: Number(id) },
   });
+
+  const dutiesArr3 = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+  await writeAuditLog(authUser.id, dutyUser.role, dutiesArr3, 'DELETE', 'SUBJECT', Number(id), subject, null, (req.body as any)?.reason);
 
   res.status(200).json(new ApiResponse(200, null, 'Mata pelajaran berhasil dihapus'));
 });

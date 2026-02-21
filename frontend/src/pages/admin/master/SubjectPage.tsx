@@ -192,114 +192,7 @@ export const SubjectPage = () => {
         )}
       </div>
 
-      {showForm ? (
-        <div className="bg-white rounded-xl shadow-md border-0 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-800 border-b border-gray-100 pb-3 mb-4">
-            {editingId ? 'Edit Mata Pelajaran' : 'Tambah Mata Pelajaran Baru'}
-          </h2>
-          <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 gap-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="code" className="block text-sm font-medium text-gray-700 mb-1">Kode Mapel</label>
-                <input
-                  id="code"
-                  {...register('code')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="MTK"
-                  autoComplete="off"
-                />
-                {errors.code && <p className="text-red-500 text-xs mt-1">{errors.code.message}</p>}
-              </div>
 
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">Nama Mata Pelajaran</label>
-                <input
-                  id="name"
-                  {...register('name')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Matematika"
-                  autoComplete="off"
-                />
-                {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="subjectCategoryId" className="block text-sm font-medium text-gray-700 mb-1">Kategori</label>
-                <select
-                  id="subjectCategoryId"
-                  {...register('subjectCategoryId', { valueAsNumber: true })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Pilih Kategori</option>
-                  {categories.map((cat: any) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.subjectCategoryId && <p className="text-red-500 text-xs mt-1">{errors.subjectCategoryId.message}</p>}
-              </div>
-            </div>
-
-            <div className="border-t border-gray-100 pt-4 mt-2">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Pengaturan KKM per Tingkat Kelas</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                 <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">KKM Kelas X</label>
-                    <input 
-                      type="number" 
-                      {...register('kkmX', { valueAsNumber: true })} 
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" 
-                      placeholder="75" 
-                    />
-                 </div>
-                 <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">KKM Kelas XI</label>
-                    <input 
-                      type="number" 
-                      {...register('kkmXI', { valueAsNumber: true })} 
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" 
-                      placeholder="75" 
-                    />
-                 </div>
-                 <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">KKM Kelas XII</label>
-                    <input 
-                      type="number" 
-                      {...register('kkmXII', { valueAsNumber: true })} 
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" 
-                      placeholder="75" 
-                    />
-                 </div>
-              </div>
-            </div>
-
-            <div className="flex gap-2 pt-2 justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowForm(false);
-                  setEditingId(null);
-                  reset();
-                }}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                Batal
-              </button>
-              <button
-                type="submit"
-                disabled={createMutation.isPending || updateMutation.isPending}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-              >
-                {(createMutation.isPending || updateMutation.isPending) && <Loader2 size={18} className="animate-spin" />}
-                {editingId ? 'Simpan Perubahan' : 'Buat Mata Pelajaran'}
-              </button>
-            </div>
-          </form>
-        </div>
-      ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
            <div className="p-4 border-b border-gray-100 flex flex-col md:flex-row gap-4 items-center justify-between bg-gray-50/50">
              <div className="flex flex-wrap gap-2">
@@ -444,6 +337,140 @@ export const SubjectPage = () => {
                 </div>
             </div>
            )}
+        </div>
+      {showForm && (
+        <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+            onClick={() => {
+                setShowForm(false);
+                setEditingId(null);
+                reset();
+            }}
+        >
+            <div 
+                className="bg-white rounded-xl shadow-lg w-full max-w-2xl mx-4 overflow-hidden max-h-[90vh] flex flex-col"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                    <h2 className="text-lg font-semibold text-gray-800">
+                        {editingId ? 'Edit Mata Pelajaran' : 'Tambah Mata Pelajaran Baru'}
+                    </h2>
+                    <button 
+                        onClick={() => {
+                            setShowForm(false);
+                            setEditingId(null);
+                            reset();
+                        }}
+                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                        <ChevronLeft size={20} className="rotate-180" />
+                    </button>
+                </div>
+                
+                <div className="p-6 overflow-y-auto">
+                    <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label htmlFor="code" className="block text-sm font-medium text-gray-700 mb-1">Kode Mapel</label>
+                            <input
+                            id="code"
+                            {...register('code')}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="MTK"
+                            autoComplete="off"
+                            />
+                            {errors.code && <p className="text-red-500 text-xs mt-1">{errors.code.message}</p>}
+                        </div>
+
+                        <div>
+                            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">Nama Mata Pelajaran</label>
+                            <input
+                            id="name"
+                            {...register('name')}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Matematika"
+                            autoComplete="off"
+                            />
+                            {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
+                        </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label htmlFor="subjectCategoryId" className="block text-sm font-medium text-gray-700 mb-1">Kategori</label>
+                            <select
+                            id="subjectCategoryId"
+                            {...register('subjectCategoryId', { valueAsNumber: true })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            >
+                            <option value="">Pilih Kategori</option>
+                            {categories.map((cat: any) => (
+                                <option key={cat.id} value={cat.id}>
+                                {cat.name}
+                                </option>
+                            ))}
+                            </select>
+                            {errors.subjectCategoryId && <p className="text-red-500 text-xs mt-1">{errors.subjectCategoryId.message}</p>}
+                        </div>
+                        </div>
+
+                        <div className="border-t border-gray-100 pt-4 mt-2">
+                        <h3 className="text-sm font-semibold text-gray-700 mb-3">Pengaturan KKM per Tingkat Kelas</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">KKM Kelas X</label>
+                                <input 
+                                type="number" 
+                                {...register('kkmX', { valueAsNumber: true })} 
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" 
+                                placeholder="75" 
+                                />
+                            </div>
+                            <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">KKM Kelas XI</label>
+                                <input 
+                                type="number" 
+                                {...register('kkmXI', { valueAsNumber: true })} 
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" 
+                                placeholder="75" 
+                                />
+                            </div>
+                            <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">KKM Kelas XII</label>
+                                <input 
+                                type="number" 
+                                {...register('kkmXII', { valueAsNumber: true })} 
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" 
+                                placeholder="75" 
+                                />
+                            </div>
+                        </div>
+                        </div>
+
+                        <div className="flex gap-2 pt-2 justify-end">
+                        <button
+                            type="button"
+                            onClick={() => {
+                            setShowForm(false);
+                            setEditingId(null);
+                            reset();
+                            }}
+                            className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                        >
+                            Batal
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={createMutation.isPending || updateMutation.isPending}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                        >
+                            {(createMutation.isPending || updateMutation.isPending) && <Loader2 size={18} className="animate-spin" />}
+                            {editingId ? 'Simpan Perubahan' : 'Buat Mata Pelajaran'}
+                        </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
       )}
     </div>

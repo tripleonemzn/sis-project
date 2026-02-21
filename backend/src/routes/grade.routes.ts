@@ -57,7 +57,7 @@ router.put(
 // REPORT CARD (Full Report)
 router.get(
   '/report-card',
-  roleMiddleware(['ADMIN', 'TEACHER', 'STUDENT']),
+  roleMiddleware(['ADMIN', 'TEACHER', 'STUDENT', 'PARENT']),
   asyncHandler(gradeController.getStudentReportCard)
 );
 

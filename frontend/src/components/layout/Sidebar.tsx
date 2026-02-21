@@ -39,10 +39,10 @@ import {
 import { Link, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
 import { useState, useMemo, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { authService } from '../../services/auth.service';
 import { internshipService } from '../../services/internship.service';
-import { userService } from '../../services/user.service';
+
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
 interface SidebarProps {
@@ -64,14 +64,14 @@ interface SidebarProps {
   activeSemester?: 'ODD' | 'EVEN';
 }
 
-type MenuItem = {
+export type MenuItem = {
   label: string;
   path: string;
   icon: React.ElementType;
   children?: MenuItem[];
 };
 
-const getMenuItems = (user: SidebarProps['user'], hasPendingDefense: boolean = false, pklEligibleGrades?: string | null): MenuItem[] => {
+export const getMenuItems = (user: SidebarProps['user'], hasPendingDefense: boolean = false, pklEligibleGrades?: string | null): MenuItem[] => {
   const role = user.role;
 
   if (role === 'ADMIN') {
@@ -232,45 +232,81 @@ const getMenuItems = (user: SidebarProps['user'], hasPendingDefense: boolean = f
     const otherDuties = duties.filter(d => !d.includes('KAPROG') && !d.includes('KEPALA_KOMPETENSI'));
 
     // Process Non-KAKOM Duties
-    otherDuties.forEach((duty) => {
+    otherDuties.forEach((rawDuty) => {
+      const duty = rawDuty.trim().toUpperCase();
       let label = duty;
       let icon = Briefcase;
       let children: MenuItem[] = [];
 
-      // Helper to generate generic items
-      const createGenericItems = (dutyCode: string) => [
-         { label: 'Program Kerja', path: `/teacher/work-programs?duty=${dutyCode}`, icon: ClipboardList }
-      ];
+      // Check if duty is secretary
+      const isSecretary = duty.startsWith('SEKRETARIS_');
+      
+      // Determine base role for menu mapping (e.g. SEKRETARIS_KURIKULUM -> WAKASEK_KURIKULUM)
+      let baseRole = duty;
+      if (isSecretary) {
+        baseRole = duty.replace('SEKRETARIS_', 'WAKASEK_');
+      }
 
-      if (duty === 'WAKASEK_KURIKULUM') {
+      // Helper to generate generic items - Hide Work Program for Secretaries
+      const createGenericItems = (dutyCode: string) => {
+        if (isSecretary) return [];
+        return [
+           { label: 'Program Kerja', path: `/teacher/work-programs?duty=${dutyCode}`, icon: ClipboardList }
+        ];
+      };
+
+      if (baseRole === 'WAKASEK_KURIKULUM') {
         label = 'WAKASEK KURIKULUM';
+        if (isSecretary) label = 'SEKRETARIS KURIKULUM';
+
+        // Mulai dari Program Kerja (jika bukan sekretaris)
         children = [
           ...createGenericItems(duty),
-          { label: 'Kelola Jadwal Ujian', path: '/teacher/wakasek/exam-schedules', icon: Calendar },
-          { label: 'Kelola Ruang Ujian', path: '/teacher/wakasek/exam-rooms', icon: School },
-          { label: 'Kelola Jadwal Mengawas', path: '/teacher/wakasek/proctor-schedule', icon: UserCheck }, 
-          { label: 'Komponen Nilai Sidang PKL', path: '/teacher/wakasek/internship-components', icon: Percent },
+        ];
+
+        // Letakkan Persetujuan Program Kerja tepat di bawah Program Kerja,
+        // dan hanya untuk Wakasek (bukan Sekretaris)
+        if (!isSecretary) {
+          children.push({
+            label: 'Persetujuan Program Kerja',
+            path: '/teacher/wakasek/work-program-approvals',
+            icon: ClipboardList,
+          });
+        }
+
+        // Lalu menu Wakasek lainnya
+        children.push(
+          { label: 'Kelola Kurikulum', path: '/teacher/wakasek/curriculum', icon: Layers },
+          { label: 'Kelola Ujian', path: '/teacher/wakasek/exams', icon: FileQuestion },
           { label: 'Monitoring Kinerja', path: '/teacher/wakasek/performance', icon: BarChart3 },
           { label: 'Persetujuan', path: '/teacher/wakasek/approvals', icon: UserCheck },
-          { label: 'Laporan Akademik', path: '/teacher/wakasek/reports', icon: FileText }
-        ];
-      } else if (duty === 'WAKASEK_KESISWAAN') {
+          { label: 'Laporan Akademik', path: '/teacher/wakasek/reports', icon: FileText },
+        );
+      } else if (baseRole === 'WAKASEK_KESISWAAN') {
         label = 'WAKASEK KESISWAAN';
+        if (isSecretary) label = 'SEKRETARIS KESISWAAN';
+
         children = [
           ...createGenericItems(duty),
+          { label: 'Kelola Kesiswaan', path: '/teacher/wakasek/students', icon: GraduationCap },
           { label: 'Monitoring Kinerja', path: '/teacher/wakasek/student-performance', icon: BarChart3 },
           { label: 'Persetujuan', path: '/teacher/wakasek/student-approvals', icon: UserCheck },
           { label: 'Laporan Kesiswaan', path: '/teacher/wakasek/student-reports', icon: FileText }
         ];
-      } else if (duty === 'WAKASEK_SARPRAS') {
+      } else if (baseRole === 'WAKASEK_SARPRAS') {
         label = 'WAKASEK SARPRAS';
+        if (isSecretary) label = 'SEKRETARIS SARPRAS';
+
         children = [
           ...createGenericItems(duty),
-          { label: 'Inventaris', path: '/teacher/sarpras/inventory', icon: Database },
+          { label: 'Aset Sekolah', path: '/teacher/sarpras/inventory', icon: Database },
+          { label: 'Persetujuan Anggaran', path: '/teacher/sarpras/budgets', icon: Wallet },
           { label: 'Laporan', path: '/teacher/sarpras/reports', icon: FileText }
         ];
-      } else if (duty === 'WAKASEK_HUMAS') {
+      } else if (baseRole === 'WAKASEK_HUMAS') {
         label = 'WAKASEK HUMAS';
+        if (isSecretary) label = 'SEKRETARIS HUMAS';
+
         children = [
           ...createGenericItems(duty),
           { label: 'Pengaturan PKL', path: '/teacher/humas/settings', icon: Settings },
@@ -284,15 +320,24 @@ const getMenuItems = (user: SidebarProps['user'], hasPendingDefense: boolean = f
         label = 'KEPALA LAB';
         children = [
           ...createGenericItems(duty),
-          { label: 'Inventaris Lab', path: '/teacher/head-lab/inventory', icon: Database },
+          { label: 'Inventaris Lab', path: '/teacher/head-lab/inventory?filter=lab', icon: Database },
           { label: 'Jadwal Lab', path: '/teacher/head-lab/schedule', icon: Calendar },
           { label: 'Laporan Insiden', path: '/teacher/head-lab/incidents', icon: AlertCircle }
+        ];
+      } else if (duty === 'KEPALA_PERPUSTAKAAN') {
+        label = 'KEPALA PERPUSTAKAAN';
+        children = [
+          ...createGenericItems(duty),
+          { label: 'Inventaris Perpustakaan', path: '/teacher/head-library/inventory?filter=library', icon: Database },
         ];
       } else {
         // Fallback for other duties
         label = duty.replace(/_/g, ' ').toUpperCase();
         children = createGenericItems(duty);
       }
+
+      // Skip adding menu if children are empty (avoids broken links for unmapped secretary roles)
+      if (children.length === 0) return;
 
       items.push({
         label,
@@ -327,19 +372,19 @@ const getMenuItems = (user: SidebarProps['user'], hasPendingDefense: boolean = f
       });
 
       // Shared KAKOM items
-      children.push(
-        { label: 'Kelas Kompetensi', path: '/teacher/head-program/classes', icon: School },
-        { label: 'Monitoring PKL', path: '/teacher/head-program/pkl', icon: Building2 },
-        { label: 'Mitra Industri & BKK', path: '/teacher/head-program/partners', icon: Users }
-      );
+          children.push(
+            { label: 'Kelas Kompetensi', path: '/teacher/head-program/classes', icon: School },
+            { label: 'Monitoring PKL', path: '/teacher/head-program/pkl', icon: Building2 },
+            { label: 'Mitra Industri & BKK', path: '/teacher/head-program/partners', icon: Users }
+          );
 
-      items.push({
-        label,
-        path: '/teacher/head-program', // Shared root path
-        icon: Briefcase,
-        children
-      });
-    }
+          items.push({
+            label,
+            path: `group-kakom-${label.replace(/\s+/g, '-').toLowerCase()}`, // Unique ID for accordion state, not a route
+            icon: Briefcase,
+            children
+          });
+        }
 
     // Menu Sidang PKL (Conditional)
     if (hasPendingDefense) {
@@ -501,10 +546,39 @@ const getMenuItems = (user: SidebarProps['user'], hasPendingDefense: boolean = f
   if (role === 'PRINCIPAL') {
     return [
       { label: 'Dashboard', path: '/principal', icon: LayoutDashboard },
-      { label: 'Laporan Akademik', path: '/principal/reports', icon: FileText },
-      { label: 'Laporan Keuangan', path: '/principal/finance', icon: Wallet },
-      { label: 'Data Guru', path: '/principal/teachers', icon: Users },
-      { label: 'Data Siswa', path: '/principal/students', icon: GraduationCap },
+      {
+        label: 'AKADEMIK',
+        path: '/principal/academic',
+        icon: BookOpen,
+        children: [
+          { label: 'Rapor & Ranking', path: '/principal/academic/reports', icon: FileBarChart },
+          { label: 'Rekap Absensi', path: '/principal/academic/attendance', icon: UserCheck },
+        ],
+      },
+      {
+        label: 'KEUANGAN',
+        path: '/principal/finance',
+        icon: Wallet,
+        children: [
+          { label: 'Pengajuan Anggaran', path: '/principal/finance/requests', icon: FileText },
+        ],
+      },
+      {
+        label: 'KESISWAAN',
+        path: '/principal/students-group',
+        icon: Users,
+        children: [
+          { label: 'Data Siswa', path: '/principal/students', icon: GraduationCap },
+        ],
+      },
+      {
+        label: 'SDM GURU',
+        path: '/principal/teachers-group',
+        icon: Users,
+        children: [
+          { label: 'Data Guru', path: '/principal/teachers', icon: Users },
+        ],
+      },
     ];
   }
 
@@ -545,12 +619,26 @@ export const Sidebar = ({ user }: SidebarProps) => {
   const pklEligibleGrades = activeAcademicYearData?.pklEligibleGrades;
 
   const items = useMemo(() => getMenuItems(user, hasPendingDefense, pklEligibleGrades), [user, hasPendingDefense, pklEligibleGrades]);
+  // Helper: check path active with relaxed query matching
+  const isChildPathActive = (itemPath: string) => {
+    if (itemPath.includes('?')) {
+      const [pathOnly, qs] = itemPath.split('?');
+      const required = new URLSearchParams(qs);
+      const current = new URLSearchParams(location.search);
+      if (!location.pathname.startsWith(pathOnly)) return false;
+      for (const [k, v] of required.entries()) {
+        if (current.get(k) !== v) return false;
+      }
+      return true;
+    }
+    const cleanChildPath = itemPath.split('?')[0];
+    return location.pathname.startsWith(cleanChildPath);
+  };
   const activeParentPath = useMemo(() => {
     const activeParent = items.find((item) => {
       // Check if any child matches
       if (item.children && item.children.some((child) => {
-        const cleanChildPath = child.path.split('?')[0];
-        return location.pathname.startsWith(cleanChildPath);
+        return isChildPathActive(child.path);
       })) {
         return true;
       }
@@ -567,8 +655,9 @@ export const Sidebar = ({ user }: SidebarProps) => {
     return user.preferences?.sidebarOpenGroup || null;
   });
 
-  const queryClient = useQueryClient();
 
+
+  /* 
   const updatePreferencesMutation = useMutation({
     mutationFn: (newPreferences: any) => {
       const currentPreferences = user.preferences || {};
@@ -580,19 +669,22 @@ export const Sidebar = ({ user }: SidebarProps) => {
       queryClient.invalidateQueries({ queryKey: ['me'] });
     }
   });
+  */
 
   useEffect(() => {
     if (activeParentPath && activeParentPath !== openGroup) {
       setOpenGroup(activeParentPath);
+    } else if (!activeParentPath && ['/teacher', '/admin', '/student', '/principal', '/staff', '/parent'].includes(location.pathname)) {
+      setOpenGroup(null);
     }
-  }, [activeParentPath]);
+  }, [activeParentPath, location.pathname]);
 
   const toggleGroup = (path: string) => {
     const newState = openGroup === path ? null : path;
     setOpenGroup(newState);
     
-    // Persist to database
-    updatePreferencesMutation.mutate({ sidebarOpenGroup: newState });
+    // Persist to database - TEMPORARILY DISABLED to prevent logout issues
+    // updatePreferencesMutation.mutate({ sidebarOpenGroup: newState });
   };
 
   const isPathActive = (itemPath: string) => {
@@ -603,9 +695,19 @@ export const Sidebar = ({ user }: SidebarProps) => {
       return location.pathname === itemPath;
     }
     
-    // Check for exact match including query params if present
+    // When itemPath includes query params, require that all those params are present
+    // but allow additional params (e.g., tab=BUDGET) to co-exist
     if (itemPath.includes('?')) {
-      return location.pathname + location.search === itemPath;
+      const [pathOnly, qs] = itemPath.split('?');
+      const required = new URLSearchParams(qs);
+      const current = new URLSearchParams(location.search);
+      
+      if (!location.pathname.startsWith(pathOnly)) return false;
+      
+      for (const [k, v] of required.entries()) {
+        if (current.get(k) !== v) return false;
+      }
+      return true;
     }
 
     // Remove query params from itemPath for comparison
@@ -640,6 +742,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
               return (
                 <li key={item.path}>
                   <button
+                    type="button"
                     onClick={() => toggleGroup(item.path)}
                     className={clsx(
                       'w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-all duration-200 group',

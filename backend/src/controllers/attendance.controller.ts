@@ -544,11 +544,47 @@ const getStudentAttendanceHistorySchema = z.object({
   year: z.coerce.number().int().optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
+  studentId: z.coerce.number().int().optional(),
+  student_id: z.coerce.number().int().optional(),
 });
 
 export const getStudentAttendanceHistory = asyncHandler(async (req: Request, res: Response) => {
-  const { month, year, startDate, endDate } = getStudentAttendanceHistorySchema.parse(req.query);
+  const { month, year, startDate, endDate, studentId, student_id } = getStudentAttendanceHistorySchema.parse(req.query);
   const user = (req as any).user;
+  const requestedStudentId = studentId ?? student_id;
+
+  let targetStudentId = user.id as number;
+
+  if (user.role === 'STUDENT') {
+    if (requestedStudentId && Number(requestedStudentId) !== Number(user.id)) {
+      throw new ApiError(403, 'Siswa hanya dapat melihat riwayat presensi miliknya sendiri');
+    }
+    targetStudentId = Number(user.id);
+  } else if (user.role === 'PARENT') {
+    if (!requestedStudentId) {
+      throw new ApiError(400, 'student_id wajib diisi untuk role orang tua');
+    }
+
+    const parent = await prisma.user.findUnique({
+      where: { id: Number(user.id) },
+      select: {
+        children: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    const childIds = new Set((parent?.children || []).map((child) => child.id));
+    if (!childIds.has(Number(requestedStudentId))) {
+      throw new ApiError(403, 'Anda tidak memiliki akses ke data presensi siswa ini');
+    }
+
+    targetStudentId = Number(requestedStudentId);
+  } else {
+    throw new ApiError(403, 'Role ini tidak memiliki akses ke endpoint riwayat presensi siswa');
+  }
 
   let start: Date, end: Date;
 
@@ -566,7 +602,7 @@ export const getStudentAttendanceHistory = asyncHandler(async (req: Request, res
 
   const attendances = await prisma.dailyAttendance.findMany({
     where: {
-      studentId: user.id,
+      studentId: targetStudentId,
       date: {
         gte: start,
         lte: end,
@@ -579,4 +615,3 @@ export const getStudentAttendanceHistory = asyncHandler(async (req: Request, res
 
   res.status(200).json(new ApiResponse(200, attendances, 'Data presensi berhasil diambil'));
 });
-

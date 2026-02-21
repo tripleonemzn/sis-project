@@ -4,7 +4,6 @@ import { useForm } from 'react-hook-form';
 import { academicYearService } from '../../../services/academicYear.service';
 import { toast } from 'react-hot-toast';
 import { Settings, Save, AlertCircle } from 'lucide-react';
-import { useTitle } from '../../../hooks/useTitle';
 
 interface PklConfigForm {
   pklEligibleGrades: string;
@@ -13,7 +12,6 @@ interface PklConfigForm {
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 
 export const HumasSettingsPage: React.FC = () => {
-  useTitle('Pengaturan PKL | Wakasek Humas');
   const queryClient = useQueryClient();
 
   const { data: activeYear, isLoading } = useActiveAcademicYear();
@@ -109,4 +107,3 @@ export const HumasSettingsPage: React.FC = () => {
     </div>
   );
 };
-

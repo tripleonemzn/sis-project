@@ -234,6 +234,8 @@ import { useActiveAcademicYear } from '../hooks/useActiveAcademicYear';
       'training/reports': { label: 'Laporan Training', group: 'KELAS TRAINING' },
 
       // WAKASEK KURIKULUM
+      'wakasek/curriculum': { label: 'Kelola Kurikulum', group: 'WAKASEK KURIKULUM' },
+      'wakasek/exams': { label: 'Kelola Ujian', group: 'WAKASEK KURIKULUM' },
       'wakasek/exam-schedules': { label: 'Kelola Jadwal Ujian', group: 'WAKASEK KURIKULUM' },
       'wakasek/exam-rooms': { label: 'Kelola Ruang Ujian', group: 'WAKASEK KURIKULUM' },
       'wakasek/proctor-schedule': { label: 'Kelola Jadwal Mengawas', group: 'WAKASEK KURIKULUM' },
@@ -544,8 +546,9 @@ import { useActiveAcademicYear } from '../hooks/useActiveAcademicYear';
 
   if (role === 'principal') {
     const mapping: Record<string, { label: string; group?: string }> = {
-      'reports': { label: 'Laporan Akademik' },
-      'finance': { label: 'Laporan Keuangan' },
+      'academic/reports': { label: 'Rapor & Ranking' },
+      'academic/attendance': { label: 'Rekap Absensi' },
+      'finance/requests': { label: 'Pengajuan Anggaran' },
       'teachers': { label: 'Data Guru' },
       'students': { label: 'Data Siswa' },
     };
@@ -769,7 +772,7 @@ export const DashboardLayout = () => {
           </div>
           
           <div className="flex items-center ml-auto space-x-4">
-              <div className="hidden md:block text-sm text-gray-500 font-medium">
+              <div className="hidden md:block text-sm text-blue-700 font-normal">
                 {todayLabel}{yearLabel}
               </div>
             <NotificationDropdown />
@@ -786,7 +789,7 @@ export const DashboardLayout = () => {
       {/* Mobile Sidebar Overlay */}
       {isMobileMenuOpen && !isFullscreen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-20 md:hidden backdrop-blur-sm"
+          className="fixed inset-0 bg-black/30 z-20 md:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}

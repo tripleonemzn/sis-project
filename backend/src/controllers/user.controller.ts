@@ -416,6 +416,14 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
 
   const { documents, childNisns, managedMajorIds, examinerMajorId, ...body } = updateUserSchema.parse(req.body);
 
+  // Prevent non-admin from updating sensitive fields
+  if (currentUser?.role !== Role.ADMIN) {
+    delete body.username;
+    delete body.password;
+    // For students, nisn is username, so prevent updating it too
+    delete body.nisn;
+  }
+
   const user = await prisma.user.findUnique({
     where: { id: Number(id) },
   });

@@ -64,6 +64,7 @@ model User {
   approvedBudgets          BudgetRequest[]                @relation("BudgetApprover")
   assignedBudgets          BudgetRequest[]                @relation("BudgetAssignedApprover")
   requestedBudgets         BudgetRequest[]                @relation("BudgetRequester")
+  confirmedBudgetRealizations BudgetRequest[]             @relation("BudgetRealizationConfirmer")
   teacherClasses           Class[]                        @relation("ClassTeacher")
   cpTpAnalyses             CpTpAnalysis[]
   dailyAttendances         DailyAttendance[]
@@ -77,6 +78,8 @@ model User {
   proctoredSittings        ExamSitting[]                  @relation("SittingProctor")
   materials                Material[]
   notifications            Notification[]
+  mobilePushDevices        MobilePushDevice[]
+  auditLogs               AuditLog[]
   p5Assessments            P5Assessment[]
   payments                 Payment[]
   pklAssessments           PklAssessment[]
@@ -112,7 +115,7 @@ model User {
   studentPermissions       StudentPermission[]            @relation("StudentPermissions")
   approvedPermissions      StudentPermission[]            @relation("PermissionApprover")
   createdQuestionBanks     QuestionBank[]                 @relation("BankAuthor")
-  
+  budgetLpjInvoicesCreated BudgetLpjInvoice[]             @relation("BudgetLpjInvoiceCreator")
   // Internship Relations
   internships              Internship[]                   @relation("StudentInternship")
   guidedInternships        Internship[]                   @relation("TeacherInternship")
@@ -908,6 +911,8 @@ model WorkProgram {
   feedback           String?
   isApproved         Boolean           @default(false)
   month              Int
+  startMonth         Int?
+  endMonth           Int?
   ownerId            Int
   semester           Semester
   startWeek          Int
@@ -958,6 +963,7 @@ model BudgetRequest {
   workProgramId   Int?
   requesterId     Int
   approvedById    Int?
+  realizationConfirmedById Int?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   additionalDuty  AdditionalDuty
@@ -967,15 +973,69 @@ model BudgetRequest {
   executionTime   String?
   quantity        Int
   rejectionReason String?
+  realizationConfirmedAt DateTime?
+  lpjFileUrl      String?
+  lpjFileName     String?
+  lpjFileSize     Int?
+  lpjMimeType     String?
+  lpjSubmittedAt  DateTime?
   totalAmount     Float
   unitPrice       Float
   academicYear    AcademicYear   @relation(fields: [academicYearId], references: [id])
   approvedBy      User?          @relation("BudgetApprover", fields: [approvedById], references: [id])
+  realizationConfirmedBy User?   @relation("BudgetRealizationConfirmer", fields: [realizationConfirmedById], references: [id])
   approver        User?          @relation("BudgetAssignedApprover", fields: [approverId], references: [id])
   requester       User           @relation("BudgetRequester", fields: [requesterId], references: [id])
   workProgram     WorkProgram?   @relation(fields: [workProgramId], references: [id])
+  lpjInvoices     BudgetLpjInvoice[]
 
   @@map("budget_requests")
+}
+
+model BudgetLpjInvoice {
+  id                    Int               @id @default(autoincrement())
+  budgetRequestId       Int
+  title                 String?
+  status                LpjInvoiceStatus  @default(DRAFT)
+  invoiceFileUrl        String?
+  invoiceFileName       String?
+  invoiceFileSize       Int?
+  invoiceMimeType       String?
+  proofFileUrl          String?
+  proofFileName         String?
+  proofFileSize         Int?
+  proofMimeType         String?
+  submittedAt           DateTime?
+  returnedAt            DateTime?
+  approvedBySarprasAt   DateTime?
+  sentToFinanceAt       DateTime?
+  auditReport           String?
+  auditReportAt         DateTime?
+  createdById           Int
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  budgetRequest         BudgetRequest     @relation(fields: [budgetRequestId], references: [id], onDelete: Cascade)
+  createdBy             User              @relation("BudgetLpjInvoiceCreator", fields: [createdById], references: [id])
+  items                 BudgetLpjItem[]
+
+  @@map("budget_lpj_invoices")
+}
+
+model BudgetLpjItem {
+  id            Int             @id @default(autoincrement())
+  lpjInvoiceId  Int
+  description   String
+  brand         String?
+  quantity      Int
+  unitPrice     Float
+  amount        Float
+  isMatched     Boolean?
+  auditNote     String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  invoice       BudgetLpjInvoice @relation(fields: [lpjInvoiceId], references: [id], onDelete: Cascade)
+
+  @@map("budget_lpj_items")
 }
 
 model Payment {
@@ -1088,6 +1148,47 @@ model Notification {
   user      User     @relation(fields: [userId], references: [id])
 
   @@map("notifications")
+}
+
+model MobilePushDevice {
+  id            Int            @id @default(autoincrement())
+  userId        Int
+  expoPushToken String         @unique
+  platform      MobilePlatform @default(UNKNOWN)
+  deviceId      String?
+  deviceName    String?
+  appVersion    String?
+  isEnabled     Boolean        @default(true)
+  lastSeenAt    DateTime       @default(now())
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isEnabled])
+  @@map("mobile_push_devices")
+}
+
+enum MobilePlatform {
+  ANDROID
+  IOS
+  UNKNOWN
+}
+
+model AuditLog {
+  id           Int      @id @default(autoincrement())
+  actorId      Int
+  actorRole    String
+  actorDuties  Json?
+  action       String
+  entity       String
+  entityId     Int?
+  reason       String?
+  before       Json?
+  after        Json?
+  createdAt    DateTime @default(now())
+  actor        User     @relation(fields: [actorId], references: [id])
+
+  @@map("audit_logs")
 }
 
 model ExamSitting {
@@ -1348,6 +1449,14 @@ enum ExamSessionStatus {
   TIMEOUT
 }
 
+enum LpjInvoiceStatus {
+  DRAFT
+  SUBMITTED_TO_SARPRAS
+  RETURNED
+  APPROVED_BY_SARPRAS
+  SENT_TO_FINANCE
+}
+
 model Internship {
   id             Int              @id @default(autoincrement())
   studentId      Int
@@ -1524,4 +1633,69 @@ enum CooperationStatus {
   AKTIF
   NON_AKTIF
   PROSES
+}
+
+// Inventory Module
+model RoomCategory {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  isDefault   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  rooms       Room[]
+
+  @@map("room_categories")
+}
+
+model Room {
+  id          Int       @id @default(autoincrement())
+  categoryId  Int?      // Made optional for migration, will be required later
+  name        String
+  // type        RoomType  // Deprecated, replaced by categoryId
+  capacity    Int?
+  location    String?
+  condition   String?   // BAIK, RUSAK_RINGAN, RUSAK_BERAT
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  category    RoomCategory? @relation(fields: [categoryId], references: [id])
+  items       InventoryItem[]
+
+  @@map("rooms")
+}
+
+// Enum RoomType Deprecated
+// enum RoomType {
+//   CLASSROOM
+//   LAB
+//   SPORTS
+//   WORSHIP
+//   OFFICE
+//   OTHER
+// }
+
+model InventoryItem {
+  id          Int       @id @default(autoincrement())
+  roomId      Int
+  name        String
+  code        String?
+  brand       String?
+  quantity    Int       @default(0)
+  goodQty     Int       @default(0)
+  minorDamageQty Int    @default(0)
+  majorDamageQty Int    @default(0)
+  condition   String?   // Deprecated, use specific qty fields
+  purchaseDate DateTime?
+  price       Float?
+  source      String?
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  room        Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@map("inventory_items")
 }

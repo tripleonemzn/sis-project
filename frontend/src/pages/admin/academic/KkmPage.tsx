@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { subjectService, type Subject } from '../../../services/subject.service';
-import { academicYearService, type AcademicYear } from '../../../services/academicYear.service';
 import { Loader2, Search, Percent, SlidersHorizontal } from 'lucide-react';
 
 type LevelFilter = 'ALL' | 'X' | 'XI' | 'XII';
@@ -23,16 +22,7 @@ export const KkmPage = () => {
   const [search, setSearch] = useState('');
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('ALL');
 
-  const { data: academicYearData } = useQuery({
-    queryKey: ['academic-years', 'for-kkm'],
-    queryFn: () => academicYearService.list({ page: 1, limit: 100 }),
-  });
-
-  const academicYears: AcademicYear[] = useMemo(
-    () =>
-      academicYearData?.data?.academicYears || academicYearData?.academicYears || [],
-    [academicYearData],
-  );
+  useMemo(() => null, []);
 
   const { data: subjectData, isLoading: isLoadingSubjects } = useQuery({
     queryKey: ['subjects', 'for-kkm'],
@@ -44,16 +34,6 @@ export const KkmPage = () => {
     [subjectData],
   );
 
-  const effectiveYearLabel = useMemo(() => {
-    if (!academicYears.length) {
-      return '-';
-    }
-    const active = academicYears.find((ay) => ay.isActive);
-    if (active) {
-      return active.name;
-    }
-    return academicYears[0]?.name ?? '-';
-  }, [academicYears]);
 
   const filteredSubjects = useMemo(() => {
     let list = [...subjects];
@@ -128,14 +108,7 @@ export const KkmPage = () => {
             Ringkasan Kriteria Ketuntasan Minimal per mata pelajaran dan tingkat kelas.
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-          <div className="text-right">
-            <p className="text-xs text-gray-500">Tahun Ajaran Referensi</p>
-            <p className="text-sm font-semibold text-gray-800">
-              {effectiveYearLabel}
-            </p>
-          </div>
-        </div>
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center"></div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { academicYearService, type AcademicYear } from '../../../services/academicYear.service';
 import { classService, type Class } from '../../../services/class.service';
@@ -6,7 +7,7 @@ import {
   reportService,
   type ClassReportSummary,
 } from '../../../services/report.service';
-import { Loader2, Users, Award, AlertCircle } from 'lucide-react';
+import { Loader2, Users, Award, AlertCircle, Trophy } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const getErrorMessage = (error: unknown) => {
@@ -18,8 +19,15 @@ const getErrorMessage = (error: unknown) => {
 };
 
 export const ReportCardsPage = () => {
+  const location = useLocation();
+  const isPrincipalRoute = location.pathname.startsWith('/principal');
+
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<number | ''>('');
   const [selectedClassId, setSelectedClassId] = useState<number | ''>('');
+  const [viewMode, setViewMode] = useState<'REPORT' | 'RANKING'>(() =>
+    isPrincipalRoute ? 'RANKING' : 'REPORT',
+  );
+  const [semester, setSemester] = useState<'ODD' | 'EVEN' | ''>('');
 
   const { data: academicYearData, isLoading: isLoadingYears } = useQuery({
     queryKey: ['academic-years', 'for-report-cards'],
@@ -83,7 +91,7 @@ export const ReportCardsPage = () => {
     return '';
   }, [classes, selectedClassId]);
 
-  const canLoadReport = !!effectiveAcademicYearId && !!effectiveClassId;
+  const canLoadReport = !isPrincipalRoute && !!effectiveAcademicYearId && !!effectiveClassId;
 
   const {
     data: reportResponse,
@@ -105,18 +113,101 @@ export const ReportCardsPage = () => {
     [reportResponse],
   );
 
-  const loading = isLoadingYears || isLoadingClasses || isLoadingReport || isFetchingReport;
+  const {
+    data: rankingResponse,
+    isLoading: isLoadingRanking,
+    isFetching: isFetchingRanking,
+    refetch: refetchRanking,
+  } = useQuery({
+    queryKey: ['class-rankings', 'report-cards', effectiveAcademicYearId, effectiveClassId, semester],
+    queryFn: () =>
+      reportService.getClassRankings({
+        classId: effectiveClassId as number,
+        academicYearId: effectiveAcademicYearId as number,
+        semester: semester as 'ODD' | 'EVEN',
+      }),
+    enabled: false,
+  });
+
+  const rankingData: any = useMemo(() => rankingResponse || null, [rankingResponse]);
+  const rankings = useMemo(
+    () =>
+      Array.isArray(rankingData?.rankings)
+        ? [...rankingData.rankings].sort((a, b) => {
+            const rankA = typeof a.rank === 'number' ? a.rank : Number.MAX_SAFE_INTEGER;
+            const rankB = typeof b.rank === 'number' ? b.rank : Number.MAX_SAFE_INTEGER;
+            return rankA - rankB;
+          })
+        : [],
+    [rankingData],
+  );
+
+  const totalRankingStudents = rankings.length;
+
+  const topStudent = totalRankingStudents > 0 ? rankings[0] : null;
+
+  const classAverageFromRanking = useMemo(() => {
+    if (!rankings.length) {
+      return null;
+    }
+
+    const scores: number[] = [];
+    rankings.forEach((row: any) => {
+      if (typeof row.averageScore === 'number') {
+        scores.push(row.averageScore);
+      }
+    });
+
+    if (!scores.length) {
+      return null;
+    }
+
+    const sum = scores.reduce((acc, value) => acc + value, 0);
+    return Math.round((sum / scores.length) * 10) / 10;
+  }, [rankings]);
+
+  const loading =
+    isLoadingYears ||
+    isLoadingClasses ||
+    (!isPrincipalRoute && (isLoadingReport || isFetchingReport)) ||
+    isLoadingRanking ||
+    isFetchingRanking;
+
+  const canLoadRanking = !!effectiveAcademicYearId && !!effectiveClassId && !!semester;
 
   const handleRefresh = async () => {
-    if (!canLoadReport) {
-      toast.error('Pilih tahun ajaran dan kelas terlebih dahulu');
+    if (viewMode === 'REPORT' && !isPrincipalRoute) {
+      if (!canLoadReport) {
+        toast.error('Pilih tahun ajaran dan kelas terlebih dahulu');
+        return;
+      }
+
+      try {
+        const result = await refetchReport();
+        if (!result.data?.students?.length) {
+          toast('Belum ada data nilai untuk filter ini', { icon: 'ℹ️' });
+        }
+      } catch (error) {
+        toast.error(getErrorMessage(error));
+      }
+      return;
+    }
+
+    if (!canLoadRanking) {
+      if (!effectiveAcademicYearId || !effectiveClassId) {
+        toast.error('Pilih tahun ajaran dan kelas terlebih dahulu');
+      } else if (!semester) {
+        toast.error('Pilih semester terlebih dahulu');
+      }
       return;
     }
 
     try {
-      const result = await refetchReport();
-      if (!result.data?.students?.length) {
-        toast('Belum ada data nilai untuk filter ini', { icon: 'ℹ️' });
+      const result = await refetchRanking();
+      const fetchedRankings =
+        Array.isArray((result.data as any)?.rankings) ? (result.data as any).rankings : [];
+      if (!fetchedRankings.length) {
+        toast('Belum ada data peringkat untuk filter ini', { icon: 'ℹ️' });
       }
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -172,16 +263,53 @@ export const ReportCardsPage = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Laporan / Rapor Kelas</h1>
           <p className="text-gray-500 text-sm">
-            Ringkasan nilai akhir siswa per kelas berdasarkan data nilai dan KKM.
+            {isPrincipalRoute
+              ? 'Ringkasan peringkat siswa per kelas berdasarkan nilai rapor.'
+              : 'Ringkasan hasil belajar siswa per kelas, termasuk leger dan peringkat.'}
           </p>
+          {!isPrincipalRoute && (
+            <div className="mt-3 inline-flex rounded-lg bg-gray-100 p-1 text-xs font-medium">
+              <button
+                type="button"
+                onClick={() => setViewMode('REPORT')}
+                className={`px-3 py-1.5 rounded-md transition-colors ${
+                  viewMode === 'REPORT'
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : 'text-gray-600 hover:text-blue-700'
+                }`}
+              >
+                Leger Nilai
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('RANKING')}
+                className={`ml-1 px-3 py-1.5 rounded-md transition-colors ${
+                  viewMode === 'RANKING'
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : 'text-gray-600 hover:text-blue-700'
+                }`}
+              >
+                Peringkat Kelas
+              </button>
+            </div>
+          )}
         </div>
         <button
           type="button"
           onClick={handleRefresh}
-          disabled={loading || !canLoadReport}
+          disabled={
+            loading ||
+            (!isPrincipalRoute && viewMode === 'REPORT' && !canLoadReport) ||
+            (viewMode === 'RANKING' && !semester)
+          }
           className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isFetchingReport && <Loader2 className="w-4 h-4 animate-spin" />}
+          {viewMode === 'REPORT' && isFetchingReport && (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          )}
+          {viewMode === 'RANKING' && isFetchingRanking && (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          )}
           <span>Terapkan Filter</span>
         </button>
       </div>
@@ -238,7 +366,33 @@ export const ReportCardsPage = () => {
               ))}
             </select>
           </div>
-          <div className="flex items-end">
+          <div className="flex flex-col justify-between">
+            {viewMode === 'RANKING' && (
+              <div className="mb-3">
+                <label
+                  htmlFor="report-semester"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Semester
+                </label>
+                <select
+                  id="report-semester"
+                  name="report-semester"
+                  value={semester}
+                  onChange={(e) => setSemester(e.target.value as 'ODD' | 'EVEN' | '')}
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Pilih Semester</option>
+                  <option value="ODD">Semester Ganjil</option>
+                  <option value="EVEN">Semester Genap</option>
+                </select>
+                {isPrincipalRoute && (
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    Kepala sekolah melihat peringkat per semester, bukan leger detail.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="w-full text-sm text-gray-600">
               {reportData ? (
                 <div className="space-y-1">
@@ -275,7 +429,7 @@ export const ReportCardsPage = () => {
         </div>
       )}
 
-      {!loading && reportData && (
+      {!loading && viewMode === 'REPORT' && reportData && (
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-4">
@@ -324,21 +478,25 @@ export const ReportCardsPage = () => {
                   <th className="px-6 py-3 text-left whitespace-nowrap w-32">
                     NIS / NISN
                   </th>
-                  {reportData.subjects.map((subject) => (
-                    <th
-                      key={subject.id}
-                      className="px-4 py-3 text-center text-xs align-top"
-                    >
-                      <div className="flex flex-col items-center gap-1">
-                        <span className="font-semibold text-[11px] text-gray-800 whitespace-normal break-words">
-                          {subject.name}
-                        </span>
-                        <span className="text-[10px] text-gray-500">
-                          {subject.code} • KKM {subject.kkm}
-                        </span>
-                      </div>
-                    </th>
-                  ))}
+                  {Array.isArray(reportData.subjects) &&
+                    reportData.subjects.map((subject, index) => {
+                      if (!subject) return null;
+                      return (
+                        <th
+                          key={subject.id ?? `${subject.code ?? 'SUBJECT'}-${index}`}
+                          className="px-4 py-3 text-center text-xs align-top"
+                        >
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="font-semibold text-[11px] text-gray-800 whitespace-normal break-words">
+                              {subject.name ?? '-'}
+                            </span>
+                            <span className="text-[10px] text-gray-500">
+                              {(subject.code || '-')} • KKM {subject.kkm}
+                            </span>
+                          </div>
+                        </th>
+                      );
+                    })}
                   <th className="px-6 py-3 text-center whitespace-nowrap w-32">
                     RATA-RATA
                   </th>
@@ -348,10 +506,10 @@ export const ReportCardsPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {!reportData.students.length ? (
+                {!Array.isArray(reportData.students) || !reportData.students.length ? (
                   <tr>
                     <td
-                      colSpan={5 + reportData.subjects.length}
+                      colSpan={5 + (Array.isArray(reportData.subjects) ? reportData.subjects.length : 0)}
                       className="px-6 py-8 text-center text-gray-500"
                     >
                       Belum ada data nilai untuk kelas ini.
@@ -359,23 +517,28 @@ export const ReportCardsPage = () => {
                   </tr>
                 ) : (
                   reportData.students.map((row, index) => (
-                    <tr key={row.student.id} className="hover:bg-gray-50 transition-colors">
+                    <tr
+                      key={row.student?.id ?? `row-${index}`}
+                      className="hover:bg-gray-50 transition-colors"
+                    >
                       <td className="px-6 py-3 text-gray-500 text-center">
                         {index + 1}
                       </td>
                       <td className="px-6 py-3 text-gray-900 whitespace-nowrap">
-                        {row.student.name}
+                        {row.student?.name ?? '-'}
                       </td>
                       <td className="px-6 py-3 text-gray-700 whitespace-nowrap text-xs">
                         <div className="flex flex-col">
-                          <span>NIS: {row.student.nis || '-'}</span>
-                          <span>NISN: {row.student.nisn || '-'}</span>
+                          <span>NIS: {row.student?.nis || '-'}</span>
+                          <span>NISN: {row.student?.nisn || '-'}</span>
                         </div>
                       </td>
-                      {reportData.subjects.map((subject) => {
-                        const detail = row.subjects.find(
-                          (s) => s.subject.id === subject.id,
-                        );
+                      {Array.isArray(reportData.subjects) &&
+                        reportData.subjects.map((subject) => {
+                          if (!subject) return null;
+                          const detail = row.subjects.find(
+                            (s) => s.subject?.id === subject.id,
+                          );
                         const score = detail?.finalScore ?? null;
                         const predicate = detail?.predicate ?? null;
                         const isPassed =
@@ -408,16 +571,16 @@ export const ReportCardsPage = () => {
                         );
                       })}
                       <td className="px-6 py-3 text-center text-gray-900 font-semibold">
-                        {row.summary.averageScore ?? '-'}
+                        {row.summary?.averageScore ?? '-'}
                       </td>
                       <td className="px-6 py-3 text-center text-xs text-gray-700">
-                        {row.summary.failedCount === 0 && row.summary.passedCount > 0 ? (
+                        {row.summary?.failedCount === 0 && (row.summary?.passedCount || 0) > 0 ? (
                           <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700">
                             Semua Tuntas
                           </span>
-                        ) : row.summary.failedCount > 0 ? (
+                        ) : (row.summary?.failedCount || 0) > 0 ? (
                           <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700">
-                            {row.summary.failedCount} mapel belum tuntas
+                            {row.summary?.failedCount} mapel belum tuntas
                           </span>
                         ) : (
                           <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-50 text-gray-600">
@@ -430,6 +593,99 @@ export const ReportCardsPage = () => {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {!loading && viewMode === 'RANKING' && (
+        <div className="space-y-4">
+          {rankings.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-4">
+                <div className="p-3 rounded-lg bg-blue-50 text-blue-600">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-medium">Jumlah Siswa Berperingkat</p>
+                  <p className="text-2xl font-bold text-gray-900">{totalRankingStudents}</p>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-4">
+                <div className="p-3 rounded-lg bg-green-50 text-green-600">
+                  <Award className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-medium">Rata-rata Kelas (Ranking)</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {classAverageFromRanking ?? '-'}
+                  </p>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-4">
+                <div className="p-3 rounded-lg bg-yellow-50 text-yellow-600">
+                  <Trophy className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-medium">Siswa Peringkat 1</p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {topStudent?.student?.name ?? '-'}
+                  </p>
+                  {typeof topStudent?.averageScore === 'number' && (
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Rata-rata {topStudent.averageScore}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+            {!rankingData ? (
+              <div className="px-6 py-12 text-center text-gray-500 text-sm">
+                Pilih tahun ajaran, kelas, dan semester lalu klik Terapkan Filter untuk melihat
+                peringkat.
+              </div>
+            ) : !rankings.length ? (
+              <div className="px-6 py-12 text-center text-gray-500 text-sm">
+                Belum ada data peringkat untuk filter ini.
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-600 font-medium">
+                  <tr>
+                    <th className="px-6 py-3 text-left whitespace-nowrap w-10">NO</th>
+                    <th className="px-6 py-3 text-left whitespace-nowrap w-40">NISN / NIS</th>
+                    <th className="px-6 py-3 text-left whitespace-nowrap">NAMA SISWA</th>
+                    <th className="px-6 py-3 text-center whitespace-nowrap w-32">JUMLAH NILAI</th>
+                    <th className="px-6 py-3 text-center whitespace-nowrap w-32">RATA-RATA</th>
+                    <th className="px-6 py-3 text-center whitespace-nowrap w-32">PERINGKAT</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {rankings.map((row: any, index: number) => (
+                    <tr key={row.student?.id ?? `rank-${index}`} className="hover:bg-gray-50">
+                      <td className="px-6 py-3 text-gray-500 text-center">{index + 1}</td>
+                      <td className="px-6 py-3 text-gray-700 whitespace-nowrap text-xs">
+                        {row.student?.nisn || row.student?.nis || '-'}
+                      </td>
+                      <td className="px-6 py-3 text-gray-900 whitespace-nowrap">
+                        {row.student?.name ?? '-'}
+                      </td>
+                      <td className="px-6 py-3 text-center text-gray-900 font-semibold">
+                        {row.totalScore ?? '-'}
+                      </td>
+                      <td className="px-6 py-3 text-center text-gray-900 font-semibold">
+                        {row.averageScore ?? '-'}
+                      </td>
+                      <td className="px-6 py-3 text-center text-gray-900 font-semibold">
+                        {row.rank ? `Peringkat ${row.rank}` : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}

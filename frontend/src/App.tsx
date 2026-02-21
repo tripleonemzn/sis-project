@@ -47,13 +47,23 @@ const ExamSchedulePage = lazy(() => import("./pages/teacher/exams/ExamSchedulePa
 const ExamScheduleManagementPage = lazy(() => import("./pages/teacher/wakasek/ExamScheduleManagementPage"));
 const ExamSittingManagementPage = lazy(() => import("./pages/teacher/wakasek/ExamSittingManagementPage"));
 const ExamProctorManagementPage = lazy(() => import("./pages/teacher/wakasek/ExamProctorManagementPage"));
+const ExamManagementHubPage = lazy(() => import("./pages/teacher/wakasek/ExamManagementHubPage"));
+const CurriculumManagementHubPage = lazy(() => import("./pages/teacher/wakasek/CurriculumManagementHubPage"));
+const StudentManagementHubPage = lazy(() => import("./pages/teacher/wakasek/StudentManagementHubPage"));
 const InternshipComponentPage = lazy(() => import("./pages/teacher/wakasek/InternshipComponentPage").then(m => ({ default: m.InternshipComponentPage })));
 const JournalMonitoringPage = lazy(() => import("./pages/teacher/wakasek/JournalMonitoringPage"));
+const WorkProgramApprovalsPage = lazy(() =>
+  import('./pages/teacher/wakasek/curriculum/WorkProgramApprovalsPage'),
+);
 const HumasSettingsPage = lazy(() => import("./pages/teacher/humas/HumasSettingsPage").then(m => ({ default: m.HumasSettingsPage })));
+const InventoryHubPage = lazy(() => import('./pages/teacher/wakasek/sarpras/InventoryHubPage').then(m => ({ default: m.InventoryHubPage })));
+const InventoryDetailPage = lazy(() => import('./pages/teacher/wakasek/sarpras/InventoryDetailPage').then(m => ({ default: m.InventoryDetailPage })));
+const BudgetApprovalPage = lazy(() => import('./pages/teacher/wakasek/sarpras/BudgetApprovalPage').then(m => ({ default: m.BudgetApprovalPage })));
 const IndustryPartnersPage = lazy(() => import("./pages/teacher/humas/IndustryPartnersPage").then(m => ({ default: m.IndustryPartnersPage })));
 const CpPage = lazy(() => import("./pages/teacher/learning-resources/CpPage"));
 const AtpPage = lazy(() => import("./pages/teacher/learning-resources/AtpPage"));
 const ModulesPage = lazy(() => import("./pages/teacher/learning-resources/ModulesPage"));
+const AuditLogPage = lazy(() => import("./pages/admin/audit/AuditLogPage").then(m => ({ default: m.AuditLogPage })));
 const StudentExamsPage = lazy(() => import("./pages/student/StudentExamsPage"));
 const StudentExamTakePage = lazy(() => import("./pages/student/StudentExamTakePage"));
 const StudentPermissionsPage = lazy(() => import("./pages/student/StudentPermissionsPage"));
@@ -258,6 +268,7 @@ const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/Proctor
             <Route path="classes" element={<ClassPage />} />
             <Route path="training-classes" element={<TrainingClassesPage />} />
             <Route path="extracurriculars" element={<ExtracurricularPage />} />
+            <Route path="audit-logs" element={<AuditLogPage />} />
             </Route>
             <Route path="tutor" element={
               <RoleRoute allowedRoles={['EXTRACURRICULAR_TUTOR']}>
@@ -301,8 +312,15 @@ const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/Proctor
             <Route path="exams/:id/schedule" element={<ExamSchedulePage />} />
             
             <Route path="wakasek/exam-schedules" element={<ExamScheduleManagementPage />} />
+            <Route path="wakasek/exams" element={<ExamManagementHubPage />} />
             <Route path="wakasek/exam-rooms" element={<ExamSittingManagementPage />} />
             <Route path="wakasek/proctor-schedule" element={<ExamProctorManagementPage />} />
+            <Route path="wakasek/curriculum" element={<CurriculumManagementHubPage />} />
+            <Route
+              path="wakasek/work-program-approvals"
+              element={<WorkProgramApprovalsPage />}
+            />
+            <Route path="wakasek/students" element={<StudentManagementHubPage />} />
             <Route path="wakasek/internship-components" element={<InternshipComponentPage />} />
             <Route path="wakasek/journal-monitoring" element={<JournalMonitoringPage />} />
 
@@ -323,11 +341,20 @@ const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/Proctor
             <Route path="humas/partners" element={<IndustryPartnersPage />} />
             <Route path="humas/reports" element={<TeacherPlaceholderPage />} />
             <Route path="humas/settings" element={<HumasSettingsPage />} />
+            <Route path="academic/audit-logs" element={<AuditLogPage />} />
 
+            <Route path="sarpras/inventory" element={<InventoryHubPage />} />
+            <Route path="sarpras/inventory/:roomId" element={<InventoryDetailPage />} />
+            <Route path="sarpras/budgets" element={<BudgetApprovalPage />} />
+            <Route path="sarpras/*" element={<TeacherPlaceholderPage />} />
             <Route path="wali-kelas/*" element={<TeacherHomeroomPage />} />
             <Route path="training/*" element={<TeacherPlaceholderPage />} />
             <Route path="wakasek/*" element={<TeacherPlaceholderPage />} />
+            <Route path="head-lab/inventory" element={<InventoryHubPage />} />
+            <Route path="head-lab/inventory/:roomId" element={<InventoryDetailPage />} />
             <Route path="head-lab/*" element={<TeacherPlaceholderPage />} />
+            <Route path="head-library/inventory" element={<InventoryHubPage />} />
+            <Route path="head-library/inventory/:roomId" element={<InventoryDetailPage />} />
             <Route path="head-program/partners" element={<IndustryPartnersPage />} />
             <Route path="head-program/*" element={<TeacherPlaceholderPage />} />
             </Route>

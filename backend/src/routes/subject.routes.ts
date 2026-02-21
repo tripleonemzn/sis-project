@@ -18,8 +18,7 @@ router.use(authMiddleware);
 router.get('/', getSubjects);
 router.get('/:id', getSubjectById);
 
-// Only ADMIN can manage subjects
-router.use(roleMiddleware(['ADMIN']));
+router.use(roleMiddleware(['ADMIN', 'TEACHER']));
 router.post('/', createSubject);
 router.patch('/:id', updateSubject);
 router.delete('/:id', deleteSubject);

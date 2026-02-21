@@ -15,6 +15,7 @@ export interface ScheduleEntry {
   teacherAssignmentId: number;
   dayOfWeek: DayOfWeek;
   period: number;
+  teachingHour?: number | null;
   room: string | null;
   createdAt: string;
   updatedAt: string;
