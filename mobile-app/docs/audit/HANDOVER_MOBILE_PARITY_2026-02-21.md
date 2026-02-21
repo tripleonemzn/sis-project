@@ -3,6 +3,63 @@
 Tanggal: 2026-02-21 02:47 UTC
 Fokus: menutup gap fitur web -> mobile lintas role tanpa mengganggu web production.
 
+## Update Lanjutan (2026-02-21 23:05 UTC)
+
+Tujuan batch ini: menutup temuan KAKOM pada menu Program Kerja (mobile hanya bisa lihat data dari web, belum bisa tambah alur anggaran/LPJ seperti di web).
+
+Perubahan tambahan yang sudah dilakukan:
+1. Tambah domain type budget/LPJ pada modul work program mobile
+   - File: `src/features/workPrograms/types.ts`
+   - Tambahan type:
+     - `WorkProgramBudgetRequest`
+     - `WorkProgramBudgetLpjInvoice`
+     - `WorkProgramBudgetLpjItem`
+     - `WorkProgramBudgetLpjBundle`
+     - payload/upload types terkait.
+
+2. Perluasan API mobile untuk alur budget + LPJ owner
+   - File: `src/features/workPrograms/workProgramApi.ts`
+   - Tambahan method:
+     - `listBudgetRequests`
+     - `createBudgetRequest`
+     - `removeBudgetRequest`
+     - `uploadBudgetLpjFile`
+     - `listBudgetLpj`
+     - `createBudgetLpjInvoice`
+     - `createBudgetLpjItem`
+     - `removeBudgetLpjItem`
+     - `uploadBudgetLpjInvoiceFile`
+     - `uploadBudgetLpjProofFile`
+     - `submitBudgetLpjInvoice`
+
+3. Implement section native baru untuk owner Program Kerja
+   - File baru: `src/features/workPrograms/WorkProgramBudgetOwnerSection.tsx`
+   - Capability native:
+     - create + delete pengajuan anggaran
+     - filter status/duty + search
+     - upload LPJ file legacy per pengajuan
+     - create invoice LPJ
+     - upload invoice file + proof file
+     - create + delete item LPJ
+     - submit invoice LPJ ke Sarpras
+     - buka dokumen LPJ/Invoice/Bukti lewat route `web-module` (URL absolut lampiran)
+
+4. Integrasi ke layar utama Program Kerja guru
+   - File: `src/features/workPrograms/TeacherWorkProgramModuleScreen.tsx`
+   - `mode=OWNER` sekarang memuat section `Anggaran & LPJ` native.
+   - Pull-to-refresh owner diperluas untuk invalidate query budget/LPJ juga.
+
+5. Audit route parity ulang
+   - `npm run audit:parity` dijalankan ulang.
+   - Hasil route-level tetap:
+     - `Native + Web Fallback` = **0**
+     - `Web Bridge Route` = **0**
+     - openURL global tetap 1 titik sengaja: `app/(app)/web-module/[moduleKey].tsx`
+
+Validasi yang sudah dijalankan setelah patch:
+- `npm run typecheck` (sukses)
+- `npm run audit:parity` (sukses)
+
 ## Update Lanjutan (2026-02-21 03:30 UTC)
 
 Tujuan batch ini: memastikan semua fitur tetap bisa diakses dari mobile meskipun belum semuanya native penuh.

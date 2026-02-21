@@ -10,6 +10,7 @@ import { BRAND_COLORS } from '../../config/brand';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
 import { useAuth } from '../auth/AuthProvider';
 import { academicYearApi } from '../academicYear/academicYearApi';
+import { WorkProgramBudgetOwnerSection } from './WorkProgramBudgetOwnerSection';
 import { WorkProgramRecord } from './types';
 import { workProgramApi } from './workProgramApi';
 
@@ -554,6 +555,8 @@ export function TeacherWorkProgramModuleScreen({
       return;
     }
     void ownerQuery.refetch();
+    void queryClient.invalidateQueries({ queryKey: ['mobile-work-program-owner-budget-requests'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-work-program-owner-budget-lpj'] });
   };
 
   const askApproval = (record: WorkProgramRecord, status: 'APPROVED' | 'REJECTED') => {
@@ -1248,6 +1251,14 @@ export function TeacherWorkProgramModuleScreen({
             </Text>
           </View>
         )
+      ) : null}
+
+      {mode === 'OWNER' ? (
+        <WorkProgramBudgetOwnerSection
+          activeYearId={activeYearQuery.data?.id}
+          activeYearName={activeYearQuery.data?.name}
+          dutyOptions={dutyOptions}
+        />
       ) : null}
 
     </ScrollView>

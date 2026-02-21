@@ -1,5 +1,15 @@
 import { apiClient } from '../../lib/api/client';
-import { WorkProgramApprovalStatus, WorkProgramListResponse, WorkProgramRecord } from './types';
+import {
+  WorkProgramApprovalStatus,
+  WorkProgramBudgetCreatePayload,
+  WorkProgramBudgetLpjBundle,
+  WorkProgramBudgetLpjInvoice,
+  WorkProgramBudgetLpjItem,
+  WorkProgramBudgetRequest,
+  WorkProgramListResponse,
+  WorkProgramRecord,
+  WorkProgramUploadFile,
+} from './types';
 
 type ApiEnvelope<T> = {
   statusCode: number;
@@ -14,6 +24,15 @@ const DEFAULT_PAGINATION = {
   total: 0,
   totalPages: 1,
 };
+
+function appendUploadFile(formData: FormData, field: string, file?: WorkProgramUploadFile | null) {
+  if (!file?.uri) return;
+  formData.append(field, {
+    uri: file.uri,
+    name: file.name || `${field}-upload`,
+    type: file.mimeType || 'application/octet-stream',
+  } as any);
+}
 
 export const workProgramApi = {
   async list(params?: {
@@ -133,6 +152,106 @@ export const workProgramApi = {
 
   async removeItem(itemId: number) {
     const response = await apiClient.delete<ApiEnvelope<null>>(`/work-programs/items/${itemId}`);
+    return response.data?.data;
+  },
+
+  async listBudgetRequests(params?: {
+    academicYearId?: number;
+    additionalDuty?: string;
+    view?: 'approver' | 'requester';
+  }) {
+    const response = await apiClient.get<ApiEnvelope<WorkProgramBudgetRequest[]>>('/budget-requests', {
+      params: {
+        academicYearId: params?.academicYearId,
+        additionalDuty: params?.additionalDuty,
+        view: params?.view,
+      },
+    });
+    const data = response.data?.data;
+    return Array.isArray(data) ? data : [];
+  },
+
+  async createBudgetRequest(payload: WorkProgramBudgetCreatePayload) {
+    const response = await apiClient.post<ApiEnvelope<WorkProgramBudgetRequest>>('/budget-requests', payload);
+    return response.data?.data;
+  },
+
+  async removeBudgetRequest(id: number) {
+    const response = await apiClient.delete<ApiEnvelope<null>>(`/budget-requests/${id}`);
+    return response.data?.data;
+  },
+
+  async uploadBudgetLpjFile(id: number, file: WorkProgramUploadFile) {
+    const formData = new FormData();
+    appendUploadFile(formData, 'file', file);
+    const response = await apiClient.post<ApiEnvelope<WorkProgramBudgetRequest>>(
+      `/budget-requests/${id}/lpj`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      },
+    );
+    return response.data?.data;
+  },
+
+  async listBudgetLpj(budgetRequestId: number) {
+    const response = await apiClient.get<ApiEnvelope<WorkProgramBudgetLpjBundle>>('/budget-lpj', {
+      params: { budgetRequestId },
+    });
+    return response.data?.data;
+  },
+
+  async createBudgetLpjInvoice(payload: { budgetRequestId: number; title?: string }) {
+    const response = await apiClient.post<ApiEnvelope<WorkProgramBudgetLpjInvoice>>('/budget-lpj/invoices', payload);
+    return response.data?.data;
+  },
+
+  async createBudgetLpjItem(payload: {
+    lpjInvoiceId: number;
+    description: string;
+    brand?: string;
+    quantity: number;
+    unitPrice: number;
+  }) {
+    const response = await apiClient.post<ApiEnvelope<WorkProgramBudgetLpjItem>>('/budget-lpj/items', payload);
+    return response.data?.data;
+  },
+
+  async removeBudgetLpjItem(id: number) {
+    const response = await apiClient.delete<ApiEnvelope<null>>(`/budget-lpj/items/${id}`);
+    return response.data?.data;
+  },
+
+  async uploadBudgetLpjInvoiceFile(invoiceId: number, file: WorkProgramUploadFile) {
+    const formData = new FormData();
+    appendUploadFile(formData, 'file', file);
+    const response = await apiClient.post<ApiEnvelope<WorkProgramBudgetLpjInvoice>>(
+      `/budget-lpj/invoices/${invoiceId}/invoice-file`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      },
+    );
+    return response.data?.data;
+  },
+
+  async uploadBudgetLpjProofFile(invoiceId: number, file: WorkProgramUploadFile) {
+    const formData = new FormData();
+    appendUploadFile(formData, 'file', file);
+    const response = await apiClient.post<ApiEnvelope<WorkProgramBudgetLpjInvoice>>(
+      `/budget-lpj/invoices/${invoiceId}/proof-file`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      },
+    );
+    return response.data?.data;
+  },
+
+  async submitBudgetLpjInvoice(invoiceId: number) {
+    const response = await apiClient.post<ApiEnvelope<WorkProgramBudgetLpjInvoice>>(
+      `/budget-lpj/invoices/${invoiceId}/submit`,
+    );
     return response.data?.data;
   },
 };
