@@ -60,6 +60,36 @@ Validasi yang sudah dijalankan setelah patch:
 - `npm run typecheck` (sukses)
 - `npm run audit:parity` (sukses)
 
+## Update Lanjutan (2026-02-21 23:35 UTC)
+
+Tujuan batch ini: retry publish OTA setelah patch parity Program Kerja + memastikan hasil publish tidak false-positive.
+
+Perubahan/eksekusi tambahan yang sudah dilakukan:
+1. Commit scoped parity batch
+   - Commit: `926b99c`
+   - Scope:
+     - `src/features/workPrograms/*` (Program Kerja budget+LPJ owner flow)
+     - dokumen audit/handover terkait.
+
+2. Retry OTA channel `pilot`
+   - Command:
+     - `XDG_CACHE_HOME=/tmp/.cache NPM_CONFIG_CACHE=/tmp/.npm OTA_MAX_ATTEMPTS=5 bash ./scripts/publish-ota-update.sh pilot "Work program mobile: budget and LPJ owner flow parity"`
+   - Hasil:
+     - Gagal pada semua attempt karena DNS/network:
+       - `getaddrinfo EAI_AGAIN api.expo.dev`
+     - Status: update belum terbit.
+
+3. Hardening script OTA (fix false-success exit code)
+   - File: `scripts/publish-ota-update.sh`
+   - Masalah:
+     - saat `npx eas-cli update` gagal, script bisa tetap keluar dengan code `0` (false-success).
+   - Perbaikan:
+     - simpan `last_exit_code` di blok `else` dari command update.
+     - final exit sekarang benar mengikuti status gagal.
+   - Verifikasi:
+     - `OTA_MAX_ATTEMPTS=1 ... publish-ota-update.sh ...`
+     - output `__EXIT_CODE=1` saat gagal DNS (sesuai ekspektasi).
+
 ## Update Lanjutan (2026-02-21 03:30 UTC)
 
 Tujuan batch ini: memastikan semua fitur tetap bisa diakses dari mobile meskipun belum semuanya native penuh.

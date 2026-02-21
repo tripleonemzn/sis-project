@@ -83,8 +83,9 @@ while [ "${attempt}" -le "${MAX_ATTEMPTS}" ]; do
   if npx eas-cli update --channel "${CHANNEL}" --platform "${PLATFORM}" --message "${MESSAGE}"; then
     notify_broadcast
     exit 0
+  else
+    last_exit_code=$?
   fi
-  last_exit_code=$?
   if [ "${attempt}" -lt "${MAX_ATTEMPTS}" ]; then
     echo "Publish gagal (exit ${last_exit_code}), retry ${RETRY_DELAY_SECONDS}s..."
     sleep "${RETRY_DELAY_SECONDS}"
