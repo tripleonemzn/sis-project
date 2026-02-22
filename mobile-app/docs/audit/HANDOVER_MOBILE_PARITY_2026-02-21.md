@@ -123,6 +123,32 @@ Validasi yang sudah dijalankan setelah patch:
 - `npm run typecheck` (sukses)
 - `npm run audit:parity` (sukses)
 
+## Update Lanjutan (2026-02-22 01:12 UTC)
+
+Tujuan batch ini: publish OTA `pilot` untuk perubahan UI dashboard icon/avatar yang sudah disepakati.
+
+Perubahan/eksekusi tambahan yang sudah dilakukan:
+1. Commit perubahan UI dashboard sebelum publish
+   - Commit: `d1b713f`
+   - Scope utama:
+     - `app/(app)/home.tsx` (iconized dashboard/submenu, avatar profile header/footer, info tahun ajaran + hari).
+
+2. Retry OTA dengan diagnosa kegagalan jaringan
+   - Publish awal dalam sandbox gagal berulang (`api.expo.dev/graphql`), dan dari uji node HTTPS terdeteksi `connect EPERM`.
+   - Mitigasi:
+     - jalankan publish di mode non-sandbox (escalated) agar Node network tidak diblok.
+
+3. OTA `pilot` berhasil terbit
+   - Branch: `pilot`
+   - Runtime version: `0.1.0`
+   - Platform: `android`
+   - Update group ID: `378f2bbb-3a2b-418a-a518-e27bd8064d15`
+   - Android update ID: `019c82e8-c700-7595-a8f8-6533dbcb1dbc`
+   - Message: `Dashboard icon refresh + profile avatar header/footer`
+   - Commit: `d1b713f2e9c57319b10040a96c5caf73f002ff7f`
+   - Dashboard: `https://expo.dev/accounts/tripleone.mzn/projects/sis-kgb2-mobile/updates/378f2bbb-3a2b-418a-a518-e27bd8064d15`
+   - Push notify broadcast: sukses dikirim.
+
 ## Update Lanjutan (2026-02-21 03:30 UTC)
 
 Tujuan batch ini: memastikan semua fitur tetap bisa diakses dari mobile meskipun belum semuanya native penuh.
