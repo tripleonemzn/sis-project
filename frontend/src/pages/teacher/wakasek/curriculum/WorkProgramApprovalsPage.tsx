@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, XCircle, Loader2, Search } from 'lucide-react';
 import { workProgramService } from '../../../../services/workProgram.service';
+import { liveQueryOptions } from '../../../../lib/query/liveQuery';
 import toast from 'react-hot-toast';
 
 const getErrorMessage = (error: unknown) => {
@@ -43,6 +44,7 @@ export default function WorkProgramApprovalsPage() {
     queryKey: ['work-programs', 'pending-approvals'],
     queryFn: () => workProgramService.listPendingForApproval(),
     retry: false,
+    ...liveQueryOptions,
   });
 
   const filteredPrograms = useMemo(

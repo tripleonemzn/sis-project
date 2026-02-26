@@ -99,9 +99,7 @@ export default function ScheduleScreen() {
     >
       <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Jadwal</Text>
       <Text style={{ color: '#64748b', marginBottom: 16 }}>
-        {scheduleQuery.data?.activeYear?.name
-          ? `Tahun Ajaran: ${scheduleQuery.data.activeYear.name}`
-          : 'Jadwal pembelajaran aktif'}
+        Jadwal pembelajaran aktif
       </Text>
 
       {scheduleQuery.isLoading ? (

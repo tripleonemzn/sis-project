@@ -21,6 +21,10 @@ export type RoleMenuGroup = {
   items: RoleMenuItem[];
 };
 
+export type RoleMenuBuildOptions = {
+  hasPendingDefense?: boolean;
+};
+
 const STRICT_WEB_PARITY_KEYS = new Set<string>([
   'student-schedule',
   'student-learning',
@@ -99,6 +103,7 @@ const STRICT_WEB_PARITY_KEYS = new Set<string>([
   'assessment',
   'examiner-profile',
   'tutor-profile',
+  'admin-server-area',
 ]);
 
 function materializeMenuTargets(items: RoleMenuItem[]): RoleMenuItem[] {
@@ -168,11 +173,11 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     {
       key: 'student-exam-formatif',
       label: 'Formatif (Quiz)',
-      route: '/exams',
+      route: '/exams?programCode=FORMATIF',
     },
-    { key: 'student-exam-sbts', label: 'SBTS', route: '/exams' },
-    { key: 'student-exam-sas', label: 'SAS', route: '/exams' },
-    { key: 'student-exam-sat', label: 'SAT', route: '/exams' },
+    { key: 'student-exam-sbts', label: 'SBTS', route: '/exams?programCode=SBTS' },
+    { key: 'student-exam-sas', label: 'SAS', route: '/exams?programCode=SAS' },
+    { key: 'student-exam-sat', label: 'SAT', route: '/exams?programCode=SAT' },
     { key: 'student-grade-history', label: 'Riwayat Nilai', route: '/grades' },
     { key: 'student-finance', label: 'Keuangan', route: '/student/finance' },
     { key: 'student-profile-web', label: 'Profile', route: '/profile' },
@@ -235,22 +240,22 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     {
       key: 'teacher-exam-formatif',
       label: 'Formatif (Quiz)',
-      route: '/teacher/exams-formatif',
+      route: '/teacher/exams?programCode=FORMATIF',
     },
     {
       key: 'teacher-exam-sbts',
       label: 'SBTS',
-      route: '/teacher/exams-sbts',
+      route: '/teacher/exams?programCode=SBTS',
     },
     {
       key: 'teacher-exam-sas',
       label: 'SAS',
-      route: '/teacher/exams-sas',
+      route: '/teacher/exams?programCode=SAS',
     },
     {
       key: 'teacher-exam-sat',
       label: 'SAT',
-      route: '/teacher/exams-sat',
+      route: '/teacher/exams?programCode=SAT',
     },
     {
       key: 'teacher-exam-bank',
@@ -444,7 +449,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     },
     {
       key: 'teacher-head-library-inventory',
-      label: 'Inventaris Perpustakaan',
+      label: 'Kelola Perpustakaan',
       route: '/teacher/head-library-inventory',
     },
     { key: 'teacher-profile', label: 'Profil', route: '/profile' },
@@ -533,6 +538,8 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     },
     { key: 'admin-question-bank', label: 'Bank Soal', route: '/admin/academic?section=question-bank' },
     { key: 'admin-exam-sessions', label: 'Sesi Ujian', route: '/admin/academic?section=exam-sessions' },
+    { key: 'admin-slideshow', label: 'Slideshow', route: '/admin/slideshow' },
+    { key: 'admin-server-area', label: 'Area Server', route: '/admin/server-area' },
     { key: 'admin-school-profile', label: 'Profil Sekolah', route: '/profile' },
     { key: 'admin-password', label: 'Ubah Password', route: '/profile' },
   ],
@@ -608,8 +615,16 @@ function normalizeDuty(value: string) {
 }
 
 function hasDuty(user: AuthUser, duties: string[]) {
-  const owned = new Set((user.additionalDuties || []).map((item) => normalizeDuty(item)));
-  return duties.some((item) => owned.has(normalizeDuty(item)));
+  const owned = (user.additionalDuties || []).map((item) => normalizeDuty(item));
+  return duties.some((item) => {
+    const needle = normalizeDuty(item);
+    return owned.some((duty) => duty === needle || duty.includes(needle));
+  });
+}
+
+function hasAnyPrimaryDuty(user: AuthUser) {
+  const owned = (user.additionalDuties || []).map((item) => normalizeDuty(item));
+  return owned.some((item) => item.length > 0 && !item.startsWith('SEKRETARIS_'));
 }
 
 function isHomeroomTeacher(user: AuthUser) {
@@ -666,7 +681,11 @@ function shouldShowMenuItem(user: AuthUser, item: RoleMenuItem) {
       return hasTrainingClass(user);
     }
 
-    if (item.key === 'teacher-work-program' || item.key.startsWith('teacher-kakom-')) {
+    if (item.key === 'teacher-work-program') {
+      return hasAnyPrimaryDuty(user);
+    }
+
+    if (item.key.startsWith('teacher-kakom-')) {
       return hasDuty(user, ['KAPROG', 'KEPALA_KOMPETENSI']);
     }
 
@@ -805,9 +824,14 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
       ],
     },
     {
+      key: 'work-program',
+      label: 'PROGRAM KERJA',
+      menuKeys: ['teacher-work-program'],
+    },
+    {
       key: 'kakom',
       label: 'KAKOM',
-      menuKeys: ['teacher-work-program', 'teacher-kakom-classes', 'teacher-kakom-pkl', 'teacher-kakom-partners'],
+      menuKeys: ['teacher-kakom-classes', 'teacher-kakom-pkl', 'teacher-kakom-partners'],
     },
     {
       key: 'wakakur',
@@ -912,7 +936,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     {
       key: 'settings',
       label: 'PENGATURAN',
-      menuKeys: ['admin-school-profile', 'admin-password'],
+      menuKeys: ['admin-slideshow', 'admin-server-area', 'admin-school-profile', 'admin-password'],
     },
   ],
   PRINCIPAL: [
@@ -1001,6 +1025,269 @@ function buildGroupedMenu(role: string, items: RoleMenuItem[]): RoleMenuGroup[] 
   return result;
 }
 
+function mapMenuByKey(items: RoleMenuItem[]) {
+  return new Map(items.map((item) => [item.key, item]));
+}
+
+function cloneMenu(item?: RoleMenuItem | null) {
+  return item ? { ...item } : null;
+}
+
+function pickMenu(byKey: Map<string, RoleMenuItem>, key: string) {
+  return cloneMenu(byKey.get(key));
+}
+
+function pickMenus(byKey: Map<string, RoleMenuItem>, keys: string[]) {
+  return keys
+    .map((key) => pickMenu(byKey, key))
+    .filter((item): item is RoleMenuItem => Boolean(item));
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function buildStudentAlumniGroups(menus: RoleMenuItem[]): RoleMenuGroup[] {
+  const byKey = mapMenuByKey(menus);
+  const groups: RoleMenuGroup[] = [];
+
+  const dashboard = pickMenu(byKey, 'student-dashboard');
+  if (dashboard) {
+    groups.push({
+      key: 'dashboard',
+      label: 'Dashboard',
+      items: [dashboard],
+    });
+  }
+
+  const akademikItems = pickMenus(byKey, ['student-grade-history', 'student-attendance-history']);
+  if (akademikItems.length > 0) {
+    groups.push({
+      key: 'academic',
+      label: 'AKADEMIK',
+      items: akademikItems,
+    });
+  }
+
+  const settingsItems = pickMenus(byKey, ['student-profile-web']);
+  if (settingsItems.length > 0) {
+    groups.push({
+      key: 'settings',
+      label: 'PENGATURAN',
+      items: settingsItems,
+    });
+  }
+
+  return groups;
+}
+
+function buildTeacherGroups(
+  user: AuthUser,
+  menus: RoleMenuItem[],
+  options?: RoleMenuBuildOptions,
+): RoleMenuGroup[] {
+  const byKey = mapMenuByKey(menus);
+  const groups: RoleMenuGroup[] = [];
+
+  const pushGroup = (key: string, label: string, items: RoleMenuItem[]) => {
+    if (items.length === 0) return;
+    groups.push({ key, label, items });
+  };
+
+  const baseWorkProgramItem = byKey.get('teacher-work-program');
+  const createWorkProgramItem = (dutyCode: string) => {
+    if (!baseWorkProgramItem?.route) return null;
+    const suffix = slugify(dutyCode || 'generic');
+    const baseRoute = baseWorkProgramItem.route;
+    const separator = baseRoute.includes('?') ? '&' : '?';
+    return {
+      ...baseWorkProgramItem,
+      key: `teacher-work-program-${suffix}`,
+      route: `${baseRoute}${separator}duty=${encodeURIComponent(dutyCode)}`,
+    };
+  };
+
+  pushGroup('dashboard', 'Dashboard', pickMenus(byKey, ['teacher-dashboard']));
+  pushGroup(
+    'academic',
+    'AKADEMIK',
+    pickMenus(byKey, [
+      'teaching-schedule',
+      'teacher-classes',
+      'attendance-teacher',
+      'teacher-materials',
+      'grade-input',
+      'teacher-report-subjects',
+    ]),
+  );
+  pushGroup(
+    'teaching-resources',
+    'PERANGKAT AJAR',
+    pickMenus(byKey, [
+      'teacher-cp',
+      'teacher-atp',
+      'teacher-prota',
+      'teacher-promes',
+      'teacher-modules',
+      'teacher-kktp',
+    ]),
+  );
+  pushGroup(
+    'exams',
+    'UJIAN',
+    pickMenus(byKey, [
+      'teacher-proctoring',
+      'teacher-exam-formatif',
+      'teacher-exam-sbts',
+      'teacher-exam-sas',
+      'teacher-exam-sat',
+      'teacher-exam-bank',
+    ]),
+  );
+
+  if (isHomeroomTeacher(user)) {
+    pushGroup(
+      'homeroom',
+      'WALI KELAS',
+      pickMenus(byKey, [
+        'teacher-homeroom-attendance',
+        'teacher-homeroom-behavior',
+        'teacher-homeroom-permissions',
+        'teacher-homeroom-sbts',
+        'teacher-homeroom-sas',
+        'teacher-homeroom-sat',
+      ]),
+    );
+  }
+
+  if (hasTrainingClass(user)) {
+    pushGroup(
+      'training',
+      'KELAS TRAINING',
+      pickMenus(byKey, [
+        'teacher-training-classes',
+        'teacher-training-attendance',
+        'teacher-training-grades',
+        'teacher-training-materials',
+        'teacher-training-reports',
+      ]),
+    );
+  }
+
+  const duties = (user.additionalDuties || [])
+    .map((item) => normalizeDuty(item))
+    .filter((item) => item.length > 0);
+  const kakomDuties = duties.filter((item) => item.includes('KAPROG') || item.includes('KEPALA_KOMPETENSI'));
+  const otherDuties = duties.filter((item) => !item.includes('KAPROG') && !item.includes('KEPALA_KOMPETENSI'));
+
+  for (const duty of otherDuties) {
+    const isSecretary = duty.startsWith('SEKRETARIS_');
+    const baseRole = isSecretary ? duty.replace('SEKRETARIS_', 'WAKASEK_') : duty;
+    const items: RoleMenuItem[] = [];
+    let label = duty.replace(/_/g, ' ').toUpperCase();
+
+    const addGenericWorkProgram = () => {
+      if (isSecretary) return;
+      const item = createWorkProgramItem(duty);
+      if (item) items.push(item);
+    };
+
+    if (baseRole === 'WAKASEK_KURIKULUM') {
+      label = isSecretary ? 'SEKRETARIS KURIKULUM' : 'WAKASEK KURIKULUM';
+      addGenericWorkProgram();
+      if (!isSecretary) {
+        const approvalWp = pickMenu(byKey, 'teacher-wakakur-approvals-work-program');
+        if (approvalWp) items.push(approvalWp);
+      }
+      items.push(
+        ...pickMenus(byKey, [
+          'teacher-wakakur-curriculum',
+          'teacher-wakakur-exams',
+          'teacher-wakakur-performance',
+          'teacher-wakakur-approvals',
+          'teacher-wakakur-reports',
+        ]),
+      );
+    } else if (baseRole === 'WAKASEK_KESISWAAN') {
+      label = isSecretary ? 'SEKRETARIS KESISWAAN' : 'WAKASEK KESISWAAN';
+      addGenericWorkProgram();
+      items.push(
+        ...pickMenus(byKey, [
+          'teacher-wakasis-students',
+          'teacher-wakasis-performance',
+          'teacher-wakasis-approvals',
+          'teacher-wakasis-reports',
+        ]),
+      );
+    } else if (baseRole === 'WAKASEK_SARPRAS') {
+      label = isSecretary ? 'SEKRETARIS SARPRAS' : 'WAKASEK SARPRAS';
+      addGenericWorkProgram();
+      items.push(
+        ...pickMenus(byKey, ['teacher-sarpras-inventory', 'teacher-sarpras-budgets', 'teacher-sarpras-reports']),
+      );
+    } else if (baseRole === 'WAKASEK_HUMAS') {
+      label = isSecretary ? 'SEKRETARIS HUMAS' : 'WAKASEK HUMAS';
+      addGenericWorkProgram();
+      items.push(
+        ...pickMenus(byKey, [
+          'teacher-humas-settings',
+          'teacher-humas-approval',
+          'teacher-humas-components',
+          'teacher-humas-journals',
+          'teacher-humas-partners',
+          'teacher-humas-reports',
+        ]),
+      );
+    } else if (duty === 'KEPALA_LAB') {
+      label = 'KEPALA LAB';
+      addGenericWorkProgram();
+      items.push(
+        ...pickMenus(byKey, ['teacher-head-lab-inventory', 'teacher-head-lab-schedule', 'teacher-head-lab-incidents']),
+      );
+    } else if (duty === 'KEPALA_PERPUSTAKAAN') {
+      label = 'KEPALA PERPUSTAKAAN';
+      addGenericWorkProgram();
+      items.push(...pickMenus(byKey, ['teacher-head-library-inventory']));
+    } else {
+      addGenericWorkProgram();
+    }
+
+    pushGroup(`duty-${slugify(duty)}`, label, items);
+  }
+
+  if (kakomDuties.length > 0) {
+    let suffixes: string[] = [];
+    if (Array.isArray(user.managedMajors) && user.managedMajors.length > 0) {
+      suffixes = user.managedMajors.map((major) => major.code?.trim() || major.name);
+    } else if (user.managedMajor) {
+      suffixes = [user.managedMajor.code?.trim() || user.managedMajor.name];
+    } else {
+      suffixes = kakomDuties
+        .map((duty) => duty.split('_').slice(1).join(' ').toUpperCase())
+        .filter((item) => item.length > 0);
+    }
+    const label = suffixes.length > 0 ? `KAKOM ${suffixes.join(' & ')}` : 'KAKOM';
+    const items: RoleMenuItem[] = [];
+    const program = createWorkProgramItem('KAPROG');
+    if (program) items.push(program);
+    items.push(...pickMenus(byKey, ['teacher-kakom-classes', 'teacher-kakom-pkl', 'teacher-kakom-partners']));
+    pushGroup(`kakom-${slugify(label)}`, label, items);
+  }
+
+  if (options?.hasPendingDefense) {
+    pushGroup('internship-defense', 'SIDANG PKL', [
+      { key: 'teacher-internship-defense', label: 'Nilai Sidang PKL', route: '/teacher/internship-defense' },
+    ]);
+  }
+
+  pushGroup('settings', 'PENGATURAN', pickMenus(byKey, ['teacher-profile']));
+
+  return groups;
+}
+
 function assertRoleMenuIntegrity(menus: Record<string, RoleMenuItem[]>) {
   for (const [role, items] of Object.entries(menus)) {
     const usedKeys = new Set<string>();
@@ -1026,43 +1313,6 @@ function assertRoleMenuIntegrity(menus: Record<string, RoleMenuItem[]>) {
   }
 }
 
-function resolveTeacherGroupLabel(user: AuthUser, group: RoleMenuGroup) {
-  if (group.key === 'wakakur' && hasDuty(user, ['SEKRETARIS_KURIKULUM']) && !hasDuty(user, ['WAKASEK_KURIKULUM'])) {
-    return 'SEKRETARIS KURIKULUM';
-  }
-  if (group.key === 'wakasis' && hasDuty(user, ['SEKRETARIS_KESISWAAN']) && !hasDuty(user, ['WAKASEK_KESISWAAN'])) {
-    return 'SEKRETARIS KESISWAAN';
-  }
-  if (group.key === 'sarpras' && hasDuty(user, ['SEKRETARIS_SARPRAS']) && !hasDuty(user, ['WAKASEK_SARPRAS'])) {
-    return 'SEKRETARIS SARPRAS';
-  }
-  if (group.key === 'humas' && hasDuty(user, ['SEKRETARIS_HUMAS']) && !hasDuty(user, ['WAKASEK_HUMAS'])) {
-    return 'SEKRETARIS HUMAS';
-  }
-  if (group.key === 'kakom') {
-    if (!hasDuty(user, ['KAPROG', 'KEPALA_KOMPETENSI'])) {
-      return 'KAKOM';
-    }
-
-    const suffixes: string[] = [];
-    if (Array.isArray(user.managedMajors) && user.managedMajors.length > 0) {
-      for (const major of user.managedMajors) {
-        const code = major.code?.trim();
-        suffixes.push(code || major.name);
-      }
-    } else if (user.managedMajor) {
-      const code = user.managedMajor.code?.trim();
-      suffixes.push(code || user.managedMajor.name);
-    }
-
-    if (suffixes.length > 0) {
-      return `KAKOM ${suffixes.join(' & ')}`;
-    }
-  }
-
-  return group.label;
-}
-
 if (__DEV__) {
   assertRoleMenuIntegrity(ROLE_MENUS);
 }
@@ -1075,7 +1325,7 @@ export function getRoleMenu(user?: AuthUser | null): RoleMenuItem[] {
   return materializeMenuTargets(dedupeMenuByKey(filteredItems));
 }
 
-export function getGroupedRoleMenu(user?: AuthUser | null): RoleMenuGroup[] {
+export function getGroupedRoleMenu(user?: AuthUser | null, options?: RoleMenuBuildOptions): RoleMenuGroup[] {
   const menus = getRoleMenu(user);
   if (!user) {
     return [
@@ -1087,11 +1337,14 @@ export function getGroupedRoleMenu(user?: AuthUser | null): RoleMenuGroup[] {
     ];
   }
 
-  const grouped = buildGroupedMenu(user.role, menus);
-  if (user.role !== 'TEACHER') return grouped;
+  if (user.role === 'STUDENT' && isStudentAlumni(user)) {
+    return buildStudentAlumniGroups(menus);
+  }
 
-  return grouped.map((group) => ({
-    ...group,
-    label: resolveTeacherGroupLabel(user, group),
-  }));
+  if (user.role === 'TEACHER') {
+    return buildTeacherGroups(user, menus, options);
+  }
+
+  const grouped = buildGroupedMenu(user.role, menus);
+  return grouped;
 }

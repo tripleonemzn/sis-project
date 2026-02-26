@@ -12,6 +12,7 @@ type TeacherAssignmentsQueryData = {
     id: number;
     name: string;
     isActive: boolean;
+    semester?: 'ODD' | 'EVEN';
   };
   assignments: TeacherAssignment[];
   fromCache: boolean;
@@ -45,7 +46,10 @@ export function useTeacherAssignmentsQuery({ enabled, user }: Params) {
         );
         return { ...payload, fromCache: false, cachedAt: cache.updatedAt };
       } catch (error) {
-        const cache = await offlineCache.get<{ activeYear: { id: number; name: string; isActive: boolean }; assignments: TeacherAssignment[] }>(
+        const cache = await offlineCache.get<{
+          activeYear: { id: number; name: string; isActive: boolean; semester?: 'ODD' | 'EVEN' };
+          assignments: TeacherAssignment[];
+        }>(
           cacheKey,
           { maxAgeMs: CACHE_TTL_MS },
         );

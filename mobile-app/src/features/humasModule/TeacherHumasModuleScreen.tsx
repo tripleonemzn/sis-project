@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
+import { mobileLiveQueryOptions } from '../../lib/query/liveQuery';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
 import { useAuth } from '../auth/AuthProvider';
 import { humasApi } from './humasApi';
@@ -267,6 +268,7 @@ export function TeacherHumasModuleScreen({
         limit: 300,
         academicYearId: activeYearQuery.data?.id,
       }),
+    ...mobileLiveQueryOptions,
   });
 
   const componentsQuery = useQuery({
@@ -291,6 +293,7 @@ export function TeacherHumasModuleScreen({
     queryKey: ['mobile-humas-journals', selectedInternshipId],
     enabled: isAuthenticated && !!isAllowedRole && mode === 'JOURNALS' && !!selectedInternshipId,
     queryFn: async () => humasApi.listJournals(Number(selectedInternshipId)),
+    ...mobileLiveQueryOptions,
   });
 
   const updateConfigMutation = useMutation({
@@ -908,9 +911,9 @@ export function TeacherHumasModuleScreen({
                 marginBottom: 10,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Konfigurasi PKL Tahun Ajaran Aktif</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Konfigurasi PKL</Text>
               <Text style={{ color: '#64748b', marginTop: 2, marginBottom: 10 }}>
-                {activeYearQuery.data?.name || '-'} • Current: {activeYearQuery.data?.pklEligibleGrades || '-'}
+                Kelas PKL berjalan: {activeYearQuery.data?.pklEligibleGrades || '-'}
               </Text>
 
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>

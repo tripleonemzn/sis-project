@@ -23,4 +23,4 @@ else
   MESSAGE="Live OTA ${TIMESTAMP} (${GIT_REF}${DIRTY_SUFFIX})"
 fi
 
-bash ./scripts/publish-ota-safe.sh pilot-live "${MESSAGE}"
+bash ../scripts/publish-mobile-ota-isolated.sh pilot-live "${MESSAGE}"

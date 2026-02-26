@@ -60,7 +60,7 @@ export default function TeacherSubjectReportScreen() {
   const selectedAssignment = assignments.find((item) => item.id === selectedAssignmentId) || null;
 
   const reportQuery = useQuery({
-    queryKey: ['mobile-teacher-subject-report', selectedAssignmentId, semester],
+    queryKey: ['mobile-teacher-subject-report', user?.id, selectedAssignmentId, semester],
     enabled: isAuthenticated && user?.role === 'TEACHER' && !!selectedAssignment,
     queryFn: () =>
       teacherReportApi.getSubjectReport({
@@ -134,7 +134,7 @@ export default function TeacherSubjectReportScreen() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: ['mobile-teacher-subject-report', selectedAssignmentId, semester],
+        queryKey: ['mobile-teacher-subject-report', user?.id, selectedAssignmentId, semester],
       });
       setEditingRow(null);
       notifySuccess('Data rapor berhasil diperbarui.');

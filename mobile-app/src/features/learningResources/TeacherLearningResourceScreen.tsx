@@ -691,22 +691,6 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
         </View>
       </View>
 
-      {activeYearQuery.data?.name ? (
-        <View
-          style={{
-            backgroundColor: '#fff',
-            borderWidth: 1,
-            borderColor: '#dbe7fb',
-            borderRadius: 12,
-            padding: 12,
-            marginBottom: 10,
-          }}
-        >
-          <Text style={{ color: '#64748b', fontSize: 12 }}>Tahun Ajaran Aktif</Text>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 2 }}>{activeYearQuery.data.name}</Text>
-        </View>
-      ) : null}
-
       {assignmentsQuery.isLoading ? <QueryStateView type="loading" message="Memuat assignment guru..." /> : null}
       {assignmentsQuery.isError ? (
         <QueryStateView

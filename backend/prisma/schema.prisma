@@ -87,6 +87,7 @@ model User {
   achievements             StudentAchievement[]
   examSessions             StudentExamSession[]
   studentGrades            StudentGrade[]
+  scoreEntries             StudentScoreEntry[]
   submissions              Submission[]
   teacherAssignments       TeacherAssignment[]
   documents                TeacherDocument[]
@@ -116,6 +117,8 @@ model User {
   approvedPermissions      StudentPermission[]            @relation("PermissionApprover")
   createdQuestionBanks     QuestionBank[]                 @relation("BankAuthor")
   budgetLpjInvoicesCreated BudgetLpjInvoice[]             @relation("BudgetLpjInvoiceCreator")
+  libraryBookLoansCreated  LibraryBookLoan[]              @relation("LibraryLoanCreator")
+  libraryBookLoansBorrowed LibraryBookLoan[]              @relation("LibraryLoanBorrower")
   // Internship Relations
   internships              Internship[]                   @relation("StudentInternship")
   guidedInternships        Internship[]                   @relation("TeacherInternship")
@@ -196,6 +199,7 @@ model AcademicYear {
   scheduleEntries    ScheduleEntry[]
   scheduleTimeConfig ScheduleTimeConfig?
   studentGrades      StudentGrade[]
+  scoreEntries       StudentScoreEntry[]
   subjectKkms        SubjectKKM[]
   teacherAssignments TeacherAssignment[]
   teachingDevices    TeachingDevice[]
@@ -210,8 +214,63 @@ model AcademicYear {
   ekskulTutorAssignments EkstrakurikulerTutorAssignment[]
   ekskulEnrollments      EkstrakurikulerEnrollment[]
   internships            Internship[]
+  examProgramConfigs     ExamProgramConfig[]
+  examGradeComponents    ExamGradeComponent[]
 
   @@map("academic_years")
+}
+
+model ExamProgramConfig {
+  id                Int          @id @default(autoincrement())
+  academicYearId    Int
+  code              String
+  baseType          ExamType     @default(FORMATIF)
+  baseTypeCode      String       @default("FORMATIF")
+  gradeComponentType GradeComponentType @default(FORMATIVE)
+  gradeComponentTypeCode String   @default("FORMATIVE")
+  gradeComponentCode String       @default("FORMATIVE")
+  gradeComponentLabel String?
+  gradeEntryMode    GradeEntryMode @default(SINGLE_SCORE)
+  gradeEntryModeCode String       @default("SINGLE_SCORE")
+  displayLabel      String
+  shortLabel        String?
+  description       String?
+  fixedSemester     Semester?
+  displayOrder      Int          @default(0)
+  isActive          Boolean      @default(true)
+  showOnTeacherMenu Boolean      @default(true)
+  showOnStudentMenu Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  academicYear      AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  @@unique([academicYearId, code])
+  @@index([academicYearId, displayOrder])
+  @@map("exam_program_configs")
+}
+
+model ExamGradeComponent {
+  id             Int                @id @default(autoincrement())
+  academicYearId Int
+  code           String
+  label          String
+  type           GradeComponentType @default(CUSTOM)
+  typeCode       String             @default("CUSTOM")
+  entryMode      GradeEntryMode     @default(SINGLE_SCORE)
+  entryModeCode  String             @default("SINGLE_SCORE")
+  reportSlot     ReportComponentSlot @default(NONE)
+  reportSlotCode String             @default("NONE")
+  includeInFinalScore Boolean       @default(false)
+  description    String?
+  displayOrder   Int                @default(0)
+  isActive       Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  academicYear   AcademicYear       @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  @@unique([academicYearId, code])
+  @@index([academicYearId, displayOrder])
+  @@map("exam_grade_components")
 }
 
 model StudentPermission {
@@ -305,6 +364,7 @@ model Class {
   teacherAssignments TeacherAssignment[]
   students           User[]              @relation("StudentClass")
   studentBehaviors   StudentBehavior[]
+  libraryBookLoans   LibraryBookLoan[]
 
   @@map("classes")
 }
@@ -326,6 +386,7 @@ model Subject {
   materials          Material[]
   questionBanks      QuestionBank[]
   reportGrades       ReportGrade[]
+  scoreEntries       StudentScoreEntry[]
   studentGrades      StudentGrade[]
   kkms               SubjectKKM[]
   category           SubjectCategory?    @relation(fields: [categoryId], references: [id])
@@ -492,6 +553,7 @@ model Question {
   points    Int          @default(1)
   mediaUrl  String?
   mediaType String?
+  metadata  Json?
   bank      QuestionBank @relation(fields: [bankId], references: [id])
 
   @@map("questions")
@@ -584,14 +646,17 @@ model DailyAttendance {
 
 model GradeComponent {
   id            Int                @id @default(autoincrement())
+  code          String?
   name          String
   weight        Float
   isActive      Boolean            @default(true)
   subjectId     Int
   type          GradeComponentType
+  typeCode      String             @default("CUSTOM")
   subject       Subject            @relation(fields: [subjectId], references: [id])
   studentGrades StudentGrade[]
 
+  @@index([subjectId, code])
   @@map("grade_components")
 }
 
@@ -615,6 +680,36 @@ model StudentGrade {
   subject        Subject        @relation(fields: [subjectId], references: [id])
 
   @@map("student_grades")
+}
+
+model StudentScoreEntry {
+  id             Int                  @id @default(autoincrement())
+  studentId      Int
+  subjectId      Int
+  academicYearId Int
+  semester       Semester
+  componentCode  String
+  componentType  GradeComponentType?
+  componentTypeCode String?
+  reportSlot     ReportComponentSlot  @default(NONE)
+  reportSlotCode String               @default("NONE")
+  score          Float
+  rawScore       Float?
+  maxScore       Float?
+  sourceType     ScoreEntrySourceType
+  sourceKey      String               @unique
+  metadata       Json?
+  recordedAt     DateTime             @default(now())
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  student        User                 @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject        Subject              @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear         @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  @@index([studentId, subjectId, academicYearId, semester])
+  @@index([academicYearId, semester, reportSlot])
+  @@index([academicYearId, componentCode])
+  @@map("student_score_entries")
 }
 
 model ReportDate {
@@ -643,6 +738,7 @@ model ReportGrade {
   formatifScore  Float?   @map("formatif_score")
   sasScore       Float?   @map("sas_score")
   sbtsScore      Float?   @map("sbts_score")
+  slotScores     Json?    @map("slot_scores")
   semester       Semester
   usScore        Float?
   subject        Subject  @relation(fields: [subjectId], references: [id])
@@ -1066,11 +1162,13 @@ model ExamPacket {
   kkm            Float          @default(75)
   semester       Semester       @default(ODD)
   type           ExamType
+  programCode    String?
   academicYear   AcademicYear   @relation(fields: [academicYearId], references: [id])
   author         User           @relation("ExamAuthor", fields: [authorId], references: [id])
   subject        Subject        @relation(fields: [subjectId], references: [id])
   schedules      ExamSchedule[]
 
+  @@index([academicYearId, programCode])
   @@map("exam_packets")
 }
 
@@ -1426,6 +1524,29 @@ enum GradeComponentType {
   SKILL
   US_PRACTICE
   US_THEORY
+  CUSTOM
+}
+
+enum GradeEntryMode {
+  NF_SERIES
+  SINGLE_SCORE
+}
+
+enum ReportComponentSlot {
+  NONE
+  FORMATIF
+  SBTS
+  SAS
+  US_THEORY
+  US_PRACTICE
+}
+
+enum ScoreEntrySourceType {
+  MANUAL_GRADE
+  EXAM_SESSION
+  ASSIGNMENT_SUBMISSION
+  IMPORT
+  MIGRATION
 }
 
 enum ApprovalStatus {
@@ -1635,11 +1756,22 @@ enum CooperationStatus {
   PROSES
 }
 
+enum LibraryBorrowerStatus {
+  TEACHER
+  STUDENT
+}
+
+enum LibraryReturnStatus {
+  RETURNED
+  NOT_RETURNED
+}
+
 // Inventory Module
 model RoomCategory {
   id          Int       @id @default(autoincrement())
   name        String
   description String?
+  inventoryTemplateKey String?   @default("STANDARD")
   isDefault   Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -1692,10 +1824,47 @@ model InventoryItem {
   price       Float?
   source      String?
   description String?
+  attributes  Json?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   room        Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
   @@map("inventory_items")
+}
+
+model LibraryBookLoan {
+  id             Int                   @id @default(autoincrement())
+  borrowDate     DateTime
+  borrowerName   String
+  borrowerStatus LibraryBorrowerStatus
+  classId        Int?
+  bookTitle      String
+  publishYear    Int?
+  returnDate     DateTime?
+  returnStatus   LibraryReturnStatus   @default(NOT_RETURNED)
+  phoneNumber    String?
+  createdById    Int?
+  borrowerUserId Int?
+  overdueNotifiedAt DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  class          Class?                @relation(fields: [classId], references: [id])
+  createdBy      User?                 @relation("LibraryLoanCreator", fields: [createdById], references: [id])
+  borrowerUser   User?                 @relation("LibraryLoanBorrower", fields: [borrowerUserId], references: [id])
+
+  @@index([borrowDate])
+  @@index([borrowerStatus])
+  @@index([classId])
+  @@index([borrowerUserId])
+  @@map("library_book_loans")
+}
+
+model LibraryLoanPolicy {
+  id         Int      @id @default(1)
+  finePerDay Int      @default(1000)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("library_loan_policy")
 }

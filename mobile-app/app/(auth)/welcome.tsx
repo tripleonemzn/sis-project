@@ -133,9 +133,11 @@ export default function WelcomeScreen() {
 
   useEffect(() => {
     if (displaySources.length <= 1) return;
+    const defaultMs = 3500;
+    const intervalMs = defaultMs;
     const intervalId = setInterval(() => {
       setActiveIndex((prev) => (prev >= displaySources.length - 1 ? 0 : prev + 1));
-    }, 3500);
+    }, intervalMs);
     return () => clearInterval(intervalId);
   }, [displaySources.length]);
 
@@ -240,7 +242,7 @@ export default function WelcomeScreen() {
             </Text>
           </View>
 
-          <View style={{ marginTop: 80 }}>
+          <View style={{ marginTop: 42 }}>
             <View
               style={{
                 height: 280,
@@ -312,6 +314,21 @@ export default function WelcomeScreen() {
                 </Text>
               </View>
             </View>
+            <Text
+              style={{
+                color: '#dbeafe',
+                fontSize: 11,
+                lineHeight: 16,
+                textAlign: 'center',
+                marginTop: 10,
+                marginBottom: 16,
+                paddingHorizontal: 8,
+                fontStyle: 'italic',
+              }}
+            >
+              Menjadi SMK yang Unggul dalam Membentuk Lulusan Berakhlak Mulia, Kreatif, Kompeten, dan
+              Berkarakter.
+            </Text>
           </View>
 
           <View style={{ marginTop: 'auto' }}>

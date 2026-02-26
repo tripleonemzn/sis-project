@@ -6,7 +6,7 @@ import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 
 const listWorkProgramsSchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
+  limit: z.coerce.number().int().min(1).optional(),
   search: z.string().optional(),
   academicYearId: z.coerce.number().int().optional(),
   additionalDuty: z.nativeEnum(AdditionalDuty).optional(),
@@ -109,8 +109,10 @@ const ensureTeacherManagesMajor = async (userId: number, majorId: number) => {
 };
 
 export const getWorkPrograms = asyncHandler(async (req: Request, res: Response) => {
-  const { page = 1, limit = 10, search, academicYearId, additionalDuty, majorId, semester } =
-    listWorkProgramsSchema.parse(req.query);
+  const parsedQuery = listWorkProgramsSchema.parse(req.query);
+  const page = parsedQuery.page ?? 1;
+  const limit = Math.min(parsedQuery.limit ?? 10, 100);
+  const { search, academicYearId, additionalDuty, majorId, semester } = parsedQuery;
 
   const authUser = (req as any).user as { id: number; role: string } | undefined;
 

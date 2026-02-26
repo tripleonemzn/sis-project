@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AuthUser } from '../auth/types';
 import { CACHE_MAX_SNAPSHOTS_PER_FEATURE, CACHE_TTL_MS } from '../../config/cache';
 import { offlineCache } from '../../lib/storage/offlineCache';
+import { mobileLiveQueryOptions } from '../../lib/query/liveQuery';
 import { permissionApi } from './permissionApi';
 import { StudentPermission } from './types';
 
@@ -40,5 +41,6 @@ export function useStudentPermissionsQuery({ enabled, user }: Params) {
         throw error;
       }
     },
+    ...mobileLiveQueryOptions,
   });
 }

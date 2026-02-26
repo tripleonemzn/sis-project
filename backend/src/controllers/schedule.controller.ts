@@ -21,6 +21,15 @@ const createScheduleEntrySchema = z.object({
   room: z.string().max(100).optional().nullable(),
 });
 
+const updateScheduleEntrySchema = z
+  .object({
+    teacherAssignmentId: z.number().int().optional(),
+    room: z.string().max(100).optional().nullable(),
+  })
+  .refine((value) => value.teacherAssignmentId !== undefined || value.room !== undefined, {
+    message: 'Minimal satu field harus diisi untuk update jadwal',
+  });
+
 const listScheduleSchema = z.object({
   academicYearId: z.coerce.number().int(),
   classId: z.coerce.number().int().optional(),
@@ -506,4 +515,115 @@ export const deleteScheduleEntry = asyncHandler(async (req: Request, res: Respon
   res
     .status(200)
     .json(new ApiResponse(200, null, 'Entri jadwal pelajaran berhasil dihapus'));
+});
+
+export const updateScheduleEntry = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = scheduleEntryIdSchema.parse(req.params);
+  const payload = updateScheduleEntrySchema.parse(req.body);
+
+  const authUser = (req as any).user;
+  const dutyUser = await prisma.user.findUnique({
+    where: { id: authUser.id },
+    select: { role: true, additionalDuties: true },
+  });
+  if (!dutyUser) {
+    res.status(401).json(new ApiResponse(401, null, 'Tidak memiliki otorisasi'));
+    return;
+  }
+  if (dutyUser.role !== 'ADMIN') {
+    const duties = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
+    const allowed = duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
+    if (!allowed) {
+      res
+        .status(403)
+        .json(new ApiResponse(403, null, 'Anda tidak memiliki hak akses untuk mengelola jadwal pelajaran'));
+      return;
+    }
+  }
+
+  const existing = await (prisma as any).scheduleEntry.findUnique({
+    where: { id },
+    include: {
+      teacherAssignment: {
+        select: {
+          id: true,
+          classId: true,
+          academicYearId: true,
+        },
+      },
+    },
+  });
+
+  if (!existing) {
+    res.status(404).json(new ApiResponse(404, null, 'Entri jadwal pelajaran tidak ditemukan'));
+    return;
+  }
+
+  if (payload.teacherAssignmentId !== undefined) {
+    const assignment = await prisma.teacherAssignment.findUnique({
+      where: { id: payload.teacherAssignmentId },
+      select: {
+        id: true,
+        classId: true,
+        academicYearId: true,
+      },
+    });
+
+    if (!assignment) {
+      res.status(400).json(new ApiResponse(400, null, 'Penugasan guru tidak ditemukan'));
+      return;
+    }
+
+    if (assignment.classId !== existing.classId) {
+      res.status(400).json(new ApiResponse(400, null, 'Penugasan guru tidak sesuai kelas jadwal'));
+      return;
+    }
+
+    if (assignment.academicYearId !== existing.academicYearId) {
+      res
+        .status(400)
+        .json(new ApiResponse(400, null, 'Penugasan guru tidak sesuai tahun ajaran jadwal'));
+      return;
+    }
+  }
+
+  const updateData: Record<string, unknown> = {};
+  if (payload.teacherAssignmentId !== undefined) {
+    updateData.teacherAssignmentId = payload.teacherAssignmentId;
+  }
+  if (payload.room !== undefined) {
+    updateData.room = payload.room ?? null;
+  }
+
+  const updated = await (prisma as any).scheduleEntry.update({
+    where: { id },
+    data: updateData,
+    include: {
+      teacherAssignment: {
+        include: {
+          teacher: {
+            select: { id: true, name: true, username: true },
+          },
+          subject: {
+            select: { id: true, name: true, code: true },
+          },
+          class: {
+            select: {
+              id: true,
+              name: true,
+              level: true,
+              major: {
+                select: { id: true, name: true, code: true },
+              },
+            },
+          },
+          academicYear: {
+            select: { id: true, name: true },
+          },
+        },
+      },
+    },
+  });
+
+  res.status(200).json(new ApiResponse(200, updated, 'Entri jadwal pelajaran berhasil diperbarui'));
 });

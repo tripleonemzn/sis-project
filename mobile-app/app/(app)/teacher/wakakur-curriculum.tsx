@@ -302,22 +302,6 @@ export default function TeacherWakakurCurriculumScreen() {
         Ringkasan kurikulum, assignment guru, dan beban jam mengajar.
       </Text>
 
-      {activeYearQuery.data?.name ? (
-        <View
-          style={{
-            backgroundColor: '#fff',
-            borderWidth: 1,
-            borderColor: '#dbe7fb',
-            borderRadius: 12,
-            padding: 12,
-            marginBottom: 12,
-          }}
-        >
-          <Text style={{ color: '#64748b', fontSize: 12 }}>Tahun Ajaran Aktif</Text>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 3 }}>{activeYearQuery.data.name}</Text>
-        </View>
-      ) : null}
-
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
         <SummaryCard
           title="Kategori Mapel"

@@ -11,6 +11,7 @@ const NOTIFICATION_SETTINGS_PROMPT_AT_KEY = 'mobile_notification_settings_prompt
 const NOTIFICATION_SETTINGS_PROMPT_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_NOTIFICATION_CHANNEL_ID = 'default';
 export const APP_UPDATE_NOTIFICATION_CHANNEL_ID = 'updates';
+const FALLBACK_EAS_PROJECT_ID = 'cc9265c5-45b0-4964-8ed2-3e7a996b8c5a';
 
 let notificationHandlerConfigured = false;
 
@@ -39,7 +40,10 @@ function resolveExpoProjectId() {
     (Constants as any)?.expoConfig?.extra?.eas?.projectId ||
     (Constants as any)?.easConfig?.projectId ||
     null;
-  return typeof easProjectId === 'string' && easProjectId.trim().length > 0 ? easProjectId.trim() : null;
+  if (typeof easProjectId === 'string' && easProjectId.trim().length > 0) {
+    return easProjectId.trim();
+  }
+  return FALLBACK_EAS_PROJECT_ID;
 }
 
 function resolvePlatform() {

@@ -1,4 +1,4 @@
-export type ExamDisplayType = 'FORMATIF' | 'SBTS' | 'SAS' | 'SAT';
+export type ExamDisplayType = string;
 
 export type ExamQuestionType =
   | 'MULTIPLE_CHOICE'
@@ -16,6 +16,30 @@ export type ExamQuestionOption = {
   image_url?: string | null;
 };
 
+export type ExamQuestionBlueprint = {
+  competency?: string | null;
+  learningObjective?: string | null;
+  indicator?: string | null;
+  materialScope?: string | null;
+  cognitiveLevel?: string | null;
+};
+
+export type ExamQuestionCard = {
+  stimulus?: string | null;
+  answerRationale?: string | null;
+  scoringGuideline?: string | null;
+  distractorNotes?: string | null;
+};
+
+export type ExamQuestionItemAnalysis = {
+  difficultyIndex?: number | null;
+  discriminationIndex?: number | null;
+  unansweredRate?: number | null;
+  sampleSize?: number | null;
+  generatedAt?: string | null;
+  optionDistribution?: Record<string, number> | null;
+};
+
 export type ExamQuestion = {
   id: string;
   type?: ExamQuestionType;
@@ -30,6 +54,14 @@ export type ExamQuestion = {
   video_url?: string | null;
   question_video_type?: 'upload' | 'youtube';
   question_media_position?: 'top' | 'bottom' | 'left' | 'right';
+  blueprint?: ExamQuestionBlueprint | null;
+  questionCard?: ExamQuestionCard | null;
+  itemAnalysis?: ExamQuestionItemAnalysis | null;
+  metadata?: {
+    blueprint?: ExamQuestionBlueprint | null;
+    questionCard?: ExamQuestionCard | null;
+    itemAnalysis?: ExamQuestionItemAnalysis | null;
+  } | null;
 };
 
 export type TeacherExamQuestionPayload = {
@@ -42,6 +74,9 @@ export type TeacherExamQuestionPayload = {
     content: string;
     isCorrect: boolean;
   }>;
+  blueprint?: ExamQuestionBlueprint;
+  questionCard?: ExamQuestionCard;
+  itemAnalysis?: ExamQuestionItemAnalysis;
   question_image_url?: string;
   question_video_url?: string;
   question_video_type?: 'upload' | 'youtube';
@@ -52,6 +87,7 @@ export type StudentExamPacket = {
   title: string;
   description?: string | null;
   type: string;
+  programCode?: string | null;
   semester?: string | null;
   duration: number;
   instructions?: string | null;
@@ -98,6 +134,7 @@ export type StudentExamItem = {
     title: string;
     description?: string | null;
     type: string;
+    programCode?: string | null;
     semester?: string | null;
     duration: number;
     instructions?: string | null;
@@ -114,6 +151,7 @@ export type TeacherExamPacket = {
   title: string;
   description?: string | null;
   type: string;
+  programCode?: string | null;
   semester?: string | null;
   duration: number;
   instructions?: string | null;
@@ -150,6 +188,7 @@ export type TeacherExamPacketMutationPayload = {
   subjectId: number;
   academicYearId: number;
   type: ExamDisplayType;
+  programCode?: string;
   semester: 'ODD' | 'EVEN';
   duration: number;
   description?: string;
@@ -203,4 +242,162 @@ export type TeacherExamSchedule = {
     name: string;
     isActive?: boolean;
   } | null;
+};
+
+export type PacketItemAnalysisOptionRow = {
+  optionId: string;
+  label: string;
+  isCorrect: boolean;
+  selectedCount: number;
+  selectedRate: number;
+};
+
+export type PacketItemAnalysisQuestionRow = {
+  questionId: string;
+  orderNumber: number;
+  type: string;
+  contentPreview: string;
+  scoreWeight: number;
+  answeredCount: number;
+  unansweredCount: number;
+  unansweredRate: number;
+  correctCount: number | null;
+  incorrectCount: number | null;
+  difficultyIndex: number | null;
+  difficultyCategory: 'Mudah' | 'Sedang' | 'Sulit' | null;
+  discriminationIndex: number | null;
+  discriminationCategory: 'Sangat Baik' | 'Baik' | 'Cukup' | 'Kurang' | 'Sangat Kurang' | null;
+  optionDistribution: PacketItemAnalysisOptionRow[];
+};
+
+export type PacketItemAnalysisSummary = {
+  generatedAt: string;
+  classFilterId: number | null;
+  scheduleCount: number;
+  participantCount: number;
+  inProgressCount: number;
+  totalQuestions: number;
+  objectiveQuestions: number;
+  essayQuestions: number;
+  averageScore: number | null;
+  highestScore: number | null;
+  lowestScore: number | null;
+};
+
+export type PacketItemAnalysisResponse = {
+  packet: {
+    id: number;
+    title: string;
+    type: string;
+    semester: string;
+    subject: { id: number; name: string; code: string };
+    academicYear: { id: number; name: string };
+    author: { id: number; name: string };
+  };
+  summary: PacketItemAnalysisSummary;
+  items: PacketItemAnalysisQuestionRow[];
+};
+
+export type PacketSubmissionSessionRow = {
+  sessionId: number;
+  scheduleId: number;
+  class: { id: number; name: string } | null;
+  student: { id: number; name: string; nis: string | null };
+  status: 'IN_PROGRESS' | 'COMPLETED' | 'TIMEOUT' | string;
+  score: number | null;
+  startTime: string;
+  endTime: string | null;
+  submitTime: string | null;
+  answeredCount: number;
+  unansweredCount: number;
+  totalQuestions: number;
+  completionRate: number;
+  objectiveTotal: number;
+  objectiveCorrect: number;
+  objectiveIncorrect: number;
+};
+
+export type PacketSubmissionsSummary = {
+  generatedAt: string;
+  classFilterId: number | null;
+  statusFilter: string | null;
+  scheduleCount: number;
+  sessionCount: number;
+  participantCount: number;
+  submittedCount: number;
+  inProgressCount: number;
+  averageScore: number | null;
+  highestScore: number | null;
+  lowestScore: number | null;
+};
+
+export type PacketSubmissionsResponse = {
+  packet: {
+    id: number;
+    title: string;
+    type: string;
+    semester: string;
+    subject: { id: number; name: string; code: string };
+    academicYear: { id: number; name: string };
+    author: { id: number; name: string };
+  };
+  summary: PacketSubmissionsSummary;
+  sessions: PacketSubmissionSessionRow[];
+};
+
+export type SessionQuestionDetailRow = {
+  questionId: string;
+  orderNumber: number;
+  type: string;
+  contentPreview: string;
+  scoreWeight: number;
+  answered: boolean;
+  answerText: string | null;
+  selectedOptionIds: string[];
+  selectedOptionLabels: string[];
+  correctOptionIds: string[];
+  correctOptionLabels: string[];
+  isCorrect: boolean | null;
+  explanation: string | null;
+};
+
+export type SessionDetailResponse = {
+  packet: {
+    id: number;
+    title: string;
+    type: string;
+    semester: string;
+    subject: { id: number; name: string; code: string };
+    academicYear: { id: number; name: string };
+  };
+  session: {
+    id: number;
+    status: string;
+    score: number | null;
+    startTime: string;
+    submitTime: string | null;
+    schedule: {
+      id: number;
+      startTime: string;
+      endTime: string;
+      class: { id: number; name: string } | null;
+    };
+    student: {
+      id: number;
+      name: string;
+      nis: string | null;
+      class: { id: number; name: string } | null;
+    };
+  };
+  summary: {
+    totalQuestions: number;
+    answeredCount: number;
+    unansweredCount: number;
+    completionRate: number;
+    objectiveEvaluableCount: number;
+    objectiveCorrectCount: number;
+    objectiveIncorrectCount: number;
+    essayCount: number;
+  };
+  questions: SessionQuestionDetailRow[];
 };

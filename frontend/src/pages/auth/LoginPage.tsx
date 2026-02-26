@@ -105,10 +105,16 @@ export const LoginPage = () => {
     const length = activeDisplaySources.length > 0 ? activeDisplaySources.length : slides.length;
     if (length <= 1) return;
 
-    // Gunakan interval tetap agar transisi antar slide konsisten, termasuk reset last -> first.
+    const defaultMs = 3500;
+    const intervalMs = (() => {
+      const raw = (window as any)?.__SIS_SLIDESHOW_SETTINGS__?.slideIntervalMs;
+      if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
+      return defaultMs;
+    })();
+
     const intervalId = window.setInterval(() => {
       setActiveIndex((prev) => (prev >= length - 1 ? 0 : prev + 1));
-    }, 3500);
+    }, intervalMs);
 
     return () => clearInterval(intervalId);
   }, [activeDisplaySources.length, slides.length]);

@@ -625,10 +625,23 @@ export type AdminUserCreatePayload = Required<
 > &
   Omit<AdminUserWritePayload, 'verificationStatus'>;
 
-type MobileImportFile = {
+type MobileBinaryFile = {
   uri: string;
   name?: string;
   type?: string;
+};
+
+type MobileImportFile = MobileBinaryFile;
+
+export type AdminSlideshowSlide = {
+  id: string;
+  filename: string;
+  url: string;
+  description: string;
+  order: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type AdminMajorPayload = {
@@ -1230,6 +1243,77 @@ export const adminApi = {
 
   async deleteAcademicEvent(id: number) {
     const response = await apiClient.delete<ApiEnvelope<null>>(`/academic-events/${id}`);
+    return response.data?.data;
+  },
+
+  async listSlideshowSlides() {
+    const response = await apiClient.get<
+      ApiEnvelope<{ slides: AdminSlideshowSlide[]; settings?: { slideIntervalMs?: number } }>
+    >('/gallery/slides');
+    return {
+      slides: Array.isArray(response.data?.data?.slides) ? response.data.data.slides : [],
+      settings: response.data?.data?.settings,
+    };
+  },
+
+  async uploadSlideshowSlide(
+    file: MobileBinaryFile,
+    payload?: {
+      description?: string;
+      isActive?: boolean;
+    },
+  ) {
+    const formData = new FormData();
+    formData.append('file', {
+      uri: file.uri,
+      name: file.name || `slide-${Date.now()}.jpg`,
+      type: file.type || 'image/jpeg',
+    } as any);
+    if (typeof payload?.description === 'string') {
+      formData.append('description', payload.description);
+    }
+    if (typeof payload?.isActive === 'boolean') {
+      formData.append('isActive', payload.isActive ? 'true' : 'false');
+    }
+
+    const response = await apiClient.post<
+      ApiEnvelope<{ slide: AdminSlideshowSlide; slides: AdminSlideshowSlide[] }>
+    >('/gallery/slides/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data?.data;
+  },
+
+  async updateSlideshowSlide(
+    id: string,
+    payload: Partial<Pick<AdminSlideshowSlide, 'description' | 'isActive' | 'order'>>,
+  ) {
+    const response = await apiClient.patch<
+      ApiEnvelope<{ slide: AdminSlideshowSlide; slides: AdminSlideshowSlide[] }>
+    >(`/gallery/slides/${id}`, payload);
+    return response.data?.data;
+  },
+
+  async reorderSlideshowSlides(ids: string[]) {
+    const response = await apiClient.patch<ApiEnvelope<{ slides: AdminSlideshowSlide[] }>>(
+      '/gallery/slides/reorder',
+      { ids },
+    );
+    return response.data?.data;
+  },
+
+  async deleteSlideshowSlide(id: string) {
+    const response = await apiClient.delete<ApiEnvelope<{ deletedId: string; slides: AdminSlideshowSlide[] }>>(
+      `/gallery/slides/${id}`,
+    );
+    return response.data?.data;
+  },
+
+  async updateSlideshowSettings(settings: { slideIntervalMs: number }) {
+    const response = await apiClient.patch<ApiEnvelope<{ settings: { slideIntervalMs: number } }>>(
+      '/gallery/settings',
+      settings,
+    );
     return response.data?.data;
   },
 

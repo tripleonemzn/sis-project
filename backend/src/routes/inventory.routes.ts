@@ -15,7 +15,14 @@ import {
   getInventoryByRoom,
   createInventory,
   updateInventory,
-  deleteInventory
+  deleteInventory,
+  getLibraryLoanClassOptions,
+  getLibraryLoanSettings,
+  getLibraryBookLoans,
+  updateLibraryLoanSettings,
+  createLibraryBookLoan,
+  updateLibraryBookLoan,
+  deleteLibraryBookLoan,
 } from '../controllers/inventory.controller';
 
 const router = Router();
@@ -36,6 +43,24 @@ const itemWriteMiddleware = [
     'KEPALA_LAB',
     'KEPALA_PERPUSTAKAAN',
   ])
+];
+
+const libraryLoanReadMiddleware = [
+  roleMiddleware(['ADMIN', 'TEACHER']),
+  dutyMiddleware([
+    'WAKASEK_SARPRAS',
+    'SEKRETARIS_SARPRAS',
+    'KEPALA_PERPUSTAKAAN',
+  ]),
+];
+
+const libraryLoanWriteMiddleware = [
+  roleMiddleware(['ADMIN', 'TEACHER']),
+  dutyMiddleware([
+    'WAKASEK_SARPRAS',
+    'SEKRETARIS_SARPRAS',
+    'KEPALA_PERPUSTAKAAN',
+  ]),
 ];
 
 const readMiddleware = [
@@ -62,5 +87,14 @@ router.get('/rooms/:roomId/inventory', ...readMiddleware, getInventoryByRoom);
 router.post('/inventory', ...itemWriteMiddleware, createInventory);
 router.put('/inventory/:id', ...itemWriteMiddleware, updateInventory);
 router.delete('/inventory/:id', ...itemWriteMiddleware, deleteInventory);
+
+// Library Book Loans
+router.get('/library-loans/classes', ...libraryLoanReadMiddleware, getLibraryLoanClassOptions);
+router.get('/library-loans/settings', ...libraryLoanReadMiddleware, getLibraryLoanSettings);
+router.get('/library-loans', ...libraryLoanReadMiddleware, getLibraryBookLoans);
+router.put('/library-loans/settings', ...libraryLoanWriteMiddleware, updateLibraryLoanSettings);
+router.post('/library-loans', ...libraryLoanWriteMiddleware, createLibraryBookLoan);
+router.put('/library-loans/:id', ...libraryLoanWriteMiddleware, updateLibraryBookLoan);
+router.delete('/library-loans/:id', ...libraryLoanWriteMiddleware, deleteLibraryBookLoan);
 
 export default router;

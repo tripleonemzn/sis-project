@@ -20,13 +20,16 @@ type ExaminerAssessmentsQueryData = {
 type Params = {
   enabled: boolean;
   user: AuthUser | null;
+  academicYearId?: number;
 };
 
-export function useExaminerAssessmentsQuery({ enabled, user }: Params) {
+export function useExaminerAssessmentsQuery({ enabled, user, academicYearId }: Params) {
   const isExaminer = user?.role === 'EXAMINER';
+  const explicitAcademicYearId =
+    Number.isFinite(Number(academicYearId)) && Number(academicYearId) > 0 ? Number(academicYearId) : null;
 
   return useQuery({
-    queryKey: ['mobile-examiner-assessments', user?.id],
+    queryKey: ['mobile-examiner-assessments', user?.id, explicitAcademicYearId || 'active'],
     enabled: enabled && !!user && isExaminer,
     queryFn: async (): Promise<ExaminerAssessmentsQueryData> => {
       const cacheKey = `mobile_cache_examiner_assessments_${user!.id}`;
@@ -38,10 +41,11 @@ export function useExaminerAssessmentsQuery({ enabled, user }: Params) {
           activeYear = null;
         }
 
+        const targetAcademicYearId = explicitAcademicYearId || activeYear?.id || undefined;
         const assessments = await examinerApi.listAssessments(
-          activeYear
+          targetAcademicYearId
             ? {
-                academicYearId: activeYear.id,
+                academicYearId: targetAcademicYearId,
               }
             : undefined,
         );

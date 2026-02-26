@@ -1,5 +1,5 @@
 import { isAxiosError } from 'axios';
-import { PropsWithChildren, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { PropsWithChildren, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { authService } from './authService';
 import { LoginPayload, AuthUser } from './types';
@@ -11,6 +11,8 @@ import { CACHE_MAX_SNAPSHOTS_PER_FEATURE, CACHE_PREFIXES, CACHE_TTL_MS } from '.
 import {
   syncPushDeviceRegistration,
 } from '../pushNotifications/pushNotificationService';
+
+const PUSH_SYNC_RETRY_DELAYS_MS = [0, 5000, 15000, 30000] as const;
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -28,6 +30,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [restoreError, setRestoreError] = useState<string | null>(null);
+  const appResumePushSyncCleanupRef = useRef<(() => void) | null>(null);
 
   const rehydrate = useCallback(async () => {
     setIsLoading(true);
@@ -84,10 +87,41 @@ export function AuthProvider({ children }: PropsWithChildren) {
     };
   }, []);
 
+  const schedulePushSyncWithRetry = useCallback(() => {
+    let cancelled = false;
+    let hasRegistered = false;
+    const timerIds: Array<ReturnType<typeof setTimeout>> = [];
+
+    const runAttempt = async () => {
+      if (cancelled || hasRegistered) return;
+      const result = await syncPushDeviceRegistration();
+      if (result.registered) {
+        hasRegistered = true;
+      }
+    };
+
+    for (const delayMs of PUSH_SYNC_RETRY_DELAYS_MS) {
+      const timerId = setTimeout(() => {
+        void runAttempt();
+      }, delayMs);
+      timerIds.push(timerId);
+    }
+
+    return () => {
+      cancelled = true;
+      for (const timerId of timerIds) {
+        clearTimeout(timerId);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (!user) return;
-    void syncPushDeviceRegistration();
-  }, [user?.id]);
+    const cleanup = schedulePushSyncWithRetry();
+    return () => {
+      cleanup();
+    };
+  }, [user?.id, schedulePushSyncWithRetry]);
 
   useEffect(() => {
     if (!user) return;
@@ -98,11 +132,27 @@ export function AuthProvider({ children }: PropsWithChildren) {
       const nowActive = nextState === 'active';
       currentState = nextState;
       if (!wasBackground || !nowActive) return;
-      void syncPushDeviceRegistration();
+
+      appResumePushSyncCleanupRef.current?.();
+      appResumePushSyncCleanupRef.current = schedulePushSyncWithRetry();
     });
 
     return () => {
+      appResumePushSyncCleanupRef.current?.();
+      appResumePushSyncCleanupRef.current = null;
       appStateSubscription.remove();
+    };
+  }, [user?.id, schedulePushSyncWithRetry]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const syncIntervalId = setInterval(() => {
+      void syncPushDeviceRegistration();
+    }, 15 * 60 * 1000);
+
+    return () => {
+      clearInterval(syncIntervalId);
     };
   }, [user?.id]);
 

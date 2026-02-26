@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
+import { mobileLiveQueryOptions } from '../../lib/query/liveQuery';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
 import { academicYearApi } from '../academicYear/academicYearApi';
 import { useAuth } from '../auth/AuthProvider';
@@ -470,6 +471,7 @@ export function TeacherHeadProgramModuleScreen({
       headProgramApi.listInternships({
         academicYearId: activeYearQuery.data?.id,
       }),
+    ...mobileLiveQueryOptions,
   });
 
   const partnersQuery = useQuery({

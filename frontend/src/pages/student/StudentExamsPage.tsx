@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { examService } from '../../services/exam.service'
+import {
+  examService,
+  findExamProgramBySlug,
+  normalizeExamProgramCode,
+  type ExamProgram,
+} from '../../services/exam.service'
 import { 
   FileText, 
   Calendar, 
@@ -13,11 +18,14 @@ import {
   Search,
 } from 'lucide-react'
 
+type ExamProgramLabelMap = Record<string, string>
+
 interface Exam {
   id: string
   title: string
   description: string
-  type: 'QUIZ' | 'SBTS' | 'SAS'
+  type: string
+  programCode?: string
   start_time: string
   end_time: string
   duration: number
@@ -42,44 +50,89 @@ interface Exam {
 export default function StudentExamsPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { programCode: programSlugParam } = useParams<{ programCode?: string }>()
   const [loading, setLoading] = useState(true)
   const [exams, setExams] = useState<Exam[]>([])
   const [filteredExams, setFilteredExams] = useState<Exam[]>([])
   const [searchQuery, setSearchQuery] = useState('')
-  const [typeFilter, setTypeFilter] = useState('all')
+  const [programFilter, setProgramFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [showStartModal, setShowStartModal] = useState(false)
   const [selectedExam, setSelectedExam] = useState<Exam | null>(null)
+  const [examProgramLabels, setExamProgramLabels] = useState<ExamProgramLabelMap>({})
+  const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([])
 
   useEffect(() => {
     fetchData()
+    fetchExamProgramLabels()
   }, [])
 
   useEffect(() => {
-    if (location.pathname.includes('/formatif')) {
-      setTypeFilter('FORMATIF')
-    } else if (location.pathname.includes('/sbts')) {
-      setTypeFilter('SBTS')
-    } else if (location.pathname.includes('/sas')) {
-      setTypeFilter('SAS')
-    } else if (location.pathname.includes('/sat')) {
-      setTypeFilter('SAT')
-    } else {
-      setTypeFilter('all')
+    if (programSlugParam) {
+      const selectedProgram = findExamProgramBySlug(examPrograms, programSlugParam)
+      if (selectedProgram) {
+        setProgramFilter(normalizeExamProgramCode(selectedProgram.code))
+        return
+      }
+      setProgramFilter(normalizeExamProgramCode(programSlugParam))
+      return
     }
-  }, [location.pathname])
 
-  useEffect(() => {
-    const lastType = sessionStorage.getItem('last_exam_type')
-    if (lastType) {
-      setTypeFilter(lastType)
-      sessionStorage.removeItem('last_exam_type')
+    const marker = '/student/exams/'
+    const markerIdx = location.pathname.indexOf(marker)
+    if (markerIdx >= 0) {
+      const tail = location.pathname.slice(markerIdx + marker.length).split('/')[0]
+      if (tail && tail !== 'program' && tail !== 'take') {
+        const selectedProgram = findExamProgramBySlug(examPrograms, tail)
+        if (selectedProgram) {
+          setProgramFilter(normalizeExamProgramCode(selectedProgram.code))
+          return
+        }
+        const normalizedTail = normalizeExamProgramCode(tail)
+        if (normalizedTail) {
+          setProgramFilter(normalizedTail)
+          return
+        }
+      }
     }
-  }, [])
+    setProgramFilter('all')
+  }, [location.pathname, programSlugParam, examPrograms])
 
   useEffect(() => {
     filterExams()
-  }, [exams, searchQuery, typeFilter, statusFilter])
+  }, [exams, searchQuery, programFilter, statusFilter])
+
+  const fetchExamProgramLabels = async () => {
+    try {
+      const res = await examService.getPrograms({ roleContext: 'student' })
+      const programs = res?.data?.programs || []
+      if (!Array.isArray(programs) || programs.length === 0) {
+        setExamPrograms([])
+        setExamProgramLabels({})
+        return
+      }
+      const normalizedPrograms = programs
+        .filter((program: ExamProgram) => Boolean(program?.isActive) && Boolean(program?.showOnStudentMenu))
+        .map((program: ExamProgram) => ({
+          ...program,
+          code: normalizeExamProgramCode(program.code),
+        }))
+      setExamPrograms(normalizedPrograms)
+
+      const nextLabels: ExamProgramLabelMap = {}
+      normalizedPrograms.forEach((program: ExamProgram) => {
+        const code = normalizeExamProgramCode(program.code)
+        if (!code) return
+        const label = String(program.label || '').trim()
+        if (!label) return
+        nextLabels[code] = label
+      })
+      setExamProgramLabels(nextLabels)
+    } catch (error) {
+      setExamPrograms([])
+      setExamProgramLabels({})
+    }
+  }
 
   const fetchData = async () => {
     try {
@@ -97,6 +150,7 @@ export default function StudentExamsPage() {
         title: item.packet?.title || 'Untitled Exam',
         description: item.packet?.description || '',
         type: item.packet?.type || 'QUIZ',
+        programCode: normalizeExamProgramCode(item.packet?.programCode || item.packet?.type || ''),
         start_time: item.startTime,
         end_time: item.endTime,
         duration: item.packet?.duration || 0,
@@ -150,8 +204,8 @@ export default function StudentExamsPage() {
   const filterExams = () => {
     let filtered = [...exams]
 
-    if (typeFilter !== 'all') {
-      filtered = filtered.filter(e => e.type === typeFilter)
+    if (programFilter !== 'all') {
+      filtered = filtered.filter(e => normalizeExamProgramCode(e.programCode || e.type) === programFilter)
     }
 
     if (statusFilter !== 'all') {
@@ -237,16 +291,15 @@ export default function StudentExamsPage() {
 
     // Persist last visited exams page context for return navigation
     try {
-      if (selectedExam?.type) {
-        sessionStorage.setItem('last_exam_type', selectedExam.type)
-      }
       sessionStorage.setItem('last_exam_route', location.pathname)
     } catch {}
 
     // Give browser a moment to update state before navigating
     // This prevents the next page from thinking we're not in fullscreen
     setTimeout(() => {
-      navigate(`/student/exams/${selectedExam.id}/take`, { state: { exam: selectedExam } })
+      navigate(`/student/exams/${selectedExam.id}/take`, {
+        state: { exam: { ...selectedExam, programLabel: getExamTypeLabel(selectedExam) } },
+      })
       setSelectedExam(null)
     }, 100)
   }
@@ -305,23 +358,35 @@ export default function StudentExamsPage() {
     }
   }
 
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'QUIZ':
-      case 'FORMATIF':
-        return 'bg-blue-100 text-blue-800'
-      case 'SBTS':
-        return 'bg-orange-100 text-orange-800'
-      case 'SAS':
-        return 'bg-red-100 text-red-800'
-      case 'SAT':
-        return 'bg-purple-100 text-purple-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
+  const getTypeColor = (rawCode: string) => {
+    const normalized = normalizeExamProgramCode(rawCode)
+    const palette = [
+      'bg-blue-100 text-blue-800',
+      'bg-emerald-100 text-emerald-800',
+      'bg-amber-100 text-amber-800',
+      'bg-violet-100 text-violet-800',
+      'bg-cyan-100 text-cyan-800',
+    ]
+
+    if (!normalized) return 'bg-gray-100 text-gray-800'
+    let hash = 0
+    for (let i = 0; i < normalized.length; i += 1) {
+      hash = (hash * 31 + normalized.charCodeAt(i)) % 100000
     }
+    return palette[Math.abs(hash) % palette.length]
   }
 
-  const relevantTotal = exams.filter(e => typeFilter === 'all' || e.type === typeFilter).length
+  const getExamTypeLabel = (exam: Exam) => {
+    const normalizedProgram = normalizeExamProgramCode(exam.programCode || exam.type)
+    if (normalizedProgram && examProgramLabels[normalizedProgram]) return examProgramLabels[normalizedProgram]
+
+    const normalizedType = normalizeExamProgramCode(exam.type)
+    if (normalizedType && examProgramLabels[normalizedType]) return examProgramLabels[normalizedType]
+
+    return normalizedProgram || normalizedType || '-'
+  }
+
+  const relevantTotal = exams.filter(e => programFilter === 'all' || normalizeExamProgramCode(e.programCode || e.type) === programFilter).length
 
   if (loading) {
     return (
@@ -407,7 +472,7 @@ export default function StudentExamsPage() {
               <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">Belum Ada Ujian</h3>
               <p className="text-gray-600">
-                {searchQuery || typeFilter !== 'all' || statusFilter !== 'all'
+                {searchQuery || programFilter !== 'all' || statusFilter !== 'all'
                   ? 'Tidak ada ujian yang sesuai dengan filter'
                   : 'Belum ada ujian yang tersedia'}
               </p>
@@ -477,8 +542,8 @@ export default function StudentExamsPage() {
 
                         {/* Jenis */}
                         <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <span className={`px-2 py-1 text-xs font-medium rounded ${getTypeColor(exam.type)}`}>
-                            {exam.type}
+                          <span className={`px-2 py-1 text-xs font-medium rounded ${getTypeColor(exam.programCode || exam.type)}`}>
+                            {getExamTypeLabel(exam)}
                           </span>
                         </td>
 

@@ -8,6 +8,7 @@ type ActiveAcademicYearResponse = {
     id: number;
     name: string;
     isActive: boolean;
+    semester?: 'ODD' | 'EVEN';
   };
 };
 
@@ -17,4 +18,3 @@ export const academicYearApi = {
     return response.data.data;
   },
 };
-

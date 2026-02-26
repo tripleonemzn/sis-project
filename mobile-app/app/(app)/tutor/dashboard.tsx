@@ -83,22 +83,8 @@ export default function TutorDashboardScreen() {
     >
       <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Dashboard Ekskul</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Pantau assignment pembina ekstrakurikuler untuk tahun ajaran aktif.
+        Pantau assignment pembina ekstrakurikuler pada periode berjalan.
       </Text>
-
-      <View
-        style={{
-          backgroundColor: '#fff',
-          borderWidth: 1,
-          borderColor: '#dbe7fb',
-          borderRadius: 12,
-          padding: 12,
-          marginBottom: 12,
-        }}
-      >
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Tahun Ajaran Aktif</Text>
-        <Text style={{ color: BRAND_COLORS.textDark, fontSize: 18, fontWeight: '700' }}>{activeYearQuery.data?.name || '-'}</Text>
-      </View>
 
       <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 12 }}>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>

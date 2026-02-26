@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { 
     Plus, 
     Search, 
@@ -9,132 +9,74 @@ import {
     Calendar, 
     Edit, 
     Trash2,
-    BookOpen
+    BookOpen,
+    BarChart3,
+    Users
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { examService } from '../../../services/exam.service';
-import type { ExamPacket, ExamType } from '../../../services/exam.service';
+import {
+    examService,
+    findExamProgramBySlug,
+    normalizeExamProgramCode,
+} from '../../../services/exam.service';
+import type { ExamPacket, ExamProgram, ExamType } from '../../../services/exam.service';
 import { academicYearService } from '../../../services/academicYear.service';
 import { teacherAssignmentService } from '../../../services/teacherAssignment.service';
 
 import { QuestionBankView } from '../../../components/teacher/exams/QuestionBankView';
 
+type SemesterFilter = 'GANJIL' | 'GENAP' | '';
+
+const LEGACY_ROUTE_PROGRAM_MAP: Record<string, string> = {
+    '/formatif': 'FORMATIF',
+    '/sbts': 'SBTS',
+    '/sas': 'SAS',
+    '/sat': 'SAT',
+};
+
+const PROGRAM_BADGE_CLASSES = [
+    'bg-blue-50 text-blue-700 border border-blue-100',
+    'bg-emerald-50 text-emerald-700 border border-emerald-100',
+    'bg-amber-50 text-amber-700 border border-amber-100',
+    'bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-100',
+    'bg-cyan-50 text-cyan-700 border border-cyan-100',
+];
+
+const badgeClassByProgramCode = (raw: unknown) => {
+    const normalized = normalizeExamProgramCode(raw);
+    if (!normalized) return PROGRAM_BADGE_CLASSES[0];
+    let hash = 0;
+    for (let i = 0; i < normalized.length; i += 1) {
+        hash = (hash * 31 + normalized.charCodeAt(i)) % 100000;
+    }
+    return PROGRAM_BADGE_CLASSES[Math.abs(hash) % PROGRAM_BADGE_CLASSES.length];
+};
+
+const toSemesterFilter = (semester?: string | null): SemesterFilter => {
+    const normalized = String(semester || '').toUpperCase();
+    if (normalized === 'ODD' || normalized === 'GANJIL') return 'GANJIL';
+    if (normalized === 'EVEN' || normalized === 'GENAP') return 'GENAP';
+    return '';
+};
+
+const fromSemesterFilter = (semester: SemesterFilter): 'ODD' | 'EVEN' | undefined => {
+    if (semester === 'GANJIL') return 'ODD';
+    if (semester === 'GENAP') return 'EVEN';
+    return undefined;
+};
+
 export const ExamListPage = () => {
     const location = useLocation();
     const navigate = useNavigate();
-
-    // Determine exam type from URL
-    const getExamTypeFromUrl = useCallback((): ExamType | undefined => {
-        if (location.pathname.includes('/formatif')) return 'FORMATIF';
-        if (location.pathname.includes('/sbts')) return 'SBTS';
-        if (location.pathname.includes('/sas-sat')) {
-            // Logic handled in effect based on semester selection
-            return undefined;
-        }
-        if (location.pathname.includes('/sas')) return 'SAS'; // Legacy fallback
-        if (location.pathname.includes('/sat')) return 'SAT'; // Legacy fallback
-        return undefined; // Bank Soal or mixed
-    }, [location.pathname]);
+    const { programCode: programSlugParam } = useParams<{ programCode?: string }>();
 
     // Filters with persistence
     const [search, setSearch] = useState('');
-    
-    const [selectedSubject, setSelectedSubject] = useState(() => {
-        const type = getExamTypeFromUrl();
-        if (type && !location.pathname.includes('/sas') && !location.pathname.includes('/sat')) {
-            try {
-                const stored = sessionStorage.getItem(`exam_filters_${type}`);
-                if (stored) return JSON.parse(stored).subjectId || '';
-            } catch (e) {
-                return '';
-            }
-        }
-        return '';
-    });
-
+    const [selectedSubject, setSelectedSubject] = useState('');
     const [subjects, setSubjects] = useState<{id: number, name: string}[]>([]);
     const [activeAcademicYear, setActiveAcademicYear] = useState<{id: number, name: string, semester?: string} | null>(null);
-    
-    const [selectedSemester, setSelectedSemester] = useState<'GANJIL' | 'GENAP' | ''>(() => {
-        // Enforce SAS/SAT defaults immediately
-        if (location.pathname.includes('/sas') && !location.pathname.includes('/sas-sat')) return 'GANJIL';
-        if (location.pathname.includes('/sat') && !location.pathname.includes('/sas-sat')) return 'GENAP';
-        
-        const type = getExamTypeFromUrl();
-        if (type) {
-            try {
-                const stored = sessionStorage.getItem(`exam_filters_${type}`);
-                if (stored) return JSON.parse(stored).semester || '';
-            } catch (e) {
-                return '';
-            }
-        }
-        return '';
-    });
-
-    const [examType, setExamType] = useState<ExamType | undefined>(getExamTypeFromUrl());
+    const [selectedSemester, setSelectedSemester] = useState<SemesterFilter>('');
     const isBankSoal = location.pathname.includes('/bank');
-    const isSasSat = location.pathname.includes('/sas-sat');
-    const isSas = location.pathname.includes('/sas') && !isSasSat;
-    const isSat = location.pathname.includes('/sat') && !isSasSat;
-
-    useEffect(() => {
-        if (isSasSat) {
-            setExamType(selectedSemester === 'GANJIL' ? 'SAS' : 'SAT');
-        } else if (!isSasSat) {
-            setExamType(getExamTypeFromUrl());
-        }
-    }, [location.pathname, selectedSemester, isSasSat, getExamTypeFromUrl]);
-
-    // Enforce semester based on route for separate SAS/SAT menus
-    useEffect(() => {
-        if (isSas) {
-            setSelectedSemester('GANJIL');
-        } else if (isSat) {
-            setSelectedSemester('GENAP');
-        } else if (!isSasSat) {
-            // Restore from storage or reset to empty
-            // This runs when switching exam types
-            const currentType = getExamTypeFromUrl();
-            if (currentType) {
-                try {
-                    const stored = sessionStorage.getItem(`exam_filters_${currentType}`);
-                    if (stored) {
-                        const parsed = JSON.parse(stored);
-                        setSelectedSemester(parsed.semester || '');
-                        setSelectedSubject(parsed.subjectId || '');
-                        return;
-                    }
-                } catch (e) {
-                    // Ignore error
-                }
-            }
-            // If no storage found, reset to empty to require selection
-            setSelectedSemester('');
-            setSelectedSubject('');
-        }
-    }, [isSas, isSat, isSasSat, getExamTypeFromUrl]);
-
-    // Save filters to session storage
-    useEffect(() => {
-        if (examType && !isSasSat && !isBankSoal) {
-            sessionStorage.setItem(`exam_filters_${examType}`, JSON.stringify({
-                semester: selectedSemester,
-                subjectId: selectedSubject
-            }));
-        }
-    }, [examType, selectedSemester, selectedSubject, isSasSat, isBankSoal]);
-
-    const getPageTitle = () => {
-        if (isBankSoal) return 'Bank Soal';
-        switch (examType) {
-            case 'FORMATIF': return 'Ujian Formatif (Kuis/UH)';
-            case 'SBTS': return 'Sumatif Tengah Semester (STS)';
-            case 'SAS': return 'Sumatif Akhir Semester (SAS)';
-            case 'SAT': return 'Sumatif Akhir Tahun (SAT)';
-            default: return 'Manajemen Ujian';
-        }
-    };
 
     const fetchInitialData = useCallback(async () => {
         try {
@@ -146,16 +88,6 @@ export const ExamListPage = () => {
             if (ayRes.data) {
                 const active = ayRes.data;
                 setActiveAcademicYear(active);
-                
-                // Initialize selectedSemester based on active year
-                // Try to detect from semester field or name
-                const isGenap = active.semester === 'EVEN' || active.name.toLowerCase().includes('genap');
-                
-                if (isSasSat) {
-                    setSelectedSemester(isGenap ? 'GENAP' : 'GANJIL');
-                } else {
-                    // Logic moved to effect/useState init
-                }
             }
             
             // Extract unique subjects from assignments
@@ -166,34 +98,162 @@ export const ExamListPage = () => {
         } catch (error) {
             console.error('Error fetching initial data:', error);
         }
-    }, [isSasSat]);
+    }, []);
 
     useEffect(() => {
         fetchInitialData();
     }, [fetchInitialData]);
 
+    const { data: examProgramsRes } = useQuery({
+        queryKey: ['teacher-exam-programs', activeAcademicYear?.id],
+        enabled: !!activeAcademicYear?.id && !isBankSoal,
+        staleTime: 5 * 60 * 1000,
+        queryFn: () =>
+            examService.getPrograms({
+                academicYearId: activeAcademicYear?.id,
+                roleContext: 'teacher',
+            }),
+    });
+
+    const teacherPrograms = useMemo<ExamProgram[]>(() => {
+        return (examProgramsRes?.data?.programs || [])
+            .filter((program: ExamProgram) => Boolean(program?.isActive) && Boolean(program?.showOnTeacherMenu))
+            .sort((a: ExamProgram, b: ExamProgram) => Number(a.order || 0) - Number(b.order || 0));
+    }, [examProgramsRes]);
+
+    const legacyRouteProgramCode = useMemo(() => {
+        const segment = Object.keys(LEGACY_ROUTE_PROGRAM_MAP).find((pathPart) => location.pathname.includes(pathPart));
+        if (!segment) return null;
+        return LEGACY_ROUTE_PROGRAM_MAP[segment];
+    }, [location.pathname]);
+
+    const selectedProgram = useMemo<ExamProgram | null>(() => {
+        if (isBankSoal) return null;
+
+        if (programSlugParam) {
+            return findExamProgramBySlug(teacherPrograms, programSlugParam) || null;
+        }
+
+        if (legacyRouteProgramCode) {
+            const normalizedLegacyCode = normalizeExamProgramCode(legacyRouteProgramCode);
+            return (
+                teacherPrograms.find(
+                    (program) => normalizeExamProgramCode(program.code) === normalizedLegacyCode,
+                ) || null
+            );
+        }
+
+        return teacherPrograms[0] || null;
+    }, [isBankSoal, programSlugParam, teacherPrograms, legacyRouteProgramCode]);
+
+    const selectedProgramCode = useMemo(
+        () => normalizeExamProgramCode(selectedProgram?.code),
+        [selectedProgram?.code],
+    );
+    const selectedProgramBaseType = selectedProgram?.baseType as ExamType | undefined;
+    const isSemesterLockedByProgram = Boolean(selectedProgram?.fixedSemester);
+
+    useEffect(() => {
+        if (isBankSoal) return;
+        if (!selectedProgramCode) return;
+
+        const storageKey = `exam_filters_program_${selectedProgramCode}`;
+        let storedSemester: SemesterFilter = '';
+        let storedSubject = '';
+
+        try {
+            const storedRaw = sessionStorage.getItem(storageKey);
+            if (storedRaw) {
+                const parsed = JSON.parse(storedRaw);
+                storedSemester = toSemesterFilter(parsed?.semester);
+                storedSubject = String(parsed?.subjectId || '');
+            }
+        } catch {
+            storedSemester = '';
+            storedSubject = '';
+        }
+
+        const fixedSemester = toSemesterFilter(selectedProgram?.fixedSemester);
+        const semesterFromAcademicYear = toSemesterFilter(activeAcademicYear?.semester);
+        const nextSemester = fixedSemester || storedSemester || semesterFromAcademicYear || '';
+
+        setSelectedSemester(nextSemester);
+        setSelectedSubject(storedSubject);
+    }, [isBankSoal, selectedProgramCode, selectedProgram?.fixedSemester, activeAcademicYear?.semester]);
+
+    useEffect(() => {
+        if (isBankSoal || !selectedProgramCode) return;
+        sessionStorage.setItem(
+            `exam_filters_program_${selectedProgramCode}`,
+            JSON.stringify({
+                semester: selectedSemester,
+                subjectId: selectedSubject,
+            }),
+        );
+    }, [isBankSoal, selectedProgramCode, selectedSemester, selectedSubject]);
+
+    const getPageTitle = () => {
+        if (isBankSoal) return 'Bank Soal';
+        if (!selectedProgram) return 'Manajemen Ujian';
+        return `Ujian ${selectedProgram.label || selectedProgram.code}`;
+    };
+
+    const programLabelByCode = useMemo(() => {
+        const map = new Map<string, string>();
+        teacherPrograms.forEach((program) => {
+            const code = normalizeExamProgramCode(program.code);
+            if (!code) return;
+            map.set(code, String(program.label || program.code));
+        });
+        return map;
+    }, [teacherPrograms]);
+
+    const baseTypeFallbackLabel = useMemo(() => {
+        const map = new Map<string, string>();
+        teacherPrograms.forEach((program) => {
+            const base = String(program.baseType || '').toUpperCase();
+            if (!base || map.has(base)) return;
+            map.set(base, String(program.label || program.code));
+        });
+        return map;
+    }, [teacherPrograms]);
+
+    const resolvePacketLabel = useCallback(
+        (packet: ExamPacket) => {
+            const normalizedProgram = normalizeExamProgramCode(packet.programCode);
+            if (normalizedProgram && programLabelByCode.has(normalizedProgram)) {
+                return programLabelByCode.get(normalizedProgram) as string;
+            }
+            const normalizedType = String(packet.type || '').toUpperCase();
+            return baseTypeFallbackLabel.get(normalizedType) || normalizedType || '-';
+        },
+        [programLabelByCode, baseTypeFallbackLabel],
+    );
+
     // Use Query for fetching packets
     const { data: packets = [], isLoading, refetch: refetchPackets } = useQuery({
         queryKey: ['exam-packets', { 
-            type: examType, 
+            type: selectedProgramBaseType,
+            programCode: selectedProgramCode,
             subjectId: selectedSubject, 
             academicYearId: activeAcademicYear?.id, 
             semester: selectedSemester 
         }],
         queryFn: async () => {
-            if (!activeAcademicYear || isBankSoal) return [];
+            if (!activeAcademicYear || isBankSoal || !selectedProgram) return [];
             
             const res = await examService.getPackets({
-                type: examType,
+                type: selectedProgramBaseType,
+                programCode: selectedProgram.code,
                 subjectId: selectedSubject ? parseInt(selectedSubject) : undefined,
                 academicYearId: activeAcademicYear.id,
-                semester: selectedSemester === 'GANJIL' ? 'ODD' : (selectedSemester === 'GENAP' ? 'EVEN' : undefined),
+                semester: fromSemesterFilter(selectedSemester),
                 limit: 100
             });
             // Handle both array response and object wrapper
             return (Array.isArray(res.data) ? res.data : (res.data?.packets || [])) as ExamPacket[];
         },
-        enabled: !!activeAcademicYear && !isBankSoal && !!selectedSemester
+        enabled: !!activeAcademicYear && !isBankSoal && !!selectedProgram && !!selectedSemester
     });
 
     // Handle delete with refetch
@@ -261,12 +321,18 @@ export const ExamListPage = () => {
                     <h1 className="text-2xl font-bold text-gray-800">{getPageTitle()}</h1>
                     <p className="text-gray-600">Kelola paket soal dan jadwal ujian</p>
                 </div>
-                {!isBankSoal && (
+                {!isBankSoal && selectedProgram && (
                     <button 
                         onClick={() => {
-                            const currentExamType = getExamTypeFromUrl();
-                            const finalExamType = currentExamType || (selectedSemester === 'GANJIL' ? 'SAS' : 'SAT');
-                            navigate('/teacher/exams/create', { state: { type: finalExamType } });
+                            const finalType = selectedProgramBaseType || ('FORMATIF' as ExamType);
+                            navigate('/teacher/exams/create', {
+                                state: {
+                                    type: finalType,
+                                    programCode: selectedProgram?.code || finalType,
+                                    programLabel: selectedProgram?.label || finalType,
+                                    fixedSemester: selectedProgram?.fixedSemester || null,
+                                },
+                            });
                         }}
                         className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-normal"
                     >
@@ -297,11 +363,11 @@ export const ExamListPage = () => {
                             id="filter-semester"
                             name="semester"
                             className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-medium ${
-                                (isSas || isSat) ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''
+                                isSemesterLockedByProgram ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''
                             }`}
                             value={selectedSemester}
                             onChange={(e) => setSelectedSemester(e.target.value as 'GANJIL' | 'GENAP' | '')}
-                            disabled={isSas || isSat}
+                            disabled={isSemesterLockedByProgram}
                         >
                             <option value="">Pilih Semester</option>
                             <option value="GANJIL">Semester Ganjil</option>
@@ -331,6 +397,14 @@ export const ExamListPage = () => {
                 <div className="flex justify-center py-12">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                 </div>
+            ) : !selectedProgram ? (
+                <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-300">
+                    <FileQuestion className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                    <h3 className="text-lg font-medium text-gray-900">Program ujian belum tersedia</h3>
+                    <p className="text-gray-500 mt-1">
+                        Minta Wakasek Kurikulum menambahkan konfigurasi program ujian terlebih dahulu.
+                    </p>
+                </div>
             ) : !selectedSemester ? (
                 <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-300">
                     <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-3" />
@@ -357,12 +431,9 @@ export const ExamListPage = () => {
                             <div className="flex-1 min-w-0 relative z-10">
                                 <div className="flex items-center gap-2 mb-2">
                                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${
-                                        packet.type === 'FORMATIF' ? 'bg-green-50 text-green-700 border border-green-100' :
-                                        packet.type === 'SBTS' ? 'bg-yellow-50 text-yellow-700 border border-yellow-100' :
-                                        packet.type === 'SAS' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
-                                        'bg-purple-50 text-purple-700 border border-purple-100'
+                                        badgeClassByProgramCode(packet.programCode || packet.type)
                                     }`}>
-                                        {packet.type}
+                                        {resolvePacketLabel(packet)}
                                     </span>
                                 </div>
                                 <h3 className="text-sm font-bold text-gray-900 group-hover:text-blue-600 transition-colors mb-3 line-clamp-2 min-h-[40px]">
@@ -388,18 +459,42 @@ export const ExamListPage = () => {
                             </div>
 
                             {/* Actions */}
-                            <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
-                                <button 
-                                    onClick={() => navigate(`/teacher/exams/${packet.id}/schedule`)}
-                                    className="flex-1 px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-bold rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-1 border border-blue-100"
-                                >
-                                    <Calendar className="w-3 h-3" />
-                                    Jadwal
-                                </button>
-                                
-                                <div className="flex items-center gap-1">
+                            <div className="pt-3 border-t border-gray-100 space-y-2">
+                                <div className="grid grid-cols-3 gap-2">
                                     <button 
-                                        onClick={() => navigate(`/teacher/exams/${packet.id}/edit`, { state: { type: packet.type } })}
+                                        onClick={() => navigate(`/teacher/exams/${packet.id}/schedule`)}
+                                        className="px-2 py-1.5 bg-blue-50 text-blue-600 text-xs font-bold rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-1 border border-blue-100"
+                                    >
+                                        <Calendar className="w-3 h-3" />
+                                        Jadwal
+                                    </button>
+                                    <button 
+                                        onClick={() => navigate(`/teacher/exams/${packet.id}/item-analysis`)}
+                                        className="px-2 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-lg hover:bg-emerald-600 hover:text-white transition-all flex items-center justify-center gap-1 border border-emerald-100"
+                                    >
+                                        <BarChart3 className="w-3 h-3" />
+                                        Analisis
+                                    </button>
+                                    <button
+                                        onClick={() => navigate(`/teacher/exams/${packet.id}/submissions`)}
+                                        className="px-2 py-1.5 bg-violet-50 text-violet-700 text-xs font-bold rounded-lg hover:bg-violet-600 hover:text-white transition-all flex items-center justify-center gap-1 border border-violet-100"
+                                    >
+                                        <Users className="w-3 h-3" />
+                                        Submisi
+                                    </button>
+                                </div>
+
+                                <div className="flex items-center justify-end gap-1">
+                                    <button 
+                                        onClick={() =>
+                                            navigate(`/teacher/exams/${packet.id}/edit`, {
+                                                state: {
+                                                    type: packet.type,
+                                                    programCode: packet.programCode || packet.type,
+                                                    programLabel: resolvePacketLabel(packet),
+                                                },
+                                            })
+                                        }
                                         className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg border border-transparent hover:border-blue-100 transition-all"
                                         title="Edit Soal"
                                     >

@@ -5,6 +5,39 @@ import crypto from 'crypto';
 import { InternshipStatus } from '@prisma/client';
 import { AuthRequest } from '../types';
 
+function hasHumasDuty(duties?: string[] | null) {
+  if (!Array.isArray(duties)) return false;
+  return duties.some((item) => {
+    const duty = String(item || '').trim().toUpperCase();
+    return duty === 'WAKASEK_HUMAS' || duty === 'SEKRETARIS_HUMAS';
+  });
+}
+
+async function assertCanManageInternshipExaminer(userId: number) {
+  const actor = await prisma.user.findUnique({
+    where: { id: Number(userId) },
+    select: {
+      id: true,
+      role: true,
+      additionalDuties: true,
+    },
+  });
+
+  if (!actor) {
+    throw new ApiError(401, 'Pengguna tidak ditemukan.');
+  }
+
+  if (actor.role === 'ADMIN') {
+    return;
+  }
+
+  if (actor.role === 'TEACHER' && hasHumasDuty(actor.additionalDuties)) {
+    return;
+  }
+
+  throw new ApiError(403, 'Hanya Wakasek/sekretaris Humas yang boleh mengelola penguji sidang PKL.');
+}
+
 export const getMyInternship = asyncHandler(async (req: AuthRequest, res: Response) => {
   const studentId = Number(req.user?.id);
   
@@ -263,21 +296,52 @@ export const uploadAcceptanceLetter = asyncHandler(async (req: Request, res: Res
   res.status(200).json(new ApiResponse(200, internship, 'Surat balasan berhasil diupload'));
 });
 
-export const assignExaminer = asyncHandler(async (req: Request, res: Response) => {
+export const assignExaminer = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const { examinerId } = req.body;
+  const actorId = Number(req.user?.id);
+
+  if (!actorId) {
+    throw new ApiError(401, 'Sesi login tidak valid.');
+  }
+
+  await assertCanManageInternshipExaminer(actorId);
+
+  const normalizedExaminerId = Number(examinerId);
+  if (!Number.isInteger(normalizedExaminerId) || normalizedExaminerId <= 0) {
+    throw new ApiError(400, 'Penguji tidak valid.');
+  }
+
+  const examiner = await prisma.user.findUnique({
+    where: { id: normalizedExaminerId },
+    select: {
+      id: true,
+      role: true,
+    },
+  });
+
+  if (!examiner || examiner.role !== 'TEACHER') {
+    throw new ApiError(400, 'Penguji PKL harus berasal dari akun guru yang ditunjuk Wakasek Humas.');
+  }
 
   const internship = await prisma.internship.update({
     where: { id: Number(id) },
-    data: { examinerId: Number(examinerId) }
+    data: { examinerId: normalizedExaminerId }
   });
 
   res.status(200).json(new ApiResponse(200, internship, 'Penguji berhasil ditugaskan'));
 });
 
-export const scheduleDefense = asyncHandler(async (req: Request, res: Response) => {
+export const scheduleDefense = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const { defenseDate, defenseRoom } = req.body;
+  const actorId = Number(req.user?.id);
+
+  if (!actorId) {
+    throw new ApiError(401, 'Sesi login tidak valid.');
+  }
+
+  await assertCanManageInternshipExaminer(actorId);
 
   const internship = await prisma.internship.update({
     where: { id: Number(id) },

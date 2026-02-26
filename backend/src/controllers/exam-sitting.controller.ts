@@ -8,6 +8,7 @@ export const createExamSitting = asyncHandler(async (req: Request, res: Response
         roomName, 
         academicYearId, 
         examType, 
+        programCode,
         semester,
         startTime, 
         endTime, 
@@ -27,12 +28,17 @@ export const createExamSitting = asyncHandler(async (req: Request, res: Response
         targetAcademicYearId = activeAY.id;
     }
 
+    const resolvedExamType = String(programCode || examType || '').trim().toUpperCase();
+    if (!resolvedExamType) {
+        throw new ApiError(400, 'Program ujian wajib dipilih.');
+    }
+
     // Create Sitting
     const sitting = await prisma.examSitting.create({
         data: {
             roomName,
             academicYearId: parseInt(targetAcademicYearId),
-            examType: examType || 'SAS', // Default
+            examType: resolvedExamType,
             semester: semester || null,
             startTime: startTime ? new Date(startTime) : null,
             endTime: endTime ? new Date(endTime) : null,
@@ -88,12 +94,13 @@ export const getMyExamSitting = asyncHandler(async (req: Request, res: Response)
 });
 
 export const getExamSittings = asyncHandler(async (req: Request, res: Response) => {
-    const { academicYearId, proctorId, date, examType } = req.query;
+    const { academicYearId, proctorId, date, examType, programCode } = req.query;
 
     const where: any = {};
     if (academicYearId) where.academicYearId = parseInt(academicYearId as string);
     if (proctorId) where.proctorId = parseInt(proctorId as string);
-    if (examType) where.examType = examType as string;
+    const resolvedExamType = String(programCode || examType || '').trim().toUpperCase();
+    if (resolvedExamType) where.examType = resolvedExamType;
     
     if (date) {
         const d = new Date(date as string);
@@ -187,10 +194,15 @@ export const getExamSittingDetail = asyncHandler(async (req: Request, res: Respo
 
 export const updateExamSitting = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { roomName, academicYearId, examType, semester, startTime, endTime, proctorId } = req.body;
+    const { roomName, academicYearId, examType, programCode, semester, startTime, endTime, proctorId } = req.body;
 
     if (!roomName) {
         throw new ApiError(400, 'Room name is required');
+    }
+
+    const resolvedExamType = String(programCode || examType || '').trim().toUpperCase();
+    if (!resolvedExamType) {
+        throw new ApiError(400, 'Program ujian wajib dipilih.');
     }
 
     const sitting = await prisma.examSitting.update({
@@ -198,7 +210,7 @@ export const updateExamSitting = asyncHandler(async (req: Request, res: Response
         data: {
             roomName,
             academicYearId: academicYearId ? parseInt(academicYearId) : undefined,
-            examType,
+            examType: resolvedExamType,
             semester: semester || undefined,
             startTime: startTime ? new Date(startTime) : undefined, // Keep existing if not provided? Or allow null? User wants to REMOVE time. So if provided null, set null.
             endTime: endTime ? new Date(endTime) : undefined,

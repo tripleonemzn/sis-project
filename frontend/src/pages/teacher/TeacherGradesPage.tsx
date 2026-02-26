@@ -19,13 +19,17 @@ interface Student {
 
 interface StudentGrade {
   student_id: number;
-  nf1?: string;
-  nf2?: string;
-  nf3?: string;
-  nf4?: string;
-  nf5?: string;
-  nf6?: string;
+  formativeSeriesInput?: string;
   score: string;
+}
+
+interface StudentReportGrade {
+  studentId: number;
+  formatifScore: number | null;
+  sbtsScore: number | null;
+  sasScore: number | null;
+  finalScore: number | null;
+  description?: string | null;
 }
 
 interface LocalAcademicYear {
@@ -33,6 +37,83 @@ interface LocalAcademicYear {
   name: string;
   is_active: boolean;
 }
+
+const TEACHER_GRADES_FILTER_STORAGE_KEY = 'teacher-grades:filters:v1';
+
+const parseFormativeSeriesInput = (raw: string): { values: number[]; invalid: boolean } => {
+  const cleaned = String(raw || '').trim();
+  if (!cleaned) return { values: [], invalid: false };
+  const tokens = cleaned
+    .split(/[\n,;]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const values: number[] = [];
+  for (const token of tokens) {
+    const parsed = Number(token.replace(',', '.'));
+    if (!Number.isFinite(parsed)) return { values: [], invalid: true };
+    if (parsed < 0 || parsed > 100) return { values: [], invalid: true };
+    values.push(parsed);
+  }
+  return { values, invalid: false };
+};
+
+const normalizeLegacySeriesValues = (rawValues: unknown[]): number[] =>
+  rawValues
+    .filter((value) => value !== null && value !== undefined && value !== '')
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
+
+const isLegacyZeroPaddedSeries = (values: number[]) =>
+  Array.isArray(values) && values.length === 6 && values.every((value) => value === 0);
+
+const averageValues = (values: number[]): number | null => {
+  if (!Array.isArray(values) || values.length === 0) return null;
+  return values.reduce((acc, item) => acc + item, 0) / values.length;
+};
+
+const formatSeriesValues = (values: number[]) =>
+  values
+    .map((value) => (Number.isInteger(value) ? String(value) : value.toFixed(2)))
+    .join(', ');
+
+const resolveComponentReportSlot = (
+  component?: GradeComponent,
+): 'NONE' | 'FORMATIF' | 'SBTS' | 'SAS' | 'US_THEORY' | 'US_PRACTICE' => {
+  const explicit = String(component?.reportSlot || '').toUpperCase();
+  if (
+    explicit === 'FORMATIF' ||
+    explicit === 'SBTS' ||
+    explicit === 'SAS' ||
+    explicit === 'US_THEORY' ||
+    explicit === 'US_PRACTICE' ||
+    explicit === 'NONE'
+  ) {
+    return explicit;
+  }
+  if (component?.type === 'FORMATIVE') return 'FORMATIF';
+  if (component?.type === 'MIDTERM') return 'SBTS';
+  if (component?.type === 'FINAL') return 'SAS';
+  if (component?.type === 'US_THEORY') return 'US_THEORY';
+  if (component?.type === 'US_PRACTICE') return 'US_PRACTICE';
+  return 'NONE';
+};
+
+const resolveComponentEntryMode = (component?: GradeComponent): 'NF_SERIES' | 'SINGLE_SCORE' => {
+  const explicit = String(component?.entryMode || '').toUpperCase();
+  if (explicit === 'NF_SERIES' || explicit === 'SINGLE_SCORE') {
+    return explicit;
+  }
+  return component?.type === 'FORMATIVE' ? 'NF_SERIES' : 'SINGLE_SCORE';
+};
+
+const buildComponentDisplayLabel = (component: GradeComponent) => {
+  const baseLabel = String(component.name || component.code || 'Komponen').trim();
+  const entryMode = resolveComponentEntryMode(component);
+  const reportSlot = resolveComponentReportSlot(component);
+  if (entryMode === 'NF_SERIES') return `${baseLabel} [NF Series]`;
+  if (reportSlot !== 'NONE') return `${baseLabel} [${reportSlot}]`;
+  return baseLabel;
+};
 
 export const TeacherGradesPage = () => {
   const [loading, setLoading] = useState(false);
@@ -54,32 +135,60 @@ export const TeacherGradesPage = () => {
   // Data states
   const [students, setStudents] = useState<Student[]>([]);
   const [grades, setGrades] = useState<StudentGrade[]>([]);
-  const [formatifMap, setFormatifMap] = useState<Record<number, number>>({});
-  const [sbtsMap, setSbtsMap] = useState<Record<number, number>>({});
+  const [reportGradeMap, setReportGradeMap] = useState<Record<number, StudentReportGrade>>({});
   const [descriptions, setDescriptions] = useState<Record<number, string>>({});
+  const [formativeNewScoreDraft, setFormativeNewScoreDraft] = useState<Record<number, string>>({});
+  const [isFilterRestoreDone, setIsFilterRestoreDone] = useState(false);
   
-  // Check if selected component is Formatif / SBTS / SAS
+  // Check selected component mode/slot dynamically
   const selectedComponentObj = gradeComponents.find(c => c.id.toString() === selectedComponent);
-  const isFormatifComponent = selectedComponentObj?.type === 'FORMATIVE';
-  const isSbtsComponent = selectedComponentObj?.type === 'MIDTERM';
-  const isSasComponent = selectedComponentObj?.type === 'FINAL';
+  const selectedComponentEntryMode = resolveComponentEntryMode(selectedComponentObj);
+  const selectedComponentReportSlot = resolveComponentReportSlot(selectedComponentObj);
+  const isFormatifComponent = selectedComponentEntryMode === 'NF_SERIES';
+  const isSbtsComponent = selectedComponentReportSlot === 'SBTS';
+  const isSasComponent = selectedComponentReportSlot === 'SAS';
 
   const getDescription = () => {
-    if (isFormatifComponent) return "Nilai Formatif (NF) adalah nilai harian siswa. Rata-rata NF1-NF3 digunakan untuk SBTS, dan Rata-rata NF1-NF6 digunakan untuk SAS.";
-    if (isSbtsComponent) return "Nilai SBTS (Sumatif Bersama Tengah Semester) adalah nilai ujian tengah semester. Nilai Rapor SBTS dihitung dari gabungan Rata-rata NF (1-3) dan Nilai SBTS.";
-    if (isSasComponent) return "Nilai SAS/SAT (Sumatif Akhir Semester/Tahun) adalah nilai ujian akhir. Nilai Rapor SAS dihitung dari gabungan Rata-rata NF (1-6), Nilai Rapor SBTS, dan Nilai SAS.";
+    const componentName = String(selectedComponentObj?.name || selectedComponentObj?.code || 'komponen ini').trim();
+    if (isFormatifComponent) {
+      return `Nilai ${componentName} diinput per butir. Rata-rata formatif, SBTS, SAS, dan nilai rapor dihitung dari backend (single source of truth).`;
+    }
+    if (isSbtsComponent) {
+      return `Nilai ${componentName} adalah nilai tengah semester. Nilai rapor SBTS mengikuti kalkulasi backend berdasarkan konfigurasi komponen aktif.`;
+    }
+    if (isSasComponent) {
+      return `Nilai ${componentName} adalah nilai akhir semester/tahun. Nilai rapor akhir mengikuti kalkulasi backend berdasarkan konfigurasi komponen aktif.`;
+    }
     return "Input nilai per komponen untuk siswa";
   };
 
   // Derived state for filtered components
   const selectedAssignmentObj = assignments.find(a => a.id.toString() === selectedAssignment);
-  const filteredComponents = selectedAssignmentObj 
+  const filteredComponents = selectedAssignmentObj
     ? gradeComponents.filter(c => c.subjectId === selectedAssignmentObj.subject.id)
-    : [];
+    : gradeComponents;
 
   useEffect(() => {
     fetchInitialData();
   }, []);
+
+  useEffect(() => {
+    try {
+      if (!isFilterRestoreDone) return;
+      if (typeof window === 'undefined' || !window.localStorage) return;
+      window.localStorage.setItem(
+        TEACHER_GRADES_FILTER_STORAGE_KEY,
+        JSON.stringify({
+          academicYear: selectedAcademicYear,
+          semester: selectedSemester,
+          assignment: selectedAssignment,
+          component: selectedComponent,
+        }),
+      );
+    } catch (error) {
+      console.warn('Failed to persist teacher grade filters:', error);
+    }
+  }, [isFilterRestoreDone, selectedAcademicYear, selectedSemester, selectedAssignment, selectedComponent]);
 
   useEffect(() => {
     if (selectedAssignment) {
@@ -88,51 +197,19 @@ export const TeacherGradesPage = () => {
   }, [selectedAssignment]);
 
   useEffect(() => {
+    if (selectedAssignment && selectedAcademicYear) {
+      fetchGradeComponents();
+      return;
+    }
+    setGradeComponents([]);
+    setSelectedComponent('');
+  }, [selectedAssignment, selectedAcademicYear, assignments]);
+
+  useEffect(() => {
     if (selectedAssignment && selectedComponent && selectedAcademicYear && selectedSemester) {
       fetchExistingGrades();
     }
   }, [selectedAssignment, selectedComponent, selectedAcademicYear, selectedSemester]);
-
-  // Helper to calculate Final Score based on weights
-  const calculateFinalScore = (nfScore: number, sbtsScore: number, sasScore: number) => {
-    // Find components and their weights
-    const formativeComp = gradeComponents.find(c => c.subjectId === (selectedAssignmentObj?.subject.id || 0) && c.type === 'FORMATIVE');
-    const midtermComp = gradeComponents.find(c => c.subjectId === (selectedAssignmentObj?.subject.id || 0) && c.type === 'MIDTERM');
-    const finalComp = gradeComponents.find(c => c.subjectId === (selectedAssignmentObj?.subject.id || 0) && c.type === 'FINAL');
-
-    const weightFormatif = formativeComp?.weight || 0;
-    const weightSbts = midtermComp?.weight || 0;
-    const weightSas = finalComp?.weight || 0;
-
-    let totalScore = 0;
-    let totalWeight = 0;
-
-    // Add weighted scores
-    if (weightFormatif > 0) {
-        totalScore += nfScore * (weightFormatif / 100);
-        totalWeight += weightFormatif;
-    }
-    if (weightSbts > 0) {
-        totalScore += sbtsScore * (weightSbts / 100);
-        totalWeight += weightSbts;
-    }
-    if (weightSas > 0) {
-        totalScore += sasScore * (weightSas / 100);
-        totalWeight += weightSas;
-    }
-
-    // Normalize if weights don't sum to 100 (but > 0)
-    if (totalWeight > 0 && totalWeight !== 100) {
-        return (totalScore / totalWeight) * 100;
-    }
-    
-    // Fallback if no weights defined (equal weight 33.3%)
-    if (totalWeight === 0) {
-        return (nfScore + sbtsScore + sasScore) / 3;
-    }
-
-    return totalScore;
-  };
 
   // Auto-fill descriptions for missing entries (defensive fix)
   useEffect(() => {
@@ -154,14 +231,9 @@ export const TeacherGradesPage = () => {
                 if (!isAutoGenerated) return;
 
                 const grade = grades.find(g => g.student_id === student.id);
-                // Ensure we have a SAS score input
-                if (grade && grade.score && !isNaN(parseFloat(grade.score))) {
-                    const sasScore = parseFloat(grade.score);
-                    const avgNf6 = parseFloat((formatifMap[student.id] || 0).toString());
-                    const savedSbts = parseFloat((sbtsMap[student.id] || 0).toString());
-                    
-                    const raporSas = calculateFinalScore(avgNf6, savedSbts, sasScore);
-                    const predicate = calculatePredicate(raporSas, kkm);
+                const report = reportGradeMap[student.id];
+                if (grade && report?.finalScore !== null && report?.finalScore !== undefined) {
+                    const predicate = calculatePredicate(report.finalScore, kkm);
                     const desc = competencySettings[predicate as keyof typeof competencySettings];
                     
                     if (desc && desc !== currentDesc) {
@@ -174,17 +246,32 @@ export const TeacherGradesPage = () => {
             return hasChanges ? next : prev;
         });
     }
-  }, [grades, isSasComponent, competencySettings, students, formatifMap, sbtsMap, kkm, gradeComponents]);
+  }, [grades, isSasComponent, competencySettings, students, reportGradeMap, kkm, gradeComponents]);
 
   const fetchInitialData = async () => {
     try {
       setLoading(true);
+      setIsFilterRestoreDone(false);
       
-      const [ayRes, assignRes, compRes] = await Promise.all([
+      const [ayRes, assignRes] = await Promise.all([
         academicYearService.list({ limit: 100 }),
         teacherAssignmentService.list({ limit: 1000 }),
-        gradeService.getComponents()
       ]);
+
+      let restoredFilter: {
+        academicYear?: string;
+        semester?: 'ODD' | 'EVEN' | '';
+        assignment?: string;
+        component?: string;
+      } | null = null;
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          const raw = window.localStorage.getItem(TEACHER_GRADES_FILTER_STORAGE_KEY);
+          if (raw) restoredFilter = JSON.parse(raw);
+        }
+      } catch (error) {
+        console.warn('Failed to restore teacher grade filters:', error);
+      }
 
       // Handle Academic Years
       const aysResponse = ayRes as { data?: { academicYears?: AcademicYear[] }, academicYears?: AcademicYear[] };
@@ -195,8 +282,13 @@ export const TeacherGradesPage = () => {
             name: ay.name,
             is_active: ay.isActive
         })));
-        const activeAy = ays.find((ay) => ay.isActive);
-        if (activeAy) setSelectedAcademicYear(activeAy.id.toString());
+        const restoredAcademicYear = restoredFilter?.academicYear;
+        if (restoredAcademicYear && ays.some((ay) => ay.id.toString() === restoredAcademicYear)) {
+          setSelectedAcademicYear(restoredAcademicYear);
+        } else {
+          const activeAy = ays.find((ay) => ay.isActive);
+          if (activeAy) setSelectedAcademicYear(activeAy.id.toString());
+        }
       }
 
       // Handle Assignments
@@ -209,13 +301,17 @@ export const TeacherGradesPage = () => {
           return a.class.name.localeCompare(b.class.name);
         });
         setAssignments(sorted);
+        const restoredAssignment = restoredFilter?.assignment;
+        if (restoredAssignment && sorted.some((assignment) => assignment.id.toString() === restoredAssignment)) {
+          setSelectedAssignment(restoredAssignment);
+        }
       }
 
-      // Handle Components
-      const compsResponse = compRes as { data?: GradeComponent[] } | GradeComponent[];
-      const comps = 'data' in compsResponse && Array.isArray(compsResponse.data) ? compsResponse.data : (Array.isArray(compsResponse) ? compsResponse : []);
-      if (Array.isArray(comps)) {
-        setGradeComponents(comps);
+      if (restoredFilter?.component) {
+        setSelectedComponent(restoredFilter.component);
+      }
+      if (restoredFilter?.semester === 'ODD' || restoredFilter?.semester === 'EVEN') {
+        setSelectedSemester(restoredFilter.semester);
       }
 
     } catch (error) {
@@ -223,6 +319,43 @@ export const TeacherGradesPage = () => {
       toast.error('Gagal memuat data awal');
     } finally {
       setLoading(false);
+      setIsFilterRestoreDone(true);
+    }
+  };
+
+  const fetchGradeComponents = async () => {
+    try {
+      const assignment = assignments.find(a => a.id.toString() === selectedAssignment);
+      if (!assignment || !selectedAcademicYear) return;
+
+      const response = await gradeService.getComponents({
+        subject_id: assignment.subject.id,
+        academic_year_id: parseInt(selectedAcademicYear),
+      });
+      const payload = response as { data?: GradeComponent[] } | GradeComponent[];
+      const components =
+        'data' in payload && Array.isArray(payload.data)
+          ? payload.data
+          : (Array.isArray(payload) ? payload : []);
+
+      const sorted = [...components].sort((a, b) => {
+        const aOrder = Number(a.displayOrder ?? 999);
+        const bOrder = Number(b.displayOrder ?? 999);
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return String(a.name || '').localeCompare(String(b.name || ''));
+      });
+
+      setGradeComponents(sorted);
+      setSelectedComponent((previous) => {
+        if (!previous) return previous;
+        const exists = sorted.some((item) => item.id.toString() === previous);
+        return exists ? previous : '';
+      });
+    } catch (error) {
+      console.error('Fetch grade components error:', error);
+      toast.error('Gagal memuat komponen nilai dinamis');
+      setGradeComponents([]);
+      setSelectedComponent('');
     }
   };
 
@@ -267,7 +400,7 @@ export const TeacherGradesPage = () => {
             // Initialize grades
             const initialGrades = studentsData.map((student: User) => ({
                 student_id: student.id,
-                nf1: '', nf2: '', nf3: '', nf4: '', nf5: '', nf6: '',
+                formativeSeriesInput: '',
                 score: ''
             }));
             setGrades(initialGrades);
@@ -292,60 +425,58 @@ export const TeacherGradesPage = () => {
       );
 
       const allGradesResponse = response as { data?: any[] } | any[];
-      const allGrades = ('data' in allGradesResponse && Array.isArray(allGradesResponse.data) ? allGradesResponse.data : (Array.isArray(allGradesResponse) ? allGradesResponse : [])) as any[];
-      
-      const newFormatif: Record<number, number> = {};
-      const newSbts: Record<number, number> = {};
-
-      allGrades.forEach((g: any) => {
-        // Check component type
-        // The API returns component object (Prisma default)
-        const type = g.component?.type || g.grade_component?.type;
-        const studentId = g.studentId || g.student_id;
-        
-        // Populate Formatif Map (using score which is avg of NF1-3 usually, but here we might want actual NFs if needed)
-        // Actually, we need NF values for calculation. 
-        // But for cross-component access (e.g. SBTS needs Avg NF), we usually rely on saved score or recalculate.
-        // Let's assume Formatif Score IS the average.
-        if (type === 'FORMATIVE' || type === 'FORMATIF') {
-             // We can re-calculate avg if we have NFs, or trust the score.
-             // Let's calculate from NFs if available for accuracy
-             const nfs = [g.nf1, g.nf2, g.nf3, g.nf4, g.nf5, g.nf6].filter(n => n !== null && n !== undefined).map(n => Number(n));
-             if (nfs.length > 0) {
-                 newFormatif[studentId] = nfs.reduce((a, b) => a + b, 0) / nfs.length;
-             } else {
-                 newFormatif[studentId] = g.score;
-             }
-        }
-
-        if (type === 'MIDTERM') {
-            newSbts[studentId] = g.score;
+      const rawGrades = ('data' in allGradesResponse && Array.isArray(allGradesResponse.data) ? allGradesResponse.data : (Array.isArray(allGradesResponse) ? allGradesResponse : [])) as any[];
+      const latestGradesByKey = new Map<string, any>();
+      rawGrades.forEach((row: any) => {
+        const studentId = Number(row?.studentId ?? row?.student_id);
+        const subjectId = Number(row?.subjectId ?? row?.subject_id);
+        const academicYearId = Number(row?.academicYearId ?? row?.academic_year_id);
+        const componentId = Number(row?.componentId ?? row?.component_id);
+        const semesterKey = String(row?.semester || '');
+        if (!studentId || !subjectId || !academicYearId || !componentId || !semesterKey) return;
+        const key = `${studentId}:${subjectId}:${academicYearId}:${componentId}:${semesterKey}`;
+        const currentId = Number(row?.id || 0);
+        const previous = latestGradesByKey.get(key);
+        const previousId = Number(previous?.id || 0);
+        if (!previous || currentId >= previousId) {
+          latestGradesByKey.set(key, row);
         }
       });
+      const allGrades = latestGradesByKey.size > 0 ? Array.from(latestGradesByKey.values()) : rawGrades;
+      
+      try {
+          const reportRes = await gradeService.getReportGrades({
+              class_id: assignment.class.id,
+              subject_id: assignment.subject.id,
+              academic_year_id: parseInt(selectedAcademicYear),
+              semester: selectedSemester
+          });
+          const reportResponse = reportRes as { data?: any[] } | any[];
+          const reportData = 'data' in reportResponse && Array.isArray(reportResponse.data) ? reportResponse.data : (Array.isArray(reportResponse) ? reportResponse : []);
+          const nextReportMap: Record<number, StudentReportGrade> = {};
+          const nextDescriptions: Record<number, string> = {};
 
-      setFormatifMap(newFormatif);
-      setSbtsMap(newSbts);
-
-      if (isSasComponent) {
-          try {
-              const reportRes = await gradeService.getReportGrades({
-                  class_id: assignment.class.id,
-                  academic_year_id: parseInt(selectedAcademicYear),
-                  semester: selectedSemester
+          if (Array.isArray(reportData)) {
+              reportData.forEach((r: any) => {
+                  if (!r?.studentId) return;
+                  nextReportMap[r.studentId] = {
+                      studentId: Number(r.studentId),
+                      formatifScore: r.formatifScore ?? null,
+                      sbtsScore: r.sbtsScore ?? null,
+                      sasScore: r.sasScore ?? null,
+                      finalScore: r.finalScore ?? null,
+                      description: r.description ?? null,
+                  };
+                  if (r.description) {
+                      nextDescriptions[r.studentId] = r.description;
+                  }
               });
-              const reportResponse = reportRes as { data?: any[] } | any[];
-              const reportData = 'data' in reportResponse && Array.isArray(reportResponse.data) ? reportResponse.data : (Array.isArray(reportResponse) ? reportResponse : []);
-              const newDescriptions: Record<number, string> = {};
-              if (Array.isArray(reportData)) {
-                  reportData.forEach((r: any) => {
-                      if (r.description) newDescriptions[r.studentId] = r.description;
-                  });
-              }
-              setDescriptions(newDescriptions);
-          } catch (e) {
-              console.error('Error fetching report grades', e);
           }
-      } else {
+          setReportGradeMap(nextReportMap);
+          setDescriptions(isSasComponent ? nextDescriptions : {});
+      } catch (e) {
+          console.error('Error fetching report grades', e);
+          setReportGradeMap({});
           setDescriptions({});
       }
 
@@ -362,17 +493,44 @@ export const TeacherGradesPage = () => {
             (g.component?.type === 'FORMATIVE' || g.component?.type === 'FORMATIF')
         );
 
-        const prev = prevGrades.find(g => g.student_id === grade.student_id);
-        
         return {
             ...grade,
             score: existing ? existing.score.toString() : '',
-            nf1: formatifData?.nf1?.toString() || existing?.nf1?.toString() || prev?.nf1 || '',
-            nf2: formatifData?.nf2?.toString() || existing?.nf2?.toString() || prev?.nf2 || '',
-            nf3: formatifData?.nf3?.toString() || existing?.nf3?.toString() || prev?.nf3 || '',
-            nf4: formatifData?.nf4?.toString() || existing?.nf4?.toString() || prev?.nf4 || '',
-            nf5: formatifData?.nf5?.toString() || existing?.nf5?.toString() || prev?.nf5 || '',
-            nf6: formatifData?.nf6?.toString() || existing?.nf6?.toString() || prev?.nf6 || '',
+            formativeSeriesInput: (() => {
+                const dynamicSeries = Array.isArray(formatifData?.formativeSeries)
+                  ? formatifData.formativeSeries
+                  : Array.isArray(existing?.formativeSeries)
+                    ? existing.formativeSeries
+                    : [];
+                if (dynamicSeries.length > 0) {
+                    if (isLegacyZeroPaddedSeries(dynamicSeries)) {
+                      return '';
+                    }
+                    return dynamicSeries.join(', ');
+                }
+                const legacyValues = [
+                  formatifData?.nf1,
+                  formatifData?.nf2,
+                  formatifData?.nf3,
+                  formatifData?.nf4,
+                  formatifData?.nf5,
+                  formatifData?.nf6,
+                  existing?.nf1,
+                  existing?.nf2,
+                  existing?.nf3,
+                  existing?.nf4,
+                  existing?.nf5,
+                  existing?.nf6,
+                ];
+                const legacySeries = normalizeLegacySeriesValues(legacyValues);
+                if (isLegacyZeroPaddedSeries(legacySeries)) {
+                  return '';
+                }
+                if (legacySeries.length > 0) {
+                  return legacySeries.join(', ');
+                }
+                return '';
+            })(),
         };
       }));
 
@@ -388,65 +546,88 @@ export const TeacherGradesPage = () => {
     return 'D';
   };
 
-  const handleScoreChange = (studentId: number, field: 'score' | 'nf1' | 'nf2' | 'nf3' | 'nf4' | 'nf5' | 'nf6', value: string) => {
+  const handleScoreChange = (studentId: number, value: string) => {
     if (value !== '' && (isNaN(Number(value)) || Number(value) < 0 || Number(value) > 100)) {
       return;
     }
 
     setGrades(prev => prev.map(grade => {
       if (grade.student_id === studentId) {
-        const updated = { ...grade, [field]: value };
-        
-        // Auto-calculate average for Formatif
-        if (isFormatifComponent && field.startsWith('nf')) {
-            const nfValues = [
-                field === 'nf1' ? value : updated.nf1,
-                field === 'nf2' ? value : updated.nf2,
-                field === 'nf3' ? value : updated.nf3,
-                field === 'nf4' ? value : updated.nf4,
-                field === 'nf5' ? value : updated.nf5,
-                field === 'nf6' ? value : updated.nf6,
-            ].filter(v => v !== '' && v !== undefined).map(v => parseFloat(v as string));
-
-            if (nfValues.length > 0) {
-                const avg = nfValues.reduce((a, b) => a + b, 0) / nfValues.length;
-                updated.score = avg.toFixed(2);
-            } else {
-                updated.score = '';
-            }
-        }
-        
-        // Auto-fill Description for SAS
-        if (isSasComponent && field === 'score') {
-            const sasScore = parseFloat(value || '0');
-            const avgNf6 = parseFloat((formatifMap[studentId] || 0).toString());
-            const savedSbts = parseFloat((sbtsMap[studentId] || 0).toString());
-            
-            // Rapor SAS: Weighted Calculation
-            const raporSas = calculateFinalScore(avgNf6, savedSbts, sasScore);
-            
-            const predicate = calculatePredicate(raporSas, kkm);
-            const desc = competencySettings[predicate as keyof typeof competencySettings];
-            
-            if (desc) {
-                setDescriptions(prevDesc => {
-                     // Only update if it was empty or auto-generated before (to respect manual edits)
-                     // But here, user is actively typing score, so they expect the description to update.
-                     // The useEffect handles the "initial load" or "bulk update" logic.
-                     // Here, if they change score, we should update description IF it's not custom.
-                     // For simplicity and better UX: if they change score, update description.
-                     // If they want custom, they edit description AFTER score.
-                    return {
-                        ...prevDesc,
-                        [studentId]: desc
-                    };
-                });
-            }
-        }
-        
-        return updated;
+        return { ...grade, score: value };
       }
       return grade;
+    }));
+  };
+
+  const getStudentFormativeSeriesValues = (studentId: number) => {
+    const grade = grades.find((item) => item.student_id === studentId);
+    if (!grade) return [];
+    const parsed = parseFormativeSeriesInput(grade.formativeSeriesInput || '');
+    if (parsed.invalid) return [];
+    return parsed.values;
+  };
+
+  const applyFormativeSeriesValues = (studentId: number, values: number[]) => {
+    const sanitized = values
+      .map((item) => Number(item))
+      .filter((item) => Number.isFinite(item) && item >= 0 && item <= 100);
+    const average = averageValues(sanitized);
+    setGrades((prev) =>
+      prev.map((grade) => {
+        if (grade.student_id !== studentId) return grade;
+        return {
+          ...grade,
+          formativeSeriesInput: formatSeriesValues(sanitized),
+          score: average === null ? '' : average.toFixed(2),
+        };
+      }),
+    );
+  };
+
+  const handleFormativeValueChange = (studentId: number, index: number, rawValue: string) => {
+    if (rawValue.trim() === '') {
+      const current = getStudentFormativeSeriesValues(studentId);
+      applyFormativeSeriesValues(
+        studentId,
+        current.filter((_, currentIndex) => currentIndex !== index),
+      );
+      return;
+    }
+    const parsed = Number(rawValue.replace(',', '.'));
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) return;
+    const current = getStudentFormativeSeriesValues(studentId);
+    const next = [...current];
+    next[index] = parsed;
+    applyFormativeSeriesValues(studentId, next);
+  };
+
+  const handleRemoveFormativeValue = (studentId: number, index: number) => {
+    const current = getStudentFormativeSeriesValues(studentId);
+    const currentValue = current[index];
+    if (currentValue !== undefined && currentValue !== null) {
+      const confirmed = window.confirm(
+        `Nilai ${currentValue} akan dihapus dari entri formatif. Lanjutkan?`,
+      );
+      if (!confirmed) return;
+    }
+    applyFormativeSeriesValues(
+      studentId,
+      current.filter((_, currentIndex) => currentIndex !== index),
+    );
+  };
+
+  const handleAddFormativeValue = (studentId: number) => {
+    const raw = (formativeNewScoreDraft[studentId] || '').trim();
+    const parsed = Number(raw.replace(',', '.'));
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+      toast.error('Nilai formatif baru harus angka 0-100.');
+      return;
+    }
+    const current = getStudentFormativeSeriesValues(studentId);
+    applyFormativeSeriesValues(studentId, [...current, parsed]);
+    setFormativeNewScoreDraft((prev) => ({
+      ...prev,
+      [studentId]: '',
     }));
   };
 
@@ -491,13 +672,9 @@ export const TeacherGradesPage = () => {
         students.forEach(student => {
             const grade = grades.find(g => g.student_id === student.id);
             if (grade) {
-                // Ensure we use valid numbers
-                const sasScore = parseFloat(grade.score || '0');
-                const avgNf6 = parseFloat((formatifMap[student.id] || 0).toString());
-                const savedSbts = parseFloat((sbtsMap[student.id] || 0).toString());
-                
-                const raporSas = calculateFinalScore(avgNf6, savedSbts, sasScore);
-                const predicate = calculatePredicate(raporSas, kkm);
+                const report = reportGradeMap[student.id];
+                if (!report || report.finalScore === null || report.finalScore === undefined) return;
+                const predicate = calculatePredicate(report.finalScore, kkm);
                 const desc = competencySettings[predicate as keyof typeof competencySettings];
                 
                 // Update if description exists and is different
@@ -561,20 +738,33 @@ export const TeacherGradesPage = () => {
     let gradesPayload: any[] = [];
 
     if (isFormatifComponent) {
-        gradesPayload = grades.map(g => ({
-            student_id: g.student_id,
-            subject_id: assignment.subject.id,
-            academic_year_id: parseInt(selectedAcademicYear),
-            grade_component_id: parseInt(selectedComponent),
-            semester: selectedSemester,
-            score: parseFloat(g.score || '0'),
-            nf1: g.nf1 === '' ? null : (g.nf1 ? parseFloat(g.nf1) : undefined),
-            nf2: g.nf2 === '' ? null : (g.nf2 ? parseFloat(g.nf2) : undefined),
-            nf3: g.nf3 === '' ? null : (g.nf3 ? parseFloat(g.nf3) : undefined),
-            nf4: g.nf4 === '' ? null : (g.nf4 ? parseFloat(g.nf4) : undefined),
-            nf5: g.nf5 === '' ? null : (g.nf5 ? parseFloat(g.nf5) : undefined),
-            nf6: g.nf6 === '' ? null : (g.nf6 ? parseFloat(g.nf6) : undefined),
-        }));
+        gradesPayload = grades.map(g => {
+            const parsedSeries = parseFormativeSeriesInput(g.formativeSeriesInput || '');
+            if (parsedSeries.invalid) {
+                throw new Error('Daftar nilai formatif harus berupa angka 0-100, dipisahkan koma.');
+            }
+            const seriesValues = parsedSeries.values;
+            let scoreValue: number | null = null;
+            if (seriesValues.length > 0) {
+                scoreValue = seriesValues.reduce((acc, value) => acc + value, 0) / seriesValues.length;
+            } else if (g.score !== '') {
+                const parsed = Number(g.score);
+                if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+                    throw new Error('Nilai formatif harus berupa angka 0-100.');
+                }
+                scoreValue = parsed;
+            }
+
+            return {
+                student_id: g.student_id,
+                subject_id: assignment.subject.id,
+                academic_year_id: parseInt(selectedAcademicYear),
+                grade_component_id: parseInt(selectedComponent),
+                semester: selectedSemester,
+                score: scoreValue,
+                formative_series: seriesValues,
+            };
+        });
     } else {
         gradesPayload = grades.map(grade => ({
             student_id: grade.student_id,
@@ -712,13 +902,7 @@ export const TeacherGradesPage = () => {
                                 >
                                     <option value="">Pilih Komponen</option>
                                     {filteredComponents.map(c => {
-                                        let displayName = c.name;
-                                        const nameLower = c.name.toLowerCase();
-                                        if (c.type === 'FORMATIVE' || nameLower.includes('formatif')) displayName = 'Formatif (40%)';
-                                        else if (c.type === 'MIDTERM' || nameLower.includes('tengah semester')) displayName = 'SBTS (Sumatif Bersama Tengah Semester) 30%';
-                                        else if (c.type === 'FINAL' || nameLower.includes('akhir semester')) displayName = 'SAS/SAT (Sumatif Akhir Semester/Tahun) 30%';
-                                        
-                                        return <option key={c.id} value={c.id}>{displayName}</option>;
+                                        return <option key={c.id} value={c.id}>{buildComponentDisplayLabel(c)}</option>;
                                     })}
                                 </select>
                                 {!selectedAssignment && selectedSemester && (
@@ -743,7 +927,7 @@ export const TeacherGradesPage = () => {
       </div>
 
       {/* Table */}
-      {selectedAcademicYear && selectedAssignment && selectedComponent && (
+	      {selectedAcademicYear && selectedAssignment && selectedComponent && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <div className="overflow-x-auto">
                   <table className="w-full border-collapse">
@@ -755,21 +939,19 @@ export const TeacherGradesPage = () => {
                               
                               {isFormatifComponent ? (
                                   <>
-                                      {['NF1', 'NF2', 'NF3', 'NF4', 'NF5', 'NF6'].map(nf => (
-                                          <th key={nf} className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">{nf}</th>
-                                      ))}
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">Rerata SBTS (NF1-3)</th>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-green-50">Rerata SAS (NF1-6)</th>
+                                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entri Formatif (Dinamis)</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ SBTS</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-green-50">x̄ SAS</th>
                                   </>
                               ) : isSbtsComponent ? (
                                   <>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">Rata-rata NF</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ NF</th>
                                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai SBTS</th>
                                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-yellow-50">Nilai Rapor SBTS</th>
                                   </>
                               ) : isSasComponent ? (
                                   <>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">Rata-rata NF</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ NF</th>
                                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Nilai SBTS</th>
                                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai SAS</th>
                                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-yellow-50">Nilai Rapor SAS</th>
@@ -786,74 +968,135 @@ export const TeacherGradesPage = () => {
                           {loading ? (
                               <tr><td colSpan={12} className="text-center py-8">Memuat...</td></tr>
                           ) : students.length > 0 ? (
-                              students.map((student, idx) => {
+	                              students.map((student, idx) => {
                                   const grade = grades.find(g => g.student_id === student.id);
                                   if (!grade) return null;
                                   
-                                  // Helper calculations
-                                  const getAvgNf3 = () => {
-                                      // Or better, filter only non-empty strings from the inputs
-                                      const validNfs = [grade.nf1, grade.nf2, grade.nf3].filter(v => v !== '' && v !== undefined && v !== null).map(v => parseFloat(v as string));
-                                      if (validNfs.length === 0) return 0;
-                                      return validNfs.reduce((a, b) => a + b, 0) / validNfs.length;
-                                  };
+                                  const report = reportGradeMap[student.id];
+	                                  const backendFormative = report?.formatifScore ?? null;
+	                                  const backendSbts = report?.sbtsScore ?? null;
+	                                  const backendFinal = report?.finalScore ?? null;
+	                                  const currentScore = (() => {
+	                                    const parsed = Number(grade.score);
+	                                    return Number.isFinite(parsed) ? parsed : null;
+	                                  })();
+                                  const rowStatusScore =
+                                    backendFinal !== null && backendFinal !== undefined
+                                      ? backendFinal
+                                      : parseFloat(grade.score || '0');
+                                  const formativeParsed = parseFormativeSeriesInput(grade.formativeSeriesInput || '');
+                                  const hasDraftFormativeValues =
+                                    !formativeParsed.invalid && formativeParsed.values.length > 0;
+                                  const draftFormativeAverage =
+                                    hasDraftFormativeValues
+                                      ? averageValues(formativeParsed.values)
+                                      : null;
+                                  const normalizedBackendFormative =
+                                    !hasDraftFormativeValues && Number(backendFormative) === 0
+                                      ? null
+                                      : backendFormative;
+                                  const previewFormative = draftFormativeAverage ?? normalizedBackendFormative;
+                                  const displayFormative =
+                                    previewFormative !== null && previewFormative !== undefined
+                                      ? previewFormative.toFixed(2)
+                                      : '-';
+	                                  const previewSbtsFinal = (() => {
+	                                    if (!isSbtsComponent) return backendFinal;
+	                                    const values = [previewFormative, currentScore]
+	                                      .map((value) => Number(value))
+	                                      .filter((value) => Number.isFinite(value));
+	                                    const avg = averageValues(values);
+	                                    return avg === null ? backendFinal : avg;
+	                                  })();
+	                                  const previewSasFinal = (() => {
+	                                    if (!isSasComponent) return backendFinal;
+	                                    const values = [previewFormative, backendSbts, currentScore]
+	                                      .map((value) => Number(value))
+	                                      .filter((value) => Number.isFinite(value));
+	                                    const avg = averageValues(values);
+	                                    return avg === null ? backendFinal : avg;
+	                                  })();
+	                                  const rowStatusScorePreview =
+	                                    isSbtsComponent
+	                                      ? previewSbtsFinal ?? 0
+	                                      : isSasComponent
+	                                        ? previewSasFinal ?? 0
+	                                        : rowStatusScore;
 
-                                  const getAvgNf6 = () => {
-                                      const validNfs = [grade.nf1, grade.nf2, grade.nf3, grade.nf4, grade.nf5, grade.nf6].filter(v => v !== '' && v !== undefined && v !== null).map(v => parseFloat(v as string));
-                                      if (validNfs.length === 0) return 0;
-                                      return validNfs.reduce((a, b) => a + b, 0) / validNfs.length;
-                                  };
-
-                                  const avgNf3 = getAvgNf3();
-                                  const avgNf6 = getAvgNf6();
-                                  
-                                  // For SBTS/SAS view, we use the stored map or the current calculation if available
-                                  const displayAvgNf3 = avgNf3 > 0 ? avgNf3.toFixed(2) : (formatifMap[student.id] ? formatifMap[student.id].toFixed(2) : '-');
-                                  // SAS view usually needs full average
-                                  const displayAvgNf6 = avgNf6 > 0 ? avgNf6.toFixed(2) : (formatifMap[student.id] ? formatifMap[student.id].toFixed(2) : '-');
-
-                                  const sbtsScore = parseFloat(grade.score || '0');
-                                  const savedSbts = sbtsMap[student.id] || 0;
-                                  
-                                  // Rapor Calculations
-                                  const raporSbts = isSbtsComponent ? ((avgNf3 + sbtsScore) / 2) : 0;
-                                  
-                                  // Rapor SAS: (AvgNF + SBTS + SAS) / 3
-                                  // For SAS view, grade.score is SAS Score. SBTS is from map.
-                                  const sasScore = parseFloat(grade.score || '0');
-                                  const raporSas = isSasComponent ? ((avgNf6 + savedSbts + sasScore) / 3) : 0;
-
-                                  return (
+	                                  return (
                                       <tr key={student.id} className="hover:bg-gray-50">
                                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
                                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{student.nisn}</td>
                                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.full_name}</td>
                                           
-                                          {isFormatifComponent ? (
-                                              <>
-                                                  {['nf1', 'nf2', 'nf3', 'nf4', 'nf5', 'nf6'].map(nf => (
-                                                      <td key={nf} className="px-2 py-4 text-center">
-                                                          <input 
-                                                              type="number" 
-                                                              name={`${nf}-${student.id}`}
-                                                              id={`${nf}-${student.id}`}
-                                                              min="0" max="100" 
-                                                              className="w-16 px-2 py-1 border border-gray-300 rounded text-center focus:ring-blue-500 focus:border-blue-500"
-                                                              value={(grade as any)[nf] || ''}
-                                                              onChange={(e) => handleScoreChange(student.id, nf as any, e.target.value)}
-                                                          />
-                                                      </td>
-                                                  ))}
-                                                  <td className={`px-6 py-4 whitespace-nowrap text-center text-sm font-medium ${avgNf3 < kkm && avgNf3 > 0 ? 'text-red-600 font-bold' : 'text-gray-900'} bg-blue-50`}>
-                                                      {avgNf3 > 0 ? avgNf3.toFixed(2) : '-'}
+	                                          {isFormatifComponent ? (
+	                                              <>
+		                                                  <td className="px-6 py-4">
+		                                                      <div className="space-y-2 min-w-[280px]">
+		                                                        <div className="flex flex-wrap gap-2">
+		                                                          {(formativeParsed.values.length > 0 ? formativeParsed.values : [null]).map((item, itemIndex) => (
+		                                                            <div key={`${student.id}-${itemIndex}`} className="relative">
+		                                                              <input
+		                                                                type="number"
+		                                                                min={0}
+		                                                                max={100}
+		                                                                value={item ?? ''}
+		                                                                onChange={(e) =>
+		                                                                  handleFormativeValueChange(student.id, itemIndex, e.target.value)
+		                                                                }
+		                                                                className="w-16 px-2 py-1 pr-5 border border-gray-300 rounded text-xs text-center focus:ring-blue-500 focus:border-blue-500"
+		                                                              />
+		                                                              <button
+		                                                                type="button"
+		                                                                onClick={() => handleRemoveFormativeValue(student.id, itemIndex)}
+		                                                                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] leading-none flex items-center justify-center hover:bg-red-600"
+		                                                                title="Hapus entri"
+		                                                              >
+		                                                                ×
+		                                                              </button>
+		                                                            </div>
+		                                                          ))}
+		                                                        </div>
+		                                                        <div className="flex items-center gap-2">
+		                                                          <input
+	                                                            type="number"
+	                                                            min={0}
+	                                                            max={100}
+	                                                            value={formativeNewScoreDraft[student.id] || ''}
+	                                                            onChange={(e) =>
+	                                                              setFormativeNewScoreDraft((prev) => ({
+	                                                                ...prev,
+	                                                                [student.id]: e.target.value,
+	                                                              }))
+	                                                            }
+	                                                            placeholder="Nilai baru 0-100"
+	                                                            className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:ring-blue-500 focus:border-blue-500"
+	                                                          />
+	                                                          <button
+	                                                            type="button"
+	                                                            onClick={() => handleAddFormativeValue(student.id)}
+	                                                            className="px-2 py-1 text-xs rounded border border-blue-200 text-blue-700 hover:bg-blue-50"
+	                                                          >
+	                                                            + Tambah
+	                                                          </button>
+	                                                        </div>
+	                                                      </div>
+		                                                      <p className={`mt-1 text-[11px] ${formativeParsed.invalid ? 'text-red-600' : 'text-gray-500'}`}>
+		                                                        {formativeParsed.invalid
+		                                                          ? 'Format tidak valid. Gunakan angka 0-100 dipisahkan koma.'
+		                                                          : `${formativeParsed.values.length || 1} kotak entri`}
+	                                                      </p>
+		                                                  </td>
+                                                  <td className={`px-6 py-4 whitespace-nowrap text-center text-sm font-medium ${(backendFormative ?? 0) < kkm && backendFormative !== null ? 'text-red-600 font-bold' : 'text-gray-900'} bg-blue-50`}>
+                                                      {displayFormative}
                                                   </td>
-                                                  <td className={`px-6 py-4 whitespace-nowrap text-center text-sm font-medium ${avgNf6 < kkm && avgNf6 > 0 ? 'text-red-600 font-bold' : 'text-gray-900'} bg-green-50`}>
-                                                      {avgNf6 > 0 && (grade.nf4 || grade.nf5 || grade.nf6) ? avgNf6.toFixed(2) : '-'}
+                                                  <td className={`px-6 py-4 whitespace-nowrap text-center text-sm font-medium ${(backendFormative ?? 0) < kkm && backendFormative !== null ? 'text-red-600 font-bold' : 'text-gray-900'} bg-green-50`}>
+                                                      {displayFormative}
                                                   </td>
                                               </>
                                           ) : isSbtsComponent ? (
                                               <>
-                                                  <td className={`px-6 py-4 whitespace-nowrap text-center text-sm ${parseFloat(displayAvgNf3) < kkm ? 'text-red-600 font-bold' : 'text-gray-500'} bg-blue-50`}>{displayAvgNf3}</td>
+	                                                  <td className={`px-6 py-4 whitespace-nowrap text-center text-sm ${(backendFormative ?? 0) < kkm && backendFormative !== null ? 'text-red-600 font-bold' : 'text-gray-500'} bg-blue-50`}>{displayFormative}</td>
                                                   <td className="px-6 py-4 whitespace-nowrap text-center">
                                                       <input 
                                                           type="number" 
@@ -862,17 +1105,17 @@ export const TeacherGradesPage = () => {
                                                           min="0" max="100" 
                                                           className="w-20 px-2 py-1 border border-gray-300 rounded text-center focus:ring-blue-500 focus:border-blue-500"
                                                           value={grade.score}
-                                                          onChange={(e) => handleScoreChange(student.id, 'score', e.target.value)}
+                                                          onChange={(e) => handleScoreChange(student.id, e.target.value)}
                                                       />
                                                   </td>
-                                                  <td className={`px-6 py-4 whitespace-nowrap text-center text-sm font-bold ${raporSbts < kkm && grade.score ? 'text-red-600' : 'text-gray-900'} bg-yellow-50`}>
-                                                      {grade.score ? raporSbts.toFixed(2) : '-'}
-                                                  </td>
+	                                                  <td className={`px-6 py-4 whitespace-nowrap text-center text-sm font-bold ${(previewSbtsFinal ?? 0) < kkm && previewSbtsFinal !== null ? 'text-red-600' : 'text-gray-900'} bg-yellow-50`}>
+	                                                      {previewSbtsFinal !== null && previewSbtsFinal !== undefined ? previewSbtsFinal.toFixed(2) : '-'}
+	                                                  </td>
                                               </>
                                           ) : isSasComponent ? (
                                               <>
-                                                  <td className={`px-6 py-4 whitespace-nowrap text-center text-sm ${parseFloat(displayAvgNf6) < kkm ? 'text-red-600 font-bold' : 'text-gray-500'} bg-blue-50`}>{displayAvgNf6}</td>
-                                                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500 bg-gray-50">{savedSbts || '-'}</td>
+                                                  <td className={`px-6 py-4 whitespace-nowrap text-center text-sm ${(backendFormative ?? 0) < kkm && backendFormative !== null ? 'text-red-600 font-bold' : 'text-gray-500'} bg-blue-50`}>{displayFormative}</td>
+	                                                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500 bg-gray-50">{backendSbts !== null && backendSbts !== undefined ? backendSbts.toFixed(2) : '-'}</td>
                                                   <td className="px-6 py-4 whitespace-nowrap text-center">
                                                       <input 
                                                           type="number" 
@@ -881,12 +1124,12 @@ export const TeacherGradesPage = () => {
                                                           min="0" max="100" 
                                                           className="w-20 px-2 py-1 border border-gray-300 rounded text-center focus:ring-blue-500 focus:border-blue-500"
                                                           value={grade.score}
-                                                          onChange={(e) => handleScoreChange(student.id, 'score', e.target.value)}
+                                                          onChange={(e) => handleScoreChange(student.id, e.target.value)}
                                                       />
                                                   </td>
-                                                  <td className={`px-6 py-4 whitespace-nowrap text-center text-sm font-bold ${raporSas < kkm && grade.score ? 'text-red-600' : 'text-gray-900'} bg-yellow-50`}>
-                                                      {grade.score ? raporSas.toFixed(2) : '-'}
-                                                  </td>
+	                                                  <td className={`px-6 py-4 whitespace-nowrap text-center text-sm font-bold ${(previewSasFinal ?? 0) < kkm && previewSasFinal !== null ? 'text-red-600' : 'text-gray-900'} bg-yellow-50`}>
+	                                                      {previewSasFinal !== null && previewSasFinal !== undefined ? previewSasFinal.toFixed(2) : '-'}
+	                                                  </td>
                                                   <td className="px-6 py-4 whitespace-nowrap text-center">
                                                        <textarea 
                                                           name={`description-${student.id}`}
@@ -908,17 +1151,15 @@ export const TeacherGradesPage = () => {
                                                       min="0" max="100" 
                                                       className="w-20 px-2 py-1 border border-gray-300 rounded text-center focus:ring-blue-500 focus:border-blue-500"
                                                       value={grade.score}
-                                                      onChange={(e) => handleScoreChange(student.id, 'score', e.target.value)}
+                                                      onChange={(e) => handleScoreChange(student.id, e.target.value)}
                                                   />
                                               </td>
                                           )}
                                           
                                           <td className="px-6 py-4 whitespace-nowrap text-center">
-                                              {getStatusBadge(
-                                                  isSbtsComponent ? raporSbts :
-                                                  isSasComponent ? raporSas :
-                                                  parseFloat(grade.score || '0')
-                                              )}
+	                                              {getStatusBadge(
+	                                                  rowStatusScorePreview
+	                                              )}
                                           </td>
                                       </tr>
                                   );

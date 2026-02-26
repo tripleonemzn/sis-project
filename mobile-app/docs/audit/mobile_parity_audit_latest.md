@@ -1,12 +1,12 @@
 # Mobile Parity Audit (All Roles)
 
-Generated: 2026-02-21T23:38:47.481Z
+Generated: 2026-02-25T01:14:25.046Z
 
 ## Ringkasan per Role
 
 | Role | Total | Native Only | Native + Web Fallback | Web Bridge Route | Route Tree Punya openURL |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| ADMIN | 29 | 29 | 0 | 0 | 0 |
+| ADMIN | 31 | 31 | 0 | 0 | 0 |
 | CALON_SISWA | 2 | 2 | 0 | 0 | 0 |
 | EXAMINER | 4 | 4 | 0 | 0 | 0 |
 | EXTRACURRICULAR_TUTOR | 3 | 3 | 0 | 0 | 0 |

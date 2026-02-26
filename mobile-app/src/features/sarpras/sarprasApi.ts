@@ -3,6 +3,9 @@ import {
   SarprasBudgetLpjBundle,
   SarprasBudgetRequest,
   SarprasInventoryItem,
+  SarprasLibraryBookLoan,
+  SarprasLibraryClassOption,
+  SarprasLibraryLoanSettings,
   SarprasLpjInvoice,
   SarprasLpjItem,
   SarprasRoom,
@@ -22,12 +25,15 @@ export const sarprasApi = {
     return Array.isArray(response.data?.data) ? response.data.data : [];
   },
 
-  async createRoomCategory(payload: { name: string; description?: string }) {
+  async createRoomCategory(payload: { name: string; description?: string; inventoryTemplateKey?: string }) {
     const response = await apiClient.post<ApiEnvelope<SarprasRoomCategory>>('/inventory/categories', payload);
     return response.data?.data;
   },
 
-  async updateRoomCategory(categoryId: number, payload: Partial<{ name: string; description: string }>) {
+  async updateRoomCategory(
+    categoryId: number,
+    payload: Partial<{ name: string; description: string; inventoryTemplateKey: string }>,
+  ) {
     const response = await apiClient.put<ApiEnvelope<SarprasRoomCategory>>(`/inventory/categories/${categoryId}`, payload);
     return response.data?.data;
   },
@@ -96,6 +102,7 @@ export const sarprasApi = {
     price?: number;
     source?: string;
     description?: string;
+    attributes?: Record<string, unknown>;
   }) {
     const response = await apiClient.post<ApiEnvelope<SarprasInventoryItem>>('/inventory/inventory', payload);
     return response.data?.data;
@@ -115,6 +122,7 @@ export const sarprasApi = {
       price: number;
       source: string;
       description: string;
+      attributes: Record<string, unknown>;
     }>,
   ) {
     const response = await apiClient.put<ApiEnvelope<SarprasInventoryItem>>(`/inventory/inventory/${itemId}`, payload);
@@ -123,6 +131,71 @@ export const sarprasApi = {
 
   async removeInventory(itemId: number) {
     const response = await apiClient.delete<ApiEnvelope<null>>(`/inventory/inventory/${itemId}`);
+    return response.data?.success;
+  },
+
+  async listLibraryLoanClassOptions() {
+    const response = await apiClient.get<ApiEnvelope<SarprasLibraryClassOption[]>>('/inventory/library-loans/classes');
+    return Array.isArray(response.data?.data) ? response.data.data : [];
+  },
+
+  async listLibraryBookLoans(params?: { q?: string }) {
+    const response = await apiClient.get<ApiEnvelope<SarprasLibraryBookLoan[]>>('/inventory/library-loans', {
+      params: {
+        q: params?.q || undefined,
+      },
+    });
+    return Array.isArray(response.data?.data) ? response.data.data : [];
+  },
+
+  async getLibraryLoanSettings() {
+    const response = await apiClient.get<ApiEnvelope<SarprasLibraryLoanSettings>>('/inventory/library-loans/settings');
+    return response.data?.data;
+  },
+
+  async updateLibraryLoanSettings(payload: { finePerDay: number }) {
+    const response = await apiClient.put<ApiEnvelope<SarprasLibraryLoanSettings>>(
+      '/inventory/library-loans/settings',
+      payload,
+    );
+    return response.data?.data;
+  },
+
+  async createLibraryBookLoan(payload: {
+    borrowDate: string;
+    borrowerName: string;
+    borrowerStatus: 'TEACHER' | 'STUDENT';
+    classId?: number | null;
+    bookTitle: string;
+    publishYear?: number;
+    returnDate?: string | null;
+    returnStatus?: 'RETURNED' | 'NOT_RETURNED';
+    phoneNumber?: string;
+  }) {
+    const response = await apiClient.post<ApiEnvelope<SarprasLibraryBookLoan>>('/inventory/library-loans', payload);
+    return response.data?.data;
+  },
+
+  async updateLibraryBookLoan(
+    loanId: number,
+    payload: Partial<{
+      borrowDate: string;
+      borrowerName: string;
+      borrowerStatus: 'TEACHER' | 'STUDENT';
+      classId: number | null;
+      bookTitle: string;
+      publishYear: number;
+      returnDate: string | null;
+      returnStatus: 'RETURNED' | 'NOT_RETURNED';
+      phoneNumber: string;
+    }>,
+  ) {
+    const response = await apiClient.put<ApiEnvelope<SarprasLibraryBookLoan>>(`/inventory/library-loans/${loanId}`, payload);
+    return response.data?.data;
+  },
+
+  async removeLibraryBookLoan(loanId: number) {
+    const response = await apiClient.delete<ApiEnvelope<null>>(`/inventory/library-loans/${loanId}`);
     return response.data?.success;
   },
 

@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom';
 import api from '../../../services/api';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
+import { examService, type ExamProgram } from '../../../services/exam.service';
 // import { id } from 'date-fns/locale'; // Unused
 
 // --- Interfaces ---
@@ -246,7 +247,8 @@ const SearchableSelect = ({
 };
 
 const ExamProctorManagementPage = () => {
-  const [activeTab, setActiveTab] = useState<'SBTS' | 'SAS' | 'SAT'>('SBTS');
+  const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([]);
+  const [activeProgramCode, setActiveProgramCode] = useState<string>('');
   const [schedules, setSchedules] = useState<ExamSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -266,6 +268,23 @@ const ExamProctorManagementPage = () => {
   
   // UI State
   const [expandedSlots, setExpandedSlots] = useState<string[]>([]);
+
+  const visiblePrograms = useMemo(
+    () =>
+      [...examPrograms]
+        .filter((program) => Boolean(program?.isActive))
+        .sort(
+          (a, b) =>
+            Number(a.order || 0) - Number(b.order || 0) ||
+            String(a.label || '').localeCompare(String(b.label || '')),
+        ),
+    [examPrograms],
+  );
+
+  const activeProgram = useMemo(
+    () => visiblePrograms.find((program) => program.code === activeProgramCode) || null,
+    [visiblePrograms, activeProgramCode],
+  );
 
   // --- Fetch Initial Data ---
   useEffect(() => {
@@ -292,15 +311,50 @@ const ExamProctorManagementPage = () => {
     fetchInitialData();
   }, []);
 
+  const fetchPrograms = useCallback(async () => {
+    if (!selectedAcademicYear) {
+      setExamPrograms([]);
+      setActiveProgramCode('');
+      return;
+    }
+
+    try {
+      const response = await examService.getPrograms({
+        academicYearId: Number(selectedAcademicYear),
+        roleContext: 'teacher',
+        includeInactive: false,
+      });
+      const programs = (response?.data?.programs || []).filter((item) => Boolean(item?.showOnTeacherMenu));
+      setExamPrograms(programs);
+      setActiveProgramCode((prev) =>
+        programs.some((program) => program.code === prev) ? prev : (programs[0]?.code || ''),
+      );
+    } catch (error) {
+      console.error('Error fetching exam programs:', error);
+      setExamPrograms([]);
+      setActiveProgramCode('');
+    }
+  }, [selectedAcademicYear]);
+
+  useEffect(() => {
+    if (selectedAcademicYear) {
+      void fetchPrograms();
+    }
+  }, [selectedAcademicYear, fetchPrograms]);
+
   // --- Fetch Room Mappings (From ExamSitting) ---
   useEffect(() => {
     const fetchSittings = async () => {
-      if (!selectedAcademicYear) return;
+      if (!selectedAcademicYear || !activeProgramCode) {
+        setClassRoomMap({});
+        return;
+      }
       try {
         const res = await api.get('/exam-sittings', {
           params: {
             academicYearId: selectedAcademicYear,
-            examType: activeTab,
+            examType: activeProgramCode,
+            programCode: activeProgramCode,
             limit: 1000 // Get all
           }
         });
@@ -354,35 +408,34 @@ const ExamProctorManagementPage = () => {
     };
 
     fetchSittings();
-  }, [selectedAcademicYear, activeTab]);
+  }, [selectedAcademicYear, activeProgramCode]);
 
   // --- Fetch Schedules ---
   const fetchSchedules = useCallback(async () => {
-    if (!selectedAcademicYear) return;
+    if (!selectedAcademicYear || !activeProgramCode) {
+      setSchedules([]);
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     try {
       const params: any = {
-        examType: activeTab,
+        examType: activeProgramCode,
+        programCode: activeProgramCode,
         academicYearId: selectedAcademicYear
       };
       if (selectedDate) params.date = selectedDate;
 
       const res = await api.get('/exams/schedules', { params });
-      
-      // Filter out non-exam items
-      const filtered = (res.data.data || []).filter((s: ExamSchedule) => 
-        s.examType !== 'FORMATIF' && s.packet?.type !== 'FORMATIF'
-      );
-      
-      setSchedules(filtered);
+      setSchedules(Array.isArray(res.data?.data) ? res.data.data : []);
     } catch (err) {
       console.error(err);
       toast.error('Gagal memuat jadwal');
     } finally {
       setLoading(false);
     }
-  }, [selectedAcademicYear, activeTab, selectedDate]);
+  }, [selectedAcademicYear, activeProgramCode, selectedDate]);
 
   useEffect(() => {
     fetchSchedules();
@@ -496,18 +549,18 @@ const ExamProctorManagementPage = () => {
         <div className="flex flex-wrap items-center gap-4 mt-6">
           {/* Filters */}
           <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
-            {(['SBTS', 'SAS', 'SAT'] as const).map((tab) => (
+            {visiblePrograms.map((program) => (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
+                key={program.code}
+                onClick={() => setActiveProgramCode(program.code)}
                 className={`
                   px-4 py-2 text-sm font-medium rounded-md transition-colors
-                  ${activeTab === tab
+                  ${activeProgramCode === program.code
                     ? 'bg-blue-50 text-blue-700'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
                 `}
               >
-                {tab}
+                {program.shortLabel || program.label || program.code}
               </button>
             ))}
           </div>
@@ -538,7 +591,9 @@ const ExamProctorManagementPage = () => {
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Calendar className="text-gray-400" size={32} />
             </div>
-            <h3 className="text-lg font-medium text-gray-900">Tidak ada jadwal ujian</h3>
+            <h3 className="text-lg font-medium text-gray-900">
+              {activeProgram ? `Tidak ada jadwal ${activeProgram.label}` : 'Program ujian belum tersedia'}
+            </h3>
             <p className="text-gray-500 mt-1">Silakan pilih tanggal lain atau buat jadwal ujian terlebih dahulu.</p>
           </div>
         ) : (

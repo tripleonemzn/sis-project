@@ -360,7 +360,7 @@ export function HomeroomReportModuleScreen({ mode }: { mode: HomeroomReportType 
   }, [moduleConfig.defaultSemester]);
 
   const activeYearQuery = useQuery({
-    queryKey: ['mobile-homeroom-report-active-year', mode],
+    queryKey: ['mobile-homeroom-report-active-year', user?.id, mode],
     enabled: isAuthenticated && user?.role === 'TEACHER',
     queryFn: async () => {
       try {
@@ -395,7 +395,7 @@ export function HomeroomReportModuleScreen({ mode }: { mode: HomeroomReportType 
   }, [selectedClassId, classItems]);
 
   const classDetailQuery = useQuery({
-    queryKey: ['mobile-homeroom-report-class-detail', mode, selectedClassId],
+    queryKey: ['mobile-homeroom-report-class-detail', user?.id, mode, selectedClassId],
     enabled: isAuthenticated && !!isAllowed && !!selectedClassId,
     queryFn: async () => adminApi.getClassById(Number(selectedClassId)),
   });
@@ -426,7 +426,7 @@ export function HomeroomReportModuleScreen({ mode }: { mode: HomeroomReportType 
   const selectedStudent = students.find((item) => item.id === selectedStudentId) || null;
 
   const ledgerQuery = useQuery({
-    queryKey: ['mobile-homeroom-report-ledger', mode, selectedClassId, semester],
+    queryKey: ['mobile-homeroom-report-ledger', user?.id, mode, selectedClassId, semester],
     enabled: isAuthenticated && !!isAllowed && !!selectedClassId && activeTab === 'LEDGER',
     queryFn: async () =>
       homeroomReportApi.getClassLedger({
@@ -436,7 +436,7 @@ export function HomeroomReportModuleScreen({ mode }: { mode: HomeroomReportType 
   });
 
   const extracurricularQuery = useQuery({
-    queryKey: ['mobile-homeroom-report-extracurricular', mode, selectedClassId, semester],
+    queryKey: ['mobile-homeroom-report-extracurricular', user?.id, mode, selectedClassId, semester],
     enabled: isAuthenticated && !!isAllowed && !!selectedClassId && activeTab === 'EXTRACURRICULAR',
     queryFn: async () =>
       homeroomReportApi.getClassExtracurricular({
@@ -447,7 +447,7 @@ export function HomeroomReportModuleScreen({ mode }: { mode: HomeroomReportType 
   });
 
   const rankingQuery = useQuery({
-    queryKey: ['mobile-homeroom-report-ranking', mode, selectedClassId, semester, activeYearQuery.data?.id],
+    queryKey: ['mobile-homeroom-report-ranking', user?.id, mode, selectedClassId, semester, activeYearQuery.data?.id],
     enabled: isAuthenticated && !!isAllowed && !!selectedClassId && activeTab === 'RANKING',
     queryFn: async () =>
       homeroomReportApi.getClassRankings({
@@ -458,7 +458,7 @@ export function HomeroomReportModuleScreen({ mode }: { mode: HomeroomReportType 
   });
 
   const studentReportQuery = useQuery({
-    queryKey: ['mobile-homeroom-report-student', mode, selectedStudentId, semester],
+    queryKey: ['mobile-homeroom-report-student', user?.id, mode, selectedStudentId, semester],
     enabled: isAuthenticated && !!isAllowed && !!selectedStudentId && activeTab === 'RAPOR',
     queryFn: async () =>
       homeroomReportApi.getStudentReport({
@@ -1068,22 +1068,6 @@ export function HomeroomReportModuleScreen({ mode }: { mode: HomeroomReportType 
     >
       <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{moduleConfig.title}</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{moduleConfig.subtitle}</Text>
-
-      {activeYearQuery.data?.name ? (
-        <View
-          style={{
-            backgroundColor: '#fff',
-            borderWidth: 1,
-            borderColor: '#dbe7fb',
-            borderRadius: 12,
-            padding: 12,
-            marginBottom: 12,
-          }}
-        >
-          <Text style={{ color: '#64748b', fontSize: 12 }}>Tahun Ajaran Aktif</Text>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 2 }}>{activeYearQuery.data.name}</Text>
-        </View>
-      ) : null}
 
       {classesQuery.isLoading ? <QueryStateView type="loading" message="Memuat kelas wali..." /> : null}
       {classesQuery.isError ? (

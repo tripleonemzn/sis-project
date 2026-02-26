@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useOutletContext, useNavigate, useLocation } from 'react-router-dom';
 import { 
@@ -13,11 +13,154 @@ import {
   MapPin, 
   Users, 
   Box, 
-  Layers
+  Layers,
+  ChevronDown,
+  CheckCircle2,
+  Clock3,
+  AlertTriangle,
 } from 'lucide-react';
-import { inventoryService, type Room, type CreateRoomPayload, type RoomCategory } from '../../../../services/inventory.service';
+import {
+  inventoryService,
+  type Room,
+  type CreateRoomPayload,
+  type RoomCategory,
+  type LibraryBookLoan,
+  type LibraryBorrowerStatus,
+  type LibraryLoanClassOption,
+} from '../../../../services/inventory.service';
+import {
+  guessTemplateKeyFromCategoryName,
+  normalizeInventoryTemplateKey,
+  type InventoryTemplateKey,
+} from '../../../../features/inventory/inventoryTemplateProfiles';
 import { authService } from '../../../../services/auth.service';
 import toast from 'react-hot-toast';
+
+const INVENTORY_TEMPLATE_OPTIONS: Array<{
+  key: InventoryTemplateKey;
+  label: string;
+  hint: string;
+}> = [
+  {
+    key: 'STANDARD',
+    label: 'Standar Sekolah',
+    hint: 'Cocok untuk ruang kelas, ruang guru, gudang, dan inventaris umum.',
+  },
+  {
+    key: 'LIBRARY',
+    label: 'Inventaris Perpustakaan',
+    hint: 'Fokus data buku (judul, penulis, penerbit, tahun terbit, kategori buku).',
+  },
+  {
+    key: 'LAB',
+    label: 'Laboratorium',
+    hint: 'Fokus data perangkat/alat praktik (serial number, catatan perawatan).',
+  },
+  {
+    key: 'SPORTS',
+    label: 'Olahraga',
+    hint: 'Fokus data perlengkapan olahraga (ukuran/spesifikasi alat).',
+  },
+  {
+    key: 'OFFICE',
+    label: 'Perkantoran',
+    hint: 'Fokus data aset kantor dan administrasi.',
+  },
+];
+
+function todayDateInput() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(
+    2,
+    '0',
+  )}`;
+}
+
+function toInputDate(value?: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(
+    date.getUTCDate(),
+  ).padStart(2, '0')}`;
+}
+
+function formatDateLabel(value?: string | null) {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+  return parsed.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function resolveClassLabel(
+  row:
+    | {
+        name: string;
+        major?: {
+          code?: string | null;
+          name?: string | null;
+        } | null;
+      }
+    | null
+    | undefined,
+) {
+  if (!row) return '-';
+  return row.name;
+}
+
+type LibraryLoanUiStatus = 'BORROWED' | 'OVERDUE' | 'RETURNED';
+
+type LibraryLoanStatusMeta = {
+  code: LibraryLoanUiStatus;
+  label: string;
+  className: string;
+  overdueDays: number;
+  finePerDay: number;
+  fineAmount: number;
+};
+
+function formatCurrencyIdr(value: number) {
+  return new Intl.NumberFormat('id-ID').format(Math.max(0, Math.trunc(value || 0)));
+}
+
+function getLibraryLoanStatusMeta(loan: LibraryBookLoan, finePerDay = 1000): LibraryLoanStatusMeta {
+  const safeFinePerDay = Math.max(0, Math.trunc(finePerDay || 0));
+  if (loan.returnStatus === 'RETURNED') {
+    return {
+      code: 'RETURNED',
+      label: 'Dikembalikan',
+      className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+      overdueDays: 0,
+      finePerDay: safeFinePerDay,
+      fineAmount: 0,
+    };
+  }
+  if (loan.returnDate) {
+    const dueDate = new Date(loan.returnDate);
+    const now = new Date();
+    const dueDateStart = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (!Number.isNaN(dueDateStart.getTime()) && todayStart > dueDateStart) {
+      const diffDays = Math.max(1, Math.floor((todayStart.getTime() - dueDateStart.getTime()) / 86400000));
+      return {
+        code: 'OVERDUE',
+        label: `Terlambat ${diffDays} hari`,
+        className: 'bg-rose-50 text-rose-700 border border-rose-200',
+        overdueDays: diffDays,
+        finePerDay: safeFinePerDay,
+        fineAmount: diffDays * safeFinePerDay,
+      };
+    }
+  }
+  return {
+    code: 'BORROWED',
+    label: 'Dipinjam',
+    className: 'bg-amber-50 text-amber-700 border border-amber-200',
+    overdueDays: 0,
+    finePerDay: safeFinePerDay,
+    fineAmount: 0,
+  };
+}
 
 export const InventoryHubPage = () => {
   const location = useLocation();
@@ -36,6 +179,22 @@ export const InventoryHubPage = () => {
   const [isEditRoomModalOpen, setIsEditRoomModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [libraryTab, setLibraryTab] = useState<'INVENTARIS' | 'PEMINJAMAN'>('INVENTARIS');
+  const [loanStatusFilter, setLoanStatusFilter] = useState<'ALL' | 'BORROWED' | 'OVERDUE' | 'RETURNED'>('ALL');
+  const [isLoanModalOpen, setIsLoanModalOpen] = useState(false);
+  const [editingLoanId, setEditingLoanId] = useState<number | null>(null);
+  const [loanBorrowDate, setLoanBorrowDate] = useState(todayDateInput());
+  const [loanBorrowerName, setLoanBorrowerName] = useState('');
+  const [loanBorrowerStatus, setLoanBorrowerStatus] = useState<LibraryBorrowerStatus>('STUDENT');
+  const [loanClassId, setLoanClassId] = useState<number | null>(null);
+  const [loanBookTitle, setLoanBookTitle] = useState('');
+  const [loanPublishYear, setLoanPublishYear] = useState('');
+  const [loanReturnDate, setLoanReturnDate] = useState('');
+  const [loanPhoneNumber, setLoanPhoneNumber] = useState('');
+  const [isClassDropdownOpen, setIsClassDropdownOpen] = useState(false);
+  const [classSearch, setClassSearch] = useState('');
+  const [loanFinePerDayInput, setLoanFinePerDayInput] = useState('1000');
+  const classDropdownRef = useRef<HTMLDivElement | null>(null);
   
   const queryClient = useQueryClient(); // Ensure this is available if not already
   
@@ -53,6 +212,48 @@ export const InventoryHubPage = () => {
   const canEdit = user?.role === 'ADMIN' || 
                   user?.additionalDuties?.includes('WAKASEK_SARPRAS') || 
                   user?.additionalDuties?.includes('SEKRETARIS_SARPRAS');
+  const canManageLibraryLoans =
+    canEdit || user?.additionalDuties?.includes('KEPALA_PERPUSTAKAAN');
+  const isLibraryScope = filterParam === 'library';
+
+  useEffect(() => {
+    if (!isLibraryScope) {
+      setLibraryTab('INVENTARIS');
+    }
+  }, [isLibraryScope]);
+
+  useEffect(() => {
+    if (!isLibraryScope || libraryTab !== 'PEMINJAMAN') {
+      setLoanStatusFilter('ALL');
+      setSearchQuery('');
+    }
+  }, [isLibraryScope, libraryTab]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (classDropdownRef.current && !classDropdownRef.current.contains(event.target as Node)) {
+        setIsClassDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const resetLoanEditor = () => {
+    setEditingLoanId(null);
+    setLoanBorrowDate(todayDateInput());
+    setLoanBorrowerName('');
+    setLoanBorrowerStatus('STUDENT');
+    setLoanClassId(null);
+    setLoanBookTitle('');
+    setLoanPublishYear('');
+    setLoanReturnDate('');
+    setLoanPhoneNumber('');
+    setIsClassDropdownOpen(false);
+    setClassSearch('');
+  };
 
   // Fetch Categories
   const { data: categoriesData } = useQuery({
@@ -78,7 +279,11 @@ export const InventoryHubPage = () => {
     onSuccess: () => {
       toast.success('Kategori berhasil dihapus');
       queryClient.invalidateQueries({ queryKey: ['roomCategories'] });
-      setSearchParams({});
+      if (filterParam) {
+        setSearchParams({ filter: filterParam });
+      } else {
+        setSearchParams({});
+      }
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.message || 'Gagal menghapus kategori');
@@ -99,7 +304,7 @@ export const InventoryHubPage = () => {
       if (filterParam) params.filter = filterParam;
       setSearchParams(params);
     }
-  }, [categories, currentTabId, setSearchParams]);
+  }, [categories, currentTabId, filterParam, setSearchParams]);
 
   const { data: roomsData, isLoading } = useQuery({
     queryKey: ['rooms', activeCategory?.id],
@@ -112,6 +317,209 @@ export const InventoryHubPage = () => {
     room.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     room.location?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const { data: loanClassesData, isLoading: isLoanClassesLoading } = useQuery({
+    queryKey: ['libraryLoanClassOptions'],
+    queryFn: inventoryService.listLibraryLoanClassOptions,
+    enabled: isLibraryScope,
+  });
+
+  const { data: loansData, isLoading: isLoansLoading } = useQuery({
+    queryKey: ['libraryBookLoans'],
+    queryFn: () => inventoryService.listLibraryBookLoans(),
+    enabled: isLibraryScope,
+  });
+
+  const { data: loanSettingsData, isLoading: isLoanSettingsLoading } = useQuery({
+    queryKey: ['libraryLoanSettings'],
+    queryFn: inventoryService.getLibraryLoanSettings,
+    enabled: isLibraryScope,
+  });
+
+  const loanFinePerDay = Math.max(0, Number(loanSettingsData?.data?.finePerDay || 1000));
+
+  useEffect(() => {
+    if (!isLibraryScope) return;
+    setLoanFinePerDayInput(String(loanFinePerDay));
+  }, [isLibraryScope, loanFinePerDay]);
+
+  const libraryLoanClasses: LibraryLoanClassOption[] = loanClassesData?.data || [];
+  const libraryLoans: LibraryBookLoan[] = loansData?.data || [];
+  const loanRows = useMemo(
+    () => libraryLoans.map((loan) => ({ loan, status: getLibraryLoanStatusMeta(loan, loanFinePerDay) })),
+    [libraryLoans, loanFinePerDay],
+  );
+  const filteredLibraryLoans = loanRows.filter(({ loan, status }) => {
+    if (loanStatusFilter !== 'ALL' && status.code !== loanStatusFilter) return false;
+    if (!searchQuery.trim()) return true;
+    const keyword = searchQuery.trim().toLowerCase();
+    const classLabel = (loan.class?.name || '').toLowerCase();
+    const classMajor = (loan.class?.major?.code || loan.class?.major?.name || '').toLowerCase();
+    return (
+      loan.borrowerName.toLowerCase().includes(keyword) ||
+      loan.bookTitle.toLowerCase().includes(keyword) ||
+      (loan.phoneNumber || '').toLowerCase().includes(keyword) ||
+      classLabel.includes(keyword) ||
+      classMajor.includes(keyword)
+    );
+  });
+  const filteredLoanClassOptions = libraryLoanClasses.filter((classRow) => {
+    if (!classSearch.trim()) return true;
+    const keyword = classSearch.trim().toLowerCase();
+    const majorLabel = (classRow.major?.code || classRow.major?.name || '').toLowerCase();
+    return (
+      classRow.name.toLowerCase().includes(keyword) ||
+      classRow.displayName.toLowerCase().includes(keyword) ||
+      majorLabel.includes(keyword)
+    );
+  });
+  const selectedLoanClass = libraryLoanClasses.find((classRow) => classRow.id === loanClassId);
+  const loanStatusCounts = useMemo(() => {
+    let borrowed = 0;
+    let overdue = 0;
+    let returned = 0;
+    for (const row of loanRows) {
+      if (row.status.code === 'BORROWED') borrowed += 1;
+      if (row.status.code === 'OVERDUE') overdue += 1;
+      if (row.status.code === 'RETURNED') returned += 1;
+    }
+    return {
+      all: loanRows.length,
+      borrowed,
+      overdue,
+      returned,
+    };
+  }, [loanRows]);
+
+  const saveLibraryLoanMutation = useMutation({
+    mutationFn: async () => {
+      if (!loanBorrowDate.trim()) throw new Error('Tanggal pinjam wajib diisi.');
+      if (!loanBorrowerName.trim()) throw new Error('Nama peminjam wajib diisi.');
+      if (!loanBookTitle.trim()) throw new Error('Judul buku wajib diisi.');
+      if (loanBorrowerStatus === 'STUDENT' && !loanClassId) {
+        throw new Error('Pilih kelas untuk peminjam siswa.');
+      }
+      if (loanReturnDate.trim()) {
+        const parsedReturnDate = new Date(`${loanReturnDate.trim()}T00:00:00.000Z`);
+        if (Number.isNaN(parsedReturnDate.getTime())) {
+          throw new Error('Format tanggal pengembalian harus YYYY-MM-DD.');
+        }
+      }
+
+      let publishYear: number | undefined;
+      if (loanPublishYear.trim()) {
+        const parsedYear = Number(loanPublishYear.trim());
+        if (!Number.isFinite(parsedYear)) {
+          throw new Error('Tahun terbit harus berupa angka.');
+        }
+        publishYear = Math.max(1900, Math.min(2100, Math.round(parsedYear)));
+      }
+
+      const payload = {
+        borrowDate: loanBorrowDate.trim(),
+        borrowerName: loanBorrowerName.trim(),
+        borrowerStatus: loanBorrowerStatus,
+        classId: loanBorrowerStatus === 'STUDENT' ? loanClassId : null,
+        bookTitle: loanBookTitle.trim(),
+        publishYear,
+        returnDate: loanReturnDate.trim() || null,
+        phoneNumber: loanPhoneNumber.trim() || undefined,
+      };
+
+      if (editingLoanId) {
+        const currentLoan = libraryLoans.find((loan) => loan.id === editingLoanId);
+        return inventoryService.updateLibraryBookLoan(editingLoanId, {
+          ...payload,
+          returnStatus: currentLoan?.returnStatus || 'NOT_RETURNED',
+        });
+      }
+      return inventoryService.createLibraryBookLoan(payload);
+    },
+    onSuccess: () => {
+      toast.success(editingLoanId ? 'Peminjaman buku berhasil diperbarui.' : 'Peminjaman buku berhasil ditambahkan.');
+      resetLoanEditor();
+      setIsLoanModalOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['libraryBookLoans'] });
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || error?.message || 'Gagal menyimpan data peminjaman buku.');
+    },
+  });
+
+  const saveLoanSettingsMutation = useMutation({
+    mutationFn: async () => {
+      const parsed = Number(loanFinePerDayInput);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        throw new Error('Tarif denda per hari harus angka 0 atau lebih.');
+      }
+      return inventoryService.updateLibraryLoanSettings({
+        finePerDay: Math.trunc(parsed),
+      });
+    },
+    onSuccess: () => {
+      toast.success('Tarif denda keterlambatan berhasil diperbarui.');
+      queryClient.invalidateQueries({ queryKey: ['libraryLoanSettings'] });
+      queryClient.invalidateQueries({ queryKey: ['libraryBookLoans'] });
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || error?.message || 'Gagal memperbarui tarif denda.');
+    },
+  });
+
+  const deleteLibraryLoanMutation = useMutation({
+    mutationFn: inventoryService.deleteLibraryBookLoan,
+    onSuccess: () => {
+      toast.success('Peminjaman buku berhasil dihapus.');
+      resetLoanEditor();
+      queryClient.invalidateQueries({ queryKey: ['libraryBookLoans'] });
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Gagal menghapus data peminjaman buku.');
+    },
+  });
+
+  const markReturnedMutation = useMutation({
+    mutationFn: (loan: LibraryBookLoan) =>
+      inventoryService.updateLibraryBookLoan(loan.id, {
+        returnStatus: 'RETURNED',
+        returnDate: loan.returnDate || todayDateInput(),
+      }),
+    onSuccess: () => {
+      toast.success('Status pengembalian diperbarui menjadi Dikembalikan.');
+      queryClient.invalidateQueries({ queryKey: ['libraryBookLoans'] });
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Gagal memperbarui status pengembalian.');
+    },
+  });
+
+  const handleEditLoan = (loan: LibraryBookLoan) => {
+    setEditingLoanId(loan.id);
+    setLoanBorrowDate(toInputDate(loan.borrowDate) || todayDateInput());
+    setLoanBorrowerName(loan.borrowerName || '');
+    setLoanBorrowerStatus(loan.borrowerStatus);
+    setLoanClassId(loan.classId || null);
+    setLoanBookTitle(loan.bookTitle || '');
+    setLoanPublishYear(loan.publishYear ? String(loan.publishYear) : '');
+    setLoanReturnDate(toInputDate(loan.returnDate) || '');
+    setLoanPhoneNumber(loan.phoneNumber || '');
+    setClassSearch('');
+    setIsClassDropdownOpen(false);
+    setIsLoanModalOpen(true);
+  };
+
+  const handleDeleteLoan = (loan: LibraryBookLoan) => {
+    if (confirm(`Hapus data peminjaman "${loan.borrowerName}" untuk buku "${loan.bookTitle}"?`)) {
+      deleteLibraryLoanMutation.mutate(loan.id);
+    }
+  };
+
+  const handleMarkReturned = (loan: LibraryBookLoan) => {
+    if (loan.returnStatus === 'RETURNED') return;
+    if (confirm(`Tandai buku "${loan.bookTitle}" milik ${loan.borrowerName} sebagai sudah dikembalikan?`)) {
+      markReturnedMutation.mutate(loan);
+    }
+  };
   
   const pageTitle = filterParam === 'lab'
     ? 'Inventaris Lab'
@@ -132,7 +540,7 @@ export const InventoryHubPage = () => {
           <h1 className="text-2xl font-bold text-gray-900">{pageTitle}</h1>
           <p className="text-gray-500">{pageSubtitle}</p>
         </div>
-        {canEdit && (
+        {canEdit && !(isLibraryScope && libraryTab === 'PEMINJAMAN') ? (
           <button
             onClick={() => setIsCategoryModalOpen(true)}
             className="inline-flex items-center justify-center px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors gap-2"
@@ -140,49 +548,105 @@ export const InventoryHubPage = () => {
             <Layers size={20} />
             <span>Tambah Kategori Ruang</span>
           </button>
-        )}
+        ) : isLibraryScope && libraryTab === 'PEMINJAMAN' && canManageLibraryLoans ? (
+          <button
+            type="button"
+            onClick={() => {
+              resetLoanEditor();
+              setIsLoanModalOpen(true);
+            }}
+            className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors gap-2"
+          >
+            <Plus size={18} />
+            <span>Tambah Peminjaman Buku</span>
+          </button>
+        ) : null}
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-        <div className="border-b border-gray-200 mb-4">
-          <div className="flex overflow-x-auto gap-4 pb-1 scrollbar-hide">
-            {categories.map((category) => {
-              const isActive = Number(currentTabId) === category.id;
-              return (
-                <button
-                  key={category.id}
-                  onClick={() => setSearchParams({ tab: String(category.id) })}
-                  className={`
-                    flex items-center gap-2 px-4 py-3 border-b-2 whitespace-nowrap transition-colors
-                    ${isActive 
-                      ? 'border-blue-600 text-blue-600 font-medium' 
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
-                  `}
-                >
-                  {category.name.toLowerCase().includes('kelas') ? <School size={18} /> :
-                   category.name.toLowerCase().includes('lab') ? <FlaskConical size={18} /> :
-                   category.name.toLowerCase().includes('olahraga') ? <Dumbbell size={18} /> :
-                   category.name.toLowerCase().includes('ibadah') ? <Landmark size={18} /> :
-                   <Box size={18} />}
-                  {category.name}
-                </button>
-              );
-            })}
+        {isLibraryScope ? (
+          <div className="border-b border-gray-200 mb-4">
+            <div className="flex overflow-x-auto gap-4 pb-1 scrollbar-hide">
+              <button
+                onClick={() => setLibraryTab('INVENTARIS')}
+                className={`
+                  flex items-center gap-2 px-4 py-3 border-b-2 whitespace-nowrap transition-colors
+                  ${
+                    libraryTab === 'INVENTARIS'
+                      ? 'border-blue-600 text-blue-600 font-medium'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }
+                `}
+              >
+                <Box size={18} />
+                Inventaris Perpustakaan
+              </button>
+              <button
+                onClick={() => setLibraryTab('PEMINJAMAN')}
+                className={`
+                  flex items-center gap-2 px-4 py-3 border-b-2 whitespace-nowrap transition-colors
+                  ${
+                    libraryTab === 'PEMINJAMAN'
+                      ? 'border-blue-600 text-blue-600 font-medium'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }
+                `}
+              >
+                <Users size={18} />
+                Daftar Peminjaman Buku
+              </button>
+            </div>
           </div>
-        </div>
+        ) : null}
+
+        {!isLibraryScope ? (
+          <div className="border-b border-gray-200 mb-4">
+            <div className="flex overflow-x-auto gap-4 pb-1 scrollbar-hide">
+              {categories.map((category) => {
+                const isActive = Number(currentTabId) === category.id;
+                return (
+                  <button
+                  key={category.id}
+                    onClick={() => {
+                      const params: Record<string, string> = { tab: String(category.id) };
+                      if (filterParam) params.filter = filterParam;
+                      setSearchParams(params);
+                    }}
+                    className={`
+                      flex items-center gap-2 px-4 py-3 border-b-2 whitespace-nowrap transition-colors
+                      ${
+                        isActive
+                          ? 'border-blue-600 text-blue-600 font-medium'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }
+                    `}
+                  >
+                    {category.name.toLowerCase().includes('kelas') ? <School size={18} /> :
+                     category.name.toLowerCase().includes('lab') ? <FlaskConical size={18} /> :
+                     category.name.toLowerCase().includes('olahraga') ? <Dumbbell size={18} /> :
+                     category.name.toLowerCase().includes('ibadah') ? <Landmark size={18} /> :
+                     <Box size={18} />}
+                    {category.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex flex-col md:flex-row justify-between gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             <input
               type="text"
-              placeholder="Cari ruangan..."
+              placeholder={isLibraryScope && libraryTab === 'PEMINJAMAN' ? 'Cari peminjam, judul buku, nomor telpon...' : 'Cari ruangan...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full md:w-96 pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
           
-          {canEdit && activeCategory && (
+          {canEdit && activeCategory && !(isLibraryScope && libraryTab === 'PEMINJAMAN') ? (
             <div className="flex gap-2">
               <button
                 onClick={() => setIsEditCategoryModalOpen(true)}
@@ -206,12 +670,192 @@ export const InventoryHubPage = () => {
                 <span>Tambah Ruangan</span>
               </button>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 
       {/* Content */}
-      {isLoading ? (
+      {isLibraryScope && libraryTab === 'PEMINJAMAN' ? (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setLoanStatusFilter('ALL')}
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-full text-xs font-semibold transition-colors ${
+                  loanStatusFilter === 'ALL'
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                    : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100'
+                }`}
+              >
+                Semua
+                <span className="text-[11px]">({loanStatusCounts.all})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLoanStatusFilter('BORROWED')}
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-full text-xs font-semibold transition-colors ${
+                  loanStatusFilter === 'BORROWED'
+                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                    : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100'
+                }`}
+              >
+                <Clock3 size={14} />
+                Dipinjam
+                <span className="text-[11px]">({loanStatusCounts.borrowed})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLoanStatusFilter('OVERDUE')}
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-full text-xs font-semibold transition-colors ${
+                  loanStatusFilter === 'OVERDUE'
+                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                    : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100'
+                }`}
+              >
+                <AlertTriangle size={14} />
+                Terlambat
+                <span className="text-[11px]">({loanStatusCounts.overdue})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLoanStatusFilter('RETURNED')}
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-full text-xs font-semibold transition-colors ${
+                  loanStatusFilter === 'RETURNED'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100'
+                }`}
+              >
+                <CheckCircle2 size={14} />
+                Dikembalikan
+                <span className="text-[11px]">({loanStatusCounts.returned})</span>
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-3">
+              Status ditentukan otomatis: saat simpan = <strong>Dipinjam</strong>, lewat tenggat = <strong>Terlambat</strong>, dan saat dikonfirmasi kembali = <strong>Dikembalikan</strong>.
+            </p>
+            <div className="mt-3 flex flex-col md:flex-row md:items-center gap-2">
+              <label className="text-xs font-medium text-gray-700">Tarif Denda Keterlambatan / Hari (Rp)</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  value={loanFinePerDayInput}
+                  onChange={(e) => setLoanFinePerDayInput(e.target.value)}
+                  disabled={!canManageLibraryLoans || isLoanSettingsLoading || saveLoanSettingsMutation.isPending}
+                  className="w-40 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                />
+                {canManageLibraryLoans ? (
+                  <button
+                    type="button"
+                    onClick={() => saveLoanSettingsMutation.mutate()}
+                    disabled={isLoanSettingsLoading || saveLoanSettingsMutation.isPending}
+                    className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50"
+                  >
+                    {saveLoanSettingsMutation.isPending ? 'Menyimpan...' : 'Simpan'}
+                  </button>
+                ) : null}
+              </div>
+              {!canManageLibraryLoans ? (
+                <p className="text-xs text-gray-500">
+                  Tarif aktif: <strong>Rp{formatCurrencyIdr(loanFinePerDay)}</strong>/hari.
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            {isLoansLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : filteredLibraryLoans.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">Belum ada data peminjaman buku</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="text-left px-3 py-2">No</th>
+                      <th className="text-left px-3 py-2">Tanggal Pinjam</th>
+                      <th className="text-left px-3 py-2">Nama Peminjam</th>
+                      <th className="text-left px-3 py-2">Status Peminjam</th>
+                      <th className="text-left px-3 py-2">Kelas</th>
+                      <th className="text-left px-3 py-2">Judul Buku</th>
+                      <th className="text-left px-3 py-2">Thn. Terbit</th>
+                      <th className="text-left px-3 py-2">Tgl. Pengembalian</th>
+                      <th className="text-left px-3 py-2">Status</th>
+                      <th className="text-left px-3 py-2">No. Telpon</th>
+                      <th className="text-left px-3 py-2">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredLibraryLoans.map(({ loan, status }, index) => (
+                      <tr key={loan.id} className="border-b border-gray-100">
+                        <td className="px-3 py-2">{index + 1}</td>
+                        <td className="px-3 py-2">{formatDateLabel(loan.borrowDate)}</td>
+                        <td className="px-3 py-2">{loan.borrowerName}</td>
+                        <td className="px-3 py-2">{loan.borrowerStatus === 'STUDENT' ? 'Siswa' : 'Guru'}</td>
+                        <td className="px-3 py-2">{loan.borrowerStatus === 'STUDENT' ? resolveClassLabel(loan.class) : '-'}</td>
+                        <td className="px-3 py-2">{loan.bookTitle}</td>
+                        <td className="px-3 py-2">{loan.publishYear || '-'}</td>
+                        <td className="px-3 py-2">{loan.returnDate ? formatDateLabel(loan.returnDate) : '-'}</td>
+                        <td className="px-3 py-2">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${status.className}`}>
+                            {status.label}
+                          </span>
+                          {status.code === 'OVERDUE' ? (
+                            <div className="text-[11px] text-rose-700 mt-1">
+                              Denda: Rp{formatCurrencyIdr(status.fineAmount)}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-2">{loan.phoneNumber || '-'}</td>
+                        <td className="px-3 py-2">
+                          {canManageLibraryLoans ? (
+                            <div className="flex items-center gap-1">
+                              {loan.returnStatus !== 'RETURNED' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkReturned(loan)}
+                                  disabled={markReturnedMutation.isPending}
+                                  className="p-2 rounded border border-emerald-200 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                                  title="Tandai Dikembalikan"
+                                >
+                                  <CheckCircle2 size={14} />
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() => handleEditLoan(loan)}
+                                className="p-2 rounded border border-blue-200 text-blue-700 hover:bg-blue-50"
+                                title="Edit"
+                              >
+                                <Edit size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLoan(loan)}
+                                disabled={deleteLibraryLoanMutation.isPending}
+                                className="p-2 rounded border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50"
+                                title="Hapus"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : isLoading ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
@@ -240,6 +884,51 @@ export const InventoryHubPage = () => {
           ))}
         </div>
       )}
+
+      {isLibraryScope && libraryTab === 'PEMINJAMAN' && isLoanModalOpen ? (
+        <LibraryLoanModal
+          editingLoanId={editingLoanId}
+          borrowDate={loanBorrowDate}
+          borrowerName={loanBorrowerName}
+          borrowerStatus={loanBorrowerStatus}
+          classId={loanClassId}
+          bookTitle={loanBookTitle}
+          publishYear={loanPublishYear}
+          returnDate={loanReturnDate}
+          phoneNumber={loanPhoneNumber}
+          classOptions={libraryLoanClasses}
+          filteredClassOptions={filteredLoanClassOptions}
+          selectedClass={selectedLoanClass}
+          classSearch={classSearch}
+          isClassDropdownOpen={isClassDropdownOpen}
+          isLoanClassesLoading={isLoanClassesLoading}
+          classDropdownRef={classDropdownRef}
+          savePending={saveLibraryLoanMutation.isPending}
+          onClose={() => {
+            setIsLoanModalOpen(false);
+            resetLoanEditor();
+          }}
+          onChangeBorrowDate={setLoanBorrowDate}
+          onChangeBorrowerName={setLoanBorrowerName}
+          onChangeBorrowerStatus={(value) => {
+            setLoanBorrowerStatus(value);
+            if (value === 'TEACHER') {
+              setLoanClassId(null);
+              setIsClassDropdownOpen(false);
+              setClassSearch('');
+            }
+          }}
+          onChangeClassId={setLoanClassId}
+          onChangeBookTitle={setLoanBookTitle}
+          onChangePublishYear={setLoanPublishYear}
+          onChangeReturnDate={setLoanReturnDate}
+          onChangePhoneNumber={setLoanPhoneNumber}
+          onChangeClassSearch={setClassSearch}
+          onToggleClassDropdown={() => setIsClassDropdownOpen((prev) => !prev)}
+          onCloseClassDropdown={() => setIsClassDropdownOpen(false)}
+          onSubmit={() => saveLibraryLoanMutation.mutate()}
+        />
+      ) : null}
 
       {/* Add Category Modal */}
       {isCategoryModalOpen && (
@@ -276,9 +965,252 @@ export const InventoryHubPage = () => {
   );
 };
 
+type LibraryLoanModalProps = {
+  editingLoanId: number | null;
+  borrowDate: string;
+  borrowerName: string;
+  borrowerStatus: LibraryBorrowerStatus;
+  classId: number | null;
+  bookTitle: string;
+  publishYear: string;
+  returnDate: string;
+  phoneNumber: string;
+  classOptions: LibraryLoanClassOption[];
+  filteredClassOptions: LibraryLoanClassOption[];
+  selectedClass?: LibraryLoanClassOption;
+  classSearch: string;
+  isClassDropdownOpen: boolean;
+  isLoanClassesLoading: boolean;
+  classDropdownRef: { current: HTMLDivElement | null };
+  savePending: boolean;
+  onClose: () => void;
+  onSubmit: () => void;
+  onChangeBorrowDate: (value: string) => void;
+  onChangeBorrowerName: (value: string) => void;
+  onChangeBorrowerStatus: (value: LibraryBorrowerStatus) => void;
+  onChangeClassId: (value: number | null) => void;
+  onChangeBookTitle: (value: string) => void;
+  onChangePublishYear: (value: string) => void;
+  onChangeReturnDate: (value: string) => void;
+  onChangePhoneNumber: (value: string) => void;
+  onChangeClassSearch: (value: string) => void;
+  onToggleClassDropdown: () => void;
+  onCloseClassDropdown: () => void;
+};
+
+const LibraryLoanModal = ({
+  editingLoanId,
+  borrowDate,
+  borrowerName,
+  borrowerStatus,
+  classId,
+  bookTitle,
+  publishYear,
+  returnDate,
+  phoneNumber,
+  classOptions,
+  filteredClassOptions,
+  selectedClass,
+  classSearch,
+  isClassDropdownOpen,
+  isLoanClassesLoading,
+  classDropdownRef,
+  savePending,
+  onClose,
+  onSubmit,
+  onChangeBorrowDate,
+  onChangeBorrowerName,
+  onChangeBorrowerStatus,
+  onChangeClassId,
+  onChangeBookTitle,
+  onChangePublishYear,
+  onChangeReturnDate,
+  onChangePhoneNumber,
+  onChangeClassSearch,
+  onToggleClassDropdown,
+  onCloseClassDropdown,
+}: LibraryLoanModalProps) => {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 animate-in fade-in zoom-in duration-200">
+        <div className="flex items-center justify-between gap-3 mb-5">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              {editingLoanId ? 'Edit Peminjaman Buku' : 'Tambah Peminjaman Buku'}
+            </h2>
+            <p className="text-xs text-gray-500 mt-1">
+              Status pengembalian otomatis menjadi <strong>Dipinjam</strong> setelah disimpan.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50"
+            aria-label="Tutup popup"
+          >
+            <Plus size={18} className="rotate-45" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Tanggal Pinjam</label>
+            <input
+              type="date"
+              value={borrowDate}
+              onChange={(e) => onChangeBorrowDate(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Thn. Terbit</label>
+            <input
+              type="number"
+              value={publishYear}
+              onChange={(e) => onChangePublishYear(e.target.value)}
+              placeholder="Contoh: 2026"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Nama Peminjam</label>
+            <input
+              type="text"
+              value={borrowerName}
+              onChange={(e) => onChangeBorrowerName(e.target.value)}
+              placeholder="Nama lengkap peminjam"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Status Peminjam</label>
+            <select
+              value={borrowerStatus}
+              onChange={(e) => onChangeBorrowerStatus(e.target.value as LibraryBorrowerStatus)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="STUDENT">Siswa</option>
+              <option value="TEACHER">Guru</option>
+            </select>
+          </div>
+        </div>
+
+        {borrowerStatus === 'STUDENT' ? (
+          <div className="mt-3" ref={classDropdownRef}>
+            <label className="block text-sm text-gray-600 mb-1">Kelas</label>
+            <button
+              type="button"
+              onClick={onToggleClassDropdown}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg flex items-center justify-between bg-white text-left"
+            >
+              <span className={classId ? 'text-gray-900' : 'text-gray-500'}>
+                {selectedClass?.name || 'Pilih kelas'}
+              </span>
+              <ChevronDown size={16} className="text-gray-400" />
+            </button>
+            {isClassDropdownOpen ? (
+              <div className="mt-1 rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden">
+                <div className="p-2 border-b border-gray-100">
+                  <input
+                    type="text"
+                    value={classSearch}
+                    onChange={(e) => onChangeClassSearch(e.target.value)}
+                    placeholder="Cari kelas..."
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                </div>
+                <div className="max-h-56 overflow-y-auto">
+                  {filteredClassOptions.map((classRow) => (
+                    <button
+                      key={classRow.id}
+                      type="button"
+                      onClick={() => {
+                        onChangeClassId(classRow.id);
+                        onCloseClassDropdown();
+                      }}
+                      className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm"
+                    >
+                      <div className="font-medium text-gray-900">{classRow.name}</div>
+                    </button>
+                  ))}
+                  {filteredClassOptions.length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-gray-500 text-center">Kelas tidak ditemukan</div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+            {isLoanClassesLoading ? <p className="text-xs text-gray-500 mt-1">Memuat daftar kelas...</p> : null}
+            {!isLoanClassesLoading && classOptions.length === 0 ? (
+              <p className="text-xs text-rose-600 mt-1">Daftar kelas belum tersedia.</p>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Judul Buku</label>
+            <input
+              type="text"
+              value={bookTitle}
+              onChange={(e) => onChangeBookTitle(e.target.value)}
+              placeholder="Judul buku"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">No. Telpon</label>
+            <input
+              type="text"
+              value={phoneNumber}
+              onChange={(e) => onChangePhoneNumber(e.target.value)}
+              placeholder="08xxxxxxxxxx"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <label className="block text-sm text-gray-600 mb-1">Tgl. Pengembalian (Tenggat)</label>
+          <input
+            type="date"
+            value={returnDate}
+            onChange={(e) => onChangeReturnDate(e.target.value)}
+            className="w-full md:w-1/2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Jika melewati tanggal ini dan buku belum dikembalikan, status otomatis menjadi <strong>Terlambat</strong>.
+          </p>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-4 mt-4 border-t border-gray-100">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={savePending}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            {savePending ? 'Menyimpan...' : editingLoanId ? 'Simpan Perubahan' : 'Simpan Peminjaman'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const RoomCard = ({ room, canEdit, onEdit }: { room: Room; canEdit: boolean; onEdit?: (room: Room) => void }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
   
   const deleteMutation = useMutation({
     mutationFn: inventoryService.deleteRoom,
@@ -363,7 +1295,12 @@ const RoomCard = ({ room, canEdit, onEdit }: { room: Room; canEdit: boolean; onE
       </div>
 
       <button 
-        onClick={() => navigate(String(room.id))}
+        onClick={() =>
+          navigate({
+            pathname: String(room.id),
+            search: location.search,
+          })
+        }
         className="w-full py-2 border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors text-sm font-medium"
       >
         Lihat Detail Inventaris
@@ -376,6 +1313,7 @@ const AddCategoryModal = ({ onClose }: { onClose: () => void }) => {
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [inventoryTemplateKey, setInventoryTemplateKey] = useState<InventoryTemplateKey>('STANDARD');
 
   const createMutation = useMutation({
     mutationFn: inventoryService.createRoomCategory,
@@ -391,7 +1329,7 @@ const AddCategoryModal = ({ onClose }: { onClose: () => void }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate({ name, description });
+    createMutation.mutate({ name, description, inventoryTemplateKey });
   };
 
   return (
@@ -426,6 +1364,24 @@ const AddCategoryModal = ({ onClose }: { onClose: () => void }) => {
               rows={3}
               placeholder="Keterangan singkat kategori ini"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Template Inventaris</label>
+            <select
+              value={inventoryTemplateKey}
+              onChange={(e) => setInventoryTemplateKey(e.target.value as InventoryTemplateKey)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              {INVENTORY_TEMPLATE_OPTIONS.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              {INVENTORY_TEMPLATE_OPTIONS.find((option) => option.key === inventoryTemplateKey)?.hint}
+            </p>
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
@@ -537,19 +1493,6 @@ const AddRoomModal = ({ onClose, categoryId, categoryName }: { onClose: () => vo
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="Contoh: Gedung A Lt. 2"
             />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Kondisi</label>
-            <select
-              value={formData.condition}
-              onChange={e => setFormData({ ...formData, condition: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="BAIK">Baik</option>
-              <option value="RUSAK_RINGAN">Rusak Ringan</option>
-              <option value="RUSAK_BERAT">Rusak Berat</option>
-            </select>
           </div>
 
           <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
@@ -691,6 +1634,11 @@ const EditCategoryModal = ({ category, onClose }: { category: RoomCategory; onCl
   const queryClient = useQueryClient();
   const [name, setName] = useState(category.name);
   const [description, setDescription] = useState(category.description || '');
+  const [inventoryTemplateKey, setInventoryTemplateKey] = useState<InventoryTemplateKey>(() =>
+    normalizeInventoryTemplateKey(
+      category.inventoryTemplateKey || guessTemplateKeyFromCategoryName(category.name),
+    ),
+  );
 
   const updateMutation = useMutation({
     mutationFn: (data: any) => inventoryService.updateRoomCategory(category.id, data),
@@ -706,7 +1654,7 @@ const EditCategoryModal = ({ category, onClose }: { category: RoomCategory; onCl
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    updateMutation.mutate({ name, description });
+    updateMutation.mutate({ name, description, inventoryTemplateKey });
   };
 
   return (
@@ -745,6 +1693,26 @@ const EditCategoryModal = ({ category, onClose }: { category: RoomCategory; onCl
               placeholder="Deskripsi singkat kategori..."
               rows={3}
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Template Inventaris
+            </label>
+            <select
+              value={inventoryTemplateKey}
+              onChange={(e) => setInventoryTemplateKey(e.target.value as InventoryTemplateKey)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              {INVENTORY_TEMPLATE_OPTIONS.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              {INVENTORY_TEMPLATE_OPTIONS.find((option) => option.key === inventoryTemplateKey)?.hint}
+            </p>
           </div>
 
           <div className="flex justify-end gap-3 pt-4">

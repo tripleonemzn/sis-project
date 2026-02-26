@@ -1,22 +1,28 @@
-import { useMemo, useState } from 'react';
-import { Redirect, useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { useAuth } from '../../src/features/auth/AuthProvider';
-import { ExamDisplayType, StudentExamItem } from '../../src/features/exams/types';
+import { StudentExamItem } from '../../src/features/exams/types';
 import { useStudentExamsQuery } from '../../src/features/exams/useStudentExamsQuery';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
+import { examApi, ExamProgramItem } from '../../src/features/exams/examApi';
 
 type StatusFilter = 'ALL' | 'OPEN' | 'UPCOMING' | 'MISSED' | 'COMPLETED';
+type ExamLabelMap = Record<string, string>;
 
-function normalizeType(raw: string): ExamDisplayType {
-  const value = String(raw || '').toUpperCase();
-  if (value === 'QUIZ') return 'FORMATIF';
-  if (value === 'FORMATIF' || value === 'SBTS' || value === 'SAS' || value === 'SAT') return value;
-  return 'FORMATIF';
+function normalizeProgramCode(raw?: string | null): string {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
 }
 
 function normalizeStatus(raw: string, hasSubmitted: boolean): 'OPEN' | 'UPCOMING' | 'MISSED' | 'COMPLETED' {
@@ -48,21 +54,77 @@ function statusStyle(status: 'OPEN' | 'UPCOMING' | 'MISSED' | 'COMPLETED') {
   return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e', label: 'Akan Datang' };
 }
 
+function resolveExamTypeLabel(type: string, labels: ExamLabelMap): string {
+  const normalized = normalizeProgramCode(type);
+  const override = labels[normalized];
+  if (!override) return normalized || '-';
+  const cleaned = String(override).trim();
+  return cleaned || normalized || '-';
+}
+
 export default function StudentExamsScreen() {
+  const params = useLocalSearchParams<{ programCode?: string | string[] }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const examsQuery = useStudentExamsQuery({ enabled: isAuthenticated, user });
   const pageContentPadding = getStandardPagePadding(insets);
+  const lockedProgramCode = normalizeProgramCode(Array.isArray(params.programCode) ? params.programCode[0] : params.programCode);
   const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'ALL' | ExamDisplayType>('ALL');
+  const [typeFilter, setTypeFilter] = useState<'ALL' | string>(lockedProgramCode || 'ALL');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+
+  useEffect(() => {
+    setTypeFilter(lockedProgramCode || 'ALL');
+  }, [lockedProgramCode]);
+
+  const examProgramsQuery = useQuery({
+    queryKey: ['mobile-student-exam-programs'],
+    enabled: isAuthenticated && user?.role === 'STUDENT',
+    staleTime: 5 * 60 * 1000,
+    queryFn: () =>
+      examApi.getExamPrograms({
+        roleContext: 'student',
+      }),
+  });
+
+  const activePrograms = useMemo(
+    () =>
+      (examProgramsQuery.data?.programs || [])
+        .filter((program: ExamProgramItem) => program.isActive && program.showOnStudentMenu)
+        .sort((a, b) => a.order - b.order || a.code.localeCompare(b.code)),
+    [examProgramsQuery.data?.programs],
+  );
+
+  useEffect(() => {
+    if (lockedProgramCode || typeFilter === 'ALL') return;
+    const allowed = new Set(activePrograms.map((program) => normalizeProgramCode(program.code)));
+    if (!allowed.has(typeFilter)) {
+      setTypeFilter('ALL');
+    }
+  }, [lockedProgramCode, typeFilter, activePrograms]);
+
+  const examTypeLabels = useMemo<ExamLabelMap>(() => {
+    const map: ExamLabelMap = {};
+    const programs = activePrograms;
+
+    programs.forEach((program: ExamProgramItem) => {
+      const code = normalizeProgramCode(program?.code);
+      const label = String(program?.label || '').trim();
+      if (!label) return;
+      map[code] = label;
+    });
+
+    return map;
+  }, [activePrograms]);
+
+  const examTypeLabel = (type: string) => resolveExamTypeLabel(type, examTypeLabels);
 
   const filtered = useMemo(() => {
     const rows = examsQuery.data?.exams || [];
     const q = searchQuery.trim().toLowerCase();
     return rows.filter((item) => {
-      const type = normalizeType(item.packet.type);
+      const type = normalizeProgramCode(item.packet.programCode || item.packet.type);
       const status = normalizeStatus(item.status, item.has_submitted);
       if (typeFilter !== 'ALL' && type !== typeFilter) return false;
       if (statusFilter !== 'ALL' && status !== statusFilter) return false;
@@ -118,48 +180,69 @@ export default function StudentExamsScreen() {
         }}
       />
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 10 }}>
-        {(['ALL', 'FORMATIF', 'SBTS', 'SAS', 'SAT'] as Array<'ALL' | ExamDisplayType>).map((item) => {
-          const selected = typeFilter === item;
-          return (
-            <View key={item} style={{ width: '20%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <Pressable
-                onPress={() => setTypeFilter(item)}
-                style={{
-                  borderWidth: 1,
-                  borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                  backgroundColor: selected ? '#eff6ff' : '#fff',
-                  borderRadius: 8,
-                  paddingVertical: 8,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 11, fontWeight: '700' }}>
-                  {item === 'ALL' ? 'Semua' : item}
-                </Text>
-              </Pressable>
-            </View>
-          );
-        })}
-      </View>
+      {!lockedProgramCode ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 10 }}>
+          {(['ALL', ...activePrograms.map((program) => normalizeProgramCode(program.code))] as Array<'ALL' | string>).map((item) => {
+            const selected = typeFilter === item;
+            return (
+              <View key={item} style={{ paddingHorizontal: 4, marginBottom: 8 }}>
+                <Pressable
+                  onPress={() => setTypeFilter(item)}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: selected ? '#1d4ed8' : '#cbd5e1',
+                    backgroundColor: selected ? '#eff6ff' : '#fff',
+                    borderRadius: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 11, fontWeight: '700' }}>
+                    {item === 'ALL' ? 'Semua' : examTypeLabel(item)}
+                  </Text>
+                </Pressable>
+              </View>
+            );
+          })}
+        </View>
+      ) : (
+        <View style={{ marginBottom: 10 }}>
+          <View
+            style={{
+              alignSelf: 'flex-start',
+              borderWidth: 1,
+              borderColor: '#bfdbfe',
+              backgroundColor: '#eff6ff',
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+            }}
+          >
+            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+              Filter Tetap: {examTypeLabel(lockedProgramCode)}
+            </Text>
+          </View>
+        </View>
+      )}
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 10 }}>
         {(['ALL', 'OPEN', 'UPCOMING', 'COMPLETED', 'MISSED'] as StatusFilter[]).map((item) => {
-          const selected = statusFilter === item;
+          const selectedStatus = statusFilter === item;
           return (
             <View key={item} style={{ width: '20%', paddingHorizontal: 4, marginBottom: 8 }}>
               <Pressable
                 onPress={() => setStatusFilter(item)}
                 style={{
                   borderWidth: 1,
-                  borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                  backgroundColor: selected ? '#eff6ff' : '#fff',
+                  borderColor: selectedStatus ? '#1d4ed8' : '#cbd5e1',
+                  backgroundColor: selectedStatus ? '#eff6ff' : '#fff',
                   borderRadius: 8,
                   paddingVertical: 8,
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 10, fontWeight: '700' }}>
+                <Text style={{ color: selectedStatus ? '#1d4ed8' : '#334155', fontSize: 10, fontWeight: '700' }}>
                   {item === 'ALL'
                     ? 'Semua'
                     : item === 'OPEN'
@@ -186,7 +269,7 @@ export default function StudentExamsScreen() {
         filtered.length > 0 ? (
           <View>
             {filtered.map((item: StudentExamItem) => {
-              const type = normalizeType(item.packet.type);
+              const type = normalizeProgramCode(item.packet.programCode || item.packet.type);
               const status = normalizeStatus(item.status, item.has_submitted);
               const style = statusStyle(status);
               return (
@@ -222,7 +305,7 @@ export default function StudentExamsScreen() {
                     </Text>
                   </View>
                   <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
-                    {item.packet.subject.name} ({item.packet.subject.code}) • {type}
+                    {item.packet.subject.name} ({item.packet.subject.code}) • {examTypeLabel(type)}
                   </Text>
                   <Text style={{ color: '#334155', fontSize: 12, marginBottom: 4 }}>
                     Mulai: {formatDateTime(item.startTime)}

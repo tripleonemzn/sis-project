@@ -8,6 +8,7 @@ import { AppLoadingScreen } from '../../components/AppLoadingScreen';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
+import { mobileLiveQueryOptions } from '../../lib/query/liveQuery';
 import { useAuth } from '../auth/AuthProvider';
 import { academicYearApi } from '../academicYear/academicYearApi';
 import { WorkProgramBudgetOwnerSection } from './WorkProgramBudgetOwnerSection';
@@ -251,6 +252,8 @@ export function TeacherWorkProgramModuleScreen({
   const [editingProgramId, setEditingProgramId] = useState<number | null>(null);
   const [programForm, setProgramForm] = useState<ProgramFormState>(DEFAULT_PROGRAM_FORM);
   const [itemEditor, setItemEditor] = useState<ItemEditorState | null>(null);
+  const [expandedProgramIds, setExpandedProgramIds] = useState<Record<number, boolean>>({});
+  const [budgetSectionVisible, setBudgetSectionVisible] = useState(false);
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-work-program-active-year'],
@@ -300,15 +303,17 @@ export function TeacherWorkProgramModuleScreen({
     queryFn: async () =>
       workProgramApi.list({
         page: 1,
-        limit: 200,
+        limit: 100,
         academicYearId: activeYearQuery.data?.id,
       }),
+    ...mobileLiveQueryOptions,
   });
 
   const approvalQuery = useQuery({
     queryKey: ['mobile-work-program-approvals', user?.id],
     enabled: isAuthenticated && user?.role === 'TEACHER' && mode === 'APPROVAL',
     queryFn: async () => workProgramApi.listPendingApprovals(),
+    ...mobileLiveQueryOptions,
   });
 
   const refreshOwner = async () => {
@@ -631,6 +636,13 @@ export function TeacherWorkProgramModuleScreen({
     ]);
   };
 
+  const toggleProgramExpanded = (programId: number) => {
+    setExpandedProgramIds((prev) => ({
+      ...prev,
+      [programId]: !prev[programId],
+    }));
+  };
+
   if (isLoading) return <AppLoadingScreen message={`Memuat ${title.toLowerCase()}...`} />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
@@ -901,6 +913,7 @@ export function TeacherWorkProgramModuleScreen({
             const items = record.items || [];
             const doneItems = items.filter((item) => item.isCompleted).length;
             const showItemEditor = itemEditor?.programId === record.id;
+            const isExpanded = Boolean(expandedProgramIds[record.id]);
 
             return (
               <View
@@ -962,6 +975,25 @@ export function TeacherWorkProgramModuleScreen({
                     <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>Catatan: {record.feedback}</Text>
                   ) : null}
                 </View>
+
+                {mode === 'OWNER' ? (
+                  <Pressable
+                    onPress={() => toggleProgramExpanded(record.id)}
+                    style={{
+                      marginTop: 8,
+                      borderWidth: 1,
+                      borderColor: '#cbd5e1',
+                      borderRadius: 8,
+                      paddingVertical: 8,
+                      alignItems: 'center',
+                      backgroundColor: '#fff',
+                    }}
+                  >
+                    <Text style={{ color: '#334155', fontWeight: '700' }}>
+                      {isExpanded ? 'Sembunyikan Detail Item' : 'Lihat Detail Item'}
+                    </Text>
+                  </Pressable>
+                ) : null}
 
                 {mode === 'OWNER' ? (
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
@@ -1047,7 +1079,7 @@ export function TeacherWorkProgramModuleScreen({
                   </View>
                 ) : null}
 
-                {mode === 'OWNER' ? (
+                {mode === 'OWNER' && isExpanded ? (
                   <View
                     style={{
                       marginTop: 10,
@@ -1254,6 +1286,40 @@ export function TeacherWorkProgramModuleScreen({
       ) : null}
 
       {mode === 'OWNER' ? (
+        <View
+          style={{
+            backgroundColor: '#fff',
+            borderWidth: 1,
+            borderColor: '#dbe7fb',
+            borderRadius: 12,
+            padding: 12,
+            marginTop: 2,
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Anggaran & LPJ</Text>
+          <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+            Bagian ini dimuat terpisah agar halaman Program Kerja utama lebih ringan saat dibuka.
+          </Text>
+          <Pressable
+            onPress={() => setBudgetSectionVisible((prev) => !prev)}
+            style={{
+              borderWidth: 1,
+              borderColor: '#bfdbfe',
+              backgroundColor: '#eff6ff',
+              borderRadius: 8,
+              paddingVertical: 9,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
+              {budgetSectionVisible ? 'Sembunyikan Anggaran & LPJ' : 'Tampilkan Anggaran & LPJ'}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {mode === 'OWNER' && budgetSectionVisible ? (
         <WorkProgramBudgetOwnerSection
           activeYearId={activeYearQuery.data?.id}
           activeYearName={activeYearQuery.data?.name}

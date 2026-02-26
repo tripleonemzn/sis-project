@@ -6,6 +6,7 @@ import {
   deleteScheduleEntry,
   listSchedules,
   getTeachingLoadSummary,
+  updateScheduleEntry,
 } from '../controllers/schedule.controller';
 
 const router = Router();
@@ -15,6 +16,7 @@ router.use(authMiddleware);
 router.get('/', roleMiddleware(['ADMIN', 'TEACHER', 'EXAMINER', 'STUDENT']), listSchedules);
 router.get('/teaching-summary', roleMiddleware(['ADMIN', 'TEACHER']), getTeachingLoadSummary);
 router.post('/', roleMiddleware(['ADMIN', 'TEACHER']), createScheduleEntry);
+router.put('/:id', roleMiddleware(['ADMIN', 'TEACHER']), updateScheduleEntry);
 router.delete('/:id', roleMiddleware(['ADMIN', 'TEACHER']), deleteScheduleEntry);
 
 export default router;

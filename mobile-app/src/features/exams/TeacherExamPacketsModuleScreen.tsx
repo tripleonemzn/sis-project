@@ -1,30 +1,50 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { useAuth } from '../auth/AuthProvider';
-import { ExamDisplayType } from './types';
 import { useTeacherExamPacketsQuery } from './useTeacherExamPacketsQuery';
 import { useTeacherAssignmentsQuery } from '../teacherAssignments/useTeacherAssignmentsQuery';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
+import { examApi, ExamProgramItem } from './examApi';
 
-type ExamTypeFilter = 'ALL' | ExamDisplayType;
+type ExamTypeFilter = 'ALL' | string;
+type SemesterFilter = 'ODD' | 'EVEN';
+type ExamLabelMap = Record<string, string>;
 
 type TeacherExamPacketsModuleScreenProps = {
   title: string;
   subtitle: string;
-  fixedType?: ExamDisplayType;
+  fixedType?: string;
   defaultType?: ExamTypeFilter;
+  fixedProgramCode?: string;
 };
 
-function normalizeType(raw: string): ExamDisplayType {
+function normalizeProgramCode(raw?: string | null): string {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function normalizeSemester(raw?: string | null): 'ODD' | 'EVEN' | undefined {
   const value = String(raw || '').toUpperCase();
-  if (value === 'QUIZ') return 'FORMATIF';
-  if (value === 'FORMATIF' || value === 'SBTS' || value === 'SAS' || value === 'SAT') return value;
-  return 'FORMATIF';
+  if (value === 'ODD' || value === 'GANJIL') return 'ODD';
+  if (value === 'EVEN' || value === 'GENAP') return 'EVEN';
+  return undefined;
+}
+
+function semesterLabel(value?: 'ODD' | 'EVEN') {
+  if (value === 'EVEN') return 'Genap';
+  if (value === 'ODD') return 'Ganjil';
+  return '-';
 }
 
 function questionCountFromUnknown(questions: unknown): number {
@@ -51,10 +71,19 @@ function formatDate(value?: string) {
   });
 }
 
+function resolveExamTypeLabel(type: string, labels: ExamLabelMap): string {
+  const normalized = normalizeProgramCode(type);
+  const override = labels[normalized];
+  if (!override) return normalized || '-';
+  const cleaned = String(override).trim();
+  return cleaned || normalized || '-';
+}
+
 export function TeacherExamPacketsModuleScreen({
   title,
   subtitle,
   fixedType,
+  fixedProgramCode,
   defaultType = 'ALL',
 }: TeacherExamPacketsModuleScreenProps) {
   const router = useRouter();
@@ -63,9 +92,12 @@ export function TeacherExamPacketsModuleScreen({
   const pageContentPadding = getStandardPagePadding(insets, { bottom: 120 });
   const teacherAssignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
   const assignmentOptions = teacherAssignmentsQuery.data?.assignments || [];
+  const lockedProgramCode = normalizeProgramCode(fixedProgramCode || fixedType);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
-  const [typeFilter, setTypeFilter] = useState<ExamTypeFilter>(fixedType || defaultType);
+  const [typeFilter, setTypeFilter] = useState<ExamTypeFilter>(lockedProgramCode || defaultType);
   const [searchQuery, setSearchQuery] = useState('');
+  const [semesterFilter, setSemesterFilter] = useState<SemesterFilter>('ODD');
+  const [semesterInitialized, setSemesterInitialized] = useState(false);
 
   useEffect(() => {
     if (!selectedAssignmentId && assignmentOptions.length > 0) {
@@ -74,28 +106,118 @@ export function TeacherExamPacketsModuleScreen({
   }, [selectedAssignmentId, assignmentOptions]);
 
   useEffect(() => {
-    if (fixedType) {
-      setTypeFilter(fixedType);
+    if (lockedProgramCode) {
+      setTypeFilter(lockedProgramCode);
       return;
     }
     setTypeFilter(defaultType);
-  }, [fixedType, defaultType]);
+  }, [lockedProgramCode, defaultType]);
+
+  const examProgramsQuery = useQuery({
+    queryKey: ['mobile-teacher-exam-programs', teacherAssignmentsQuery.data?.activeYear?.id],
+    enabled: isAuthenticated && Boolean(teacherAssignmentsQuery.data?.activeYear?.id),
+    staleTime: 5 * 60 * 1000,
+    queryFn: () =>
+      examApi.getExamPrograms({
+        academicYearId: teacherAssignmentsQuery.data?.activeYear?.id,
+        roleContext: 'teacher',
+      }),
+  });
+
+  const activePrograms = useMemo(
+    () =>
+      (examProgramsQuery.data?.programs || [])
+        .filter((program: ExamProgramItem) => program.isActive && program.showOnTeacherMenu)
+        .sort((a, b) => a.order - b.order || a.code.localeCompare(b.code)),
+    [examProgramsQuery.data?.programs],
+  );
+
+  useEffect(() => {
+    if (lockedProgramCode || typeFilter === 'ALL') return;
+    const allowed = new Set(activePrograms.map((program) => normalizeProgramCode(program.code)));
+    if (!allowed.has(typeFilter)) {
+      setTypeFilter('ALL');
+    }
+  }, [lockedProgramCode, typeFilter, activePrograms]);
+
+  const programMap = useMemo(() => {
+    const map = new Map<string, ExamProgramItem>();
+    activePrograms.forEach((program) => {
+      map.set(normalizeProgramCode(program.code), program);
+    });
+    return map;
+  }, [activePrograms]);
+
+  const examTypeLabels = useMemo<ExamLabelMap>(() => {
+    const map: ExamLabelMap = {};
+    const programs = activePrograms;
+
+    programs.forEach((program: ExamProgramItem) => {
+      const code = normalizeProgramCode(program?.code);
+      const label = String(program?.label || '').trim();
+      if (!label) return;
+      map[code] = label;
+    });
+
+    return map;
+  }, [activePrograms]);
+
+  const examTypeLabel = (type: string) => resolveExamTypeLabel(type, examTypeLabels);
+  const resolvedTitle = lockedProgramCode ? `Ujian ${examTypeLabel(lockedProgramCode)}` : title;
+  const resolvedSubtitle = lockedProgramCode
+    ? `Kelola packet ujian ${examTypeLabel(lockedProgramCode)} untuk kelas dan mata pelajaran yang Anda ampu.`
+    : subtitle;
 
   const selectedAssignment = assignmentOptions.find((item) => item.id === selectedAssignmentId) || null;
+  const activeYearSemester = normalizeSemester(teacherAssignmentsQuery.data?.activeYear?.semester);
+  const selectedAssignmentSemester = normalizeSemester(selectedAssignment?.academicYear?.semester);
+  const selectedProgramCode = lockedProgramCode || (typeFilter !== 'ALL' ? normalizeProgramCode(typeFilter) : '');
+  const selectedProgramMeta = selectedProgramCode ? programMap.get(selectedProgramCode) : undefined;
+  const lockedSemester = selectedProgramMeta?.fixedSemester || null;
+  const isSemesterLocked = Boolean(lockedSemester);
+  const selectedTypeForQuery = selectedProgramMeta?.baseType || undefined;
+  const selectedSemesterForQuery: 'ODD' | 'EVEN' | undefined =
+    lockedSemester === 'ODD' || lockedSemester === 'EVEN' ? lockedSemester : semesterFilter;
+
+  useEffect(() => {
+    if (lockedSemester === 'ODD' || lockedSemester === 'EVEN') {
+      setSemesterFilter(lockedSemester);
+      setSemesterInitialized(true);
+      return;
+    }
+
+    if (semesterInitialized) return;
+
+    const preferred = activeYearSemester || selectedAssignmentSemester;
+    if (preferred) {
+      setSemesterFilter(preferred);
+      setSemesterInitialized(true);
+    }
+  }, [lockedSemester, activeYearSemester, selectedAssignmentSemester, semesterInitialized]);
+
   const packetsQuery = useTeacherExamPacketsQuery({
     enabled: isAuthenticated,
     user,
     subjectId: selectedAssignment?.subject.id,
     academicYearId: selectedAssignment?.academicYear.id,
-    semester: selectedAssignment?.academicYear ? undefined : undefined,
+    semester: selectedSemesterForQuery,
+    type: selectedTypeForQuery,
+    programCode: selectedProgramCode || undefined,
   });
+  const createTypeForEditor = selectedProgramCode || '';
+  const createEditorPath = createTypeForEditor
+    ? (`/teacher/exams/editor?programCode=${encodeURIComponent(createTypeForEditor)}` as const)
+    : ('/teacher/exams/editor' as const);
 
   const filtered = useMemo(() => {
     const rows = packetsQuery.data || [];
     const q = searchQuery.trim().toLowerCase();
     return rows.filter((item) => {
-      const type = normalizeType(item.type);
+      const type = normalizeProgramCode(item.programCode || item.type);
+      const semester = normalizeSemester(item.semester || undefined);
       if (typeFilter !== 'ALL' && type !== typeFilter) return false;
+      if (semester && semester !== selectedSemesterForQuery) return false;
+      if (!semester) return false;
       if (!q) return true;
       return (
         item.title.toLowerCase().includes(q) ||
@@ -103,7 +225,7 @@ export function TeacherExamPacketsModuleScreen({
         item.subject.code.toLowerCase().includes(q)
       );
     });
-  }, [packetsQuery.data, searchQuery, typeFilter]);
+  }, [packetsQuery.data, searchQuery, typeFilter, selectedSemesterForQuery]);
 
   const summary = useMemo(() => {
     const rows = filtered;
@@ -143,8 +265,10 @@ export function TeacherExamPacketsModuleScreen({
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{subtitle}</Text>
+      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        {resolvedTitle}
+      </Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{resolvedSubtitle}</Text>
 
       <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -198,7 +322,7 @@ export function TeacherExamPacketsModuleScreen({
       </View>
 
       <Pressable
-        onPress={() => router.push('/teacher/exams/editor' as never)}
+        onPress={() => router.push(createEditorPath as never)}
         style={{
           backgroundColor: '#16a34a',
           borderRadius: 10,
@@ -249,45 +373,51 @@ export function TeacherExamPacketsModuleScreen({
         </View>
       </View>
 
-      <TextInput
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-        placeholder="Cari judul ujian..."
-        style={{
-          borderWidth: 1,
-          borderColor: '#cbd5e1',
-          borderRadius: 10,
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          backgroundColor: '#fff',
-          marginBottom: 10,
-        }}
-      />
+      <View style={{ marginBottom: 10 }}>
+        <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700', marginBottom: 6 }}>Cari Paket Ujian</Text>
+        <TextInput
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Cari judul ujian..."
+          placeholderTextColor="#94a3b8"
+          style={{
+            borderWidth: 1,
+            borderColor: '#cbd5e1',
+            borderRadius: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            backgroundColor: '#fff',
+          }}
+        />
+      </View>
 
-      {!fixedType ? (
-        <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
-          {(['ALL', 'FORMATIF', 'SBTS', 'SAS', 'SAT'] as ExamTypeFilter[]).map((item) => {
-            const selected = typeFilter === item;
-            return (
-              <View key={item} style={{ width: '20%', paddingHorizontal: 4 }}>
-                <Pressable
-                  onPress={() => setTypeFilter(item)}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                    backgroundColor: selected ? '#eff6ff' : '#fff',
-                    borderRadius: 8,
-                    paddingVertical: 8,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 11, fontWeight: '700' }}>
-                    {item === 'ALL' ? 'Semua' : item}
-                  </Text>
-                </Pressable>
-              </View>
-            );
-          })}
+      {!lockedProgramCode ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 10 }}>
+          {(['ALL', ...activePrograms.map((program) => normalizeProgramCode(program.code))] as ExamTypeFilter[]).map(
+            (item) => {
+              const selected = typeFilter === item;
+              return (
+                <View key={item} style={{ paddingHorizontal: 4, marginBottom: 8 }}>
+                  <Pressable
+                    onPress={() => setTypeFilter(item)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: selected ? '#1d4ed8' : '#cbd5e1',
+                      backgroundColor: selected ? '#eff6ff' : '#fff',
+                      borderRadius: 8,
+                      paddingVertical: 8,
+                      paddingHorizontal: 10,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 11, fontWeight: '700' }}>
+                      {item === 'ALL' ? 'Semua' : examTypeLabel(item)}
+                    </Text>
+                  </Pressable>
+                </View>
+              );
+            },
+          )}
         </View>
       ) : (
         <View style={{ marginBottom: 10 }}>
@@ -302,7 +432,65 @@ export function TeacherExamPacketsModuleScreen({
               paddingVertical: 6,
             }}
           >
-            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Filter Tetap: {fixedType}</Text>
+            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+              Filter Tetap: {examTypeLabel(lockedProgramCode)}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {isSemesterLocked ? (
+        <View style={{ marginBottom: 10 }}>
+          <View
+            style={{
+              alignSelf: 'flex-start',
+              borderWidth: 1,
+              borderColor: '#dbeafe',
+              backgroundColor: '#eff6ff',
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+            }}
+          >
+            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+              Semester Tetap: {lockedSemester === 'ODD' ? 'Ganjil' : 'Genap'} (sesuai program ujian)
+            </Text>
+          </View>
+        </View>
+      ) : (
+        <View style={{ marginBottom: 10 }}>
+          <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700', marginBottom: 6 }}>
+            Semester Packet: {semesterLabel(semesterFilter)}
+          </Text>
+          <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+            {([
+              { key: 'ODD', label: 'Ganjil' },
+              { key: 'EVEN', label: 'Genap' },
+            ] as Array<{ key: SemesterFilter; label: string }>).map((item) => {
+            const selected = semesterFilter === item.key;
+            return (
+              <View key={item.key} style={{ width: '50%', paddingHorizontal: 4 }}>
+                <Pressable
+                  onPress={() => {
+                    setSemesterFilter(item.key);
+                    setSemesterInitialized(true);
+                  }}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: selected ? '#1d4ed8' : '#cbd5e1',
+                    backgroundColor: selected ? '#eff6ff' : '#fff',
+                    borderRadius: 8,
+                    paddingVertical: 8,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 11, fontWeight: '700' }}>
+                    {item.label}
+                  </Text>
+                </Pressable>
+              </View>
+            );
+            })}
           </View>
         </View>
       )}
@@ -328,7 +516,7 @@ export function TeacherExamPacketsModuleScreen({
         filtered.length > 0 ? (
           <View>
             {filtered.map((item) => {
-              const type = normalizeType(item.type);
+              const type = normalizeProgramCode(item.programCode || item.type);
               const qCount = questionCountFromUnknown(item.questions);
               return (
                 <View
@@ -357,7 +545,7 @@ export function TeacherExamPacketsModuleScreen({
                         fontWeight: '700',
                       }}
                     >
-                      {type}
+                      {examTypeLabel(type)}
                     </Text>
                   </View>
                   <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
@@ -369,17 +557,59 @@ export function TeacherExamPacketsModuleScreen({
                   <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 8 }}>
                     Dibuat: {formatDate(item.createdAt)}
                   </Text>
-                  <Pressable
-                    onPress={() => router.push(`/teacher/exams/editor?packetId=${item.id}` as never)}
-                    style={{
-                      backgroundColor: '#1d4ed8',
-                      borderRadius: 8,
-                      paddingVertical: 8,
-                      alignItems: 'center',
-                    }}
-                  >
-                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Edit Packet</Text>
-                  </Pressable>
+                  <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+                    <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                      <Pressable
+                        onPress={() => router.push(`/teacher/exams/editor?packetId=${item.id}` as never)}
+                        style={{
+                          backgroundColor: '#1d4ed8',
+                          borderRadius: 8,
+                          paddingVertical: 8,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Edit Packet</Text>
+                      </Pressable>
+                    </View>
+                    <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                      <Pressable
+                        onPress={() =>
+                          router.push(
+                            `/teacher/exams-analysis?packetId=${item.id}&title=${encodeURIComponent(item.title)}` as never,
+                          )
+                        }
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#a7f3d0',
+                          backgroundColor: '#ecfdf5',
+                          borderRadius: 8,
+                          paddingVertical: 8,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#047857', fontWeight: '700', fontSize: 12 }}>Analisis</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                  <View style={{ marginTop: 8 }}>
+                    <Pressable
+                      onPress={() =>
+                        router.push(
+                          `/teacher/exams-submissions?packetId=${item.id}&title=${encodeURIComponent(item.title)}` as never,
+                        )
+                      }
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#ddd6fe',
+                        backgroundColor: '#f5f3ff',
+                        borderRadius: 8,
+                        paddingVertical: 8,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#6d28d9', fontWeight: '700', fontSize: 12 }}>Submisi</Text>
+                    </Pressable>
+                  </View>
                 </View>
               );
             })}

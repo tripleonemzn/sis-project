@@ -9,6 +9,7 @@
     "dev": "nodemon --exec 'node -r ts-node/register' src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "generate:deskripsi-foto": "node -r ts-node/register src/scripts/generate_deskripsi_foto.ts",
+    "scores:backfill": "node -r ts-node/register src/scripts/backfill_score_entries.ts",
     "import:students": "node -r ts-node/register src/scripts/import_students_from_input.ts",
     "import:subjects": "node -r ts-node/register src/scripts/import_subjects_from_input.ts",
     "service:status": "pm2 status && systemctl is-active nginx || true",
@@ -36,6 +37,7 @@
     "multer": "^1.4.5-lts.1",
     "openai": "^6.16.0",
     "qrcode": "^1.5.4",
+    "ws": "^8.19.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {

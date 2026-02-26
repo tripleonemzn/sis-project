@@ -5,6 +5,7 @@ import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import { internshipService } from '../../../services/internship.service';
 import { userService } from '../../../services/user.service';
 import { authService } from '../../../services/auth.service';
+import { liveQueryOptions } from '../../../lib/query/liveQuery';
 import { 
   XCircle, 
   Search, 
@@ -301,6 +302,7 @@ Adapun nama siswa/i kami adalah:`,
       search: searchQuery || undefined,
       academicYearId: activeYearId
     }),
+    ...liveQueryOptions,
     // enabled: !!activeYearId, // Removed to allow fetch even if activeYearId is not yet loaded
   });
 

@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-02-21T23:38:47.481Z",
+  "generatedAt": "2026-02-25T01:14:25.046Z",
   "perRoleSummary": [
     {
       "role": "ADMIN",
-      "total": 29,
-      "nativeOnly": 29,
+      "total": 31,
+      "nativeOnly": 31,
       "nativeWithWebFallback": 0,
       "webBridgeRoute": 0,
       "webOnlyNoRoute": 0,
@@ -361,6 +361,26 @@
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/admin/academic.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-slideshow",
+        "label": "Slideshow",
+        "route": "/admin/slideshow",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/slideshow.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-server-area",
+        "label": "Area Server",
+        "route": "/admin/server-area",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/server-area.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
       },
@@ -741,7 +761,7 @@
       {
         "key": "student-exam-formatif",
         "label": "Formatif (Quiz)",
-        "route": "/exams",
+        "route": "/exams?programCode=FORMATIF",
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/exams.tsx",
@@ -751,7 +771,7 @@
       {
         "key": "student-exam-sbts",
         "label": "SBTS",
-        "route": "/exams",
+        "route": "/exams?programCode=SBTS",
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/exams.tsx",
@@ -761,7 +781,7 @@
       {
         "key": "student-exam-sas",
         "label": "SAS",
-        "route": "/exams",
+        "route": "/exams?programCode=SAS",
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/exams.tsx",
@@ -771,7 +791,7 @@
       {
         "key": "student-exam-sat",
         "label": "SAT",
-        "route": "/exams",
+        "route": "/exams?programCode=SAT",
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/exams.tsx",
@@ -953,40 +973,40 @@
       {
         "key": "teacher-exam-formatif",
         "label": "Formatif (Quiz)",
-        "route": "/teacher/exams-formatif",
+        "route": "/teacher/exams?programCode=FORMATIF",
         "webPath": null,
         "mode": "NATIVE_ONLY",
-        "routeFile": "app/(app)/teacher/exams-formatif.tsx",
+        "routeFile": "app/(app)/teacher/exams.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
       },
       {
         "key": "teacher-exam-sbts",
         "label": "SBTS",
-        "route": "/teacher/exams-sbts",
+        "route": "/teacher/exams?programCode=SBTS",
         "webPath": null,
         "mode": "NATIVE_ONLY",
-        "routeFile": "app/(app)/teacher/exams-sbts.tsx",
+        "routeFile": "app/(app)/teacher/exams.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
       },
       {
         "key": "teacher-exam-sas",
         "label": "SAS",
-        "route": "/teacher/exams-sas",
+        "route": "/teacher/exams?programCode=SAS",
         "webPath": null,
         "mode": "NATIVE_ONLY",
-        "routeFile": "app/(app)/teacher/exams-sas.tsx",
+        "routeFile": "app/(app)/teacher/exams.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
       },
       {
         "key": "teacher-exam-sat",
         "label": "SAT",
-        "route": "/teacher/exams-sat",
+        "route": "/teacher/exams?programCode=SAT",
         "webPath": null,
         "mode": "NATIVE_ONLY",
-        "routeFile": "app/(app)/teacher/exams-sat.tsx",
+        "routeFile": "app/(app)/teacher/exams.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
       },
@@ -1372,7 +1392,7 @@
       },
       {
         "key": "teacher-head-library-inventory",
-        "label": "Inventaris Perpustakaan",
+        "label": "Kelola Perpustakaan",
         "route": "/teacher/head-library-inventory",
         "webPath": null,
         "mode": "NATIVE_ONLY",

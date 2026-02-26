@@ -4,6 +4,7 @@ export type SarprasRoomCategory = {
   id: number;
   name: string;
   description?: string | null;
+  inventoryTemplateKey?: string | null;
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
@@ -25,6 +26,7 @@ export type SarprasRoom = {
   category?: {
     id: number;
     name: string;
+    inventoryTemplateKey?: string | null;
   } | null;
   _count?: {
     items?: number;
@@ -45,8 +47,60 @@ export type SarprasInventoryItem = {
   price?: number | null;
   source?: string | null;
   description?: string | null;
+  attributes?: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type SarprasLibraryBorrowerStatus = 'TEACHER' | 'STUDENT';
+export type SarprasLibraryReturnStatus = 'RETURNED' | 'NOT_RETURNED';
+export type SarprasLibraryLoanDisplayStatus = 'BORROWED' | 'OVERDUE' | 'RETURNED';
+
+export type SarprasLibraryClassOption = {
+  id: number;
+  name: string;
+  level: string;
+  displayName: string;
+  major?: {
+    code?: string | null;
+    name?: string | null;
+  } | null;
+};
+
+export type SarprasLibraryBookLoan = {
+  id: number;
+  borrowDate: string;
+  borrowerName: string;
+  borrowerStatus: SarprasLibraryBorrowerStatus;
+  classId?: number | null;
+  bookTitle: string;
+  publishYear?: number | null;
+  returnDate?: string | null;
+  returnStatus: SarprasLibraryReturnStatus;
+  displayStatus?: SarprasLibraryLoanDisplayStatus;
+  statusLabel?: string;
+  overdueDays?: number;
+  isOverdue?: boolean;
+  finePerDay?: number;
+  fineAmount?: number;
+  phoneNumber?: string | null;
+  createdById?: number | null;
+  createdAt: string;
+  updatedAt: string;
+  class?: {
+    id: number;
+    name: string;
+    level: string;
+    major?: {
+      code?: string | null;
+      name?: string | null;
+    } | null;
+  } | null;
+};
+
+export type SarprasLibraryLoanSettings = {
+  finePerDay: number;
+  updatedAt?: string;
 };
 
 export type SarprasBudgetStatus = 'PENDING' | 'APPROVED' | 'REJECTED';

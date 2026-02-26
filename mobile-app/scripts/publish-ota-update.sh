@@ -25,6 +25,8 @@ fi
 
 NOTIFY_URL="${OTA_PUSH_NOTIFY_URL:-http://127.0.0.1:3000/api/mobile-updates/broadcast}"
 NOTIFY_SECRET="${OTA_PUSH_NOTIFY_SECRET:-${MOBILE_UPDATE_PUSH_SECRET:-}}"
+NOTIFY_TITLE="${OTA_PUSH_NOTIFY_TITLE:-SIS KGB2 : Update Tersedia}"
+NOTIFY_BODY="${OTA_PUSH_NOTIFY_BODY:-Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.}"
 
 echo "Publishing OTA update..."
 echo "Channel : ${CHANNEL}"
@@ -33,18 +35,22 @@ echo "Message : ${MESSAGE}"
 echo "Attempts: ${MAX_ATTEMPTS}"
 
 notify_broadcast() {
-  local safe_message
+  local safe_title
+  local safe_body
   local safe_channel
   local safe_platform
   local notify_platform
   local payload
   local curl_status
+  local response
+  local summary
 
   notify_platform="$(printf '%s' "${PLATFORM}" | tr '[:lower:]' '[:upper:]')"
-  safe_message="$(printf '%s' "${MESSAGE}" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  safe_title="$(printf '%s' "${NOTIFY_TITLE}" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  safe_body="$(printf '%s' "${NOTIFY_BODY}" | sed 's/\\/\\\\/g; s/"/\\"/g')"
   safe_channel="$(printf '%s' "${CHANNEL}" | sed 's/\\/\\\\/g; s/"/\\"/g')"
   safe_platform="$(printf '%s' "${notify_platform}" | sed 's/\\/\\\\/g; s/"/\\"/g')"
-  payload="{\"channel\":\"${safe_channel}\",\"platform\":\"${safe_platform}\",\"message\":\"${safe_message}\"}"
+  payload="{\"title\":\"${safe_title}\",\"message\":\"${safe_body}\",\"channel\":\"${safe_channel}\",\"platform\":\"${safe_platform}\"}"
 
   if [ -z "${NOTIFY_URL}" ]; then
     echo "Skip push notify: OTA_PUSH_NOTIFY_URL tidak dikonfigurasi."
@@ -53,11 +59,15 @@ notify_broadcast() {
 
   echo "Trigger push notify ke ${NOTIFY_URL}..."
   if [ -n "${NOTIFY_SECRET}" ]; then
-    if curl -fsS -X POST "${NOTIFY_URL}" \
+    if response="$(curl -fsS -X POST "${NOTIFY_URL}" \
       -H "Content-Type: application/json" \
       -H "x-mobile-update-secret: ${NOTIFY_SECRET}" \
-      --data "${payload}" >/dev/null; then
+      --data "${payload}")"; then
       echo "Push notify update berhasil dikirim."
+      summary="$(printf '%s' "${response}" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);const d=j?.data||{};process.stdout.write('recipients='+String(d.recipients??0)+', sent='+String(d.sent??0)+', failed='+String(d.failed??0)+', stale='+String(d.staleTokensDisabled??0));}catch{}});" 2>/dev/null || true)"
+      if [ -n "${summary}" ]; then
+        echo "Push notify summary: ${summary}"
+      fi
       return 0
     fi
     curl_status=$?
@@ -65,10 +75,14 @@ notify_broadcast() {
     return 0
   fi
 
-  if curl -fsS -X POST "${NOTIFY_URL}" \
+  if response="$(curl -fsS -X POST "${NOTIFY_URL}" \
     -H "Content-Type: application/json" \
-    --data "${payload}" >/dev/null; then
+    --data "${payload}")"; then
     echo "Push notify update berhasil dikirim (tanpa secret)."
+    summary="$(printf '%s' "${response}" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);const d=j?.data||{};process.stdout.write('recipients='+String(d.recipients??0)+', sent='+String(d.sent??0)+', failed='+String(d.failed??0)+', stale='+String(d.staleTokensDisabled??0));}catch{}});" 2>/dev/null || true)"
+    if [ -n "${summary}" ]; then
+      echo "Push notify summary: ${summary}"
+    fi
     return 0
   fi
   curl_status=$?

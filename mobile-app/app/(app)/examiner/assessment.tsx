@@ -41,15 +41,41 @@ function criteriaKey(criteria: ExaminerSchemeCriteria) {
   return `${criteria.group || 'Umum'}::${criteria.name}`;
 }
 
-function pickExistingScore(source: Record<string, number>, criteria: ExaminerSchemeCriteria) {
-  const key = criteriaKey(criteria);
-  if (Number.isFinite(source[key])) return Number(source[key]);
-  if (Number.isFinite(source[criteria.name])) return Number(source[criteria.name]);
-  if (Array.isArray(criteria.aliases)) {
-    for (const alias of criteria.aliases) {
-      if (Number.isFinite(source[alias])) return Number(source[alias]);
-    }
+function toFiniteScore(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value.replace(',', '.').trim());
+    if (Number.isFinite(parsed)) return parsed;
   }
+  return null;
+}
+
+function pickExistingScore(source: Record<string, unknown>, criteria: ExaminerSchemeCriteria) {
+  const groupName = String(criteria.group || 'Umum').trim() || 'Umum';
+  const candidateKeys = [
+    criteriaKey(criteria),
+    `${groupName}::${criteria.name}`,
+    criteria.name,
+    ...(Array.isArray(criteria.aliases) ? criteria.aliases : []),
+  ]
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+
+  const inspectedKeys = new Set<string>();
+  for (const key of candidateKeys) {
+    if (inspectedKeys.has(key)) continue;
+    inspectedKeys.add(key);
+    const parsed = toFiniteScore(source[key]);
+    if (parsed !== null) return parsed;
+  }
+
+  const normalizedTargets = new Set(candidateKeys.map((item) => normalizeKey(item)));
+  for (const [rawKey, rawValue] of Object.entries(source)) {
+    if (!normalizedTargets.has(normalizeKey(rawKey))) continue;
+    const parsed = toFiniteScore(rawValue);
+    if (parsed !== null) return parsed;
+  }
+
   return 0;
 }
 
@@ -66,20 +92,29 @@ export default function ExaminerAssessmentScreen() {
   const [selectedClassId, setSelectedClassId] = useState<string>('ALL');
   const [allScores, setAllScores] = useState<ScoreMap>({});
   const [changedStudentIds, setChangedStudentIds] = useState<Set<number>>(new Set());
-  const [initializedSchemeId, setInitializedSchemeId] = useState<number | null>(null);
 
   const isExaminer = user?.role === 'EXAMINER';
 
   const schemesQuery = useExaminerSchemesQuery({ enabled: isAuthenticated, user });
-  const assessmentsQuery = useExaminerAssessmentsQuery({
-    enabled: isAuthenticated && !!schemeId,
-    user,
-  });
 
   const schemeDetailQuery = useQuery({
     queryKey: ['mobile-examiner-scheme-detail', schemeId],
     enabled: isAuthenticated && isExaminer && !!schemeId,
     queryFn: async () => examinerApi.getSchemeDetail(Number(schemeId)),
+  });
+
+  const selectedSchemeAcademicYearId = useMemo(() => {
+    const value = Number(
+      schemeDetailQuery.data?.academicYearId || schemeDetailQuery.data?.academicYear?.id || 0,
+    );
+    if (!Number.isFinite(value) || value <= 0) return undefined;
+    return value;
+  }, [schemeDetailQuery.data?.academicYearId, schemeDetailQuery.data?.academicYear?.id]);
+
+  const assessmentsQuery = useExaminerAssessmentsQuery({
+    enabled: isAuthenticated && !!schemeId,
+    user,
+    academicYearId: selectedSchemeAcademicYearId,
   });
 
   const studentsQuery = useQuery({
@@ -148,24 +183,29 @@ export default function ExaminerAssessmentScreen() {
   }, [students, search, selectedClassId]);
 
   useEffect(() => {
-    if (!schemeId) {
-      setInitializedSchemeId(null);
-      setAllScores({});
-      setChangedStudentIds(new Set());
-      return;
-    }
-    if (!schemeDetailQuery.data) return;
-    if (initializedSchemeId === schemeId) return;
+    setAllScores({});
+    setChangedStudentIds(new Set());
+  }, [schemeId]);
+
+  useEffect(() => {
+    if (!schemeId || !schemeDetailQuery.data) return;
+    if (assessmentsQuery.isLoading) return;
+    if (changedStudentIds.size > 0) return;
 
     const existingAssessments = assessmentsQuery.data?.assessments || [];
-    const subjectId = Number(
-      schemeDetailQuery.data.subjectId || schemeDetailQuery.data.subject?.id || 0,
+    const subjectId = Number(schemeDetailQuery.data.subjectId || schemeDetailQuery.data.subject?.id || 0);
+    const academicYearId = Number(
+      schemeDetailQuery.data.academicYearId || schemeDetailQuery.data.academicYear?.id || 0,
     );
     const seededScores: ScoreMap = {};
 
     for (const assessment of existingAssessments) {
-      if (Number(assessment.subjectId) !== subjectId) continue;
-      const source = assessment.scores && typeof assessment.scores === 'object' ? assessment.scores : {};
+      if (subjectId > 0 && Number(assessment.subjectId) !== subjectId) continue;
+      if (academicYearId > 0 && Number(assessment.academicYearId) !== academicYearId) continue;
+      const source =
+        assessment.scores && typeof assessment.scores === 'object'
+          ? (assessment.scores as Record<string, unknown>)
+          : {};
       const studentScore: Record<string, number> = {};
       for (const item of criteria) {
         studentScore[criteriaKey(item)] = pickExistingScore(source, item);
@@ -174,13 +214,12 @@ export default function ExaminerAssessmentScreen() {
     }
 
     setAllScores(seededScores);
-    setChangedStudentIds(new Set());
-    setInitializedSchemeId(schemeId);
   }, [
     schemeId,
     schemeDetailQuery.data,
     assessmentsQuery.data?.assessments,
-    initializedSchemeId,
+    assessmentsQuery.isLoading,
+    changedStudentIds.size,
     criteria,
   ]);
 

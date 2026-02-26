@@ -5,6 +5,7 @@ import { offlineCache } from '../../lib/storage/offlineCache';
 import { CACHE_MAX_SNAPSHOTS_PER_FEATURE, CACHE_TTL_MS } from '../../config/cache';
 import { principalApi } from './principalApi';
 import { PrincipalBudgetRequest } from './types';
+import { mobileLiveQueryOptions } from '../../lib/query/liveQuery';
 
 type PrincipalApprovalsQueryData = {
   activeYear: {
@@ -60,5 +61,6 @@ export function usePrincipalApprovalsQuery({ enabled, user }: Params) {
         throw error;
       }
     },
+    ...mobileLiveQueryOptions,
   });
 }

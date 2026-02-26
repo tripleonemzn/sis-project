@@ -1,13 +1,13 @@
-import { 
-  LayoutDashboard, 
-  Users, 
-  Calendar, 
-  BookOpen, 
-  GraduationCap, 
-  FileText, 
-  CreditCard, 
-  ClipboardList, 
-  UserCheck, 
+import {
+  LayoutDashboard,
+  Users,
+  Calendar,
+  BookOpen,
+  GraduationCap,
+  FileText,
+  CreditCard,
+  ClipboardList,
+  UserCheck,
   School,
   Wallet,
   LogOut,
@@ -34,7 +34,10 @@ import {
   Target,
   GitBranch,
   Check,
-  List
+  List,
+  Image as ImageIcon,
+  Server,
+  Mail,
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
@@ -42,6 +45,12 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { authService } from '../../services/auth.service';
 import { internshipService } from '../../services/internship.service';
+import {
+  examService,
+  examProgramCodeToSlug,
+  normalizeExamProgramCode,
+  type ExamProgram,
+} from '../../services/exam.service';
 
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
@@ -71,12 +80,24 @@ export type MenuItem = {
   children?: MenuItem[];
 };
 
-export const getMenuItems = (user: SidebarProps['user'], hasPendingDefense: boolean = false, pklEligibleGrades?: string | null): MenuItem[] => {
+function sortExamPrograms(programs: ExamProgram[]): ExamProgram[] {
+  return [...programs]
+    .filter((program) => Boolean(program?.isActive))
+    .sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || String(a.label || '').localeCompare(String(b.label || '')));
+}
+
+export const getMenuItems = (
+  user: SidebarProps['user'],
+  hasPendingDefense: boolean = false,
+  pklEligibleGrades?: string | null,
+  examPrograms?: ExamProgram[],
+): MenuItem[] => {
   const role = user.role;
 
   if (role === 'ADMIN') {
     return [
       { label: 'Dashboard', path: '/admin', icon: LayoutDashboard },
+      { label: 'Email', path: '/email', icon: Mail },
       { 
         label: 'MASTER DATA', 
         path: '/admin/master', 
@@ -136,10 +157,13 @@ export const getMenuItems = (user: SidebarProps['user'], hasPendingDefense: bool
         path: '/admin/settings-group',
         icon: Settings,
         children: [
+          { label: 'Slideshow', path: '/admin/settings/slideshow', icon: ImageIcon },
           { label: 'Profil Sekolah', path: '/admin/settings/profile', icon: School },
           { label: 'Ubah Password', path: '/admin/settings/password', icon: Lock },
+          { label: 'Area Server', path: '/admin/settings/server-area', icon: Server },
         ]
-      }
+      },
+
     ];
   }
 
@@ -150,9 +174,13 @@ export const getMenuItems = (user: SidebarProps['user'], hasPendingDefense: bool
     const isWaliKelas = (user.teacherClasses?.length || 0) > 0;
     const hasTrainingClass = (user.trainingClassesTeaching?.length || 0) > 0;
     const duties = user.additionalDuties || [];
+    const teacherExamPrograms = sortExamPrograms(
+      (examPrograms ?? []).filter((program) => program.showOnTeacherMenu),
+    );
 
     const items: MenuItem[] = [
       { label: 'Dashboard', path: '/teacher', icon: LayoutDashboard },
+      { label: 'Email', path: '/email', icon: Mail },
       {
         label: 'AKADEMIK',
         path: '/teacher/academic',
@@ -185,13 +213,15 @@ export const getMenuItems = (user: SidebarProps['user'], hasPendingDefense: bool
         icon: FileQuestion,
         children: [
           { label: 'Jadwal Mengawas', path: '/teacher/proctoring', icon: UserCheck },
-          { label: 'Formatif (Quiz)', path: '/teacher/exams/formatif', icon: FileQuestion },
-          { label: 'SBTS', path: '/teacher/exams/sbts', icon: FileQuestion },
-          { label: 'SAS', path: '/teacher/exams/sas', icon: FileQuestion },
-          { label: 'SAT', path: '/teacher/exams/sat', icon: FileQuestion },
+          ...teacherExamPrograms.map((program) => ({
+            label: String(program.label || program.code),
+            path: `/teacher/exams/program/${examProgramCodeToSlug(program.code)}`,
+            icon: FileQuestion,
+          })),
           { label: 'Bank Soal', path: '/teacher/exams/bank', icon: Database },
         ]
-      }
+      },
+
     ];
 
     // Menu Khusus Wali Kelas
@@ -328,7 +358,7 @@ export const getMenuItems = (user: SidebarProps['user'], hasPendingDefense: bool
         label = 'KEPALA PERPUSTAKAAN';
         children = [
           ...createGenericItems(duty),
-          { label: 'Inventaris Perpustakaan', path: '/teacher/head-library/inventory?filter=library', icon: Database },
+          { label: 'Kelola Perpustakaan', path: '/teacher/head-library/inventory?filter=library', icon: Database },
         ];
       } else {
         // Fallback for other duties
@@ -443,6 +473,9 @@ export const getMenuItems = (user: SidebarProps['user'], hasPendingDefense: bool
 
   if (role === 'STUDENT') {
     const isAlumni = user.studentStatus === 'GRADUATED';
+    const studentExamPrograms = sortExamPrograms(
+      (examPrograms ?? []).filter((program) => program.showOnStudentMenu),
+    );
     if (isAlumni) {
        return [
         { label: 'Dashboard', path: '/student', icon: LayoutDashboard },
@@ -510,10 +543,11 @@ export const getMenuItems = (user: SidebarProps['user'], hasPendingDefense: bool
         path: '/student/exams-group',
         icon: FileQuestion,
         children: [
-          { label: 'Formatif (Quiz)', path: '/student/exams/formatif', icon: FileQuestion },
-          { label: 'SBTS', path: '/student/exams/sbts', icon: FileQuestion },
-          { label: 'SAS', path: '/student/exams/sas', icon: FileQuestion },
-          { label: 'SAT', path: '/student/exams/sat', icon: FileQuestion },
+          ...studentExamPrograms.map((program) => ({
+            label: String(program.label || program.code),
+            path: `/student/exams/program/${examProgramCodeToSlug(program.code)}`,
+            icon: FileQuestion,
+          })),
         ]
       },
       {
@@ -614,11 +648,40 @@ export const Sidebar = ({ user }: SidebarProps) => {
   });
 
   const { data: activeAcademicYearData } = useActiveAcademicYear();
+
+  const examProgramsQuery = useQuery({
+    queryKey: ['sidebar-exam-programs', user.role, activeAcademicYearData?.id],
+    enabled: (user.role === 'TEACHER' || user.role === 'STUDENT') && Boolean(activeAcademicYearData?.id),
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      return examService.getPrograms({
+        academicYearId: activeAcademicYearData?.id,
+        roleContext: user.role === 'STUDENT' ? 'student' : 'teacher',
+      });
+    },
+  });
   
   const hasPendingDefense = (examinerInternshipsData?.data?.data?.length || 0) > 0;
   const pklEligibleGrades = activeAcademicYearData?.pklEligibleGrades;
+  const examPrograms = useMemo<ExamProgram[]>(() => {
+    const fromApi = examProgramsQuery.data?.data?.programs || [];
+    const normalized = fromApi
+      .map((program) => {
+        const code = normalizeExamProgramCode(program?.code);
+        if (!code) return null;
+        return {
+          ...program,
+          code,
+        } as ExamProgram;
+      })
+      .filter((program): program is ExamProgram => Boolean(program));
+    return sortExamPrograms(normalized);
+  }, [examProgramsQuery.data]);
 
-  const items = useMemo(() => getMenuItems(user, hasPendingDefense, pklEligibleGrades), [user, hasPendingDefense, pklEligibleGrades]);
+  const items = useMemo(
+    () => getMenuItems(user, hasPendingDefense, pklEligibleGrades, examPrograms),
+    [user, hasPendingDefense, pklEligibleGrades, examPrograms],
+  );
   // Helper: check path active with relaxed query matching
   const isChildPathActive = (itemPath: string) => {
     if (itemPath.includes('?')) {
@@ -626,6 +689,12 @@ export const Sidebar = ({ user }: SidebarProps) => {
       const required = new URLSearchParams(qs);
       const current = new URLSearchParams(location.search);
       if (!location.pathname.startsWith(pathOnly)) return false;
+      const isInventoryScopePath =
+        pathOnly.includes('/teacher/head-library/inventory') ||
+        pathOnly.includes('/teacher/head-lab/inventory');
+      if (isInventoryScopePath && !location.search) {
+        return true;
+      }
       for (const [k, v] of required.entries()) {
         if (current.get(k) !== v) return false;
       }
@@ -703,6 +772,12 @@ export const Sidebar = ({ user }: SidebarProps) => {
       const current = new URLSearchParams(location.search);
       
       if (!location.pathname.startsWith(pathOnly)) return false;
+      const isInventoryScopePath =
+        pathOnly.includes('/teacher/head-library/inventory') ||
+        pathOnly.includes('/teacher/head-lab/inventory');
+      if (isInventoryScopePath && !location.search) {
+        return true;
+      }
       
       for (const [k, v] of required.entries()) {
         if (current.get(k) !== v) return false;

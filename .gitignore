@@ -33,6 +33,14 @@ logs/
 *.sql
 *.sql.gz
 backup_*.sql
+!backend/prisma/migrations/20260222104000_add_question_metadata/migration.sql
+!backend/prisma/migrations/20260223103000_add_inventory_templates_and_attributes/migration.sql
+!backend/prisma/migrations/20260223120000_add_library_book_loans/migration.sql
+!backend/prisma/migrations/20260223143000_add_library_loan_borrower_tracking/migration.sql
+!backend/prisma/migrations/20260223170000_add_library_loan_policy/migration.sql
+!backend/prisma/migrations/20260224093000_add_exam_program_configs/migration.sql
+!backend/prisma/migrations/20260224165000_add_exam_grade_components_master/migration.sql
+!backend/prisma/migrations/20260224214500_add_report_slot_to_exam_grade_components/migration.sql
 temp_repo/
 uploads/
 frontend/public/foto_kegiatan/

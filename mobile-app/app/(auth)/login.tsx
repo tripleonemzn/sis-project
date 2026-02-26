@@ -34,6 +34,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const { login, isAuthenticated, isLoading, restoreError, rehydrate } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const {
     control,
     handleSubmit,
@@ -252,7 +253,7 @@ export default function LoginScreen() {
                   <TextInput
                     value={value}
                     onChangeText={onChange}
-                    secureTextEntry
+                    secureTextEntry={!showPassword}
                     placeholder="Masukkan password"
                     placeholderTextColor={BRAND_COLORS.textMuted}
                     style={{
@@ -262,7 +263,14 @@ export default function LoginScreen() {
                       color: BRAND_COLORS.textDark,
                     }}
                   />
-                  <Feather name="eye" size={18} color="#94a3b8" />
+                  <Pressable
+                    onPress={() => setShowPassword((prev) => !prev)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                  >
+                    <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color="#94a3b8" />
+                  </Pressable>
                 </View>
               )}
             />

@@ -12,6 +12,9 @@ import {
 
 const CHECK_INTERVAL_MS = 60 * 1000;
 const FOREGROUND_CHECK_THROTTLE_MS = 15 * 1000;
+const UPDATE_NOTIFICATION_TITLE = 'SIS KGB2 : Update Tersedia';
+const UPDATE_NOTIFICATION_BODY =
+  'Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.';
 
 function formatDateTime(value: string | null) {
   if (!value) return '-';
@@ -46,8 +49,8 @@ export function AppUpdateManager() {
 
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: 'Update Aplikasi Tersedia',
-          body: `Versi terbaru siap dipasang untuk channel ${Updates.channel || 'default'}.`,
+          title: UPDATE_NOTIFICATION_TITLE,
+          body: UPDATE_NOTIFICATION_BODY,
           data: {
             type: 'APP_UPDATE',
             channel: Updates.channel || 'default',
@@ -150,8 +153,8 @@ export function AppUpdateManager() {
     const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
       if (!isAppUpdatePushNotificationData(notification.request.content.data)) return;
       setDismissed(false);
-      notifyInfo('Update terbaru tersedia. Sedang memeriksa versi aplikasi...', {
-        title: 'Update Aplikasi',
+      notifyInfo('Update terbaru SIS KGB2 terdeteksi. Sedang memeriksa versi aplikasi...', {
+        title: 'SIS KGB2',
         durationMs: 1800,
       });
       void checkForUpdates();
@@ -216,13 +219,13 @@ export function AppUpdateManager() {
               marginBottom: 8,
             }}
           >
-            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Update Baru</Text>
+            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>SIS KGB2</Text>
           </View>
           <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 19, marginBottom: 6 }}>
-            Update Aplikasi Tersedia
+            SIS KGB2 : Update Tersedia
           </Text>
           <Text style={{ color: '#334155', fontSize: 13, marginBottom: 10 }}>
-            Versi terbaru siap dipasang dan bisa langsung Anda gunakan.
+            Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.
           </Text>
           <View
             style={{

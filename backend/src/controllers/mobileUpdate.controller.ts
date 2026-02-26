@@ -152,10 +152,11 @@ export const broadcastMobileUpdateNotification = asyncHandler(async (req: Reques
   assertBroadcastAuthorized(req);
   const payload = broadcastUpdateSchema.parse(req.body || {});
 
-  const title = payload.title || 'Update Aplikasi Tersedia';
+  const title = payload.title || 'SIS KGB2 : Update Tersedia';
   const channel = payload.channel || 'pilot';
   const message =
-    payload.message || `Versi terbaru siap dipasang untuk channel ${channel}. Buka aplikasi untuk update.`;
+    payload.message ||
+    'Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.';
 
   const where: any = { isEnabled: true };
   if (payload.platform) {

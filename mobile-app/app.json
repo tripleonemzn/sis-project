@@ -23,7 +23,10 @@
     },
     "ios": {
       "bundleIdentifier": "id.siskgb2.mobile",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "plugins": [
       "expo-notifications",

@@ -7,6 +7,7 @@ import majorRoutes from './major.routes';
 import subjectRoutes from './subject.routes';
 import classRoutes from './class.routes';
 import publicRoutes from './public.routes';
+import galleryRoutes from './gallery.routes';
 import trainingClassRoutes from './trainingClass.routes';
 import workProgramRoutes from './workProgram.routes';
 import extracurricularRoutes from './extracurricular.routes';
@@ -41,6 +42,7 @@ import inventoryRoutes from './inventory.routes';
 import budgetLpjRoutes from './budgetLpj.routes';
 import paymentRoutes from './payment.routes';
 import mobileUpdateRoutes from './mobileUpdate.routes';
+import serverRoutes from './server.routes';
 
 const router = Router();
 
@@ -52,6 +54,7 @@ router.use('/majors', majorRoutes);
 router.use('/subjects', subjectRoutes);
 router.use('/classes', classRoutes);
 router.use('/public', publicRoutes);
+router.use('/gallery', galleryRoutes);
 router.use('/training-classes', trainingClassRoutes);
 router.use('/work-programs', workProgramRoutes);
 router.use('/extracurriculars', extracurricularRoutes);
@@ -86,5 +89,6 @@ router.use('/inventory', inventoryRoutes);
 router.use('/budget-lpj', budgetLpjRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/mobile-updates', mobileUpdateRoutes);
+router.use('/server', serverRoutes);
 
 export default router;

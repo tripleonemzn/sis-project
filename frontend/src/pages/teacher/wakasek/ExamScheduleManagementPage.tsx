@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Calendar,
   Clock,
@@ -14,6 +14,7 @@ import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import type { AcademicYear } from '../../../services/academicYear.service';
+import { examService, type ExamProgram } from '../../../services/exam.service';
 
 interface Subject {
   id: number;
@@ -66,7 +67,8 @@ interface GroupedExamSchedule {
 }
 
 const ExamScheduleManagementPage = () => {
-  const [activeTab, setActiveTab] = useState<'SBTS' | 'SAS' | 'SAT'>('SBTS');
+  const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([]);
+  const [activeProgramCode, setActiveProgramCode] = useState<string>('');
   const [schedules, setSchedules] = useState<ExamSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -93,6 +95,23 @@ const ExamScheduleManagementPage = () => {
 
   const [submitting, setSubmitting] = useState(false);
 
+  const visiblePrograms = useMemo(
+    () =>
+      [...examPrograms]
+        .filter((program) => Boolean(program?.isActive))
+        .sort(
+          (a, b) =>
+            Number(a.order || 0) - Number(b.order || 0) ||
+            String(a.label || '').localeCompare(String(b.label || '')),
+        ),
+    [examPrograms],
+  );
+
+  const activeProgram = useMemo(
+    () => visiblePrograms.find((program) => program.code === activeProgramCode) || null,
+    [visiblePrograms, activeProgramCode],
+  );
+
   // Fetch initial data
   useEffect(() => {
     fetchInitialData();
@@ -116,26 +135,56 @@ const ExamScheduleManagementPage = () => {
     }
   };
 
+  const fetchPrograms = useCallback(async () => {
+    if (!selectedAcademicYear) {
+      setExamPrograms([]);
+      setActiveProgramCode('');
+      return;
+    }
+
+    try {
+      const response = await examService.getPrograms({
+        academicYearId: Number(selectedAcademicYear),
+        roleContext: 'teacher',
+        includeInactive: false,
+      });
+      const programs = (response?.data?.programs || []).filter((item) => Boolean(item?.showOnTeacherMenu));
+      setExamPrograms(programs);
+      setActiveProgramCode((prev) =>
+        programs.some((program) => program.code === prev) ? prev : (programs[0]?.code || ''),
+      );
+    } catch (error) {
+      console.error('Error fetching exam programs:', error);
+      setExamPrograms([]);
+      setActiveProgramCode('');
+    }
+  }, [selectedAcademicYear]);
+
   const fetchSchedules = useCallback(async () => {
-    // If no AY is selected (not loaded yet), don't fetch
-    if (!selectedAcademicYear) return;
+    if (!selectedAcademicYear || !activeProgramCode) {
+      setSchedules([]);
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     try {
       const res = await api.get('/exams/schedules', {
         params: {
-          examType: activeTab,
-          academicYearId: selectedAcademicYear
-        }
+          examType: activeProgramCode,
+          programCode: activeProgramCode,
+          academicYearId: selectedAcademicYear,
+        },
       });
-      setSchedules(res.data.data);
+      setSchedules(Array.isArray(res.data?.data) ? res.data.data : []);
     } catch (err) {
       console.error(err);
       toast.error('Gagal memuat jadwal ujian');
+      setSchedules([]);
     } finally {
       setLoading(false);
     }
-  }, [activeTab, selectedAcademicYear]);
+  }, [activeProgramCode, selectedAcademicYear]);
 
   const fetchFormData = useCallback(async () => {
     try {
@@ -176,9 +225,17 @@ const ExamScheduleManagementPage = () => {
 
   useEffect(() => {
     if (selectedAcademicYear) {
-      fetchSchedules();
+      void fetchPrograms();
     }
-  }, [fetchSchedules, selectedAcademicYear]);
+  }, [fetchPrograms, selectedAcademicYear]);
+
+  useEffect(() => {
+    if (selectedAcademicYear && activeProgramCode) {
+      void fetchSchedules();
+    } else if (!activeProgramCode) {
+      setSchedules([]);
+    }
+  }, [fetchSchedules, selectedAcademicYear, activeProgramCode]);
 
   // Auto-set Semester & Academic Year when Modal opens
   useEffect(() => {
@@ -186,10 +243,7 @@ const ExamScheduleManagementPage = () => {
       const activeAy = academicYears.find((ay: AcademicYear) => ay.isActive);
       const defaultAyId = activeAy ? activeAy.id.toString() : (academicYears[0]?.id.toString() || '');
       
-      let defaultSemester = formData.semester;
-      if (activeTab === 'SAS') defaultSemester = 'ODD';
-      else if (activeTab === 'SAT') defaultSemester = 'EVEN';
-      // For SBTS, keep existing selection or default to empty
+      const defaultSemester = activeProgram?.fixedSemester || formData.semester || 'ODD';
 
       setFormData(prev => ({
         ...prev,
@@ -197,7 +251,7 @@ const ExamScheduleManagementPage = () => {
         semester: defaultSemester
       }));
     }
-  }, [showModal, activeTab, academicYears, formData.semester]);
+  }, [showModal, activeProgram, academicYears, formData.semester]);
 
   useEffect(() => {
     if (showModal) {
@@ -213,26 +267,23 @@ const ExamScheduleManagementPage = () => {
       toast.error('Mohon lengkapi semua field yang wajib diisi');
       return;
     }
+    if (!activeProgramCode) {
+      toast.error('Program ujian belum dipilih.');
+      return;
+    }
     
     setSubmitting(true);
     try {
-      // 1. Create Exam Schedule entries for each selected class
-      // Note: We are creating schedules directly. The backend will likely need to handle this.
-      // Since we don't have a direct "create schedule" endpoint that takes multiple classes documented in memory,
-      // I'll assume we might need to iterate or send a bulk create request.
-      // Or, we might need to create a Packet first if the system requires it? 
-      // The user instruction implies we are just scheduling.
-      // Let's assume the /exam-schedules endpoint handles creation.
-      
       const payload = {
         subjectId: parseInt(formData.subjectId, 10),
         classIds: formData.classIds.map(id => parseInt(id, 10)),
         date: formData.date,
         startTime: formData.startTime,
         endTime: formData.endTime,
-        examType: activeTab,
+        examType: activeProgramCode,
+        programCode: activeProgramCode,
         academicYearId: parseInt(formData.academicYearId, 10),
-        semester: activeTab === 'SBTS' ? formData.semester : undefined,
+        semester: activeProgram?.fixedSemester || formData.semester || 'ODD',
         proctorId: formData.proctorId ? parseInt(formData.proctorId, 10) : undefined
       };
 
@@ -240,7 +291,7 @@ const ExamScheduleManagementPage = () => {
       
       toast.success('Jadwal ujian berhasil dibuat');
       setShowModal(false);
-      fetchSchedules();
+      void fetchSchedules();
       
       // Reset form
       setFormData(prev => ({
@@ -350,7 +401,12 @@ const ExamScheduleManagementPage = () => {
 
             <button 
               onClick={() => setShowModal(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+              disabled={!activeProgramCode}
+              className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+                !activeProgramCode
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
             >
               <Plus size={18} />
               <span>Buat Jadwal</span>
@@ -360,22 +416,28 @@ const ExamScheduleManagementPage = () => {
 
         {/* Tabs */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mt-6">
-          <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
-            {(['SBTS', 'SAS', 'SAT'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`
-                  px-4 py-2 text-sm font-medium rounded-md transition-colors
-                  ${activeTab === tab
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
-                `}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
+          {visiblePrograms.length === 0 ? (
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Belum ada Program Ujian aktif pada tahun ajaran ini.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
+              {visiblePrograms.map((program) => (
+                <button
+                  key={program.code}
+                  onClick={() => setActiveProgramCode(program.code)}
+                  className={`
+                    px-4 py-2 text-sm font-medium rounded-md transition-colors
+                    ${activeProgramCode === program.code
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
+                  `}
+                >
+                  {program.shortLabel || program.label || program.code}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -383,10 +445,18 @@ const ExamScheduleManagementPage = () => {
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-gray-500">Memuat jadwal...</div>
+        ) : !activeProgramCode ? (
+          <div className="p-12 text-center">
+            <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900">Pilih Program Ujian</h3>
+            <p className="text-gray-500">Aktifkan program dulu dari menu Program Ujian.</p>
+          </div>
         ) : schedules.length === 0 ? (
           <div className="p-12 text-center">
             <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900">Belum ada jadwal {activeTab}</h3>
+            <h3 className="text-lg font-medium text-gray-900">
+              Belum ada jadwal {activeProgram?.shortLabel || activeProgram?.label || activeProgramCode}
+            </h3>
             <p className="text-gray-500">Buat jadwal baru untuk memulai</p>
           </div>
         ) : (
@@ -546,7 +616,9 @@ const ExamScheduleManagementPage = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-900">Buat Jadwal Ujian {activeTab}</h2>
+              <h2 className="text-xl font-bold text-gray-900">
+                Buat Jadwal Ujian {activeProgram?.shortLabel || activeProgram?.label || activeProgramCode}
+              </h2>
               <button 
                 onClick={() => setShowModal(false)}
                 className="text-gray-400 hover:text-gray-600"
@@ -572,8 +644,14 @@ const ExamScheduleManagementPage = () => {
                 </select>
               </div>
 
-              {/* Semester - Only visible if Tab is SBTS */}
-              {activeTab === 'SBTS' && (
+              {activeProgram?.fixedSemester ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
+                  <div className="w-full px-3 py-2 border border-gray-200 bg-gray-100 rounded-lg text-gray-700 text-sm">
+                    {activeProgram.fixedSemester === 'ODD' ? 'Ganjil (tetap)' : 'Genap (tetap)'}
+                  </div>
+                </div>
+              ) : (
                 <div>
                   <label htmlFor="semester" className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
                   <select

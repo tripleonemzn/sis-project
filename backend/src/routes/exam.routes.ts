@@ -7,6 +7,10 @@ import {
     createPacket,
     updatePacket,
     deletePacket,
+    getPacketItemAnalysis,
+    getPacketSubmissions,
+    getSessionDetail,
+    syncPacketItemAnalysis,
     getQuestions,
     getSchedules,
     createSchedule,
@@ -18,10 +22,21 @@ import {
     getExamRestrictions,
     updateExamRestriction
 } from '../controllers/exam.controller';
+import {
+    getExamGradeComponents,
+    getExamPrograms,
+    upsertExamGradeComponents,
+    upsertExamPrograms,
+} from '../controllers/examProgram.controller';
 
 const router = Router();
 
 router.use(authMiddleware);
+
+router.get('/programs', getExamPrograms);
+router.put('/programs', roleMiddleware(['TEACHER', 'ADMIN']), upsertExamPrograms);
+router.get('/components', getExamGradeComponents);
+router.put('/components', roleMiddleware(['TEACHER', 'ADMIN']), upsertExamGradeComponents);
 
 // Exam Access Restrictions (For Homeroom/Admin)
 router.get('/restrictions', roleMiddleware(['TEACHER', 'ADMIN']), getExamRestrictions);
@@ -34,7 +49,11 @@ router.post('/:id/answers', roleMiddleware(['STUDENT']), submitAnswers);
 
 // Packets
 router.get('/packets', getPackets);
+router.get('/packets/:id/submissions', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), getPacketSubmissions);
+router.get('/packets/:id/item-analysis', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), getPacketItemAnalysis);
+router.post('/packets/:id/item-analysis/sync', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), syncPacketItemAnalysis);
 router.get('/packets/:id', getPacketById);
+router.get('/sessions/:id/detail', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), getSessionDetail);
 router.post('/packets', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), createPacket);
 router.put('/packets/:id', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), updatePacket);
 router.delete('/packets/:id', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), deletePacket);

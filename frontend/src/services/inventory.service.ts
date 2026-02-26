@@ -4,6 +4,7 @@ export interface RoomCategory {
   id: number;
   name: string;
   description?: string;
+  inventoryTemplateKey?: string | null;
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
@@ -15,6 +16,7 @@ export interface RoomCategory {
 export interface CreateRoomCategoryPayload {
   name: string;
   description?: string;
+  inventoryTemplateKey?: string;
 }
 
 export interface Room {
@@ -28,6 +30,11 @@ export interface Room {
   description?: string;
   createdAt: string;
   updatedAt: string;
+  category?: {
+    id: number;
+    name: string;
+    inventoryTemplateKey?: string | null;
+  } | null;
   _count?: {
     items: number;
   };
@@ -57,6 +64,7 @@ export interface InventoryItem {
   price?: number;
   source?: string;
   description?: string;
+  attributes?: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -75,6 +83,58 @@ export interface CreateInventoryPayload {
   price?: number;
   source?: string;
   description?: string;
+  attributes?: Record<string, unknown>;
+}
+
+export type LibraryBorrowerStatus = 'TEACHER' | 'STUDENT';
+export type LibraryReturnStatus = 'RETURNED' | 'NOT_RETURNED';
+export type LibraryLoanDisplayStatus = 'BORROWED' | 'OVERDUE' | 'RETURNED';
+
+export interface LibraryLoanClassOption {
+  id: number;
+  name: string;
+  level: string;
+  displayName: string;
+  major?: {
+    code?: string | null;
+    name?: string | null;
+  } | null;
+}
+
+export interface LibraryBookLoan {
+  id: number;
+  borrowDate: string;
+  borrowerName: string;
+  borrowerStatus: LibraryBorrowerStatus;
+  classId?: number | null;
+  bookTitle: string;
+  publishYear?: number | null;
+  returnDate?: string | null;
+  returnStatus: LibraryReturnStatus;
+  displayStatus?: LibraryLoanDisplayStatus;
+  statusLabel?: string;
+  overdueDays?: number;
+  isOverdue?: boolean;
+  finePerDay?: number;
+  fineAmount?: number;
+  phoneNumber?: string | null;
+  createdById?: number | null;
+  createdAt: string;
+  updatedAt: string;
+  class?: {
+    id: number;
+    name: string;
+    level: string;
+    major?: {
+      code?: string | null;
+      name?: string | null;
+    } | null;
+  } | null;
+}
+
+export interface LibraryLoanSettings {
+  finePerDay: number;
+  updatedAt?: string;
 }
 
 export const inventoryService = {
@@ -143,6 +203,64 @@ export const inventoryService = {
 
   deleteInventory: async (id: number) => {
     const response = await api.delete(`/inventory/inventory/${id}`);
+    return response.data;
+  },
+
+  listLibraryLoanClassOptions: async () => {
+    const response = await api.get('/inventory/library-loans/classes');
+    return response.data;
+  },
+
+  listLibraryBookLoans: async (params?: { q?: string }) => {
+    const response = await api.get('/inventory/library-loans', { params });
+    return response.data;
+  },
+
+  getLibraryLoanSettings: async () => {
+    const response = await api.get('/inventory/library-loans/settings');
+    return response.data;
+  },
+
+  updateLibraryLoanSettings: async (data: { finePerDay: number }) => {
+    const response = await api.put('/inventory/library-loans/settings', data);
+    return response.data;
+  },
+
+  createLibraryBookLoan: async (data: {
+    borrowDate: string;
+    borrowerName: string;
+    borrowerStatus: LibraryBorrowerStatus;
+    classId?: number | null;
+    bookTitle: string;
+    publishYear?: number;
+    returnDate?: string | null;
+    returnStatus?: LibraryReturnStatus;
+    phoneNumber?: string;
+  }) => {
+    const response = await api.post('/inventory/library-loans', data);
+    return response.data;
+  },
+
+  updateLibraryBookLoan: async (
+    id: number,
+    data: Partial<{
+      borrowDate: string;
+      borrowerName: string;
+      borrowerStatus: LibraryBorrowerStatus;
+      classId: number | null;
+      bookTitle: string;
+      publishYear: number;
+      returnDate: string | null;
+      returnStatus: LibraryReturnStatus;
+      phoneNumber: string;
+    }>,
+  ) => {
+    const response = await api.put(`/inventory/library-loans/${id}`, data);
+    return response.data;
+  },
+
+  deleteLibraryBookLoan: async (id: number) => {
+    const response = await api.delete(`/inventory/library-loans/${id}`);
     return response.data;
   },
 };

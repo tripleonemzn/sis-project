@@ -371,24 +371,6 @@ export default function TeacherHomeroomAttendanceScreen() {
         Kelola presensi harian, rekap semester, dan statistik keterlambatan siswa.
       </Text>
 
-      {activeYearQuery.data?.name ? (
-        <View
-          style={{
-            backgroundColor: '#fff',
-            borderWidth: 1,
-            borderColor: '#dbe7fb',
-            borderRadius: 12,
-            padding: 12,
-            marginBottom: 12,
-          }}
-        >
-          <Text style={{ color: '#64748b', fontSize: 12 }}>Tahun Ajaran Aktif</Text>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 2 }}>
-            {activeYearQuery.data.name}
-          </Text>
-        </View>
-      ) : null}
-
       {classesQuery.isLoading ? <QueryStateView type="loading" message="Memuat kelas wali..." /> : null}
       {classesQuery.isError ? (
         <QueryStateView type="error" message="Gagal memuat kelas wali." onRetry={() => classesQuery.refetch()} />

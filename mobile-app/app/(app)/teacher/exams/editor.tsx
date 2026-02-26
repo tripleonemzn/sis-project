@@ -6,9 +6,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
-import { examApi } from '../../../../src/features/exams/examApi';
+import { examApi, ExamProgramItem } from '../../../../src/features/exams/examApi';
 import {
   ExamDisplayType,
+  ExamQuestionBlueprint,
+  ExamQuestionCard,
   ExamQuestionType,
   TeacherExamQuestionPayload,
 } from '../../../../src/features/exams/types';
@@ -27,7 +29,11 @@ type QuestionDraft = {
   content: string;
   score: string;
   options: OptionDraft[];
+  blueprint: ExamQuestionBlueprint;
+  questionCard: ExamQuestionCard;
 };
+
+type EditorSection = 'INFO' | 'QUESTIONS';
 
 function createId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -55,8 +61,58 @@ function createQuestion(type: ExamQuestionType = 'MULTIPLE_CHOICE'): QuestionDra
     type,
     content: '',
     score: '1',
+    blueprint: createDefaultBlueprint(),
+    questionCard: createDefaultQuestionCard(),
     options:
       type === 'ESSAY' ? [] : type === 'TRUE_FALSE' ? createTrueFalseOptions() : createChoiceOptions(),
+  };
+}
+
+function createDefaultBlueprint(): ExamQuestionBlueprint {
+  return {
+    competency: '',
+    learningObjective: '',
+    indicator: '',
+    materialScope: '',
+    cognitiveLevel: '',
+  };
+}
+
+function createDefaultQuestionCard(): ExamQuestionCard {
+  return {
+    stimulus: '',
+    answerRationale: '',
+    scoringGuideline: '',
+    distractorNotes: '',
+  };
+}
+
+function normalizeBlueprint(raw: unknown): ExamQuestionBlueprint {
+  if (!raw || typeof raw !== 'object') {
+    return createDefaultBlueprint();
+  }
+  const source = raw as ExamQuestionBlueprint;
+  return {
+    ...createDefaultBlueprint(),
+    competency: source.competency || '',
+    learningObjective: source.learningObjective || '',
+    indicator: source.indicator || '',
+    materialScope: source.materialScope || '',
+    cognitiveLevel: source.cognitiveLevel || '',
+  };
+}
+
+function normalizeQuestionCard(raw: unknown): ExamQuestionCard {
+  if (!raw || typeof raw !== 'object') {
+    return createDefaultQuestionCard();
+  }
+  const source = raw as ExamQuestionCard;
+  return {
+    ...createDefaultQuestionCard(),
+    stimulus: source.stimulus || '',
+    answerRationale: source.answerRationale || '',
+    scoringGuideline: source.scoringGuideline || '',
+    distractorNotes: source.distractorNotes || '',
   };
 }
 
@@ -66,6 +122,56 @@ function parsePacketId(raw: string | string[] | undefined): number | null {
   const parsed = Number(value);
   if (Number.isNaN(parsed) || parsed <= 0) return null;
   return parsed;
+}
+
+function parseExamType(raw: string | string[] | undefined): ExamDisplayType | null {
+  const value = String(Array.isArray(raw) ? raw[0] : raw || '')
+    .trim()
+    .toUpperCase();
+  if (value === 'QUIZ') return 'FORMATIF';
+  if (value === 'FORMATIF' || value === 'SBTS' || value === 'SAS' || value === 'SAT') {
+    return value;
+  }
+  return null;
+}
+
+function normalizeProgramCode(raw: string | string[] | undefined): string | null {
+  const value = String(Array.isArray(raw) ? raw[0] : raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return value || null;
+}
+
+function getLockedSemesterByExamType(type: ExamDisplayType): 'ODD' | 'EVEN' | null {
+  if (type === 'SAS') return 'ODD';
+  if (type === 'SAT') return 'EVEN';
+  return null;
+}
+
+function assertExamTypeSemester(type: ExamDisplayType, semester: 'ODD' | 'EVEN') {
+  if (type === 'SAS' && semester !== 'ODD') {
+    throw new Error('SAS hanya boleh di semester Ganjil.');
+  }
+  if (type === 'SAT' && semester !== 'EVEN') {
+    throw new Error('SAT hanya boleh di semester Genap.');
+  }
+}
+
+function getScoreSyncHint(type: ExamDisplayType): string {
+  if (type === 'FORMATIF') {
+    return 'Nilai otomatis masuk ke slot NF berikutnya (NF1 sampai NF6). NF1-3 dipakai untuk rerata SBTS, NF1-6 dipakai untuk rerata SAS/SAT.';
+  }
+  if (type === 'SBTS') {
+    return 'Nilai ujian otomatis tersinkron ke komponen Nilai SBTS.';
+  }
+  if (type === 'SAS') {
+    return 'Khusus semester ganjil. Nilai ujian otomatis tersinkron ke komponen Nilai SAS.';
+  }
+  return 'Khusus semester genap. Nilai ujian otomatis tersinkron ke komponen Nilai SAT.';
 }
 
 function parseQuestions(raw: unknown): QuestionDraft[] {
@@ -102,6 +208,10 @@ function parseQuestions(raw: unknown): QuestionDraft[] {
         type,
         content: String(q.content || q.question_text || ''),
         score: String(typeof q.score === 'number' ? q.score : 1),
+        blueprint: normalizeBlueprint(q.blueprint || (q.metadata as Record<string, unknown> | undefined)?.blueprint),
+        questionCard: normalizeQuestionCard(
+          q.questionCard || (q.metadata as Record<string, unknown> | undefined)?.questionCard,
+        ),
         options:
           type === 'ESSAY'
             ? []
@@ -128,6 +238,8 @@ function sanitizeQuestions(questions: QuestionDraft[]): TeacherExamQuestionPaylo
       type: question.type,
       content: question.content.trim(),
       score: normalizedScore,
+      blueprint: normalizeBlueprint(question.blueprint),
+      questionCard: normalizeQuestionCard(question.questionCard),
     };
 
     if (question.type !== 'ESSAY') {
@@ -148,18 +260,46 @@ export default function TeacherExamEditorScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const params = useLocalSearchParams<{ packetId?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    packetId?: string | string[];
+    examType?: string | string[];
+    programCode?: string | string[];
+  }>();
   const packetId = useMemo(() => parsePacketId(params.packetId), [params.packetId]);
   const isEditMode = !!packetId;
+  const forcedProgramCode = useMemo(() => {
+    if (isEditMode) return null;
+    return normalizeProgramCode(params.programCode) || normalizeProgramCode(params.examType);
+  }, [isEditMode, params.programCode, params.examType]);
   const { isAuthenticated, isLoading, user } = useAuth();
   const pageContentPadding = getStandardPagePadding(insets);
   const teacherAssignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
   const assignments = teacherAssignmentsQuery.data?.assignments || [];
 
+  const examProgramsQuery = useQuery({
+    queryKey: ['mobile-teacher-exam-editor-programs', teacherAssignmentsQuery.data?.activeYear?.id],
+    enabled: isAuthenticated && Boolean(teacherAssignmentsQuery.data?.activeYear?.id),
+    staleTime: 5 * 60 * 1000,
+    queryFn: () =>
+      examApi.getExamPrograms({
+        academicYearId: teacherAssignmentsQuery.data?.activeYear?.id,
+        roleContext: 'teacher',
+      }),
+  });
+
+  const availablePrograms = useMemo(
+    () =>
+      (examProgramsQuery.data?.programs || [])
+        .filter((program: ExamProgramItem) => program.isActive && program.showOnTeacherMenu)
+        .sort((a, b) => a.order - b.order || a.code.localeCompare(b.code)),
+    [examProgramsQuery.data?.programs],
+  );
+
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [instructions, setInstructions] = useState('');
+  const [selectedProgramCode, setSelectedProgramCode] = useState<string>(forcedProgramCode || 'FORMATIF');
   const [examType, setExamType] = useState<ExamDisplayType>('FORMATIF');
   const [semester, setSemester] = useState<'ODD' | 'EVEN'>('ODD');
   const [duration, setDuration] = useState('60');
@@ -167,12 +307,61 @@ export default function TeacherExamEditorScreen() {
   const [saveToBank, setSaveToBank] = useState(true);
   const [questions, setQuestions] = useState<QuestionDraft[]>([createQuestion()]);
   const [hydratedPacket, setHydratedPacket] = useState(false);
+  const [activeSection, setActiveSection] = useState<EditorSection>('INFO');
+  const selectedProgram = useMemo(
+    () =>
+      availablePrograms.find((program) => normalizeProgramCode(program.code) === normalizeProgramCode(selectedProgramCode)) ||
+      null,
+    [availablePrograms, selectedProgramCode],
+  );
+  const lockedSemester = (selectedProgram?.fixedSemester as 'ODD' | 'EVEN' | null) || getLockedSemesterByExamType(examType);
+  const isTypeLockedFromMenu = !isEditMode && !!forcedProgramCode;
+  const scoreSyncHint = useMemo(
+    () => String(selectedProgram?.description || '').trim() || getScoreSyncHint(examType),
+    [selectedProgram?.description, examType],
+  );
+  const completedQuestions = useMemo(
+    () => questions.filter((question) => question.content.trim().length > 0).length,
+    [questions],
+  );
 
   useEffect(() => {
     if (!selectedAssignmentId && assignments.length > 0) {
       setSelectedAssignmentId(assignments[0].id);
     }
   }, [selectedAssignmentId, assignments]);
+
+  useEffect(() => {
+    if (isEditMode) return;
+    if (forcedProgramCode) {
+      setSelectedProgramCode(forcedProgramCode);
+      return;
+    }
+    if (!selectedProgramCode && availablePrograms.length > 0) {
+      setSelectedProgramCode(normalizeProgramCode(availablePrograms[0].code) || '');
+    }
+  }, [isEditMode, forcedProgramCode, selectedProgramCode, availablePrograms]);
+
+  useEffect(() => {
+    if (!selectedProgram) {
+      if (!availablePrograms.length) return;
+      const fallbackCode = normalizeProgramCode(availablePrograms[0].code);
+      if (fallbackCode && fallbackCode !== selectedProgramCode) {
+        setSelectedProgramCode(fallbackCode);
+      }
+      return;
+    }
+    const nextType = parseExamType(selectedProgram.baseType) || 'FORMATIF';
+    if (examType !== nextType) {
+      setExamType(nextType);
+    }
+  }, [selectedProgram, availablePrograms, selectedProgramCode, examType]);
+
+  useEffect(() => {
+    if (lockedSemester && semester !== lockedSemester) {
+      setSemester(lockedSemester);
+    }
+  }, [lockedSemester, semester]);
 
   const packetDetailQuery = useQuery({
     queryKey: ['mobile-teacher-exam-packet-detail', packetId],
@@ -188,6 +377,7 @@ export default function TeacherExamEditorScreen() {
     setTitle(packet.title || '');
     setDescription(packet.description || '');
     setInstructions(packet.instructions || '');
+    setSelectedProgramCode(normalizeProgramCode(packet.programCode || packet.type) || 'FORMATIF');
     setExamType((String(packet.type).toUpperCase() as ExamDisplayType) || 'FORMATIF');
     setSemester((String(packet.semester).toUpperCase() as 'ODD' | 'EVEN') || 'ODD');
     setDuration(String(packet.duration || 60));
@@ -230,10 +420,26 @@ export default function TeacherExamEditorScreen() {
       if (cleanedQuestions.length === 0) {
         throw new Error('Minimal harus ada 1 soal.');
       }
+      const normalizedProgramCode = normalizeProgramCode(selectedProgramCode);
+      if (!normalizedProgramCode) {
+        throw new Error('Program ujian belum dipilih.');
+      }
 
       cleanedQuestions.forEach((question, idx) => {
         if (!question.content.trim()) {
           throw new Error(`Isi soal nomor ${idx + 1} masih kosong.`);
+        }
+
+        const blueprint = normalizeBlueprint(question.blueprint);
+        if (!String(blueprint.learningObjective || '').trim() || !String(blueprint.indicator || '').trim()) {
+          throw new Error(
+            `Soal nomor ${idx + 1} wajib mengisi kisi-kisi: tujuan pembelajaran dan indikator soal.`,
+          );
+        }
+
+        const questionCard = normalizeQuestionCard(question.questionCard);
+        if (!String(questionCard.answerRationale || '').trim()) {
+          throw new Error(`Soal nomor ${idx + 1} wajib mengisi kartu soal: pembahasan/jawaban.`);
         }
 
         if (question.type !== 'ESSAY') {
@@ -253,6 +459,7 @@ export default function TeacherExamEditorScreen() {
         subjectId: selectedAssignment.subject.id,
         academicYearId: selectedAssignment.academicYear.id,
         type: examType,
+        programCode: normalizedProgramCode,
         semester,
         duration: durationValue,
         description: description.trim() || undefined,
@@ -261,6 +468,7 @@ export default function TeacherExamEditorScreen() {
         saveToBank,
         questions: cleanedQuestions,
       };
+      assertExamTypeSemester(payload.type, payload.semester);
 
       if (isEditMode && packetId) {
         return examApi.updateTeacherPacket(packetId, payload);
@@ -337,6 +545,91 @@ export default function TeacherExamEditorScreen() {
         Susun metadata ujian dan soal secara sederhana dari mobile.
       </Text>
 
+      <View
+        style={{
+          flexDirection: 'row',
+          marginHorizontal: -4,
+          marginBottom: 10,
+        }}
+      >
+        <View style={{ flex: 1, paddingHorizontal: 4 }}>
+          <Pressable
+            onPress={() => setActiveSection('INFO')}
+            style={{
+              borderWidth: 1,
+              borderColor: activeSection === 'INFO' ? '#1d4ed8' : '#cbd5e1',
+              backgroundColor: activeSection === 'INFO' ? '#eff6ff' : '#fff',
+              borderRadius: 10,
+              paddingVertical: 10,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: activeSection === 'INFO' ? '#1d4ed8' : '#334155', fontWeight: '700', fontSize: 12 }}>
+              1. Informasi Ujian
+            </Text>
+          </Pressable>
+        </View>
+        <View style={{ flex: 1, paddingHorizontal: 4 }}>
+          <Pressable
+            onPress={() => setActiveSection('QUESTIONS')}
+            style={{
+              borderWidth: 1,
+              borderColor: activeSection === 'QUESTIONS' ? '#1d4ed8' : '#cbd5e1',
+              backgroundColor: activeSection === 'QUESTIONS' ? '#eff6ff' : '#fff',
+              borderRadius: 10,
+              paddingVertical: 10,
+              alignItems: 'center',
+            }}
+          >
+            <Text
+              style={{
+                color: activeSection === 'QUESTIONS' ? '#1d4ed8' : '#334155',
+                fontWeight: '700',
+                fontSize: 12,
+              }}
+            >
+              2. Butir Soal ({completedQuestions}/{questions.length})
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {activeSection === 'INFO' ? (
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#dbeafe',
+            backgroundColor: '#f8fbff',
+            borderRadius: 10,
+            padding: 10,
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 4 }}>Tahap 1: Informasi Ujian</Text>
+          <Text style={{ color: '#334155', fontSize: 12 }}>
+            Lengkapi kelas/mapel, judul, tipe, semester, durasi, dan konfigurasi ujian sebelum menyusun butir soal.
+          </Text>
+        </View>
+      ) : (
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#dbeafe',
+            backgroundColor: '#f8fbff',
+            borderRadius: 10,
+            padding: 10,
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 4 }}>Tahap 2: Butir Soal</Text>
+          <Text style={{ color: '#334155', fontSize: 12 }}>
+            Fokus menyusun isi soal, kisi-kisi, kartu soal, serta opsi jawaban. Informasi ujian sudah dipisahkan di tahap 1.
+          </Text>
+        </View>
+      )}
+
+      {activeSection === 'INFO' ? (
+        <>
       <View
         style={{
           backgroundColor: '#fff',
@@ -460,47 +753,83 @@ export default function TeacherExamEditorScreen() {
         </View>
       </View>
 
-      <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Tipe Ujian</Text>
-      <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
-        {(['FORMATIF', 'SBTS', 'SAS', 'SAT'] as ExamDisplayType[]).map((item) => {
-          const selected = examType === item;
-          return (
-            <View key={item} style={{ width: '25%', paddingHorizontal: 4 }}>
-              <Pressable
-                onPress={() => setExamType(item)}
-                style={{
-                  borderWidth: 1,
-                  borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                  backgroundColor: selected ? '#eff6ff' : '#fff',
-                  borderRadius: 8,
-                  paddingVertical: 8,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 11, fontWeight: '700' }}>
-                  {item}
-                </Text>
-              </Pressable>
-            </View>
-          );
-        })}
-      </View>
+      <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Program Ujian</Text>
+      {examProgramsQuery.isLoading ? (
+        <QueryStateView type="loading" message="Memuat program ujian..." />
+      ) : availablePrograms.length > 0 ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
+          {availablePrograms.map((program) => {
+            const code = normalizeProgramCode(program.code) || '';
+            const selected = selectedProgramCode === code;
+            const optionLocked = isTypeLockedFromMenu && forcedProgramCode !== code;
+            return (
+              <View key={code} style={{ paddingHorizontal: 4, marginBottom: 8 }}>
+                <Pressable
+                  onPress={() => {
+                    if (optionLocked) return;
+                    setSelectedProgramCode(code);
+                  }}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: selected ? '#1d4ed8' : '#cbd5e1',
+                    backgroundColor: selected ? '#eff6ff' : optionLocked ? '#f8fafc' : '#fff',
+                    borderRadius: 8,
+                    paddingVertical: 8,
+                    paddingHorizontal: 10,
+                    alignItems: 'center',
+                    opacity: optionLocked ? 0.45 : 1,
+                  }}
+                >
+                  <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 11, fontWeight: '700' }}>
+                    {String(program.shortLabel || program.label || code).trim() || code}
+                  </Text>
+                </Pressable>
+              </View>
+            );
+          })}
+        </View>
+      ) : (
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#fecaca',
+            backgroundColor: '#fef2f2',
+            borderRadius: 8,
+            padding: 10,
+            marginBottom: 8,
+          }}
+        >
+          <Text style={{ color: '#991b1b', fontSize: 12 }}>
+            Program ujian belum tersedia. Minta Wakasek Kurikulum menambahkan Program Ujian terlebih dahulu.
+          </Text>
+        </View>
+      )}
+      {isTypeLockedFromMenu ? (
+        <Text style={{ color: '#475569', fontSize: 11, marginBottom: 8 }}>
+          Program ujian dikunci sesuai menu yang dipilih: {selectedProgram?.label || forcedProgramCode}.
+        </Text>
+      ) : null}
 
       <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Semester</Text>
       <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
         {(['ODD', 'EVEN'] as Array<'ODD' | 'EVEN'>).map((item) => {
           const selected = semester === item;
+          const optionLocked = !!lockedSemester && lockedSemester !== item;
           return (
             <View key={item} style={{ width: '50%', paddingHorizontal: 4 }}>
               <Pressable
-                onPress={() => setSemester(item)}
+                onPress={() => {
+                  if (lockedSemester) return;
+                  setSemester(item);
+                }}
                 style={{
                   borderWidth: 1,
                   borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                  backgroundColor: selected ? '#eff6ff' : '#fff',
+                  backgroundColor: selected ? '#eff6ff' : optionLocked ? '#f8fafc' : '#fff',
                   borderRadius: 8,
                   paddingVertical: 8,
                   alignItems: 'center',
+                  opacity: optionLocked ? 0.45 : 1,
                 }}
               >
                 <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 12, fontWeight: '700' }}>
@@ -510,6 +839,25 @@ export default function TeacherExamEditorScreen() {
             </View>
           );
         })}
+      </View>
+      {lockedSemester ? (
+        <Text style={{ color: '#475569', fontSize: 11, marginBottom: 8 }}>
+          Semester otomatis untuk {selectedProgram?.label || examType}: {lockedSemester === 'ODD' ? 'Ganjil' : 'Genap'}.
+        </Text>
+      ) : null}
+
+      <View
+        style={{
+          backgroundColor: '#f8fafc',
+          borderWidth: 1,
+          borderColor: '#dbeafe',
+          borderRadius: 10,
+          padding: 10,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 4 }}>Sinkronisasi Nilai</Text>
+        <Text style={{ color: '#334155', fontSize: 12 }}>{scoreSyncHint}</Text>
       </View>
 
       <Pressable
@@ -528,6 +876,39 @@ export default function TeacherExamEditorScreen() {
         </Text>
       </Pressable>
 
+      <Pressable
+        onPress={() => setActiveSection('QUESTIONS')}
+        style={{
+          borderWidth: 1,
+          borderColor: '#1d4ed8',
+          backgroundColor: '#eff6ff',
+          borderRadius: 10,
+          paddingVertical: 10,
+          alignItems: 'center',
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Lanjut ke Butir Soal</Text>
+      </Pressable>
+        </>
+      ) : null}
+
+      {activeSection === 'QUESTIONS' ? (
+        <>
+      <Pressable
+        onPress={() => setActiveSection('INFO')}
+        style={{
+          borderWidth: 1,
+          borderColor: '#cbd5e1',
+          backgroundColor: '#fff',
+          borderRadius: 10,
+          paddingVertical: 10,
+          alignItems: 'center',
+          marginBottom: 10,
+        }}
+      >
+        <Text style={{ color: '#334155', fontWeight: '700' }}>Kembali ke Informasi Ujian</Text>
+      </Pressable>
       <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Daftar Soal</Text>
       {questions.map((question, index) => (
         <View
@@ -647,9 +1028,298 @@ export default function TeacherExamEditorScreen() {
               paddingHorizontal: 10,
               paddingVertical: 9,
               backgroundColor: '#fff',
-              marginBottom: question.type === 'ESSAY' ? 0 : 8,
+              marginBottom: 8,
             }}
           />
+
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#dbeafe',
+              backgroundColor: '#f8fbff',
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 8,
+            }}
+          >
+            <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>Kisi-kisi Soal</Text>
+            <TextInput
+              value={String(question.blueprint.learningObjective || '')}
+              onChangeText={(value) =>
+                setQuestions((prev) =>
+                  prev.map((item) =>
+                    item.id === question.id
+                      ? {
+                          ...item,
+                          blueprint: {
+                            ...normalizeBlueprint(item.blueprint),
+                            learningObjective: value,
+                          },
+                        }
+                      : item,
+                  ),
+                )
+              }
+              placeholder="Tujuan pembelajaran*"
+              style={{
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                borderRadius: 10,
+                paddingHorizontal: 10,
+                paddingVertical: 9,
+                backgroundColor: '#fff',
+                marginBottom: 6,
+              }}
+            />
+            <TextInput
+              value={String(question.blueprint.indicator || '')}
+              onChangeText={(value) =>
+                setQuestions((prev) =>
+                  prev.map((item) =>
+                    item.id === question.id
+                      ? {
+                          ...item,
+                          blueprint: {
+                            ...normalizeBlueprint(item.blueprint),
+                            indicator: value,
+                          },
+                        }
+                      : item,
+                  ),
+                )
+              }
+              placeholder="Indikator soal*"
+              style={{
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                borderRadius: 10,
+                paddingHorizontal: 10,
+                paddingVertical: 9,
+                backgroundColor: '#fff',
+                marginBottom: 6,
+              }}
+            />
+            <TextInput
+              value={String(question.blueprint.competency || '')}
+              onChangeText={(value) =>
+                setQuestions((prev) =>
+                  prev.map((item) =>
+                    item.id === question.id
+                      ? {
+                          ...item,
+                          blueprint: {
+                            ...normalizeBlueprint(item.blueprint),
+                            competency: value,
+                          },
+                        }
+                      : item,
+                  ),
+                )
+              }
+              placeholder="Kompetensi / capaian"
+              style={{
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                borderRadius: 10,
+                paddingHorizontal: 10,
+                paddingVertical: 9,
+                backgroundColor: '#fff',
+                marginBottom: 6,
+              }}
+            />
+            <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <TextInput
+                  value={String(question.blueprint.materialScope || '')}
+                  onChangeText={(value) =>
+                    setQuestions((prev) =>
+                      prev.map((item) =>
+                        item.id === question.id
+                          ? {
+                              ...item,
+                              blueprint: {
+                                ...normalizeBlueprint(item.blueprint),
+                                materialScope: value,
+                              },
+                            }
+                          : item,
+                      ),
+                    )
+                  }
+                  placeholder="Ruang lingkup materi"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#bfdbfe',
+                    borderRadius: 10,
+                    paddingHorizontal: 10,
+                    paddingVertical: 9,
+                    backgroundColor: '#fff',
+                  }}
+                />
+              </View>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <TextInput
+                  value={String(question.blueprint.cognitiveLevel || '')}
+                  onChangeText={(value) =>
+                    setQuestions((prev) =>
+                      prev.map((item) =>
+                        item.id === question.id
+                          ? {
+                              ...item,
+                              blueprint: {
+                                ...normalizeBlueprint(item.blueprint),
+                                cognitiveLevel: value,
+                              },
+                            }
+                          : item,
+                      ),
+                    )
+                  }
+                  placeholder="Level kognitif"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#bfdbfe',
+                    borderRadius: 10,
+                    paddingHorizontal: 10,
+                    paddingVertical: 9,
+                    backgroundColor: '#fff',
+                  }}
+                />
+              </View>
+            </View>
+          </View>
+
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#a7f3d0',
+              backgroundColor: '#ecfdf5',
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 8,
+            }}
+          >
+            <Text style={{ color: '#065f46', fontWeight: '700', marginBottom: 6 }}>Kartu Soal</Text>
+            <TextInput
+              value={String(question.questionCard.stimulus || '')}
+              onChangeText={(value) =>
+                setQuestions((prev) =>
+                  prev.map((item) =>
+                    item.id === question.id
+                      ? {
+                          ...item,
+                          questionCard: {
+                            ...normalizeQuestionCard(item.questionCard),
+                            stimulus: value,
+                          },
+                        }
+                      : item,
+                  ),
+                )
+              }
+              placeholder="Stimulus soal"
+              multiline
+              style={{
+                borderWidth: 1,
+                borderColor: '#86efac',
+                borderRadius: 10,
+                paddingHorizontal: 10,
+                paddingVertical: 9,
+                backgroundColor: '#fff',
+                minHeight: 60,
+                marginBottom: 6,
+              }}
+            />
+            <TextInput
+              value={String(question.questionCard.answerRationale || '')}
+              onChangeText={(value) =>
+                setQuestions((prev) =>
+                  prev.map((item) =>
+                    item.id === question.id
+                      ? {
+                          ...item,
+                          questionCard: {
+                            ...normalizeQuestionCard(item.questionCard),
+                            answerRationale: value,
+                          },
+                        }
+                      : item,
+                  ),
+                )
+              }
+              placeholder="Pembahasan / alasan jawaban benar*"
+              multiline
+              style={{
+                borderWidth: 1,
+                borderColor: '#86efac',
+                borderRadius: 10,
+                paddingHorizontal: 10,
+                paddingVertical: 9,
+                backgroundColor: '#fff',
+                minHeight: 60,
+                marginBottom: 6,
+              }}
+            />
+            <TextInput
+              value={String(question.questionCard.scoringGuideline || '')}
+              onChangeText={(value) =>
+                setQuestions((prev) =>
+                  prev.map((item) =>
+                    item.id === question.id
+                      ? {
+                          ...item,
+                          questionCard: {
+                            ...normalizeQuestionCard(item.questionCard),
+                            scoringGuideline: value,
+                          },
+                        }
+                      : item,
+                  ),
+                )
+              }
+              placeholder="Pedoman penskoran"
+              multiline
+              style={{
+                borderWidth: 1,
+                borderColor: '#86efac',
+                borderRadius: 10,
+                paddingHorizontal: 10,
+                paddingVertical: 9,
+                backgroundColor: '#fff',
+                minHeight: 54,
+                marginBottom: 6,
+              }}
+            />
+            <TextInput
+              value={String(question.questionCard.distractorNotes || '')}
+              onChangeText={(value) =>
+                setQuestions((prev) =>
+                  prev.map((item) =>
+                    item.id === question.id
+                      ? {
+                          ...item,
+                          questionCard: {
+                            ...normalizeQuestionCard(item.questionCard),
+                            distractorNotes: value,
+                          },
+                        }
+                      : item,
+                  ),
+                )
+              }
+              placeholder="Catatan distraktor"
+              multiline
+              style={{
+                borderWidth: 1,
+                borderColor: '#86efac',
+                borderRadius: 10,
+                paddingHorizontal: 10,
+                paddingVertical: 9,
+                backgroundColor: '#fff',
+                minHeight: 54,
+              }}
+            />
+          </View>
 
           {question.type !== 'ESSAY' ? (
             <View>
@@ -809,6 +1479,8 @@ export default function TeacherExamEditorScreen() {
           {saveMutation.isPending ? 'Menyimpan...' : isEditMode ? 'Simpan Perubahan' : 'Buat Packet Ujian'}
         </Text>
       </Pressable>
+        </>
+      ) : null}
 
       <Pressable
         onPress={() => router.replace('/teacher/exams')}

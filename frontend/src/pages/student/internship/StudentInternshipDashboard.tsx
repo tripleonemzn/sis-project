@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { internshipService } from '../../../services/internship.service';
@@ -34,9 +34,11 @@ const StudentInternshipDashboard = () => {
     endDate: '',
   });
 
-  const fetchInternship = async () => {
+  const fetchInternship = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       setError(null);
       const res = await internshipService.getMyInternship();
       
@@ -55,13 +57,35 @@ const StudentInternshipDashboard = () => {
         setError(error.message || 'Gagal memuat data PKL');
       }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchInternship();
-  }, []);
+    void fetchInternship();
+  }, [fetchInternship]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void fetchInternship(true);
+    }, 5000);
+
+    const handleFocus = () => {
+      if (document.visibilityState === 'hidden') return;
+      void fetchInternship(true);
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
+  }, [fetchInternship]);
 
   useEffect(() => {
     if (internship) {
@@ -83,7 +107,7 @@ const StudentInternshipDashboard = () => {
       
       await internshipService.applyInternship(payload);
       toast.success('Pengajuan PKL berhasil dikirim!');
-      fetchInternship();
+      void fetchInternship();
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Gagal mengajukan PKL');
     }
@@ -107,7 +131,7 @@ const StudentInternshipDashboard = () => {
       await internshipService.uploadAcceptanceLetter(internship.id, uploadRes.url);
       
       toast.success('Surat balasan berhasil diupload!');
-      fetchInternship();
+      void fetchInternship();
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Gagal mengupload file');
     } finally {
@@ -133,7 +157,7 @@ const StudentInternshipDashboard = () => {
       });
       toast.success('Data pembimbing berhasil disimpan');
       setIsEditingMentor(false);
-      fetchInternship();
+      void fetchInternship();
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Gagal menyimpan data');
     }
@@ -197,7 +221,7 @@ const StudentInternshipDashboard = () => {
            <AlertCircle className="w-5 h-5" />
            <p>{error}</p>
         </div>
-        <button onClick={fetchInternship} className="mt-4 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
+        <button onClick={() => void fetchInternship()} className="mt-4 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
           Coba lagi
         </button>
       </div>

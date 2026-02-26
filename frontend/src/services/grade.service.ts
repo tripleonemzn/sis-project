@@ -13,10 +13,16 @@ export type GradeComponentType = typeof GradeComponentType[keyof typeof GradeCom
 
 export interface GradeComponent {
   id: number;
+  code?: string | null;
   subjectId: number;
   name: string;
   weight: number;
   type: GradeComponentType;
+  entryMode?: 'NF_SERIES' | 'SINGLE_SCORE';
+  reportSlot?: 'NONE' | 'FORMATIF' | 'SBTS' | 'SAS' | 'US_THEORY' | 'US_PRACTICE';
+  includeInFinalScore?: boolean;
+  displayOrder?: number;
+  academicYearId?: number | null;
   isActive: boolean;
 }
 
@@ -33,6 +39,7 @@ export interface StudentGradeData {
     nf4?: number;
     nf5?: number;
     nf6?: number;
+    formativeSeries?: number[];
   }>; // componentId -> score object
 }
 
@@ -50,6 +57,7 @@ export interface InputGradePayload {
     nf4?: number | null;
     nf5?: number | null;
     nf6?: number | null;
+    formative_series?: number[] | null;
     description?: string;
   }[];
 }

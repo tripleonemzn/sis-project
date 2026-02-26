@@ -14,6 +14,7 @@ import { ENV } from '../../src/config/env';
 import { offlineCache } from '../../src/lib/storage/offlineCache';
 import { CACHE_MAX_SNAPSHOTS_PER_FEATURE, CACHE_TTL_MS } from '../../src/config/cache';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
+import { syncPushDeviceRegistration } from '../../src/features/pushNotifications/pushNotificationService';
 
 type ApiCheckResult = {
   ok: boolean;
@@ -46,6 +47,8 @@ export default function DiagnosticsScreen() {
   const [reproductionSteps, setReproductionSteps] = useState('');
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [isSyncStatusLoading, setIsSyncStatusLoading] = useState(false);
+  const [isSyncingPushToken, setIsSyncingPushToken] = useState(false);
+  const [pushSyncMessage, setPushSyncMessage] = useState<string | null>(null);
 
   const appVersion = Constants.expoConfig?.version || Constants.nativeApplicationVersion || '-';
   const androidVersionCode =
@@ -111,6 +114,37 @@ export default function DiagnosticsScreen() {
       Alert.alert('Gagal', msg);
     } finally {
       setIsClearingCache(false);
+    }
+  };
+
+  const syncPushTokenNow = async () => {
+    setIsSyncingPushToken(true);
+    try {
+      const result = await syncPushDeviceRegistration();
+      if (result.registered) {
+        const token = result.token || '';
+        const maskedToken = token.length > 18 ? `${token.slice(0, 18)}...` : token;
+        const message = `Registrasi token push berhasil (${maskedToken}).`;
+        setPushSyncMessage(message);
+        await authEventLogger.log('API_CHECK_OK', `[Push] ${message}`);
+        return;
+      }
+
+      let reasonText = 'gagal sinkron.';
+      if (result.reason === 'permission_or_token_unavailable') {
+        reasonText = 'izin notifikasi belum aktif atau token Expo belum tersedia.';
+      } else if (result.reason === 'registration_failed') {
+        reasonText = 'request registrasi ke server gagal.';
+      }
+      const message = `Registrasi token push belum berhasil: ${reasonText}`;
+      setPushSyncMessage(message);
+      await authEventLogger.log('API_CHECK_FAILED', `[Push] ${message}`);
+    } catch (error) {
+      const message = getApiErrorMessage(error, 'Gagal sinkron token push.');
+      setPushSyncMessage(message);
+      await authEventLogger.log('API_CHECK_FAILED', `[Push] ${message}`);
+    } finally {
+      setIsSyncingPushToken(false);
     }
   };
 
@@ -212,6 +246,38 @@ export default function DiagnosticsScreen() {
           Max Snapshot/Fitur: {CACHE_MAX_SNAPSHOTS_PER_FEATURE}
         </Text>
         <Text style={{ color: '#475569', fontSize: 12 }}>API Base: {ENV.API_BASE_URL}</Text>
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#e2e8f0',
+          borderRadius: 10,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ fontWeight: '700', color: '#0f172a', marginBottom: 8 }}>Push Token</Text>
+        <Pressable
+          onPress={() => {
+            void syncPushTokenNow();
+          }}
+          disabled={isSyncingPushToken}
+          style={{
+            backgroundColor: isSyncingPushToken ? '#93c5fd' : '#2563eb',
+            borderRadius: 8,
+            paddingVertical: 10,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '600' }}>
+            {isSyncingPushToken ? 'Sinkronisasi Token...' : 'Sinkronkan Token Push Sekarang'}
+          </Text>
+        </Pressable>
+        <Text style={{ color: '#475569', fontSize: 12, marginTop: 8 }}>
+          {pushSyncMessage || 'Belum ada pengecekan token push manual.'}
+        </Text>
       </View>
 
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>

@@ -19,6 +19,7 @@ import { id as idLocale } from 'date-fns/locale';
 import { toast } from 'react-hot-toast';
 import { permissionService, PermissionType, PermissionStatus } from '../../services/permission.service';
 import { academicYearService } from '../../services/academicYear.service';
+import { liveQueryOptions } from '../../lib/query/liveQuery';
 
 export const StudentPermissionsPage = () => {
   const queryClient = useQueryClient();
@@ -49,7 +50,8 @@ export const StudentPermissionsPage = () => {
       academicYearId: activeYear?.id,
       limit: 50 
     }),
-    enabled: !!activeYear?.id
+    enabled: !!activeYear?.id,
+    ...liveQueryOptions,
   });
   const permissions = permissionsResponse?.data?.permissions || [];
 

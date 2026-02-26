@@ -32,18 +32,80 @@ type AcademicSection =
   | 'question-bank'
   | 'exam-sessions';
 
-const ACADEMIC_SECTIONS: Array<{ key: AcademicSection; label: string; description: string }> = [
-  { key: 'overview', label: 'Ringkasan', description: 'Ringkasan data akademik untuk monitoring cepat.' },
-  { key: 'academic-years', label: 'Tahun Ajaran', description: 'Kelola dan aktifkan tahun ajaran.' },
-  { key: 'academic-calendar', label: 'Kalender', description: 'Pantau rentang semester akademik.' },
-  { key: 'teacher-assignments', label: 'Assignment', description: 'Pantau assignment guru-mapel-kelas aktif.' },
-  { key: 'schedule', label: 'Jadwal', description: 'Kelola input jadwal per jam per kelas + konfigurasi waktu.' },
-  { key: 'teaching-load', label: 'Jam Mengajar', description: 'Rekap beban jam mengajar per guru.' },
-  { key: 'kkm', label: 'Data KKM', description: 'Monitoring cakupan KKM per mata pelajaran.' },
-  { key: 'attendance-recap', label: 'Absensi', description: 'Ringkasan keterlambatan siswa per kelas.' },
-  { key: 'report-cards', label: 'Rapor', description: 'Ringkasan data rapor kelas aktif.' },
-  { key: 'question-bank', label: 'Bank Soal', description: 'Filter dan review bank soal ujian per tahun/mapel/tipe.' },
-  { key: 'exam-sessions', label: 'Sesi Ujian', description: 'Kelola sesi ujian: create, aktif/nonaktif, dan hapus.' },
+type FeatherIconName = React.ComponentProps<typeof Feather>['name'];
+
+const ACADEMIC_SECTIONS: Array<{
+  key: AcademicSection;
+  label: string;
+  description: string;
+  icon: FeatherIconName;
+}> = [
+  {
+    key: 'overview',
+    label: 'Ringkasan',
+    description: 'Ringkasan data akademik untuk monitoring cepat.',
+    icon: 'grid',
+  },
+  {
+    key: 'academic-years',
+    label: 'Tahun Ajaran',
+    description: 'Kelola dan aktifkan tahun ajaran.',
+    icon: 'calendar',
+  },
+  {
+    key: 'academic-calendar',
+    label: 'Kalender',
+    description: 'Pantau rentang semester akademik.',
+    icon: 'calendar',
+  },
+  {
+    key: 'teacher-assignments',
+    label: 'Assignment',
+    description: 'Pantau assignment guru-mapel-kelas aktif.',
+    icon: 'users',
+  },
+  {
+    key: 'schedule',
+    label: 'Jadwal',
+    description: 'Kelola input jadwal per jam per kelas + konfigurasi waktu.',
+    icon: 'clock',
+  },
+  {
+    key: 'teaching-load',
+    label: 'Jam Mengajar',
+    description: 'Rekap beban jam mengajar per guru.',
+    icon: 'bar-chart-2',
+  },
+  {
+    key: 'kkm',
+    label: 'Data KKM',
+    description: 'Monitoring cakupan KKM per mata pelajaran.',
+    icon: 'target',
+  },
+  {
+    key: 'attendance-recap',
+    label: 'Absensi',
+    description: 'Ringkasan keterlambatan siswa per kelas.',
+    icon: 'check-square',
+  },
+  {
+    key: 'report-cards',
+    label: 'Rapor',
+    description: 'Ringkasan data rapor kelas aktif.',
+    icon: 'file-text',
+  },
+  {
+    key: 'question-bank',
+    label: 'Bank Soal',
+    description: 'Filter dan review bank soal ujian per tahun/mapel/tipe.',
+    icon: 'help-circle',
+  },
+  {
+    key: 'exam-sessions',
+    label: 'Sesi Ujian',
+    description: 'Kelola sesi ujian: create, aktif/nonaktif, dan hapus.',
+    icon: 'clipboard',
+  },
 ];
 
 const ACADEMIC_SECTION_BY_KEY = new Map(ACADEMIC_SECTIONS.map((item) => [item.key, item] as const));
@@ -381,12 +443,15 @@ function SectionCard({
 function SectionChip({
   active,
   label,
+  icon,
   onPress,
 }: {
   active: boolean;
   label: string;
+  icon: FeatherIconName;
   onPress: () => void;
 }) {
+  const iconColor = active ? BRAND_COLORS.blue : BRAND_COLORS.textMuted;
   return (
     <Pressable
       onPress={onPress}
@@ -397,9 +462,19 @@ function SectionChip({
         borderWidth: 1,
         borderColor: active ? BRAND_COLORS.blue : '#cbd5e1',
         backgroundColor: active ? '#dbeafe' : BRAND_COLORS.white,
+        flexDirection: 'row',
+        alignItems: 'center',
       }}
     >
-      <Text style={{ color: active ? BRAND_COLORS.blue : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
+      <Feather name={icon} size={13} color={iconColor} />
+      <Text
+        style={{
+          color: active ? BRAND_COLORS.blue : BRAND_COLORS.textMuted,
+          fontWeight: '700',
+          fontSize: 12,
+          marginLeft: 6,
+        }}
+      >
         {label}
       </Text>
     </Pressable>
@@ -492,7 +567,6 @@ export default function AdminAcademicScreen() {
     semester1End: '',
     semester2Start: '',
     semester2End: '',
-    pklEligibleGrades: 'XI,XII',
   });
   const [calendarAcademicYearId, setCalendarAcademicYearId] = useState('');
   const [calendarSemesterFilter, setCalendarSemesterFilter] = useState<'ALL' | 'ODD' | 'EVEN'>('ALL');
@@ -1239,13 +1313,13 @@ export default function AdminAcademicScreen() {
 
   const createAcademicYearMutation = useMutation({
     mutationFn: async () =>
+      // PKL eligible grades are managed in Humas settings, not in admin academic-year form.
       adminApi.createAcademicYear({
         name: academicYearForm.name.trim(),
         semester1Start: academicYearForm.semester1Start,
         semester1End: academicYearForm.semester1End,
         semester2Start: academicYearForm.semester2Start,
         semester2End: academicYearForm.semester2End,
-        pklEligibleGrades: academicYearForm.pklEligibleGrades.trim() || null,
       }),
     onSuccess: async () => {
       resetAcademicYearForm();
@@ -1260,13 +1334,13 @@ export default function AdminAcademicScreen() {
   const updateAcademicYearMutation = useMutation({
     mutationFn: async () => {
       if (!editingAcademicYearId) throw new Error('ID tahun ajaran tidak valid.');
+      // Keep update payload focused on academic year timeline fields only.
       return adminApi.updateAcademicYear(editingAcademicYearId, {
         name: academicYearForm.name.trim(),
         semester1Start: academicYearForm.semester1Start,
         semester1End: academicYearForm.semester1End,
         semester2Start: academicYearForm.semester2Start,
         semester2End: academicYearForm.semester2End,
-        pklEligibleGrades: academicYearForm.pklEligibleGrades.trim() || null,
       });
     },
     onSuccess: async () => {
@@ -1411,7 +1485,6 @@ export default function AdminAcademicScreen() {
       semester1End: '',
       semester2Start: '',
       semester2End: '',
-      pklEligibleGrades: 'XI,XII',
     });
   };
 
@@ -1422,7 +1495,6 @@ export default function AdminAcademicScreen() {
     semester1End: string;
     semester2Start: string;
     semester2End: string;
-    pklEligibleGrades?: string | null;
   }) => {
     setEditingAcademicYearId(year.id);
     setAcademicYearForm({
@@ -1431,7 +1503,6 @@ export default function AdminAcademicScreen() {
       semester1End: toDateInput(year.semester1End),
       semester2Start: toDateInput(year.semester2Start),
       semester2End: toDateInput(year.semester2End),
-      pklEligibleGrades: year.pklEligibleGrades || '',
     });
     openSection('academic-years');
   };
@@ -2196,6 +2267,7 @@ export default function AdminAcademicScreen() {
               <SectionChip
                 key={item.key}
                 label={item.label}
+                icon={item.icon}
                 active={activeSection === item.key}
                 onPress={() => openSection(item.key)}
               />
@@ -2211,15 +2283,6 @@ export default function AdminAcademicScreen() {
 
       {!academicQuery.isLoading && !academicQuery.isError ? (
         <>
-          <SectionCard title="Tahun Ajaran Aktif" subtitle="Status tahun ajaran dan semester berjalan">
-            <Text style={{ color: BRAND_COLORS.blue, fontSize: 20, fontWeight: '700', marginTop: 2 }}>
-              {academicQuery.data?.activeYear?.name || 'Belum ditetapkan'}
-            </Text>
-            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
-              Semester: {academicQuery.data?.activeYear?.semester === 'EVEN' ? 'Genap' : 'Ganjil'}
-            </Text>
-          </SectionCard>
-
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
             <StatCard
               title="Total Kelas Aktif"
@@ -2341,24 +2404,6 @@ export default function AdminAcademicScreen() {
                   value={academicYearForm.semester2End}
                   onChangeText={(value) => setAcademicYearForm((prev) => ({ ...prev, semester2End: value }))}
                   placeholder="2027-06-20"
-                  placeholderTextColor="#94a3b8"
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    borderRadius: 10,
-                    paddingHorizontal: 10,
-                    paddingVertical: 9,
-                    backgroundColor: '#fff',
-                    color: BRAND_COLORS.textDark,
-                    marginBottom: 8,
-                  }}
-                />
-
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Konfigurasi Kelas PKL (contoh: XI,XII)</Text>
-                <TextInput
-                  value={academicYearForm.pklEligibleGrades}
-                  onChangeText={(value) => setAcademicYearForm((prev) => ({ ...prev, pklEligibleGrades: value }))}
-                  placeholder="XI,XII"
                   placeholderTextColor="#94a3b8"
                   style={{
                     borderWidth: 1,

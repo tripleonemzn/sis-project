@@ -23,6 +23,7 @@ export type StudentGradeRow = {
   nf4?: number | null;
   nf5?: number | null;
   nf6?: number | null;
+  formativeSeries?: number[] | null;
   kkm?: number;
   student: {
     id: number;
@@ -50,6 +51,26 @@ type StudentGradesResponse = {
   success: boolean;
   message: string;
   data: StudentGradeRow[];
+};
+
+export type ReportGradeRow = {
+  id: number;
+  studentId: number;
+  subjectId: number;
+  academicYearId: number;
+  semester: 'ODD' | 'EVEN';
+  formatifScore: number | null;
+  sbtsScore: number | null;
+  sasScore: number | null;
+  finalScore: number | null;
+  description?: string | null;
+};
+
+type ReportGradesResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: ReportGradeRow[];
 };
 
 type BulkSaveResponse = {
@@ -86,6 +107,22 @@ export const teacherGradeApi = {
     });
     return response.data.data || [];
   },
+  async getReportGrades(params: {
+    classId: number;
+    subjectId: number;
+    academicYearId: number;
+    semester: 'ODD' | 'EVEN';
+  }) {
+    const response = await apiClient.get<ReportGradesResponse>('/grades/report-grades', {
+      params: {
+        class_id: params.classId,
+        subject_id: params.subjectId,
+        academic_year_id: params.academicYearId,
+        semester: params.semester,
+      },
+    });
+    return response.data.data || [];
+  },
   async saveBulk(payload: {
     grades: Array<{
       student_id: number;
@@ -100,6 +137,7 @@ export const teacherGradeApi = {
       nf4?: number | null;
       nf5?: number | null;
       nf6?: number | null;
+      formative_series?: number[] | null;
       description?: string;
     }>;
   }) {

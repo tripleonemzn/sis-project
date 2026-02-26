@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useLocation, useNavigate, useParams, useOutletContext } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-hot-toast';
@@ -24,8 +24,8 @@ import {
 } from 'lucide-react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
-import { examService } from '../../../services/exam.service';
-import type { ExamType, Question } from '../../../services/exam.service';
+import { examService, normalizeExamProgramCode } from '../../../services/exam.service';
+import type { ExamProgram, ExamType, Question, QuestionBlueprint, QuestionCard } from '../../../services/exam.service';
 import { academicYearService } from '../../../services/academicYear.service';
 import { teacherAssignmentService } from '../../../services/teacherAssignment.service';
 import type { TeacherAssignment } from '../../../services/teacherAssignment.service';
@@ -47,6 +47,48 @@ interface ExtendedQuestion extends Question {
     }[];
 }
 
+function createDefaultBlueprint(): QuestionBlueprint {
+    return {
+        competency: '',
+        learningObjective: '',
+        indicator: '',
+        materialScope: '',
+        cognitiveLevel: '',
+    };
+}
+
+function createDefaultQuestionCard(): QuestionCard {
+    return {
+        stimulus: '',
+        answerRationale: '',
+        scoringGuideline: '',
+        distractorNotes: '',
+    };
+}
+
+function normalizeBlueprint(raw: unknown): QuestionBlueprint {
+    const source = raw && typeof raw === 'object' ? (raw as QuestionBlueprint) : {};
+    return {
+        ...createDefaultBlueprint(),
+        competency: source.competency || '',
+        learningObjective: source.learningObjective || '',
+        indicator: source.indicator || '',
+        materialScope: source.materialScope || '',
+        cognitiveLevel: source.cognitiveLevel || '',
+    };
+}
+
+function normalizeQuestionCard(raw: unknown): QuestionCard {
+    const source = raw && typeof raw === 'object' ? (raw as QuestionCard) : {};
+    return {
+        ...createDefaultQuestionCard(),
+        stimulus: source.stimulus || '',
+        answerRationale: source.answerRationale || '',
+        scoringGuideline: source.scoringGuideline || '',
+        distractorNotes: source.distractorNotes || '',
+    };
+}
+
 // Quill modules configuration
 const modules = {
   toolbar: [
@@ -65,6 +107,7 @@ interface PacketForm {
   title: string;
   description: string;
   type: ExamType;
+  programCode: string;
   duration: number;
   kkm: number;
   subjectId: number;
@@ -73,6 +116,50 @@ interface PacketForm {
   saveToBank: boolean;
   instructions: string;
   questions: ExtendedQuestion[];
+}
+
+function inferFixedSemesterFromBaseType(type?: string | null): 'ODD' | 'EVEN' | null {
+  const normalized = String(type || '').toUpperCase();
+  if (normalized === 'SAS') return 'ODD';
+  if (normalized === 'SAT') return 'EVEN';
+  return null;
+}
+
+function assertTypeSemesterMatch(type: ExamType, semester: string) {
+  if (type === 'SAS' && semester !== 'ODD') {
+    throw new Error('SAS hanya boleh untuk semester Ganjil.');
+  }
+  if (type === 'SAT' && semester !== 'EVEN') {
+    throw new Error('SAT hanya boleh untuk semester Genap.');
+  }
+}
+
+function getScoreSyncCopy(program?: ExamProgram | null): string {
+  if (!program) {
+    return 'Nilai ujian otomatis tersinkron ke komponen nilai sesuai konfigurasi Program Ujian.';
+  }
+
+  const componentLabel = String(
+    program.gradeComponentLabel || program.shortLabel || program.label || program.gradeComponentCode || program.code,
+  )
+    .trim()
+    .toUpperCase();
+  const entryModeCode = normalizeExamProgramCode(program.gradeEntryModeCode || program.gradeEntryMode);
+  const fixedSemester = program.fixedSemester;
+
+  if (entryModeCode === 'NF_SERIES') {
+    return `Nilai disimpan sebagai entri formatif dinamis pada komponen ${componentLabel}.`;
+  }
+
+  if (fixedSemester === 'ODD') {
+    return `Nilai ujian otomatis tersinkron ke komponen ${componentLabel}. Program ini khusus semester Ganjil.`;
+  }
+
+  if (fixedSemester === 'EVEN') {
+    return `Nilai ujian otomatis tersinkron ke komponen ${componentLabel}. Program ini khusus semester Genap.`;
+  }
+
+  return `Nilai ujian otomatis tersinkron ke komponen ${componentLabel}.`;
 }
 
 export const ExamEditorPage = () => {
@@ -132,25 +219,79 @@ export const ExamEditorPage = () => {
 
     // UI State for Editor
     const [section, setSection] = useState<'OBJECTIVE' | 'ESSAY'>('OBJECTIVE');
+    const [editorStage, setEditorStage] = useState<'INFO' | 'QUESTIONS'>('INFO');
     
     // Media Upload State
     // Removed mediaTarget state as we use direct targetId passing
 
+    const routeState = (location.state as {
+        type?: ExamType;
+        programCode?: string;
+        programLabel?: string;
+        fixedSemester?: 'ODD' | 'EVEN' | null;
+    } | null) || null;
+    const presetType = routeState?.type;
+    const presetProgramCode = normalizeExamProgramCode(routeState?.programCode || routeState?.type || 'FORMATIF');
+    const presetProgramLabel = routeState?.programLabel || '';
+    const presetFixedSemester = routeState?.fixedSemester || inferFixedSemesterFromBaseType(routeState?.type);
+
     const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<PacketForm>({
         defaultValues: {
-            type: (location.state as { type?: ExamType })?.type || 'FORMATIF',
+            type: presetType || 'FORMATIF',
+            programCode: presetProgramCode,
             duration: undefined,
             kkm: 75,
             saveToBank: true,
-            semester: 'ODD',
+            semester: presetFixedSemester || 'ODD',
             questions: []
         }
     });
 
-    const presetType = (location.state as { type?: ExamType })?.type;
-
     // Auto-Draft Logic using User Preferences (Database)
     const formValues = watch();
+    const watchedPacketType = (watch('type') || presetType || 'FORMATIF') as ExamType;
+    const selectedPacketSemester = watch('semester') || 'ODD';
+    const selectedProgramCodeRaw = watch('programCode') || presetProgramCode;
+    const selectedProgramCode = normalizeExamProgramCode(selectedProgramCodeRaw);
+    const selectedAcademicYearId = Number(watch('academicYearId') || activeAcademicYear?.id || 0);
+
+    const { data: examProgramsRes } = useQuery({
+        queryKey: ['teacher-exam-programs-editor', selectedAcademicYearId],
+        enabled: selectedAcademicYearId > 0,
+        staleTime: 5 * 60 * 1000,
+        queryFn: () =>
+            examService.getPrograms({
+                academicYearId: selectedAcademicYearId,
+                roleContext: 'teacher',
+            }),
+    });
+
+    const teacherPrograms = useMemo<ExamProgram[]>(
+        () => (examProgramsRes?.data?.programs || []).filter((program: ExamProgram) => Boolean(program?.isActive)),
+        [examProgramsRes?.data?.programs],
+    );
+
+    const selectedProgramMeta = useMemo<ExamProgram | null>(() => {
+        if (!selectedProgramCode) return null;
+        return (
+            teacherPrograms.find(
+                (program) => normalizeExamProgramCode(program.code) === selectedProgramCode,
+            ) || null
+        );
+    }, [selectedProgramCode, teacherPrograms]);
+
+    const resolvedPacketType = (selectedProgramMeta?.baseType || watchedPacketType || presetType || 'FORMATIF') as ExamType;
+    const resolvedFixedSemester =
+        selectedProgramMeta?.fixedSemester || presetFixedSemester || inferFixedSemesterFromBaseType(resolvedPacketType);
+    const isTypeLockedFromRoute = !isEditMode && Boolean(routeState?.programCode || routeState?.type);
+    const isSemesterLockedFromProgram = !isEditMode && Boolean(resolvedFixedSemester);
+    const scoreSyncCopy = getScoreSyncCopy(selectedProgramMeta);
+    const examTypeDisplayLabel =
+        selectedProgramMeta?.label ||
+        presetProgramLabel ||
+        selectedProgramMeta?.shortLabel ||
+        selectedProgramCode ||
+        resolvedPacketType;
     
     // Restore draft on mount (only for create mode)
     useEffect(() => {
@@ -173,18 +314,17 @@ export const ExamEditorPage = () => {
                             // Skip restoring academicYearId to ensure we use the active one
                             // setValue('academicYearId', parsed.form.academicYearId);
                             
-                            // Only restore semester if not SAS/SAT, otherwise force correct semester
-                            if (presetType === 'SAS') {
-                                setValue('semester', 'ODD');
-                            } else if (presetType === 'SAT') {
-                                setValue('semester', 'EVEN');
-                            } else {
-                                // For FORMATIF/SBTS, also skip restoring semester from draft to match active AY
-                                // setValue('semester', parsed.form.semester);
+                            // Program dari route lebih prioritas daripada draft.
+                            if (presetFixedSemester === 'ODD' || presetFixedSemester === 'EVEN') {
+                                setValue('semester', presetFixedSemester);
                             }
 
                             setValue('saveToBank', parsed.form.saveToBank);
-                            // Do NOT restore type, let context handle it
+                            setValue(
+                                'programCode',
+                                normalizeExamProgramCode(presetProgramCode || parsed.form.programCode || parsed.form.type || 'FORMATIF'),
+                            );
+                            // Do NOT restore type, let context route handle it
                         }
                         if (parsed.questions && parsed.questions.length > 0) {
                             setQuestions(parsed.questions);
@@ -206,17 +346,52 @@ export const ExamEditorPage = () => {
                 }
             }
         }
-    }, [isEditMode, userData, presetType, setValue, userId]);
+    }, [isEditMode, userData, presetFixedSemester, presetProgramCode, setValue, userId]);
 
     useEffect(() => {
-        if (!isEditMode && presetType) {
-            if (presetType === 'SAS') {
-                setValue('semester', 'ODD');
-            } else if (presetType === 'SAT') {
-                setValue('semester', 'EVEN');
+        if (!isEditMode) {
+            if (presetType) setValue('type', presetType);
+            if (presetProgramCode) {
+                setValue('programCode', normalizeExamProgramCode(presetProgramCode));
+            }
+            if (presetFixedSemester === 'ODD' || presetFixedSemester === 'EVEN') {
+                setValue('semester', presetFixedSemester);
             }
         }
-    }, [isEditMode, presetType, setValue]);
+    }, [isEditMode, presetType, presetProgramCode, presetFixedSemester, setValue]);
+
+    useEffect(() => {
+        if (normalizeExamProgramCode(selectedProgramCodeRaw) !== selectedProgramCode) {
+            setValue('programCode', selectedProgramCode);
+        }
+
+        const syncedType = (selectedProgramMeta?.baseType || watchedPacketType || 'FORMATIF') as ExamType;
+        if (syncedType !== watchedPacketType) {
+            setValue('type', syncedType);
+        }
+
+        if (
+            (resolvedFixedSemester === 'ODD' || resolvedFixedSemester === 'EVEN') &&
+            selectedPacketSemester !== resolvedFixedSemester
+        ) {
+            setValue('semester', resolvedFixedSemester);
+            return;
+        }
+
+        if (syncedType === 'SAS' && selectedPacketSemester !== 'ODD') {
+            setValue('semester', 'ODD');
+        } else if (syncedType === 'SAT' && selectedPacketSemester !== 'EVEN') {
+            setValue('semester', 'EVEN');
+        }
+    }, [
+        selectedProgramCodeRaw,
+        selectedProgramCode,
+        selectedProgramMeta?.baseType,
+        watchedPacketType,
+        selectedPacketSemester,
+        resolvedFixedSemester,
+        setValue,
+    ]);
 
     // Save draft on change (Debounced to Database)
     useEffect(() => {
@@ -336,8 +511,11 @@ export const ExamEditorPage = () => {
                 // Set default academic year if creating new
                 if (!isEditMode) {
                     setValue('academicYearId', ayRes.data.id);
-                    // Also set semester from active AY if not preset (SAS/SAT handled separately)
-                    if (presetType !== 'SAS' && presetType !== 'SAT') {
+                    setValue('programCode', normalizeExamProgramCode(presetProgramCode || presetType || 'FORMATIF'));
+                    // Also set semester from active AY if not locked by program
+                    if (presetFixedSemester === 'ODD' || presetFixedSemester === 'EVEN') {
+                        setValue('semester', presetFixedSemester);
+                    } else {
                         setValue('semester', ayRes.data.semester || 'ODD');
                     }
                 }
@@ -366,6 +544,7 @@ export const ExamEditorPage = () => {
             setValue('title', packet.title);
             setValue('description', packet.description || '');
             setValue('type', packet.type);
+            setValue('programCode', normalizeExamProgramCode(packet.programCode || packet.type));
             setValue('duration', packet.duration);
             setValue('kkm', packet.kkm);
             setValue('subjectId', Number(packet.subjectId));
@@ -374,13 +553,19 @@ export const ExamEditorPage = () => {
             setValue('instructions', packet.instructions || '');
             
             if (packet.questions) {
-                const mappedQuestions: ExtendedQuestion[] = packet.questions.map((q: any) => ({
-                    ...q,
-                    saveToBank: true,
-                    question_image_url: q.question_image_url,
-                    question_video_url: q.question_video_url,
-                    question_video_type: q.question_video_type,
-                }));
+                const mappedQuestions: ExtendedQuestion[] = packet.questions.map((q: any) => {
+                    const blueprintSource = q?.blueprint ?? q?.metadata?.blueprint;
+                    const questionCardSource = q?.questionCard ?? q?.metadata?.questionCard;
+                    return {
+                        ...q,
+                        saveToBank: true,
+                        question_image_url: q.question_image_url,
+                        question_video_url: q.question_video_url,
+                        question_video_type: q.question_video_type,
+                        blueprint: normalizeBlueprint(blueprintSource),
+                        questionCard: normalizeQuestionCard(questionCardSource),
+                    };
+                });
                 setQuestions(mappedQuestions);
                 if (mappedQuestions.length > 0) {
                     setActiveQuestionId(mappedQuestions[0].id);
@@ -402,6 +587,8 @@ export const ExamEditorPage = () => {
             type: type,
             score: 1, // Default bobot 1
             saveToBank: true,
+            blueprint: createDefaultBlueprint(),
+            questionCard: createDefaultQuestionCard(),
             options: type !== 'ESSAY' ? [
                 { id: Math.random().toString(36).substr(2, 9), content: '', isCorrect: false },
                 { id: Math.random().toString(36).substr(2, 9), content: '', isCorrect: false },
@@ -446,11 +633,35 @@ export const ExamEditorPage = () => {
         setQuestions(prev => prev.map(q => q.id === qId ? { ...q, ...updates } : q));
     };
 
+    const updateQuestionBlueprintField = (qId: string, field: keyof QuestionBlueprint, value: string) => {
+        const question = questions.find((item) => item.id === qId);
+        const currentBlueprint = normalizeBlueprint(question?.blueprint);
+        updateQuestion(qId, {
+            blueprint: {
+                ...currentBlueprint,
+                [field]: value,
+            },
+        });
+    };
+
+    const updateQuestionCardField = (qId: string, field: keyof QuestionCard, value: string) => {
+        const question = questions.find((item) => item.id === qId);
+        const currentQuestionCard = normalizeQuestionCard(question?.questionCard);
+        updateQuestion(qId, {
+            questionCard: {
+                ...currentQuestionCard,
+                [field]: value,
+            },
+        });
+    };
+
     const handleImportQuestions = (importedQuestions: Question[]) => {
         const newQuestions = importedQuestions.map(q => ({
             ...q,
             id: Math.random().toString(36).substr(2, 9), // Generate new ID to avoid conflict
             saveToBank: false, // Don't save back to bank by default since it came from there
+            blueprint: normalizeBlueprint(q.blueprint ?? q.metadata?.blueprint),
+            questionCard: normalizeQuestionCard(q.questionCard ?? q.metadata?.questionCard),
             options: q.options?.map(o => ({
                 ...o,
                 id: Math.random().toString(36).substr(2, 9)
@@ -641,6 +852,32 @@ export const ExamEditorPage = () => {
             toast.error('Tahun ajaran aktif tidak ditemukan');
             return;
         }
+        const normalizedProgramCode = normalizeExamProgramCode(data.programCode || selectedProgramCode || data.type || 'FORMATIF');
+        const effectiveProgram =
+            selectedProgramMeta ||
+            teacherPrograms.find(
+                (program) => normalizeExamProgramCode(program.code) === normalizedProgramCode,
+            ) ||
+            null;
+        const effectiveType = (effectiveProgram?.baseType || data.type || resolvedPacketType || 'FORMATIF') as ExamType;
+        const effectiveFixedSemester =
+            effectiveProgram?.fixedSemester ||
+            inferFixedSemesterFromBaseType(effectiveType);
+        try {
+            assertTypeSemesterMatch(effectiveType, data.semester);
+            if (
+                (effectiveFixedSemester === 'ODD' || effectiveFixedSemester === 'EVEN') &&
+                data.semester !== effectiveFixedSemester
+            ) {
+                throw new Error(
+                    `Program ini hanya boleh semester ${effectiveFixedSemester === 'ODD' ? 'Ganjil' : 'Genap'}.`,
+                );
+            }
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Kombinasi tipe ujian dan semester tidak valid.';
+            toast.error(message);
+            return;
+        }
 
         if (!data.duration || Number(data.duration) <= 0) {
             toast.error('Isi durasi waktu ujian');
@@ -666,8 +903,8 @@ export const ExamEditorPage = () => {
         }
 
         // Validate Questions
-        for (let i = 0; i < questions.length; i++) {
-            const q = questions[i];
+        for (let i = 0; i < finalQuestions.length; i++) {
+            const q = finalQuestions[i];
             const hasMedia = q.question_image_url || q.question_video_url;
             const hasContent = q.content && q.content.trim() !== '' && q.content !== '<p><br></p>';
 
@@ -675,6 +912,19 @@ export const ExamEditorPage = () => {
                  toast.error(`Soal nomor ${i + 1} belum memiliki pertanyaan (Teks atau Media)`);
                  return;
             }
+
+            const blueprint = normalizeBlueprint(q.blueprint);
+            if (!blueprint.learningObjective || !blueprint.indicator) {
+                toast.error(`Soal nomor ${i + 1} wajib mengisi kisi-kisi: tujuan pembelajaran dan indikator soal.`);
+                return;
+            }
+
+            const questionCard = normalizeQuestionCard(q.questionCard);
+            if (!questionCard.answerRationale) {
+                toast.error(`Soal nomor ${i + 1} wajib mengisi kartu soal: pembahasan/jawaban.`);
+                return;
+            }
+
             if (q.type !== 'ESSAY') {
                 // Validate Options (Must not be empty unless image is present)
                 if (q.options) {
@@ -706,8 +956,14 @@ export const ExamEditorPage = () => {
 
         const payload = {
             ...data,
+            type: effectiveType,
+            programCode: normalizedProgramCode,
             duration: Number(data.duration),
             academicYearId: Number(data.academicYearId),
+            semester:
+                effectiveFixedSemester === 'ODD' || effectiveFixedSemester === 'EVEN'
+                    ? effectiveFixedSemester
+                    : data.semester,
             questions: finalQuestions
         };
 
@@ -745,6 +1001,12 @@ export const ExamEditorPage = () => {
     };
 
     const activeQuestion = questions.find(q => q.id === activeQuestionId);
+    const activeQuestionBlueprint = activeQuestion
+        ? normalizeBlueprint(activeQuestion.blueprint)
+        : createDefaultBlueprint();
+    const activeQuestionCard = activeQuestion
+        ? normalizeQuestionCard(activeQuestion.questionCard)
+        : createDefaultQuestionCard();
 
 
 
@@ -837,6 +1099,8 @@ export const ExamEditorPage = () => {
     // Total Score Indicator
     const totalScore = questions.reduce((acc, q) => acc + (q.score || 0), 0);
     const isTotalScoreValid = totalScore === 100;
+    const completedQuestionCount = questions.filter((q) => q.content && q.content !== '<p><br></p>').length;
+    const selectedSubjectName = subjects.find((subject) => subject.id == selectedSubjectId)?.name || '-';
 
     return (
         <div className="flex flex-col font-sans space-y-6 pb-20 w-full">
@@ -885,7 +1149,35 @@ export const ExamEditorPage = () => {
                     </div>
                 </div>
 
-                {/* SECONDARY BAR: Settings */}
+                {/* STAGE BAR */}
+                <div className="px-6 py-3 bg-white border-t border-gray-100">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setEditorStage('INFO')}
+                            className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors ${
+                                editorStage === 'INFO'
+                                    ? 'border-blue-300 bg-blue-50 text-blue-700'
+                                    : 'border-gray-200 bg-white text-gray-600 hover:border-blue-200 hover:text-blue-700'
+                            }`}
+                        >
+                            1. Informasi Ujian
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setEditorStage('QUESTIONS')}
+                            className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors ${
+                                editorStage === 'QUESTIONS'
+                                    ? 'border-blue-300 bg-blue-50 text-blue-700'
+                                    : 'border-gray-200 bg-white text-gray-600 hover:border-blue-200 hover:text-blue-700'
+                            }`}
+                        >
+                            2. Butir Soal ({completedQuestionCount}/{questions.length})
+                        </button>
+                    </div>
+                </div>
+
+                {editorStage === 'INFO' ? (
                 <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 space-y-4">
                     <div className="flex flex-wrap gap-4 items-start">
                         {/* Subject */}
@@ -942,8 +1234,8 @@ export const ExamEditorPage = () => {
                                 <select 
                                     id="exam-semester"
                                     {...register('semester')}
-                                    className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 bg-white shadow-sm appearance-none font-medium text-gray-700 text-sm ${(!isEditMode && ((location.state as { type?: ExamType })?.type === 'SAS' || (location.state as { type?: ExamType })?.type === 'SAT')) ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
-                                    disabled={!isEditMode && (((location.state as { type?: ExamType })?.type === 'SAS') || ((location.state as { type?: ExamType })?.type === 'SAT'))}
+                                    className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 bg-white shadow-sm appearance-none font-medium text-gray-700 text-sm ${isSemesterLockedFromProgram ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
+                                    disabled={isSemesterLockedFromProgram}
                                 >
                                     <option value="ODD">Ganjil</option>
                                     <option value="EVEN">Genap</option>
@@ -954,8 +1246,25 @@ export const ExamEditorPage = () => {
                             </div>
                         </div>
 
-                        {/* Exam Type - Hidden, handled by context */}
-                        <input type="hidden" {...register('type')} />
+                        {/* Exam Type */}
+                        <div className="w-36">
+                            <label htmlFor="exam-type" className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                                <BookOpen className="w-4 h-4 text-blue-600" />
+                                TIPE UJIAN
+                            </label>
+                            <input
+                                id="exam-type"
+                                value={examTypeDisplayLabel}
+                                readOnly
+                                className={`w-full px-3 py-2 border rounded-lg shadow-sm font-medium text-sm ${
+                                    isTypeLockedFromRoute
+                                        ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed'
+                                        : 'border-gray-300 bg-white text-gray-700'
+                                }`}
+                            />
+                            <input type="hidden" {...register('type')} />
+                            <input type="hidden" {...register('programCode')} />
+                        </div>
 
                         {/* Instructions */}
                         <div className="flex-[2] min-w-[250px]">
@@ -1021,12 +1330,59 @@ export const ExamEditorPage = () => {
                             </label>
                         </div>
                     </div>
+                    <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+                        <p className="text-xs font-semibold text-blue-800">Sinkronisasi Nilai</p>
+                        <p className="text-xs text-blue-700">{scoreSyncCopy}</p>
+                    </div>
+                    <div className="flex justify-end">
+                        <button
+                            type="button"
+                            onClick={() => setEditorStage('QUESTIONS')}
+                            className="px-4 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-sm font-semibold hover:bg-blue-100 transition-colors"
+                        >
+                            Lanjut ke Butir Soal
+                        </button>
+                    </div>
                 </div>
+                ) : (
+                <div className="px-6 py-3 bg-slate-50 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-sm text-slate-700">
+                        <span className="font-semibold">{selectedSubjectName}</span>
+                        <span className="text-slate-500"> • {examTypeDisplayLabel}</span>
+                        <span className="text-slate-500"> • {selectedPacketSemester === 'ODD' ? 'Ganjil' : 'Genap'}</span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setEditorStage('INFO')}
+                        className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-100 transition-colors"
+                    >
+                        Edit Informasi Ujian
+                    </button>
+                </div>
+                )}
             </div>
 
             {/* MAIN CONTENT AREA - FULL WIDTH */}
             <div className="space-y-6">
-                
+                {editorStage === 'INFO' ? (
+                    <div className="bg-white rounded-xl shadow-sm border border-blue-100 p-6 md:p-8">
+                        <div className="max-w-3xl">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Tahap 1 aktif</p>
+                            <h3 className="mt-2 text-lg font-semibold text-slate-900">Lengkapi informasi ujian terlebih dulu</h3>
+                            <p className="mt-2 text-sm text-slate-600">
+                                Setelah mapel, semester, tipe, dan instruksi sudah sesuai, lanjutkan ke tahap butir soal agar proses input lebih fokus.
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => setEditorStage('QUESTIONS')}
+                                className="mt-4 inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+                            >
+                                Buka Tahap Butir Soal
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                <>
                 {/* QUESTION LIST BAR (Horizontal) */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
                     <div className="flex items-center justify-between mb-2">
@@ -1226,6 +1582,89 @@ export const ExamEditorPage = () => {
                                     </div>
                                 </div>
 
+                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                                        <div>
+                                            <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Kisi-kisi Soal</p>
+                                            <p className="text-xs text-slate-500">
+                                                Lengkapi tujuan pembelajaran dan indikator agar soal terpetakan.
+                                            </p>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                            <input
+                                                value={activeQuestionBlueprint.competency || ''}
+                                                onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'competency', e.target.value)}
+                                                placeholder="Kompetensi/Capaian"
+                                                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                            />
+                                            <input
+                                                value={activeQuestionBlueprint.cognitiveLevel || ''}
+                                                onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'cognitiveLevel', e.target.value)}
+                                                placeholder="Level kognitif (C1-C6)"
+                                                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                            />
+                                            <input
+                                                value={activeQuestionBlueprint.learningObjective || ''}
+                                                onChange={(e) =>
+                                                    updateQuestionBlueprintField(activeQuestion.id, 'learningObjective', e.target.value)
+                                                }
+                                                placeholder="Tujuan pembelajaran*"
+                                                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                            />
+                                            <input
+                                                value={activeQuestionBlueprint.indicator || ''}
+                                                onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'indicator', e.target.value)}
+                                                placeholder="Indikator soal*"
+                                                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                            />
+                                        </div>
+                                        <input
+                                            value={activeQuestionBlueprint.materialScope || ''}
+                                            onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'materialScope', e.target.value)}
+                                            placeholder="Ruang lingkup materi"
+                                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                        />
+                                    </div>
+
+                                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
+                                        <div>
+                                            <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Kartu Soal</p>
+                                            <p className="text-xs text-emerald-700/80">
+                                                Simpan stimulus dan pembahasan untuk review kualitas butir soal.
+                                            </p>
+                                        </div>
+
+                                        <textarea
+                                            value={activeQuestionCard.stimulus || ''}
+                                            onChange={(e) => updateQuestionCardField(activeQuestion.id, 'stimulus', e.target.value)}
+                                            placeholder="Stimulus soal"
+                                            rows={2}
+                                            className="w-full rounded-md border border-emerald-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                                        />
+                                        <textarea
+                                            value={activeQuestionCard.answerRationale || ''}
+                                            onChange={(e) => updateQuestionCardField(activeQuestion.id, 'answerRationale', e.target.value)}
+                                            placeholder="Pembahasan / alasan jawaban benar*"
+                                            rows={2}
+                                            className="w-full rounded-md border border-emerald-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                                        />
+                                        <textarea
+                                            value={activeQuestionCard.scoringGuideline || ''}
+                                            onChange={(e) => updateQuestionCardField(activeQuestion.id, 'scoringGuideline', e.target.value)}
+                                            placeholder="Pedoman penskoran (terutama untuk esai)"
+                                            rows={2}
+                                            className="w-full rounded-md border border-emerald-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                                        />
+                                        <textarea
+                                            value={activeQuestionCard.distractorNotes || ''}
+                                            onChange={(e) => updateQuestionCardField(activeQuestion.id, 'distractorNotes', e.target.value)}
+                                            placeholder="Catatan distraktor / opsi pengecoh"
+                                            rows={2}
+                                            className="w-full rounded-md border border-emerald-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                                        />
+                                    </div>
+                                </div>
 
                             </div>
 
@@ -1319,6 +1758,8 @@ export const ExamEditorPage = () => {
                             Buat Soal Pertama
                         </button>
                     </div>
+                )}
+                </>
                 )}
             </div>
 

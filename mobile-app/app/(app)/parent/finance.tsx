@@ -429,9 +429,6 @@ export default function ParentFinanceScreen() {
             </Text>
           </Pressable>
         </View>
-        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>
-          Tahun ajaran aktif: {activeYearName || 'Tidak terdeteksi'}
-        </Text>
       </View>
 
       {selectedChildId && activeYearId ? (

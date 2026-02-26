@@ -7,10 +7,22 @@ import { authService } from '../services/auth.service';
 import { NotificationDropdown } from '../components/layout/NotificationDropdown';
 import clsx from 'clsx';
 import { useActiveAcademicYear } from '../hooks/useActiveAcademicYear';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
+import { examProgramCodeToSlug } from '../services/exam.service';
+
+const titleCaseFromSlug = (slug: string): string => {
+  const cleaned = String(slug || '').trim().replace(/-/g, ' ');
+  if (!cleaned) return 'Program Ujian';
+  return cleaned
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
 
 // Helper untuk breadcrumbs map
   const getBreadcrumbs = (
-    location: { pathname: string; search: string; state?: { type?: string; exam?: any } | null }, 
+    location: { pathname: string; search: string; state?: { type?: string; programCode?: string; programLabel?: string; exam?: any } | null }, 
     user: any // Pass user object to access dynamic data
   ) => {
     const { pathname, state } = location;
@@ -22,6 +34,9 @@ import { useActiveAcademicYear } from '../hooks/useActiveAcademicYear';
     const breadcrumbs: { label: string; path: string | null }[] = [];
 
     if (segments.length === 0) {
+      if (role === 'email' || pathname === '/email') {
+        return [{ label: 'Email', path: '/email' }];
+      }
       return [{ label: 'Dashboard', path: `/${role}` }];
     }
 
@@ -96,6 +111,7 @@ import { useActiveAcademicYear } from '../hooks/useActiveAcademicYear';
       'exam-sessions': { label: 'Sesi Ujian', group: 'UJIAN & CBT' },
 
       settings: { label: 'Pengaturan', group: 'PENGATURAN' },
+      'settings/slideshow': { label: 'Slideshow', group: 'PENGATURAN' },
       'settings/profile': { label: 'Profil Sekolah', group: 'PENGATURAN' },
       'settings/password': { label: 'Ubah Password', group: 'PENGATURAN' },
     };
@@ -116,24 +132,21 @@ import { useActiveAcademicYear } from '../hooks/useActiveAcademicYear';
 
       // Special handling for Teacher Exams
       if (first === 'exams') {
-         if (state?.type) {
-             const type = state.type;
-             let typeLabel = 'Ujian';
-             let typePath = '/teacher/exams';
-             
-             if (type === 'FORMATIF') {
-                 typeLabel = 'Formatif (Quiz)';
-                 typePath = '/teacher/exams/formatif';
-             } else if (type === 'SBTS') {
-                 typeLabel = 'SBTS';
-                 typePath = '/teacher/exams/sbts';
-             } else if (type === 'SAS') {
-                 typeLabel = 'SAS';
-                 typePath = '/teacher/exams/sas';
-             } else if (type === 'SAT') {
-                 typeLabel = 'SAT';
-                 typePath = '/teacher/exams/sat';
-             } else if (type === 'BANK_SOAL') { 
+         if (segments[1] === 'program' && segments[2]) {
+             const slug = String(segments[2] || '').trim();
+             const typeLabel =
+               String(state?.programLabel || state?.programCode || '').trim() || titleCaseFromSlug(slug);
+             breadcrumbs.push({ label: typeLabel, path: `/${role}/exams/program/${slug}` });
+             return breadcrumbs;
+         }
+         if (state?.type || state?.programCode) {
+             const type = String(state?.type || '').toUpperCase();
+             const normalizedProgramCode = String(state?.programCode || '').trim();
+             const programSlug = normalizedProgramCode ? examProgramCodeToSlug(normalizedProgramCode) : '';
+             let typeLabel = state?.programLabel || normalizedProgramCode || type || 'Ujian';
+             let typePath = programSlug ? `/teacher/exams/program/${programSlug}` : '/teacher/exams';
+
+             if (type === 'BANK_SOAL') {
                  typeLabel = 'Bank Soal';
                  typePath = '/teacher/exams/bank';
              }
@@ -141,7 +154,7 @@ import { useActiveAcademicYear } from '../hooks/useActiveAcademicYear';
              breadcrumbs.push({ label: typeLabel, path: typePath });
              shouldAddParent = false; 
          } else {
-             const isSubtypeList = ['formatif', 'sbts', 'sas', 'sat', 'bank'].some(t => fullKey.includes(t));
+             const isSubtypeList = ['program', 'bank'].some(t => fullKey.includes(t));
              if (isSubtypeList) {
                  shouldAddParent = false;
              }
@@ -211,6 +224,7 @@ import { useActiveAcademicYear } from '../hooks/useActiveAcademicYear';
       'exams/formatif': { label: 'Formatif (Quiz)', group: 'UJIAN' },
       'exams/sbts': { label: 'SBTS', group: 'UJIAN' },
       'exams/sas-sat': { label: 'SAS / SAT', group: 'UJIAN' },
+      'exams/program': { label: 'Program Ujian', group: 'UJIAN' },
       'exams/bank': { label: 'Bank Soal', group: 'UJIAN' },
       'exams/create': { label: 'Buat Ujian Baru', group: 'UJIAN' },
       'exams/edit': { label: 'Edit Ujian', group: 'UJIAN' },
@@ -260,6 +274,9 @@ import { useActiveAcademicYear } from '../hooks/useActiveAcademicYear';
       'head-lab/inventory': { label: 'Inventaris Lab', group: 'KEPALA LAB' },
       'head-lab/schedule': { label: 'Jadwal Lab', group: 'KEPALA LAB' },
       'head-lab/incidents': { label: 'Laporan Insiden', group: 'KEPALA LAB' },
+
+      // KEPALA PERPUSTAKAAN
+      'head-library/inventory': { label: 'Kelola Perpustakaan', group: 'KEPALA PERPUSTAKAAN' },
       
       // KAKOM / HEAD PROGRAM
       'head-program': { label: 'Kelas Kompetensi', group: 'TUGAS TAMBAHAN' }, // Base
@@ -345,24 +362,21 @@ import { useActiveAcademicYear } from '../hooks/useActiveAcademicYear';
 
       // Special handling for Teacher Exams
       if (first === 'exams') {
-         if (state?.type) {
-             const type = state.type;
-             let typeLabel = 'Ujian';
-             let typePath = '/teacher/exams';
-             
-             if (type === 'FORMATIF') {
-                 typeLabel = 'Formatif (Quiz)';
-                 typePath = '/teacher/exams/formatif';
-             } else if (type === 'SBTS') {
-                 typeLabel = 'SBTS';
-                 typePath = '/teacher/exams/sbts';
-             } else if (type === 'SAS') {
-                 typeLabel = 'SAS';
-                 typePath = '/teacher/exams/sas';
-             } else if (type === 'SAT') {
-                 typeLabel = 'SAT';
-                 typePath = '/teacher/exams/sat';
-             } else if (type === 'BANK_SOAL') { 
+         if (segments[1] === 'program' && segments[2]) {
+             const slug = String(segments[2] || '').trim();
+             const typeLabel =
+               String(state?.programLabel || state?.programCode || '').trim() || titleCaseFromSlug(slug);
+             breadcrumbs.push({ label: typeLabel, path: `/${role}/exams/program/${slug}` });
+             return breadcrumbs;
+         }
+         if (state?.type || state?.programCode) {
+             const type = String(state?.type || '').toUpperCase();
+             const normalizedProgramCode = String(state?.programCode || '').trim();
+             const programSlug = normalizedProgramCode ? examProgramCodeToSlug(normalizedProgramCode) : '';
+             let typeLabel = state?.programLabel || normalizedProgramCode || type || 'Ujian';
+             let typePath = programSlug ? `/teacher/exams/program/${programSlug}` : '/teacher/exams';
+
+             if (type === 'BANK_SOAL') {
                  typeLabel = 'Bank Soal';
                  typePath = '/teacher/exams/bank';
              }
@@ -370,7 +384,7 @@ import { useActiveAcademicYear } from '../hooks/useActiveAcademicYear';
              breadcrumbs.push({ label: typeLabel, path: typePath });
              shouldAddParent = false; 
          } else {
-             const isSubtypeList = ['formatif', 'sbts', 'sas', 'sat', 'bank'].some(t => fullKey.includes(t));
+             const isSubtypeList = ['program', 'bank'].some(t => fullKey.includes(t));
              if (isSubtypeList) {
                  shouldAddParent = false;
              }
@@ -460,6 +474,7 @@ import { useActiveAcademicYear } from '../hooks/useActiveAcademicYear';
       'exams/sbts': { label: 'SBTS', group: 'UJIAN ONLINE' },
       'exams/sas': { label: 'SAS', group: 'UJIAN ONLINE' },
       'exams/sat': { label: 'SAT', group: 'UJIAN ONLINE' },
+      'exams/program': { label: 'Program Ujian', group: 'UJIAN ONLINE' },
 
       // NILAI SAYA / AKADEMIK (depending on status)
       'grades-group': { label: 'NILAI SAYA', group: 'NILAI SAYA' },
@@ -492,27 +507,24 @@ import { useActiveAcademicYear } from '../hooks/useActiveAcademicYear';
     
     let config = mapping[fullKey] || (second && mapping[second]) || mapping[first];
 
+    if (first === 'exams' && segments[1] === 'program' && segments[2]) {
+      const slug = String(segments[2] || '').trim();
+      const typeLabel =
+        String(state?.programLabel || state?.programCode || '').trim() || titleCaseFromSlug(slug);
+      breadcrumbs.push({ label: 'UJIAN ONLINE', path: null });
+      breadcrumbs.push({ label: typeLabel, path: `/${role}/exams/program/${slug}` });
+      return breadcrumbs;
+    }
+
     // Handle "Take Exam" page specifically
     if (first === 'exams' && segments[segments.length - 1] === 'take') {
-       const examState = state?.exam;
-       if (examState) {
-           const type = examState.type; // QUIZ, FORMATIF, SBTS, SAS, SAT
-           let typeLabel = 'Ujian';
-           let typePath = '/student/exams';
-           
-           if (type === 'FORMATIF' || type === 'QUIZ') {
-               typeLabel = 'Formatif (Quiz)';
-               typePath = '/student/exams/formatif';
-           } else if (type === 'SBTS') {
-               typeLabel = 'SBTS';
-               typePath = '/student/exams/sbts';
-           } else if (type === 'SAS') {
-               typeLabel = 'SAS';
-               typePath = '/student/exams/sas';
-           } else if (type === 'SAT') {
-               typeLabel = 'SAT';
-               typePath = '/student/exams/sat';
-           }
+	       const examState = state?.exam;
+	       if (examState) {
+	           const type = String(examState.type || '').toUpperCase();
+	           const programCode = String(examState.programCode || '').trim();
+	           const programSlug = programCode ? examProgramCodeToSlug(programCode) : '';
+	           const typeLabel = examState.programLabel || programCode || type || 'Ujian';
+	           const typePath = programSlug ? `/student/exams/program/${programSlug}` : '/student/exams';
 
            // Push the type breadcrumb
            breadcrumbs.push({ label: 'UJIAN ONLINE', path: null }); // Group
@@ -623,6 +635,7 @@ export const DashboardLayout = () => {
   });
 
   const user = (userResponse as any)?.data;
+  useRealtimeSync(Boolean(user));
 
   const displayUser = user;
 

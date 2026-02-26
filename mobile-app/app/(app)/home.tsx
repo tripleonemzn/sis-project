@@ -6,6 +6,8 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Keyboard,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -24,10 +26,12 @@ import { getGroupedRoleMenu, RoleMenuGroup, RoleMenuItem } from '../../src/featu
 import { useTeacherAssignmentsQuery } from '../../src/features/teacherAssignments/useTeacherAssignmentsQuery';
 import { scheduleApi } from '../../src/features/schedule/scheduleApi';
 import type { DayOfWeek, ScheduleEntry } from '../../src/features/schedule/types';
+import { internshipDutyApi } from '../../src/features/internshipDuty/internshipDutyApi';
 import { academicYearApi } from '../../src/features/academicYear/academicYearApi';
 import { adminApi } from '../../src/features/admin/adminApi';
 import { principalApi } from '../../src/features/principal/principalApi';
 import { staffApi } from '../../src/features/staff/staffApi';
+import { examApi, ExamProgramItem } from '../../src/features/exams/examApi';
 import { useParentFinanceOverviewQuery } from '../../src/features/parent/useParentFinanceOverviewQuery';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { applyAppUpdate, checkAppUpdate } from '../../src/features/appUpdate/updateService';
@@ -88,6 +92,14 @@ function defaultSemesterByDate(): 'ODD' | 'EVEN' {
   return month >= 7 ? 'ODD' : 'EVEN';
 }
 
+function toSemesterLabel(value?: unknown) {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (!normalized) return null;
+  if (normalized === 'ODD' || normalized.includes('GANJIL')) return 'Ganjil';
+  if (normalized === 'EVEN' || normalized.includes('GENAP')) return 'Genap';
+  return null;
+}
+
 function resolveMediaUrl(path?: string | null) {
   if (!path) return null;
   if (/^https?:\/\//i.test(path)) return path;
@@ -119,6 +131,7 @@ const getMenuIcon = (menu: RoleMenuItem): FeatherIconName => {
   if (menu.key.includes('diagnostics')) return 'activity';
   if (menu.key.includes('schedule')) return 'calendar';
   if (menu.key.includes('academic')) return 'book-open';
+  if (menu.key.includes('slideshow')) return 'image';
   if (menu.key.includes('learning') || menu.key.includes('materials')) return 'book-open';
   if (menu.key.includes('permissions')) return 'shield';
   if (menu.key.includes('grades') || menu.key.includes('report')) return 'bar-chart-2';
@@ -147,6 +160,7 @@ const getGroupIcon = (group: RoleMenuGroup): FeatherIconName => {
   if (key.includes('training')) return 'layers';
   if (key.includes('homeroom')) return 'user-check';
   if (key.includes('internship') || key.includes('kakom')) return 'briefcase';
+  if (key.includes('work-program')) return 'briefcase';
   if (key.includes('sarpras')) return 'archive';
   if (key.includes('humas')) return 'globe';
   if (key.includes('extracurricular')) return 'award';
@@ -230,6 +244,90 @@ const ROLE_PRIMARY_ACTION_KEYS: Record<string, string[]> = {
   UMUM: ['public-information'],
 };
 
+const TEACHER_EXAM_MENU_KEYS = new Set([
+  'teacher-exam-formatif',
+  'teacher-exam-sbts',
+  'teacher-exam-sas',
+  'teacher-exam-sat',
+]);
+const STUDENT_EXAM_MENU_KEYS = new Set([
+  'student-exam-formatif',
+  'student-exam-sbts',
+  'student-exam-sas',
+  'student-exam-sat',
+]);
+
+function normalizeProgramCode(raw?: string | null): string {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function programCodeToSlug(raw?: string | null): string {
+  return normalizeProgramCode(raw).toLowerCase().replace(/_/g, '-');
+}
+
+function buildDynamicExamMenuItems(
+  role: 'TEACHER' | 'STUDENT',
+  programs: ExamProgramItem[],
+): RoleMenuItem[] {
+  const sorted = [...programs].sort((a, b) => a.order - b.order || a.code.localeCompare(b.code));
+  return sorted.map((program) => {
+    const code = normalizeProgramCode(program.code);
+    const slug = programCodeToSlug(code);
+    const route =
+      role === 'TEACHER'
+        ? `/teacher/exams?programCode=${encodeURIComponent(code)}`
+        : `/exams?programCode=${encodeURIComponent(code)}`;
+    return {
+      key: `${role.toLowerCase()}-exam-${slug}`,
+      label: String(program.label || code).trim() || code,
+      route,
+    };
+  });
+}
+
+function applyExamProgramsToMenuGroups(
+  groups: RoleMenuGroup[],
+  role: string,
+  programs: ExamProgramItem[],
+): RoleMenuGroup[] {
+  if (role !== 'TEACHER' && role !== 'STUDENT') return groups;
+
+  const roleTyped = role as 'TEACHER' | 'STUDENT';
+  const staticKeys = roleTyped === 'TEACHER' ? TEACHER_EXAM_MENU_KEYS : STUDENT_EXAM_MENU_KEYS;
+  const visiblePrograms = programs.filter((program) =>
+    roleTyped === 'TEACHER' ? program.showOnTeacherMenu && program.isActive : program.showOnStudentMenu && program.isActive,
+  );
+  const dynamicExamItems = buildDynamicExamMenuItems(roleTyped, visiblePrograms);
+
+  return groups.map((group) => {
+    if (group.key !== 'exams') {
+      return group;
+    }
+
+    const firstStaticIdx = group.items.findIndex((item) => staticKeys.has(item.key));
+    if (firstStaticIdx < 0) return group;
+    let lastStaticIdx = firstStaticIdx;
+    for (let i = firstStaticIdx; i < group.items.length; i += 1) {
+      if (staticKeys.has(group.items[i].key)) {
+        lastStaticIdx = i;
+      }
+    }
+
+    const before = group.items.slice(0, firstStaticIdx).filter((item) => !staticKeys.has(item.key));
+    const after = group.items.slice(lastStaticIdx + 1).filter((item) => !staticKeys.has(item.key));
+    return {
+      ...group,
+      items: [...before, ...dynamicExamItems, ...after],
+    };
+  });
+}
+
 const FALLBACK_PROFILE: AuthUser = {
   id: 0,
   name: 'Pengguna',
@@ -243,12 +341,15 @@ export default function HomeScreen() {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const profileQuery = useProfileQuery(isAuthenticated);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastRefreshAt, setLastRefreshAt] = useState<string | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isLogoutConfirmVisible, setIsLogoutConfirmVisible] = useState(false);
+  const [isInlineSearchVisible, setIsInlineSearchVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [menuSearch, setMenuSearch] = useState('');
   const [openGroupKey, setOpenGroupKey] = useState<string | null>(null);
   const [openingMenuKey, setOpeningMenuKey] = useState<string | null>(null);
   const openingMenuResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const menuSearchInputRef = useRef<TextInput | null>(null);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -261,17 +362,25 @@ export default function HomeScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardHeight(event.endCoordinates?.height || 0);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   const profile = profileQuery.data?.profile ?? user ?? FALLBACK_PROFILE;
   const homeContentPadding = getStandardPagePadding(insets, { horizontal: 18, bottom: 148 });
-  const menuGroups = useMemo(
-    () =>
-      getGroupedRoleMenu(profile).filter((group) => {
-        const key = group.key.toLowerCase();
-        const label = group.label.toLowerCase();
-        return key !== 'dashboard' && label !== 'dashboard';
-      }),
-    [profile],
-  );
   const teacherAssignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user: profile });
   const activeAcademicYearQuery = useQuery({
     queryKey: ['mobile-home-active-academic-year', profile.id],
@@ -295,6 +404,41 @@ export default function HomeScreen() {
         teacherId: profile.id,
       }),
   });
+  const teacherDefenseQuery = useQuery({
+    queryKey: ['mobile-home-teacher-defense', profile.id],
+    enabled: profile.role === 'TEACHER',
+    staleTime: 1000 * 60 * 5,
+    queryFn: async () => internshipDutyApi.listExaminerInternships(),
+  });
+
+  const examProgramsQuery = useQuery({
+    queryKey: ['mobile-home-exam-programs', profile.role, activeAcademicYearQuery.data?.id],
+    enabled:
+      isAuthenticated &&
+      (profile.role === 'TEACHER' || profile.role === 'STUDENT') &&
+      Boolean(activeAcademicYearQuery.data?.id),
+    staleTime: 5 * 60 * 1000,
+    queryFn: () =>
+      examApi.getExamPrograms({
+        academicYearId: activeAcademicYearQuery.data?.id,
+        roleContext: profile.role === 'STUDENT' ? 'student' : 'teacher',
+      }),
+  });
+
+  const hasPendingDefense = profile.role === 'TEACHER' && (teacherDefenseQuery.data?.length || 0) > 0;
+  const menuGroups = useMemo(
+    () =>
+      applyExamProgramsToMenuGroups(
+        getGroupedRoleMenu(profile, { hasPendingDefense }).filter((group) => {
+          const key = group.key.toLowerCase();
+          const label = group.label.toLowerCase();
+          return key !== 'dashboard' && label !== 'dashboard';
+        }),
+        profile.role,
+        examProgramsQuery.data?.programs || [],
+      ),
+    [profile, hasPendingDefense, examProgramsQuery.data?.programs],
+  );
   const adminStatsQuery = useQuery({
     queryKey: ['mobile-home-admin-stats', profile.id],
     enabled: profile.role === 'ADMIN',
@@ -578,6 +722,46 @@ export default function HomeScreen() {
       '-'
     );
   }, [activeAcademicYearQuery.data?.name, teacherAssignmentsQuery.data?.activeYear?.name, adminStatsQuery.data?.activeYearName]);
+  const activeAcademicSemesterLabel = useMemo(() => {
+    const semesterFromActiveYear = toSemesterLabel((activeAcademicYearQuery.data as any)?.semester);
+    if (semesterFromActiveYear) return semesterFromActiveYear;
+
+    const semesterFromTeacherAssignments = toSemesterLabel((teacherAssignmentsQuery.data?.activeYear as any)?.semester);
+    if (semesterFromTeacherAssignments) return semesterFromTeacherAssignments;
+
+    const semesterFromPrincipalOverview = toSemesterLabel(principalStatsQuery.data?.semester);
+    if (semesterFromPrincipalOverview) return semesterFromPrincipalOverview;
+
+    return defaultSemesterByDate() === 'EVEN' ? 'Genap' : 'Ganjil';
+  }, [
+    activeAcademicYearQuery.data,
+    teacherAssignmentsQuery.data?.activeYear,
+    principalStatsQuery.data?.semester,
+  ]);
+  const homeSubtitle = useMemo(() => {
+    switch (profile.role) {
+      case 'TEACHER':
+        return 'Ringkasan penugasan mengajar dan akses cepat modul utama.';
+      case 'ADMIN':
+        return 'Pantau operasional akademik dan administrasi sekolah.';
+      case 'PRINCIPAL':
+        return 'Ringkasan akademik, keuangan, dan SDM pada periode aktif.';
+      case 'STAFF':
+        return 'Kelola layanan administrasi, pembayaran, dan data siswa.';
+      case 'PARENT':
+        return 'Pantau progres belajar, kehadiran, dan keuangan anak.';
+      case 'STUDENT':
+        return 'Pantau jadwal, materi, ujian, dan perkembangan belajar.';
+      case 'EXAMINER':
+        return 'Kelola skema UKK dan penilaian uji kompetensi.';
+      case 'EXTRACURRICULAR_TUTOR':
+        return 'Pantau ekstrakurikuler binaan dan anggota aktif.';
+      case 'CALON_SISWA':
+        return 'Akses informasi dan proses pendaftaran siswa baru.';
+      default:
+        return 'Pilih modul yang ingin Anda akses hari ini.';
+    }
+  }, [profile.role]);
   const todayLabel = useMemo(
     () =>
       new Date().toLocaleDateString('id-ID', {
@@ -768,6 +952,7 @@ export default function HomeScreen() {
       if (profile.role === 'TEACHER') {
         refetches.push(teacherAssignmentsQuery.refetch());
         refetches.push(teacherScheduleQuery.refetch());
+        refetches.push(teacherDefenseQuery.refetch());
       }
       if (profile.role === 'ADMIN') {
         refetches.push(adminStatsQuery.refetch());
@@ -809,7 +994,6 @@ export default function HomeScreen() {
       if (elapsed < 700) {
         await new Promise((resolve) => setTimeout(resolve, 700 - elapsed));
       }
-      setLastRefreshAt(new Date().toISOString());
       setIsRefreshing(false);
     }
   };
@@ -931,28 +1115,54 @@ export default function HomeScreen() {
 
   const handleLogout = () => {
     if (isLoggingOut) return;
-    Alert.alert('Konfirmasi Logout', 'Yakin ingin keluar dari akun ini?', [
-      { text: 'Batal', style: 'cancel' },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            try {
-              setIsLoggingOut(true);
-              await logout();
-              router.replace('/welcome');
-              notifySuccess('Logout berhasil');
-              setIsLoggingOut(false);
-            } catch (error: any) {
-              setIsLoggingOut(false);
-              notifyApiError(error, 'Gagal logout.');
-            }
-          })();
-        },
-      },
-    ]);
+    setIsLogoutConfirmVisible(true);
   };
+
+  const confirmLogout = () => {
+    if (isLoggingOut) return;
+    void (async () => {
+      try {
+        setIsLoggingOut(true);
+        setIsLogoutConfirmVisible(false);
+        await logout();
+        router.replace('/welcome');
+        notifySuccess('Logout berhasil');
+        setIsLoggingOut(false);
+      } catch (error: any) {
+        setIsLoggingOut(false);
+        notifyApiError(error, 'Gagal logout.');
+      }
+    })();
+  };
+
+  const handleNotificationPress = () => {
+    notifyInfo('Belum ada notifikasi baru saat ini.', {
+      title: 'Notifikasi',
+      durationMs: 1800,
+    });
+  };
+
+  const handleSearchBubblePress = () => {
+    setIsInlineSearchVisible((prev) => {
+      const next = !prev;
+      if (next) {
+        setTimeout(() => {
+          menuSearchInputRef.current?.focus();
+        }, 120);
+      } else {
+        menuSearchInputRef.current?.blur();
+      }
+      return next;
+    });
+  };
+
+  const closeInlineSearch = () => {
+    setIsInlineSearchVisible(false);
+    menuSearchInputRef.current?.blur();
+  };
+
+  const footerBaseBottom = Platform.OS === 'ios' ? 22 : 14;
+  const footerKeyboardOffset = keyboardHeight > 0 ? Math.max(0, keyboardHeight - insets.bottom + 8) : 0;
 
   if (isLoading) return <AppLoadingScreen message="Memuat dashboard..." />;
   if (!isAuthenticated || !user) return <Redirect href="/welcome" />;
@@ -1020,7 +1230,7 @@ export default function HomeScreen() {
           <View style={{ flex: 1 }}>
             <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Tahun Ajaran Aktif</Text>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 14 }}>
-              {activeAcademicYearLabel}
+              {activeAcademicYearLabel} ({activeAcademicSemesterLabel})
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
               {todayLabel}
@@ -1032,15 +1242,14 @@ export default function HomeScreen() {
           style={{
             marginTop: 12,
             color: BRAND_COLORS.textDark,
-            fontSize: 24,
+            fontSize: 20,
             fontWeight: '700',
-            fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
           }}
         >
           Halo, {displayName}
         </Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, marginBottom: 12 }}>
-          Pilih modul yang ingin Anda akses hari ini.
+          {homeSubtitle}
         </Text>
 
         {profile.role === 'TEACHER' ? (
@@ -1384,33 +1593,6 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            backgroundColor: BRAND_COLORS.white,
-            borderRadius: 999,
-            borderWidth: 1,
-            borderColor: '#d5e0f5',
-            paddingHorizontal: 14,
-            marginBottom: 14,
-          }}
-        >
-          <Feather name="search" size={16} color={BRAND_COLORS.textMuted} />
-          <TextInput
-            value={menuSearch}
-            onChangeText={setMenuSearch}
-            placeholder="Cari menu atau submenu"
-            placeholderTextColor="#9aa6be"
-            style={{
-              flex: 1,
-              paddingVertical: 11,
-              paddingHorizontal: 9,
-              color: BRAND_COLORS.textDark,
-            }}
-          />
-        </View>
-
         {profileQuery.isLoading ? (
           <View style={{ marginBottom: 12 }}>
             <QueryStateView type="loading" message="Sinkronisasi dashboard..." />
@@ -1450,6 +1632,34 @@ export default function HomeScreen() {
           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>Menu Berdasarkan Kategori</Text>
           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>{profile.role}</Text>
         </View>
+        {menuSearch.trim() ? (
+          <View
+            style={{
+              marginBottom: 10,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: '#d6e0f2',
+              backgroundColor: '#f8fbff',
+              paddingVertical: 8,
+              paddingHorizontal: 10,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <Text
+              style={{ color: BRAND_COLORS.textMuted, fontSize: 12, flex: 1 }}
+              numberOfLines={1}
+            >
+              Filter pencarian: "{menuSearch}"
+            </Text>
+            <Pressable onPress={() => setMenuSearch('')}>
+              <Text style={{ color: BRAND_COLORS.blue, fontSize: 12, fontWeight: '700', marginLeft: 10 }}>
+                Hapus
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
         {hasAnyWebFallbackMenu ? (
           <View
             style={{
@@ -1613,9 +1823,6 @@ export default function HomeScreen() {
           );
         })}
 
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 6 }}>
-          Refresh terakhir: {lastRefreshAt ? new Date(lastRefreshAt).toLocaleTimeString('id-ID') : '-'}
-        </Text>
       </ScrollView>
 
       <View
@@ -1623,9 +1830,47 @@ export default function HomeScreen() {
           position: 'absolute',
           left: 16,
           right: 16,
-          bottom: Platform.OS === 'ios' ? 22 : 14,
+          bottom: footerBaseBottom + footerKeyboardOffset,
         }}
       >
+        {isInlineSearchVisible ? (
+          <View
+            style={{
+              marginBottom: 10,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: '#d6e0f2',
+              backgroundColor: BRAND_COLORS.white,
+              paddingHorizontal: 10,
+              flexDirection: 'row',
+              alignItems: 'center',
+            }}
+          >
+            <Feather name="search" size={16} color={BRAND_COLORS.textMuted} />
+            <TextInput
+              ref={menuSearchInputRef}
+              value={menuSearch}
+              onChangeText={setMenuSearch}
+              placeholder="Cari menu atau submenu"
+              placeholderTextColor="#9aa6be"
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                paddingHorizontal: 8,
+                color: BRAND_COLORS.textDark,
+              }}
+            />
+            {menuSearch.trim() ? (
+              <Pressable onPress={() => setMenuSearch('')} style={{ marginRight: 6 }}>
+                <Feather name="x-circle" size={16} color={BRAND_COLORS.textMuted} />
+              </Pressable>
+            ) : null}
+            <Pressable onPress={closeInlineSearch}>
+              <Feather name="x" size={16} color={BRAND_COLORS.textMuted} />
+            </Pressable>
+          </View>
+        ) : null}
+
         <View
           style={{
             backgroundColor: BRAND_COLORS.navy,
@@ -1654,9 +1899,9 @@ export default function HomeScreen() {
 
           <View style={{ width: 58 }} />
 
-          <Pressable onPress={() => void handleRefresh()} style={{ alignItems: 'center', width: 56 }}>
+          <Pressable onPress={handleNotificationPress} style={{ alignItems: 'center', width: 56 }}>
             <Feather name="bell" size={17} color={BRAND_COLORS.white} />
-            <Text style={{ color: BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Update</Text>
+            <Text style={{ color: BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Notifikasi</Text>
           </Pressable>
 
           <Pressable onPress={handleLogout} disabled={isLoggingOut} style={{ alignItems: 'center', width: 56 }}>
@@ -1668,7 +1913,7 @@ export default function HomeScreen() {
         </View>
 
         <Pressable
-          onPress={() => router.push('/profile')}
+          onPress={handleSearchBubblePress}
           style={{
             position: 'absolute',
             alignSelf: 'center',
@@ -1683,15 +1928,114 @@ export default function HomeScreen() {
             justifyContent: 'center',
           }}
         >
-          <AvatarCircle
-            name={displayName}
-            photoUrl={profilePhotoUrl}
-            size={42}
-            backgroundColor={BRAND_COLORS.navy}
-            textColor={BRAND_COLORS.white}
-          />
+          <View
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 999,
+              backgroundColor: BRAND_COLORS.navy,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Feather name="search" size={18} color={BRAND_COLORS.white} />
+          </View>
         </Pressable>
       </View>
+
+      <Modal
+        visible={isLogoutConfirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (isLoggingOut) return;
+          setIsLogoutConfirmVisible(false);
+        }}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(15, 23, 42, 0.5)',
+            justifyContent: 'center',
+            paddingHorizontal: 22,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: BRAND_COLORS.white,
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: '#c7d7f7',
+              paddingHorizontal: 16,
+              paddingVertical: 16,
+              shadowColor: '#0f172a',
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: 0.24,
+              shadowRadius: 18,
+              elevation: 14,
+            }}
+          >
+            <View
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 999,
+                backgroundColor: '#eff6ff',
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 10,
+              }}
+            >
+              <Feather name="log-out" size={18} color={BRAND_COLORS.blue} />
+            </View>
+            <Text style={{ color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700', marginBottom: 6 }}>
+              Konfirmasi Logout
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 14, marginBottom: 14 }}>
+              Anda akan keluar dari sesi saat ini. Lanjutkan logout?
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Pressable
+                disabled={isLoggingOut}
+                onPress={() => setIsLogoutConfirmVisible(false)}
+                style={{
+                  flex: 1,
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 12,
+                  paddingVertical: 11,
+                  alignItems: 'center',
+                  backgroundColor: BRAND_COLORS.white,
+                  opacity: isLoggingOut ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700' }}>Batal</Text>
+              </Pressable>
+              <Pressable
+                disabled={isLoggingOut}
+                onPress={confirmLogout}
+                style={{
+                  flex: 1,
+                  borderWidth: 1,
+                  borderColor: '#dc2626',
+                  borderRadius: 12,
+                  paddingVertical: 11,
+                  alignItems: 'center',
+                  backgroundColor: '#dc2626',
+                  opacity: isLoggingOut ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.white, fontWeight: '700' }}>
+                  {isLoggingOut ? 'Memproses...' : 'Logout'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

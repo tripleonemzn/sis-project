@@ -36,6 +36,9 @@ const TeacherAttendanceListPage = lazy(() => import("./pages/teacher/TeacherAtte
 const TeacherAttendancePage = lazy(() => import("./pages/teacher/TeacherAttendancePage").then(m => ({ default: m.TeacherAttendancePage })));
 const TeacherGradesPage = lazy(() => import("./pages/teacher/TeacherGradesPage").then(m => ({ default: m.TeacherGradesPage })));
 const TeacherSubjectReportPage = lazy(() => import("./pages/teacher/TeacherSubjectReportPage").then(m => ({ default: m.TeacherSubjectReportPage })));
+const AssignmentSubmissionsPage = lazy(() =>
+  import("./pages/teacher/AssignmentSubmissionsPage").then(m => ({ default: m.AssignmentSubmissionsPage })),
+);
 const InternshipApprovalPage = lazy(() => import("./pages/teacher/internship/InternshipApprovalPage").then(m => ({ default: m.InternshipApprovalPage })));
 const TeacherInternshipGuidance = lazy(() => import("./pages/teacher/internship/TeacherInternshipGuidance").then(m => ({ default: m.TeacherInternshipGuidance })));
 const TeacherDefenseGradingPage = lazy(() => import("./pages/teacher/internship/TeacherDefenseGradingPage").then(m => ({ default: m.TeacherDefenseGradingPage })));
@@ -44,6 +47,12 @@ const MaterialsAndAssignmentsPage = lazy(() => import("./pages/teacher/Materials
 const ExamListPage = lazy(() => import("./pages/teacher/exams/ExamListPage").then(m => ({ default: m.ExamListPage })));
 const ExamEditorPage = lazy(() => import("./pages/teacher/exams/ExamEditorPage").then(m => ({ default: m.ExamEditorPage })));
 const ExamSchedulePage = lazy(() => import("./pages/teacher/exams/ExamSchedulePage").then(m => ({ default: m.ExamSchedulePage })));
+const ExamItemAnalysisPage = lazy(() =>
+  import("./pages/teacher/exams/ExamItemAnalysisPage").then(m => ({ default: m.ExamItemAnalysisPage })),
+);
+const ExamSubmissionsPage = lazy(() =>
+  import("./pages/teacher/exams/ExamSubmissionsPage").then(m => ({ default: m.ExamSubmissionsPage })),
+);
 const ExamScheduleManagementPage = lazy(() => import("./pages/teacher/wakasek/ExamScheduleManagementPage"));
 const ExamSittingManagementPage = lazy(() => import("./pages/teacher/wakasek/ExamSittingManagementPage"));
 const ExamProctorManagementPage = lazy(() => import("./pages/teacher/wakasek/ExamProctorManagementPage"));
@@ -64,6 +73,7 @@ const CpPage = lazy(() => import("./pages/teacher/learning-resources/CpPage"));
 const AtpPage = lazy(() => import("./pages/teacher/learning-resources/AtpPage"));
 const ModulesPage = lazy(() => import("./pages/teacher/learning-resources/ModulesPage"));
 const AuditLogPage = lazy(() => import("./pages/admin/audit/AuditLogPage").then(m => ({ default: m.AuditLogPage })));
+const ServerAreaPage = lazy(() => import("./pages/admin/ServerAreaPage").then(m => ({ default: m.default })));
 const StudentExamsPage = lazy(() => import("./pages/student/StudentExamsPage"));
 const StudentExamTakePage = lazy(() => import("./pages/student/StudentExamTakePage"));
 const StudentPermissionsPage = lazy(() => import("./pages/student/StudentPermissionsPage"));
@@ -84,6 +94,7 @@ const ParentDashboard = lazy(() => import("./pages/parent/ParentDashboard").then
 const TrainingClassesPage = lazy(() => import("./pages/admin/training/TrainingClassesPage").then(m => ({ default: m.TrainingClassesPage })));
 const ExtracurricularPage = lazy(() => import("./pages/admin/extracurriculars/ExtracurricularPage").then(m => ({ default: m.ExtracurricularPage })));
 const ReportCardsPage = lazy(() => import("./pages/admin/academic/ReportCardsPage").then(m => ({ default: m.ReportCardsPage })));
+const AdminSlideshowPage = lazy(() => import("./pages/admin/settings/AdminSlideshowPage").then(m => ({ default: m.AdminSlideshowPage })));
 const UserProfilePage = lazy(() => import("./pages/common/UserProfilePage").then(m => ({ default: m.UserProfilePage })));
 const ExaminerDashboard = lazy(() => import("./pages/examiner/ExaminerDashboard").then(m => ({ default: m.ExaminerDashboard })));
 const UKKAssessmentPage = lazy(() => import("./pages/examiner/UKKAssessmentPage").then(m => ({ default: m.UKKAssessmentPage })));
@@ -92,6 +103,7 @@ const UKKSchemeFormPage = lazy(() => import("./pages/examiner/UKKSchemeFormPage"
 const InternshipGradeInputPage = lazy(() => import("./pages/public/InternshipGradeInputPage").then(m => ({ default: m.InternshipGradeInputPage })));
 const PklLetterPrint = lazy(() => import("./pages/print/PklLetterPrint"));
 const PklGroupLetterPrint = lazy(() => import("./pages/print/PklGroupLetterPrint"));
+const EmailPage = lazy(() => import("./pages/common/EmailPage").then(m => ({ default: m.EmailPage })));
 
 // Helper hook for auth
 const useAuth = () => {
@@ -169,6 +181,9 @@ const ProctorSchedulePage = lazy(() => import('./pages/teacher/proctor/ProctorSc
 const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/ProctorMonitoringPage'));
   
   function App() {
+  // Expose global slideshow settings for login page (updated via admin slideshow)
+  (window as any).__SIS_SLIDESHOW_SETTINGS__ = (window as any).__SIS_SLIDESHOW_SETTINGS__ || {};
+
   return (
     <Router>
       <Toaster position="top-right" />
@@ -183,7 +198,8 @@ const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/Proctor
           <Route path="/" element={<DashboardLayout />}>
             <Route index element={<DashboardRedirect />} />
             <Route path="dashboard" element={<DashboardRedirect />} />
-          
+            <Route path="email" element={<EmailPage />} />
+
             <Route path="admin" element={
               <RoleRoute allowedRoles={['ADMIN']}>
                 <Outlet />
@@ -269,6 +285,10 @@ const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/Proctor
             <Route path="training-classes" element={<TrainingClassesPage />} />
             <Route path="extracurriculars" element={<ExtracurricularPage />} />
             <Route path="audit-logs" element={<AuditLogPage />} />
+            <Route path="settings/slideshow" element={<AdminSlideshowPage />} />
+            <Route path="settings/profile" element={<UserProfilePage />} />
+            <Route path="settings/password" element={<UserProfilePage />} />
+            <Route path="settings/server-area" element={<ServerAreaPage />} />
             </Route>
             <Route path="tutor" element={
               <RoleRoute allowedRoles={['EXTRACURRICULAR_TUTOR']}>
@@ -306,10 +326,13 @@ const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/Proctor
             <Route path="exams/sbts" element={<ExamListPage />} />
             <Route path="exams/sas" element={<ExamListPage />} />
             <Route path="exams/sat" element={<ExamListPage />} />
+            <Route path="exams/program/:programCode" element={<ExamListPage />} />
             <Route path="exams/bank" element={<ExamListPage />} />
             <Route path="exams/create" element={<ExamEditorPage />} />
             <Route path="exams/:id/edit" element={<ExamEditorPage />} />
             <Route path="exams/:id/schedule" element={<ExamSchedulePage />} />
+            <Route path="exams/:id/item-analysis" element={<ExamItemAnalysisPage />} />
+            <Route path="exams/:id/submissions" element={<ExamSubmissionsPage />} />
             
             <Route path="wakasek/exam-schedules" element={<ExamScheduleManagementPage />} />
             <Route path="wakasek/exams" element={<ExamManagementHubPage />} />
@@ -329,6 +352,7 @@ const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/Proctor
 
             <Route path="report-subjects" element={<TeacherSubjectReportPage />} />
             <Route path="materials" element={<MaterialsAndAssignmentsPage />} />
+            <Route path="assignments/:id/submissions" element={<AssignmentSubmissionsPage />} />
             <Route path="learning-resources" element={<TeacherPlaceholderPage />} />
             <Route path="learning-resources/cp" element={<CpPage />} />
             <Route path="learning-resources/atp" element={<AtpPage />} />
@@ -370,6 +394,7 @@ const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/Proctor
             <Route path="exams/sbts" element={<StudentExamsPage />} />
             <Route path="exams/sas" element={<StudentExamsPage />} />
             <Route path="exams/sat" element={<StudentExamsPage />} />
+            <Route path="exams/program/:programCode" element={<StudentExamsPage />} />
             <Route path="exams/:id/take" element={<StudentExamTakePage />} />
             <Route path="permissions" element={<StudentPermissionsPage />} />
             <Route path="schedule" element={<StudentSchedulePage />} />

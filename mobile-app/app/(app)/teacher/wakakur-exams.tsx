@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -18,23 +18,188 @@ import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
 import { AdminUser, adminApi } from '../../../src/features/admin/adminApi';
-import { examApi } from '../../../src/features/exams/examApi';
+import {
+  examApi,
+  ExamGradeComponentItem,
+  ExamProgramBaseType,
+  ExamProgramCode,
+  ExamProgramGradeComponentType,
+  ExamProgramGradeEntryMode,
+  ExamProgramItem,
+  ExamProgramReportSlot,
+} from '../../../src/features/exams/examApi';
 import { ExamDisplayType, TeacherExamSchedule } from '../../../src/features/exams/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
-type ExamHubSection = 'JADWAL' | 'RUANG' | 'MENGAWAS';
+type ExamHubSection = 'JADWAL' | 'RUANG' | 'MENGAWAS' | 'PROGRAM';
 type ExamTypeFilter = 'ALL' | ExamDisplayType;
+type ExamLabelMap = Record<string, string>;
+type ExamProgramDraft = {
+  rowId: string;
+  configId?: number;
+  code: ExamProgramCode;
+  baseType: ExamProgramBaseType;
+  baseTypeCode: string;
+  gradeComponentType: ExamProgramGradeComponentType;
+  gradeComponentTypeCode: string;
+  gradeComponentCode: string;
+  gradeComponentLabel: string;
+  gradeEntryMode: ExamProgramGradeEntryMode;
+  gradeEntryModeCode: string;
+  label: string;
+  shortLabel: string;
+  description: string;
+  fixedSemester: 'ODD' | 'EVEN' | null;
+  order: number;
+  isActive: boolean;
+  showOnTeacherMenu: boolean;
+  showOnStudentMenu: boolean;
+  source: 'default' | 'custom' | 'new';
+  isCodeLocked: boolean;
+};
+type GradeComponentDraft = {
+  rowId: string;
+  componentId?: number;
+  code: string;
+  label: string;
+  type: ExamProgramGradeComponentType;
+  typeCode: string;
+  entryMode: ExamProgramGradeEntryMode;
+  entryModeCode: string;
+  reportSlot: ExamProgramReportSlot;
+  reportSlotCode: string;
+  includeInFinalScore: boolean;
+  description: string;
+  order: number;
+  isActive: boolean;
+};
+
+const DEFAULT_EXAM_TYPE_LABELS: Record<string, string> = {
+  FORMATIF: 'Formatif (Quiz)',
+  SBTS: 'SBTS',
+  SAS: 'SAS',
+  SAT: 'SAT',
+};
+
+const GRADE_ENTRY_MODE_OPTIONS: Array<{ value: ExamProgramGradeEntryMode; label: string }> = [
+  { value: 'NF_SERIES', label: 'NF Bertahap (NF1-NF6)' },
+  { value: 'SINGLE_SCORE', label: 'Satu Nilai (Single)' },
+];
+
+const REPORT_SLOT_OPTIONS: Array<{ value: ExamProgramReportSlot; label: string }> = [
+  { value: 'NONE', label: 'Tidak masuk rapor' },
+  { value: 'FORMATIF', label: 'Formatif' },
+  { value: 'SBTS', label: 'SBTS' },
+  { value: 'SAS', label: 'SAS/SAT' },
+  { value: 'US_THEORY', label: 'US Teori' },
+  { value: 'US_PRACTICE', label: 'US Praktik' },
+];
+
+const DEFAULT_GRADE_COMPONENTS: GradeComponentDraft[] = [
+  {
+    rowId: 'component-default-formative',
+    componentId: undefined,
+    code: 'FORMATIVE',
+    label: 'Formatif',
+    type: 'FORMATIVE',
+    typeCode: 'FORMATIVE',
+    entryMode: 'NF_SERIES',
+    entryModeCode: 'NF_SERIES',
+    reportSlot: 'FORMATIF',
+    reportSlotCode: 'FORMATIF',
+    includeInFinalScore: true,
+    description: 'Nilai formatif bertahap (NF1-NF6).',
+    order: 10,
+    isActive: true,
+  },
+  {
+    rowId: 'component-default-midterm',
+    componentId: undefined,
+    code: 'MIDTERM',
+    label: 'SBTS',
+    type: 'MIDTERM',
+    typeCode: 'MIDTERM',
+    entryMode: 'SINGLE_SCORE',
+    entryModeCode: 'SINGLE_SCORE',
+    reportSlot: 'SBTS',
+    reportSlotCode: 'SBTS',
+    includeInFinalScore: true,
+    description: 'Nilai ujian tengah semester.',
+    order: 20,
+    isActive: true,
+  },
+  {
+    rowId: 'component-default-final',
+    componentId: undefined,
+    code: 'FINAL',
+    label: 'SAS/SAT',
+    type: 'FINAL',
+    typeCode: 'FINAL',
+    entryMode: 'SINGLE_SCORE',
+    entryModeCode: 'SINGLE_SCORE',
+    reportSlot: 'SAS',
+    reportSlotCode: 'SAS',
+    includeInFinalScore: true,
+    description: 'Nilai ujian akhir semester.',
+    order: 30,
+    isActive: true,
+  },
+  {
+    rowId: 'component-default-us-practice',
+    componentId: undefined,
+    code: 'US_PRACTICE',
+    label: 'US Praktik',
+    type: 'US_PRACTICE',
+    typeCode: 'US_PRACTICE',
+    entryMode: 'SINGLE_SCORE',
+    entryModeCode: 'SINGLE_SCORE',
+    reportSlot: 'US_PRACTICE',
+    reportSlotCode: 'US_PRACTICE',
+    includeInFinalScore: false,
+    description: '',
+    order: 50,
+    isActive: true,
+  },
+  {
+    rowId: 'component-default-us-theory',
+    componentId: undefined,
+    code: 'US_THEORY',
+    label: 'US Teori',
+    type: 'US_THEORY',
+    typeCode: 'US_THEORY',
+    entryMode: 'SINGLE_SCORE',
+    entryModeCode: 'SINGLE_SCORE',
+    reportSlot: 'US_THEORY',
+    reportSlotCode: 'US_THEORY',
+    includeInFinalScore: false,
+    description: '',
+    order: 60,
+    isActive: true,
+  },
+];
 
 function hasCurriculumDuty(userDuties?: string[]) {
   const duties = (userDuties || []).map((item) => item.trim().toUpperCase());
   return duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
 }
 
+function createId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
+}
+
+function normalizeProgramCode(raw: unknown): string {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 function normalizeExamType(raw: string | null | undefined): ExamDisplayType {
-  const value = String(raw || '').toUpperCase();
-  if (value === 'QUIZ') return 'FORMATIF';
-  if (value === 'SBTS' || value === 'SAS' || value === 'SAT' || value === 'FORMATIF') return value;
-  return 'FORMATIF';
+  const value = normalizeProgramCode(raw);
+  return value || 'FORMATIF';
 }
 
 function resolveScheduleExamType(schedule: TeacherExamSchedule): ExamDisplayType {
@@ -57,6 +222,263 @@ function formatDateTime(value: string) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function resolveExamTypeLabel(type: string, labels: ExamLabelMap): string {
+  const override = labels[type];
+  if (!override) return DEFAULT_EXAM_TYPE_LABELS[type] || type;
+  const cleaned = String(override).trim();
+  return cleaned || DEFAULT_EXAM_TYPE_LABELS[type] || type;
+}
+
+function inferGradeComponentTypeByCode(
+  code: string,
+  fallback: ExamProgramGradeComponentType = 'CUSTOM',
+): ExamProgramGradeComponentType {
+  if (code === 'FORMATIVE') return 'FORMATIVE';
+  if (code === 'MIDTERM') return 'MIDTERM';
+  if (code === 'FINAL') return 'FINAL';
+  if (code === 'SKILL') return 'SKILL';
+  if (code === 'US_PRACTICE') return 'US_PRACTICE';
+  if (code === 'US_THEORY') return 'US_THEORY';
+  return fallback;
+}
+
+function inferGradeEntryModeByCode(code: string, fallback: ExamProgramGradeEntryMode = 'SINGLE_SCORE') {
+  if (code === 'FORMATIVE') return 'NF_SERIES';
+  if (code) return 'SINGLE_SCORE';
+  return fallback;
+}
+
+function inferBaseTypeByComponentCode(
+  componentCode: string,
+  fixedSemester: 'ODD' | 'EVEN' | null,
+  fallback: ExamProgramBaseType,
+): ExamProgramBaseType {
+  if (componentCode === 'FORMATIVE') return 'FORMATIF';
+  if (componentCode === 'MIDTERM') return 'SBTS';
+  if (componentCode === 'FINAL') return fixedSemester === 'EVEN' ? 'SAT' : 'SAS';
+  if (componentCode === 'US_PRACTICE') return 'US_PRACTICE';
+  if (componentCode === 'US_THEORY') return 'US_THEORY';
+  return fallback;
+}
+
+function defaultReportSlotByCode(code: string): ExamProgramReportSlot {
+  if (code === 'FORMATIVE') return 'FORMATIF';
+  if (code === 'MIDTERM') return 'SBTS';
+  if (code === 'FINAL') return 'SAS';
+  if (code === 'US_THEORY') return 'US_THEORY';
+  if (code === 'US_PRACTICE') return 'US_PRACTICE';
+  return 'NONE';
+}
+
+function defaultIncludeInFinalScoreBySlot(slot: ExamProgramReportSlot): boolean {
+  return slot === 'FORMATIF' || slot === 'SBTS' || slot === 'SAS';
+}
+
+function resolveEntryModeByCode(
+  code: string,
+  fallback: ExamProgramGradeEntryMode = 'SINGLE_SCORE',
+): ExamProgramGradeEntryMode {
+  const normalized = normalizeProgramCode(code);
+  if (normalized === 'NF_SERIES') return 'NF_SERIES';
+  if (normalized === 'SINGLE_SCORE') return 'SINGLE_SCORE';
+  return fallback;
+}
+
+function resolveReportSlotByCode(
+  code: string,
+  fallback: ExamProgramReportSlot = 'NONE',
+): ExamProgramReportSlot {
+  const normalized = normalizeProgramCode(code);
+  if (normalized === 'FORMATIF') return 'FORMATIF';
+  if (normalized === 'SBTS') return 'SBTS';
+  if (normalized === 'SAS') return 'SAS';
+  if (normalized === 'US_THEORY') return 'US_THEORY';
+  if (normalized === 'US_PRACTICE') return 'US_PRACTICE';
+  if (normalized === 'NONE') return 'NONE';
+  return fallback;
+}
+
+function normalizeProgramDrafts(programs: ExamProgramItem[]): ExamProgramDraft[] {
+  return [...programs]
+    .map((item, index) => {
+      const normalizedCode = normalizeProgramCode(item.code);
+      const componentCode = normalizeProgramCode(item.gradeComponentCode);
+      const baseTypeCode = normalizeProgramCode(item.baseTypeCode || item.baseType || normalizedCode);
+      const gradeComponentTypeCode = normalizeProgramCode(
+        item.gradeComponentTypeCode || item.gradeComponentType || componentCode,
+      );
+      const gradeEntryModeCode = normalizeProgramCode(
+        item.gradeEntryModeCode || item.gradeEntryMode || inferGradeEntryModeByCode(componentCode),
+      );
+      const fixedSemester = item.fixedSemester || null;
+      return {
+        rowId: `program-${item.id ?? normalizedCode ?? index}`,
+        configId: item.id,
+        code: normalizedCode,
+        baseType: inferBaseTypeByComponentCode(componentCode, fixedSemester, baseTypeCode || item.baseType || 'FORMATIF'),
+        baseTypeCode,
+        gradeComponentType: item.gradeComponentType || inferGradeComponentTypeByCode(gradeComponentTypeCode, inferGradeComponentTypeByCode(componentCode)),
+        gradeComponentTypeCode,
+        gradeComponentCode: componentCode,
+        gradeComponentLabel: String(item.gradeComponentLabel || item.shortLabel || item.label || '').trim(),
+        gradeEntryMode: item.gradeEntryMode || resolveEntryModeByCode(gradeEntryModeCode, inferGradeEntryModeByCode(componentCode)),
+        gradeEntryModeCode,
+        label: String(item.label || '').trim(),
+        shortLabel: String(item.shortLabel || '').trim(),
+        description: String(item.description || '').trim(),
+        fixedSemester,
+        order: Number.isFinite(item.order) ? Number(item.order) : (index + 1) * 10,
+        isActive: Boolean(item.isActive),
+        showOnTeacherMenu: Boolean(item.showOnTeacherMenu),
+        showOnStudentMenu: Boolean(item.showOnStudentMenu),
+        source: item.source || 'custom',
+        isCodeLocked: true,
+      };
+    })
+    .sort((a, b) => a.order - b.order || a.code.localeCompare(b.code));
+}
+
+function snapshotProgramDrafts(rows: ExamProgramDraft[]) {
+  return JSON.stringify(
+    rows.map((row) => ({
+      configId: row.configId,
+      code: row.code,
+      baseType: row.baseType,
+      baseTypeCode: row.baseTypeCode,
+      gradeComponentType: row.gradeComponentType,
+      gradeComponentTypeCode: row.gradeComponentTypeCode,
+      gradeComponentCode: row.gradeComponentCode,
+      gradeComponentLabel: row.gradeComponentLabel,
+      gradeEntryMode: row.gradeEntryMode,
+      gradeEntryModeCode: row.gradeEntryModeCode,
+      label: row.label,
+      shortLabel: row.shortLabel,
+      description: row.description,
+      fixedSemester: row.fixedSemester,
+      order: row.order,
+      isActive: row.isActive,
+      showOnTeacherMenu: row.showOnTeacherMenu,
+      showOnStudentMenu: row.showOnStudentMenu,
+      source: row.source,
+      isCodeLocked: row.isCodeLocked,
+    })),
+  );
+}
+
+function normalizeComponentDrafts(components: ExamGradeComponentItem[]): GradeComponentDraft[] {
+  if (!Array.isArray(components) || components.length === 0) return [];
+  return [...components]
+    .map((item, index) => {
+      const code = normalizeProgramCode(item.code);
+      const typeCode = normalizeProgramCode(item.typeCode || item.type || code);
+      const entryModeCode = normalizeProgramCode(
+        item.entryModeCode || item.entryMode || inferGradeEntryModeByCode(code),
+      );
+      const reportSlotCode = normalizeProgramCode(
+        item.reportSlotCode || item.reportSlot || defaultReportSlotByCode(code),
+      );
+      const reportSlot = item.reportSlot || resolveReportSlotByCode(reportSlotCode, defaultReportSlotByCode(code));
+      return {
+        rowId: `component-${item.id ?? index}-${code}`,
+        componentId: item.id,
+        code,
+        label: String(item.label || code).trim(),
+        type: item.type || inferGradeComponentTypeByCode(typeCode, inferGradeComponentTypeByCode(code)),
+        typeCode,
+        entryMode: item.entryMode || resolveEntryModeByCode(entryModeCode, inferGradeEntryModeByCode(code)),
+        entryModeCode,
+        reportSlot,
+        reportSlotCode,
+        includeInFinalScore:
+          item.includeInFinalScore ?? defaultIncludeInFinalScoreBySlot(reportSlot),
+        description: String(item.description || '').trim(),
+        order: Number.isFinite(item.order) ? Number(item.order) : (index + 1) * 10,
+        isActive: Boolean(item.isActive),
+      };
+    })
+    .sort((a, b) => a.order - b.order || a.code.localeCompare(b.code));
+}
+
+function snapshotComponentDrafts(rows: GradeComponentDraft[]) {
+  return JSON.stringify(
+    rows.map((row) => ({
+      componentId: row.componentId,
+      code: row.code,
+      label: row.label,
+      type: row.type,
+      typeCode: row.typeCode,
+      entryMode: row.entryMode,
+      entryModeCode: row.entryModeCode,
+      reportSlot: row.reportSlot,
+      reportSlotCode: row.reportSlotCode,
+      includeInFinalScore: row.includeInFinalScore,
+      description: row.description,
+      order: row.order,
+      isActive: row.isActive,
+    })),
+  );
+}
+
+function createNewProgramDraft(
+  rows: ExamProgramDraft[],
+  components: GradeComponentDraft[],
+): ExamProgramDraft {
+  const maxOrder = rows.reduce((acc, row) => Math.max(acc, row.order), 0);
+  const defaultComponent = components.find((item) => item.code === 'FORMATIVE') || components[0] || null;
+  const componentCode = defaultComponent?.code || 'FORMATIVE';
+  const componentTypeCode = normalizeProgramCode(
+    defaultComponent?.typeCode || defaultComponent?.type || componentCode,
+  );
+  const entryModeCode = normalizeProgramCode(
+    defaultComponent?.entryModeCode || defaultComponent?.entryMode || inferGradeEntryModeByCode(componentCode),
+  );
+  const fixedSemester = null;
+  const baseTypeCode = inferBaseTypeByComponentCode(componentCode, fixedSemester, 'FORMATIF');
+  return {
+    rowId: createId('program-new'),
+    configId: undefined,
+    code: '',
+    baseType: baseTypeCode,
+    baseTypeCode,
+    gradeComponentType: defaultComponent?.type || inferGradeComponentTypeByCode(componentTypeCode, inferGradeComponentTypeByCode(componentCode)),
+    gradeComponentTypeCode: componentTypeCode,
+    gradeComponentCode: componentCode,
+    gradeComponentLabel: defaultComponent?.label || componentCode,
+    gradeEntryMode: defaultComponent?.entryMode || resolveEntryModeByCode(entryModeCode, inferGradeEntryModeByCode(componentCode)),
+    gradeEntryModeCode: entryModeCode,
+    label: '',
+    shortLabel: '',
+    description: '',
+    fixedSemester,
+    order: maxOrder + 10,
+    isActive: true,
+    showOnTeacherMenu: true,
+    showOnStudentMenu: true,
+    source: 'new',
+    isCodeLocked: false,
+  };
+}
+
+function createNewComponentDraft(rows: GradeComponentDraft[]): GradeComponentDraft {
+  const maxOrder = rows.reduce((acc, row) => Math.max(acc, row.order), 0);
+  return {
+    rowId: createId('component-new'),
+    componentId: undefined,
+    code: '',
+    label: '',
+    type: 'CUSTOM',
+    typeCode: 'CUSTOM',
+    entryMode: 'SINGLE_SCORE',
+    entryModeCode: 'SINGLE_SCORE',
+    reportSlot: 'NONE',
+    reportSlotCode: 'NONE',
+    includeInFinalScore: false,
+    description: '',
+    order: maxOrder + 10,
+    isActive: true,
+  };
 }
 
 function SectionChip({
@@ -153,6 +575,12 @@ export default function TeacherWakakurExamsScreen() {
   const [search, setSearch] = useState('');
   const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
   const [teacherSearch, setTeacherSearch] = useState('');
+  const [programDrafts, setProgramDrafts] = useState<ExamProgramDraft[]>([]);
+  const [programBaseline, setProgramBaseline] = useState<string>('[]');
+  const [componentDrafts, setComponentDrafts] = useState<GradeComponentDraft[]>([]);
+  const [componentBaseline, setComponentBaseline] = useState<string>('[]');
+  const [codeEditBackup, setCodeEditBackup] = useState<Record<string, string>>({});
+  const isProgramSection = section === 'PROGRAM';
   const openExamSessionCrud = () => {
     router.push('/admin/academic?section=exam-sessions' as never);
   };
@@ -170,6 +598,56 @@ export default function TeacherWakakurExamsScreen() {
       }
     },
   });
+
+  const examProgramsQuery = useQuery({
+    queryKey: ['mobile-wakakur-exam-programs', activeYearQuery.data?.id],
+    enabled: isAuthenticated && !!isAllowed && Boolean(activeYearQuery.data?.id),
+    staleTime: 5 * 60 * 1000,
+    queryFn: () =>
+      examApi.getExamPrograms({
+        academicYearId: activeYearQuery.data?.id,
+        roleContext: 'teacher',
+      }),
+  });
+
+  const examProgramConfigQuery = useQuery({
+    queryKey: ['mobile-wakakur-exam-program-config', activeYearQuery.data?.id],
+    enabled: isAuthenticated && !!isAllowed && Boolean(activeYearQuery.data?.id),
+    staleTime: 5 * 60 * 1000,
+    queryFn: () =>
+      examApi.getExamPrograms({
+        academicYearId: activeYearQuery.data?.id,
+        roleContext: 'all',
+        includeInactive: true,
+      }),
+  });
+
+  const examGradeComponentsQuery = useQuery({
+    queryKey: ['mobile-wakakur-exam-components', activeYearQuery.data?.id],
+    enabled: isAuthenticated && !!isAllowed && Boolean(activeYearQuery.data?.id),
+    staleTime: 5 * 60 * 1000,
+    queryFn: () =>
+      examApi.getExamGradeComponents({
+        academicYearId: activeYearQuery.data?.id,
+        includeInactive: true,
+      }),
+  });
+
+  const examTypeLabels = useMemo<ExamLabelMap>(() => {
+    const map: ExamLabelMap = {};
+    const programs = examProgramsQuery.data?.programs || [];
+
+    programs.forEach((program: ExamProgramItem) => {
+      const code = normalizeProgramCode(program?.code);
+      const label = String(program?.label || '').trim();
+      if (!label) return;
+      map[code] = label;
+    });
+
+    return map;
+  }, [examProgramsQuery.data]);
+
+  const examTypeLabel = (type: string) => resolveExamTypeLabel(type, examTypeLabels);
 
   const schedulesQuery = useQuery({
     queryKey: ['mobile-wakakur-exam-schedules', activeYearQuery.data?.id],
@@ -215,7 +693,195 @@ export default function TeacherWakakurExamsScreen() {
     },
   });
 
+  const updateExamProgramsMutation = useMutation({
+    mutationFn: async () => {
+      const componentMap = new Map(componentDrafts.map((item) => [normalizeProgramCode(item.code), item]));
+      return examApi.updateExamPrograms({
+        academicYearId: activeYearQuery.data?.id,
+        programs: programDrafts.map((row) => ({
+          id: row.configId ?? null,
+          code: normalizeProgramCode(row.code),
+          baseType: inferBaseTypeByComponentCode(
+            normalizeProgramCode(row.gradeComponentCode),
+            row.fixedSemester,
+            row.baseType || row.baseTypeCode || 'FORMATIF',
+          ),
+          baseTypeCode: normalizeProgramCode(
+            row.baseTypeCode ||
+              inferBaseTypeByComponentCode(
+                normalizeProgramCode(row.gradeComponentCode),
+                row.fixedSemester,
+                row.baseType || 'FORMATIF',
+              ),
+          ),
+          gradeComponentType: inferGradeComponentTypeByCode(
+            normalizeProgramCode(row.gradeComponentTypeCode || row.gradeComponentType || row.gradeComponentCode),
+            row.gradeComponentType || inferGradeComponentTypeByCode(normalizeProgramCode(row.gradeComponentCode)),
+          ),
+          gradeComponentTypeCode: normalizeProgramCode(
+            row.gradeComponentTypeCode || row.gradeComponentType || row.gradeComponentCode,
+          ),
+          gradeComponentCode: normalizeProgramCode(row.gradeComponentCode),
+          gradeComponentLabel: row.gradeComponentLabel || null,
+          gradeEntryMode: resolveEntryModeByCode(
+            normalizeProgramCode(row.gradeEntryModeCode || row.gradeEntryMode || inferGradeEntryModeByCode(row.gradeComponentCode)),
+            row.gradeEntryMode || inferGradeEntryModeByCode(normalizeProgramCode(row.gradeComponentCode)),
+          ),
+          gradeEntryModeCode: normalizeProgramCode(
+            row.gradeEntryModeCode || row.gradeEntryMode || inferGradeEntryModeByCode(row.gradeComponentCode),
+          ),
+          label: row.label.trim(),
+          shortLabel: row.shortLabel.trim() || null,
+          description: row.description.trim() || null,
+          fixedSemester: row.fixedSemester,
+          order: Number.isFinite(row.order) ? row.order : 0,
+          isActive: row.isActive,
+          showOnTeacherMenu: row.showOnTeacherMenu,
+          showOnStudentMenu: row.showOnStudentMenu,
+          ...(function alignFromComponent() {
+            const component = componentMap.get(normalizeProgramCode(row.gradeComponentCode));
+            if (!component) return {};
+            const normalizedComponentCode = normalizeProgramCode(component.code);
+            const nextTypeCode = normalizeProgramCode(
+              component.typeCode || component.type || normalizedComponentCode,
+            );
+            const nextEntryModeCode = normalizeProgramCode(
+              component.entryModeCode || component.entryMode || inferGradeEntryModeByCode(normalizedComponentCode),
+            );
+            const nextBaseTypeCode = inferBaseTypeByComponentCode(
+              normalizedComponentCode,
+              row.fixedSemester,
+              row.baseTypeCode || row.baseType,
+            );
+            return {
+              gradeComponentType: component.type,
+              gradeComponentTypeCode: nextTypeCode,
+              gradeComponentLabel: component.label,
+              gradeEntryMode: component.entryMode,
+              gradeEntryModeCode: nextEntryModeCode,
+              baseTypeCode: nextBaseTypeCode,
+              baseType: inferBaseTypeByComponentCode(
+                normalizedComponentCode,
+                row.fixedSemester,
+                row.baseType,
+              ),
+            };
+          })(),
+        })),
+      });
+    },
+    onSuccess: async (result) => {
+      const nextDrafts = normalizeProgramDrafts(result.programs || []);
+      setProgramDrafts(nextDrafts);
+      setProgramBaseline(snapshotProgramDrafts(nextDrafts));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['mobile-wakakur-exam-program-config'] }),
+        queryClient.invalidateQueries({ queryKey: ['mobile-wakakur-exam-programs'] }),
+        queryClient.invalidateQueries({ queryKey: ['mobile-home-exam-programs'] }),
+        queryClient.invalidateQueries({ queryKey: ['mobile-teacher-exam-programs'] }),
+        queryClient.invalidateQueries({ queryKey: ['mobile-student-exam-programs'] }),
+      ]);
+      Alert.alert('Sukses', 'Konfigurasi program ujian berhasil diperbarui.');
+    },
+    onError: (error: any) => {
+      const msg = error?.response?.data?.message || error?.message || 'Gagal menyimpan program ujian.';
+      Alert.alert('Gagal', msg);
+    },
+  });
+
+  const updateExamComponentsMutation = useMutation({
+    mutationFn: async () =>
+      examApi.updateExamGradeComponents({
+        academicYearId: activeYearQuery.data?.id,
+        components: componentDrafts.map((row) => ({
+          id: row.componentId ?? null,
+          code: normalizeProgramCode(row.code),
+          label: row.label.trim(),
+          type: inferGradeComponentTypeByCode(
+            normalizeProgramCode(row.typeCode || row.type || row.code),
+            row.type || inferGradeComponentTypeByCode(normalizeProgramCode(row.code)),
+          ),
+          typeCode: normalizeProgramCode(row.typeCode || row.type || row.code),
+          entryMode: resolveEntryModeByCode(
+            normalizeProgramCode(row.entryModeCode || row.entryMode || inferGradeEntryModeByCode(row.code)),
+            row.entryMode || inferGradeEntryModeByCode(normalizeProgramCode(row.code)),
+          ),
+          entryModeCode: normalizeProgramCode(
+            row.entryModeCode || row.entryMode || inferGradeEntryModeByCode(row.code),
+          ),
+          reportSlot: resolveReportSlotByCode(
+            normalizeProgramCode(row.reportSlotCode || row.reportSlot || defaultReportSlotByCode(row.code)),
+            row.reportSlot || defaultReportSlotByCode(normalizeProgramCode(row.code)),
+          ),
+          reportSlotCode: normalizeProgramCode(
+            row.reportSlotCode || row.reportSlot || defaultReportSlotByCode(row.code),
+          ),
+          includeInFinalScore: row.includeInFinalScore,
+          description: row.description.trim() || null,
+          order: Number.isFinite(row.order) ? row.order : 0,
+          isActive: row.isActive,
+        })),
+      }),
+    onSuccess: async (result) => {
+      const nextComponents = normalizeComponentDrafts(result.components || []);
+      setComponentDrafts(nextComponents);
+      setComponentBaseline(snapshotComponentDrafts(nextComponents));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['mobile-wakakur-exam-components'] }),
+        queryClient.invalidateQueries({ queryKey: ['mobile-wakakur-exam-program-config'] }),
+      ]);
+      Alert.alert('Sukses', 'Master komponen nilai berhasil diperbarui.');
+    },
+    onError: (error: any) => {
+      const msg = error?.response?.data?.message || error?.message || 'Gagal menyimpan komponen nilai.';
+      Alert.alert('Gagal', msg);
+    },
+  });
+
+  useEffect(() => {
+    if (!examProgramConfigQuery.data?.programs) return;
+    const nextDrafts = normalizeProgramDrafts(examProgramConfigQuery.data.programs);
+    setProgramDrafts(nextDrafts);
+    setProgramBaseline(snapshotProgramDrafts(nextDrafts));
+    setCodeEditBackup({});
+  }, [examProgramConfigQuery.data]);
+
+  useEffect(() => {
+    const rows = examGradeComponentsQuery.data?.components || [];
+    if (rows.length > 0) {
+      const normalized = normalizeComponentDrafts(rows);
+      setComponentDrafts(normalized);
+      setComponentBaseline(snapshotComponentDrafts(normalized));
+      return;
+    }
+    if (!examGradeComponentsQuery.isLoading && !examGradeComponentsQuery.isError) {
+      // Keep empty state as-is. Do not auto-inject local defaults when backend returns no components.
+      setComponentDrafts([]);
+      setComponentBaseline(snapshotComponentDrafts([]));
+    }
+  }, [examGradeComponentsQuery.data, examGradeComponentsQuery.isLoading, examGradeComponentsQuery.isError]);
+
   const schedules = schedulesQuery.data || [];
+  const examTypeFilterOptions = useMemo<ExamTypeFilter[]>(() => {
+    const codes = new Set<string>();
+    (examProgramsQuery.data?.programs || []).forEach((program) => {
+      const code = normalizeProgramCode(program.code);
+      if (code) codes.add(code);
+    });
+    schedules.forEach((schedule) => {
+      const code = resolveScheduleExamType(schedule);
+      if (code) codes.add(code);
+    });
+    return ['ALL', ...Array.from(codes)] as ExamTypeFilter[];
+  }, [examProgramsQuery.data?.programs, schedules]);
+
+  useEffect(() => {
+    if (examTypeFilter === 'ALL') return;
+    if (!examTypeFilterOptions.includes(examTypeFilter)) {
+      setExamTypeFilter('ALL');
+    }
+  }, [examTypeFilter, examTypeFilterOptions]);
+
   const teachers = useMemo(
     () =>
       (teachersQuery.data || [])
@@ -247,11 +913,12 @@ export default function TeacherWakakurExamsScreen() {
           subject.subjectCode,
           item.packet?.title || '',
           type,
+          examTypeLabel(type),
         ];
         return haystacks.some((value) => value.toLowerCase().includes(query));
       })
       .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-  }, [schedules, activeYearQuery.data?.id, examTypeFilter, search]);
+  }, [schedules, activeYearQuery.data?.id, examTypeFilter, search, examTypeLabels]);
 
   const groupedSchedules = useMemo(() => {
     const map = new Map<
@@ -346,6 +1013,34 @@ export default function TeacherWakakurExamsScreen() {
     };
   }, [filteredSchedules]);
 
+  const programStats = useMemo(() => {
+    const activeCount = programDrafts.filter((item) => item.isActive).length;
+    const teacherVisible = programDrafts.filter((item) => item.showOnTeacherMenu).length;
+    const studentVisible = programDrafts.filter((item) => item.showOnStudentMenu).length;
+    return {
+      total: programDrafts.length,
+      activeCount,
+      teacherVisible,
+      studentVisible,
+    };
+  }, [programDrafts]);
+  const componentStats = useMemo(() => {
+    const activeCount = componentDrafts.filter((item) => item.isActive).length;
+    return {
+      total: componentDrafts.length,
+      activeCount,
+    };
+  }, [componentDrafts]);
+
+  const programDirty = useMemo(
+    () => snapshotProgramDrafts(programDrafts) !== programBaseline,
+    [programBaseline, programDrafts],
+  );
+  const componentDirty = useMemo(
+    () => snapshotComponentDrafts(componentDrafts) !== componentBaseline,
+    [componentBaseline, componentDrafts],
+  );
+
   const handleDeleteSchedule = (scheduleId: number) => {
     Alert.alert('Hapus Jadwal', 'Yakin ingin menghapus jadwal ujian ini?', [
       { text: 'Batal', style: 'cancel' },
@@ -359,6 +1054,104 @@ export default function TeacherWakakurExamsScreen() {
 
   const handleAssignProctor = (scheduleId: number, proctorId: number) => {
     updateProctorMutation.mutate({ scheduleId, proctorId });
+  };
+
+  const updateProgramDraft = (rowId: string, patch: Partial<ExamProgramDraft>) => {
+    setProgramDrafts((prev) => prev.map((item) => (item.rowId === rowId ? { ...item, ...patch } : item)));
+  };
+  const updateComponentDraft = (rowId: string, patch: Partial<GradeComponentDraft>) => {
+    setComponentDrafts((prev) => prev.map((item) => (item.rowId === rowId ? { ...item, ...patch } : item)));
+  };
+
+  const addProgramDraft = () => {
+    setProgramDrafts((prev) => [...prev, createNewProgramDraft(prev, componentDrafts)]);
+  };
+  const removeProgramDraft = (rowId: string) => {
+    setProgramDrafts((prev) => prev.filter((row) => row.rowId !== rowId));
+    setCodeEditBackup((prev) => {
+      const next = { ...prev };
+      delete next[rowId];
+      return next;
+    });
+  };
+  const unlockProgramCode = (rowId: string) => {
+    const target = programDrafts.find((row) => row.rowId === rowId);
+    if (target && codeEditBackup[rowId] === undefined) {
+      setCodeEditBackup((prev) => ({ ...prev, [rowId]: target.code }));
+    }
+    updateProgramDraft(rowId, { isCodeLocked: false });
+  };
+  const cancelProgramCodeEdit = (rowId: string) => {
+    updateProgramDraft(rowId, { code: codeEditBackup[rowId] || '', isCodeLocked: true });
+    setCodeEditBackup((prev) => {
+      const next = { ...prev };
+      delete next[rowId];
+      return next;
+    });
+  };
+  const addComponentDraft = () => {
+    setComponentDrafts((prev) => [...prev, createNewComponentDraft(prev)]);
+  };
+  const removeComponentDraft = (rowId: string) => {
+    setComponentDrafts((prev) => prev.filter((row) => row.rowId !== rowId));
+  };
+
+  const handleSaveProgram = () => {
+    if (!activeYearQuery.data?.id) {
+      Alert.alert('Info', 'Tahun ajaran aktif belum tersedia.');
+      return;
+    }
+
+    const hasInvalidCode = programDrafts.some((item) => !normalizeProgramCode(item.code));
+    if (hasInvalidCode) {
+      Alert.alert('Validasi', 'Kode program ujian wajib diisi.');
+      return;
+    }
+    const hasDuplicateCode =
+      new Set(programDrafts.map((item) => normalizeProgramCode(item.code))).size !== programDrafts.length;
+    if (hasDuplicateCode) {
+      Alert.alert('Validasi', 'Kode program ujian duplikat.');
+      return;
+    }
+    const hasInvalidLabel = programDrafts.some((item) => !item.label.trim());
+    if (hasInvalidLabel) {
+      Alert.alert('Validasi', 'Label program ujian wajib diisi.');
+      return;
+    }
+    const componentCodes = new Set(componentDrafts.map((item) => normalizeProgramCode(item.code)));
+    const hasMissingComponent = programDrafts.some(
+      (item) => !componentCodes.has(normalizeProgramCode(item.gradeComponentCode)),
+    );
+    if (hasMissingComponent) {
+      Alert.alert('Validasi', 'Komponen nilai belum terdaftar di Master Komponen Nilai.');
+      return;
+    }
+
+    updateExamProgramsMutation.mutate();
+  };
+
+  const handleSaveComponents = () => {
+    if (!activeYearQuery.data?.id) {
+      Alert.alert('Info', 'Tahun ajaran aktif belum tersedia.');
+      return;
+    }
+    const hasInvalidCode = componentDrafts.some((item) => !normalizeProgramCode(item.code));
+    if (hasInvalidCode) {
+      Alert.alert('Validasi', 'Kode komponen nilai wajib diisi.');
+      return;
+    }
+    const hasDuplicateCode =
+      new Set(componentDrafts.map((item) => normalizeProgramCode(item.code))).size !== componentDrafts.length;
+    if (hasDuplicateCode) {
+      Alert.alert('Validasi', 'Kode komponen nilai duplikat.');
+      return;
+    }
+    const hasInvalidLabel = componentDrafts.some((item) => !item.label.trim());
+    if (hasInvalidLabel) {
+      Alert.alert('Validasi', 'Label komponen nilai wajib diisi.');
+      return;
+    }
+    updateExamComponentsMutation.mutate();
   };
 
   if (isLoading) return <AppLoadingScreen message="Memuat modul ujian..." />;
@@ -417,11 +1210,22 @@ export default function TeacherWakakurExamsScreen() {
       contentContainerStyle={pagePadding}
       refreshControl={
         <RefreshControl
-          refreshing={activeYearQuery.isFetching || schedulesQuery.isFetching || teachersQuery.isFetching}
+          refreshing={
+            activeYearQuery.isFetching ||
+            schedulesQuery.isFetching ||
+            teachersQuery.isFetching ||
+            examProgramConfigQuery.isFetching ||
+            examGradeComponentsQuery.isFetching ||
+            updateExamProgramsMutation.isPending ||
+            updateExamComponentsMutation.isPending
+          }
           onRefresh={() => {
             void activeYearQuery.refetch();
             void schedulesQuery.refetch();
             void teachersQuery.refetch();
+            void examProgramConfigQuery.refetch();
+            void examGradeComponentsQuery.refetch();
+            void examProgramsQuery.refetch();
           }}
         />
       }
@@ -448,404 +1252,1176 @@ export default function TeacherWakakurExamsScreen() {
       </View>
 
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10 }}>
-        Pengelolaan jadwal ujian, ruang ujian, dan jadwal mengawas.
+        Pengelolaan jadwal ujian, ruang ujian, jadwal mengawas, dan program ujian.
       </Text>
-
-      {activeYearQuery.data?.name ? (
-        <View
-          style={{
-            backgroundColor: '#fff',
-            borderWidth: 1,
-            borderColor: '#dbe7fb',
-            borderRadius: 12,
-            padding: 12,
-            marginBottom: 12,
-          }}
-        >
-          <Text style={{ color: '#64748b', fontSize: 12 }}>Tahun Ajaran Aktif</Text>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 3 }}>{activeYearQuery.data.name}</Text>
-        </View>
-      ) : null}
-
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-        <SummaryCard title="Jadwal Ujian" value={String(stats.totalSchedules)} subtitle="Sesuai filter" />
-        <SummaryCard title="Paket Siap" value={String(stats.readyPacketCount)} subtitle="Sudah linked" />
-      </View>
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-        <SummaryCard title="Belum Pengawas" value={String(stats.noProctorCount)} subtitle="Perlu assignment" />
-        <SummaryCard title="Ruang Aktif" value={String(stats.totalRooms)} subtitle="Ruang terpakai" />
-      </View>
-
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          backgroundColor: '#fff',
-          borderWidth: 1,
-          borderColor: '#d5e0f5',
-          borderRadius: 999,
-          paddingHorizontal: 12,
-          marginBottom: 12,
-        }}
-      >
-        <Feather name="search" size={16} color={BRAND_COLORS.textMuted} />
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Cari mapel, kelas, ruang, atau pengawas"
-          placeholderTextColor="#94a3b8"
-          style={{ flex: 1, color: BRAND_COLORS.textDark, paddingVertical: 10, paddingHorizontal: 10 }}
-        />
-      </View>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
         <SectionChip active={section === 'JADWAL'} label="Jadwal Ujian" onPress={() => setSection('JADWAL')} />
         <SectionChip active={section === 'RUANG'} label="Ruang Ujian" onPress={() => setSection('RUANG')} />
         <SectionChip active={section === 'MENGAWAS'} label="Jadwal Mengawas" onPress={() => setSection('MENGAWAS')} />
+        <SectionChip active={section === 'PROGRAM'} label="Program Ujian" onPress={() => setSection('PROGRAM')} />
       </View>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        {(['ALL', 'SBTS', 'SAS', 'SAT', 'FORMATIF'] as ExamTypeFilter[]).map((item) => (
-          <TypeChip
-            key={item}
-            active={examTypeFilter === item}
-            label={item === 'ALL' ? 'Semua Tipe' : item}
-            onPress={() => setExamTypeFilter(item)}
-          />
-        ))}
-      </View>
+      {!isProgramSection ? (
+        <>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+            <SummaryCard title="Jadwal Ujian" value={String(stats.totalSchedules)} subtitle="Sesuai filter" />
+            <SummaryCard title="Paket Siap" value={String(stats.readyPacketCount)} subtitle="Sudah linked" />
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+            <SummaryCard title="Belum Pengawas" value={String(stats.noProctorCount)} subtitle="Perlu assignment" />
+            <SummaryCard title="Ruang Aktif" value={String(stats.totalRooms)} subtitle="Ruang terpakai" />
+          </View>
 
-      <Pressable
-        onPress={openExamSessionCrud}
-        style={{
-          borderWidth: 1,
-          borderColor: '#93c5fd',
-          borderRadius: 10,
-          backgroundColor: '#eff6ff',
-          paddingVertical: 9,
-          alignItems: 'center',
-          marginBottom: 12,
-        }}
-      >
-        <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Kelola Sesi Ujian (Tambah/Ubah/Hapus)</Text>
-      </Pressable>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#d5e0f5',
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Feather name="search" size={16} color={BRAND_COLORS.textMuted} />
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Cari mapel, kelas, ruang, atau pengawas"
+              placeholderTextColor="#94a3b8"
+              style={{ flex: 1, color: BRAND_COLORS.textDark, paddingVertical: 10, paddingHorizontal: 10 }}
+            />
+          </View>
 
-      {schedulesQuery.isLoading ? <QueryStateView type="loading" message="Memuat data ujian..." /> : null}
-      {schedulesQuery.isError ? (
-        <QueryStateView type="error" message="Gagal memuat data ujian." onRetry={() => schedulesQuery.refetch()} />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            {examTypeFilterOptions.map((item) => (
+              <TypeChip
+                key={item}
+                active={examTypeFilter === item}
+                label={item === 'ALL' ? 'Semua Tipe' : examTypeLabel(item)}
+                onPress={() => setExamTypeFilter(item)}
+              />
+            ))}
+          </View>
+
+          <Pressable
+            onPress={openExamSessionCrud}
+            style={{
+              borderWidth: 1,
+              borderColor: '#93c5fd',
+              borderRadius: 10,
+              backgroundColor: '#eff6ff',
+              paddingVertical: 9,
+              alignItems: 'center',
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Kelola Sesi Ujian (Tambah/Ubah/Hapus)</Text>
+          </Pressable>
+        </>
       ) : null}
 
-      {!schedulesQuery.isLoading && !schedulesQuery.isError ? (
+      {isProgramSection ? (
         <>
-          {section === 'JADWAL' ? (
-            groupedSchedules.length > 0 ? (
-              groupedSchedules.map((group) => (
-                <View
-                  key={group.key}
-                  style={{
-                    backgroundColor: '#fff',
-                    borderWidth: 1,
-                    borderColor: '#dbe7fb',
-                    borderRadius: 12,
-                    padding: 12,
-                    marginBottom: 10,
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, flex: 1 }}>
-                      {group.subjectName} ({group.subjectCode})
-                    </Text>
-                    <Text
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 10,
+              backgroundColor: '#f8fbff',
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              marginBottom: 10,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              Atur Master Komponen Nilai lalu susun Program Ujian agar menu guru/siswa mengikuti kebijakan kurikulum aktif.
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+            <SummaryCard title="Total Komponen" value={String(componentStats.total)} subtitle="Master komponen nilai" />
+            <SummaryCard title="Komponen Aktif" value={String(componentStats.activeCount)} subtitle="Siap dipakai" />
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+            <Pressable
+              onPress={addComponentDraft}
+              style={{
+                flex: 1,
+                borderWidth: 1,
+                borderColor: '#d5e1f5',
+                backgroundColor: '#fff',
+                borderRadius: 10,
+                paddingVertical: 10,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Tambah Komponen</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleSaveComponents}
+              disabled={!componentDirty || updateExamComponentsMutation.isPending}
+              style={{
+                flex: 1,
+                borderRadius: 10,
+                paddingVertical: 10,
+                alignItems: 'center',
+                backgroundColor:
+                  !componentDirty || updateExamComponentsMutation.isPending ? '#94a3b8' : BRAND_COLORS.blue,
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>
+                {updateExamComponentsMutation.isPending ? 'Menyimpan...' : 'Simpan Komponen'}
+              </Text>
+            </Pressable>
+          </View>
+
+          {examGradeComponentsQuery.isLoading ? <QueryStateView type="loading" message="Memuat komponen nilai..." /> : null}
+          {examGradeComponentsQuery.isError ? (
+            <QueryStateView
+              type="error"
+              message="Gagal memuat komponen nilai."
+              onRetry={() => examGradeComponentsQuery.refetch()}
+            />
+          ) : null}
+
+          {componentDrafts.length > 0 ? (
+            componentDrafts.map((component) => (
+              <View
+                key={component.rowId}
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 10,
+                }}
+              >
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Kode Komponen</Text>
+                    <TextInput
+                      value={component.code}
+                      onChangeText={(value) => {
+                        const nextCode = normalizeProgramCode(value);
+                        const nextTypeCode = inferGradeComponentTypeByCode(nextCode, 'CUSTOM');
+                        const nextEntryModeCode = inferGradeEntryModeByCode(nextCode, 'SINGLE_SCORE');
+                        const nextSlot = defaultReportSlotByCode(nextCode);
+                        updateComponentDraft(component.rowId, {
+                          code: nextCode,
+                          typeCode: nextTypeCode,
+                          type: inferGradeComponentTypeByCode(nextTypeCode, component.type),
+                          entryModeCode: nextEntryModeCode,
+                          entryMode: resolveEntryModeByCode(nextEntryModeCode, component.entryMode),
+                          reportSlot: nextSlot,
+                          reportSlotCode: nextSlot,
+                          includeInFinalScore: defaultIncludeInFinalScoreBySlot(nextSlot),
+                        });
+                      }}
+                      placeholder="Contoh: PSAJ"
+                      placeholderTextColor="#94a3b8"
                       style={{
-                        color: '#1d4ed8',
-                        backgroundColor: '#eff6ff',
                         borderWidth: 1,
-                        borderColor: '#bfdbfe',
-                        borderRadius: 999,
-                        paddingHorizontal: 8,
-                        paddingVertical: 2,
-                        fontSize: 11,
-                        fontWeight: '700',
+                        borderColor: '#d5e1f5',
+                        borderRadius: 9,
+                        backgroundColor: '#fff',
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        color: BRAND_COLORS.textDark,
                       }}
-                    >
-                      {group.examType}
-                    </Text>
+                    />
                   </View>
-                  <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 8 }}>
-                    {formatDateTime(group.startTime)} - {formatDateTime(group.endTime)}
-                  </Text>
-                  {group.schedules.map((item) => (
-                    <View
-                      key={item.id}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Label</Text>
+                    <TextInput
+                      value={component.label}
+                      onChangeText={(value) => updateComponentDraft(component.rowId, { label: value })}
+                      placeholder="Label komponen"
+                      placeholderTextColor="#94a3b8"
                       style={{
-                        borderTopWidth: 1,
-                        borderTopColor: '#eef3ff',
-                        paddingTop: 8,
-                        marginTop: 6,
+                        borderWidth: 1,
+                        borderColor: '#d5e1f5',
+                        borderRadius: 9,
+                        backgroundColor: '#fff',
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        color: BRAND_COLORS.textDark,
                       }}
-                    >
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.class?.name || '-'}</Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
-                        Ruang: {item.room || '-'} • Pengawas: {item.proctor?.name || '-'}
-                      </Text>
-                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
-                        Packet: {item.packet?.title || '-'}
-                      </Text>
+                    />
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Kode Tipe</Text>
+                    <TextInput
+                      value={component.typeCode}
+                      onChangeText={(value) => {
+                        const nextTypeCode = normalizeProgramCode(value);
+                        updateComponentDraft(component.rowId, {
+                          typeCode: nextTypeCode,
+                          type: inferGradeComponentTypeByCode(nextTypeCode, component.type),
+                        });
+                      }}
+                      placeholder="Contoh: FORMATIVE"
+                      placeholderTextColor="#94a3b8"
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#d5e1f5',
+                        borderRadius: 9,
+                        backgroundColor: '#fff',
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        color: BRAND_COLORS.textDark,
+                      }}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Kode Mode Input</Text>
+                    <TextInput
+                      value={component.entryModeCode}
+                      onChangeText={(value) => {
+                        const nextEntryModeCode = normalizeProgramCode(value);
+                        updateComponentDraft(component.rowId, {
+                          entryModeCode: nextEntryModeCode,
+                          entryMode: resolveEntryModeByCode(nextEntryModeCode, component.entryMode),
+                        });
+                      }}
+                      placeholder="Contoh: NF_SERIES"
+                      placeholderTextColor="#94a3b8"
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#d5e1f5',
+                        borderRadius: 9,
+                        backgroundColor: '#fff',
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        color: BRAND_COLORS.textDark,
+                      }}
+                    />
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Mode Input</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                      {GRADE_ENTRY_MODE_OPTIONS.map((option) => {
+                        const active = component.entryMode === option.value;
+                        return (
+                          <Pressable
+                            key={`${component.rowId}-${option.value}`}
+                            onPress={() =>
+                              updateComponentDraft(component.rowId, {
+                                entryMode: option.value,
+                                entryModeCode: option.value,
+                              })
+                            }
+                            style={{
+                              borderWidth: 1,
+                              borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
+                              backgroundColor: active ? '#e9f1ff' : '#fff',
+                              borderRadius: 999,
+                              paddingVertical: 6,
+                              paddingHorizontal: 10,
+                            }}
+                          >
+                            <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontSize: 11 }}>
+                              {option.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                </View>
+
+                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Kode Slot Rapor</Text>
+                <TextInput
+                  value={component.reportSlotCode}
+                  onChangeText={(value) => {
+                    const nextReportSlotCode = normalizeProgramCode(value);
+                    updateComponentDraft(component.rowId, {
+                      reportSlotCode: nextReportSlotCode,
+                      reportSlot: resolveReportSlotByCode(nextReportSlotCode, component.reportSlot),
+                    });
+                  }}
+                  placeholder="Contoh: FORMATIF"
+                  placeholderTextColor="#94a3b8"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#d5e1f5',
+                    borderRadius: 9,
+                    backgroundColor: '#fff',
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    color: BRAND_COLORS.textDark,
+                    marginBottom: 8,
+                  }}
+                />
+
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                  {REPORT_SLOT_OPTIONS.map((slot) => {
+                    const active = component.reportSlot === slot.value;
+                    return (
                       <Pressable
-                        onPress={() => handleDeleteSchedule(item.id)}
-                        disabled={deleteScheduleMutation.isPending}
+                        key={`${component.rowId}-${slot.value}`}
+                        onPress={() =>
+                          updateComponentDraft(component.rowId, {
+                            reportSlot: slot.value,
+                            reportSlotCode: slot.value,
+                            includeInFinalScore: defaultIncludeInFinalScoreBySlot(slot.value),
+                          })
+                        }
                         style={{
-                          marginTop: 8,
-                          alignSelf: 'flex-start',
                           borderWidth: 1,
-                          borderColor: '#fecaca',
-                          backgroundColor: '#fff1f2',
-                          borderRadius: 8,
+                          borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
+                          backgroundColor: active ? '#e9f1ff' : '#fff',
+                          borderRadius: 999,
                           paddingVertical: 6,
                           paddingHorizontal: 10,
                         }}
                       >
-                        <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 12 }}>
-                          {deleteScheduleMutation.isPending ? 'Memproses...' : 'Hapus Jadwal'}
+                        <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontSize: 11 }}>
+                          {slot.label}
                         </Text>
                       </Pressable>
-                    </View>
+                    );
+                  })}
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      value={component.description}
+                      onChangeText={(value) => updateComponentDraft(component.rowId, { description: value })}
+                      placeholder="Deskripsi (opsional)"
+                      placeholderTextColor="#94a3b8"
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#d5e1f5',
+                        borderRadius: 9,
+                        backgroundColor: '#fff',
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        color: BRAND_COLORS.textDark,
+                      }}
+                    />
+                  </View>
+                  <View style={{ width: 96 }}>
+                    <TextInput
+                      value={String(component.order)}
+                      onChangeText={(value) =>
+                        updateComponentDraft(component.rowId, {
+                          order: Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0,
+                        })
+                      }
+                      keyboardType="number-pad"
+                      placeholder="Urutan"
+                      placeholderTextColor="#94a3b8"
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#d5e1f5',
+                        borderRadius: 9,
+                        backgroundColor: '#fff',
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        color: BRAND_COLORS.textDark,
+                      }}
+                    />
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <Pressable
+                    onPress={() => updateComponentDraft(component.rowId, { isActive: !component.isActive })}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: component.isActive ? '#86efac' : '#d5e1f5',
+                      backgroundColor: component.isActive ? '#f0fdf4' : '#fff',
+                      borderRadius: 999,
+                      paddingVertical: 7,
+                      paddingHorizontal: 10,
+                    }}
+                  >
+                    <Text style={{ color: component.isActive ? '#166534' : BRAND_COLORS.textMuted, fontSize: 12 }}>
+                      Aktif
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() =>
+                      updateComponentDraft(component.rowId, {
+                        includeInFinalScore: !component.includeInFinalScore,
+                      })
+                    }
+                    style={{
+                      borderWidth: 1,
+                      borderColor: component.includeInFinalScore ? '#86efac' : '#d5e1f5',
+                      backgroundColor: component.includeInFinalScore ? '#f0fdf4' : '#fff',
+                      borderRadius: 999,
+                      paddingVertical: 7,
+                      paddingHorizontal: 10,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: component.includeInFinalScore ? '#166534' : BRAND_COLORS.textMuted,
+                        fontSize: 12,
+                      }}
+                    >
+                      Ikut Nilai Akhir
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => removeComponentDraft(component.rowId)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#fecaca',
+                      backgroundColor: '#fff1f2',
+                      borderRadius: 999,
+                      paddingVertical: 7,
+                      paddingHorizontal: 10,
+                    }}
+                  >
+                    <Text style={{ color: '#be123c', fontSize: 12 }}>Hapus</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))
+          ) : null}
+
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+            <SummaryCard title="Total Program" value={String(programStats.total)} subtitle="Semua program ujian" />
+            <SummaryCard title="Program Aktif" value={String(programStats.activeCount)} subtitle="Siap digunakan" />
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+            <Pressable
+              onPress={addProgramDraft}
+              style={{
+                flex: 1,
+                borderWidth: 1,
+                borderColor: '#d5e1f5',
+                backgroundColor: '#fff',
+                borderRadius: 10,
+                paddingVertical: 10,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Tambah Program</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleSaveProgram}
+              disabled={!programDirty || updateExamProgramsMutation.isPending}
+              style={{
+                flex: 1,
+                borderRadius: 10,
+                paddingVertical: 10,
+                alignItems: 'center',
+                backgroundColor:
+                  !programDirty || updateExamProgramsMutation.isPending ? '#94a3b8' : BRAND_COLORS.blue,
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>
+                {updateExamProgramsMutation.isPending ? 'Menyimpan...' : 'Simpan Konfigurasi'}
+              </Text>
+            </Pressable>
+          </View>
+
+          {examProgramConfigQuery.isLoading ? <QueryStateView type="loading" message="Memuat program ujian..." /> : null}
+          {examProgramConfigQuery.isError ? (
+            <QueryStateView
+              type="error"
+              message="Gagal memuat program ujian."
+              onRetry={() => examProgramConfigQuery.refetch()}
+            />
+          ) : null}
+
+          {programDrafts.length > 0 ? (
+            programDrafts.map((program) => (
+              <View
+                key={program.rowId}
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 10,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>
+                    {program.code || 'PROGRAM_BARU'}
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {program.isCodeLocked ? (
+                      <Pressable
+                        onPress={() => unlockProgramCode(program.rowId)}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#bfdbfe',
+                          backgroundColor: '#eff6ff',
+                          borderRadius: 8,
+                          paddingVertical: 5,
+                          paddingHorizontal: 8,
+                        }}
+                      >
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>Edit</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable
+                        onPress={() => cancelProgramCodeEdit(program.rowId)}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#d5e1f5',
+                          backgroundColor: '#fff',
+                          borderRadius: 8,
+                          paddingVertical: 5,
+                          paddingHorizontal: 8,
+                        }}
+                      >
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 11 }}>Batal</Text>
+                      </Pressable>
+                    )}
+                    <Pressable
+                      onPress={() => removeProgramDraft(program.rowId)}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#fecaca',
+                        backgroundColor: '#fff1f2',
+                        borderRadius: 8,
+                        paddingVertical: 5,
+                        paddingHorizontal: 8,
+                      }}
+                    >
+                      <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 11 }}>Hapus</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Kode Program</Text>
+                    <TextInput
+                      value={program.code}
+                      editable={!program.isCodeLocked}
+                      onChangeText={(value) => updateProgramDraft(program.rowId, { code: normalizeProgramCode(value) })}
+                      placeholder="Contoh: PSAJ"
+                      placeholderTextColor="#94a3b8"
+                      style={{
+                        borderWidth: 1,
+                        borderColor: program.isCodeLocked ? '#cbd5e1' : '#d5e1f5',
+                        borderRadius: 9,
+                        backgroundColor: program.isCodeLocked ? '#f8fafc' : '#fff',
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        color: BRAND_COLORS.textDark,
+                      }}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Label Menu</Text>
+                    <TextInput
+                      value={program.label}
+                      onChangeText={(value) => updateProgramDraft(program.rowId, { label: value })}
+                      placeholder="Label program ujian"
+                      placeholderTextColor="#94a3b8"
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#d5e1f5',
+                        borderRadius: 9,
+                        backgroundColor: '#fff',
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        color: BRAND_COLORS.textDark,
+                      }}
+                    />
+                  </View>
+                </View>
+
+                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Komponen Nilai</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                  {componentDrafts.map((component) => {
+                    const active = normalizeProgramCode(program.gradeComponentCode) === normalizeProgramCode(component.code);
+                    return (
+                      <Pressable
+                        key={`${program.rowId}-${component.rowId}`}
+                        onPress={() =>
+                          updateProgramDraft(program.rowId, {
+                            gradeComponentCode: normalizeProgramCode(component.code),
+                            gradeComponentType: component.type,
+                            gradeComponentTypeCode: normalizeProgramCode(
+                              component.typeCode || component.type || component.code,
+                            ),
+                            gradeComponentLabel: component.label,
+                            gradeEntryMode: component.entryMode,
+                            gradeEntryModeCode: normalizeProgramCode(
+                              component.entryModeCode || component.entryMode || inferGradeEntryModeByCode(component.code),
+                            ),
+                            baseTypeCode: inferBaseTypeByComponentCode(
+                              normalizeProgramCode(component.code),
+                              program.fixedSemester,
+                              program.baseTypeCode || program.baseType,
+                            ),
+                            baseType: inferBaseTypeByComponentCode(
+                              normalizeProgramCode(component.code),
+                              program.fixedSemester,
+                              program.baseTypeCode || program.baseType,
+                            ),
+                          })
+                        }
+                        style={{
+                          borderWidth: 1,
+                          borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
+                          backgroundColor: active ? '#e9f1ff' : '#fff',
+                          borderRadius: 999,
+                          paddingVertical: 6,
+                          paddingHorizontal: 10,
+                        }}
+                      >
+                        <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontSize: 11 }}>
+                          {component.code}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Kode Pola</Text>
+                    <TextInput
+                      value={program.baseTypeCode}
+                      onChangeText={(value) => {
+                        const nextBaseTypeCode = normalizeProgramCode(value);
+                        updateProgramDraft(program.rowId, {
+                          baseTypeCode: nextBaseTypeCode,
+                          baseType: inferBaseTypeByComponentCode(
+                            normalizeProgramCode(program.gradeComponentCode),
+                            program.fixedSemester,
+                            nextBaseTypeCode || program.baseType,
+                          ),
+                        });
+                      }}
+                      placeholder="Contoh: FORMATIF"
+                      placeholderTextColor="#94a3b8"
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#d5e1f5',
+                        borderRadius: 9,
+                        backgroundColor: '#fff',
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        color: BRAND_COLORS.textDark,
+                      }}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Kode Mode Input</Text>
+                    <TextInput
+                      value={program.gradeEntryModeCode}
+                      onChangeText={(value) => {
+                        const nextGradeEntryModeCode = normalizeProgramCode(value);
+                        updateProgramDraft(program.rowId, {
+                          gradeEntryModeCode: nextGradeEntryModeCode,
+                          gradeEntryMode: resolveEntryModeByCode(
+                            nextGradeEntryModeCode,
+                            program.gradeEntryMode,
+                          ),
+                        });
+                      }}
+                      placeholder="Contoh: SINGLE_SCORE"
+                      placeholderTextColor="#94a3b8"
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#d5e1f5',
+                        borderRadius: 9,
+                        backgroundColor: '#fff',
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        color: BRAND_COLORS.textDark,
+                      }}
+                    />
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      value={program.shortLabel}
+                      onChangeText={(value) => updateProgramDraft(program.rowId, { shortLabel: value })}
+                      placeholder="Label singkat"
+                      placeholderTextColor="#94a3b8"
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#d5e1f5',
+                        borderRadius: 9,
+                        backgroundColor: '#fff',
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        color: BRAND_COLORS.textDark,
+                      }}
+                    />
+                  </View>
+                  <View style={{ width: 96 }}>
+                    <TextInput
+                      value={String(program.order)}
+                      onChangeText={(value) =>
+                        updateProgramDraft(program.rowId, {
+                          order: Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0,
+                        })
+                      }
+                      keyboardType="number-pad"
+                      placeholder="Urutan"
+                      placeholderTextColor="#94a3b8"
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#d5e1f5',
+                        borderRadius: 9,
+                        backgroundColor: '#fff',
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        color: BRAND_COLORS.textDark,
+                      }}
+                    />
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                  {[
+                    { key: 'AUTO', label: 'Otomatis', value: null as 'ODD' | 'EVEN' | null },
+                    { key: 'ODD', label: 'Ganjil', value: 'ODD' as 'ODD' },
+                    { key: 'EVEN', label: 'Genap', value: 'EVEN' as 'EVEN' },
+                  ].map((option) => {
+                    const active = program.fixedSemester === option.value;
+                    return (
+                      <Pressable
+                        key={`${program.rowId}-${option.key}`}
+                        onPress={() =>
+                          updateProgramDraft(program.rowId, {
+                            fixedSemester: option.value,
+                            baseTypeCode: inferBaseTypeByComponentCode(
+                              normalizeProgramCode(program.gradeComponentCode),
+                              option.value,
+                              program.baseTypeCode || program.baseType,
+                            ),
+                            baseType: inferBaseTypeByComponentCode(
+                              normalizeProgramCode(program.gradeComponentCode),
+                              option.value,
+                              program.baseTypeCode || program.baseType,
+                            ),
+                          })
+                        }
+                        style={{
+                          borderWidth: 1,
+                          borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
+                          backgroundColor: active ? '#e9f1ff' : '#fff',
+                          borderRadius: 999,
+                          paddingVertical: 6,
+                          paddingHorizontal: 10,
+                        }}
+                      >
+                        <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontSize: 11 }}>
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <TextInput
+                  value={program.description}
+                  onChangeText={(value) => updateProgramDraft(program.rowId, { description: value })}
+                  placeholder="Deskripsi program"
+                  placeholderTextColor="#94a3b8"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#d5e1f5',
+                    borderRadius: 9,
+                    backgroundColor: '#fff',
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    color: BRAND_COLORS.textDark,
+                    marginBottom: 8,
+                  }}
+                />
+
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {[
+                    { key: 'isActive', label: 'Aktif', value: program.isActive },
+                    { key: 'showOnTeacherMenu', label: 'Tampil di Guru', value: program.showOnTeacherMenu },
+                    { key: 'showOnStudentMenu', label: 'Tampil di Siswa', value: program.showOnStudentMenu },
+                  ].map((toggle) => (
+                    <Pressable
+                      key={`${program.rowId}-${toggle.key}`}
+                      onPress={() =>
+                        updateProgramDraft(program.rowId, {
+                          [toggle.key]: !toggle.value,
+                        } as Partial<ExamProgramDraft>)
+                      }
+                      style={{
+                        borderWidth: 1,
+                        borderColor: toggle.value ? '#86efac' : '#d5e1f5',
+                        backgroundColor: toggle.value ? '#f0fdf4' : '#fff',
+                        borderRadius: 999,
+                        paddingVertical: 7,
+                        paddingHorizontal: 10,
+                      }}
+                    >
+                      <Text style={{ color: toggle.value ? '#166534' : BRAND_COLORS.textMuted, fontSize: 12 }}>
+                        {toggle.label}
+                      </Text>
+                    </Pressable>
                   ))}
                 </View>
-              ))
-            ) : (
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  borderStyle: 'dashed',
-                  borderRadius: 10,
-                  padding: 16,
-                  backgroundColor: '#fff',
-                  marginBottom: 10,
-                }}
-              >
-                <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada jadwal ujian sesuai filter.</Text>
               </View>
-            )
+            ))
+          ) : (
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                borderStyle: 'dashed',
+                borderRadius: 10,
+                padding: 16,
+                backgroundColor: '#fff',
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada program ujian.</Text>
+            </View>
+          )}
+        </>
+      ) : (
+        <>
+          {schedulesQuery.isLoading ? <QueryStateView type="loading" message="Memuat data ujian..." /> : null}
+          {schedulesQuery.isError ? (
+            <QueryStateView type="error" message="Gagal memuat data ujian." onRetry={() => schedulesQuery.refetch()} />
           ) : null}
 
-          {section === 'RUANG' ? (
-            roomSummary.length > 0 ? (
-              roomSummary.map((room) => (
-                <View
-                  key={room.roomName}
-                  style={{
-                    backgroundColor: '#fff',
-                    borderWidth: 1,
-                    borderColor: '#dbe7fb',
-                    borderRadius: 12,
-                    padding: 12,
-                    marginBottom: 10,
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>{room.roomName}</Text>
-                    <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>{room.totalSchedules} jadwal</Text>
-                  </View>
-                  <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 6 }}>
-                    Kelas: {Array.from(room.classes).join(', ')}
-                  </Text>
-                  <Text style={{ color: '#64748b', fontSize: 12 }}>
-                    Tipe: {Array.from(room.examTypes).join(', ')} • Belum pengawas: {room.noProctorCount}
-                  </Text>
-                </View>
-              ))
-            ) : (
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  borderStyle: 'dashed',
-                  borderRadius: 10,
-                  padding: 16,
-                  backgroundColor: '#fff',
-                  marginBottom: 10,
-                }}
-              >
-                <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data ruang ujian sesuai filter.</Text>
-              </View>
-            )
-          ) : null}
-
-          {section === 'MENGAWAS' ? (
-            filteredSchedules.length > 0 ? (
-              filteredSchedules.map((item) => {
-                const subject = resolveScheduleSubject(item);
-                const type = resolveScheduleExamType(item);
-                const isEditing = editingScheduleId === item.id;
-                return (
+          {!schedulesQuery.isLoading && !schedulesQuery.isError ? (
+            <>
+              {section === 'JADWAL' ? (
+                groupedSchedules.length > 0 ? (
+                  groupedSchedules.map((group) => (
+                    <View
+                      key={group.key}
+                      style={{
+                        backgroundColor: '#fff',
+                        borderWidth: 1,
+                        borderColor: '#dbe7fb',
+                        borderRadius: 12,
+                        padding: 12,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <View
+                        style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}
+                      >
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, flex: 1 }}>
+                          {group.subjectName} ({group.subjectCode})
+                        </Text>
+                        <Text
+                          style={{
+                            color: '#1d4ed8',
+                            backgroundColor: '#eff6ff',
+                            borderWidth: 1,
+                            borderColor: '#bfdbfe',
+                            borderRadius: 999,
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                            fontSize: 11,
+                            fontWeight: '700',
+                          }}
+                        >
+                          {group.examType}
+                        </Text>
+                      </View>
+                      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 8 }}>
+                        {formatDateTime(group.startTime)} - {formatDateTime(group.endTime)}
+                      </Text>
+                      {group.schedules.map((item) => (
+                        <View
+                          key={item.id}
+                          style={{
+                            borderTopWidth: 1,
+                            borderTopColor: '#eef3ff',
+                            paddingTop: 8,
+                            marginTop: 6,
+                          }}
+                        >
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.class?.name || '-'}</Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                            Ruang: {item.room || '-'} • Pengawas: {item.proctor?.name || '-'}
+                          </Text>
+                          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                            Packet: {item.packet?.title || '-'}
+                          </Text>
+                          <Pressable
+                            onPress={() => handleDeleteSchedule(item.id)}
+                            disabled={deleteScheduleMutation.isPending}
+                            style={{
+                              marginTop: 8,
+                              alignSelf: 'flex-start',
+                              borderWidth: 1,
+                              borderColor: '#fecaca',
+                              backgroundColor: '#fff1f2',
+                              borderRadius: 8,
+                              paddingVertical: 6,
+                              paddingHorizontal: 10,
+                            }}
+                          >
+                            <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 12 }}>
+                              {deleteScheduleMutation.isPending ? 'Memproses...' : 'Hapus Jadwal'}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      ))}
+                    </View>
+                  ))
+                ) : (
                   <View
-                    key={item.id}
                     style={{
-                      backgroundColor: '#fff',
                       borderWidth: 1,
-                      borderColor: '#dbe7fb',
-                      borderRadius: 12,
-                      padding: 12,
+                      borderColor: '#cbd5e1',
+                      borderStyle: 'dashed',
+                      borderRadius: 10,
+                      padding: 16,
+                      backgroundColor: '#fff',
                       marginBottom: 10,
                     }}
                   >
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', flex: 1, paddingRight: 6 }}>
-                        {subject.subjectName} ({subject.subjectCode})
+                    <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada jadwal ujian sesuai filter.</Text>
+                  </View>
+                )
+              ) : null}
+
+              {section === 'RUANG' ? (
+                roomSummary.length > 0 ? (
+                  roomSummary.map((room) => (
+                    <View
+                      key={room.roomName}
+                      style={{
+                        backgroundColor: '#fff',
+                        borderWidth: 1,
+                        borderColor: '#dbe7fb',
+                        borderRadius: 12,
+                        padding: 12,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>{room.roomName}</Text>
+                        <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>{room.totalSchedules} jadwal</Text>
+                      </View>
+                      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 6 }}>
+                        Kelas: {Array.from(room.classes).join(', ')}
                       </Text>
-                      <Text
-                        style={{
-                          color: '#1d4ed8',
-                          backgroundColor: '#eff6ff',
-                          borderWidth: 1,
-                          borderColor: '#bfdbfe',
-                          borderRadius: 999,
-                          paddingHorizontal: 8,
-                          paddingVertical: 2,
-                          fontSize: 11,
-                          fontWeight: '700',
-                        }}
-                      >
-                        {type}
+                      <Text style={{ color: '#64748b', fontSize: 12 }}>
+                        Tipe: {Array.from(room.examTypes).map((type) => examTypeLabel(type)).join(', ')} • Belum pengawas:{' '}
+                        {room.noProctorCount}
                       </Text>
                     </View>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
-                      {item.class?.name || '-'} • {formatDateTime(item.startTime)}
-                    </Text>
-                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
-                      Ruang: {item.room || '-'} • Pengawas: {item.proctor?.name || 'Belum ditentukan'}
-                    </Text>
+                  ))
+                ) : (
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#cbd5e1',
+                      borderStyle: 'dashed',
+                      borderRadius: 10,
+                      padding: 16,
+                      backgroundColor: '#fff',
+                      marginBottom: 10,
+                    }}
+                  >
+                    <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data ruang ujian sesuai filter.</Text>
+                  </View>
+                )
+              ) : null}
 
-                    {!isEditing ? (
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <Pressable
-                          onPress={() => setEditingScheduleId(item.id)}
-                          style={{
-                            borderWidth: 1,
-                            borderColor: '#bfdbfe',
-                            backgroundColor: '#eff6ff',
-                            borderRadius: 8,
-                            paddingVertical: 7,
-                            paddingHorizontal: 10,
-                          }}
-                        >
-                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Ubah Pengawas</Text>
-                        </Pressable>
-                        <Pressable
-                          onPress={() => handleAssignProctor(item.id, user.id)}
-                          disabled={updateProctorMutation.isPending}
-                          style={{
-                            borderWidth: 1,
-                            borderColor: '#d5e1f5',
-                            backgroundColor: '#fff',
-                            borderRadius: 8,
-                            paddingVertical: 7,
-                            paddingHorizontal: 10,
-                          }}
-                        >
-                          <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: 12 }}>
-                            {updateProctorMutation.isPending ? 'Memproses...' : 'Set Saya'}
-                          </Text>
-                        </Pressable>
-                      </View>
-                    ) : (
+              {section === 'MENGAWAS' ? (
+                filteredSchedules.length > 0 ? (
+                  filteredSchedules.map((item) => {
+                    const subject = resolveScheduleSubject(item);
+                    const type = resolveScheduleExamType(item);
+                    const isEditing = editingScheduleId === item.id;
+                    return (
                       <View
+                        key={item.id}
                         style={{
+                          backgroundColor: '#fff',
                           borderWidth: 1,
                           borderColor: '#dbe7fb',
-                          backgroundColor: '#f8fbff',
-                          borderRadius: 10,
-                          padding: 10,
-                          marginTop: 4,
+                          borderRadius: 12,
+                          padding: 12,
+                          marginBottom: 10,
                         }}
                       >
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
-                          Pilih Pengawas
-                        </Text>
-                        <TextInput
-                          value={teacherSearch}
-                          onChangeText={setTeacherSearch}
-                          placeholder="Cari nama guru / username"
-                          placeholderTextColor="#94a3b8"
-                          style={{
-                            borderWidth: 1,
-                            borderColor: '#d5e1f5',
-                            borderRadius: 8,
-                            backgroundColor: '#fff',
-                            paddingHorizontal: 10,
-                            paddingVertical: 8,
-                            color: BRAND_COLORS.textDark,
-                            marginBottom: 8,
-                          }}
-                        />
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 }}>
-                          {teacherOptions.map((teacher) => (
-                            <View key={teacher.id} style={{ width: '50%', paddingHorizontal: 3, marginBottom: 6 }}>
-                              <Pressable
-                                onPress={() => handleAssignProctor(item.id, teacher.id)}
-                                disabled={updateProctorMutation.isPending}
-                                style={{
-                                  borderWidth: 1,
-                                  borderColor: '#d5e1f5',
-                                  borderRadius: 8,
-                                  backgroundColor: '#fff',
-                                  paddingVertical: 7,
-                                  paddingHorizontal: 8,
-                                }}
-                              >
-                                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 12 }} numberOfLines={1}>
-                                  {teacher.name}
-                                </Text>
-                                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }} numberOfLines={1}>
-                                  @{teacher.username}
-                                </Text>
-                              </Pressable>
-                            </View>
-                          ))}
-                        </View>
-                        <Pressable
-                          onPress={() => {
-                            setEditingScheduleId(null);
-                            setTeacherSearch('');
-                          }}
-                          style={{
-                            marginTop: 4,
-                            alignSelf: 'flex-start',
-                            borderWidth: 1,
-                            borderColor: '#d5e1f5',
-                            borderRadius: 8,
-                            paddingVertical: 7,
-                            paddingHorizontal: 10,
-                            backgroundColor: '#fff',
-                          }}
+                        <View
+                          style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}
                         >
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Batal</Text>
-                        </Pressable>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', flex: 1, paddingRight: 6 }}>
+                            {subject.subjectName} ({subject.subjectCode})
+                          </Text>
+                          <Text
+                            style={{
+                              color: '#1d4ed8',
+                              backgroundColor: '#eff6ff',
+                              borderWidth: 1,
+                              borderColor: '#bfdbfe',
+                              borderRadius: 999,
+                              paddingHorizontal: 8,
+                              paddingVertical: 2,
+                              fontSize: 11,
+                              fontWeight: '700',
+                            }}
+                          >
+                            {examTypeLabel(type)}
+                          </Text>
+                        </View>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                          {item.class?.name || '-'} • {formatDateTime(item.startTime)}
+                        </Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+                          Ruang: {item.room || '-'} • Pengawas: {item.proctor?.name || 'Belum ditentukan'}
+                        </Text>
+
+                        {!isEditing ? (
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <Pressable
+                              onPress={() => setEditingScheduleId(item.id)}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#bfdbfe',
+                                backgroundColor: '#eff6ff',
+                                borderRadius: 8,
+                                paddingVertical: 7,
+                                paddingHorizontal: 10,
+                              }}
+                            >
+                              <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Ubah Pengawas</Text>
+                            </Pressable>
+                            <Pressable
+                              onPress={() => handleAssignProctor(item.id, user.id)}
+                              disabled={updateProctorMutation.isPending}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#d5e1f5',
+                                backgroundColor: '#fff',
+                                borderRadius: 8,
+                                paddingVertical: 7,
+                                paddingHorizontal: 10,
+                              }}
+                            >
+                              <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: 12 }}>
+                                {updateProctorMutation.isPending ? 'Memproses...' : 'Set Saya'}
+                              </Text>
+                            </Pressable>
+                          </View>
+                        ) : (
+                          <View
+                            style={{
+                              borderWidth: 1,
+                              borderColor: '#dbe7fb',
+                              backgroundColor: '#f8fbff',
+                              borderRadius: 10,
+                              padding: 10,
+                              marginTop: 4,
+                            }}
+                          >
+                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+                              Pilih Pengawas
+                            </Text>
+                            <TextInput
+                              value={teacherSearch}
+                              onChangeText={setTeacherSearch}
+                              placeholder="Cari nama guru / username"
+                              placeholderTextColor="#94a3b8"
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#d5e1f5',
+                                borderRadius: 8,
+                                backgroundColor: '#fff',
+                                paddingHorizontal: 10,
+                                paddingVertical: 8,
+                                color: BRAND_COLORS.textDark,
+                                marginBottom: 8,
+                              }}
+                            />
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 }}>
+                              {teacherOptions.map((teacher) => (
+                                <View key={teacher.id} style={{ width: '50%', paddingHorizontal: 3, marginBottom: 6 }}>
+                                  <Pressable
+                                    onPress={() => handleAssignProctor(item.id, teacher.id)}
+                                    disabled={updateProctorMutation.isPending}
+                                    style={{
+                                      borderWidth: 1,
+                                      borderColor: '#d5e1f5',
+                                      borderRadius: 8,
+                                      backgroundColor: '#fff',
+                                      paddingVertical: 7,
+                                      paddingHorizontal: 8,
+                                    }}
+                                  >
+                                    <Text
+                                      style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 12 }}
+                                      numberOfLines={1}
+                                    >
+                                      {teacher.name}
+                                    </Text>
+                                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }} numberOfLines={1}>
+                                      @{teacher.username}
+                                    </Text>
+                                  </Pressable>
+                                </View>
+                              ))}
+                            </View>
+                            <Pressable
+                              onPress={() => {
+                                setEditingScheduleId(null);
+                                setTeacherSearch('');
+                              }}
+                              style={{
+                                marginTop: 4,
+                                alignSelf: 'flex-start',
+                                borderWidth: 1,
+                                borderColor: '#d5e1f5',
+                                borderRadius: 8,
+                                paddingVertical: 7,
+                                paddingHorizontal: 10,
+                                backgroundColor: '#fff',
+                              }}
+                            >
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Batal</Text>
+                            </Pressable>
+                          </View>
+                        )}
                       </View>
-                    )}
+                    );
+                  })
+                ) : (
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#cbd5e1',
+                      borderStyle: 'dashed',
+                      borderRadius: 10,
+                      padding: 16,
+                      backgroundColor: '#fff',
+                      marginBottom: 10,
+                    }}
+                  >
+                    <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada jadwal untuk assignment pengawas.</Text>
                   </View>
-                );
-              })
-            ) : (
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  borderStyle: 'dashed',
-                  borderRadius: 10,
-                  padding: 16,
-                  backgroundColor: '#fff',
-                  marginBottom: 10,
-                }}
-              >
-                <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada jadwal untuk assignment pengawas.</Text>
-              </View>
-            )
+                )
+              ) : null}
+            </>
           ) : null}
         </>
-      ) : null}
+      )}
 
       <Pressable
         onPress={() => router.replace('/home')}

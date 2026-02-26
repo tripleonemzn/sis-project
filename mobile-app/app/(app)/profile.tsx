@@ -307,8 +307,9 @@ export default function ProfileScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void profileQuery.refetch();
-    }, [profileQuery]),
+      if (!isAuthenticated) return;
+      void queryClient.invalidateQueries({ queryKey: MOBILE_PROFILE_QUERY_KEY });
+    }, [isAuthenticated, queryClient]),
   );
 
   useEffect(() => {

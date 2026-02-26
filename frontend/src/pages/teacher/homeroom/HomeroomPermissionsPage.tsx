@@ -20,6 +20,7 @@ import { permissionService, PermissionStatus } from '../../../services/permissio
 import { academicYearService } from '../../../services/academicYear.service';
 import { authService } from '../../../services/auth.service';
 import { examService } from '../../../services/exam.service';
+import { liveQueryOptions } from '../../../lib/query/liveQuery';
 
 interface ExamRestriction {
   student: {
@@ -177,6 +178,7 @@ export const HomeroomPermissionsPage = () => {
       return res.data;
     },
     enabled: !!homeroomClass && !!activeAcademicYear && activeTab === 'permissions',
+    ...liveQueryOptions,
   });
 
   // Exam Restrictions Query (Only when filters selected)
@@ -198,7 +200,8 @@ export const HomeroomPermissionsPage = () => {
       return res.data as ExamRestrictionsResponse; // Structure: { restrictions: [...], meta: {...} }
     },
     enabled: !!homeroomClass && !!activeAcademicYear && !!selectedSemester && !!selectedExamType && activeTab === 'exam_restrictions',
-    placeholderData: keepPreviousData
+    placeholderData: keepPreviousData,
+    ...liveQueryOptions,
   });
 
   // Mutations

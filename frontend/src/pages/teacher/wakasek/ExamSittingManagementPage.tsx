@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -10,6 +10,7 @@ import {
 import api from '../../../services/api';
 import { toast } from 'react-hot-toast';
 import type { AcademicYear } from '../../../services/academicYear.service';
+import { examService, type ExamProgram } from '../../../services/exam.service';
 
 // --- Interfaces ---
 
@@ -54,7 +55,8 @@ const ExamSittingManagementPage = () => {
   const [detailsLoading, setDetailsLoading] = useState(false); // New state for details fetching
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'SBTS' | 'SAS' | 'SAT'>('SBTS');
+  const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([]);
+  const [activeProgramCode, setActiveProgramCode] = useState<string>('');
   const [classes, setClasses] = useState<Class[]>([]);
 
   // Modal State
@@ -79,6 +81,23 @@ const ExamSittingManagementPage = () => {
   const [allClassStudents, setAllClassStudents] = useState<Student[]>([]);
   // Use Map to store full student objects for selection, enabling cross-class selection before adding
   const [selectedCandidates, setSelectedCandidates] = useState<Map<number, Student>>(new Map());
+
+  const visiblePrograms = useMemo(
+    () =>
+      [...examPrograms]
+        .filter((program) => Boolean(program?.isActive))
+        .sort(
+          (a, b) =>
+            Number(a.order || 0) - Number(b.order || 0) ||
+            String(a.label || '').localeCompare(String(b.label || '')),
+        ),
+    [examPrograms],
+  );
+
+  const activeProgram = useMemo(
+    () => visiblePrograms.find((program) => program.code === activeProgramCode) || null,
+    [visiblePrograms, activeProgramCode],
+  );
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -108,16 +127,46 @@ const ExamSittingManagementPage = () => {
     fetchInitialData();
   }, []);
 
+  const fetchPrograms = useCallback(async () => {
+    if (!selectedAcademicYear) {
+      setExamPrograms([]);
+      setActiveProgramCode('');
+      return;
+    }
+
+    try {
+      const response = await examService.getPrograms({
+        academicYearId: Number(selectedAcademicYear),
+        roleContext: 'teacher',
+        includeInactive: false,
+      });
+      const programs = (response?.data?.programs || []).filter((item) => Boolean(item?.showOnTeacherMenu));
+      setExamPrograms(programs);
+      setActiveProgramCode((prev) =>
+        programs.some((program) => program.code === prev) ? prev : (programs[0]?.code || ''),
+      );
+    } catch (error) {
+      console.error('Error fetching exam programs:', error);
+      setExamPrograms([]);
+      setActiveProgramCode('');
+    }
+  }, [selectedAcademicYear]);
+
   const fetchSittings = useCallback(async () => {
-    if (!selectedAcademicYear) return;
+    if (!selectedAcademicYear || !activeProgramCode) {
+      setSittings([]);
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
     try {
       const res = await api.get('/exam-sittings', {
         params: {
           academicYearId: selectedAcademicYear,
-          examType: activeTab,
-          limit: 100
+          examType: activeProgramCode,
+          programCode: activeProgramCode,
+          limit: 100,
         }
       });
       // Ensure data is array, default to empty array if null
@@ -129,15 +178,23 @@ const ExamSittingManagementPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedAcademicYear, activeTab]);
+  }, [selectedAcademicYear, activeProgramCode]);
 
   useEffect(() => {
     if (selectedAcademicYear) {
-      fetchSittings();
+      void fetchPrograms();
     } else {
       setLoading(false);
     }
-  }, [selectedAcademicYear, activeTab, fetchSittings]);
+  }, [selectedAcademicYear, fetchPrograms]);
+
+  useEffect(() => {
+    if (selectedAcademicYear && activeProgramCode) {
+      void fetchSittings();
+    } else if (!activeProgramCode) {
+      setSittings([]);
+    }
+  }, [selectedAcademicYear, activeProgramCode, fetchSittings]);
 
   const fetchClassStudents = useCallback(async (classId: number) => {
     try {
@@ -187,7 +244,7 @@ const ExamSittingManagementPage = () => {
     setFormData({
       roomName: '',
       academicYearId: selectedAcademicYear || '',
-      semester: activeTab === 'SBTS' ? 'ODD' : (activeTab === 'SAT' ? 'EVEN' : 'ODD')
+      semester: activeProgram?.fixedSemester || 'ODD'
     });
     setShowModal(true);
   };
@@ -204,6 +261,10 @@ const ExamSittingManagementPage = () => {
   };
 
   const handleSave = async () => {
+    if (!activeProgramCode) {
+      toast.error('Program ujian belum dipilih.');
+      return;
+    }
     try {
       // Logic: User wants only Room Name and Students in this flow.
       // Time/Date/Proctor are removed.
@@ -211,8 +272,9 @@ const ExamSittingManagementPage = () => {
       const payload = {
         roomName: formData.roomName,
         academicYearId: formData.academicYearId,
-        examType: activeTab,
-        semester: activeTab === 'SBTS' ? formData.semester : undefined, // Only send semester for SBTS
+        examType: activeProgramCode,
+        programCode: activeProgramCode,
+        semester: activeProgram?.fixedSemester || formData.semester || 'ODD',
         studentIds: editingSitting ? undefined : [] 
       };
 
@@ -574,7 +636,12 @@ const ExamSittingManagementPage = () => {
           <div className="flex items-center gap-3">
             <button
               onClick={handleCreate}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+              disabled={!activeProgramCode}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors shadow-sm ${
+                !activeProgramCode
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
             >
               <Plus size={18} />
               Buat Ruang
@@ -584,22 +651,28 @@ const ExamSittingManagementPage = () => {
 
         {/* Tabs */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mt-6">
-          <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
-            {(['SBTS', 'SAS', 'SAT'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`
-                  px-4 py-2 text-sm font-medium rounded-md transition-colors
-                  ${activeTab === tab
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
-                `}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
+          {visiblePrograms.length === 0 ? (
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Belum ada Program Ujian aktif pada tahun ajaran ini.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
+              {visiblePrograms.map((program) => (
+                <button
+                  key={program.code}
+                  onClick={() => setActiveProgramCode(program.code)}
+                  className={`
+                    px-4 py-2 text-sm font-medium rounded-md transition-colors
+                    ${activeProgramCode === program.code
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
+                  `}
+                >
+                  {program.shortLabel || program.label || program.code}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -610,10 +683,18 @@ const ExamSittingManagementPage = () => {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
             <p className="text-gray-500">Memuat data...</p>
           </div>
+        ) : !activeProgramCode ? (
+          <div className="text-center py-12 bg-gray-50">
+            <Users className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900">Pilih Program Ujian</h3>
+            <p className="text-gray-500">Aktifkan program dulu dari menu Program Ujian.</p>
+          </div>
         ) : sittings.length === 0 ? (
           <div className="text-center py-12 bg-gray-50">
             <Users className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900">Belum ada ruang ujian</h3>
+            <h3 className="text-lg font-medium text-gray-900">
+              Belum ada ruang ujian {activeProgram?.shortLabel || activeProgram?.label || activeProgramCode}
+            </h3>
             <p className="text-gray-500">Mulai dengan membuat ruang baru.</p>
           </div>
         ) : (
@@ -676,7 +757,9 @@ const ExamSittingManagementPage = () => {
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-gray-900">
-                {editingSitting ? 'Edit Ruang Ujian' : 'Buat Ruang Ujian Baru'}
+                {editingSitting
+                  ? `Edit Ruang Ujian ${activeProgram?.shortLabel || activeProgram?.label || activeProgramCode}`
+                  : `Buat Ruang Ujian ${activeProgram?.shortLabel || activeProgram?.label || activeProgramCode}`}
               </h3>
               <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />
@@ -700,8 +783,14 @@ const ExamSittingManagementPage = () => {
                 </select>
               </div>
 
-              {/* Semester - Only visible if Tab is SBTS */}
-              {activeTab === 'SBTS' && (
+              {activeProgram?.fixedSemester ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
+                  <div className="w-full px-3 py-2 border border-gray-200 bg-gray-100 rounded-lg text-gray-700 text-sm">
+                    {activeProgram.fixedSemester === 'ODD' ? 'Ganjil (tetap)' : 'Genap (tetap)'}
+                  </div>
+                </div>
+              ) : (
                 <div>
                   <label htmlFor="semester" className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
                   <select

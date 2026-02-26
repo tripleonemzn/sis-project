@@ -117,10 +117,7 @@ export default function StudentExtracurricularScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Tahun Ajaran Aktif</Text>
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>
-          {activeYearQuery.data?.name || '-'}
-        </Text>
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>Status Ekstrakurikuler</Text>
         {myEnrollment?.ekskul ? (
           <View
             style={{
@@ -257,4 +254,3 @@ export default function StudentExtracurricularScreen() {
     </ScrollView>
   );
 }
-

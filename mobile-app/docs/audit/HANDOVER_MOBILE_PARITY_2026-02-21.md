@@ -3,6 +3,187 @@
 Tanggal: 2026-02-21 02:47 UTC
 Fokus: menutup gap fitur web -> mobile lintas role tanpa mengganggu web production.
 
+## Update Lanjutan (2026-02-23 02:39 UTC)
+
+Tujuan batch ini: menutup gap parity urutan/group menu lintas duty (khususnya role guru) dan menegakkan konsep penguji PKL berasal dari guru yang ditunjuk Wakasek Humas.
+
+Perubahan tambahan yang sudah dilakukan:
+1. Parity urutan/group menu guru mengikuti pola web (termasuk Program Kerja per-duty)
+   - File: `mobile-app/src/features/dashboard/roleMenu.ts`
+   - Perubahan:
+     - refactor builder group guru menjadi dinamis mengikuti urutan web:
+       - base group (`AKADEMIK`, `PERANGKAT AJAR`, `UJIAN`)
+       - conditional (`WALI KELAS`, `KELAS TRAINING`)
+       - duty group berdasarkan urutan `additionalDuties` asli
+       - group `KAKOM ...` di akhir duty section
+       - group `SIDANG PKL` conditional.
+     - `Program Kerja` sekarang muncul sebagai submenu di dalam tiap duty non-sekretaris (bukan group terpisah).
+     - deteksi duty diperbaiki agar kompatibel kode dinamis seperti `KAPROG_TKJ` (matching berbasis token `includes`).
+     - penyesuaian grouping alumni student agar sama seperti web (`AKADEMIK` berisi `Riwayat Nilai` + `Riwayat Kehadiran`).
+
+2. Home mobile membaca status sidang PKL untuk menampilkan menu `SIDANG PKL` secara conditional
+   - File: `mobile-app/app/(app)/home.tsx`
+   - Perubahan:
+     - tambah query `internshipDutyApi.listExaminerInternships()` untuk role guru.
+     - kirim `hasPendingDefense` ke `getGroupedRoleMenu(...)`.
+     - pull-to-refresh guru ikut me-refresh data sidang PKL.
+
+3. Guard backend PKL: penguji wajib user role `TEACHER` dan assignment hanya oleh Admin/Wakasek Humas
+   - File: `backend/src/controllers/internship.controller.ts`
+   - Perubahan:
+     - `assignExaminer` sekarang validasi:
+       - actor harus `ADMIN` atau `TEACHER` dengan duty `WAKASEK_HUMAS` / `SEKRETARIS_HUMAS`.
+       - `examinerId` harus user role `TEACHER`.
+     - `scheduleDefense` ikut memakai guard actor yang sama.
+
+4. Hardening route PKL: role `EXAMINER` tidak lagi memiliki endpoint sidang PKL
+   - File: `backend/src/routes/internship.routes.ts`
+   - Perubahan:
+     - hapus role `EXAMINER` dari route PKL berikut:
+       - `GET /internships/examiner`
+       - `POST /internships/:id/grade-defense`
+       - `GET /internships/:id/detail`
+       - `GET /internships/:id/journals`
+       - `GET /internships/:id/attendances`
+
+5. Dashboard role EXAMINER dibersihkan dari modul sidang PKL
+   - File: `frontend/src/pages/examiner/ExaminerDashboard.tsx`
+   - Perubahan:
+     - hapus query/aksi PKL sidang pada dashboard examiner.
+     - dashboard fokus kembali ke skema dan penilaian UKK sesuai konsep role.
+
+Validasi yang sudah dijalankan:
+- `cd mobile-app && npm run typecheck` (sukses)
+- `cd backend && npm run build` (sukses)
+- `cd frontend && npm run build` (sukses)
+
+## Update Lanjutan (2026-02-22 21:56 UTC)
+
+Tujuan batch ini: menutup temuan terbaru pada menu Program Kerja lintas duty dan merapikan UX editor Buat Ujian Baru agar tidak membingungkan.
+
+Perubahan tambahan yang sudah dilakukan:
+1. Program Kerja tidak lagi terbatas pada duty KAKOM
+   - File: `mobile-app/src/features/dashboard/roleMenu.ts`
+   - Perubahan:
+     - `teacher-work-program` sekarang tampil untuk semua duty primer (non-`SEKRETARIS_*`), bukan hanya `KAPROG/KEPALA_KOMPETENSI`.
+     - menu `teacher-work-program` dipindah ke group baru `PROGRAM KERJA` agar tidak salah konteks di group `KAKOM`.
+
+2. Optimasi loading halaman Program Kerja (owner)
+   - File: `mobile-app/src/features/workPrograms/TeacherWorkProgramModuleScreen.tsx`
+   - Perubahan:
+     - Detail item per program dibuat collapsible (`Lihat Detail Item`) untuk menurunkan beban render awal.
+     - Section `Anggaran & LPJ` dibuat lazy-render (manual expand) agar query berat tidak langsung jalan saat halaman dibuka.
+
+3. UX editor ujian dipisah jadi 2 tahap
+   - File: `mobile-app/app/(app)/teacher/exams/editor.tsx`
+   - Perubahan:
+     - Tab/step `1. Informasi Ujian` dan `2. Butir Soal`.
+     - Form metadata ujian dipisah dari daftar butir soal.
+     - Tombol navigasi antar tahap ditambahkan agar alur pembuatan lebih jelas.
+
+4. Penyesuaian ikon group dashboard
+   - File: `mobile-app/app/(app)/home.tsx`
+   - Group `work-program` diberi ikon `briefcase` agar konsisten dengan konteks modul.
+
+Validasi yang sudah dijalankan:
+- `cd mobile-app && npm run typecheck` (sukses)
+- `bash ./update_all.sh` (backend+frontend deploy sukses)
+
+OTA Android (`pilot`) sudah terbit:
+- Update group ID: `a98c82a5-09a8-472e-9147-7a504a44334b`
+- Android update ID: `019c8753-5d7a-7c31-b5cc-45820572bcf8`
+- Message: `Work program menu parity across duties + split exam editor steps`
+- Dashboard: `https://expo.dev/accounts/tripleone.mzn/projects/sis-kgb2-mobile/updates/a98c82a5-09a8-472e-9147-7a504a44334b`
+
+## Update Lanjutan (2026-02-23 03:58 UTC)
+
+Tujuan batch ini: menutup gap parity review submission ujian (guru) dari daftar sesi sampai detail jawaban butir soal di web dan mobile.
+
+Perubahan tambahan yang sudah dilakukan:
+1. Backend endpoint review submission ujian
+   - File: `backend/src/controllers/exam.controller.ts`
+   - Tambahan logic:
+     - `getPacketSubmissions` untuk daftar sesi per packet (filter status/class).
+     - `getSessionDetail` untuk detail jawaban siswa per sesi.
+   - Cakupan data:
+     - ringkasan sesi/peserta/nilai, progres jawaban, status, objektif benar-salah, dan detail opsi jawaban per soal.
+   - Akses:
+     - guard role/ownership sama seperti analisis butir (`ADMIN`, `TEACHER` owner/mapel assignment, `EXAMINER` owner).
+
+2. Routing backend endpoint baru
+   - File: `backend/src/routes/exam.routes.ts`
+   - Route baru:
+     - `GET /api/exams/packets/:id/submissions`
+     - `GET /api/exams/sessions/:id/detail`
+
+3. Web teacher: halaman Submission Ujian + detail jawaban sesi
+   - File baru: `frontend/src/pages/teacher/exams/ExamSubmissionsPage.tsx`
+   - Integrasi:
+     - `frontend/src/services/exam.service.ts` (method get submissions + session detail)
+     - `frontend/src/App.tsx` (route `teacher/exams/:id/submissions`)
+     - `frontend/src/pages/teacher/exams/ExamListPage.tsx` (button `Submisi`)
+
+4. Mobile teacher: halaman Submission Ujian + Detail Jawaban Sesi
+   - File baru:
+     - `mobile-app/app/(app)/teacher/exams-submissions.tsx`
+     - `mobile-app/app/(app)/teacher/exams-session-detail.tsx`
+   - Integrasi:
+     - `mobile-app/src/features/exams/examApi.ts` (method get submissions + session detail)
+     - `mobile-app/src/features/exams/types.ts` (type response submissions/session detail)
+     - `mobile-app/src/features/exams/TeacherExamPacketsModuleScreen.tsx` (button `Submisi`)
+
+Validasi yang sudah dijalankan setelah patch:
+- `cd backend && npm run build` (sukses)
+- `cd frontend && npm run build` (sukses)
+- `cd mobile-app && npm run typecheck` (sukses)
+
+## Update Lanjutan (2026-02-22 22:55 UTC)
+
+Tujuan batch ini: melanjutkan parity fitur ujian/submission dengan fokus analisis butir soal lintas platform dan menutup gap review submission tugas di web.
+
+Perubahan tambahan yang sudah dilakukan:
+1. Backend analisis butir soal packet ujian
+   - File: `backend/src/controllers/exam.controller.ts`
+   - Tambahan endpoint logic:
+     - `getPacketItemAnalysis` (analisis dinamis dari sesi siswa per packet).
+     - `syncPacketItemAnalysis` (sinkron itemAnalysis ke JSON `questions` pada packet).
+   - Metrik yang dihasilkan:
+     - indeks kesukaran, daya pembeda, unanswered rate, distribusi opsi, ringkasan peserta.
+   - Akses dibatasi berdasarkan role/ownership (`ADMIN`, `TEACHER` owner/mapel assignment, `EXAMINER` owner).
+
+2. Routing backend untuk analisis butir
+   - File: `backend/src/routes/exam.routes.ts`
+   - Route baru:
+     - `GET /api/exams/packets/:id/item-analysis`
+     - `POST /api/exams/packets/:id/item-analysis/sync`
+
+3. Web teacher: halaman analisis butir + navigasi dari daftar ujian
+   - File baru: `frontend/src/pages/teacher/exams/ExamItemAnalysisPage.tsx`
+   - Integrasi:
+     - `frontend/src/services/exam.service.ts` (method get/sync item analysis)
+     - `frontend/src/pages/teacher/exams/ExamListPage.tsx` (button Analisis)
+     - `frontend/src/App.tsx` (route `teacher/exams/:id/item-analysis`)
+
+4. Mobile teacher: viewer analisis butir
+   - File baru: `mobile-app/app/(app)/teacher/exams-analysis.tsx`
+   - Integrasi:
+     - `mobile-app/src/features/exams/examApi.ts` (method get/sync item analysis)
+     - `mobile-app/src/features/exams/types.ts` (type response analisis)
+     - `mobile-app/src/features/exams/TeacherExamPacketsModuleScreen.tsx` (button Analisis per packet)
+
+5. Gap submission tugas web ditutup + hardening backend submission
+   - File baru: `frontend/src/pages/teacher/AssignmentSubmissionsPage.tsx`
+   - Route web baru:
+     - `teacher/assignments/:id/submissions` di `frontend/src/App.tsx`
+   - Hardening API:
+     - `backend/src/controllers/submission.controller.ts`
+     - perbaikan scope akses teacher (hanya tugas miliknya), validasi deadline publish, validasi kelas siswa, validasi rentang nilai saat grading.
+
+Validasi yang sudah dijalankan setelah patch:
+- `cd backend && npm run build` (sukses)
+- `cd frontend && npm run build` (sukses)
+- `cd mobile-app && npm run typecheck` (sukses)
+
 ## Update Lanjutan (2026-02-21 23:05 UTC)
 
 Tujuan batch ini: menutup temuan KAKOM pada menu Program Kerja (mobile hanya bisa lihat data dari web, belum bisa tambah alur anggaran/LPJ seperti di web).
@@ -1057,6 +1238,129 @@ Validasi yang sudah dijalankan setelah patch:
 - `npm run typecheck` (sukses)
 - `npm run audit:parity` (sukses)
 - Audit terbaru: `docs/audit/mobile_parity_audit_latest.md`
+
+## Update Lanjutan (2026-02-23 04:40 UTC)
+
+Tujuan batch ini: stabilisasi production setelah temuan `Program Kerja` gagal memuat di mobile, plus verifikasi guard PKL examiner.
+
+Perubahan yang sudah dilakukan:
+1. Hardening query `work-programs` agar tidak gagal ketika `limit > 100`
+   - File: `backend/src/controllers/workProgram.controller.ts`
+   - Perubahan:
+     - validasi `limit` tidak lagi melempar error `max(100)`.
+     - nilai `limit` sekarang di-clamp aman: `Math.min(parsed.limit ?? 10, 100)`.
+   - Dampak:
+     - client lama / query agresif tidak lagi langsung `400` hanya karena `limit` terlalu besar.
+     - mengurangi kemungkinan layar `Gagal memuat data program kerja`.
+
+2. Verifikasi guard PKL examiner pada data live
+   - Query validasi Prisma (production DB) menunjukkan:
+     - `totalWithExaminer: 0`
+     - `invalidCount: 0` (tidak ada assignment examiner non-TEACHER)
+
+3. Verifikasi parity menu (teacher + examiner)
+   - Simulasi `getGroupedRoleMenu`:
+     - Program Kerja berada di dalam grup duty terkait (bukan grup terpisah global).
+     - Role EXAMINER tidak lagi memuat menu penguji/sidang PKL.
+
+Deployment & validasi operasional:
+- `npm run build` (backend) sukses
+- `npm run service:health` => `Web:200`, `API:200`
+- `bash ./update_all.sh` sukses (backend restart + frontend deploy)
+- `npm run audit:parity` sukses
+- Audit terbaru: `docs/audit/mobile_parity_audit_latest.md`
+
+## Update Lanjutan (2026-02-22 22:14 UTC)
+
+Tujuan batch ini: menyelesaikan mismatch data `Ujian Guru` antara web dan mobile (kasus paket masih muncul di mobile walau di web sudah bersih).
+
+Perubahan tambahan yang sudah dilakukan:
+1. Sinkronisasi query paket ujian mobile agar setara web
+   - File: `src/features/exams/useTeacherExamPacketsQuery.ts`
+   - Perubahan:
+     - query sekarang menyertakan `type`
+     - query key juga menyertakan `type` agar cache antar filter tidak tercampur
+
+2. Hard refresh endpoint paket ujian (anti stale response)
+   - File: `src/features/exams/examApi.ts`
+   - Perubahan:
+     - `getTeacherPackets` menambahkan `_t` timestamp param
+     - header no-cache ditambahkan (`Cache-Control`, `Pragma`, `Expires`)
+
+3. Filter semester & tipe di layar paket ujian guru
+   - File: `src/features/exams/TeacherExamPacketsModuleScreen.tsx`
+   - Perubahan:
+     - filter query ke API kini memakai `type` + `semester` aktif
+     - halaman `SAS`/`SAT` mengunci semester sesuai konsep (ganjil/genap)
+     - halaman lain menampilkan chip filter semester (`Semua`, `Ganjil`, `Genap`)
+     - filtering client-side juga mengecek semester agar hasil konsisten
+
+4. Publish OTA
+   - Branch: `pilot`
+   - Message: `Fix exam packets sync: enforce type+semester filters and bypass stale cache`
+   - Update group ID: `9a6c628e-ac0a-414b-b638-c1e7243c4f24`
+   - Android update ID: `019c876a-de10-7e4b-8743-17b4da74325f`
+
+Catatan:
+- Push broadcast endpoint merespon sukses, tetapi `recipients=0` (device push token belum terdaftar aktif di backend saat publish ini).
+
+## Update Lanjutan (2026-02-23 01:32 UTC)
+
+Tujuan batch ini: merapikan UX halaman `Ujian Formatif` dan mengembalikan posisi `Program Kerja` agar tidak menjadi kategori terpisah.
+
+Perubahan tambahan yang sudah dilakukan:
+1. UX filter halaman paket ujian guru (`Ujian Formatif/SBTS/SAS/SAT`)
+   - File: `src/features/exams/TeacherExamPacketsModuleScreen.tsx`
+   - Perubahan:
+     - menambahkan label eksplisit untuk field pencarian (`Cari Paket Ujian`)
+     - menambahkan `placeholderTextColor` agar placeholder tidak terlihat seperti kotak kosong
+     - filter semester tidak lagi default `Semua`; sekarang default mengikuti semester aktif
+     - chip semester non-fixed menjadi hanya `Ganjil/Genap` (lebih konsisten dengan alur web)
+     - untuk menu `SAS/SAT`, semester tetap dikunci sesuai tipe ujian
+
+2. Sinkron data semester aktif di query assignment
+   - File: `src/features/academicYear/academicYearApi.ts`
+   - File: `src/features/teacherAssignments/useTeacherAssignmentsQuery.ts`
+   - Perubahan:
+     - menambahkan typing `semester` pada payload tahun ajaran aktif agar default semester filter bisa diturunkan secara konsisten
+
+3. Program Kerja kembali ke dalam duty (bukan kategori baru terpisah)
+   - File: `src/features/dashboard/roleMenu.ts`
+   - Perubahan:
+     - `teacher-work-program` dipindahkan secara dinamis ke group duty yang aktif (prioritas: KAKOM, WAKAKUR, WAKASIS, SARPRAS, HUMAS, dst)
+     - group `PROGRAM KERJA` standalone akan otomatis hilang jika item sudah dipindahkan ke group duty
+
+4. Publish OTA
+   - Branch: `pilot`
+   - Message: `Fix exam screen clarity + default active semester + move work-program into duty group`
+   - Update group ID: `730ddeba-fb79-4853-ac5c-cb5f532706f5`
+   - Android update ID: `019c881f-e5c3-7648-88ca-db466ecb20fe`
+
+## Update Lanjutan (2026-02-23 02:02 UTC)
+
+Tujuan batch ini: memperbaiki error `Gagal memuat data program kerja` di mobile.
+
+Temuan akar masalah:
+- Endpoint backend `GET /work-programs` membatasi `limit <= 100` (validasi zod).
+- Mobile mengirim `limit: 200` sehingga request gagal validasi dan data tidak pernah tampil.
+
+Perbaikan:
+1. Sanitasi limit pada API client mobile
+   - File: `src/features/workPrograms/workProgramApi.ts`
+   - Menambahkan helper `sanitizeListLimit` yang mengunci `limit` maksimal 100 sebelum request dikirim.
+
+2. Sinkronisasi limit query owner
+   - File: `src/features/workPrograms/TeacherWorkProgramModuleScreen.tsx`
+   - `ownerQuery` diubah dari `limit: 200` menjadi `limit: 100`.
+
+Validasi:
+- `npm run typecheck` (sukses)
+
+Publish OTA:
+- Branch: `pilot`
+- Message: `Fix work-program load failure: cap list limit to backend max 100`
+- Update group ID: `76087c92-a6cc-442a-b00d-db588755ff36`
+- Android update ID: `019c883b-ee4d-72aa-b765-3447b553c622`
 
 ## Update Lanjutan (2026-02-21 14:06 UTC)
 

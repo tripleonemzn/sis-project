@@ -40,6 +40,8 @@ export default function RegisterScreen() {
   const router = useRouter();
   const { isAuthenticated, isLoading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const {
     control,
     handleSubmit,
@@ -273,7 +275,7 @@ export default function RegisterScreen() {
                   <TextInput
                     value={value}
                     onChangeText={onChange}
-                    secureTextEntry
+                    secureTextEntry={!showPassword}
                     placeholder="Masukkan password"
                     placeholderTextColor={BRAND_COLORS.textMuted}
                     style={{
@@ -283,7 +285,14 @@ export default function RegisterScreen() {
                       color: BRAND_COLORS.textDark,
                     }}
                   />
-                  <Feather name="eye" size={18} color="#94a3b8" />
+                  <Pressable
+                    onPress={() => setShowPassword((prev) => !prev)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                  >
+                    <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color="#94a3b8" />
+                  </Pressable>
                 </View>
               )}
             />
@@ -318,7 +327,7 @@ export default function RegisterScreen() {
                   <TextInput
                     value={value}
                     onChangeText={onChange}
-                    secureTextEntry
+                    secureTextEntry={!showConfirmPassword}
                     placeholder="Masukkan ulang password"
                     placeholderTextColor={BRAND_COLORS.textMuted}
                     style={{
@@ -328,7 +337,16 @@ export default function RegisterScreen() {
                       color: BRAND_COLORS.textDark,
                     }}
                   />
-                  <Feather name="eye" size={18} color="#94a3b8" />
+                  <Pressable
+                    onPress={() => setShowConfirmPassword((prev) => !prev)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      showConfirmPassword ? 'Sembunyikan konfirmasi password' : 'Tampilkan konfirmasi password'
+                    }
+                  >
+                    <Feather name={showConfirmPassword ? 'eye-off' : 'eye'} size={18} color="#94a3b8" />
+                  </Pressable>
                 </View>
               )}
             />

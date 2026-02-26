@@ -92,6 +92,16 @@ export const scheduleService = {
     const response = await api.post<{ data: ScheduleEntry }>('/schedules', data);
     return response.data;
   },
+  update: async (
+    id: number,
+    data: {
+      teacherAssignmentId?: number;
+      room?: string | null;
+    },
+  ) => {
+    const response = await api.put<{ data: ScheduleEntry }>(`/schedules/${id}`, data);
+    return response.data;
+  },
   remove: async (id: number) => {
     await api.delete(`/schedules/${id}`);
   },

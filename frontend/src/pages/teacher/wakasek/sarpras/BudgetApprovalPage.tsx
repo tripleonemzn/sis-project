@@ -13,6 +13,7 @@ import {
   budgetLpjService,
   type BudgetLpjInvoice,
 } from '../../../../services/budgetLpj.service';
+import { liveQueryOptions } from '../../../../lib/query/liveQuery';
 import toast from 'react-hot-toast';
 
 export const BudgetApprovalPage = () => {
@@ -62,8 +63,9 @@ export const BudgetApprovalPage = () => {
       budgetRequestService.list({
         academicYearId: effectiveYearId,
         view: 'approver',
-      }),
+    }),
     enabled: !!user,
+    ...liveQueryOptions,
   });
 
   let budgets: BudgetRequest[] = budgetsData?.data || budgetsData || [];
@@ -194,6 +196,7 @@ export const BudgetApprovalPage = () => {
       return budgetLpjService.listByBudgetRequest(lpjAuditBudgetId);
     },
     enabled: !!lpjAuditBudgetId && lpjAuditModal.isOpen,
+    ...liveQueryOptions,
   });
 
   const lpjAuditInvoices: BudgetLpjInvoice[] = lpjAuditData?.data.invoices || [];

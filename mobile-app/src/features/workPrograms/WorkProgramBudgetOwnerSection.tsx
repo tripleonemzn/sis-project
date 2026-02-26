@@ -8,6 +8,7 @@ import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { ENV } from '../../config/env';
 import { openWebModuleRoute } from '../../lib/navigation/webModuleRoute';
+import { mobileLiveQueryOptions } from '../../lib/query/liveQuery';
 import { useAuth } from '../auth/AuthProvider';
 import {
   WorkProgramBudgetLpjInvoiceStatus,
@@ -276,12 +277,14 @@ export function WorkProgramBudgetOwnerSection({
         academicYearId: activeYearId || undefined,
         view: 'requester',
       }),
+    ...mobileLiveQueryOptions,
   });
 
   const lpjQuery = useQuery({
     queryKey: ['mobile-work-program-owner-budget-lpj', lpjBudgetId],
     enabled: isAuthenticated && user?.role === 'TEACHER' && !!lpjBudgetId,
     queryFn: async () => workProgramApi.listBudgetLpj(Number(lpjBudgetId)),
+    ...mobileLiveQueryOptions,
   });
 
   const createBudgetMutation = useMutation({

@@ -16,6 +16,7 @@ import {
 } from '../../services/budgetRequest.service';
 import { budgetLpjService } from '../../services/budgetLpj.service';
 import { authService } from '../../services/auth.service';
+import { liveQueryOptions } from '../../lib/query/liveQuery';
 import { z } from 'zod';
 import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -485,8 +486,9 @@ export const WorkProgramPage = () => {
         additionalDuty: selectedDuty || null,
         majorId: selectedMajor ? parseInt(selectedMajor) : undefined,
         semester: selectedSemester || undefined,
-      }),
+    }),
     enabled: !!activeYearId,
+    ...liveQueryOptions,
   });
 
   const programs: WorkProgram[] = (data?.data?.programs || []).sort((a: WorkProgram, b: WorkProgram) => {
@@ -722,8 +724,9 @@ export const WorkProgramPage = () => {
       budgetRequestService.list({
         academicYearId: activeYearId ?? undefined,
         additionalDuty: selectedDuty || undefined,
-      }),
+    }),
     enabled: !!activeYearId && activeTab === 'BUDGET',
+    ...liveQueryOptions,
   });
 
   const budgetRequests: BudgetRequest[] = budgetRequestsData?.data || budgetRequestsData || [];
@@ -840,6 +843,7 @@ export const WorkProgramPage = () => {
       return budgetLpjService.listByBudgetRequest(lpjBudgetId);
     },
     enabled: !!lpjBudgetId && lpjModal.isOpen,
+    ...liveQueryOptions,
   });
 
   const lpjInvoices = lpjData?.data.invoices || [];

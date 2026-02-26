@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
+import { mobileLiveQueryOptions } from '../../lib/query/liveQuery';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
 import { useAuth } from '../auth/AuthProvider';
 import { internshipDutyApi } from './internshipDutyApi';
@@ -198,12 +199,13 @@ export function TeacherInternshipDutyModuleScreen({
   const isTeacher = user?.role === 'TEACHER';
 
   const internshipsQuery = useQuery({
-    queryKey: ['mobile-internship-duty', mode],
+    queryKey: ['mobile-internship-duty', user?.id, mode],
     enabled: isAuthenticated && !!isTeacher,
     queryFn: async () => {
       if (mode === 'GUIDANCE') return internshipDutyApi.listAssignedInternships();
       return internshipDutyApi.listExaminerInternships();
     },
+    ...mobileLiveQueryOptions,
   });
 
   const internshipsFiltered = useMemo(() => {
@@ -232,15 +234,17 @@ export function TeacherInternshipDutyModuleScreen({
   }, [internshipsFiltered, selectedInternshipId]);
 
   const journalsQuery = useQuery({
-    queryKey: ['mobile-internship-duty-journals', selectedInternshipId],
+    queryKey: ['mobile-internship-duty-journals', user?.id, selectedInternshipId],
     enabled: isAuthenticated && !!isTeacher && mode === 'GUIDANCE' && !!selectedInternshipId,
     queryFn: async () => internshipDutyApi.listJournals(Number(selectedInternshipId)),
+    ...mobileLiveQueryOptions,
   });
 
   const attendancesQuery = useQuery({
-    queryKey: ['mobile-internship-duty-attendances', selectedInternshipId],
+    queryKey: ['mobile-internship-duty-attendances', user?.id, selectedInternshipId],
     enabled: isAuthenticated && !!isTeacher && mode === 'GUIDANCE' && !!selectedInternshipId,
     queryFn: async () => internshipDutyApi.listAttendances(Number(selectedInternshipId)),
+    ...mobileLiveQueryOptions,
   });
 
   const updateJournalMutation = useMutation({

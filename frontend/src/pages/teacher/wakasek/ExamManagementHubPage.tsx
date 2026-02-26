@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import ExamScheduleManagementPage from './ExamScheduleManagementPage';
 import ExamSittingManagementPage from './ExamSittingManagementPage';
 import ExamProctorManagementPage from './ExamProctorManagementPage';
-import { Calendar, School, UserCheck } from 'lucide-react';
+import ExamProgramManagementPage from './ExamProgramManagementPage';
+import { Calendar, FolderCog, School, UserCheck } from 'lucide-react';
 
 export default function ExamManagementHubPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -19,13 +20,14 @@ export default function ExamManagementHubPage() {
     { id: 'jadwal', label: 'Jadwal Ujian', icon: Calendar },
     { id: 'ruang', label: 'Ruang Ujian', icon: School },
     { id: 'mengawas', label: 'Jadwal Mengawas', icon: UserCheck },
+    { id: 'program', label: 'Program Ujian', icon: FolderCog },
   ]), []);
 
   return (
     <div className="space-y-6 w-full pb-20">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Kelola Ujian</h1>
-        <p className="text-gray-500">Pengelolaan Jadwal, Ruang, dan Mengawas dalam satu halaman.</p>
+        <p className="text-gray-500">Pengelolaan Jadwal, Ruang, Mengawas, dan Program Ujian dalam satu halaman.</p>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -56,8 +58,10 @@ export default function ExamManagementHubPage() {
               <ExamScheduleManagementPage />
             ) : active === 'ruang' ? (
               <ExamSittingManagementPage />
-            ) : (
+            ) : active === 'mengawas' ? (
               <ExamProctorManagementPage />
+            ) : (
+              <ExamProgramManagementPage />
             )}
           </div>
         </div>

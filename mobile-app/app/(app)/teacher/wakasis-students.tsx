@@ -494,24 +494,6 @@ export default function TeacherWakasisStudentsScreen() {
         Kelola data siswa, orang tua, pembina ekstrakurikuler, dan ringkasan absensi per kelas.
       </Text>
 
-      {activeYearQuery.data?.name ? (
-        <View
-          style={{
-            backgroundColor: '#fff',
-            borderWidth: 1,
-            borderColor: '#dbe7fb',
-            borderRadius: 12,
-            padding: 12,
-            marginBottom: 12,
-          }}
-        >
-          <Text style={{ color: '#64748b', fontSize: 11 }}>Tahun Ajaran Aktif</Text>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, marginTop: 2 }}>
-            {activeYearQuery.data.name}
-          </Text>
-        </View>
-      ) : null}
-
       {activeYearQuery.isLoading ? <QueryStateView type="loading" message="Memuat tahun ajaran aktif..." /> : null}
 
       {!activeYearQuery.isLoading && !activeYearQuery.data ? (

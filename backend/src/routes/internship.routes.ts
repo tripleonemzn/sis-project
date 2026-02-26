@@ -55,9 +55,9 @@ router.post('/apply', verifyRole(['STUDENT']), applyInternship);
 router.post('/:id/report', verifyRole(['STUDENT']), uploadReport);
 router.put('/my-internship', verifyRole(['STUDENT']), updateMyInternship);
 router.post('/:id/acceptance-letter', verifyRole(['STUDENT']), uploadAcceptanceLetter);
-router.get('/:id/journals', verifyRole(['STUDENT', 'TEACHER', 'EXAMINER', 'ADMIN']), getJournals);
+router.get('/:id/journals', verifyRole(['STUDENT', 'TEACHER', 'ADMIN']), getJournals);
 router.post('/:id/journals', verifyRole(['STUDENT']), createJournal);
-router.get('/:id/attendances', verifyRole(['STUDENT', 'TEACHER', 'EXAMINER', 'ADMIN']), getAttendances);
+router.get('/:id/attendances', verifyRole(['STUDENT', 'TEACHER', 'ADMIN']), getAttendances);
 router.post('/:id/attendances', verifyRole(['STUDENT']), createAttendance);
 
 // Management Routes (Wakasek Humas / Admin)
@@ -73,9 +73,9 @@ router.patch('/:id/industry-grade', verifyRole(['ADMIN', 'TEACHER']), updateIndu
 router.post('/:id/access-code', verifyRole(['ADMIN', 'TEACHER']), generateAccessCode);
 
 // Examiner Routes
-router.get('/examiner', verifyRole(['EXAMINER', 'TEACHER', 'ADMIN']), getExaminerInternships);
-router.get('/:id/detail', verifyRole(['ADMIN', 'TEACHER', 'EXAMINER']), getInternshipDetail);
-router.post('/:id/grade-defense', verifyRole(['EXAMINER', 'TEACHER', 'ADMIN']), gradeDefense);
+router.get('/examiner', verifyRole(['TEACHER', 'ADMIN']), getExaminerInternships);
+router.get('/:id/detail', verifyRole(['ADMIN', 'TEACHER']), getInternshipDetail);
+router.post('/:id/grade-defense', verifyRole(['TEACHER', 'ADMIN']), gradeDefense);
 
 // Teacher Guidance Routes
 router.get('/assigned', verifyRole(['TEACHER']), getAssignedInternships);

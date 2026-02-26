@@ -25,6 +25,12 @@ const DEFAULT_PAGINATION = {
   totalPages: 1,
 };
 
+function sanitizeListLimit(value?: number) {
+  const parsed = Number(value || 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return Math.min(100, Math.trunc(parsed));
+}
+
 function appendUploadFile(formData: FormData, field: string, file?: WorkProgramUploadFile | null) {
   if (!file?.uri) return;
   formData.append(field, {
@@ -47,7 +53,7 @@ export const workProgramApi = {
     const response = await apiClient.get<ApiEnvelope<WorkProgramListResponse>>('/work-programs', {
       params: {
         page: params?.page,
-        limit: params?.limit,
+        limit: sanitizeListLimit(params?.limit),
         search: params?.search,
         academicYearId: params?.academicYearId,
         additionalDuty: params?.additionalDuty,

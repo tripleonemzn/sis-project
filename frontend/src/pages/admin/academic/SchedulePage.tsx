@@ -5,7 +5,7 @@ import { teacherAssignmentService, type TeacherAssignment } from '../../../servi
 import { scheduleTimeConfigService, type PeriodType } from '../../../services/scheduleTimeConfig.service';
 import { scheduleService, type ScheduleEntry, type DayOfWeek } from '../../../services/schedule.service';
 import { inventoryService, type Room, type RoomCategory } from '../../../services/inventory.service';
-import { Calendar, Loader2, BookOpen, Users, Search, Trash2, X, Clock } from 'lucide-react';
+import { Calendar, Loader2, BookOpen, Users, Search, Trash2, X, Clock, Pencil } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 type ClassSchedule = {
@@ -14,6 +14,13 @@ type ClassSchedule = {
     subject: TeacherAssignment['subject'];
     teacher: TeacherAssignment['teacher'];
   }[];
+};
+
+type EditingScheduleBlock = {
+  entryIds: number[];
+  day: DayOfWeek;
+  startTeachingHour: number;
+  endTeachingHour: number;
 };
 
 const DAY_LABELS: Record<string, string> = {
@@ -194,6 +201,7 @@ export const SchedulePage = () => {
   const [periodTypes, setPeriodTypes] = useState<Record<string, Record<number, PeriodType>>>(DEFAULT_PERIOD_TYPES);
   const [isEditingTimes, setIsEditingTimes] = useState(false);
   const [editingDay, setEditingDay] = useState<DayOfWeek>('MONDAY');
+  const [editingBlock, setEditingBlock] = useState<EditingScheduleBlock | null>(null);
 
   const getErrorMessage = (error: unknown) => {
     if (typeof error === 'object' && error !== null) {
@@ -591,6 +599,14 @@ export const SchedulePage = () => {
     },
   });
 
+  const updateEntryMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { teacherAssignmentId?: number; room?: string | null } }) =>
+      scheduleService.update(id, data),
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error));
+    },
+  });
+
   const deleteEntryMutation = useMutation({
     mutationFn: scheduleService.remove,
     onSuccess: async () => {
@@ -603,6 +619,88 @@ export const SchedulePage = () => {
       toast.error(getErrorMessage(error));
     },
   });
+
+  const resolveRoomSelectionByName = (roomName?: string | null) => {
+    if (!roomName) return '';
+    const normalizedName = roomName.trim().toLowerCase();
+    const found = sarprasRooms.find((room) => room.name.trim().toLowerCase() === normalizedName);
+    return found ? found.id : '';
+  };
+
+  const getTeachingHourBlock = (entry: ScheduleEntry) => {
+    if (!entry.teachingHour) {
+      return [entry];
+    }
+
+    const dayEntries = scheduleEntries
+      .filter(
+        (item) =>
+          item.dayOfWeek === entry.dayOfWeek &&
+          item.teacherAssignmentId === entry.teacherAssignmentId &&
+          typeof item.teachingHour === 'number',
+      )
+      .sort((a, b) => (a.teachingHour || 0) - (b.teachingHour || 0));
+
+    const byTeachingHour = new Map<number, ScheduleEntry>();
+    for (const item of dayEntries) {
+      if (typeof item.teachingHour !== 'number') continue;
+      if (!byTeachingHour.has(item.teachingHour)) {
+        byTeachingHour.set(item.teachingHour, item);
+      }
+    }
+
+    let start = entry.teachingHour;
+    while (byTeachingHour.has(start - 1)) {
+      start -= 1;
+    }
+
+    let end = entry.teachingHour;
+    while (byTeachingHour.has(end + 1)) {
+      end += 1;
+    }
+
+    const block: ScheduleEntry[] = [];
+    for (let hour = start; hour <= end; hour += 1) {
+      const item = byTeachingHour.get(hour);
+      if (item) block.push(item);
+    }
+
+    return block.length > 0 ? block : [entry];
+  };
+
+  const beginEditBlock = (entry: ScheduleEntry) => {
+    const block = getTeachingHourBlock(entry);
+    const teachingHours = block
+      .map((item) => item.teachingHour)
+      .filter((value): value is number => typeof value === 'number')
+      .sort((a, b) => a - b);
+
+    const fallbackHour = typeof entry.teachingHour === 'number' ? entry.teachingHour : formPeriod;
+    const startTeachingHour = teachingHours[0] ?? fallbackHour;
+    const endTeachingHour = teachingHours[teachingHours.length - 1] ?? fallbackHour;
+
+    setEditingBlock({
+      entryIds: block.map((item) => item.id),
+      day: entry.dayOfWeek,
+      startTeachingHour,
+      endTeachingHour,
+    });
+
+    setFormDay(entry.dayOfWeek);
+    setFormPeriod(startTeachingHour);
+    setFormEndPeriod(endTeachingHour);
+    setFormTeacherAssignmentId(entry.teacherAssignmentId);
+    setFormRoom(entry.room || '');
+    setSelectedRoomId(resolveRoomSelectionByName(entry.room));
+  };
+
+  const cancelEditBlock = () => {
+    setEditingBlock(null);
+    setFormTeacherAssignmentId('');
+    setFormRoom('');
+    setSelectedRoomId('');
+    setFormEndPeriod('');
+  };
 
   const isLoading =
     isLoadingYears ||
@@ -789,11 +887,10 @@ export const SchedulePage = () => {
                     name="schedule-class"
                     className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 min-w-[200px]"
                     value={effectiveClassId}
-                    onChange={(e) =>
-                      setSelectedClassId(
-                        e.target.value ? Number(e.target.value) : '',
-                      )
-                    }
+                    onChange={(e) => {
+                      setSelectedClassId(e.target.value ? Number(e.target.value) : '');
+                      cancelEditBlock();
+                    }}
                   >
                     {classOptions.length === 0 && (
                       <option value="">Belum ada kelas</option>
@@ -820,13 +917,13 @@ export const SchedulePage = () => {
                   <button
                     type="submit"
                     form="schedule-entry-form"
-                    disabled={createEntryMutation.isPending || !effectiveClassId}
+                    disabled={createEntryMutation.isPending || updateEntryMutation.isPending || !effectiveClassId}
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    {createEntryMutation.isPending && (
+                    {(createEntryMutation.isPending || updateEntryMutation.isPending) && (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     )}
-                    <span>Simpan Entri</span>
+                    <span>{editingBlock ? 'Simpan Perubahan' : 'Simpan Entri'}</span>
                   </button>
                 </div>
               </div>
@@ -1108,49 +1205,66 @@ export const SchedulePage = () => {
                         toast.error('Pilih mata pelajaran dan guru terlebih dahulu');
                         return;
                       }
-                      const startTeachingHour = formPeriod;
-                      const endTeachingHour =
-                        formEndPeriod === '' ? formPeriod : formEndPeriod;
-                      if (endTeachingHour < startTeachingHour) {
-                        toast.error('Sampai Jam ke tidak boleh kurang dari Jam ke awal');
-                        return;
-                      }
-                      const periodsToCreate: number[] = [];
-                      for (let th = startTeachingHour; th <= endTeachingHour; th += 1) {
-                        const period = getPeriodFromTeachingHour(formDay, th);
-                        
-                        if (!period) {
-                          // Skip if this teaching hour doesn't exist for the day
-                          continue;
-                        }
-
-                        const hasExistingEntry = scheduleEntries.some(
-                          (entry) =>
-                            entry.dayOfWeek === formDay && entry.period === period,
-                        );
-
-                        if (!hasExistingEntry) {
-                          periodsToCreate.push(period);
-                        }
-                      }
-                      if (periodsToCreate.length === 0) {
-                        toast.error(
-                          'Semua jam pada rentang ini sudah terisi atau tidak valid, tidak ada jam pelajaran yang bisa diisi',
-                        );
-                        return;
-                      }
                       try {
-                        for (const period of periodsToCreate) {
-                          await createEntryMutation.mutateAsync({
-                            academicYearId: effectiveAcademicYearId,
-                            classId: effectiveClassId as number,
-                            teacherAssignmentId: formTeacherAssignmentId as number,
-                            dayOfWeek: formDay,
-                            period,
-                            room: formRoom.trim() === '' ? null : formRoom.trim(),
-                          });
+                        const normalizedRoom = formRoom.trim() === '' ? null : formRoom.trim();
+
+                        if (editingBlock) {
+                          for (const entryId of editingBlock.entryIds) {
+                            await updateEntryMutation.mutateAsync({
+                              id: entryId,
+                              data: {
+                                teacherAssignmentId: formTeacherAssignmentId as number,
+                                room: normalizedRoom,
+                              },
+                            });
+                          }
+                          toast.success(
+                            `Entri ${DAY_LABELS[editingBlock.day]} jam ke ${editingBlock.startTeachingHour}-${editingBlock.endTeachingHour} berhasil diperbarui`,
+                          );
+                        } else {
+                          const startTeachingHour = formPeriod;
+                          const endTeachingHour = formEndPeriod === '' ? formPeriod : formEndPeriod;
+                          if (endTeachingHour < startTeachingHour) {
+                            toast.error('Sampai Jam ke tidak boleh kurang dari Jam ke awal');
+                            return;
+                          }
+
+                          const periodsToCreate: number[] = [];
+                          for (let th = startTeachingHour; th <= endTeachingHour; th += 1) {
+                            const period = getPeriodFromTeachingHour(formDay, th);
+
+                            if (!period) {
+                              continue;
+                            }
+
+                            const hasExistingEntry = scheduleEntries.some(
+                              (entry) => entry.dayOfWeek === formDay && entry.period === period,
+                            );
+
+                            if (!hasExistingEntry) {
+                              periodsToCreate.push(period);
+                            }
+                          }
+                          if (periodsToCreate.length === 0) {
+                            toast.error(
+                              'Semua jam pada rentang ini sudah terisi atau tidak valid, tidak ada jam pelajaran yang bisa diisi',
+                            );
+                            return;
+                          }
+
+                          for (const period of periodsToCreate) {
+                            await createEntryMutation.mutateAsync({
+                              academicYearId: effectiveAcademicYearId,
+                              classId: effectiveClassId as number,
+                              teacherAssignmentId: formTeacherAssignmentId as number,
+                              dayOfWeek: formDay,
+                              period,
+                              room: normalizedRoom,
+                            });
+                          }
+                          toast.success('Entri jadwal pelajaran berhasil dibuat');
                         }
-                        toast.success('Entri jadwal pelajaran berhasil dibuat');
+
                         await queryClient.invalidateQueries({
                           queryKey: [
                             'admin-schedule-level2',
@@ -1158,16 +1272,43 @@ export const SchedulePage = () => {
                             effectiveClassId,
                           ],
                         });
-                        setFormTeacherAssignmentId('');
-                        setFormPeriod(1);
-                        setFormEndPeriod('');
-                        setFormDay('MONDAY');
-                        setFormRoom('');
+
+                        if (editingBlock) {
+                          setEditingBlock(null);
+                          setFormTeacherAssignmentId('');
+                          setFormRoom('');
+                          setSelectedRoomId('');
+                          setFormEndPeriod('');
+                        } else {
+                          setFormTeacherAssignmentId('');
+                          setFormPeriod(1);
+                          setFormEndPeriod('');
+                          setFormRoom('');
+                          setSelectedRoomId('');
+                        }
                       } catch (error) {
                         toast.error(getErrorMessage(error));
                       }
                     }}
                   >
+                    {editingBlock && (
+                      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex items-center justify-between gap-3">
+                        <p className="text-xs text-amber-800">
+                          Mode edit aktif: <strong>{DAY_LABELS[editingBlock.day]}</strong> jam ke{' '}
+                          <strong>
+                            {editingBlock.startTeachingHour}-{editingBlock.endTeachingHour}
+                          </strong>
+                          . Perubahan akan diterapkan ke seluruh rentang jam tersebut.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={cancelEditBlock}
+                          className="shrink-0 px-2.5 py-1.5 rounded-md border border-amber-300 bg-white text-[11px] font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
+                        >
+                          Batal Edit
+                        </button>
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 lg:grid-cols-5 gap-3 mb-4 items-end">
                       <div className="min-w-[130px]">
                         <label
@@ -1182,6 +1323,7 @@ export const SchedulePage = () => {
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                           value={formDay}
                           onChange={(e) => setFormDay(e.target.value as DayOfWeek)}
+                          disabled={!!editingBlock}
                         >
                           {DAY_ORDER.map((day) => (
                             <option key={day} value={day}>
@@ -1220,6 +1362,7 @@ export const SchedulePage = () => {
                               setFormEndPeriod(normalized);
                             }
                           }}
+                          disabled={!!editingBlock}
                         />
                       </div>
                       <div className="min-w-[130px]">
@@ -1249,6 +1392,7 @@ export const SchedulePage = () => {
                             );
                             setFormEndPeriod(normalized);
                           }}
+                          disabled={!!editingBlock}
                         />
                       </div>
                       <div>
@@ -1471,20 +1615,35 @@ export const SchedulePage = () => {
                                         {note}
                                       </div>
                                     )}
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (!confirm('Hapus entri jadwal ini?')) {
-                                          return;
+                                    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                      <button
+                                        type="button"
+                                        onClick={() => beginEditBlock(entry)}
+                                        disabled={
+                                          updateEntryMutation.isPending || deleteEntryMutation.isPending
                                         }
-                                        deleteEntryMutation.mutate(entry.id);
-                                      }}
-                                      disabled={deleteEntryMutation.isPending}
-                                      className="absolute top-2 right-2 p-1.5 rounded-md text-red-600 opacity-0 group-hover:opacity-100 hover:bg-red-50 transition-all shadow-sm bg-white border border-gray-100"
-                                      title="Hapus entri jadwal"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
+                                        className="p-1.5 rounded-md text-blue-600 hover:bg-blue-50 shadow-sm bg-white border border-gray-100 disabled:opacity-50"
+                                        title="Edit entri/rentang jam ini"
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (!confirm('Hapus entri jadwal ini?')) {
+                                            return;
+                                          }
+                                          deleteEntryMutation.mutate(entry.id);
+                                        }}
+                                        disabled={
+                                          updateEntryMutation.isPending || deleteEntryMutation.isPending
+                                        }
+                                        className="p-1.5 rounded-md text-red-600 hover:bg-red-50 shadow-sm bg-white border border-gray-100 disabled:opacity-50"
+                                        title="Hapus entri jadwal"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
                                   </>
                                 )}
                               </td>
