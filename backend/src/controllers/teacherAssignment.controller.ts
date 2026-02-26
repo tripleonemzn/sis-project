@@ -19,6 +19,7 @@ const listTeacherAssignmentsSchema = z.object({
   teacherId: z.coerce.number().int().optional(),
   subjectId: z.coerce.number().int().optional(),
   classId: z.coerce.number().int().optional(),
+  scope: z.string().optional(),
 });
 
 const teacherAssignmentIdSchema = z.object({
@@ -198,7 +199,7 @@ export const createTeacherAssignments = asyncHandler(async (req: Request, res: R
 });
 
 export const getTeacherAssignments = asyncHandler(async (req: Request, res: Response) => {
-  const { page = 1, limit = 10, search, academicYearId, teacherId, subjectId, classId } =
+  const { page = 1, limit = 10, search, academicYearId, teacherId, subjectId, classId, scope } =
     listTeacherAssignmentsSchema.parse(req.query);
 
   const user = (req as any).user;
@@ -225,12 +226,16 @@ export const getTeacherAssignments = asyncHandler(async (req: Request, res: Resp
     );
     const isCurriculum =
       duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
+    const requestScope = String(scope || '').trim().toUpperCase();
+    const canUseCurriculumScope = isCurriculum && requestScope === 'CURRICULUM';
 
-    if (isCurriculum) {
+    if (canUseCurriculumScope) {
       if (teacherId) {
         where.teacherId = teacherId;
       }
     } else {
+      // Default TEACHER scope must always be own assignment only,
+      // even when the account has additional curriculum duty.
       where.teacherId = user.id;
     }
   } else if (teacherId) {

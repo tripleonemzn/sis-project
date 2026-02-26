@@ -94,6 +94,7 @@ export const teacherAssignmentService = {
     teacherId?: number;
     subjectId?: number;
     classId?: number;
+    scope?: 'CURRICULUM';
   }) => {
     const response = await api.get<{ data: TeacherAssignmentResponse }>('/teacher-assignments', {
       params,
