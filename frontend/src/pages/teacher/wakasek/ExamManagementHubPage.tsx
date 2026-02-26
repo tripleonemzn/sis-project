@@ -30,40 +30,40 @@ export default function ExamManagementHubPage() {
         <p className="text-gray-500">Pengelolaan Jadwal, Ruang, Mengawas, dan Program Ujian dalam satu halaman.</p>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="flex flex-col lg:flex-row">
-          <div className="w-full lg:w-64 flex-shrink-0 border-b lg:border-b-0 lg:border-r border-gray-100 p-2">
-            <div className="space-y-1">
-              {items.map(item => {
-                const Icon = item.icon;
-                const isActive = active === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => setActive(item.id)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors rounded-lg ${
-                      isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-blue-700' : 'text-gray-400'}`} />
-                    <span className="font-medium">{item.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+        <div className="border-b border-gray-200 mb-4">
+          <div className="flex overflow-x-auto gap-4 pb-1 scrollbar-hide">
+            {items.map((item) => {
+              const Icon = item.icon;
+              const isActive = active === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActive(item.id)}
+                  className={`flex items-center gap-2 px-4 py-3 border-b-2 whitespace-nowrap transition-colors text-sm ${
+                    isActive
+                      ? 'border-blue-600 text-blue-600 font-medium'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <Icon size={18} />
+                  {item.label}
+                </button>
+              );
+            })}
           </div>
+        </div>
 
-          <div className="flex-1 p-4 lg:p-6">
-            {active === 'jadwal' ? (
-              <ExamScheduleManagementPage />
-            ) : active === 'ruang' ? (
-              <ExamSittingManagementPage />
-            ) : active === 'mengawas' ? (
-              <ExamProctorManagementPage />
-            ) : (
-              <ExamProgramManagementPage />
-            )}
-          </div>
+        <div className="pt-1">
+          {active === 'jadwal' ? (
+            <ExamScheduleManagementPage />
+          ) : active === 'ruang' ? (
+            <ExamSittingManagementPage />
+          ) : active === 'mengawas' ? (
+            <ExamProctorManagementPage />
+          ) : (
+            <ExamProgramManagementPage />
+          )}
         </div>
       </div>
     </div>

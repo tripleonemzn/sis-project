@@ -50,48 +50,48 @@ export default function CurriculumManagementHubPage() {
         <p className="text-gray-500">Akses Kategori Mapel, Mata Pelajaran, Data KKM, Assignment Guru, Kalender Akademik, Jadwal Pelajaran, dan Rekap Jam Mengajar.</p>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="flex flex-col lg:flex-row">
-          <div className="w-full lg:w-64 flex-shrink-0 border-b lg:border-b-0 lg:border-r border-gray-100 p-2">
-            <div className="space-y-1">
-              {items.map(item => {
-                const Icon = item.icon;
-                const isActive = active === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => setActive(item.id)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors rounded-lg ${
-                      isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-blue-700' : 'text-gray-400'}`} />
-                    <span className="font-medium">{item.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+        <div className="border-b border-gray-200 mb-4">
+          <div className="flex overflow-x-auto gap-4 pb-1 scrollbar-hide">
+            {items.map((item) => {
+              const Icon = item.icon;
+              const isActive = active === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActive(item.id)}
+                  className={`flex items-center gap-2 px-4 py-3 border-b-2 whitespace-nowrap transition-colors text-sm ${
+                    isActive
+                      ? 'border-blue-600 text-blue-600 font-medium'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <Icon size={18} />
+                  {item.label}
+                </button>
+              );
+            })}
           </div>
+        </div>
 
-          <div className="flex-1 p-4 lg:p-6">
-            {active === 'kategori' ? (
-              <SubjectCategoryPage />
-            ) : active === 'mapel' ? (
-              <SubjectPage />
-            ) : active === 'kkm' ? (
-              <KkmPage />
-            ) : active === 'assignment' ? (
-              <TeacherAssignmentPage />
-            ) : active === 'kalender' ? (
-              <AcademicCalendarPage />
-            ) : active === 'jadwal' ? (
-              <SchedulePage />
-            ) : active === 'audit' ? (
-              <AuditLogPage />
-            ) : (
-              <TeachingLoadSummaryPage />
-            )}
-          </div>
+        <div className="pt-1">
+          {active === 'kategori' ? (
+            <SubjectCategoryPage />
+          ) : active === 'mapel' ? (
+            <SubjectPage />
+          ) : active === 'kkm' ? (
+            <KkmPage />
+          ) : active === 'assignment' ? (
+            <TeacherAssignmentPage />
+          ) : active === 'kalender' ? (
+            <AcademicCalendarPage />
+          ) : active === 'jadwal' ? (
+            <SchedulePage />
+          ) : active === 'audit' ? (
+            <AuditLogPage />
+          ) : (
+            <TeachingLoadSummaryPage />
+          )}
         </div>
       </div>
     </div>
