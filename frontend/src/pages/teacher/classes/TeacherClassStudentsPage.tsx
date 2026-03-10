@@ -49,7 +49,7 @@ export const TeacherClassStudentsPage = () => {
     return {
       ...student,
       full_name: normalizedName || '-',
-      username: String(student.username || '').trim() || '-',
+      username: String(student.username || '').trim(),
       is_active: normalizedIsActive,
     };
   });
@@ -154,7 +154,9 @@ export const TeacherClassStudentsPage = () => {
                         </div>
                         <div>
                           <div className="text-sm font-medium text-gray-900">{student.full_name}</div>
-                          <div className="text-xs text-gray-500">@{student.username}</div>
+                          {student.username ? (
+                            <div className="text-xs text-gray-500">@{student.username}</div>
+                          ) : null}
                         </div>
                       </div>
                     </td>
