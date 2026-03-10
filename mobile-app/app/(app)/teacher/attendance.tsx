@@ -259,11 +259,11 @@ export default function TeacherAttendanceScreen() {
                           padding: 9,
                         }}
                       >
-                        <Text style={{ fontWeight: '700', color: selected ? '#1d4ed8' : '#0f172a', fontSize: 12 }}>
-                          {item.class.name}
-                        </Text>
-                        <Text style={{ color: '#334155', fontSize: 12 }} numberOfLines={2}>
+                        <Text style={{ fontWeight: '700', color: selected ? '#1d4ed8' : '#0f172a', fontSize: 12 }} numberOfLines={2}>
                           {item.subject.name}
+                        </Text>
+                        <Text style={{ color: '#334155', fontSize: 12 }} numberOfLines={1}>
+                          Kelas: {item.class.name}
                         </Text>
                       </Pressable>
                     </View>

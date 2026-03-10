@@ -696,11 +696,11 @@ export default function TeacherExamEditorScreen() {
                     padding: 8,
                   }}
                 >
-                  <Text style={{ color: selected ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: 11 }}>
-                    {assignment.class.name}
-                  </Text>
-                  <Text style={{ color: '#334155', fontSize: 11 }} numberOfLines={2}>
+                  <Text style={{ color: selected ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: 11 }} numberOfLines={2}>
                     {assignment.subject.name}
+                  </Text>
+                  <Text style={{ color: '#334155', fontSize: 11 }} numberOfLines={1}>
+                    Kelas: {assignment.class.name}
                   </Text>
                 </Pressable>
               </View>

@@ -282,11 +282,11 @@ export default function TeacherSubjectReportScreen() {
                           padding: 9,
                         }}
                         >
-                          <Text style={{ color: selected ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: 12 }}>
-                          {item.class.name}
-                          </Text>
-                          <Text style={{ color: '#334155', fontSize: 12 }} numberOfLines={2}>
+                          <Text style={{ color: selected ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: 12 }} numberOfLines={2}>
                           {item.subject.name}
+                          </Text>
+                          <Text style={{ color: '#334155', fontSize: 12 }} numberOfLines={1}>
+                          Kelas: {item.class.name}
                           </Text>
                         </Pressable>
                     </View>
