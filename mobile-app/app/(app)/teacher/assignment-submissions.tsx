@@ -114,8 +114,9 @@ export default function TeacherAssignmentSubmissionsScreen() {
       setFeedbackInput('');
       Alert.alert('Sukses', 'Nilai tugas berhasil disimpan.');
     },
-    onError: (error: any) => {
-      const msg = error?.response?.data?.message || error?.message || 'Gagal menyimpan nilai.';
+    onError: (error: unknown) => {
+      const err = error as { response?: { data?: { message?: string } }; message?: string } | undefined;
+      const msg = err?.response?.data?.message || err?.message || 'Gagal menyimpan nilai.';
       Alert.alert('Gagal', msg);
     },
   });

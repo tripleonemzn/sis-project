@@ -6,9 +6,22 @@ import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 import { ukkSchemeService } from '../../services/ukkScheme.service';
 import type { User as UserType } from '../../types/auth';
 
+type ExaminerSchemeLite = {
+  id: number;
+  name: string;
+  subjectId?: number | null;
+  subject?: {
+    name?: string;
+    category?: {
+      code?: string | null;
+    } | null;
+  } | null;
+  major?: { name?: string } | null;
+};
+
 export const ExaminerDashboard = () => {
   const { user: contextUser, activeYear: contextActiveYear } =
-    useOutletContext<{ user: UserType; activeYear: any }>() || {};
+    useOutletContext<{ user?: UserType; activeYear?: { id: number; name: string } | null }>() || {};
 
   const { data: authData } = useQuery({
     queryKey: ['me'],
@@ -22,16 +35,20 @@ export const ExaminerDashboard = () => {
 
   const { data: fetchedActiveYear, isLoading: isLoadingYears } = useActiveAcademicYear();
   const activeAcademicYear = contextActiveYear || fetchedActiveYear;
-  const activeAcademicYearId = activeAcademicYear?.id ?? null;
+  const activeAcademicYearId = activeAcademicYear?.id;
 
   const { data: schemesData, isLoading: isLoadingSchemes } = useQuery({
     queryKey: ['ukk-schemes', activeAcademicYearId],
     queryFn: () => ukkSchemeService.getSchemes(activeAcademicYearId),
-    enabled: !!activeAcademicYearId,
+    enabled: Boolean(activeAcademicYearId),
   });
 
-  const schemes = schemesData?.data || schemesData || [];
-  const subjectCount = new Set(schemes.map((item: any) => item.subjectId).filter(Boolean)).size;
+  const schemes = ((schemesData?.data || schemesData || []) as ExaminerSchemeLite[]) || [];
+  const subjectCount = new Set(
+    schemes
+      .map((item) => item.subjectId)
+      .filter((item): item is number => typeof item === 'number' && Number.isFinite(item)),
+  ).size;
 
   if (isLoadingYears || (!!activeAcademicYearId && isLoadingSchemes)) {
     return (
@@ -43,11 +60,11 @@ export const ExaminerDashboard = () => {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-2xl px-6 py-4 shadow-sm border border-gray-100 mt-10 relative flex flex-col md:flex-row justify-between items-center gap-4">
+      <div className="bg-gradient-to-br from-orange-50 to-amber-100/80 rounded-2xl px-6 py-4 shadow-sm border border-orange-100 mt-10 relative flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-6">
           <div className="-mt-16 relative">
             <div
-              className="w-36 h-36 rounded-full p-1 bg-white ring-1 ring-gray-200"
+              className="w-36 h-36 rounded-full p-1 bg-white/90 ring-1 ring-orange-200"
               style={{
                 boxShadow:
                   'inset 6px 6px 12px rgba(0,0,0,0.06), inset -6px -6px 12px rgba(255,255,255,0.9), 8px 8px 16px rgba(0,0,0,0.08), -3px -3px 8px rgba(255,255,255,0.7)',
@@ -67,7 +84,7 @@ export const ExaminerDashboard = () => {
                   }}
                 />
               ) : (
-                <div className="w-full h-full rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-6xl">
+                <div className="w-full h-full rounded-full bg-orange-100 flex items-center justify-center text-orange-700 font-bold text-6xl">
                   {String(user.name || '?').charAt(0).toUpperCase()}
                 </div>
               )}
@@ -83,41 +100,56 @@ export const ExaminerDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+        <Link
+          to="/examiner/schemes"
+          className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        >
+        <div className="p-6 rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-sky-100/80 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-blue-50 rounded-lg text-blue-600">
+            <div className="p-3 bg-blue-100 rounded-lg text-blue-700">
               <ClipboardList size={24} />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">Total Skema UKK</p>
-              <h3 className="text-2xl font-bold text-gray-900">{schemes.length}</h3>
+              <p className="text-sm text-blue-700/80 font-medium">Total Skema UKK</p>
+              <h3 className="text-2xl font-bold text-blue-900">{schemes.length}</h3>
             </div>
           </div>
         </div>
+        </Link>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+        <Link
+          to="/examiner/schemes"
+          className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+        >
+        <div className="p-6 rounded-xl border border-teal-100 bg-gradient-to-br from-teal-50 to-emerald-100/80 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-indigo-50 rounded-lg text-indigo-600">
+            <div className="p-3 bg-teal-100 rounded-lg text-teal-700">
               <BookOpen size={24} />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">Mapel Tercakup</p>
-              <h3 className="text-2xl font-bold text-gray-900">{subjectCount}</h3>
+              <p className="text-sm text-teal-700/80 font-medium">Mapel Tercakup</p>
+              <h3 className="text-2xl font-bold text-teal-900">{subjectCount}</h3>
             </div>
           </div>
         </div>
+        </Link>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+        <Link
+          to="/examiner/schemes"
+          className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+        >
+        <div className="p-6 rounded-xl border border-orange-100 bg-gradient-to-br from-orange-50 to-amber-100/80 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-emerald-50 rounded-lg text-emerald-600">
+            <div className="p-3 bg-orange-100 rounded-lg text-orange-700">
               <Calendar size={24} />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">Tahun Ajaran Aktif</p>
-              <h3 className="text-lg font-bold text-gray-900">{activeAcademicYear?.name || '-'}</h3>
+              <p className="text-sm text-orange-700/80 font-medium">Tahun Ajaran Aktif</p>
+              <h3 className="text-lg font-bold text-orange-900">{activeAcademicYear?.name || '-'}</h3>
             </div>
           </div>
         </div>
+        </Link>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -134,12 +166,14 @@ export const ExaminerDashboard = () => {
           {schemes.length === 0 ? (
             <p className="text-sm text-gray-500 text-center py-4">Belum ada skema penilaian.</p>
           ) : (
-            schemes.slice(0, 5).map((scheme: any) => (
+            schemes.slice(0, 5).map((scheme) => (
               <div key={scheme.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
                 <div className="flex-1 min-w-0 mr-4">
                   <div className="text-sm font-medium text-gray-900 truncate">{scheme.name}</div>
                   <div className="text-xs text-gray-500">
-                    {scheme.subject?.name} • {scheme.major?.name || '-'}
+                    {scheme.subject?.category?.code === 'UMUM'
+                      ? `Kompetensi ${scheme.major?.name || 'UKK'}`
+                      : `${scheme.subject?.name || '-'} • ${scheme.major?.name || '-'}`}
                   </div>
                 </div>
                 <div className="text-right">

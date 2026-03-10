@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
@@ -127,6 +127,19 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function getActionErrorMessage(error: unknown, fallback: string) {
+  if (!error || typeof error !== 'object') return fallback;
+  const err = error as {
+    message?: string;
+    response?: {
+      data?: {
+        message?: string;
+      };
+    };
+  };
+  return err.response?.data?.message || err.message || fallback;
+}
+
 function SectionChip({
   active,
   label,
@@ -234,10 +247,14 @@ export function TeacherWorkProgramModuleScreen({
   mode,
   title,
   subtitle,
+  allowedRoles = ['TEACHER'],
+  forcedDuty,
 }: {
   mode: ModuleMode;
   title: string;
   subtitle: string;
+  allowedRoles?: string[];
+  forcedDuty?: string | null;
 }) {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -254,10 +271,26 @@ export function TeacherWorkProgramModuleScreen({
   const [itemEditor, setItemEditor] = useState<ItemEditorState | null>(null);
   const [expandedProgramIds, setExpandedProgramIds] = useState<Record<number, boolean>>({});
   const [budgetSectionVisible, setBudgetSectionVisible] = useState(false);
+  const normalizedAllowedRoles = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(allowedRoles) && allowedRoles.length > 0 ? allowedRoles : ['TEACHER']).map((role) =>
+          String(role || '')
+            .trim()
+            .toUpperCase(),
+        ),
+      ),
+    [allowedRoles],
+  );
+  const isAllowedRole = normalizedAllowedRoles.has(
+    String(user?.role || '')
+      .trim()
+      .toUpperCase(),
+  );
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-work-program-active-year'],
-    enabled: isAuthenticated && user?.role === 'TEACHER',
+    enabled: isAuthenticated && isAllowedRole,
     queryFn: async () => {
       try {
         return await academicYearApi.getActive();
@@ -267,39 +300,32 @@ export function TeacherWorkProgramModuleScreen({
     },
   });
 
-  const managedMajors = useMemo(() => {
+  const managedMajors = (() => {
     if (Array.isArray(user?.managedMajors) && user.managedMajors.length > 0) return user.managedMajors;
     if (user?.managedMajor) return [user.managedMajor];
     return [];
-  }, [user?.managedMajor, user?.managedMajors]);
+  })();
 
-  const dutyOptions = useMemo(() => {
+  const dutyOptions = (() => {
+    const normalizedForcedDuty = String(forcedDuty || '')
+      .trim()
+      .toUpperCase();
+    if (normalizedForcedDuty) {
+      return [normalizedForcedDuty];
+    }
+    if (String(user?.role || '').trim().toUpperCase() === 'EXTRACURRICULAR_TUTOR') {
+      return ['PEMBINA_EKSKUL'];
+    }
     const raw = Array.isArray(user?.additionalDuties) ? user.additionalDuties : [];
     const normalized = raw
       .map((item) => String(item || '').trim().toUpperCase())
       .filter((item) => item.length > 0 && !item.startsWith('SEKRETARIS_'));
     return Array.from(new Set(normalized));
-  }, [user?.additionalDuties]);
-
-  useEffect(() => {
-    if (mode !== 'OWNER') return;
-    setProgramForm((prev) => {
-      if (prev.additionalDuty || dutyOptions.length === 0) return prev;
-      return { ...prev, additionalDuty: dutyOptions[0] };
-    });
-  }, [dutyOptions, mode]);
-
-  useEffect(() => {
-    if (!activeYearQuery.data?.id) return;
-    setProgramForm((prev) => {
-      if (prev.academicYearId) return prev;
-      return { ...prev, academicYearId: String(activeYearQuery.data?.id) };
-    });
-  }, [activeYearQuery.data?.id]);
+  })();
 
   const ownerQuery = useQuery({
     queryKey: ['mobile-work-program-owner', user?.id, activeYearQuery.data?.id],
-    enabled: isAuthenticated && user?.role === 'TEACHER' && mode === 'OWNER',
+    enabled: isAuthenticated && isAllowedRole && mode === 'OWNER',
     queryFn: async () =>
       workProgramApi.list({
         page: 1,
@@ -311,7 +337,7 @@ export function TeacherWorkProgramModuleScreen({
 
   const approvalQuery = useQuery({
     queryKey: ['mobile-work-program-approvals', user?.id],
-    enabled: isAuthenticated && user?.role === 'TEACHER' && mode === 'APPROVAL',
+    enabled: isAuthenticated && isAllowedRole && mode === 'APPROVAL',
     queryFn: async () => workProgramApi.listPendingApprovals(),
     ...mobileLiveQueryOptions,
   });
@@ -386,8 +412,8 @@ export function TeacherWorkProgramModuleScreen({
       }));
       await refreshOwner();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.message || error?.response?.data?.message || 'Gagal menambah program kerja.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Gagal menambah program kerja.'));
     },
   });
 
@@ -437,8 +463,8 @@ export function TeacherWorkProgramModuleScreen({
       }));
       await refreshOwner();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.message || error?.response?.data?.message || 'Gagal memperbarui program kerja.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Gagal memperbarui program kerja.'));
     },
   });
 
@@ -448,8 +474,8 @@ export function TeacherWorkProgramModuleScreen({
       Alert.alert('Berhasil', 'Program kerja berhasil dihapus.');
       await refreshOwner();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || error?.message || 'Gagal menghapus program kerja.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Gagal menghapus program kerja.'));
     },
   });
 
@@ -476,8 +502,8 @@ export function TeacherWorkProgramModuleScreen({
       setItemEditor(null);
       await refreshOwner();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || error?.message || 'Gagal menyimpan item program.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Gagal menyimpan item program.'));
     },
   });
 
@@ -487,8 +513,8 @@ export function TeacherWorkProgramModuleScreen({
     onSuccess: async () => {
       await refreshOwner();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || error?.message || 'Gagal memperbarui status item.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Gagal memperbarui status item.'));
     },
   });
 
@@ -498,8 +524,8 @@ export function TeacherWorkProgramModuleScreen({
       Alert.alert('Berhasil', 'Item program kerja berhasil dihapus.');
       await refreshOwner();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || error?.message || 'Gagal menghapus item program.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Gagal menghapus item program.'));
     },
   });
 
@@ -646,11 +672,11 @@ export function TeacherWorkProgramModuleScreen({
   if (isLoading) return <AppLoadingScreen message={`Memuat ${title.toLowerCase()}...`} />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
-  if (user?.role !== 'TEACHER') {
+  if (!isAllowedRole) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
         <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>{title}</Text>
-        <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
+        <QueryStateView type="error" message="Halaman ini tidak tersedia untuk role akun Anda." />
       </ScrollView>
     );
   }

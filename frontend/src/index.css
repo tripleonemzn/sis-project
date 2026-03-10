@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;600&family=Noto+Sans+JP:wght@400;700&family=Noto+Sans+SC:wght@400;700&family=Noto+Sans+Javanese:wght@400;700&family=Noto+Sans+Sundanese:wght@400;700&display=swap');
 
 body { background-color: #f9fafb; color: #111827; }
 
@@ -42,4 +43,59 @@ body { background-color: #f9fafb; color: #111827; }
 /* Pointer cursor for interactive elements */
 a, button, [role="button"] {
   cursor: pointer;
+}
+
+/* Exam editor: remove duplicated inner separator line from Quill area */
+.question-editor-quill .ql-toolbar.ql-snow,
+.question-editor-quill .ql-container.ql-snow {
+  border: 0 !important;
+}
+
+.question-editor-quill .ql-toolbar.ql-snow + .ql-container.ql-snow {
+  border-top: 0 !important;
+}
+
+.question-editor-quill .ql-editor {
+  min-height: 180px;
+  font-family:
+    "Noto Sans SC",
+    "Noto Sans JP",
+    "Noto Naskh Arabic",
+    "Noto Sans Javanese",
+    "Noto Sans Sundanese",
+    "Segoe UI",
+    "Arial Unicode MS",
+    sans-serif;
+  unicode-bidi: plaintext;
+}
+
+.question-editor-quill .ql-editor hr {
+  display: none;
+}
+
+.question-editor-quill .ql-tooltip {
+  max-width: calc(100% - 16px);
+  font-family:
+    "Noto Sans SC",
+    "Noto Sans JP",
+    "Noto Naskh Arabic",
+    "Noto Sans Javanese",
+    "Noto Sans Sundanese",
+    "Segoe UI",
+    "Arial Unicode MS",
+    sans-serif;
+}
+
+.exam-editor-modal input[type="text"],
+.exam-editor-modal input[type="search"],
+.exam-editor-modal textarea {
+  font-family:
+    "Noto Sans SC",
+    "Noto Sans JP",
+    "Noto Naskh Arabic",
+    "Noto Sans Javanese",
+    "Noto Sans Sundanese",
+    "Segoe UI",
+    "Arial Unicode MS",
+    sans-serif;
 }

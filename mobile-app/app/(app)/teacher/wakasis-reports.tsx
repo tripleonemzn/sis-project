@@ -387,10 +387,19 @@ export default function TeacherWakasisReportsScreen() {
     },
   });
 
-  const classReports = reportsQuery.data?.classReports || [];
-  const studentPermissionRows = reportsQuery.data?.studentPermissionRows || [];
-  const monthPermissionRows = reportsQuery.data?.monthPermissionRows || [];
-  const permissions = reportsQuery.data?.permissions || [];
+  const classReports = useMemo(
+    () => reportsQuery.data?.classReports || [],
+    [reportsQuery.data?.classReports],
+  );
+  const studentPermissionRows = useMemo(
+    () => reportsQuery.data?.studentPermissionRows || [],
+    [reportsQuery.data?.studentPermissionRows],
+  );
+  const monthPermissionRows = useMemo(
+    () => reportsQuery.data?.monthPermissionRows || [],
+    [reportsQuery.data?.monthPermissionRows],
+  );
+  const permissions = useMemo(() => reportsQuery.data?.permissions || [], [reportsQuery.data?.permissions]);
   const normalizedSearch = search.trim().toLowerCase();
 
   const filteredClassReports = useMemo(() => {

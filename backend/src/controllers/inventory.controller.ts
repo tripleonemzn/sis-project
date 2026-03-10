@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
+import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { z } from 'zod';
@@ -55,6 +56,7 @@ const updateRoomSchema = createRoomSchema.partial();
 
 const createLibraryBookLoanSchema = z.object({
   borrowDate: z.string().min(1),
+  borrowQty: z.number().int().min(1).max(200).default(1),
   borrowerName: z.string().min(1),
   borrowerStatus: z.enum(['TEACHER', 'STUDENT']),
   classId: z.number().int().nullable().optional(),
@@ -164,6 +166,150 @@ function getLoanDerivedStatus(row: {
     finePerDay,
     fineAmount: 0,
   };
+}
+
+function getBorrowableQty(item: {
+  quantity: number;
+  goodQty: number;
+  minorDamageQty: number;
+  majorDamageQty: number;
+}) {
+  if (item.goodQty > 0) return item.goodQty;
+  const fallback = item.quantity - item.minorDamageQty - item.majorDamageQty;
+  return Math.max(0, fallback);
+}
+
+async function getLibraryBookStockCandidates(
+  tx: Prisma.TransactionClient,
+  bookTitle: string,
+) {
+  const normalizedTitle = String(bookTitle || '').trim();
+  if (!normalizedTitle) return [];
+  return tx.inventoryItem.findMany({
+    where: {
+      name: {
+        equals: normalizedTitle,
+        mode: 'insensitive',
+      },
+      room: {
+        category: {
+          OR: [
+            { inventoryTemplateKey: 'LIBRARY' },
+            { name: { contains: 'PERPUSTAKAAN', mode: 'insensitive' } },
+            { name: { contains: 'PUSTAKA', mode: 'insensitive' } },
+          ],
+        },
+      },
+    },
+    orderBy: [{ goodQty: 'desc' }, { quantity: 'desc' }, { id: 'asc' }],
+  });
+}
+
+function resolveLibraryBookPublishYear(
+  items: Array<{
+    attributes?: Prisma.JsonValue | null;
+    publishYear?: number | null;
+  }>,
+) {
+  const parseFromAttributes = (rawAttributes: Prisma.JsonValue | null | undefined) => {
+    if (!rawAttributes || typeof rawAttributes !== 'object' || Array.isArray(rawAttributes)) return null;
+    const attributes = rawAttributes as Record<string, unknown>;
+    const candidateValues = [
+      attributes.publishYear,
+      attributes.year,
+      attributes.tahunTerbit,
+      attributes.tahun_terbit,
+      attributes.tahunterbit,
+      attributes['tahun terbit'],
+    ];
+    for (const rawValue of candidateValues) {
+      const parsed = Number(rawValue);
+      if (Number.isFinite(parsed) && parsed >= 1900 && parsed <= 2100) {
+        return Math.trunc(parsed);
+      }
+    }
+    return null;
+  };
+
+  const years = items
+    .map((item) => Number(item.publishYear ?? parseFromAttributes(item.attributes)))
+    .filter((value) => Number.isFinite(value) && value >= 1900 && value <= 2100)
+    .map((value) => Math.trunc(value));
+  if (years.length === 0) return null;
+  return Math.max(...years);
+}
+
+async function consumeLibraryBookStock(
+  tx: Prisma.TransactionClient,
+  bookTitle: string,
+  qty: number,
+) {
+  const requestedQty = Math.max(0, Math.trunc(qty || 0));
+  if (requestedQty <= 0) return;
+
+  const candidates = await getLibraryBookStockCandidates(tx, bookTitle);
+  if (!candidates.length) {
+    throw new ApiError(
+      400,
+      `Buku "${bookTitle}" belum terdaftar di inventaris perpustakaan.`,
+    );
+  }
+
+  const totalAvailable = candidates.reduce((sum, item) => sum + getBorrowableQty(item), 0);
+  if (totalAvailable < requestedQty) {
+    throw new ApiError(
+      400,
+      `Stok buku "${bookTitle}" tidak cukup. Tersedia ${totalAvailable}, diminta ${requestedQty}.`,
+    );
+  }
+
+  let remaining = requestedQty;
+  for (const item of candidates) {
+    if (remaining <= 0) break;
+    const available = getBorrowableQty(item);
+    if (available <= 0) continue;
+    const taken = Math.min(available, remaining);
+
+    const currentGood = getBorrowableQty(item);
+    const nextGood = Math.max(0, currentGood - taken);
+    const nextQty = Math.max(0, item.quantity - taken);
+
+    await tx.inventoryItem.update({
+      where: { id: item.id },
+      data: {
+        goodQty: nextGood,
+        quantity: nextQty,
+      },
+    });
+
+    remaining -= taken;
+  }
+}
+
+async function restoreLibraryBookStock(
+  tx: Prisma.TransactionClient,
+  bookTitle: string,
+  qty: number,
+) {
+  const restoreQty = Math.max(0, Math.trunc(qty || 0));
+  if (restoreQty <= 0) return;
+
+  const candidates = await getLibraryBookStockCandidates(tx, bookTitle);
+  if (!candidates.length) {
+    throw new ApiError(
+      400,
+      `Inventaris buku "${bookTitle}" tidak ditemukan saat mengembalikan stok.`,
+    );
+  }
+
+  const target = candidates[0];
+  await tx.inventoryItem.update({
+    where: { id: target.id },
+    data: {
+      goodQty: target.goodQty + restoreQty,
+      quantity: target.quantity + restoreQty,
+    },
+  });
 }
 
 async function resolveBorrowerUserId(args: {
@@ -727,6 +873,99 @@ export const getLibraryLoanClassOptions = asyncHandler(async (req: Request, res:
   res.status(200).json(new ApiResponse(200, mapped, 'Daftar kelas untuk peminjaman buku berhasil diambil'));
 });
 
+export const getLibraryLoanBookOptions = asyncHandler(async (req: Request, res: Response) => {
+  const query = String(req.query.q || '').trim();
+
+  const items = await prisma.inventoryItem.findMany({
+    where: {
+      ...(query
+        ? {
+            name: {
+              contains: query,
+              mode: 'insensitive',
+            },
+          }
+        : {}),
+      room: {
+        category: {
+          OR: [
+            { inventoryTemplateKey: 'LIBRARY' },
+            { name: { contains: 'PERPUSTAKAAN', mode: 'insensitive' } },
+            { name: { contains: 'PUSTAKA', mode: 'insensitive' } },
+          ],
+        },
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+      quantity: true,
+      goodQty: true,
+      minorDamageQty: true,
+      majorDamageQty: true,
+      attributes: true,
+      room: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+    orderBy: [{ name: 'asc' }, { id: 'asc' }],
+  });
+
+  const grouped = new Map<
+    string,
+    {
+      title: string;
+      availableQty: number;
+      totalQty: number;
+      publishYear: number | null;
+      roomNames: Set<string>;
+    }
+  >();
+
+  for (const item of items) {
+    const rawTitle = String(item.name || '').trim();
+    if (!rawTitle) continue;
+    const key = rawTitle.toLowerCase();
+    const current = grouped.get(key) || {
+      title: rawTitle,
+      availableQty: 0,
+      totalQty: 0,
+      publishYear: null,
+      roomNames: new Set<string>(),
+    };
+    current.availableQty += getBorrowableQty(item);
+    current.totalQty += Math.max(0, Number(item.quantity || 0));
+    const parsedPublishYear = resolveLibraryBookPublishYear([item]);
+    if (parsedPublishYear !== null) {
+      const normalizedPublishYear = Math.trunc(parsedPublishYear);
+      current.publishYear =
+        current.publishYear === null
+          ? normalizedPublishYear
+          : Math.max(current.publishYear, normalizedPublishYear);
+    }
+    if (item.room?.name) current.roomNames.add(item.room.name);
+    grouped.set(key, current);
+  }
+
+  const mapped = Array.from(grouped.values())
+    .map((row) => ({
+      title: row.title,
+      availableQty: Math.max(0, Math.trunc(row.availableQty || 0)),
+      totalQty: Math.max(0, Math.trunc(row.totalQty || 0)),
+      publishYear: row.publishYear,
+      roomCount: row.roomNames.size,
+      roomNames: Array.from(row.roomNames).sort((a, b) => a.localeCompare(b, 'id-ID')).slice(0, 3),
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title, 'id-ID'));
+
+  res.status(200).json(
+    new ApiResponse(200, mapped, 'Daftar judul buku inventaris perpustakaan berhasil diambil'),
+  );
+});
+
 export const getLibraryBookLoans = asyncHandler(async (req: Request, res: Response) => {
   const query = String(req.query.q || '').trim();
   const loanPolicy = await ensureLibraryLoanPolicy();
@@ -805,6 +1044,7 @@ export const createLibraryBookLoan = asyncHandler(async (req: AuthRequest, res: 
   const body = createLibraryBookLoanSchema.parse(req.body);
   const loanPolicy = await ensureLibraryLoanPolicy();
   const borrowDate = parseRequiredDate(body.borrowDate, 'Tanggal pinjam');
+  const borrowQty = Math.max(1, Math.trunc(body.borrowQty || 1));
   const returnDate = parseOptionalDate(body.returnDate, 'Tanggal pengembalian');
   const borrowerStatus = body.borrowerStatus;
   const borrowerName = body.borrowerName.trim();
@@ -832,43 +1072,54 @@ export const createLibraryBookLoan = asyncHandler(async (req: AuthRequest, res: 
     classId,
     phoneNumber,
   });
+  const nextReturnStatus = body.returnStatus || 'NOT_RETURNED';
 
-  const row = await prisma.libraryBookLoan.create({
-    data: {
-      borrowDate,
-      borrowerName,
-      borrowerStatus,
-      classId,
-      bookTitle,
-      publishYear: body.publishYear,
-      returnDate,
-      returnStatus: body.returnStatus || 'NOT_RETURNED',
-      phoneNumber,
-      createdById: req.user?.id,
-      borrowerUserId,
-      overdueNotifiedAt: null,
-    },
-    include: {
-      class: {
-        select: {
-          id: true,
-          name: true,
-          level: true,
-          major: {
-            select: {
-              code: true,
-              name: true,
+  const row = await prisma.$transaction(async (tx) => {
+    const bookCandidates = await getLibraryBookStockCandidates(tx, bookTitle);
+    const resolvedPublishYear = resolveLibraryBookPublishYear(bookCandidates);
+
+    if (nextReturnStatus !== 'RETURNED') {
+      await consumeLibraryBookStock(tx, bookTitle, borrowQty);
+    }
+
+    return tx.libraryBookLoan.create({
+      data: {
+        borrowDate,
+        borrowQty,
+        borrowerName,
+        borrowerStatus,
+        classId,
+        bookTitle,
+        publishYear: resolvedPublishYear ?? body.publishYear ?? null,
+        returnDate,
+        returnStatus: nextReturnStatus,
+        phoneNumber,
+        createdById: req.user?.id,
+        borrowerUserId,
+        overdueNotifiedAt: null,
+      },
+      include: {
+        class: {
+          select: {
+            id: true,
+            name: true,
+            level: true,
+            major: {
+              select: {
+                code: true,
+                name: true,
+              },
             },
           },
         },
-      },
-      borrowerUser: {
-        select: {
-          id: true,
-          name: true,
+        borrowerUser: {
+          select: {
+            id: true,
+            name: true,
+          },
         },
       },
-    },
+    });
   });
 
   const status = getLoanDerivedStatus({
@@ -906,6 +1157,10 @@ export const updateLibraryBookLoan = asyncHandler(async (req: Request, res: Resp
   }
 
   const nextBorrowerStatus = body.borrowerStatus ?? existing.borrowerStatus;
+  const nextBorrowQty =
+    body.borrowQty !== undefined
+      ? Math.max(1, Math.trunc(body.borrowQty))
+      : Math.max(1, existing.borrowQty || 1);
   let nextClassId = body.classId === undefined ? existing.classId : body.classId;
   if (nextBorrowerStatus === 'TEACHER') {
     nextClassId = null;
@@ -923,6 +1178,8 @@ export const updateLibraryBookLoan = asyncHandler(async (req: Request, res: Resp
     body.borrowerName !== undefined ? body.borrowerName.trim() : existing.borrowerName;
   const nextPhoneNumber =
     body.phoneNumber !== undefined ? body.phoneNumber?.trim() || null : existing.phoneNumber;
+  const nextBookTitle = body.bookTitle !== undefined ? body.bookTitle.trim() : existing.bookTitle;
+  const nextReturnStatus = body.returnStatus ?? existing.returnStatus;
   const nextBorrowerUserId = await resolveBorrowerUserId({
     borrowerName: nextBorrowerName,
     borrowerStatus: nextBorrowerStatus,
@@ -932,6 +1189,7 @@ export const updateLibraryBookLoan = asyncHandler(async (req: Request, res: Resp
 
   const updateData: Record<string, unknown> = {
     borrowerStatus: nextBorrowerStatus,
+    borrowQty: nextBorrowQty,
     classId: nextClassId,
     borrowerUserId: nextBorrowerUserId,
   };
@@ -943,17 +1201,14 @@ export const updateLibraryBookLoan = asyncHandler(async (req: Request, res: Resp
     updateData.borrowerName = nextBorrowerName;
   }
   if (body.bookTitle !== undefined) {
-    updateData.bookTitle = body.bookTitle.trim();
-  }
-  if (body.publishYear !== undefined) {
-    updateData.publishYear = body.publishYear;
+    updateData.bookTitle = nextBookTitle;
   }
   if (body.returnDate !== undefined) {
     updateData.returnDate = parseOptionalDate(body.returnDate, 'Tanggal pengembalian');
   }
   if (body.returnStatus !== undefined) {
-    updateData.returnStatus = body.returnStatus;
-    if (body.returnStatus === 'RETURNED') {
+    updateData.returnStatus = nextReturnStatus;
+    if (nextReturnStatus === 'RETURNED') {
       updateData.overdueNotifiedAt = null;
     }
   }
@@ -964,30 +1219,58 @@ export const updateLibraryBookLoan = asyncHandler(async (req: Request, res: Resp
     updateData.overdueNotifiedAt = null;
   }
 
-  const row = await prisma.libraryBookLoan.update({
-    where: { id: loanId },
-    data: updateData,
-    include: {
-      class: {
-        select: {
-          id: true,
-          name: true,
-          level: true,
-          major: {
-            select: {
-              code: true,
-              name: true,
+  const oldBorrowQty = Math.max(1, existing.borrowQty || 1);
+  const oldBookTitle = existing.bookTitle;
+  const oldActive = existing.returnStatus !== 'RETURNED';
+  const newActive = nextReturnStatus !== 'RETURNED';
+
+  const row = await prisma.$transaction(async (tx) => {
+    if (oldActive) {
+      if (!newActive) {
+        await restoreLibraryBookStock(tx, oldBookTitle, oldBorrowQty);
+      } else if (oldBookTitle.toLowerCase() !== nextBookTitle.toLowerCase()) {
+        await restoreLibraryBookStock(tx, oldBookTitle, oldBorrowQty);
+        await consumeLibraryBookStock(tx, nextBookTitle, nextBorrowQty);
+      } else if (nextBorrowQty > oldBorrowQty) {
+        await consumeLibraryBookStock(tx, nextBookTitle, nextBorrowQty - oldBorrowQty);
+      } else if (nextBorrowQty < oldBorrowQty) {
+        await restoreLibraryBookStock(tx, oldBookTitle, oldBorrowQty - nextBorrowQty);
+      }
+    } else if (newActive) {
+      await consumeLibraryBookStock(tx, nextBookTitle, nextBorrowQty);
+    }
+
+    if (body.bookTitle !== undefined || body.publishYear !== undefined) {
+      const publishYearCandidates = await getLibraryBookStockCandidates(tx, nextBookTitle);
+      const resolvedPublishYear = resolveLibraryBookPublishYear(publishYearCandidates);
+      updateData.publishYear = resolvedPublishYear ?? body.publishYear ?? null;
+    }
+
+    return tx.libraryBookLoan.update({
+      where: { id: loanId },
+      data: updateData,
+      include: {
+        class: {
+          select: {
+            id: true,
+            name: true,
+            level: true,
+            major: {
+              select: {
+                code: true,
+                name: true,
+              },
             },
           },
         },
-      },
-      borrowerUser: {
-        select: {
-          id: true,
-          name: true,
+        borrowerUser: {
+          select: {
+            id: true,
+            name: true,
+          },
         },
       },
-    },
+    });
   });
 
   const status = getLoanDerivedStatus({
@@ -1013,9 +1296,28 @@ export const updateLibraryBookLoan = asyncHandler(async (req: Request, res: Resp
 
 export const deleteLibraryBookLoan = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const loanId = Number(id);
+  const existing = await prisma.libraryBookLoan.findUnique({
+    where: { id: loanId },
+    select: {
+      id: true,
+      bookTitle: true,
+      borrowQty: true,
+      returnStatus: true,
+    },
+  });
+  if (!existing) {
+    throw new ApiError(404, 'Data peminjaman buku tidak ditemukan');
+  }
 
-  await prisma.libraryBookLoan.delete({
-    where: { id: Number(id) },
+  await prisma.$transaction(async (tx) => {
+    if (existing.returnStatus !== 'RETURNED') {
+      await restoreLibraryBookStock(tx, existing.bookTitle, Math.max(1, existing.borrowQty || 1));
+    }
+
+    await tx.libraryBookLoan.delete({
+      where: { id: loanId },
+    });
   });
 
   res.status(200).json(new ApiResponse(200, null, 'Peminjaman buku berhasil dihapus'));

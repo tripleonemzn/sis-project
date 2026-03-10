@@ -24,7 +24,19 @@ echo "Mode : $MODE"
 echo "Branch: $(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD)"
 echo
 
-mapfile -t DIRTY_FILES < <(git -C "$ROOT_DIR" status --porcelain | sed 's/^.. //')
+read_dirty_files() {
+  git -C "$ROOT_DIR" status --porcelain -z \
+    | while IFS= read -r -d '' entry; do
+        path="${entry:3}"
+        # Handle rename entries: "old -> new"
+        if [[ "$path" == *" -> "* ]]; then
+          path="${path##* -> }"
+        fi
+        printf '%s\n' "$path"
+      done
+}
+
+mapfile -t DIRTY_FILES < <(read_dirty_files)
 
 if [ "${#DIRTY_FILES[@]}" -eq 0 ]; then
   echo "[OK] Working tree clean."
@@ -32,8 +44,7 @@ else
   echo "[WARN] Working tree dirty: ${#DIRTY_FILES[@]} path(s)."
   echo
   echo "Top-level change summary:"
-  git -C "$ROOT_DIR" status --porcelain \
-    | awk '{print $2}' \
+  printf '%s\n' "${DIRTY_FILES[@]}" \
     | cut -d/ -f1 \
     | sort \
     | uniq -c \
@@ -50,7 +61,7 @@ is_allowed_path() {
       [[ "$path" == mobile-app/* || "$path" == scripts/* || "$path" == .gitignore || "$path" == *.md || "$path" == ops/* ]]
       ;;
     web)
-      [[ "$path" == backend/* || "$path" == frontend/* || "$path" == scripts/* || "$path" == mobile-app/* || "$path" == ops/* || "$path" == *.md || "$path" == update_all.sh || "$path" == .gitignore ]]
+      [[ "$path" == backend/* || "$path" == frontend/* || "$path" == scripts/* || "$path" == mobile-app/* || "$path" == ops/* || "$path" == *.md || "$path" == update_all.sh || "$path" == demo_sis.html || "$path" == .gitignore ]]
       ;;
     all)
       return 0

@@ -56,10 +56,24 @@ export default function PrincipalApprovalsScreen() {
       const message = variables.status === 'APPROVED' ? 'Pengajuan disetujui' : 'Pengajuan ditolak';
       notifySuccess(message);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal memproses pengajuan.');
     },
   });
+
+  const approvals = useMemo(() => approvalsQuery.data?.approvals || [], [approvalsQuery.data?.approvals]);
+  const filteredApprovals = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return approvals.filter((item) => {
+      if (statusFilter !== 'ALL' && item.status !== statusFilter) return false;
+      if (!query) return true;
+      const haystacks = [item.title || '', item.description || '', item.requester?.name || '', item.additionalDuty || ''];
+      return haystacks.some((value) => value.toLowerCase().includes(query));
+    });
+  }, [approvals, search, statusFilter]);
+
+  const totalAmount = filteredApprovals.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
+  const pendingCount = approvals.filter((item) => item.status === 'PENDING').length;
 
   if (isLoading) return <AppLoadingScreen message="Memuat persetujuan..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -84,20 +98,6 @@ export default function PrincipalApprovalsScreen() {
       </ScrollView>
     );
   }
-
-  const approvals = approvalsQuery.data?.approvals || [];
-  const filteredApprovals = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return approvals.filter((item) => {
-      if (statusFilter !== 'ALL' && item.status !== statusFilter) return false;
-      if (!query) return true;
-      const haystacks = [item.title || '', item.description || '', item.requester?.name || '', item.additionalDuty || ''];
-      return haystacks.some((value) => value.toLowerCase().includes(query));
-    });
-  }, [approvals, search, statusFilter]);
-
-  const totalAmount = filteredApprovals.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
-  const pendingCount = approvals.filter((item) => item.status === 'PENDING').length;
 
   const handleDecision = (item: PrincipalBudgetRequest, status: 'APPROVED' | 'REJECTED') => {
     const label = status === 'APPROVED' ? 'menyetujui' : 'menolak';

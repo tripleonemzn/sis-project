@@ -29,7 +29,8 @@ echo "   -> Building TypeScript..."
 npm run build
 if [ $? -eq 0 ]; then
     echo "   -> Restarting PM2 Service..."
-    pm2 restart sis-backend
+    pm2 startOrReload "$ROOT_DIR/backend/ecosystem.config.cjs" --only sis-backend --update-env
+    pm2 save >/dev/null 2>&1 || true
     echo "   ✅ Backend updated successfully!"
 else
     echo "   ❌ Backend build failed!"
@@ -40,6 +41,10 @@ fi
 echo ""
 echo "🎨 [2/2] Updating Frontend..."
 cd "$ROOT_DIR/frontend" || exit
+if [ -f "$ROOT_DIR/demo_sis.html" ]; then
+    cp "$ROOT_DIR/demo_sis.html" "$ROOT_DIR/frontend/public/demo_sis.html"
+    echo "   -> Synced demo_sis.html into frontend/public/"
+fi
 echo "   -> Building & Deploying to /var/www/html/..."
 npm run deploy
 if [ $? -eq 0 ]; then

@@ -18,6 +18,46 @@ const loginSchema = z.object({
   password: z.string(),
 });
 
+const getConfiguredDemoUsernames = () => {
+  const raw = String(process.env.DEMO_USERNAMES || 'demo,demo_staff,siswa_demo,ortu_demo');
+  return raw
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item.length > 0);
+};
+
+const isDemoAccount = (username?: string | null) => {
+  const normalizedUsername = String(username || '').trim().toLowerCase();
+  if (!normalizedUsername) return false;
+  const configured = getConfiguredDemoUsernames();
+  return configured.includes(normalizedUsername);
+};
+
+const ME_CACHE_TTL_MS = 5000;
+const meResponseCache = new Map<string, { expiresAt: number; payload: unknown }>();
+
+function buildMeCacheKey(userId: number, isDemo: boolean): string {
+  return `${userId}:${isDemo ? 'demo' : 'real'}`;
+}
+
+function getMeCache(key: string): unknown | null {
+  const now = Date.now();
+  const cached = meResponseCache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= now) {
+    meResponseCache.delete(key);
+    return null;
+  }
+  return cached.payload;
+}
+
+function setMeCache(key: string, payload: unknown) {
+  meResponseCache.set(key, {
+    payload,
+    expiresAt: Date.now() + ME_CACHE_TTL_MS,
+  });
+}
+
 export const register = asyncHandler(async (req: Request, res: Response) => {
   const body = registerSchema.parse(req.body);
 
@@ -84,16 +124,26 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     throw new ApiError(403, 'Akun belum diverifikasi oleh admin');
   }
 
-  const token = generateToken({ id: user.id, role: user.role });
+  const isDemo = isDemoAccount(user.username);
+  const token = generateToken({ id: user.id, role: user.role, isDemo });
 
   const { password: _, ...userWithoutPassword } = user;
+  const responseUser = { ...userWithoutPassword, isDemo };
 
   res.status(200).json(
-    new ApiResponse(200, { user: userWithoutPassword, token }, 'Login berhasil')
+    new ApiResponse(200, { user: responseUser, token }, 'Login berhasil')
   );
 });
 
 export const getMe = asyncHandler(async (req: any, res: Response) => {
+  const requestIsDemo = Boolean(req.user?.isDemo);
+  const cacheKey = buildMeCacheKey(req.user.id, requestIsDemo);
+  const cachedPayload = getMeCache(cacheKey);
+  if (cachedPayload) {
+    res.setHeader('Cache-Control', 'private, max-age=5');
+    return res.status(200).json(new ApiResponse(200, cachedPayload, 'Profil pengguna berhasil diambil'));
+  }
+
   const user = await prisma.user.findUnique({
     where: { id: req.user.id },
     include: {
@@ -126,8 +176,13 @@ export const getMe = asyncHandler(async (req: any, res: Response) => {
   }
 
   const { password, ...userWithoutPassword } = user;
+  const isDemo = Boolean(req.user?.isDemo) || isDemoAccount(user.username);
+  const responseUser = { ...userWithoutPassword, isDemo };
+  const normalizedCacheKey = buildMeCacheKey(req.user.id, isDemo);
+  setMeCache(normalizedCacheKey, responseUser);
+  res.setHeader('Cache-Control', 'private, max-age=5');
 
-  res.status(200).json(new ApiResponse(200, userWithoutPassword, 'Profil pengguna berhasil diambil'));
+  res.status(200).json(new ApiResponse(200, responseUser, 'Profil pengguna berhasil diambil'));
 });
 
 // Register Calon Siswa (PPDB) using NISN and password

@@ -33,6 +33,8 @@ export interface BudgetRequest {
   } | null;
   workProgram?: {
     id: number;
+    title?: string | null;
+    semester?: 'ODD' | 'EVEN' | null;
     major?: {
       name: string;
     } | null;

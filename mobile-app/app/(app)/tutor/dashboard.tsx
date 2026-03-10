@@ -48,6 +48,13 @@ export default function TutorDashboardScreen() {
     queryFn: () => tutorApi.listAssignments(activeYearQuery.data?.id),
   });
 
+  const assignments = useMemo(() => assignmentsQuery.data || [], [assignmentsQuery.data]);
+  const activeAssignments = assignments.filter((item) => item.isActive);
+
+  const uniqueEkskulCount = useMemo(() => {
+    return new Set(assignments.map((item) => item.ekskulId)).size;
+  }, [assignments]);
+
   if (isLoading) return <AppLoadingScreen message="Memuat dashboard pembina..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
@@ -59,13 +66,6 @@ export default function TutorDashboardScreen() {
       </ScrollView>
     );
   }
-
-  const assignments = assignmentsQuery.data || [];
-  const activeAssignments = assignments.filter((item) => item.isActive);
-
-  const uniqueEkskulCount = useMemo(() => {
-    return new Set(assignments.map((item) => item.ekskulId)).size;
-  }, [assignments]);
 
   return (
     <ScrollView

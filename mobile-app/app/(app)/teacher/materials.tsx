@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
@@ -110,16 +110,10 @@ export default function TeacherMaterialsScreen() {
   const [assignmentPublished, setAssignmentPublished] = useState(false);
   const [assignmentFile, setAssignmentFile] = useState<{ uri: string; name?: string; mimeType?: string } | null>(null);
 
-  const assignmentOptions = teacherAssignmentsQuery.data?.assignments || [];
-
-  useEffect(() => {
-    if (!materialAssignmentId && assignmentOptions.length > 0) {
-      setMaterialAssignmentId(assignmentOptions[0].id);
-    }
-    if (!assignmentAssignmentId && assignmentOptions.length > 0) {
-      setAssignmentAssignmentId(assignmentOptions[0].id);
-    }
-  }, [materialAssignmentId, assignmentAssignmentId, assignmentOptions]);
+  const assignmentOptions = useMemo(
+    () => teacherAssignmentsQuery.data?.assignments || [],
+    [teacherAssignmentsQuery.data?.assignments],
+  );
 
   const getPublicFileUrl = useCallback((fileUrl?: string | null) => {
     if (!fileUrl) return null;
@@ -144,10 +138,25 @@ export default function TeacherMaterialsScreen() {
     [getPublicFileUrl, router],
   );
 
+  const materialAssignmentSelectionId = useMemo(() => {
+    if (assignmentOptions.length === 0) return null;
+    if (materialAssignmentId && assignmentOptions.some((item) => item.id === materialAssignmentId)) {
+      return materialAssignmentId;
+    }
+    return assignmentOptions[0].id;
+  }, [assignmentOptions, materialAssignmentId]);
+  const assignmentAssignmentSelectionId = useMemo(() => {
+    if (assignmentOptions.length === 0) return null;
+    if (assignmentAssignmentId && assignmentOptions.some((item) => item.id === assignmentAssignmentId)) {
+      return assignmentAssignmentId;
+    }
+    return assignmentOptions[0].id;
+  }, [assignmentAssignmentId, assignmentOptions]);
+
   const selectedMaterialAssignment =
-    assignmentOptions.find((item) => item.id === materialAssignmentId) || null;
+    assignmentOptions.find((item) => item.id === materialAssignmentSelectionId) || null;
   const selectedAssignmentAssignment =
-    assignmentOptions.find((item) => item.id === assignmentAssignmentId) || null;
+    assignmentOptions.find((item) => item.id === assignmentAssignmentSelectionId) || null;
   const selectedFilterAssignment = assignmentOptions.find((item) => item.id === filterAssignmentId) || null;
 
   const resolveAssignmentOption = useCallback(
@@ -292,7 +301,7 @@ export default function TeacherMaterialsScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-teacher-materials', user?.id] });
       notifySuccess('Materi berhasil dibuat.');
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal membuat materi.');
     },
   });
@@ -319,7 +328,7 @@ export default function TeacherMaterialsScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-teacher-materials', user?.id] });
       notifySuccess('Materi berhasil diperbarui.');
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal memperbarui materi.');
     },
   });
@@ -353,7 +362,7 @@ export default function TeacherMaterialsScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-teacher-materials', user?.id] });
       notifySuccess('Tugas berhasil dibuat.');
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal membuat tugas.');
     },
   });
@@ -388,7 +397,7 @@ export default function TeacherMaterialsScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-teacher-materials', user?.id] });
       notifySuccess('Tugas berhasil diperbarui.');
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal memperbarui tugas.');
     },
   });
@@ -416,7 +425,7 @@ export default function TeacherMaterialsScreen() {
       setDeleteTarget(null);
       notifySuccess('Materi berhasil dihapus.');
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal menghapus materi.');
     },
   });
@@ -428,7 +437,7 @@ export default function TeacherMaterialsScreen() {
       setDeleteTarget(null);
       notifySuccess('Tugas berhasil dihapus.');
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal menghapus tugas.');
     },
   });
@@ -450,7 +459,7 @@ export default function TeacherMaterialsScreen() {
       setSelectedCopyClassIds([]);
       notifySuccess('Data berhasil disalin ke kelas tujuan.');
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal menyalin data.');
     },
   });
@@ -659,7 +668,7 @@ export default function TeacherMaterialsScreen() {
 
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
                   {assignmentOptions.map((item) => {
-                    const selected = materialAssignmentId === item.id;
+                    const selected = materialAssignmentSelectionId === item.id;
                     return (
                       <View key={item.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
                         <Pressable
@@ -855,7 +864,7 @@ export default function TeacherMaterialsScreen() {
 
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
                   {assignmentOptions.map((item) => {
-                    const selected = assignmentAssignmentId === item.id;
+                    const selected = assignmentAssignmentSelectionId === item.id;
                     return (
                       <View key={item.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
                         <Pressable

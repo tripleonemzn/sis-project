@@ -18,6 +18,32 @@ const getErrorMessage = (error: unknown) => {
   return 'Terjadi kesalahan';
 };
 
+type RankingStudent = {
+  id?: number;
+  name?: string;
+  nis?: string | null;
+  nisn?: string | null;
+};
+
+type ClassRankingRow = {
+  student?: RankingStudent | null;
+  totalScore?: number | null;
+  averageScore?: number | null;
+  rank?: number | null;
+};
+
+type ClassRankingResponse = {
+  rankings: ClassRankingRow[];
+};
+
+const normalizeRankingResponse = (payload: unknown): ClassRankingResponse | null => {
+  if (!payload || typeof payload !== 'object') return null;
+  const row = payload as { rankings?: unknown };
+  return {
+    rankings: Array.isArray(row.rankings) ? (row.rankings as ClassRankingRow[]) : [],
+  };
+};
+
 export const ReportCardsPage = () => {
   const location = useLocation();
   const isPrincipalRoute = location.pathname.startsWith('/principal');
@@ -129,7 +155,7 @@ export const ReportCardsPage = () => {
     enabled: false,
   });
 
-  const rankingData: any = useMemo(() => rankingResponse || null, [rankingResponse]);
+  const rankingData = useMemo(() => normalizeRankingResponse(rankingResponse), [rankingResponse]);
   const rankings = useMemo(
     () =>
       Array.isArray(rankingData?.rankings)
@@ -152,7 +178,7 @@ export const ReportCardsPage = () => {
     }
 
     const scores: number[] = [];
-    rankings.forEach((row: any) => {
+    rankings.forEach((row) => {
       if (typeof row.averageScore === 'number') {
         scores.push(row.averageScore);
       }
@@ -204,8 +230,7 @@ export const ReportCardsPage = () => {
 
     try {
       const result = await refetchRanking();
-      const fetchedRankings =
-        Array.isArray((result.data as any)?.rankings) ? (result.data as any).rankings : [];
+      const fetchedRankings = normalizeRankingResponse(result.data)?.rankings || [];
       if (!fetchedRankings.length) {
         toast('Belum ada data peringkat untuk filter ini', { icon: 'ℹ️' });
       }
@@ -663,7 +688,7 @@ export const ReportCardsPage = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {rankings.map((row: any, index: number) => (
+                  {rankings.map((row, index: number) => (
                     <tr key={row.student?.id ?? `rank-${index}`} className="hover:bg-gray-50">
                       <td className="px-6 py-3 text-gray-500 text-center">{index + 1}</td>
                       <td className="px-6 py-3 text-gray-700 whitespace-nowrap text-xs">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -44,19 +44,21 @@ export default function ParentAttendanceScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [cursorDate, setCursorDate] = useState(() => new Date());
-  const [selectedChildId, setSelectedChildId] = useState<number | null>(null);
+  const [manualSelectedChildId, setManualSelectedChildId] = useState<number | null>(null);
   const { month, year } = toMonthYear(cursorDate);
 
   const childrenQuery = useParentChildrenQuery({ enabled: isAuthenticated, user });
-  const children = childrenQuery.data?.children || [];
-
-  useEffect(() => {
-    if (!children.length) return;
+  const children = useMemo(() => childrenQuery.data?.children ?? [], [childrenQuery.data?.children]);
+  const selectedChildId = useMemo(() => {
+    if (!children.length) return null;
+    if (manualSelectedChildId && children.some((child) => child.id === manualSelectedChildId)) {
+      return manualSelectedChildId;
+    }
     const queryChildId = params.childId ? Number(params.childId) : null;
-    const defaultChildId =
-      queryChildId && children.some((child) => child.id === queryChildId) ? queryChildId : children[0].id;
-    setSelectedChildId((prev) => prev ?? defaultChildId);
-  }, [children, params.childId]);
+    const validQueryChildId =
+      queryChildId && children.some((child) => child.id === queryChildId) ? queryChildId : null;
+    return validQueryChildId ?? children[0].id;
+  }, [children, manualSelectedChildId, params.childId]);
 
   const attendanceQuery = useParentChildAttendanceQuery({
     enabled: isAuthenticated,
@@ -65,6 +67,20 @@ export default function ParentAttendanceScreen() {
     month,
     year,
   });
+
+  const selectedChild = children.find((child) => child.id === selectedChildId) || null;
+  const records = useMemo(() => attendanceQuery.data?.records || [], [attendanceQuery.data?.records]);
+  const stats = useMemo(() => {
+    const result = { present: 0, sick: 0, permission: 0, absent: 0, late: 0 };
+    for (const item of records) {
+      if (item.status === 'PRESENT') result.present += 1;
+      if (item.status === 'SICK') result.sick += 1;
+      if (item.status === 'PERMISSION') result.permission += 1;
+      if (item.status === 'ABSENT' || item.status === 'ALPHA') result.absent += 1;
+      if (item.status === 'LATE') result.late += 1;
+    }
+    return result;
+  }, [records]);
 
   if (isLoading) return <AppLoadingScreen message="Memuat absensi anak..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -89,20 +105,6 @@ export default function ParentAttendanceScreen() {
       </ScrollView>
     );
   }
-
-  const selectedChild = children.find((child) => child.id === selectedChildId) || null;
-  const records = attendanceQuery.data?.records || [];
-  const stats = useMemo(() => {
-    const result = { present: 0, sick: 0, permission: 0, absent: 0, late: 0 };
-    for (const item of records) {
-      if (item.status === 'PRESENT') result.present += 1;
-      if (item.status === 'SICK') result.sick += 1;
-      if (item.status === 'PERMISSION') result.permission += 1;
-      if (item.status === 'ABSENT' || item.status === 'ALPHA') result.absent += 1;
-      if (item.status === 'LATE') result.late += 1;
-    }
-    return result;
-  }, [records]);
 
   const moveMonth = (offset: number) => {
     setCursorDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
@@ -142,7 +144,7 @@ export default function ParentAttendanceScreen() {
                 return (
                   <View key={child.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
                     <Pressable
-                      onPress={() => setSelectedChildId(child.id)}
+                      onPress={() => setManualSelectedChildId(child.id)}
                       style={{
                         borderWidth: 1,
                         borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',

@@ -19,8 +19,7 @@ import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { getApiErrorMessage } from '../../src/lib/api/errorMessage';
 import { authService } from '../../src/features/auth/authService';
 import { BRAND_COLORS } from '../../src/config/brand';
-
-const logoSource = require('../../src/assets/logo_sis_kgb2.png');
+import logoSource from '../../src/assets/logo_sis_kgb2.png';
 
 const registerSchema = z
   .object({

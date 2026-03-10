@@ -127,7 +127,7 @@ export default function ExaminerSchemesScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-examiner-schemes', user?.id] });
       await schemesQuery.refetch();
     },
-    onError: (error: any) => notifyApiError(error, 'Gagal membuat skema UKK.'),
+    onError: (error: unknown) => notifyApiError(error, 'Gagal membuat skema UKK.'),
   });
 
   const updateMutation = useMutation({
@@ -148,7 +148,7 @@ export default function ExaminerSchemesScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-examiner-schemes', user?.id] });
       await schemesQuery.refetch();
     },
-    onError: (error: any) => notifyApiError(error, 'Gagal memperbarui skema UKK.'),
+    onError: (error: unknown) => notifyApiError(error, 'Gagal memperbarui skema UKK.'),
   });
 
   const deleteMutation = useMutation({
@@ -159,10 +159,10 @@ export default function ExaminerSchemesScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-examiner-schemes', user?.id] });
       await schemesQuery.refetch();
     },
-    onError: (error: any) => notifyApiError(error, 'Gagal menghapus skema UKK.'),
+    onError: (error: unknown) => notifyApiError(error, 'Gagal menghapus skema UKK.'),
   });
 
-  const schemes = schemesQuery.data?.schemes || [];
+  const schemes = useMemo(() => schemesQuery.data?.schemes ?? [], [schemesQuery.data?.schemes]);
   const filteredSchemes = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return schemes;

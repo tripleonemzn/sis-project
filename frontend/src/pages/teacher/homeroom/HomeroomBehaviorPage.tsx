@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
+import type { User } from '../../../types/auth';
+import type { Class } from '../../../services/class.service';
 import { 
   Plus,
   Search,
@@ -15,10 +17,14 @@ import {
   ThumbsDown,
   X,
 } from 'lucide-react';
-import { behaviorService, type BehaviorType, type CreateBehaviorPayload, type UpdateBehaviorPayload } from '../../../services/behavior.service';
+import { behaviorService, type BehaviorType, type CreateBehaviorPayload, type UpdateBehaviorPayload, type StudentBehavior } from '../../../services/behavior.service';
 import { classService } from '../../../services/class.service';
 import { authService } from '../../../services/auth.service';
 import { toast } from 'react-hot-toast';
+
+interface HomeroomClass extends Class {
+  students: User[];
+}
 
 export const HomeroomBehaviorPage = () => {
   const queryClient = useQueryClient();
@@ -38,7 +44,7 @@ export const HomeroomBehaviorPage = () => {
     semester: ''
   });
 
-  const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<{ user: any, activeYear: any }>() || {};
+  const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<{ user: User, activeYear: { id: number; name: string } }>() || {};
 
   // 1. Get Current User via Query (Database Persistence)
   const { data: authData } = useQuery({
@@ -59,7 +65,7 @@ export const HomeroomBehaviorPage = () => {
     queryFn: async () => {
       if (!user?.id) return null;
       const response = await classService.list({ teacherId: user.id, limit: 100 });
-      const activeClass = response.data.classes.find((c: any) => c.academicYearId === activeAcademicYear?.id);
+      const activeClass = response.data.classes.find((c: Class) => c.academicYearId === activeAcademicYear?.id);
       return activeClass || null;
     },
     enabled: !!user?.id && user?.role === 'TEACHER' && !!activeAcademicYear?.id,
@@ -70,7 +76,7 @@ export const HomeroomBehaviorPage = () => {
     queryKey: ['homeroom-class-details', classSummary?.id],
     queryFn: async () => {
       const response = await classService.getById(classSummary!.id);
-      return response.data;
+      return response.data as HomeroomClass;
     },
     enabled: !!classSummary?.id,
   });
@@ -110,8 +116,9 @@ export const HomeroomBehaviorPage = () => {
       resetForm();
       toast.success('Catatan perilaku berhasil ditambahkan');
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menambahkan catatan');
+    onError: (error: unknown) => {
+      const err = error as { response?: { data?: { message?: string } } };
+      toast.error(err.response?.data?.message || 'Gagal menambahkan catatan');
     }
   });
 
@@ -123,8 +130,9 @@ export const HomeroomBehaviorPage = () => {
       resetForm();
       toast.success('Catatan perilaku berhasil diperbarui');
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal memperbarui catatan');
+    onError: (error: unknown) => {
+      const err = error as { response?: { data?: { message?: string } } };
+      toast.error(err.response?.data?.message || 'Gagal memperbarui catatan');
     }
   });
 
@@ -134,8 +142,9 @@ export const HomeroomBehaviorPage = () => {
       queryClient.invalidateQueries({ queryKey: ['behaviors'] });
       toast.success('Catatan perilaku berhasil dihapus');
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menghapus catatan');
+    onError: (error: unknown) => {
+      const err = error as { response?: { data?: { message?: string } } };
+      toast.error(err.response?.data?.message || 'Gagal menghapus catatan');
     }
   });
 
@@ -144,6 +153,7 @@ export const HomeroomBehaviorPage = () => {
     if (!classSummary || !activeAcademicYear || !formData.studentId) return;
 
     // Destructure semester out as it is not part of the API payload
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { semester, ...restFormData } = formData;
 
     const payload = {
@@ -159,7 +169,7 @@ export const HomeroomBehaviorPage = () => {
     }
   };
 
-  const handleEdit = (behavior: any) => {
+  const handleEdit = (behavior: StudentBehavior) => {
     setEditingId(behavior.id);
     setFormData({
       studentId: behavior.studentId,
@@ -196,13 +206,16 @@ export const HomeroomBehaviorPage = () => {
 
   const students = homeroomClass?.students || [];
 
-  const filteredStudents = students.filter((student: any) => 
-    student.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
-    student.nis?.toLowerCase().includes(studentSearch.toLowerCase()) ||
-    student.nisn?.toLowerCase().includes(studentSearch.toLowerCase())
-  );
+  const filteredStudents = students.filter((student: User) => {
+    const searchLower = studentSearch.toLowerCase();
+    return (
+      student.name.toLowerCase().includes(searchLower) ||
+      student.nis?.toLowerCase().includes(searchLower) ||
+      student.nisn?.toLowerCase().includes(searchLower)
+    );
+  });
 
-  const selectedStudent = students.find((s: any) => s.id === formData.studentId);
+  const selectedStudent = students.find((s: User) => s.id === formData.studentId);
 
   const handleStudentSelect = (studentId: number) => {
     setFormData({ ...formData, studentId });
@@ -212,6 +225,7 @@ export const HomeroomBehaviorPage = () => {
 
   // Reset pagination on tab/filter/search change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPage(1);
   }, [activeTab, typeFilter, search]);
 
@@ -360,7 +374,7 @@ export const HomeroomBehaviorPage = () => {
                   </td>
                 </tr>
               ) : (
-                behaviors.map((behavior: any, index: number) => (
+                behaviors.map((behavior: StudentBehavior, index: number) => (
                   <tr key={behavior.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-sm text-gray-500">
                       {(page - 1) * limit + index + 1}
@@ -572,7 +586,7 @@ export const HomeroomBehaviorPage = () => {
                           Siswa tidak ditemukan
                         </div>
                       ) : (
-                        filteredStudents.map((student: any) => (
+                        filteredStudents.map((student: User) => (
                           <div
                             key={student.id}
                             onClick={() => handleStudentSelect(student.id)}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useOutletContext, useNavigate, useLocation } from 'react-router-dom';
 import { 
@@ -26,6 +26,7 @@ import {
   type RoomCategory,
   type LibraryBookLoan,
   type LibraryBorrowerStatus,
+  type LibraryLoanBookOption,
   type LibraryLoanClassOption,
 } from '../../../../services/inventory.service';
 import {
@@ -35,6 +36,11 @@ import {
 } from '../../../../features/inventory/inventoryTemplateProfiles';
 import { authService } from '../../../../services/auth.service';
 import toast from 'react-hot-toast';
+
+type InventoryHubContextUser = {
+  role?: string;
+  additionalDuties?: string[] | null;
+};
 
 const INVENTORY_TEMPLATE_OPTIONS: Array<{
   key: InventoryTemplateKey;
@@ -162,10 +168,19 @@ function getLibraryLoanStatusMeta(loan: LibraryBookLoan, finePerDay = 1000): Lib
   };
 }
 
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'object' && error !== null) {
+    const err = error as { response?: { data?: { message?: string } }; message?: string };
+    return err.response?.data?.message || err.message || fallback;
+  }
+  return fallback;
+};
+
 export const InventoryHubPage = () => {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const currentTabId = searchParams.get('tab');
+  const libraryTabParam = String(searchParams.get('libraryTab') || '').toUpperCase();
   // Derive filter from URL param or pathname context
   let filterParam = (searchParams.get('filter') || '').toLowerCase(); // 'lab' | 'library' | ''
   const pathname = location.pathname.toLowerCase();
@@ -179,16 +194,15 @@ export const InventoryHubPage = () => {
   const [isEditRoomModalOpen, setIsEditRoomModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [libraryTab, setLibraryTab] = useState<'INVENTARIS' | 'PEMINJAMAN'>('INVENTARIS');
   const [loanStatusFilter, setLoanStatusFilter] = useState<'ALL' | 'BORROWED' | 'OVERDUE' | 'RETURNED'>('ALL');
   const [isLoanModalOpen, setIsLoanModalOpen] = useState(false);
   const [editingLoanId, setEditingLoanId] = useState<number | null>(null);
   const [loanBorrowDate, setLoanBorrowDate] = useState(todayDateInput());
+  const [loanBorrowQty, setLoanBorrowQty] = useState('1');
   const [loanBorrowerName, setLoanBorrowerName] = useState('');
   const [loanBorrowerStatus, setLoanBorrowerStatus] = useState<LibraryBorrowerStatus>('STUDENT');
   const [loanClassId, setLoanClassId] = useState<number | null>(null);
   const [loanBookTitle, setLoanBookTitle] = useState('');
-  const [loanPublishYear, setLoanPublishYear] = useState('');
   const [loanReturnDate, setLoanReturnDate] = useState('');
   const [loanPhoneNumber, setLoanPhoneNumber] = useState('');
   const [isClassDropdownOpen, setIsClassDropdownOpen] = useState(false);
@@ -198,7 +212,7 @@ export const InventoryHubPage = () => {
   
   const queryClient = useQueryClient(); // Ensure this is available if not already
   
-  const { user: contextUser } = useOutletContext<{ user: any }>() || {};
+  const { user: contextUser } = useOutletContext<{ user?: InventoryHubContextUser }>() || {};
   const { data: authData } = useQuery({
     queryKey: ['me'],
     queryFn: authService.getMe,
@@ -209,25 +223,47 @@ export const InventoryHubPage = () => {
   const user = contextUser || authData?.data;
 
   // Check if user has write access (Wakasek Sarpras or Secretary)
-  const canEdit = user?.role === 'ADMIN' || 
-                  user?.additionalDuties?.includes('WAKASEK_SARPRAS') || 
-                  user?.additionalDuties?.includes('SEKRETARIS_SARPRAS');
+  const canEdit = Boolean(
+    user?.role === 'ADMIN' ||
+      user?.additionalDuties?.includes('WAKASEK_SARPRAS') ||
+      user?.additionalDuties?.includes('SEKRETARIS_SARPRAS'),
+  );
   const canManageLibraryLoans =
     canEdit || user?.additionalDuties?.includes('KEPALA_PERPUSTAKAAN');
   const isLibraryScope = filterParam === 'library';
+  const libraryTab: 'INVENTARIS' | 'PEMINJAMAN' =
+    isLibraryScope && libraryTabParam === 'PEMINJAMAN' ? 'PEMINJAMAN' : 'INVENTARIS';
+
+  const setLibraryTabInUrl = useCallback(
+    (nextTab: 'INVENTARIS' | 'PEMINJAMAN') => {
+      if (nextTab !== 'PEMINJAMAN') {
+        setLoanStatusFilter('ALL');
+        setSearchQuery('');
+      }
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev);
+        if (nextTab === 'PEMINJAMAN') {
+          params.set('libraryTab', 'PEMINJAMAN');
+        } else {
+          params.delete('libraryTab');
+        }
+        return params;
+      }, { replace: true });
+    },
+    [setSearchParams],
+  );
 
   useEffect(() => {
     if (!isLibraryScope) {
-      setLibraryTab('INVENTARIS');
+      if (searchParams.get('libraryTab')) {
+        setSearchParams((prev) => {
+          const params = new URLSearchParams(prev);
+          params.delete('libraryTab');
+          return params;
+        }, { replace: true });
+      }
     }
-  }, [isLibraryScope]);
-
-  useEffect(() => {
-    if (!isLibraryScope || libraryTab !== 'PEMINJAMAN') {
-      setLoanStatusFilter('ALL');
-      setSearchQuery('');
-    }
-  }, [isLibraryScope, libraryTab]);
+  }, [isLibraryScope, searchParams, setSearchParams]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -244,11 +280,11 @@ export const InventoryHubPage = () => {
   const resetLoanEditor = () => {
     setEditingLoanId(null);
     setLoanBorrowDate(todayDateInput());
+    setLoanBorrowQty('1');
     setLoanBorrowerName('');
     setLoanBorrowerStatus('STUDENT');
     setLoanClassId(null);
     setLoanBookTitle('');
-    setLoanPublishYear('');
     setLoanReturnDate('');
     setLoanPhoneNumber('');
     setIsClassDropdownOpen(false);
@@ -285,8 +321,8 @@ export const InventoryHubPage = () => {
         setSearchParams({});
       }
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menghapus kategori');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menghapus kategori'));
     }
   });
 
@@ -330,6 +366,12 @@ export const InventoryHubPage = () => {
     enabled: isLibraryScope,
   });
 
+  const { data: loanBookOptionsData, isLoading: isLoanBookOptionsLoading } = useQuery({
+    queryKey: ['libraryLoanBookOptions'],
+    queryFn: () => inventoryService.listLibraryLoanBookOptions(),
+    enabled: isLibraryScope && libraryTab === 'PEMINJAMAN',
+  });
+
   const { data: loanSettingsData, isLoading: isLoanSettingsLoading } = useQuery({
     queryKey: ['libraryLoanSettings'],
     queryFn: inventoryService.getLibraryLoanSettings,
@@ -340,11 +382,17 @@ export const InventoryHubPage = () => {
 
   useEffect(() => {
     if (!isLibraryScope) return;
-    setLoanFinePerDayInput(String(loanFinePerDay));
+    const timerId = window.setTimeout(() => {
+      setLoanFinePerDayInput(String(loanFinePerDay));
+    }, 0);
+    return () => {
+      window.clearTimeout(timerId);
+    };
   }, [isLibraryScope, loanFinePerDay]);
 
   const libraryLoanClasses: LibraryLoanClassOption[] = loanClassesData?.data || [];
-  const libraryLoans: LibraryBookLoan[] = loansData?.data || [];
+  const libraryLoanBookOptions: LibraryLoanBookOption[] = loanBookOptionsData?.data || [];
+  const libraryLoans: LibraryBookLoan[] = useMemo(() => loansData?.data || [], [loansData?.data]);
   const loanRows = useMemo(
     () => libraryLoans.map((loan) => ({ loan, status: getLibraryLoanStatusMeta(loan, loanFinePerDay) })),
     [libraryLoans, loanFinePerDay],
@@ -396,8 +444,23 @@ export const InventoryHubPage = () => {
       if (!loanBorrowDate.trim()) throw new Error('Tanggal pinjam wajib diisi.');
       if (!loanBorrowerName.trim()) throw new Error('Nama peminjam wajib diisi.');
       if (!loanBookTitle.trim()) throw new Error('Judul buku wajib diisi.');
+      const parsedBorrowQty = Math.trunc(Number(loanBorrowQty));
+      if (!Number.isFinite(parsedBorrowQty) || parsedBorrowQty < 1) {
+        throw new Error('Jumlah pinjam minimal 1 buku.');
+      }
       if (loanBorrowerStatus === 'STUDENT' && !loanClassId) {
         throw new Error('Pilih kelas untuk peminjam siswa.');
+      }
+      const selectedBook = libraryLoanBookOptions.find(
+        (option) => option.title.toLowerCase() === loanBookTitle.trim().toLowerCase(),
+      );
+      if (!selectedBook) {
+        throw new Error('Judul buku harus dipilih dari daftar inventaris perpustakaan.');
+      }
+      if (!editingLoanId && selectedBook.availableQty < parsedBorrowQty) {
+        throw new Error(
+          `Stok "${selectedBook.title}" tidak cukup. Tersedia ${selectedBook.availableQty}, diminta ${parsedBorrowQty}.`,
+        );
       }
       if (loanReturnDate.trim()) {
         const parsedReturnDate = new Date(`${loanReturnDate.trim()}T00:00:00.000Z`);
@@ -406,22 +469,14 @@ export const InventoryHubPage = () => {
         }
       }
 
-      let publishYear: number | undefined;
-      if (loanPublishYear.trim()) {
-        const parsedYear = Number(loanPublishYear.trim());
-        if (!Number.isFinite(parsedYear)) {
-          throw new Error('Tahun terbit harus berupa angka.');
-        }
-        publishYear = Math.max(1900, Math.min(2100, Math.round(parsedYear)));
-      }
-
       const payload = {
         borrowDate: loanBorrowDate.trim(),
+        borrowQty: parsedBorrowQty,
         borrowerName: loanBorrowerName.trim(),
         borrowerStatus: loanBorrowerStatus,
         classId: loanBorrowerStatus === 'STUDENT' ? loanClassId : null,
         bookTitle: loanBookTitle.trim(),
-        publishYear,
+        publishYear: selectedBook.publishYear || undefined,
         returnDate: loanReturnDate.trim() || null,
         phoneNumber: loanPhoneNumber.trim() || undefined,
       };
@@ -440,9 +495,10 @@ export const InventoryHubPage = () => {
       resetLoanEditor();
       setIsLoanModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ['libraryBookLoans'] });
+      queryClient.invalidateQueries({ queryKey: ['libraryLoanBookOptions'] });
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || error?.message || 'Gagal menyimpan data peminjaman buku.');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menyimpan data peminjaman buku.'));
     },
   });
 
@@ -461,8 +517,8 @@ export const InventoryHubPage = () => {
       queryClient.invalidateQueries({ queryKey: ['libraryLoanSettings'] });
       queryClient.invalidateQueries({ queryKey: ['libraryBookLoans'] });
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || error?.message || 'Gagal memperbarui tarif denda.');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal memperbarui tarif denda.'));
     },
   });
 
@@ -472,9 +528,10 @@ export const InventoryHubPage = () => {
       toast.success('Peminjaman buku berhasil dihapus.');
       resetLoanEditor();
       queryClient.invalidateQueries({ queryKey: ['libraryBookLoans'] });
+      queryClient.invalidateQueries({ queryKey: ['libraryLoanBookOptions'] });
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Gagal menghapus data peminjaman buku.');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menghapus data peminjaman buku.'));
     },
   });
 
@@ -487,26 +544,36 @@ export const InventoryHubPage = () => {
     onSuccess: () => {
       toast.success('Status pengembalian diperbarui menjadi Dikembalikan.');
       queryClient.invalidateQueries({ queryKey: ['libraryBookLoans'] });
+      queryClient.invalidateQueries({ queryKey: ['libraryLoanBookOptions'] });
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Gagal memperbarui status pengembalian.');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal memperbarui status pengembalian.'));
     },
   });
 
   const handleEditLoan = (loan: LibraryBookLoan) => {
     setEditingLoanId(loan.id);
     setLoanBorrowDate(toInputDate(loan.borrowDate) || todayDateInput());
+    setLoanBorrowQty(String(Math.max(1, loan.borrowQty || 1)));
     setLoanBorrowerName(loan.borrowerName || '');
     setLoanBorrowerStatus(loan.borrowerStatus);
     setLoanClassId(loan.classId || null);
     setLoanBookTitle(loan.bookTitle || '');
-    setLoanPublishYear(loan.publishYear ? String(loan.publishYear) : '');
     setLoanReturnDate(toInputDate(loan.returnDate) || '');
     setLoanPhoneNumber(loan.phoneNumber || '');
     setClassSearch('');
     setIsClassDropdownOpen(false);
     setIsLoanModalOpen(true);
   };
+
+  useEffect(() => {
+    if (!isLoanModalOpen) return;
+    if (loanBookTitle.trim()) return;
+    const firstAvailable = libraryLoanBookOptions.find((option) => option.availableQty > 0);
+    if (firstAvailable) {
+      setLoanBookTitle(firstAvailable.title);
+    }
+  }, [isLoanModalOpen, loanBookTitle, libraryLoanBookOptions]);
 
   const handleDeleteLoan = (loan: LibraryBookLoan) => {
     if (confirm(`Hapus data peminjaman "${loan.borrowerName}" untuk buku "${loan.bookTitle}"?`)) {
@@ -568,7 +635,7 @@ export const InventoryHubPage = () => {
           <div className="border-b border-gray-200 mb-4">
             <div className="flex overflow-x-auto gap-4 pb-1 scrollbar-hide">
               <button
-                onClick={() => setLibraryTab('INVENTARIS')}
+                onClick={() => setLibraryTabInUrl('INVENTARIS')}
                 className={`
                   flex items-center gap-2 px-4 py-3 border-b-2 whitespace-nowrap transition-colors
                   ${
@@ -582,7 +649,7 @@ export const InventoryHubPage = () => {
                 Inventaris Perpustakaan
               </button>
               <button
-                onClick={() => setLibraryTab('PEMINJAMAN')}
+                onClick={() => setLibraryTabInUrl('PEMINJAMAN')}
                 className={`
                   flex items-center gap-2 px-4 py-3 border-b-2 whitespace-nowrap transition-colors
                   ${
@@ -782,6 +849,7 @@ export const InventoryHubPage = () => {
                       <th className="text-left px-3 py-2">Status Peminjam</th>
                       <th className="text-left px-3 py-2">Kelas</th>
                       <th className="text-left px-3 py-2">Judul Buku</th>
+                      <th className="text-left px-3 py-2">Jumlah</th>
                       <th className="text-left px-3 py-2">Thn. Terbit</th>
                       <th className="text-left px-3 py-2">Tgl. Pengembalian</th>
                       <th className="text-left px-3 py-2">Status</th>
@@ -798,6 +866,7 @@ export const InventoryHubPage = () => {
                         <td className="px-3 py-2">{loan.borrowerStatus === 'STUDENT' ? 'Siswa' : 'Guru'}</td>
                         <td className="px-3 py-2">{loan.borrowerStatus === 'STUDENT' ? resolveClassLabel(loan.class) : '-'}</td>
                         <td className="px-3 py-2">{loan.bookTitle}</td>
+                        <td className="px-3 py-2">{Math.max(1, loan.borrowQty || 1)}</td>
                         <td className="px-3 py-2">{loan.publishYear || '-'}</td>
                         <td className="px-3 py-2">{loan.returnDate ? formatDateLabel(loan.returnDate) : '-'}</td>
                         <td className="px-3 py-2">
@@ -889,11 +958,13 @@ export const InventoryHubPage = () => {
         <LibraryLoanModal
           editingLoanId={editingLoanId}
           borrowDate={loanBorrowDate}
+          borrowQty={loanBorrowQty}
           borrowerName={loanBorrowerName}
           borrowerStatus={loanBorrowerStatus}
           classId={loanClassId}
           bookTitle={loanBookTitle}
-          publishYear={loanPublishYear}
+          bookOptions={libraryLoanBookOptions}
+          isBookOptionsLoading={isLoanBookOptionsLoading}
           returnDate={loanReturnDate}
           phoneNumber={loanPhoneNumber}
           classOptions={libraryLoanClasses}
@@ -909,6 +980,7 @@ export const InventoryHubPage = () => {
             resetLoanEditor();
           }}
           onChangeBorrowDate={setLoanBorrowDate}
+          onChangeBorrowQty={setLoanBorrowQty}
           onChangeBorrowerName={setLoanBorrowerName}
           onChangeBorrowerStatus={(value) => {
             setLoanBorrowerStatus(value);
@@ -920,7 +992,6 @@ export const InventoryHubPage = () => {
           }}
           onChangeClassId={setLoanClassId}
           onChangeBookTitle={setLoanBookTitle}
-          onChangePublishYear={setLoanPublishYear}
           onChangeReturnDate={setLoanReturnDate}
           onChangePhoneNumber={setLoanPhoneNumber}
           onChangeClassSearch={setClassSearch}
@@ -968,11 +1039,13 @@ export const InventoryHubPage = () => {
 type LibraryLoanModalProps = {
   editingLoanId: number | null;
   borrowDate: string;
+  borrowQty: string;
   borrowerName: string;
   borrowerStatus: LibraryBorrowerStatus;
   classId: number | null;
   bookTitle: string;
-  publishYear: string;
+  bookOptions: LibraryLoanBookOption[];
+  isBookOptionsLoading: boolean;
   returnDate: string;
   phoneNumber: string;
   classOptions: LibraryLoanClassOption[];
@@ -986,11 +1059,11 @@ type LibraryLoanModalProps = {
   onClose: () => void;
   onSubmit: () => void;
   onChangeBorrowDate: (value: string) => void;
+  onChangeBorrowQty: (value: string) => void;
   onChangeBorrowerName: (value: string) => void;
   onChangeBorrowerStatus: (value: LibraryBorrowerStatus) => void;
   onChangeClassId: (value: number | null) => void;
   onChangeBookTitle: (value: string) => void;
-  onChangePublishYear: (value: string) => void;
   onChangeReturnDate: (value: string) => void;
   onChangePhoneNumber: (value: string) => void;
   onChangeClassSearch: (value: string) => void;
@@ -1001,11 +1074,13 @@ type LibraryLoanModalProps = {
 const LibraryLoanModal = ({
   editingLoanId,
   borrowDate,
+  borrowQty,
   borrowerName,
   borrowerStatus,
   classId,
   bookTitle,
-  publishYear,
+  bookOptions,
+  isBookOptionsLoading,
   returnDate,
   phoneNumber,
   classOptions,
@@ -1019,17 +1094,21 @@ const LibraryLoanModal = ({
   onClose,
   onSubmit,
   onChangeBorrowDate,
+  onChangeBorrowQty,
   onChangeBorrowerName,
   onChangeBorrowerStatus,
   onChangeClassId,
   onChangeBookTitle,
-  onChangePublishYear,
   onChangeReturnDate,
   onChangePhoneNumber,
   onChangeClassSearch,
   onToggleClassDropdown,
   onCloseClassDropdown,
 }: LibraryLoanModalProps) => {
+  const selectedBook = bookOptions.find(
+    (option) => option.title.toLowerCase() === String(bookTitle || '').trim().toLowerCase(),
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 animate-in fade-in zoom-in duration-200">
@@ -1063,12 +1142,13 @@ const LibraryLoanModal = ({
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-600 mb-1">Thn. Terbit</label>
+            <label className="block text-sm text-gray-600 mb-1">Jumlah Pinjam</label>
             <input
               type="number"
-              value={publishYear}
-              onChange={(e) => onChangePublishYear(e.target.value)}
-              placeholder="Contoh: 2026"
+              min={1}
+              value={borrowQty}
+              onChange={(e) => onChangeBorrowQty(e.target.value)}
+              placeholder="Minimal 1 buku"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
@@ -1152,13 +1232,35 @@ const LibraryLoanModal = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
           <div>
             <label className="block text-sm text-gray-600 mb-1">Judul Buku</label>
-            <input
-              type="text"
+            <select
               value={bookTitle}
               onChange={(e) => onChangeBookTitle(e.target.value)}
-              placeholder="Judul buku"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+            >
+              <option value="">Pilih judul buku dari inventaris</option>
+              {bookTitle &&
+              !bookOptions.some(
+                (option) => option.title.toLowerCase() === bookTitle.trim().toLowerCase(),
+              ) ? (
+                <option value={bookTitle}>{bookTitle} (data lama)</option>
+              ) : null}
+              {bookOptions.map((option) => (
+                <option
+                  key={option.title}
+                  value={option.title}
+                  disabled={option.availableQty <= 0 && option.title !== bookTitle}
+                >
+                  {option.title} (tersedia {option.availableQty})
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              {isBookOptionsLoading
+                ? 'Memuat daftar buku inventaris...'
+                : selectedBook
+                ? `Stok tersedia ${selectedBook.availableQty} dari total ${selectedBook.totalQty} buku`
+                : 'Judul buku diambil langsung dari inventaris perpustakaan agar tidak salah ketik.'}
+            </p>
           </div>
           <div>
             <label className="block text-sm text-gray-600 mb-1">No. Telpon</label>
@@ -1218,8 +1320,8 @@ const RoomCard = ({ room, canEdit, onEdit }: { room: Room; canEdit: boolean; onE
       toast.success('Ruangan berhasil dihapus');
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menghapus ruangan');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menghapus ruangan'));
     }
   });
 
@@ -1322,8 +1424,8 @@ const AddCategoryModal = ({ onClose }: { onClose: () => void }) => {
       queryClient.invalidateQueries({ queryKey: ['roomCategories'] });
       onClose();
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal membuat kategori');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal membuat kategori'));
     }
   });
 
@@ -1424,8 +1526,8 @@ const AddRoomModal = ({ onClose, categoryId, categoryName }: { onClose: () => vo
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
       onClose();
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal membuat ruangan');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal membuat ruangan'));
     }
   });
 
@@ -1535,8 +1637,8 @@ const EditRoomModal = ({ room, onClose }: { room: Room; onClose: () => void }) =
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
       onClose();
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal memperbarui ruangan');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal memperbarui ruangan'));
     }
   });
 
@@ -1641,14 +1743,15 @@ const EditCategoryModal = ({ category, onClose }: { category: RoomCategory; onCl
   );
 
   const updateMutation = useMutation({
-    mutationFn: (data: any) => inventoryService.updateRoomCategory(category.id, data),
+    mutationFn: (data: { name: string; description?: string; inventoryTemplateKey: InventoryTemplateKey }) =>
+      inventoryService.updateRoomCategory(category.id, data),
     onSuccess: () => {
       toast.success('Kategori berhasil diperbarui');
       queryClient.invalidateQueries({ queryKey: ['roomCategories'] });
       onClose();
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal memperbarui kategori');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal memperbarui kategori'));
     }
   });
 

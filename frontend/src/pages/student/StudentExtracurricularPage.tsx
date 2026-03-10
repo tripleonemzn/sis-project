@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
 import { academicYearService } from '../../services/academicYear.service';
@@ -36,7 +36,7 @@ export const StudentExtracurricularPage = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [search, setSearch] = useState('');
-  const [agree, setAgree] = useState(false);
+  const [selectedAgreeEkskulId, setSelectedAgreeEkskulId] = useState<number | null>(null);
 
   const { data: activeYear } = useQuery({
     queryKey: ['active-academic-year'],
@@ -74,13 +74,14 @@ export const StudentExtracurricularPage = () => {
     },
     onSuccess: () => {
       toast.success('Pendaftaran ekstrakurikuler berhasil');
-      setAgree(false);
+      setSelectedAgreeEkskulId(null);
       setSearch('');
       queryClient.invalidateQueries({ queryKey: ['my-extracurricular-enrollment'] });
       queryClient.invalidateQueries({ queryKey: ['public-extracurriculars'] });
     },
-    onError: (err: any) => {
-      const msg = err?.response?.data?.message || 'Gagal mendaftar ekstrakurikuler';
+    onError: (err: unknown) => {
+      const normalized = err as { response?: { data?: { message?: string } }; message?: string };
+      const msg = normalized.response?.data?.message || normalized.message || 'Gagal mendaftar ekstrakurikuler';
       toast.error(msg);
     }
   });
@@ -93,12 +94,6 @@ export const StudentExtracurricularPage = () => {
     const end = Math.min(page * limit, pagination?.total || 0);
     return { start, end, total: pagination?.total || 0 };
   }, [page, limit, pagination]);
-
-  useEffect(() => {
-    if (page > (pagination?.totalPages || 1)) {
-      setPage(1);
-    }
-  }, [pagination, page]);
 
   if (loadingMyEnrollment || loadingList) {
     return (
@@ -202,8 +197,10 @@ export const StudentExtracurricularPage = () => {
                         <input
                           id={`agree-${item.id}`}
                           type="checkbox"
-                          checked={agree}
-                          onChange={(e) => setAgree(e.target.checked)}
+                          checked={selectedAgreeEkskulId === item.id}
+                          onChange={(e) =>
+                            setSelectedAgreeEkskulId(e.target.checked ? item.id : null)
+                          }
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
                         <label htmlFor={`agree-${item.id}`} className="text-sm text-gray-700">
@@ -211,10 +208,10 @@ export const StudentExtracurricularPage = () => {
                         </label>
                       </div>
                       <button
-                        disabled={!agree || enrollMutation.isPending}
+                        disabled={selectedAgreeEkskulId !== item.id || enrollMutation.isPending}
                         onClick={() => enrollMutation.mutate(item.id)}
                         className={`w-full px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                          !agree || enrollMutation.isPending
+                          selectedAgreeEkskulId !== item.id || enrollMutation.isPending
                             ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
                             : 'bg-blue-600 text-white hover:bg-blue-700'
                         }`}

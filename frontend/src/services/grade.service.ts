@@ -14,12 +14,15 @@ export type GradeComponentType = typeof GradeComponentType[keyof typeof GradeCom
 export interface GradeComponent {
   id: number;
   code?: string | null;
+  typeCode?: string | null;
   subjectId: number;
   name: string;
   weight: number;
   type: GradeComponentType;
   entryMode?: 'NF_SERIES' | 'SINGLE_SCORE';
-  reportSlot?: 'NONE' | 'FORMATIF' | 'SBTS' | 'SAS' | 'US_THEORY' | 'US_PRACTICE';
+  entryModeCode?: string | null;
+  reportSlot?: string | null;
+  reportSlotCode?: string | null;
   includeInFinalScore?: boolean;
   displayOrder?: number;
   academicYearId?: number | null;
@@ -130,7 +133,14 @@ export const gradeService = {
     return response.data;
   },
 
-  getReportGrades: async (params: { student_id?: number; class_id?: number; academic_year_id: number; semester: string; subject_id?: number }) => {
+  getReportGrades: async (params: {
+    student_id?: number;
+    class_id?: number;
+    academic_year_id: number;
+    semester: string;
+    subject_id?: number;
+    include_meta?: boolean | number;
+  }) => {
     const response = await api.get('/grades/report-grades', { params });
     return response.data;
   }

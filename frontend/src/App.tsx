@@ -6,8 +6,13 @@ import { GlobalErrorBoundary } from "./components/common/GlobalErrorBoundary";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { DashboardLayout } from "./layouts/DashboardLayout";
 import { authService } from "./services/auth.service";
+
+type SisWindow = Window & {
+  __SIS_SLIDESHOW_SETTINGS__?: Record<string, unknown>;
+};
 const TutorDashboardPage = lazy(() => import("./pages/tutor/TutorDashboardPage").then(m => ({ default: m.TutorDashboardPage })));
 const TutorMembersPage = lazy(() => import("./pages/tutor/TutorMembersPage").then(m => ({ default: m.TutorMembersPage })));
+const TutorInventoryPage = lazy(() => import("./pages/tutor/TutorInventoryPage").then(m => ({ default: m.TutorInventoryPage })));
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
 const UserList = lazy(() => import("./pages/admin/users/UserList").then(m => ({ default: m.UserList })));
 const TeacherManagementPage = lazy(() => import("./pages/admin/users/TeacherManagementPage").then(m => ({ default: m.TeacherManagementPage })));
@@ -125,7 +130,7 @@ const DashboardRedirect = () => {
 
   if (isError || !response) return <Navigate to="/login" replace />;
 
-  const user = (response as any)?.data;
+  const user = response.data;
   if (!user) return <Navigate to="/login" replace />;
 
   switch (user.role) {
@@ -179,10 +184,14 @@ const RoleRoute = ({ children, allowedRoles }: { children: React.ReactNode, allo
 
 const ProctorSchedulePage = lazy(() => import('./pages/teacher/proctor/ProctorSchedulePage'));
 const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/ProctorMonitoringPage'));
-  
-  function App() {
+
+if (typeof window !== 'undefined') {
   // Expose global slideshow settings for login page (updated via admin slideshow)
-  (window as any).__SIS_SLIDESHOW_SETTINGS__ = (window as any).__SIS_SLIDESHOW_SETTINGS__ || {};
+  const sisWindow = window as SisWindow;
+  sisWindow.__SIS_SLIDESHOW_SETTINGS__ = sisWindow.__SIS_SLIDESHOW_SETTINGS__ || {};
+}
+
+function App() {
 
   return (
     <Router>
@@ -198,7 +207,14 @@ const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/Proctor
           <Route path="/" element={<DashboardLayout />}>
             <Route index element={<DashboardRedirect />} />
             <Route path="dashboard" element={<DashboardRedirect />} />
-            <Route path="email" element={<EmailPage />} />
+            <Route
+              path="email"
+              element={
+                <RoleRoute allowedRoles={['ADMIN', 'TEACHER', 'PRINCIPAL', 'EXTRACURRICULAR_TUTOR', 'STAFF']}>
+                  <EmailPage />
+                </RoleRoute>
+              }
+            />
 
             <Route path="admin" element={
               <RoleRoute allowedRoles={['ADMIN']}>
@@ -285,6 +301,8 @@ const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/Proctor
             <Route path="training-classes" element={<TrainingClassesPage />} />
             <Route path="extracurriculars" element={<ExtracurricularPage />} />
             <Route path="audit-logs" element={<AuditLogPage />} />
+            <Route path="question-bank" element={<TeacherPlaceholderPage />} />
+            <Route path="exam-sessions" element={<TeacherPlaceholderPage />} />
             <Route path="settings/slideshow" element={<AdminSlideshowPage />} />
             <Route path="settings/profile" element={<UserProfilePage />} />
             <Route path="settings/password" element={<UserProfilePage />} />
@@ -298,6 +316,8 @@ const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/Proctor
               <Route index element={<TutorDashboardPage />} />
               <Route path="dashboard" element={<TutorDashboardPage />} />
               <Route path="members" element={<TutorMembersPage />} />
+              <Route path="work-programs" element={<WorkProgramPage />} />
+              <Route path="inventory" element={<TutorInventoryPage />} />
               <Route path="profile" element={<UserProfilePage />} />
               <Route path="general" element={<Navigate to="profile" replace />} />
             </Route>
@@ -322,10 +342,7 @@ const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/Proctor
             <Route path="internship/guidance" element={<TeacherInternshipGuidance />} />
             <Route path="internship/defense" element={<TeacherDefenseGradingPage />} />
             
-            <Route path="exams/formatif" element={<ExamListPage />} />
-            <Route path="exams/sbts" element={<ExamListPage />} />
-            <Route path="exams/sas" element={<ExamListPage />} />
-            <Route path="exams/sat" element={<ExamListPage />} />
+            <Route path="exams/:legacyProgramCode" element={<ExamListPage />} />
             <Route path="exams/program/:programCode" element={<ExamListPage />} />
             <Route path="exams/bank" element={<ExamListPage />} />
             <Route path="exams/create" element={<ExamEditorPage />} />
@@ -344,6 +361,7 @@ const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/Proctor
               element={<WorkProgramApprovalsPage />}
             />
             <Route path="wakasek/students" element={<StudentManagementHubPage />} />
+            <Route path="wakasek/student-approvals" element={<BudgetApprovalPage />} />
             <Route path="wakasek/internship-components" element={<InternshipComponentPage />} />
             <Route path="wakasek/journal-monitoring" element={<JournalMonitoringPage />} />
 
@@ -359,6 +377,7 @@ const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/Proctor
             <Route path="learning-resources/modules" element={<ModulesPage />} />
             <Route path="learning-resources/prota" element={<TeacherPlaceholderPage />} />
             <Route path="learning-resources/promes" element={<TeacherPlaceholderPage />} />
+            <Route path="learning-resources/kktp" element={<TeacherPlaceholderPage />} />
             <Route path="communication" element={<TeacherPlaceholderPage />} />
             <Route path="profile" element={<UserProfilePage />} />
             
@@ -390,10 +409,7 @@ const ProctorMonitoringPage = lazy(() => import('./pages/teacher/proctor/Proctor
             <Route index element={<StudentDashboard />} />
             <Route path="dashboard" element={<StudentDashboard />} />
             <Route path="exams" element={<StudentExamsPage />} />
-            <Route path="exams/formatif" element={<StudentExamsPage />} />
-            <Route path="exams/sbts" element={<StudentExamsPage />} />
-            <Route path="exams/sas" element={<StudentExamsPage />} />
-            <Route path="exams/sat" element={<StudentExamsPage />} />
+            <Route path="exams/:legacyProgramCode" element={<StudentExamsPage />} />
             <Route path="exams/program/:programCode" element={<StudentExamsPage />} />
             <Route path="exams/:id/take" element={<StudentExamTakePage />} />
             <Route path="permissions" element={<StudentPermissionsPage />} />

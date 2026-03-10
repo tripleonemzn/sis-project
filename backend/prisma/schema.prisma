@@ -113,6 +113,7 @@ model User {
   assignedUkkSchemes       UkkScheme[]                    @relation("SchemeAssignedExaminers")
   behaviors                StudentBehavior[]
   studentExamRestrictions  StudentExamRestriction[]
+  studentExamProgramRestrictions StudentExamProgramRestriction[]
   studentPermissions       StudentPermission[]            @relation("StudentPermissions")
   approvedPermissions      StudentPermission[]            @relation("PermissionApprover")
   createdQuestionBanks     QuestionBank[]                 @relation("BankAuthor")
@@ -165,6 +166,25 @@ model StudentExamRestriction {
   @@map("student_exam_restrictions")
 }
 
+model StudentExamProgramRestriction {
+  id             Int          @id @default(autoincrement())
+  studentId      Int
+  academicYearId Int
+  semester       Semester
+  programCode    String
+  isBlocked      Boolean      @default(false)
+  reason         String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  student        User         @relation(fields: [studentId], references: [id])
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  @@unique([studentId, academicYearId, semester, programCode])
+  @@index([academicYearId, semester, programCode])
+  @@map("student_exam_program_restrictions")
+}
+
 enum BehaviorType {
   POSITIVE
   NEGATIVE
@@ -209,13 +229,16 @@ model AcademicYear {
   workPrograms       WorkProgram[]
   studentBehaviors   StudentBehavior[]
   studentExamRestrictions StudentExamRestriction[]
+  studentExamProgramRestrictions StudentExamProgramRestriction[]
   studentPermissions      StudentPermission[]
   reportDates             ReportDate[]
   ekskulTutorAssignments EkstrakurikulerTutorAssignment[]
   ekskulEnrollments      EkstrakurikulerEnrollment[]
+  ekskulGradeTemplates   EkstrakurikulerGradeTemplate[]
   internships            Internship[]
   examProgramConfigs     ExamProgramConfig[]
   examGradeComponents    ExamGradeComponent[]
+  examProgramSessions    ExamProgramSession[]
 
   @@map("academic_years")
 }
@@ -240,6 +263,9 @@ model ExamProgramConfig {
   isActive          Boolean      @default(true)
   showOnTeacherMenu Boolean      @default(true)
   showOnStudentMenu Boolean      @default(true)
+  targetClassLevels String[]     @default([])
+  allowedSubjectIds Int[]        @default([])
+  allowedAuthorIds  Int[]        @default([])
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
   academicYear      AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
@@ -271,6 +297,25 @@ model ExamGradeComponent {
   @@unique([academicYearId, code])
   @@index([academicYearId, displayOrder])
   @@map("exam_grade_components")
+}
+
+model ExamProgramSession {
+  id              Int            @id @default(autoincrement())
+  academicYearId  Int
+  programCode     String
+  label           String
+  normalizedLabel String
+  displayOrder    Int            @default(0)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  academicYear    AcademicYear   @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  examSchedules   ExamSchedule[] @relation("ExamProgramSessionSchedules")
+  examSittings    ExamSitting[]  @relation("ExamProgramSessionSittings")
+
+  @@unique([academicYearId, programCode, normalizedLabel])
+  @@index([academicYearId, programCode, displayOrder])
+  @@map("exam_program_sessions")
 }
 
 model StudentPermission {
@@ -439,6 +484,8 @@ model TeacherAssignment {
   subject              Subject         @relation(fields: [subjectId], references: [id])
   teacher              User            @relation(fields: [teacherId], references: [id])
 
+  @@index([teacherId, academicYearId])
+  @@index([academicYearId, subjectId, classId])
   @@map("teacher_assignments")
 }
 
@@ -540,6 +587,8 @@ model QuestionBank {
   authorId       Int?
   author         User?        @relation("BankAuthor", fields: [authorId], references: [id])
 
+  @@index([academicYearId, semester, subjectId])
+  @@index([subjectId, classLevel])
   @@map("question_banks")
 }
 
@@ -556,6 +605,7 @@ model Question {
   metadata  Json?
   bank      QuestionBank @relation(fields: [bankId], references: [id])
 
+  @@index([bankId])
   @@map("questions")
 }
 
@@ -765,8 +815,27 @@ model Ekstrakurikuler {
   description String?
   enrollments EkstrakurikulerEnrollment[]
   tutorAssignments EkstrakurikulerTutorAssignment[]
+  gradeTemplates EkstrakurikulerGradeTemplate[]
 
   @@map("ekstrakurikulers")
+}
+
+model EkstrakurikulerGradeTemplate {
+  id             Int             @id @default(autoincrement())
+  ekskulId       Int
+  academicYearId Int
+  semester       Semester
+  reportSlot     String
+  predicate      String
+  description    String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  ekskul         Ekstrakurikuler @relation(fields: [ekskulId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear    @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  @@unique([ekskulId, academicYearId, semester, reportSlot, predicate], map: "ekskul_grade_templates_unique_scope")
+  @@index([ekskulId, academicYearId, semester, reportSlot], map: "ekskul_grade_templates_scope_idx")
+  @@map("ekstrakurikuler_grade_templates")
 }
 
 model EkstrakurikulerEnrollment {
@@ -1006,6 +1075,8 @@ model WorkProgram {
   endWeek            Int
   feedback           String?
   isApproved         Boolean           @default(false)
+  executionStatus    String            @default("TERLAKSANA")
+  nonExecutionReason String?
   month              Int
   startMonth         Int?
   endMonth           Int?
@@ -1158,6 +1229,7 @@ model ExamPacket {
   updatedAt      DateTime       @updatedAt
   description    String?
   duration       Int
+  publishedQuestionCount Int?
   instructions   String?
   kkm            Float          @default(75)
   semester       Semester       @default(ODD)
@@ -1176,8 +1248,10 @@ model ExamSchedule {
   id                Int                    @id @default(autoincrement())
   classId           Int
   subjectId         Int?
+  sessionId         Int?
   startTime         DateTime
   endTime           DateTime
+  sessionLabel      String?
   proctorId         Int?
   academicYearId    Int?
   token             String?
@@ -1193,9 +1267,17 @@ model ExamSchedule {
   class             Class                  @relation(fields: [classId], references: [id])
   packet            ExamPacket?            @relation(fields: [packetId], references: [id])
   proctor           User?                  @relation("ExamProctor", fields: [proctorId], references: [id])
+  programSession    ExamProgramSession?    @relation("ExamProgramSessionSchedules", fields: [sessionId], references: [id], onDelete: SetNull)
   subject           Subject?               @relation(fields: [subjectId], references: [id])
   sessions          StudentExamSession[]
 
+  @@index([packetId])
+  @@index([packetId, classId], map: "exam_schedules_packetId_classId_idx")
+  @@index([classId, isActive, startTime])
+  @@index([proctorId, startTime])
+  @@index([academicYearId, examType, isActive])
+  @@index([isActive, startTime, endTime, room])
+  @@index([sessionId, startTime])
   @@map("exam_schedules")
 }
 
@@ -1231,6 +1313,10 @@ model StudentExamSession {
   schedule   ExamSchedule      @relation(fields: [scheduleId], references: [id])
   student    User              @relation(fields: [studentId], references: [id])
 
+  @@unique([scheduleId, studentId], map: "student_exam_sessions_schedule_student_unique_idx")
+  @@index([scheduleId, status])
+  @@index([scheduleId, submitTime(sort: Desc), startTime(sort: Desc)], map: "student_exam_sessions_schedule_submit_start_idx")
+  @@index([studentId, scheduleId])
   @@map("student_exam_sessions")
 }
 
@@ -1245,6 +1331,8 @@ model Notification {
   data      Json?
   user      User     @relation(fields: [userId], references: [id])
 
+  @@index([userId, createdAt(sort: Desc)], map: "notifications_user_createdAt_idx")
+  @@index([userId, isRead], map: "notifications_user_isRead_idx")
   @@map("notifications")
 }
 
@@ -1293,6 +1381,8 @@ model ExamSitting {
   id             Int                  @id @default(autoincrement())
   academicYearId Int
   proctorId      Int?
+  sessionId      Int?
+  sessionLabel   String?
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
   endTime        DateTime?
@@ -1303,6 +1393,7 @@ model ExamSitting {
   students       ExamSittingStudent[]
   academicYear   AcademicYear         @relation(fields: [academicYearId], references: [id])
   proctor        User?                @relation("SittingProctor", fields: [proctorId], references: [id])
+  programSession ExamProgramSession?  @relation("ExamProgramSessionSittings", fields: [sessionId], references: [id], onDelete: SetNull)
 
   @@map("exam_sittings")
 }
@@ -1836,6 +1927,7 @@ model InventoryItem {
 model LibraryBookLoan {
   id             Int                   @id @default(autoincrement())
   borrowDate     DateTime
+  borrowQty      Int                   @default(1)
   borrowerName   String
   borrowerStatus LibraryBorrowerStatus
   classId        Int?

@@ -2,6 +2,19 @@ import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 
+export const getUnreadNotificationCount = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const unreadCount = await prisma.notification.count({
+    where: { userId: user.id, isRead: false },
+  });
+
+  res.json(
+    new ApiResponse(200, {
+      unreadCount,
+    }),
+  );
+});
+
 export const getNotifications = asyncHandler(async (req: Request, res: Response) => {
   const user = (req as any).user;
   const { page = 1, limit = 10 } = req.query;

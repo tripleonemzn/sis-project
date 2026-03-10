@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   Calendar,
   Clock,
@@ -12,10 +12,10 @@ import clsx from 'clsx';
 interface Attendance {
   id: number;
   date: string;
-  status: 'PRESENT' | 'SICK' | 'PERMISSION' | 'ALPHA' | 'LATE';
-  notes?: string;
-  checkInTime?: string;
-  checkOutTime?: string;
+  status: 'PRESENT' | 'SICK' | 'PERMISSION' | 'ALPHA' | 'ABSENT' | 'LATE';
+  notes?: string | null;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
 }
 
 const STATUS_LABELS = {
@@ -23,6 +23,7 @@ const STATUS_LABELS = {
   SICK: { label: 'Sakit', color: 'bg-blue-100 text-blue-700', icon: AlertCircle },
   PERMISSION: { label: 'Izin', color: 'bg-yellow-100 text-yellow-700', icon: FileText }, // Need to import FileText
   ALPHA: { label: 'Alpha', color: 'bg-red-100 text-red-700', icon: XCircle },
+  ABSENT: { label: 'Alpha', color: 'bg-red-100 text-red-700', icon: XCircle },
   LATE: { label: 'Terlambat', color: 'bg-orange-100 text-orange-700', icon: Clock },
 };
 
@@ -34,11 +35,7 @@ export default function StudentAttendancePage() {
   const [filterMonth, setFilterMonth] = useState<number>(new Date().getMonth() + 1);
   const [filterYear, setFilterYear] = useState<number>(new Date().getFullYear());
 
-  useEffect(() => {
-    fetchAttendance();
-  }, [filterMonth, filterYear]);
-
-  const fetchAttendance = async () => {
+  const fetchAttendance = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -56,7 +53,11 @@ export default function StudentAttendancePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterMonth, filterYear]);
+
+  useEffect(() => {
+    fetchAttendance();
+  }, [fetchAttendance]);
 
   const stats = {
     present: attendances.filter(a => a.status === 'PRESENT' || a.status === 'LATE').length,

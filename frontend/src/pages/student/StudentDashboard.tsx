@@ -1,12 +1,14 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useOutletContext } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 import { attendanceService } from '../../services/attendance.service';
 import { scheduleService, type ScheduleEntry, type DayOfWeek } from '../../services/schedule.service';
 import { examService } from '../../services/exam.service';
 import { authService } from '../../services/auth.service';
 import api from '../../services/api';
+import type { User } from '../../types/auth';
+import type { StudentAttendanceHistory } from '../../services/attendance.service';
 import { Loader2, Calendar, BookOpen, UserCheck, Clock, ClipboardList, DoorClosed } from 'lucide-react';
 
 interface MyExamSitting {
@@ -25,8 +27,44 @@ interface AvailableExam {
   status: string;
 }
 
+type ActiveYearContext = {
+  id?: number;
+  semester?: 'ODD' | 'EVEN';
+  semester1Start?: string | null;
+  semester2End?: string | null;
+};
+
+type DashboardOutletContext = {
+  user?: User | null;
+  activeYear?: ActiveYearContext | null;
+};
+
+type ExamSubject = { name: string };
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+function extractExamRows(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) return payload;
+  const record = asRecord(payload);
+  if (!record) return [];
+
+  const data = record.data;
+  if (Array.isArray(data)) return data;
+
+  const dataRecord = asRecord(data);
+  if (dataRecord) {
+    const nestedExams = dataRecord.exams;
+    if (Array.isArray(nestedExams)) return nestedExams;
+  }
+
+  const exams = record.exams;
+  return Array.isArray(exams) ? exams : [];
+}
+
 export const StudentDashboard = () => {
-  const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<{ user: any, activeYear: any }>() || {};
+  const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<DashboardOutletContext>() || {};
 
   // Fallback to fetching user from API if not in context
   const { data: authData } = useQuery({
@@ -37,7 +75,7 @@ export const StudentDashboard = () => {
   });
 
   const apiUser = authData?.data;
-  const user = contextUser || apiUser || {};
+  const user: User | null = contextUser || apiUser || null;
   const classId = user?.classId ?? null;
 
   // Fallback to fetching active year if not in context
@@ -52,25 +90,37 @@ export const StudentDashboard = () => {
        const res = await api.get('/exam-sittings/my-sitting');
        return (res.data?.data || []) as MyExamSitting[];
     },
-    enabled: !!user.id,
+    enabled: !!user?.id,
   });
 
   const { data: examSchedules } = useQuery({
     queryKey: ['available-exams', activeAcademicYearId],
     queryFn: examService.getAvailableExams,
-    enabled: !!user.id,
+    enabled: !!user?.id,
   });
 
   const upcomingExams = useMemo(() => {
-    // Handle if examSchedules is the ApiResponse object or the array directly
-    const exams = Array.isArray(examSchedules) 
-      ? examSchedules 
-      : (examSchedules as any)?.data;
+    const rawExams = extractExamRows(examSchedules);
 
-    if (!Array.isArray(exams)) return [];
+    const normalized: AvailableExam[] = rawExams.map((exam) => {
+      const row = asRecord(exam);
+      const packet = asRecord(row?.packet);
+      const subject = asRecord(row?.subject) || asRecord(packet?.subject);
+      const subjectName = typeof subject?.name === 'string' && subject.name.trim() ? subject.name : '-';
 
-    // Filter exams that are upcoming or ongoing
-    return (exams as AvailableExam[]).filter(e => e.status !== 'missed' && e.status !== 'completed').slice(0, 5);
+      return {
+        id: String(row?.id ?? ''),
+        title: String(row?.title || packet?.title || '-'),
+        subject: { name: subjectName } as ExamSubject,
+        start_time: String(row?.start_time || row?.startTime || ''),
+        end_time: String(row?.end_time || row?.endTime || ''),
+        status: String(row?.status || '').toUpperCase(),
+      };
+    });
+
+    return normalized
+      .filter((exam) => ['UPCOMING', 'OPEN', 'ONGOING', 'IN_PROGRESS'].includes(exam.status))
+      .slice(0, 5);
   }, [examSchedules]);
 
   const {
@@ -109,20 +159,20 @@ export const StudentDashboard = () => {
   );
 
   const selfAttendance = useMemo(() => {
-    const records = attendanceHistoryData?.data || [];
+    const records: StudentAttendanceHistory[] = attendanceHistoryData?.data || [];
     if (!records.length) return null;
     
-    const present = records.filter((r: any) => r.status === 'PRESENT' || r.status === 'LATE').length;
+    const present = records.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length;
     const total = records.length;
     const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
     
     return {
         percentage,
         present,
-        sick: records.filter((r: any) => r.status === 'SICK').length,
-        permission: records.filter((r: any) => r.status === 'PERMISSION').length,
-        absent: records.filter((r: any) => r.status === 'ABSENT' || r.status === 'ALPHA').length,
-        late: records.filter((r: any) => r.status === 'LATE').length,
+        sick: records.filter((r) => r.status === 'SICK').length,
+        permission: records.filter((r) => r.status === 'PERMISSION').length,
+        absent: records.filter((r) => r.status === 'ABSENT' || r.status === 'ALPHA').length,
+        late: records.filter((r) => r.status === 'LATE').length,
         total,
     };
   }, [attendanceHistoryData]);
@@ -169,7 +219,14 @@ export const StudentDashboard = () => {
     }
     return scheduleEntries
       .filter((entry) => entry.dayOfWeek === todayDayOfWeek)
-      .sort((a, b) => a.period - b.period);
+      .sort((a, b) => {
+        const aHour = typeof a.teachingHour === 'number' && a.teachingHour > 0 ? a.teachingHour : a.period;
+        const bHour = typeof b.teachingHour === 'number' && b.teachingHour > 0 ? b.teachingHour : b.period;
+        if (aHour === bHour) {
+          return a.period - b.period;
+        }
+        return aHour - bHour;
+      });
   }, [scheduleEntries, todayDayOfWeek]);
 
   const attendancePercentage = selfAttendance?.percentage ?? null;
@@ -202,11 +259,11 @@ export const StudentDashboard = () => {
 
   return (
     <div className="space-y-6">      
-      <div className="bg-white rounded-2xl px-6 py-4 shadow-sm border border-gray-100 mt-10 relative flex flex-col md:flex-row justify-between items-center gap-4">
+      <div className="bg-gradient-to-br from-teal-50 to-emerald-100/80 rounded-2xl px-6 py-4 shadow-sm border border-teal-100 mt-10 relative flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-6">
           <div className="-mt-16 relative">
             <div
-              className="w-36 h-36 rounded-full p-1 bg-white ring-1 ring-gray-200"
+              className="w-36 h-36 rounded-full p-1 bg-white/90 ring-1 ring-teal-200"
               style={{
                 boxShadow:
                   'inset 6px 6px 12px rgba(0,0,0,0.06), inset -6px -6px 12px rgba(255,255,255,0.9), 8px 8px 16px rgba(0,0,0,0.08), -3px -3px 8px rgba(255,255,255,0.7)',
@@ -223,7 +280,7 @@ export const StudentDashboard = () => {
                   className="w-full h-full rounded-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-6xl">
+                <div className="w-full h-full rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-6xl">
                   {(user?.name || '?').charAt(0).toUpperCase()}
                 </div>
               )}
@@ -247,56 +304,71 @@ export const StudentDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+        <Link
+          to="/student/attendance"
+          className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        >
+        <div className="p-6 rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-sky-100/80 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-blue-50 rounded-lg text-blue-600">
+            <div className="p-3 bg-blue-100 rounded-lg text-blue-700">
               <UserCheck size={24} />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">Kehadiran</p>
-              <h3 className="text-2xl font-bold text-gray-900">
+              <p className="text-sm text-blue-700/80 font-medium">Kehadiran</p>
+              <h3 className="text-2xl font-bold text-blue-900">
                 {attendancePercentage !== null
                   ? `${attendancePercentage.toFixed(1)}%`
                   : '-'}
               </h3>
               {selfAttendance && (
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-blue-800/70 mt-1">
                   Hadir {selfAttendance.present} dari {selfAttendance.total} hari
                 </p>
               )}
             </div>
           </div>
         </div>
+        </Link>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+        <Link
+          to="/student/schedule"
+          className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+        >
+        <div className="p-6 rounded-xl border border-teal-100 bg-gradient-to-br from-teal-50 to-emerald-100/80 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-emerald-50 rounded-lg text-emerald-600">
+            <div className="p-3 bg-teal-100 rounded-lg text-teal-700">
               <BookOpen size={24} />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">Mata Pelajaran</p>
-              <h3 className="text-2xl font-bold text-gray-900">{totalSubjects}</h3>
-              <p className="text-xs text-gray-500 mt-1">Per minggu pada jadwal aktif</p>
+              <p className="text-sm text-teal-700/80 font-medium">Mata Pelajaran</p>
+              <h3 className="text-2xl font-bold text-teal-900">{totalSubjects}</h3>
+              <p className="text-xs text-teal-800/70 mt-1">Per minggu pada jadwal aktif</p>
             </div>
           </div>
         </div>
+        </Link>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+        <Link
+          to="/student/schedule"
+          className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+        >
+        <div className="p-6 rounded-xl border border-orange-100 bg-gradient-to-br from-orange-50 to-amber-100/80 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-purple-50 rounded-lg text-purple-600">
+            <div className="p-3 bg-orange-100 rounded-lg text-orange-700">
               <Clock size={24} />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">Total Jam/Minggu</p>
-              <h3 className="text-2xl font-bold text-gray-900">
+              <p className="text-sm text-orange-700/80 font-medium">Total Jam/Minggu</p>
+              <h3 className="text-2xl font-bold text-orange-900">
                 {totalWeeklyPeriods || '-'}
               </h3>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-orange-800/70 mt-1">
                 Berdasarkan jadwal pelajaran yang sudah diatur
               </p>
             </div>
           </div>
         </div>
+        </Link>
       </div>
 
       {/* Informasi Ujian */}
@@ -308,9 +380,13 @@ export const StudentDashboard = () => {
               <h2 className="text-sm font-semibold text-gray-900">Jadwal Ujian Terdekat</h2>
               <p className="text-xs text-gray-500 mt-0.5">Ujian yang akan datang atau sedang berlangsung.</p>
             </div>
-            <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
-              <ClipboardList size={18} />
-            </div>
+            <Link
+              to="/student/exams"
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-2.5 py-2 text-xs font-medium text-blue-700 hover:bg-blue-100"
+            >
+              <ClipboardList size={16} />
+              Buka Menu
+            </Link>
           </div>
           <div className="px-5 py-4 space-y-3">
             {upcomingExams.length === 0 ? (
@@ -348,13 +424,21 @@ export const StudentDashboard = () => {
 
         {/* Ringkasan Kehadiran */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+            <div>
             <h2 className="text-sm font-semibold text-gray-900">
               Ringkasan Kehadiran
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">
               Rekap kehadiran berdasarkan data absensi kelas.
             </p>
+            </div>
+            <Link
+              to="/student/attendance"
+              className="inline-flex items-center rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+            >
+              Detail
+            </Link>
           </div>
           {selfAttendance ? (
             <div className="px-5 py-4 space-y-3">
@@ -423,6 +507,12 @@ export const StudentDashboard = () => {
             <div className="flex items-center gap-2 text-xs text-gray-500">
               <Calendar className="w-4 h-4" />
               <span>{todayLabel}</span>
+              <Link
+                to="/student/schedule"
+                className="ml-1 inline-flex items-center rounded-lg bg-blue-50 px-2 py-1 font-medium text-blue-700 hover:bg-blue-100"
+              >
+                Buka
+              </Link>
             </div>
           </div>
           {todaySchedule.length === 0 ? (
@@ -441,7 +531,7 @@ export const StudentDashboard = () => {
                   className="flex items-start gap-3 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2.5"
                 >
                   <div className="w-14 text-xs font-semibold text-gray-500 pt-0.5">
-                    Jam {entry.period}
+                    Jam {typeof entry.teachingHour === 'number' && entry.teachingHour > 0 ? entry.teachingHour : entry.period}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold text-gray-900">
@@ -467,9 +557,13 @@ export const StudentDashboard = () => {
               <h2 className="text-sm font-semibold text-gray-900">Ruang Ujian Saya</h2>
               <p className="text-xs text-gray-500 mt-0.5">Lokasi tempat duduk ujian Anda.</p>
             </div>
-            <div className="p-2 bg-purple-50 rounded-lg text-purple-600">
-              <DoorClosed size={18} />
-            </div>
+            <Link
+              to="/student/exams"
+              className="inline-flex items-center gap-2 rounded-lg bg-purple-50 px-2.5 py-2 text-xs font-medium text-purple-700 hover:bg-purple-100"
+            >
+              <DoorClosed size={16} />
+              Buka
+            </Link>
           </div>
           <div className="px-5 py-4 space-y-3">
             {mySittings?.length === 0 ? (

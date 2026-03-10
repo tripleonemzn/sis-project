@@ -3,7 +3,6 @@ import {
   HomeroomExtracurricularStudent,
   HomeroomLedgerData,
   HomeroomRankingData,
-  HomeroomReportType,
   HomeroomSemester,
   HomeroomStudentReportData,
 } from './types';
@@ -19,11 +18,15 @@ export const homeroomReportApi = {
   async getClassLedger(params: {
     classId: number;
     semester: HomeroomSemester;
+    reportType?: string;
+    programCode?: string;
   }) {
     const response = await apiClient.get<ApiEnvelope<HomeroomLedgerData>>('/reports/ledger', {
       params: {
         classId: params.classId,
         semester: params.semester,
+        programCode: params.programCode,
+        ...(params.reportType ? { reportType: params.reportType } : {}),
       },
     });
 
@@ -38,13 +41,15 @@ export const homeroomReportApi = {
   async getClassExtracurricular(params: {
     classId: number;
     semester: HomeroomSemester;
-    reportType: HomeroomReportType;
+    reportType?: string;
+    programCode?: string;
   }) {
     const response = await apiClient.get<ApiEnvelope<HomeroomExtracurricularStudent[]>>('/reports/extracurricular', {
       params: {
         classId: params.classId,
         semester: params.semester,
-        reportType: params.reportType,
+        programCode: params.programCode,
+        ...(params.reportType ? { reportType: params.reportType } : {}),
       },
     });
 
@@ -70,13 +75,15 @@ export const homeroomReportApi = {
   async getStudentReport(params: {
     studentId: number;
     semester: HomeroomSemester;
-    type: HomeroomReportType;
+    type?: string;
+    programCode?: string;
   }) {
-    const response = await apiClient.get<ApiEnvelope<HomeroomStudentReportData>>('/reports/student/sbts', {
+    const response = await apiClient.get<ApiEnvelope<HomeroomStudentReportData>>('/reports/student', {
       params: {
         studentId: params.studentId,
         semester: params.semester,
-        type: params.type,
+        programCode: params.programCode,
+        ...(params.type ? { type: params.type } : {}),
       },
     });
 

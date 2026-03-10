@@ -330,8 +330,14 @@ export default function TeacherWakasisPerformanceScreen() {
   });
 
   const normalizedSearch = search.trim().toLowerCase();
-  const classRows = classPerformanceQuery.data?.classRows || [];
-  const riskRows = classPerformanceQuery.data?.riskRows || [];
+  const classRows = useMemo(
+    () => classPerformanceQuery.data?.classRows || [],
+    [classPerformanceQuery.data?.classRows],
+  );
+  const riskRows = useMemo(
+    () => classPerformanceQuery.data?.riskRows || [],
+    [classPerformanceQuery.data?.riskRows],
+  );
 
   const filteredRiskRows = useMemo(() => {
     if (!normalizedSearch) return riskRows;

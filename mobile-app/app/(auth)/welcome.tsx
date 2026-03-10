@@ -14,8 +14,7 @@ import { useAuth } from '../../src/features/auth/AuthProvider';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { BRAND_COLORS } from '../../src/config/brand';
 import { ENV } from '../../src/config/env';
-
-const logoSource = require('../../src/assets/logo_sis_kgb2.png');
+import logoSource from '../../src/assets/logo_sis_kgb2.png';
 
 type GalleryItem = {
   url: string;

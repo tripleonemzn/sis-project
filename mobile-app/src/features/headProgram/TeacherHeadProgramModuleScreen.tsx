@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
+import { getApiErrorMessage } from '../../lib/api/errorMessage';
 import { mobileLiveQueryOptions } from '../../lib/query/liveQuery';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
 import { academicYearApi } from '../academicYear/academicYearApi';
@@ -442,13 +443,15 @@ export function TeacherHeadProgramModuleScreen({
     },
   });
 
-  const managedMajors = useMemo(() => {
-    if (Array.isArray(user?.managedMajors) && user!.managedMajors!.length > 0) {
-      return user!.managedMajors!;
-    }
-    if (user?.managedMajor) return [user.managedMajor];
-    return [];
-  }, [user?.managedMajor, user?.managedMajors]);
+  const managedMajors = useMemo(
+    () =>
+      Array.isArray(user?.managedMajors) && user.managedMajors.length > 0
+        ? user.managedMajors
+        : user?.managedMajor
+          ? [user.managedMajor]
+          : [],
+    [user],
+  );
 
   const managedMajorIds = useMemo(() => managedMajors.map((major) => Number(major.id)).filter(Boolean), [managedMajors]);
   const managedMajorIdsKey = managedMajorIds.join(',');
@@ -515,8 +518,8 @@ export function TeacherHeadProgramModuleScreen({
       setPartnerForm(DEFAULT_PARTNER_FORM);
       void partnersQuery.refetch();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || error?.message || 'Tidak dapat menyimpan data mitra.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getApiErrorMessage(error, 'Tidak dapat menyimpan data mitra.'));
     },
   });
 
@@ -530,8 +533,8 @@ export function TeacherHeadProgramModuleScreen({
       }
       void partnersQuery.refetch();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || 'Tidak dapat menghapus data mitra.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getApiErrorMessage(error, 'Tidak dapat menghapus data mitra.'));
     },
   });
 
@@ -574,8 +577,8 @@ export function TeacherHeadProgramModuleScreen({
       setVacancyForm(DEFAULT_VACANCY_FORM);
       void vacanciesQuery.refetch();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || error?.message || 'Tidak dapat menyimpan data lowongan.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getApiErrorMessage(error, 'Tidak dapat menyimpan data lowongan.'));
     },
   });
 
@@ -589,8 +592,8 @@ export function TeacherHeadProgramModuleScreen({
       }
       void vacanciesQuery.refetch();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || 'Tidak dapat menghapus data lowongan.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getApiErrorMessage(error, 'Tidak dapat menghapus data lowongan.'));
     },
   });
 

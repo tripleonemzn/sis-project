@@ -3,6 +3,7 @@ export interface User {
   username: string;
   name: string;
   role: 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PRINCIPAL' | 'STAFF' | 'PARENT' | 'EXAMINER' | 'EXTRACURRICULAR_TUTOR';
+  isDemo?: boolean;
   studentStatus?: 'ACTIVE' | 'GRADUATED' | 'MOVED' | 'DROPPED_OUT';
   verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED';
   nip?: string | null;
@@ -85,7 +86,7 @@ export interface User {
   }[];
 
   additionalDuties?: string[];
-  preferences?: any;
+  preferences?: Record<string, unknown> | null;
   managedMajorIds?: number[];
   managedMajors?: {
     id: number;

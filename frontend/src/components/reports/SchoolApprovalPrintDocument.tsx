@@ -1,7 +1,17 @@
 import React from 'react';
 
 interface SchoolApprovalPrintDocumentProps {
-  internship: any;
+  internship: {
+    academicYear?: { name?: string | null } | null;
+    student?: { studentClass?: { name?: string | null } | null } | null;
+    examiner?: { name?: string | null; nuptk?: string | null } | null;
+    officials?: {
+      activeAcademicYear?: { name?: string | null } | null;
+      headOfMajor?: { name?: string | null; nuptk?: string | null } | null;
+      wakasekHumas?: { name?: string | null; nuptk?: string | null } | null;
+      principal?: { name?: string | null; nuptk?: string | null } | null;
+    } | null;
+  };
   title: string;
   customDate: string;
 }
@@ -15,7 +25,7 @@ export const SchoolApprovalPrintDocument: React.FC<SchoolApprovalPrintDocumentPr
   const activeYearName = officials?.activeAcademicYear?.name || new Date().getFullYear().toString();
 
   // Logic for Promoted Year (XI -> +1)
-  const getPromotedYear = (baseYear: string, className: string) => {
+  const getPromotedYear = (baseYear?: string | null, className?: string | null) => {
     if (!baseYear) return baseYear;
     const isXI = className && className.trim().toUpperCase().startsWith('XI') && !className.trim().toUpperCase().startsWith('XII');
     if (isXI) {

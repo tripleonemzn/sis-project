@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
@@ -18,8 +18,7 @@ type ModeFilter = 'PROCTOR' | 'AUTHOR';
 function normalizeExamType(raw?: string | null) {
   const value = String(raw || '').toUpperCase();
   if (value === 'QUIZ') return 'FORMATIF';
-  if (value === 'FORMATIF' || value === 'SBTS' || value === 'SAS' || value === 'SAT') return value;
-  return '-';
+  return value || '-';
 }
 
 function formatDateTime(value: string) {

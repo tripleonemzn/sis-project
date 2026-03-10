@@ -274,12 +274,16 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
     user,
   });
 
-  const assignments = assignmentsQuery.data?.assignments || [];
+  const assignments = useMemo(
+    () => assignmentsQuery.data?.assignments ?? [],
+    [assignmentsQuery.data?.assignments],
+  );
   const relevantAssignments = useMemo(() => {
     if (!activeYearQuery.data?.id) return assignments;
     return assignments.filter((item) => Number(item.academicYear.id) === Number(activeYearQuery.data?.id));
   }, [assignments, activeYearQuery.data?.id]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!relevantAssignments.length) {
       setSelectedAssignmentId(null);
@@ -288,6 +292,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
     if (selectedAssignmentId && relevantAssignments.some((item) => item.id === selectedAssignmentId)) return;
     setSelectedAssignmentId(relevantAssignments[0].id);
   }, [relevantAssignments, selectedAssignmentId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const selectedAssignment = relevantAssignments.find((item) => item.id === selectedAssignmentId) || null;
 
@@ -319,6 +324,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
       }),
   });
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!isCpSection) return;
     if (cpStatusQuery.isFetching) return;
@@ -343,6 +349,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
     setCpItems([]);
     setEditingRowId(null);
   }, [isCpSection, cpStatusQuery.data, cpStatusQuery.isFetching]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const cpSummary = useMemo(
     () => ({

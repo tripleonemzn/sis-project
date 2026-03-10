@@ -12,6 +12,8 @@ import {
     getSessionDetail,
     syncPacketItemAnalysis,
     getQuestions,
+    getProgramSessions,
+    createProgramSession,
     getSchedules,
     createSchedule,
     updateSchedule,
@@ -60,6 +62,10 @@ router.delete('/packets/:id', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), 
 
 // Questions (Bank)
 router.get('/questions', getQuestions);
+
+// Program Sessions (dynamic master session labels per program)
+router.get('/program-sessions', roleMiddleware(['TEACHER', 'ADMIN']), getProgramSessions);
+router.post('/program-sessions', roleMiddleware(['TEACHER', 'ADMIN']), createProgramSession);
 
 // Schedules
 router.get('/schedules', getSchedules);

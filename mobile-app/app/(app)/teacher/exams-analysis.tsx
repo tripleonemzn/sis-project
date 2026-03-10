@@ -53,7 +53,7 @@ export default function TeacherExamItemAnalysisScreen() {
   const analysisQuery = useQuery({
     queryKey: ['mobile-teacher-exam-item-analysis', packetId],
     enabled: isAuthenticated && !!packetId && user?.role === 'TEACHER',
-    queryFn: () => examApi.getPacketItemAnalysis(packetId!),
+    queryFn: () => examApi.getPacketItemAnalysis(packetId!, { includeContentHtml: false }),
   });
 
   const syncMutation = useMutation({
@@ -67,8 +67,9 @@ export default function TeacherExamItemAnalysisScreen() {
       });
       Alert.alert('Sukses', 'Analisis butir berhasil disinkronkan ke packet.');
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || error?.message || 'Gagal sinkron analisis.';
+    onError: (error: unknown) => {
+      const normalized = error as { response?: { data?: { message?: string } }; message?: string };
+      const message = normalized.response?.data?.message || normalized.message || 'Gagal sinkron analisis.';
       Alert.alert('Gagal', message);
     },
   });
@@ -268,4 +269,3 @@ export default function TeacherExamItemAnalysisScreen() {
     </ScrollView>
   );
 }
-

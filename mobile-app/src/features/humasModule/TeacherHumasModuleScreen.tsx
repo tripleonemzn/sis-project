@@ -111,6 +111,14 @@ function hasHumasDuty(duties?: string[]) {
   });
 }
 
+const getActionErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'object' && error !== null) {
+    const err = error as { response?: { data?: { message?: string } }; message?: string };
+    return err.response?.data?.message || err.message || fallback;
+  }
+  return fallback;
+};
+
 function resolveInternshipStatusLabel(status?: string | null) {
   const value = String(status || '').toUpperCase();
   if (!value) return 'Unknown';
@@ -302,8 +310,8 @@ export function TeacherHumasModuleScreen({
       Alert.alert('Berhasil', 'Konfigurasi PKL berhasil diperbarui.');
       void activeYearQuery.refetch();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || 'Tidak dapat menyimpan konfigurasi PKL.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Tidak dapat menyimpan konfigurasi PKL.'));
     },
   });
 
@@ -314,8 +322,8 @@ export function TeacherHumasModuleScreen({
       Alert.alert('Berhasil', 'Status PKL berhasil diperbarui.');
       void internshipQuery.refetch();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || 'Tidak dapat memperbarui status PKL.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Tidak dapat memperbarui status PKL.'));
     },
   });
 
@@ -341,8 +349,8 @@ export function TeacherHumasModuleScreen({
       setComponentDescription('');
       void componentsQuery.refetch();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || error?.message || 'Tidak dapat menambah komponen.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Tidak dapat menambah komponen.'));
     },
   });
 
@@ -354,8 +362,8 @@ export function TeacherHumasModuleScreen({
     onSuccess: () => {
       void componentsQuery.refetch();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || 'Tidak dapat mengubah status komponen.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Tidak dapat mengubah status komponen.'));
     },
   });
 
@@ -369,8 +377,8 @@ export function TeacherHumasModuleScreen({
       void journalsQuery.refetch();
       Alert.alert('Berhasil', 'Status jurnal berhasil diperbarui.');
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || 'Tidak dapat memperbarui status jurnal.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Tidak dapat memperbarui status jurnal.'));
     },
   });
 
@@ -403,8 +411,8 @@ export function TeacherHumasModuleScreen({
       setPartnerForm(DEFAULT_PARTNER_FORM);
       void partnersQuery.refetch();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || error?.message || 'Tidak dapat menyimpan data mitra.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Tidak dapat menyimpan data mitra.'));
     },
   });
 
@@ -418,8 +426,8 @@ export function TeacherHumasModuleScreen({
       }
       void partnersQuery.refetch();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || 'Tidak dapat menghapus data mitra.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Tidak dapat menghapus data mitra.'));
     },
   });
 
@@ -462,8 +470,8 @@ export function TeacherHumasModuleScreen({
       setVacancyForm(DEFAULT_VACANCY_FORM);
       void vacanciesQuery.refetch();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || error?.message || 'Tidak dapat menyimpan data lowongan.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Tidak dapat menyimpan data lowongan.'));
     },
   });
 
@@ -477,8 +485,8 @@ export function TeacherHumasModuleScreen({
       }
       void vacanciesQuery.refetch();
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || 'Tidak dapat menghapus data lowongan.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Tidak dapat menghapus data lowongan.'));
     },
   });
 

@@ -8,8 +8,17 @@ export const roleMiddleware = (allowedRoles: string[]) => {
       return next(new ApiError(401, 'Tidak memiliki otorisasi'));
     }
 
+    if (req.user.isDemo) {
+      next();
+      return;
+    }
+
     if (!allowedRoles.includes(req.user.role)) {
-      console.warn(`[RoleMiddleware] Access Denied. User Role: ${req.user.role}, Allowed: ${allowedRoles}, Path: ${req.path}, Method: ${req.method}`);
+      if (process.env.LOG_ACCESS_DENIED === 'true') {
+        console.warn(
+          `[RoleMiddleware] Access Denied. User Role: ${req.user.role}, Allowed: ${allowedRoles}, Path: ${req.path}, Method: ${req.method}`,
+        );
+      }
       return next(new ApiError(403, 'Dilarang: Hak akses tidak mencukupi'));
     }
 

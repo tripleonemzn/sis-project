@@ -1,12 +1,5 @@
-import { TeacherExamPacketsModuleScreen } from '../../../src/features/exams/TeacherExamPacketsModuleScreen';
+import { Redirect } from 'expo-router';
 
 export default function TeacherExamSasScreen() {
-  return (
-    <TeacherExamPacketsModuleScreen
-      title="Ujian SAS"
-      subtitle="Kelola packet ujian SAS untuk kelas dan mata pelajaran yang Anda ampu."
-      fixedType="SAS"
-      defaultType="SAS"
-    />
-  );
+  return <Redirect href="/teacher/exams?type=SAS" />;
 }

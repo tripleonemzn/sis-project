@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useOutletContext } from 'react-router-dom';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
@@ -27,6 +27,22 @@ type DaySchedule = {
   }[];
 };
 
+type TeacherScheduleOutletContext = {
+  user?: { id?: number | null } | null;
+  activeYear?: { id?: number | null } | null;
+};
+
+type TeacherAssignmentWithCount = TeacherAssignment & {
+  _count?: {
+    scheduleEntries?: number;
+  };
+};
+
+type ScheduleTimeConfig = {
+  periodTypes?: Partial<Record<DayOfWeek, Record<number, string>>>;
+  periodNotes?: Partial<Record<DayOfWeek, Record<number, string>>>;
+};
+
 const DAY_LABELS: Record<DayOfWeek, string> = {
   MONDAY: 'Senin',
   TUESDAY: 'Selasa',
@@ -46,7 +62,8 @@ const DAY_ORDER: DayOfWeek[] = [
 ];
 
 export const TeacherSchedulePage = () => {
-  const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<{ user: any, activeYear: any }>() || {};
+  const { user: contextUser, activeYear: contextActiveYear } =
+    useOutletContext<TeacherScheduleOutletContext>() || {};
 
   const { data: authData } = useQuery({
     queryKey: ['me'],
@@ -77,17 +94,13 @@ export const TeacherSchedulePage = () => {
     enabled: !!activeAcademicYearId && !!teacherId,
   });
 
-  const assignments: TeacherAssignment[] = useMemo(
-    () => assignmentsData?.data?.assignments || [],
+  const assignments: TeacherAssignmentWithCount[] = useMemo(
+    () => (assignmentsData?.data?.assignments || []) as TeacherAssignmentWithCount[],
     [assignmentsData],
   );
 
-  const scheduledAssignments: TeacherAssignment[] = useMemo(
-    () =>
-      assignments.filter((a: any) => {
-        const count = (a as any)._count?.scheduleEntries ?? 0;
-        return count > 0;
-      }),
+  const scheduledAssignments: TeacherAssignmentWithCount[] = useMemo(
+    () => assignments.filter((a) => (a._count?.scheduleEntries ?? 0) > 0),
     [assignments],
   );
 
@@ -115,9 +128,9 @@ export const TeacherSchedulePage = () => {
     enabled: !!activeAcademicYearId,
   });
 
-  const isNonTeaching = (day: DayOfWeek, period: number) => {
-    const cfg: any = timeConfig?.config;
-    const types = cfg?.periodTypes || {};
+  const isNonTeaching = useCallback((day: DayOfWeek, period: number) => {
+    const cfg = (timeConfig?.config || {}) as ScheduleTimeConfig;
+    const types = cfg.periodTypes || {};
     const typeRaw = types[day]?.[period];
     if (typeRaw) {
       const t = String(typeRaw).toUpperCase();
@@ -128,7 +141,7 @@ export const TeacherSchedulePage = () => {
         return false;
       }
     }
-    const note = cfg?.periodNotes?.[day]?.[period];
+    const note = cfg.periodNotes?.[day]?.[period];
     if (!note) {
       return false;
     }
@@ -143,9 +156,9 @@ export const TeacherSchedulePage = () => {
       return true;
     }
     return false;
-  };
+  }, [timeConfig]);
 
-  const getTeachingHour = (day: DayOfWeek, currentPeriod: number) => {
+  const getTeachingHour = useCallback((day: DayOfWeek, currentPeriod: number) => {
     let teachingCounter = 0;
     for (let p = 1; p <= currentPeriod; p += 1) {
       if (!isNonTeaching(day, p)) {
@@ -156,7 +169,7 @@ export const TeacherSchedulePage = () => {
       return null;
     }
     return teachingCounter > 0 ? teachingCounter : null;
-  };
+  }, [isNonTeaching]);
 
   const totalStudents = useMemo(() => {
     return scheduledAssignments.reduce(
@@ -208,7 +221,7 @@ export const TeacherSchedulePage = () => {
     return DAY_ORDER.map((day) => map.get(day)!).filter(
       (ds) => ds.entries.length > 0,
     );
-  }, [scheduleEntries, timeConfig]);
+  }, [scheduleEntries, getTeachingHour]);
 
   const groups: TeachingGroup[] = useMemo(() => {
     const map = new Map<string, TeachingGroup>();

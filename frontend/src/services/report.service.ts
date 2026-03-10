@@ -103,8 +103,25 @@ export const reportService = {
     return response.data.data as ClassReportSummary;
   },
 
-  getStudentSbtsReport: async (params: { studentId: number; academicYearId: number; semester: 'ODD' | 'EVEN'; type: 'SBTS' | 'SAS' | 'SAT' }) => {
-    const response = await api.get('/reports/student/sbts', { params });
+  getStudentReport: async (params: {
+    studentId: number;
+    academicYearId: number;
+    semester: 'ODD' | 'EVEN';
+    type?: string;
+    programCode?: string;
+  }) => {
+    const response = await api.get('/reports/student', { params });
+    return response.data.data;
+  },
+
+  getStudentSbtsReport: async (params: {
+    studentId: number;
+    academicYearId: number;
+    semester: 'ODD' | 'EVEN';
+    type?: string;
+    programCode?: string;
+  }) => {
+    const response = await api.get('/reports/student', { params });
     return response.data.data;
   },
 

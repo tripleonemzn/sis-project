@@ -1,9 +1,16 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { academicYearService } from '../../services/academicYear.service';
+import { academicYearService, type AcademicYear } from '../../services/academicYear.service';
 import { ukkSchemeService } from '../../services/ukkScheme.service';
 import { Link } from 'react-router-dom';
 import { Loader2, Plus, FileText, Edit } from 'lucide-react';
+
+type UkkSchemeRow = {
+  id: number;
+  name: string;
+  major?: { name?: string | null } | null;
+  criteria?: unknown;
+};
 
 export const UKKSchemeListPage = () => {
   const { data: academicYearData, isLoading: isLoadingYears } = useQuery({
@@ -11,25 +18,29 @@ export const UKKSchemeListPage = () => {
     queryFn: () => academicYearService.list({ page: 1, limit: 100 }),
   });
 
-  const academicYears = useMemo(
+  const academicYears = useMemo<AcademicYear[]>(
     () => academicYearData?.data?.academicYears || academicYearData?.academicYears || [],
     [academicYearData],
   );
   
   const activeAcademicYear = useMemo(() => {
     if (!academicYears.length) return null;
-    return academicYears.find((ay: any) => ay.isActive) || academicYears[0];
+    return academicYears.find((ay) => ay.isActive) || academicYears[0];
   }, [academicYears]);
 
   const activeAcademicYearId = activeAcademicYear?.id ?? null;
 
   const { data: schemesData, isLoading: isLoadingSchemes } = useQuery({
     queryKey: ['ukk-schemes', activeAcademicYearId],
-    queryFn: () => ukkSchemeService.getSchemes(activeAcademicYearId),
+    queryFn: () => ukkSchemeService.getSchemes(activeAcademicYearId || undefined),
     enabled: !!activeAcademicYearId
   });
 
-  const schemes = schemesData?.data || schemesData || [];
+  const schemes: UkkSchemeRow[] = Array.isArray(schemesData?.data)
+    ? schemesData.data
+    : Array.isArray(schemesData)
+      ? schemesData
+      : [];
 
   if (isLoadingYears || (!!activeAcademicYearId && isLoadingSchemes)) {
     return (
@@ -82,7 +93,7 @@ export const UKKSchemeListPage = () => {
                   </td>
                 </tr>
               ) : (
-                schemes.map((scheme: any) => (
+                schemes.map((scheme) => (
                   <tr key={scheme.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">{scheme.name}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{scheme.major?.name || '-'}</td>

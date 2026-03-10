@@ -31,7 +31,7 @@ const imageUpload = multer({
       cb(null, `slide-${suffix}${safeExt}`);
     },
   }),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 1 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ext = path.extname(file.originalname || '').toLowerCase();
     const isImageMime = (file.mimetype || '').toLowerCase().startsWith('image/');

@@ -30,32 +30,60 @@ const mapBudget = (budget: any) => {
   };
 };
 
+const normalizeDuties = (duties: unknown[]): string[] =>
+  (duties || []).map((duty) => String(duty || '').trim().toUpperCase());
+
 export const createBudgetRequest = asyncHandler(async (req: Request, res: Response) => {
   const body = createBudgetRequestSchema.parse(req.body);
   const authUser = (req as any).user;
   
   if (!authUser) throw new ApiError(401, 'Tidak memiliki otorisasi');
+  if (!['ADMIN', 'TEACHER', 'EXTRACURRICULAR_TUTOR'].includes(authUser.role)) {
+    throw new ApiError(403, 'Anda tidak memiliki akses membuat pengajuan');
+  }
+  if (authUser.role === 'EXTRACURRICULAR_TUTOR' && body.additionalDuty !== 'PEMBINA_EKSKUL') {
+    throw new ApiError(403, 'Pembina ekstrakurikuler hanya dapat mengajukan alat ekskul');
+  }
 
-  const isWakasek = String(body.additionalDuty || '')
-    .trim()
-    .toUpperCase()
-    .startsWith('WAKASEK_');
+  const normalizedDuty = String(body.additionalDuty || '').trim().toUpperCase();
+  const isWakasek = normalizedDuty.startsWith('WAKASEK_');
+  const isPembinaEkskul = normalizedDuty === 'PEMBINA_EKSKUL';
 
-  const principal = await prisma.user.findFirst({
-    where: { role: 'PRINCIPAL' },
-  });
+  const [principal, sarpras, kesiswaan] = await Promise.all([
+    prisma.user.findFirst({
+      where: { role: 'PRINCIPAL' },
+      select: { id: true },
+    }),
+    prisma.user.findFirst({
+      where: { additionalDuties: { has: 'WAKASEK_SARPRAS' } },
+      select: { id: true },
+    }),
+    prisma.user.findFirst({
+      where: { additionalDuties: { has: 'WAKASEK_KESISWAAN' } },
+      select: { id: true },
+    }),
+  ]);
 
-  const sarpras = await prisma.user.findFirst({
-    where: { additionalDuties: { has: 'WAKASEK_SARPRAS' } },
-  });
+  const initialApproverId = isPembinaEkskul
+    ? kesiswaan?.id ?? sarpras?.id ?? principal?.id ?? null
+    : isWakasek
+      ? principal?.id ?? null
+      : sarpras?.id ?? principal?.id ?? null;
 
-  const initialApproverId = isWakasek
-    ? principal?.id ?? null
-    : sarpras?.id ?? principal?.id ?? null;
+  const normalizedQuantity = Math.max(1, Number(body.quantity || 1));
+  const normalizedUnitPrice = isPembinaEkskul ? 0 : Number(body.unitPrice || 0);
+  const normalizedTotalAmount = isPembinaEkskul
+    ? 0
+    : Number.isFinite(Number(body.totalAmount))
+      ? Number(body.totalAmount)
+      : normalizedQuantity * normalizedUnitPrice;
 
   const budget = await prisma.budgetRequest.create({
     data: {
       ...body,
+      quantity: normalizedQuantity,
+      unitPrice: normalizedUnitPrice,
+      totalAmount: normalizedTotalAmount,
       requesterId: authUser.id,
       approverId: initialApproverId,
       approvalStatus: 'PENDING',
@@ -86,7 +114,7 @@ export const listBudgetRequests = asyncHandler(async (req: Request, res: Respons
     where.approverId = authUser.id;
   } else if (view === 'requester') {
     where.requesterId = authUser.id;
-  } else if (authUser.role === 'TEACHER') {
+  } else if (authUser.role === 'TEACHER' || authUser.role === 'EXTRACURRICULAR_TUTOR') {
     where.requesterId = authUser.id;
   }
   
@@ -147,7 +175,10 @@ export const deleteBudgetRequest = asyncHandler(async (req: Request, res: Respon
     const budget = await prisma.budgetRequest.findUnique({ where: { id } });
     if (!budget) throw new ApiError(404, 'Pengajuan anggaran tidak ditemukan');
 
-    if (authUser.role === 'TEACHER' && budget.requesterId !== authUser.id) {
+    if (
+      (authUser.role === 'TEACHER' || authUser.role === 'EXTRACURRICULAR_TUTOR') &&
+      budget.requesterId !== authUser.id
+    ) {
         throw new ApiError(403, 'Anda tidak memiliki akses untuk menghapus data ini');
     }
 
@@ -187,13 +218,149 @@ export const updateBudgetRequestStatus = asyncHandler(async (req: Request, res: 
     throw new ApiError(404, 'Pengajuan anggaran tidak ditemukan');
   }
 
-  const duties = (dutyUser.additionalDuties || []).map((d: any) =>
-    String(d).trim().toUpperCase(),
-  );
+  const duties = normalizeDuties((dutyUser.additionalDuties || []) as unknown[]);
+  const isKesiswaan =
+    duties.includes('WAKASEK_KESISWAAN') || duties.includes('SEKRETARIS_KESISWAAN');
   const isSarpras =
     duties.includes('WAKASEK_SARPRAS') || duties.includes('SEKRETARIS_SARPRAS');
   const isPrincipal = dutyUser.role === 'PRINCIPAL';
   const isAdmin = dutyUser.role === 'ADMIN';
+  const isPembinaEkskulFlow = String(existing.additionalDuty || '').toUpperCase() === 'PEMBINA_EKSKUL';
+
+  const finance = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { role: 'STAFF', ptkType: 'STAFF_KEUANGAN' },
+        { additionalDuties: { has: 'BENDAHARA' } },
+      ],
+    },
+    select: { id: true },
+  });
+
+  if (isPembinaEkskulFlow) {
+    if (!isKesiswaan && !isSarpras && !isPrincipal && !isAdmin) {
+      throw new ApiError(
+        403,
+        'Alur pengajuan alat ekskul hanya dapat diproses oleh Wakasek Kesiswaan, Wakasek Sarpras, atau Kepala Sekolah',
+      );
+    }
+
+    if (!isAdmin && existing.approverId !== authUser.id) {
+      throw new ApiError(403, 'Anda tidak berwenang memproses pengajuan ini');
+    }
+
+    if (isKesiswaan) {
+      if (body.status === 'APPROVED') {
+        const sarpras = await prisma.user.findFirst({
+          where: { additionalDuties: { has: 'WAKASEK_SARPRAS' } },
+          select: { id: true },
+        });
+        const principal = await prisma.user.findFirst({
+          where: { role: 'PRINCIPAL' },
+          select: { id: true },
+        });
+
+        const forwarded = await prisma.budgetRequest.update({
+          where: { id },
+          data: {
+            approvalStatus: 'PENDING',
+            approverId: sarpras?.id ?? principal?.id ?? null,
+            approvedById: authUser.id,
+            rejectionReason: null,
+          },
+        });
+
+        return res
+          .status(200)
+          .json(
+            new ApiResponse(
+              200,
+              mapBudget(forwarded),
+              'Pengajuan alat ekskul diteruskan ke Wakasek Sarpras',
+            ),
+          );
+      }
+
+      const rejected = await prisma.budgetRequest.update({
+        where: { id },
+        data: {
+          approvalStatus: 'REJECTED',
+          approverId: null,
+          approvedById: authUser.id,
+          rejectionReason: body.rejectionReason || 'Ditolak oleh Wakasek Kesiswaan',
+        },
+      });
+
+      return res
+        .status(200)
+        .json(
+          new ApiResponse(200, mapBudget(rejected), 'Pengajuan alat ekskul ditolak Wakasek Kesiswaan'),
+        );
+    }
+
+    if (isSarpras) {
+      if (body.status === 'APPROVED') {
+        const principal = await prisma.user.findFirst({
+          where: { role: 'PRINCIPAL' },
+          select: { id: true },
+        });
+
+        const forwarded = await prisma.budgetRequest.update({
+          where: { id },
+          data: {
+            approvalStatus: 'PENDING',
+            approverId: principal?.id ?? null,
+            approvedById: authUser.id,
+            rejectionReason: null,
+          },
+        });
+
+        return res
+          .status(200)
+          .json(
+            new ApiResponse(
+              200,
+              mapBudget(forwarded),
+              'Pengajuan alat ekskul diteruskan ke Kepala Sekolah',
+            ),
+          );
+      }
+
+      const rejected = await prisma.budgetRequest.update({
+        where: { id },
+        data: {
+          approvalStatus: 'REJECTED',
+          approverId: null,
+          approvedById: authUser.id,
+          rejectionReason: body.rejectionReason || 'Ditolak oleh Wakasek Sarpras',
+        },
+      });
+
+      return res
+        .status(200)
+        .json(
+          new ApiResponse(200, mapBudget(rejected), 'Pengajuan alat ekskul ditolak Wakasek Sarpras'),
+        );
+    }
+
+    const updated = await prisma.budgetRequest.update({
+      where: { id },
+      data: {
+        approvalStatus: body.status,
+        rejectionReason: body.status === 'REJECTED'
+          ? body.rejectionReason || 'Ditolak oleh Kepala Sekolah'
+          : null,
+        approvedById: authUser.id,
+        approverId: body.status === 'APPROVED' ? finance?.id ?? null : null,
+      },
+    });
+
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(200, mapBudget(updated), 'Status pengajuan alat ekskul berhasil diperbarui'),
+      );
+  }
 
   if (!isSarpras && !isPrincipal && !isAdmin) {
     throw new ApiError(
@@ -203,7 +370,7 @@ export const updateBudgetRequestStatus = asyncHandler(async (req: Request, res: 
   }
 
   if (isSarpras) {
-    if (existing.approverId !== authUser.id) {
+    if (!isAdmin && existing.approverId !== authUser.id) {
       throw new ApiError(403, 'Anda tidak berwenang memproses pengajuan ini');
     }
 
@@ -216,6 +383,7 @@ export const updateBudgetRequestStatus = asyncHandler(async (req: Request, res: 
 
     const principal = await prisma.user.findFirst({
       where: { role: 'PRINCIPAL' },
+      select: { id: true },
     });
 
     const updated = await prisma.budgetRequest.update({
@@ -256,15 +424,6 @@ export const updateBudgetRequestStatus = asyncHandler(async (req: Request, res: 
   };
 
   if (body.status === 'APPROVED') {
-    const finance = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { role: 'STAFF', ptkType: 'STAFF_KEUANGAN' },
-          { additionalDuties: { has: 'BENDAHARA' } },
-        ],
-      },
-    });
-
     updateData.approverId = finance?.id ?? null;
   } else {
     updateData.approverId = null;

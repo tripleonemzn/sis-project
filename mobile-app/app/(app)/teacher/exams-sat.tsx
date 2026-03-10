@@ -1,12 +1,5 @@
-import { TeacherExamPacketsModuleScreen } from '../../../src/features/exams/TeacherExamPacketsModuleScreen';
+import { Redirect } from 'expo-router';
 
 export default function TeacherExamSatScreen() {
-  return (
-    <TeacherExamPacketsModuleScreen
-      title="Ujian SAT"
-      subtitle="Kelola packet ujian SAT untuk kelas dan mata pelajaran yang Anda ampu."
-      fixedType="SAT"
-      defaultType="SAT"
-    />
-  );
+  return <Redirect href="/teacher/exams?type=SAT" />;
 }

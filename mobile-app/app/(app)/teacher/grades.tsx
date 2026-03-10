@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { useTeacherAssignmentsQuery } from '../../../src/features/teacherAssignments/useTeacherAssignmentsQuery';
 import { teacherAssignmentApi } from '../../../src/features/teacherAssignments/teacherAssignmentApi';
-import { teacherGradeApi } from '../../../src/features/teacherGrades/teacherGradeApi';
+import { teacherGradeApi, type GradeComponent } from '../../../src/features/teacherGrades/teacherGradeApi';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
@@ -77,11 +77,119 @@ function formatSeriesValues(values: number[]) {
     .join(', ');
 }
 
-function formatComponentLabel(component: { name: string; type: string; weight: number }) {
-  if (component.type === 'FORMATIVE') return `Formatif (${component.weight}%)`;
-  if (component.type === 'MIDTERM') return `SBTS (${component.weight}%)`;
-  if (component.type === 'FINAL') return `SAS/SAT (${component.weight}%)`;
-  return `${component.name} (${component.weight}%)`;
+function normalizeSlotCode(raw: unknown): string {
+  return String(raw || '').trim().toUpperCase();
+}
+
+function resolveComponentEntryMode(component?: GradeComponent | null): 'NF_SERIES' | 'SINGLE_SCORE' {
+  const explicit = normalizeSlotCode(component?.entryModeCode || component?.entryMode);
+  if (explicit === 'NF_SERIES' || explicit === 'SINGLE_SCORE') return explicit;
+  const fallbackCode = normalizeSlotCode(component?.code || component?.typeCode || '');
+  return fallbackCode === 'FORMATIVE' ? 'NF_SERIES' : 'SINGLE_SCORE';
+}
+
+function resolveComponentSlotCode(component?: GradeComponent | null): string {
+  const explicit = normalizeSlotCode(component?.reportSlotCode || component?.reportSlot);
+  if (explicit) return explicit;
+  const fromCode = normalizeSlotCode(component?.code || component?.typeCode || '');
+  if (fromCode && fromCode !== 'NONE') {
+    return fromCode === 'FORMATIVE' ? 'FORMATIF' : fromCode;
+  }
+  const type = String(component?.type || '').toUpperCase();
+  if (type === 'FORMATIVE') return 'FORMATIF';
+  if (type === 'MIDTERM') return 'MIDTERM';
+  if (type === 'FINAL') return 'FINAL';
+  if (type === 'US_THEORY') return 'US_THEORY';
+  if (type === 'US_PRACTICE') return 'US_PRACTICE';
+  return 'NONE';
+}
+
+function resolveReadableComponentLabel(component?: GradeComponent | null, fallback = 'Komponen') {
+  const label = String(component?.name || component?.code || '').trim();
+  return label || fallback;
+}
+
+function resolvePrimarySlots(components: GradeComponent[]) {
+  const availableSlots: string[] = [];
+  let formativeByType: string | null = null;
+  let midtermByType: string | null = null;
+  let finalByType: string | null = null;
+
+  components.forEach((item) => {
+    const slotCode = normalizeSlotCode(resolveComponentSlotCode(item));
+    if (!slotCode || slotCode === 'NONE') return;
+    if (!availableSlots.includes(slotCode)) {
+      availableSlots.push(slotCode);
+    }
+
+    const componentType = String(item.type || '').trim().toUpperCase();
+    const entryMode = resolveComponentEntryMode(item);
+    if (!formativeByType && (entryMode === 'NF_SERIES' || componentType === 'FORMATIVE')) {
+      formativeByType = slotCode;
+      return;
+    }
+    if (!midtermByType && componentType === 'MIDTERM') {
+      midtermByType = slotCode;
+      return;
+    }
+    if (!finalByType && componentType === 'FINAL') {
+      finalByType = slotCode;
+    }
+  });
+
+  const firstSlot = availableSlots[0] || 'NONE';
+  const nonFormativeSlots = availableSlots.filter((slot) => slot !== formativeByType);
+  const secondSlot = nonFormativeSlots[0] || availableSlots[1] || firstSlot;
+  const lastSlot =
+    nonFormativeSlots[nonFormativeSlots.length - 1] ||
+    availableSlots[availableSlots.length - 1] ||
+    secondSlot;
+
+  const formative = formativeByType || firstSlot || 'FORMATIF';
+  const midterm = midtermByType || secondSlot || formative || 'NONE';
+  const final = finalByType || lastSlot || midterm || formative || 'NONE';
+
+  return {
+    formative,
+    midterm,
+    final,
+  };
+}
+
+function resolveSlotScore(
+  row:
+    | {
+        formatif: number | null;
+        sbts: number | null;
+        sas: number | null;
+        final: number | null;
+        slotScores?: Record<string, number | null> | null;
+      }
+    | undefined,
+  slotCode: string,
+  fallback: number | null | undefined,
+): number | null {
+  if (!row) return fallback ?? null;
+  const normalizedSlot = normalizeSlotCode(slotCode);
+  if (row.slotScores && typeof row.slotScores === 'object' && normalizedSlot) {
+    const dynamic = row.slotScores[normalizedSlot];
+    if (dynamic !== undefined && dynamic !== null && Number.isFinite(Number(dynamic))) {
+      return Number(dynamic);
+    }
+  }
+  if (fallback !== undefined && fallback !== null && Number.isFinite(Number(fallback))) {
+    return Number(fallback);
+  }
+  return null;
+}
+
+function formatComponentLabel(component: GradeComponent) {
+  const baseLabel = String(component.name || component.code || 'Komponen').trim();
+  const entryMode = resolveComponentEntryMode(component);
+  const slotCode = resolveComponentSlotCode(component);
+  if (entryMode === 'NF_SERIES') return `${baseLabel} [NF Series] (${component.weight}%)`;
+  if (slotCode !== 'NONE') return `${baseLabel} [${slotCode}] (${component.weight}%)`;
+  return `${baseLabel} (${component.weight}%)`;
 }
 
 export default function TeacherGradesScreen() {
@@ -91,7 +199,10 @@ export default function TeacherGradesScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const pageContentPadding = getStandardPagePadding(insets);
   const assignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
-  const assignments = assignmentsQuery.data?.assignments || [];
+  const assignments = useMemo(
+    () => assignmentsQuery.data?.assignments || [],
+    [assignmentsQuery.data?.assignments],
+  );
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
   const [selectedComponentId, setSelectedComponentId] = useState<number | null>(null);
   const [semester, setSemester] = useState<SemesterOption>('');
@@ -101,10 +212,6 @@ export default function TeacherGradesScreen() {
   const [formativeNewValueDraft, setFormativeNewValueDraft] = useState<Record<string, string>>({});
   const [showCompetencyModal, setShowCompetencyModal] = useState(false);
   const [competencySettings, setCompetencySettings] = useState<CompetencySettings>(emptyCompetencySettings());
-
-  useEffect(() => {
-    setSelectedComponentId(null);
-  }, [selectedAssignmentId]);
 
   const selectedAssignment = assignments.find((item) => item.id === selectedAssignmentId) || null;
 
@@ -143,16 +250,43 @@ export default function TeacherGradesScreen() {
       }),
   });
   const selectedKkm = selectedAssignment?.kkm ?? assignmentDetailQuery.data?.kkm ?? 75;
-  const components = componentsQuery.data || [];
+  const components = useMemo(() => componentsQuery.data || [], [componentsQuery.data]);
   const selectedComponent = components.find((component) => component.id === selectedComponentId) || null;
+  const selectedComponentEntryMode = resolveComponentEntryMode(selectedComponent);
+  const selectedComponentSlotCode = resolveComponentSlotCode(selectedComponent);
+  const isFormatifComponent = selectedComponentEntryMode === 'NF_SERIES';
+  const formativeComponent = components.find((item) => resolveComponentEntryMode(item) === 'NF_SERIES') || null;
+  const primarySlots = resolvePrimarySlots(components);
+  const midtermPrimarySlot = primarySlots.midterm;
+  const finalPrimarySlot = primarySlots.final;
+  const isMidtermComponent = !isFormatifComponent && selectedComponentSlotCode === midtermPrimarySlot;
+  const isFinalComponent = !isFormatifComponent && selectedComponentSlotCode === finalPrimarySlot;
+  const midtermComponent =
+    components.find(
+      (item) =>
+        resolveComponentSlotCode(item) === midtermPrimarySlot &&
+        resolveComponentEntryMode(item) !== 'NF_SERIES',
+    ) || null;
+  const finalComponent =
+    components.find(
+      (item) =>
+        resolveComponentSlotCode(item) === finalPrimarySlot &&
+        resolveComponentEntryMode(item) !== 'NF_SERIES',
+    ) || null;
+  const formativeComponentLabel = resolveReadableComponentLabel(formativeComponent, 'Komponen 1');
+  const midtermComponentLabel = resolveReadableComponentLabel(midtermComponent, 'Komponen 2');
+  const finalComponentLabel = resolveReadableComponentLabel(finalComponent, 'Komponen 3');
+  const formativePrimarySlot = primarySlots.formative;
 
   useEffect(() => {
     if (selectedComponentId && !components.some((component) => component.id === selectedComponentId)) {
-      setSelectedComponentId(null);
+      const timerId = setTimeout(() => setSelectedComponentId(null), 0);
+      return () => clearTimeout(timerId);
     }
   }, [components, selectedComponentId]);
 
   useEffect(() => {
+    const timerId = setTimeout(() => {
     if (!selectedAssignmentId) {
       setCompetencySettings(emptyCompetencySettings());
       return;
@@ -168,22 +302,27 @@ export default function TeacherGradesScreen() {
       C: assignmentThresholds.C || '',
       D: assignmentThresholds.D || '',
     });
+    }, 0);
+    return () => clearTimeout(timerId);
   }, [selectedAssignmentId, assignmentDetailQuery.data?.competencyThresholds]);
 
   useEffect(() => {
-    const nextScoreDraft: Record<string, string> = {};
-    const nextSeriesDraft: Record<string, string> = {};
-    for (const item of gradesQuery.data || []) {
-      nextScoreDraft[`${item.studentId}:${item.componentId}`] = String(item.score ?? '');
-      const series = Array.isArray(item.formativeSeries)
-        ? item.formativeSeries
-        : normalizeLegacySeriesValues([item.nf1, item.nf2, item.nf3, item.nf4, item.nf5, item.nf6]);
-      if (series.length > 0) {
-        nextSeriesDraft[`${item.studentId}:${item.componentId}`] = series.join(', ');
+    const timerId = setTimeout(() => {
+      const nextScoreDraft: Record<string, string> = {};
+      const nextSeriesDraft: Record<string, string> = {};
+      for (const item of gradesQuery.data || []) {
+        nextScoreDraft[`${item.studentId}:${item.componentId}`] = String(item.score ?? '');
+        const series = Array.isArray(item.formativeSeries)
+          ? item.formativeSeries
+          : normalizeLegacySeriesValues([item.nf1, item.nf2, item.nf3, item.nf4, item.nf5, item.nf6]);
+        if (series.length > 0) {
+          nextSeriesDraft[`${item.studentId}:${item.componentId}`] = series.join(', ');
+        }
       }
-    }
-    setScoreDraft(nextScoreDraft);
-    setFormativeSeriesDraft(nextSeriesDraft);
+      setScoreDraft(nextScoreDraft);
+      setFormativeSeriesDraft(nextSeriesDraft);
+    }, 0);
+    return () => clearTimeout(timerId);
   }, [selectedAssignmentId, semester, gradesQuery.data]);
 
   const saveMutation = useMutation({
@@ -220,7 +359,7 @@ export default function TeacherGradesScreen() {
           throw new Error(`Nilai ${student.name} pada ${component.name} harus berupa angka.`);
         }
 
-        if (component.type === 'FORMATIVE') {
+        if (resolveComponentEntryMode(component) === 'NF_SERIES') {
           const seriesKey = `${student.id}:${component.id}`;
           const parsedSeries = parseFormativeSeriesInput(formativeSeriesDraft[seriesKey] || '');
           if (parsedSeries.invalid) {
@@ -245,7 +384,7 @@ export default function TeacherGradesScreen() {
             continue;
           }
           if (formativeScore !== null && (formativeScore < 0 || formativeScore > 100)) {
-            throw new Error(`Nilai Formatif ${student.name} pada ${component.name} harus 0-100.`);
+            throw new Error(`Nilai ${component.name} ${student.name} harus 0-100.`);
           }
 
           payload.push({
@@ -276,9 +415,16 @@ export default function TeacherGradesScreen() {
         }
 
         let description: string | undefined;
-        if (component.type === 'FINAL') {
-          const formative = components.find((item) => item.type === 'FORMATIVE') || null;
-          const midterm = components.find((item) => item.type === 'MIDTERM') || null;
+        const componentSlotCode = resolveComponentSlotCode(component);
+        const isFinalSlot = componentSlotCode === finalPrimarySlot;
+        if (isFinalSlot) {
+          const formative = components.find((item) => resolveComponentEntryMode(item) === 'NF_SERIES') || null;
+          const midterm =
+            components.find(
+              (item) =>
+                resolveComponentSlotCode(item) === midtermPrimarySlot &&
+                resolveComponentEntryMode(item) !== 'NF_SERIES',
+            ) || null;
           const formativeScore = formative
             ? parseScore(scoreDraft[`${student.id}:${formative.id}`]).value ?? 0
             : 0;
@@ -344,7 +490,7 @@ export default function TeacherGradesScreen() {
       ]);
       notifySuccess(`Simpan nilai selesai. Berhasil: ${result.success}, Gagal: ${result.failed}`);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal menyimpan nilai.');
     },
   });
@@ -366,12 +512,15 @@ export default function TeacherGradesScreen() {
       setShowCompetencyModal(false);
       notifySuccess('Pengaturan deskripsi predikat berhasil disimpan.');
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal menyimpan pengaturan predikat.');
     },
   });
 
-  const students = assignmentDetailQuery.data?.class.students || [];
+  const students = useMemo(
+    () => assignmentDetailQuery.data?.class.students || [],
+    [assignmentDetailQuery.data?.class.students],
+  );
   const filteredStudents = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return students;
@@ -383,26 +532,40 @@ export default function TeacherGradesScreen() {
     });
   }, [students, searchQuery]);
   const reportMap = useMemo(() => {
-    const map: Record<number, { formatif: number | null; sbts: number | null; sas: number | null; final: number | null; description?: string | null }> = {};
+    const map: Record<
+      number,
+      {
+        formatif: number | null;
+        sbts: number | null;
+        sas: number | null;
+        final: number | null;
+        slotScores?: Record<string, number | null> | null;
+        description?: string | null;
+      }
+    > = {};
     for (const row of reportGradesQuery.data || []) {
       map[row.studentId] = {
         formatif: row.formatifScore ?? null,
         sbts: row.sbtsScore ?? null,
         sas: row.sasScore ?? null,
         final: row.finalScore ?? null,
+        slotScores:
+          row.slotScores && typeof row.slotScores === 'object'
+            ? (row.slotScores as Record<string, number | null>)
+            : null,
         description: row.description ?? null,
       };
     }
     return map;
   }, [reportGradesQuery.data]);
-  const recap = useMemo(() => {
+  const recap = (() => {
     if (!selectedComponent) return { total: students.length, filled: 0 };
     let filled = 0;
     const total = students.length;
     for (const student of students) {
       const scoreRaw = scoreDraft[`${student.id}:${selectedComponent.id}`];
       const hasScore = scoreRaw !== undefined && scoreRaw.trim() !== '';
-      if (selectedComponent.type === 'FORMATIVE') {
+      if (isFormatifComponent) {
         const seriesValue = formativeSeriesDraft[`${student.id}:${selectedComponent.id}`] || '';
         const parsedSeries = parseFormativeSeriesInput(seriesValue);
         if (hasScore || (!parsedSeries.invalid && parsedSeries.values.length > 0)) filled += 1;
@@ -411,7 +574,7 @@ export default function TeacherGradesScreen() {
       }
     }
     return { total, filled };
-  }, [students, selectedComponent, scoreDraft, formativeSeriesDraft]);
+  })();
 
   const competencyConfigured = useMemo(
     () =>
@@ -475,10 +638,25 @@ export default function TeacherGradesScreen() {
 
   const onFormativeValueRemove = (studentId: number, componentId: number, index: number) => {
     const current = getFormativeSeriesValues(studentId, componentId);
-    applyFormativeSeriesValues(
-      studentId,
-      componentId,
-      current.filter((_, currentIndex) => currentIndex !== index),
+    const currentValue = current[index];
+    const applyRemove = () => {
+      applyFormativeSeriesValues(
+        studentId,
+        componentId,
+        current.filter((_, currentIndex) => currentIndex !== index),
+      );
+    };
+    if (currentValue === undefined || currentValue === null) {
+      applyRemove();
+      return;
+    }
+    Alert.alert(
+      'Hapus Entri Nilai',
+      `Nilai ${toFixedOrInt(currentValue)} akan dihapus dari entri formatif.`,
+      [
+        { text: 'Batal', style: 'cancel' },
+        { text: 'Hapus', style: 'destructive', onPress: applyRemove },
+      ],
     );
   };
 
@@ -747,7 +925,7 @@ export default function TeacherGradesScreen() {
                   </Text>
                 </View>
 
-                {selectedComponent?.type === 'FINAL' ? (
+                {isFinalComponent ? (
                   <View
                     style={{
                       backgroundColor: '#fff',
@@ -759,7 +937,7 @@ export default function TeacherGradesScreen() {
                     }}
                   >
                     <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>
-                      Deskripsi Predikat SAS
+                      {`Deskripsi Predikat ${finalComponentLabel}`}
                     </Text>
                     <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
                       A: nilai minimal 86, B: nilai minimal KKM sampai 85, C: nilai 60 sampai di bawah KKM, D: nilai di bawah 60
@@ -792,7 +970,22 @@ export default function TeacherGradesScreen() {
                         !parsedSeries.invalid && parsedSeries.values.length > 0
                           ? averageValues(parsedSeries.values)
                           : null;
-                      const previewFormative = draftAverage ?? reportMap[student.id]?.formatif ?? null;
+                      const backendFormative = resolveSlotScore(
+                        reportMap[student.id],
+                        formativePrimarySlot,
+                        reportMap[student.id]?.formatif ?? null,
+                      );
+                      const backendMidterm = resolveSlotScore(
+                        reportMap[student.id],
+                        midtermPrimarySlot,
+                        reportMap[student.id]?.sbts ?? null,
+                      );
+                      const backendFinalFromSlot = resolveSlotScore(
+                        reportMap[student.id],
+                        finalPrimarySlot,
+                        reportMap[student.id]?.sas ?? reportMap[student.id]?.final ?? null,
+                      );
+                      const previewFormative = draftAverage ?? backendFormative;
 
                       return (
                       <View
@@ -814,7 +1007,7 @@ export default function TeacherGradesScreen() {
                           <Text style={{ color: '#334155', fontSize: 12, marginBottom: 4 }}>
                             {formatComponentLabel(selectedComponent)}
                           </Text>
-                          {selectedComponent.type === 'FORMATIVE' ? (
+                          {isFormatifComponent ? (
                             <>
                               {(() => {
                                 return (
@@ -875,7 +1068,7 @@ export default function TeacherGradesScreen() {
                                             }))
                                           }
                                           keyboardType="numeric"
-                                          placeholder="Tambah nilai 0-100"
+                                          placeholder={`Tambah nilai ${formativeComponentLabel}`}
                                           placeholderTextColor="#94a3b8"
                                           style={{
                                             borderWidth: 1,
@@ -925,7 +1118,7 @@ export default function TeacherGradesScreen() {
                                     value={scoreDraft[`${student.id}:${selectedComponent.id}`] ?? ''}
                                     onChangeText={(value) => onScoreChange(student.id, selectedComponent.id, value)}
                                     keyboardType="numeric"
-                                    placeholder="Nilai Formatif"
+                                    placeholder={`Nilai ${formativeComponentLabel}`}
                                     placeholderTextColor="#94a3b8"
                                     style={{
                                       borderWidth: 1,
@@ -949,7 +1142,7 @@ export default function TeacherGradesScreen() {
                                       alignItems: 'center',
                                     }}
                                   >
-                                    <Text style={{ color: '#64748b', fontSize: 10 }}>Referensi SBTS (Backend)</Text>
+                                    <Text style={{ color: '#64748b', fontSize: 10 }}>{`Referensi ${midtermComponentLabel} (Backend)`}</Text>
                                     <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
                                       {previewFormative === null || previewFormative === undefined ? '-' : toFixedOrInt(previewFormative)}
                                     </Text>
@@ -967,7 +1160,7 @@ export default function TeacherGradesScreen() {
                                     alignItems: 'center',
                                   }}
                                 >
-                                  <Text style={{ color: '#166534', fontSize: 10 }}>Referensi SAS (Backend)</Text>
+                                  <Text style={{ color: '#166534', fontSize: 10 }}>{`Referensi ${finalComponentLabel} (Backend)`}</Text>
                                   <Text style={{ color: '#166534', fontWeight: '700' }}>
                                     {previewFormative === null || previewFormative === undefined ? '-' : toFixedOrInt(previewFormative)}
                                   </Text>
@@ -992,7 +1185,7 @@ export default function TeacherGradesScreen() {
                                   color: '#0f172a',
                                 }}
                               />
-                              {selectedComponent.type === 'MIDTERM' ? (
+                              {isMidtermComponent ? (
                                 <View
                                   style={{
                                     marginTop: 6,
@@ -1005,13 +1198,13 @@ export default function TeacherGradesScreen() {
                                   }}
                                 >
                                   <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 2 }}>
-                                    Nilai Rapor SBTS (preview)
+                                    {`Nilai Rapor ${midtermComponentLabel} (preview)`}
                                   </Text>
                                   <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 12 }}>
                                     {(() => {
                                       const sbtsRaw = Number(scoreDraft[`${student.id}:${selectedComponent.id}`]);
                                       const sbtsScore = Number.isFinite(sbtsRaw) ? sbtsRaw : null;
-                                      const formatif = reportMap[student.id]?.formatif ?? null;
+                                      const formatif = backendFormative;
                                       const avg = averageValues(
                                         [formatif, sbtsScore]
                                           .map((value) => Number(value))
@@ -1023,7 +1216,7 @@ export default function TeacherGradesScreen() {
                                   </Text>
                                 </View>
                               ) : null}
-                              {selectedComponent.type === 'FINAL' ? (
+                              {isFinalComponent ? (
                                 <View
                                   style={{
                                     marginTop: 6,
@@ -1042,14 +1235,14 @@ export default function TeacherGradesScreen() {
                                     {(() => {
                                       const finalRaw = Number(scoreDraft[`${student.id}:${selectedComponent.id}`]);
                                       const finalScore = Number.isFinite(finalRaw) ? finalRaw : null;
-                                      const formatif = reportMap[student.id]?.formatif ?? null;
-                                      const sbts = reportMap[student.id]?.sbts ?? null;
+                                      const formatif = backendFormative;
+                                      const sbts = backendMidterm;
                                       const previewFinal = averageValues(
                                         [formatif, sbts, finalScore]
                                           .map((value) => Number(value))
                                           .filter((value) => Number.isFinite(value)),
                                       );
-                                      const effectiveFinal = previewFinal ?? reportMap[student.id]?.final ?? null;
+                                      const effectiveFinal = previewFinal ?? backendFinalFromSlot;
                                       if (effectiveFinal === null || effectiveFinal === undefined) {
                                         return 'Belum ada cukup data nilai.';
                                       }
@@ -1166,7 +1359,7 @@ export default function TeacherGradesScreen() {
               Pengaturan Deskripsi Predikat
             </Text>
             <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
-              Deskripsi ini akan diterapkan otomatis ke komponen SAS.
+              {`Deskripsi ini akan diterapkan otomatis ke komponen ${finalComponentLabel}.`}
             </Text>
             <View
               style={{

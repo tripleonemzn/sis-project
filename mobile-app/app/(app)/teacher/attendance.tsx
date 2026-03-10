@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
@@ -58,27 +58,22 @@ export default function TeacherAttendanceScreen() {
     Number.isFinite(initialAssignmentId || NaN) ? initialAssignmentId : null,
   );
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [draft, setDraft] = useState<Record<number, TeacherAttendanceStatus>>({});
+  const [draftOverrides, setDraftOverrides] = useState<Record<number, TeacherAttendanceStatus>>({});
   const [search, setSearch] = useState('');
 
   const assignments = assignmentsQuery.data?.assignments || [];
-  const selectedAssignment = assignments.find((item) => item.id === selectedAssignmentId) || null;
+  const effectiveSelectedAssignmentId = selectedAssignmentId ?? assignments[0]?.id ?? null;
+  const selectedAssignment = assignments.find((item) => item.id === effectiveSelectedAssignmentId) || null;
   const selectedDateIso = toIsoDateLocal(selectedDate);
 
-  useEffect(() => {
-    if (!selectedAssignmentId && assignments.length > 0) {
-      setSelectedAssignmentId(assignments[0].id);
-    }
-  }, [selectedAssignmentId, assignments]);
-
   const detailQuery = useQuery({
-    queryKey: ['mobile-teacher-assignment-detail', selectedAssignmentId],
-    enabled: isAuthenticated && user?.role === 'TEACHER' && !!selectedAssignmentId,
-    queryFn: () => teacherAssignmentApi.getById(selectedAssignmentId!),
+    queryKey: ['mobile-teacher-assignment-detail', effectiveSelectedAssignmentId],
+    enabled: isAuthenticated && user?.role === 'TEACHER' && !!effectiveSelectedAssignmentId,
+    queryFn: () => teacherAssignmentApi.getById(effectiveSelectedAssignmentId!),
   });
 
   const attendanceQuery = useQuery({
-    queryKey: ['mobile-teacher-subject-attendance', selectedAssignmentId, selectedDateIso],
+    queryKey: ['mobile-teacher-subject-attendance', effectiveSelectedAssignmentId, selectedDateIso],
     enabled: isAuthenticated && user?.role === 'TEACHER' && !!selectedAssignment,
     queryFn: () =>
       attendanceApi.getSubjectAttendance({
@@ -89,10 +84,8 @@ export default function TeacherAttendanceScreen() {
       }),
   });
 
-  useEffect(() => {
-    const students = detailQuery.data?.class.students || [];
-    if (students.length === 0) return;
-
+  const students = useMemo(() => detailQuery.data?.class.students || [], [detailQuery.data?.class.students]);
+  const draft = useMemo(() => {
     const nextDraft: Record<number, TeacherAttendanceStatus> = {};
     for (const student of students) {
       nextDraft[student.id] = 'PRESENT';
@@ -100,8 +93,11 @@ export default function TeacherAttendanceScreen() {
     for (const record of attendanceQuery.data?.records || []) {
       nextDraft[record.studentId] = record.status;
     }
-    setDraft(nextDraft);
-  }, [detailQuery.data?.id, attendanceQuery.data?.id, selectedDateIso]);
+    for (const [studentId, status] of Object.entries(draftOverrides)) {
+      nextDraft[Number(studentId)] = status;
+    }
+    return nextDraft;
+  }, [students, attendanceQuery.data?.records, draftOverrides]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -122,12 +118,13 @@ export default function TeacherAttendanceScreen() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: ['mobile-teacher-subject-attendance', selectedAssignmentId, selectedDateIso],
+        queryKey: ['mobile-teacher-subject-attendance', effectiveSelectedAssignmentId, selectedDateIso],
       });
       Alert.alert('Sukses', 'Presensi mapel berhasil disimpan.');
     },
-    onError: (error: any) => {
-      const msg = error?.response?.data?.message || error?.message || 'Gagal menyimpan presensi.';
+    onError: (error: unknown) => {
+      const normalized = error as { response?: { data?: { message?: string } }; message?: string };
+      const msg = normalized.response?.data?.message || normalized.message || 'Gagal menyimpan presensi.';
       Alert.alert('Gagal', msg);
     },
   });
@@ -146,7 +143,6 @@ export default function TeacherAttendanceScreen() {
     return result;
   }, [detailQuery.data?.class.students, draft]);
 
-  const students = detailQuery.data?.class.students || [];
   const searchNormalized = search.trim().toLowerCase();
 
   const filteredStudents = useMemo(() => {
@@ -158,7 +154,7 @@ export default function TeacherAttendanceScreen() {
   }, [students, searchNormalized]);
 
   const handleStatusChange = (studentId: number, status: TeacherAttendanceStatus) => {
-    setDraft((prev) => ({
+    setDraftOverrides((prev) => ({
       ...prev,
       [studentId]: status,
     }));
@@ -166,7 +162,7 @@ export default function TeacherAttendanceScreen() {
 
   const markAll = (status: TeacherAttendanceStatus) => {
     if (!students.length) return;
-    setDraft((prev) => {
+    setDraftOverrides((prev) => {
       const next = { ...prev };
       for (const student of students) {
         next[student.id] = status;
@@ -176,6 +172,7 @@ export default function TeacherAttendanceScreen() {
   };
 
   const shiftDate = (offset: number) => {
+    setDraftOverrides({});
     setSelectedDate((prev) => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate() + offset));
   };
 
@@ -246,11 +243,14 @@ export default function TeacherAttendanceScreen() {
               <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Pilih Kelas & Mapel</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
                 {assignments.map((item) => {
-                  const selected = selectedAssignmentId === item.id;
+                  const selected = effectiveSelectedAssignmentId === item.id;
                   return (
                     <View key={item.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
                       <Pressable
-                        onPress={() => setSelectedAssignmentId(item.id)}
+                        onPress={() => {
+                          setSelectedAssignmentId(item.id);
+                          setDraftOverrides({});
+                        }}
                         style={{
                           borderWidth: 1,
                           borderColor: selected ? '#1d4ed8' : '#cbd5e1',
@@ -302,7 +302,10 @@ export default function TeacherAttendanceScreen() {
                 </View>
                 <View style={{ flex: 1, paddingHorizontal: 4 }}>
                   <Pressable
-                    onPress={() => setSelectedDate(new Date())}
+                    onPress={() => {
+                      setDraftOverrides({});
+                      setSelectedDate(new Date());
+                    }}
                     style={{
                       borderWidth: 1,
                       borderColor: '#bfdbfe',

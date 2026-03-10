@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { internshipService } from '../../../services/internship.service';
 import { 
@@ -15,6 +15,32 @@ interface AssessmentComponent {
   name: string;
   weight: number;
   description?: string;
+}
+
+interface InternshipGrade {
+  componentId: number;
+  score: number;
+}
+
+interface InternshipStudentClass {
+  name: string;
+}
+
+interface InternshipStudent {
+  name: string;
+  nis?: string | null;
+  studentClass?: InternshipStudentClass | null;
+}
+
+interface InternshipForGrading {
+  id: number;
+  student?: InternshipStudent | null;
+  companyName?: string | null;
+  companyAddress?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  grades?: InternshipGrade[] | null;
+  defenseNotes?: string | null;
 }
 
 export const TeacherDefenseGradingPage = () => {
@@ -39,7 +65,10 @@ export const TeacherDefenseGradingPage = () => {
   });
 
   const rawInternships = internshipsResponse?.data?.data;
-  const internships = Array.isArray(rawInternships) ? rawInternships : [];
+  const internships = useMemo<InternshipForGrading[]>(
+    () => (Array.isArray(rawInternships) ? (rawInternships as InternshipForGrading[]) : []),
+    [rawInternships],
+  );
   
   const rawComponents = componentsResponse?.data?.data;
   const components: AssessmentComponent[] = Array.isArray(rawComponents) ? rawComponents : [];
@@ -50,11 +79,11 @@ export const TeacherDefenseGradingPage = () => {
       const initialGrades: Record<number, Record<number, number>> = {};
       const initialNotes: Record<number, string> = {};
 
-      internships.forEach((internship: any) => {
+      internships.forEach((internship) => {
         // Map existing grades if available
         if (internship.grades && Array.isArray(internship.grades)) {
           initialGrades[internship.id] = {};
-          internship.grades.forEach((g: any) => {
+          internship.grades.forEach((g) => {
             initialGrades[internship.id][g.componentId] = g.score;
           });
         }
@@ -65,15 +94,15 @@ export const TeacherDefenseGradingPage = () => {
       setStudentGrades(prev => ({ ...prev, ...initialGrades }));
       setStudentNotes(prev => ({ ...prev, ...initialNotes }));
     }
-  }, [rawInternships]);
+  }, [internships]);
 
   const [isSaving, setIsSaving] = useState(false);
 
   // Filter logic
-  const filteredInternships = internships.filter((item: any) => 
-    item.student?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.student?.studentClass?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.companyName?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredInternships = internships.filter((item) => 
+    (item.student?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (item.student?.studentClass?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (item.companyName || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleGradeChange = (internshipId: number, componentId: number, value: string) => {
@@ -110,7 +139,7 @@ export const TeacherDefenseGradingPage = () => {
     
     try {
       // Create promises for all internships that have grades
-      const promises = internships.map((internship: any) => {
+      const promises = internships.map((internship) => {
         const grades = studentGrades[internship.id];
         // Skip if no grades recorded yet (optional, but safer to save what's visible)
         if (!grades) return Promise.resolve();
@@ -208,7 +237,7 @@ export const TeacherDefenseGradingPage = () => {
                 </td>
               </tr>
             ) : (
-              filteredInternships.map((internship: any, index: number) => (
+              filteredInternships.map((internship, index: number) => (
                 <tr key={internship.id} className="hover:bg-gray-50">
                   <td className="px-4 py-4 text-center text-sm text-gray-500 border-r border-gray-200">
                     {index + 1}
@@ -221,7 +250,7 @@ export const TeacherDefenseGradingPage = () => {
                   <td className="px-4 py-4 text-sm text-gray-600 border-r border-gray-200">
                     {internship.companyName}
                   </td>
-                  <td className="px-4 py-4 text-xs text-gray-500 border-r border-gray-200 max-w-[200px] truncate" title={internship.companyAddress}>
+                  <td className="px-4 py-4 text-xs text-gray-500 border-r border-gray-200 max-w-[200px] truncate" title={internship.companyAddress ?? undefined}>
                     {internship.companyAddress || '-'}
                   </td>
                   <td className="px-4 py-4 text-xs text-center text-gray-500 border-r border-gray-200">

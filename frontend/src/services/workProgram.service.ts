@@ -19,6 +19,8 @@ export type AdditionalDuty =
   | 'BENDAHARA'
   | 'BP_BK';
 
+export type WorkProgramExecutionStatus = 'TERLAKSANA' | 'BELUM_TERLAKSANA';
+
 export interface WorkProgramItem {
   id: number;
   description: string;
@@ -48,6 +50,8 @@ export interface WorkProgram {
   endWeek?: number | null;
   approverId?: number | null;
   approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  executionStatus?: WorkProgramExecutionStatus | null;
+  nonExecutionReason?: string | null;
   feedback?: string | null;
   assignedApprover?: {
     id: number;
@@ -80,6 +84,7 @@ export const workProgramService = {
     additionalDuty?: AdditionalDuty | null;
     majorId?: number | null;
     semester?: 'ODD' | 'EVEN' | null;
+    readOnly?: boolean;
   }) => {
     const response = await api.get('/work-programs', {
       params: {
@@ -90,6 +95,7 @@ export const workProgramService = {
         additionalDuty: params?.additionalDuty ?? undefined,
         majorId: params?.majorId ?? undefined,
         semester: params?.semester ?? undefined,
+        readOnly: params?.readOnly ? '1' : undefined,
       },
     });
     return response.data as { data: WorkProgramListResponse };
@@ -106,6 +112,8 @@ export const workProgramService = {
     endMonth?: number | null;
     startWeek?: number;
     endWeek?: number;
+    executionStatus?: WorkProgramExecutionStatus;
+    nonExecutionReason?: string | null;
   }) => {
     const response = await api.post('/work-programs', data);
     return response.data;
@@ -117,6 +125,15 @@ export const workProgramService = {
       description?: string;
       academicYearId: number;
       additionalDuty: AdditionalDuty;
+      majorId?: number | null;
+      semester?: 'ODD' | 'EVEN' | null;
+      month?: number | null;
+      startMonth?: number | null;
+      endMonth?: number | null;
+      startWeek?: number | null;
+      endWeek?: number | null;
+      executionStatus?: WorkProgramExecutionStatus;
+      nonExecutionReason?: string | null;
     }>,
   ) => {
     const response = await api.put(`/work-programs/${id}`, data);
@@ -149,9 +166,13 @@ export const workProgramService = {
     const response = await api.delete(`/work-programs/items/${itemId}`);
     return response.data;
   },
-  listPendingForApproval: async () => {
-    const response = await api.get('/work-programs/pending');
-    return response.data as { data: any[] };
+  listPendingForApproval: async (params?: { includeReviewed?: boolean }) => {
+    const response = await api.get('/work-programs/pending', {
+      params: {
+        includeReviewed: params?.includeReviewed ? '1' : undefined,
+      },
+    });
+    return response.data as { data: unknown[] };
   },
   updateApprovalStatus: async (
     id: number,

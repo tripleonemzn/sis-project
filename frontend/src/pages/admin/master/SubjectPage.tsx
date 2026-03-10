@@ -3,8 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { subjectService } from '../../../services/subject.service';
 import { getSubjectCategories } from '../../../services/subjectCategory.service';
 import type { Subject } from '../../../services/subject.service';
+import type { SubjectCategory } from '../../../services/subjectCategory.service';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
+import type { Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Loader2, Plus, Trash2, Edit, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -26,6 +28,11 @@ const getCategoryColor = (name: string) => {
   if (upper.includes('DASAR')) return 'bg-cyan-100 text-cyan-800 border border-cyan-200';
   return 'bg-gray-100 text-gray-800 border border-gray-200';
 };
+
+const isCategoryObject = (
+  value: Subject['category'],
+): value is { id: number; name: string; code: string } =>
+  typeof value === 'object' && value !== null && typeof value.id === 'number';
 
 const schema = z.object({
   name: z.string().min(1, 'Nama mata pelajaran wajib diisi'),
@@ -77,7 +84,7 @@ export const SubjectPage = () => {
   });
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<FormValues>({
-    resolver: zodResolver(schema) as any,
+    resolver: zodResolver(schema) as Resolver<FormValues>,
     defaultValues: {
       name: '',
       code: '',
@@ -154,8 +161,7 @@ export const SubjectPage = () => {
     // Set category ID
     if (item.subjectCategoryId) {
        setValue('subjectCategoryId', item.subjectCategoryId);
-    } else if (typeof item.category === 'object' && item.category !== null) {
-       // @ts-ignore
+    } else if (isCategoryObject(item.category)) {
        setValue('subjectCategoryId', item.category.id);
     }
     
@@ -206,7 +212,7 @@ export const SubjectPage = () => {
                >
                  Semua
                </button>
-               {categories.map((cat: any) => (
+               {categories.map((cat: SubjectCategory) => (
                  <button
                    key={cat.id}
                    onClick={() => setCategoryFilter(cat.id)}
@@ -272,8 +278,8 @@ export const SubjectPage = () => {
                           {item.name}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
-                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${(typeof item.category === 'object' && item.category !== null) ? getCategoryColor((item.category as any).name) : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
-                             {(typeof item.category === 'object' && item.category !== null) ? (item.category as any).name : '-'}
+                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isCategoryObject(item.category) ? getCategoryColor(item.category.name) : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
+                             {isCategoryObject(item.category) ? item.category.name : '-'}
                            </span>
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-center text-gray-600">
@@ -404,7 +410,7 @@ export const SubjectPage = () => {
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             >
                             <option value="">Pilih Kategori</option>
-                            {categories.map((cat: any) => (
+                            {categories.map((cat: SubjectCategory) => (
                                 <option key={cat.id} value={cat.id}>
                                 {cat.name}
                                 </option>

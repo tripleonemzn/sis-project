@@ -15,6 +15,7 @@ const FOREGROUND_CHECK_THROTTLE_MS = 15 * 1000;
 const UPDATE_NOTIFICATION_TITLE = 'SIS KGB2 : Update Tersedia';
 const UPDATE_NOTIFICATION_BODY =
   'Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.';
+const OTA_MARKER = 'ota-2026-03-10-hotfix-01';
 
 function formatDateTime(value: string | null) {
   if (!value) return '-';
@@ -54,6 +55,7 @@ export function AppUpdateManager() {
           data: {
             type: 'APP_UPDATE',
             channel: Updates.channel || 'default',
+            marker: OTA_MARKER,
           },
           ...(Platform.OS === 'android'
             ? { channelId: APP_UPDATE_NOTIFICATION_CHANNEL_ID }
@@ -82,10 +84,11 @@ export function AppUpdateManager() {
         setIsModalVisible(false);
         setDismissed(false);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       setLastCheckedAt(new Date().toISOString());
       lastCheckTsRef.current = Date.now();
-      setErrorMessage(error?.message || 'Gagal memeriksa update.');
+      const message = error instanceof Error ? error.message : 'Gagal memeriksa update.';
+      setErrorMessage(message);
     } finally {
       checkingRef.current = false;
     }
@@ -99,8 +102,9 @@ export function AppUpdateManager() {
     setErrorMessage(null);
     try {
       await applyAppUpdate();
-    } catch (error: any) {
-      setErrorMessage(error?.message || 'Gagal memasang update.');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Gagal memasang update.';
+      setErrorMessage(message);
       setIsInstalling(false);
     }
   }, [supported, isInstalling]);

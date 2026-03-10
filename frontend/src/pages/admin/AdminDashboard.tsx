@@ -15,8 +15,8 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import React from 'react';
 import { Link } from 'react-router-dom';
-import api from '../../services/api';
 import { authService } from '../../services/auth.service';
+import { academicYearService } from '../../services/academicYear.service';
 import { majorService, type Major } from '../../services/major.service';
 import { classService, type Class } from '../../services/class.service';
 import { trainingClassService } from '../../services/trainingClass.service';
@@ -31,6 +31,7 @@ interface StatCardProps {
   trend: number;
   color: 'blue' | 'orange' | 'red' | 'teal';
   trendLabel?: string;
+  to?: string;
 }
 
 interface DashboardTotals {
@@ -73,64 +74,88 @@ interface DashboardData {
   teacherAssignmentSummary: TeacherAssignmentSummary | null;
 }
 
+function getArrayByKey<T>(res: unknown, key: string): T[] {
+  if (!res || typeof res !== 'object') return [];
+  const typedRes = res as {
+    data?: Record<string, unknown> | unknown[];
+    [k: string]: unknown;
+  };
+  const fromData =
+    typedRes.data && !Array.isArray(typedRes.data)
+      ? (typedRes.data as Record<string, unknown>)[key]
+      : undefined;
+  if (Array.isArray(fromData)) return fromData as T[];
+  const directValue = typedRes[key];
+  if (Array.isArray(directValue)) return directValue as T[];
+  if (Array.isArray(typedRes.data)) return typedRes.data as T[];
+  return [];
+}
+
 interface ParsedYearName {
   primary: string;
   secondary?: string;
 }
 
-const StatCard = ({ title, value, icon: Icon, trend, color, trendLabel }: StatCardProps) => {
+const StatCard = ({ title, value, icon: Icon, trend, color, trendLabel, to }: StatCardProps) => {
   const getColorClasses = (tone: StatCardProps['color']) => {
     switch (tone) {
       case 'blue':
-        // Biru logo
         return {
-          bg: 'bg-gradient-to-br from-blue-700 via-blue-600 to-sky-500',
-          soft: 'bg-blue-400/40',
-          icon: 'text-blue-50',
-          textMain: 'text-white',
-          textSub: 'text-blue-100',
+          bg: 'bg-gradient-to-br from-blue-50 to-sky-100/85 border-blue-100',
+          soft: 'bg-blue-100',
+          icon: 'text-blue-700',
+          textMain: 'text-blue-900',
+          textSub: 'text-blue-700/80',
+          menu: 'text-blue-700/60 hover:text-blue-800',
+          divider: 'border-blue-200/70',
+          decor: 'text-blue-200/80',
         };
       case 'orange':
-        // Oranye logo
         return {
-          bg: 'bg-gradient-to-br from-orange-600 via-orange-500 to-amber-400',
-          soft: 'bg-orange-400/35',
-          icon: 'text-orange-50',
-          textMain: 'text-white',
-          textSub: 'text-amber-100',
+          bg: 'bg-gradient-to-br from-orange-50 to-amber-100/85 border-orange-100',
+          soft: 'bg-orange-100',
+          icon: 'text-orange-700',
+          textMain: 'text-orange-900',
+          textSub: 'text-orange-700/80',
+          menu: 'text-orange-700/60 hover:text-orange-800',
+          divider: 'border-orange-200/70',
+          decor: 'text-orange-200/90',
         };
       case 'red':
-        // Merah logo
         return {
-          bg: 'bg-gradient-to-br from-rose-600 via-red-600 to-red-500',
-          soft: 'bg-red-400/35',
-          icon: 'text-red-50',
-          textMain: 'text-white',
-          textSub: 'text-rose-100',
+          bg: 'bg-gradient-to-br from-rose-50 to-red-100/85 border-rose-100',
+          soft: 'bg-rose-100',
+          icon: 'text-rose-700',
+          textMain: 'text-rose-900',
+          textSub: 'text-rose-700/80',
+          menu: 'text-rose-700/60 hover:text-rose-800',
+          divider: 'border-rose-200/70',
+          decor: 'text-rose-200/90',
         };
       case 'teal':
       default:
-        // Hijau tosca logo
         return {
-          bg: 'bg-gradient-to-br from-teal-600 via-emerald-500 to-teal-400',
-          soft: 'bg-teal-400/35',
-          icon: 'text-teal-50',
-          textMain: 'text-white',
-          textSub: 'text-teal-100',
+          bg: 'bg-gradient-to-br from-teal-50 to-emerald-100/85 border-teal-100',
+          soft: 'bg-teal-100',
+          icon: 'text-teal-700',
+          textMain: 'text-teal-900',
+          textSub: 'text-teal-700/80',
+          menu: 'text-teal-700/60 hover:text-teal-800',
+          divider: 'border-teal-200/70',
+          decor: 'text-teal-200/90',
         };
     }
   };
 
-  const { bg, soft, icon, textMain, textSub } = getColorClasses(color);
+  const { bg, soft, icon, textMain, textSub, menu, divider, decor } = getColorClasses(color);
 
   const trendIsPositive = trend > 0;
   const TrendIcon = trendIsPositive ? ArrowUpRight : ArrowDownRight;
-  const trendColor =
-    trend === 0 ? `${textSub}` : trendIsPositive ? 'text-emerald-200' : 'text-red-200';
+  const trendColor = trend === 0 ? 'text-gray-500' : trendIsPositive ? 'text-emerald-700' : 'text-rose-700';
 
-  return (
+  const cardBody = (
     <div
-      className={`relative overflow-hidden p-6 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.25)] border-none transition-all hover:shadow-[0_10px_35px_-6px_rgba(6,81,237,0.4)] group ${bg}`}
+      className={`relative overflow-hidden p-6 rounded-2xl border shadow-sm transition-all hover:shadow-md group ${bg}`}
     >
       <div className="flex items-start justify-between mb-4 relative z-10">
         <div
@@ -140,7 +165,7 @@ const StatCard = ({ title, value, icon: Icon, trend, color, trendLabel }: StatCa
         </div>
         <button
           type="button"
-          className="text-white/40 hover:text-white/70"
+          className={menu}
           aria-label="Opsi statistik kartu"
         >
           <MoreVertical size={18} />
@@ -152,7 +177,7 @@ const StatCard = ({ title, value, icon: Icon, trend, color, trendLabel }: StatCa
         <p className={`text-sm font-medium ${textSub}`}>{title}</p>
       </div>
 
-      <div className="mt-4 flex items-center text-xs font-medium pt-4 border-t-2 border-white/25 relative z-10">
+      <div className={`mt-4 flex items-center text-xs font-medium pt-4 border-t relative z-10 ${divider}`}>
         <span className={`flex items-center gap-1 ${trendColor}`}>
           <TrendIcon size={14} />
           {Math.abs(trend)}%
@@ -160,9 +185,20 @@ const StatCard = ({ title, value, icon: Icon, trend, color, trendLabel }: StatCa
         <span className={`${textSub} ml-2`}>{trendLabel || 'dari bulan lalu'}</span>
       </div>
       <Icon
-        className="absolute -bottom-10 -right-6 w-32 h-32 opacity-20 text-black/35 group-hover:opacity-25 group-hover:scale-110 transition-transform"
+        className={`absolute -bottom-10 -right-6 w-32 h-32 opacity-60 group-hover:opacity-70 group-hover:scale-110 transition-transform ${decor}`}
       />
     </div>
+  );
+
+  if (!to) return cardBody;
+
+  return (
+    <Link
+      to={to}
+      className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+    >
+      {cardBody}
+    </Link>
   );
 };
 
@@ -203,8 +239,8 @@ export const AdminDashboard = () => {
     queryFn: async () => {
       let activeYear: ActiveAcademicYear | null = null;
       try {
-        const res = await api.get('/academic-years/active');
-        activeYear = res.data?.data as ActiveAcademicYear;
+        const res = await academicYearService.getActiveSafe();
+        activeYear = (res?.data ?? null) as ActiveAcademicYear | null;
       } catch {
         // Ignore if no active year
       }
@@ -230,18 +266,14 @@ export const AdminDashboard = () => {
         teacherAssignmentService.list({ limit: 1000 }),
       ]);
 
-      const getArray = (res: any, key: string) => {
-        return res?.data?.[key] || res?.[key] || res?.data || [];
-      };
-      
-      const majorsList = getArray(majorsRes, 'majors');
-      const classesList = getArray(classesRes, 'classes');
-      const trainingClassesList = getArray(trainingClassesRes, 'trainingClasses') || getArray(trainingClassesRes, 'data'); // trainingClasses usually in data
-      const subjectsList = getArray(subjectsRes, 'subjects');
+      const majorsList = getArrayByKey<Major>(majorsRes, 'majors');
+      const classesList = getArrayByKey<Class>(classesRes, 'classes');
+      const trainingClassesList = getArrayByKey<{ id: number }>(trainingClassesRes, 'trainingClasses');
+      const subjectsList = getArrayByKey<{ id: number }>(subjectsRes, 'subjects');
       const usersList = usersRes.data || []; // userService returns { data: User[] }
       const studentsList = studentsRes.data || [];
       const teachersList = teachersRes.data || [];
-      const teacherAssignmentsList = getArray(teacherAssignmentsRes, 'assignments');
+      const teacherAssignmentsList = getArrayByKey<TeacherAssignment>(teacherAssignmentsRes, 'assignments');
 
       // Calculate Student by Major
       const studentByMajor: StudentByMajorStat[] = majorsList.map((major: Major) => {
@@ -302,11 +334,11 @@ export const AdminDashboard = () => {
 
   return (
     <div className="space-y-8">
-      <div className="bg-white rounded-2xl px-6 py-4 shadow-sm border border-gray-100 mt-10 relative flex flex-col md:flex-row justify-between items-center gap-4">
+      <div className="bg-gradient-to-br from-blue-50 to-sky-100/80 rounded-2xl px-6 py-4 shadow-sm border border-blue-100 mt-10 relative flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-6">
           <div className="-mt-16 relative">
             <div
-              className="w-36 h-36 rounded-full p-1 bg-white ring-1 ring-gray-200"
+              className="w-36 h-36 rounded-full p-1 bg-white/90 ring-1 ring-blue-200"
               style={{
                 boxShadow:
                   'inset 6px 6px 12px rgba(0,0,0,0.06), inset -6px -6px 12px rgba(255,255,255,0.9), 8px 8px 16px rgba(0,0,0,0.08), -3px -3px 8px rgba(255,255,255,0.7)',
@@ -326,7 +358,7 @@ export const AdminDashboard = () => {
                   }}
                 />
               ) : (
-                <div className="w-full h-full rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-6xl">
+                <div className="w-full h-full rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-6xl">
                   {user.name?.charAt(0)?.toUpperCase()}
                 </div>
               )}
@@ -361,6 +393,10 @@ export const AdminDashboard = () => {
       {totals && !isLoading && !isError && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+            <Link
+              to="/admin/academic-years"
+              className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+            >
             <div className="relative overflow-hidden p-6 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.25)] border-none transition-all hover:shadow-[0_10px_35px_-6px_rgba(6,81,237,0.4)] group bg-gradient-to-br from-cyan-600 to-teal-500">
               <div className="flex items-start justify-between mb-4 relative z-10">
                 <div className="p-3 rounded-xl bg-cyan-400/30 flex items-center justify-center group-hover:scale-105 transition-all">
@@ -396,6 +432,7 @@ export const AdminDashboard = () => {
               </div>
               <Calendar className="absolute -bottom-10 -right-6 w-32 h-32 opacity-20 text-black/35 group-hover:opacity-25 group-hover:scale-110 transition-transform" />
             </div>
+            </Link>
             <StatCard
               title="Total Pengguna"
               value={totals.users.toLocaleString('id-ID')}
@@ -403,6 +440,7 @@ export const AdminDashboard = () => {
               trend={0}
               color="blue"
               trendLabel="Semua role pengguna"
+              to="/admin/user-verification"
             />
             <StatCard
               title="Siswa Aktif"
@@ -411,6 +449,7 @@ export const AdminDashboard = () => {
               trend={0}
               color="orange"
               trendLabel="Berdasarkan role siswa"
+              to="/admin/students"
             />
             <StatCard
               title="Guru & Staff"
@@ -419,6 +458,7 @@ export const AdminDashboard = () => {
               trend={0}
               color="red"
               trendLabel="Guru dan staff terdaftar"
+              to="/admin/teachers"
             />
           </div>
 

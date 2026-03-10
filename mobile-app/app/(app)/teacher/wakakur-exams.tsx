@@ -17,7 +17,7 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
-import { AdminUser, adminApi } from '../../../src/features/admin/adminApi';
+import { AdminSubject, AdminUser, adminApi } from '../../../src/features/admin/adminApi';
 import {
   examApi,
   ExamGradeComponentItem,
@@ -28,12 +28,18 @@ import {
   ExamProgramItem,
   ExamProgramReportSlot,
 } from '../../../src/features/exams/examApi';
-import { ExamDisplayType, TeacherExamSchedule } from '../../../src/features/exams/types';
+import {
+  ExamDisplayType,
+  ExamSittingDetail,
+  ExamSittingListItem,
+  TeacherExamSchedule,
+} from '../../../src/features/exams/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
 type ExamHubSection = 'JADWAL' | 'RUANG' | 'MENGAWAS' | 'PROGRAM';
 type ExamTypeFilter = 'ALL' | ExamDisplayType;
 type ExamLabelMap = Record<string, string>;
+type ExamSittingStudentRow = NonNullable<ExamSittingDetail['students']>[number];
 type ExamProgramDraft = {
   rowId: string;
   configId?: number;
@@ -54,6 +60,9 @@ type ExamProgramDraft = {
   isActive: boolean;
   showOnTeacherMenu: boolean;
   showOnStudentMenu: boolean;
+  targetClassLevels: string[];
+  allowedSubjectIds: number[];
+  allowedAuthorIds: number[];
   source: 'default' | 'custom' | 'new';
   isCodeLocked: boolean;
 };
@@ -91,92 +100,18 @@ const REPORT_SLOT_OPTIONS: Array<{ value: ExamProgramReportSlot; label: string }
   { value: 'FORMATIF', label: 'Formatif' },
   { value: 'SBTS', label: 'SBTS' },
   { value: 'SAS', label: 'SAS/SAT' },
+  { value: 'SAT', label: 'SAT' },
   { value: 'US_THEORY', label: 'US Teori' },
   { value: 'US_PRACTICE', label: 'US Praktik' },
 ];
 
-const DEFAULT_GRADE_COMPONENTS: GradeComponentDraft[] = [
-  {
-    rowId: 'component-default-formative',
-    componentId: undefined,
-    code: 'FORMATIVE',
-    label: 'Formatif',
-    type: 'FORMATIVE',
-    typeCode: 'FORMATIVE',
-    entryMode: 'NF_SERIES',
-    entryModeCode: 'NF_SERIES',
-    reportSlot: 'FORMATIF',
-    reportSlotCode: 'FORMATIF',
-    includeInFinalScore: true,
-    description: 'Nilai formatif bertahap (NF1-NF6).',
-    order: 10,
-    isActive: true,
-  },
-  {
-    rowId: 'component-default-midterm',
-    componentId: undefined,
-    code: 'MIDTERM',
-    label: 'SBTS',
-    type: 'MIDTERM',
-    typeCode: 'MIDTERM',
-    entryMode: 'SINGLE_SCORE',
-    entryModeCode: 'SINGLE_SCORE',
-    reportSlot: 'SBTS',
-    reportSlotCode: 'SBTS',
-    includeInFinalScore: true,
-    description: 'Nilai ujian tengah semester.',
-    order: 20,
-    isActive: true,
-  },
-  {
-    rowId: 'component-default-final',
-    componentId: undefined,
-    code: 'FINAL',
-    label: 'SAS/SAT',
-    type: 'FINAL',
-    typeCode: 'FINAL',
-    entryMode: 'SINGLE_SCORE',
-    entryModeCode: 'SINGLE_SCORE',
-    reportSlot: 'SAS',
-    reportSlotCode: 'SAS',
-    includeInFinalScore: true,
-    description: 'Nilai ujian akhir semester.',
-    order: 30,
-    isActive: true,
-  },
-  {
-    rowId: 'component-default-us-practice',
-    componentId: undefined,
-    code: 'US_PRACTICE',
-    label: 'US Praktik',
-    type: 'US_PRACTICE',
-    typeCode: 'US_PRACTICE',
-    entryMode: 'SINGLE_SCORE',
-    entryModeCode: 'SINGLE_SCORE',
-    reportSlot: 'US_PRACTICE',
-    reportSlotCode: 'US_PRACTICE',
-    includeInFinalScore: false,
-    description: '',
-    order: 50,
-    isActive: true,
-  },
-  {
-    rowId: 'component-default-us-theory',
-    componentId: undefined,
-    code: 'US_THEORY',
-    label: 'US Teori',
-    type: 'US_THEORY',
-    typeCode: 'US_THEORY',
-    entryMode: 'SINGLE_SCORE',
-    entryModeCode: 'SINGLE_SCORE',
-    reportSlot: 'US_THEORY',
-    reportSlotCode: 'US_THEORY',
-    includeInFinalScore: false,
-    description: '',
-    order: 60,
-    isActive: true,
-  },
-];
+const VALID_CLASS_LEVEL_SCOPE = new Set(['X', 'XI', 'XII']);
+const CLASS_LEVEL_SCOPE_OPTIONS = ['X', 'XI', 'XII'] as const;
+const PROGRAM_FIXED_SEMESTER_OPTIONS = [
+  { key: 'AUTO', label: 'Otomatis', value: null },
+  { key: 'ODD', label: 'Ganjil', value: 'ODD' },
+  { key: 'EVEN', label: 'Genap', value: 'EVEN' },
+] as const;
 
 function hasCurriculumDuty(userDuties?: string[]) {
   const duties = (userDuties || []).map((item) => item.trim().toUpperCase());
@@ -197,6 +132,30 @@ function normalizeProgramCode(raw: unknown): string {
     .replace(/^_+|_+$/g, '');
 }
 
+function normalizeClassLevelScope(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const unique = new Set<string>();
+  values.forEach((item) => {
+    const normalized = String(item || '').trim().toUpperCase();
+    if (VALID_CLASS_LEVEL_SCOPE.has(normalized)) {
+      unique.add(normalized);
+    }
+  });
+  return Array.from(unique);
+}
+
+function normalizeNumericIds(values: unknown): number[] {
+  if (!Array.isArray(values)) return [];
+  const unique = new Set<number>();
+  values.forEach((item) => {
+    const parsed = Number(item);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      unique.add(Math.trunc(parsed));
+    }
+  });
+  return Array.from(unique);
+}
+
 function normalizeExamType(raw: string | null | undefined): ExamDisplayType {
   const value = normalizeProgramCode(raw);
   return value || 'FORMATIF';
@@ -210,6 +169,56 @@ function resolveScheduleSubject(schedule: TeacherExamSchedule) {
   const subjectName = schedule.subject?.name || schedule.packet?.subject?.name || '-';
   const subjectCode = schedule.subject?.code || schedule.packet?.subject?.code || '-';
   return { subjectName, subjectCode };
+}
+
+function normalizeSessionLabel(raw: unknown): string {
+  return String(raw || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeRoomLookupKey(raw: unknown): string {
+  return String(raw || '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeTimeLookupKey(raw: unknown): string {
+  const parsed = Date.parse(String(raw || ''));
+  return Number.isFinite(parsed) ? String(parsed) : String(raw || '').trim();
+}
+
+function buildRoomSlotLookupKey(
+  roomName: unknown,
+  startTime: unknown,
+  endTime: unknown,
+  sessionLabel: unknown,
+): string {
+  return `${normalizeRoomLookupKey(roomName)}::${normalizeTimeLookupKey(startTime)}::${normalizeTimeLookupKey(endTime)}::${normalizeSessionLabel(sessionLabel) || '__no_session__'}`;
+}
+
+function buildRoomSessionLookupKey(roomName: unknown, sessionLabel: unknown): string {
+  return `${normalizeRoomLookupKey(roomName)}::${normalizeSessionLabel(sessionLabel) || '__no_session__'}`;
+}
+
+function compareClassName(a: string, b: string): number {
+  return String(a || '').localeCompare(String(b || ''), 'id', {
+    numeric: true,
+    sensitivity: 'base',
+  });
+}
+
+function extractClassNameFromSittingStudent(student: ExamSittingStudentRow): string {
+  if (!student) return '';
+  const fromStudentClass = String(student.studentClass?.name || '').trim();
+  if (fromStudentClass) return fromStudentClass;
+  const fromClass = String(student.class?.name || '').trim();
+  if (fromClass) return fromClass;
+  return String(student.class_name || '').trim();
 }
 
 function formatDateTime(value: string) {
@@ -273,7 +282,8 @@ function defaultReportSlotByCode(code: string): ExamProgramReportSlot {
 }
 
 function defaultIncludeInFinalScoreBySlot(slot: ExamProgramReportSlot): boolean {
-  return slot === 'FORMATIF' || slot === 'SBTS' || slot === 'SAS';
+  const normalized = normalizeProgramCode(slot);
+  return normalized === 'FORMATIF' || normalized === 'SBTS' || normalized === 'SAS' || normalized === 'SAT';
 }
 
 function resolveEntryModeByCode(
@@ -294,6 +304,7 @@ function resolveReportSlotByCode(
   if (normalized === 'FORMATIF') return 'FORMATIF';
   if (normalized === 'SBTS') return 'SBTS';
   if (normalized === 'SAS') return 'SAS';
+  if (normalized === 'SAT') return 'SAT';
   if (normalized === 'US_THEORY') return 'US_THEORY';
   if (normalized === 'US_PRACTICE') return 'US_PRACTICE';
   if (normalized === 'NONE') return 'NONE';
@@ -333,6 +344,9 @@ function normalizeProgramDrafts(programs: ExamProgramItem[]): ExamProgramDraft[]
         isActive: Boolean(item.isActive),
         showOnTeacherMenu: Boolean(item.showOnTeacherMenu),
         showOnStudentMenu: Boolean(item.showOnStudentMenu),
+        targetClassLevels: normalizeClassLevelScope(item.targetClassLevels),
+        allowedSubjectIds: normalizeNumericIds(item.allowedSubjectIds),
+        allowedAuthorIds: normalizeNumericIds(item.allowedAuthorIds),
         source: item.source || 'custom',
         isCodeLocked: true,
       };
@@ -361,6 +375,9 @@ function snapshotProgramDrafts(rows: ExamProgramDraft[]) {
       isActive: row.isActive,
       showOnTeacherMenu: row.showOnTeacherMenu,
       showOnStudentMenu: row.showOnStudentMenu,
+      targetClassLevels: normalizeClassLevelScope(row.targetClassLevels),
+      allowedSubjectIds: normalizeNumericIds(row.allowedSubjectIds),
+      allowedAuthorIds: normalizeNumericIds(row.allowedAuthorIds),
       source: row.source,
       isCodeLocked: row.isCodeLocked,
     })),
@@ -456,6 +473,9 @@ function createNewProgramDraft(
     isActive: true,
     showOnTeacherMenu: true,
     showOnStudentMenu: true,
+    targetClassLevels: [],
+    allowedSubjectIds: [],
+    allowedAuthorIds: [],
     source: 'new',
     isCodeLocked: false,
   };
@@ -580,6 +600,8 @@ export default function TeacherWakakurExamsScreen() {
   const [componentDrafts, setComponentDrafts] = useState<GradeComponentDraft[]>([]);
   const [componentBaseline, setComponentBaseline] = useState<string>('[]');
   const [codeEditBackup, setCodeEditBackup] = useState<Record<string, string>>({});
+  const [programSubjectSearch, setProgramSubjectSearch] = useState<Record<string, string>>({});
+  const [programAuthorSearch, setProgramAuthorSearch] = useState<Record<string, string>>({});
   const isProgramSection = section === 'PROGRAM';
   const openExamSessionCrud = () => {
     router.push('/admin/academic?section=exam-sessions' as never);
@@ -647,7 +669,10 @@ export default function TeacherWakakurExamsScreen() {
     return map;
   }, [examProgramsQuery.data]);
 
-  const examTypeLabel = (type: string) => resolveExamTypeLabel(type, examTypeLabels);
+  const examTypeLabel = useMemo(
+    () => (type: string) => resolveExamTypeLabel(type, examTypeLabels),
+    [examTypeLabels],
+  );
 
   const schedulesQuery = useQuery({
     queryKey: ['mobile-wakakur-exam-schedules', activeYearQuery.data?.id],
@@ -660,10 +685,59 @@ export default function TeacherWakakurExamsScreen() {
     },
   });
 
+  const examSittingsQuery = useQuery({
+    queryKey: ['mobile-wakakur-exam-sittings', activeYearQuery.data?.id, examTypeFilter],
+    enabled: isAuthenticated && !!isAllowed && Boolean(activeYearQuery.data?.id) && !isProgramSection,
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      const sittings = await examApi.getExamSittings({
+        academicYearId: activeYearQuery.data?.id,
+        ...(examTypeFilter !== 'ALL'
+          ? {
+              examType: examTypeFilter,
+              programCode: examTypeFilter,
+            }
+          : {}),
+      });
+
+      if (!Array.isArray(sittings) || sittings.length === 0) {
+        return {
+          list: [] as ExamSittingListItem[],
+          details: [] as ExamSittingDetail[],
+        };
+      }
+
+      const detailResults = await Promise.allSettled(
+        sittings.map((sitting) => examApi.getExamSittingDetail(Number(sitting.id))),
+      );
+
+      const details = detailResults
+        .filter(
+          (result): result is PromiseFulfilledResult<ExamSittingDetail> =>
+            result.status === 'fulfilled' && Boolean(result.value),
+        )
+        .map((result) => result.value);
+
+      return {
+        list: sittings,
+        details,
+      };
+    },
+  });
+
   const teachersQuery = useQuery({
     queryKey: ['mobile-wakakur-exam-teachers'],
     enabled: isAuthenticated && !!isAllowed,
     queryFn: async () => adminApi.listUsers({ role: 'TEACHER' }),
+  });
+
+  const subjectsQuery = useQuery({
+    queryKey: ['mobile-wakakur-exam-subjects'],
+    enabled: isAuthenticated && !!isAllowed,
+    queryFn: async () => {
+      const result = await adminApi.listSubjects({ page: 1, limit: 500 });
+      return result.items || [];
+    },
   });
 
   const updateProctorMutation = useMutation({
@@ -675,8 +749,9 @@ export default function TeacherWakakurExamsScreen() {
       setTeacherSearch('');
       Alert.alert('Sukses', 'Pengawas ujian berhasil diperbarui.');
     },
-    onError: (error: any) => {
-      const msg = error?.response?.data?.message || error?.message || 'Gagal memperbarui pengawas.';
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } }; message?: string };
+      const msg = apiError?.response?.data?.message || apiError?.message || 'Gagal memperbarui pengawas.';
       Alert.alert('Gagal', msg);
     },
   });
@@ -687,8 +762,9 @@ export default function TeacherWakakurExamsScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-wakakur-exam-schedules'] });
       Alert.alert('Sukses', 'Jadwal ujian berhasil dihapus.');
     },
-    onError: (error: any) => {
-      const msg = error?.response?.data?.message || error?.message || 'Gagal menghapus jadwal ujian.';
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } }; message?: string };
+      const msg = apiError?.response?.data?.message || apiError?.message || 'Gagal menghapus jadwal ujian.';
       Alert.alert('Gagal', msg);
     },
   });
@@ -738,6 +814,9 @@ export default function TeacherWakakurExamsScreen() {
           isActive: row.isActive,
           showOnTeacherMenu: row.showOnTeacherMenu,
           showOnStudentMenu: row.showOnStudentMenu,
+          targetClassLevels: normalizeClassLevelScope(row.targetClassLevels),
+          allowedSubjectIds: normalizeNumericIds(row.allowedSubjectIds),
+          allowedAuthorIds: normalizeNumericIds(row.allowedAuthorIds),
           ...(function alignFromComponent() {
             const component = componentMap.get(normalizeProgramCode(row.gradeComponentCode));
             if (!component) return {};
@@ -783,8 +862,9 @@ export default function TeacherWakakurExamsScreen() {
       ]);
       Alert.alert('Sukses', 'Konfigurasi program ujian berhasil diperbarui.');
     },
-    onError: (error: any) => {
-      const msg = error?.response?.data?.message || error?.message || 'Gagal menyimpan program ujian.';
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } }; message?: string };
+      const msg = apiError?.response?.data?.message || apiError?.message || 'Gagal menyimpan program ujian.';
       Alert.alert('Gagal', msg);
     },
   });
@@ -832,8 +912,9 @@ export default function TeacherWakakurExamsScreen() {
       ]);
       Alert.alert('Sukses', 'Master komponen nilai berhasil diperbarui.');
     },
-    onError: (error: any) => {
-      const msg = error?.response?.data?.message || error?.message || 'Gagal menyimpan komponen nilai.';
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } }; message?: string };
+      const msg = apiError?.response?.data?.message || apiError?.message || 'Gagal menyimpan komponen nilai.';
       Alert.alert('Gagal', msg);
     },
   });
@@ -841,27 +922,35 @@ export default function TeacherWakakurExamsScreen() {
   useEffect(() => {
     if (!examProgramConfigQuery.data?.programs) return;
     const nextDrafts = normalizeProgramDrafts(examProgramConfigQuery.data.programs);
-    setProgramDrafts(nextDrafts);
-    setProgramBaseline(snapshotProgramDrafts(nextDrafts));
-    setCodeEditBackup({});
+    const timerId = setTimeout(() => {
+      setProgramDrafts(nextDrafts);
+      setProgramBaseline(snapshotProgramDrafts(nextDrafts));
+      setCodeEditBackup({});
+    }, 0);
+    return () => clearTimeout(timerId);
   }, [examProgramConfigQuery.data]);
 
   useEffect(() => {
     const rows = examGradeComponentsQuery.data?.components || [];
     if (rows.length > 0) {
       const normalized = normalizeComponentDrafts(rows);
-      setComponentDrafts(normalized);
-      setComponentBaseline(snapshotComponentDrafts(normalized));
-      return;
+      const timerId = setTimeout(() => {
+        setComponentDrafts(normalized);
+        setComponentBaseline(snapshotComponentDrafts(normalized));
+      }, 0);
+      return () => clearTimeout(timerId);
     }
     if (!examGradeComponentsQuery.isLoading && !examGradeComponentsQuery.isError) {
       // Keep empty state as-is. Do not auto-inject local defaults when backend returns no components.
-      setComponentDrafts([]);
-      setComponentBaseline(snapshotComponentDrafts([]));
+      const timerId = setTimeout(() => {
+        setComponentDrafts([]);
+        setComponentBaseline(snapshotComponentDrafts([]));
+      }, 0);
+      return () => clearTimeout(timerId);
     }
   }, [examGradeComponentsQuery.data, examGradeComponentsQuery.isLoading, examGradeComponentsQuery.isError]);
 
-  const schedules = schedulesQuery.data || [];
+  const schedules = useMemo(() => schedulesQuery.data || [], [schedulesQuery.data]);
   const examTypeFilterOptions = useMemo<ExamTypeFilter[]>(() => {
     const codes = new Set<string>();
     (examProgramsQuery.data?.programs || []).forEach((program) => {
@@ -878,7 +967,8 @@ export default function TeacherWakakurExamsScreen() {
   useEffect(() => {
     if (examTypeFilter === 'ALL') return;
     if (!examTypeFilterOptions.includes(examTypeFilter)) {
-      setExamTypeFilter('ALL');
+      const timerId = setTimeout(() => setExamTypeFilter('ALL'), 0);
+      return () => clearTimeout(timerId);
     }
   }, [examTypeFilter, examTypeFilterOptions]);
 
@@ -892,6 +982,22 @@ export default function TeacherWakakurExamsScreen() {
         }))
         .sort((a, b) => a.name.localeCompare(b.name, 'id')),
     [teachersQuery.data],
+  );
+
+  const subjects = useMemo(
+    () =>
+      (subjectsQuery.data || [])
+        .map((item: AdminSubject) => ({
+          id: item.id,
+          code: item.code,
+          name: item.name,
+        }))
+        .sort((a, b) => {
+          const nameCompare = a.name.localeCompare(b.name, 'id');
+          if (nameCompare !== 0) return nameCompare;
+          return a.code.localeCompare(b.code, 'id');
+        }),
+    [subjectsQuery.data],
   );
 
   const filteredSchedules = useMemo(() => {
@@ -918,7 +1024,67 @@ export default function TeacherWakakurExamsScreen() {
         return haystacks.some((value) => value.toLowerCase().includes(query));
       })
       .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-  }, [schedules, activeYearQuery.data?.id, examTypeFilter, search, examTypeLabels]);
+  }, [schedules, activeYearQuery.data, examTypeFilter, search, examTypeLabel]);
+
+  const sittingRoomDerived = useMemo(() => {
+    const list = examSittingsQuery.data?.list || [];
+    const details = examSittingsQuery.data?.details || [];
+
+    const slotAccumulator: Record<string, Set<string>> = {};
+    const sessionAccumulator: Record<string, Set<string>> = {};
+    const roomOrderByName: Record<string, number> = {};
+
+    const sortedList = [...list].sort((a, b) => {
+      const timeA = Date.parse(String(a.startTime || ''));
+      const timeB = Date.parse(String(b.startTime || ''));
+      if (Number.isFinite(timeA) && Number.isFinite(timeB) && timeA !== timeB) return timeA - timeB;
+      const roomA = String(a.roomName || '').trim();
+      const roomB = String(b.roomName || '').trim();
+      return roomA.localeCompare(roomB, 'id', { sensitivity: 'base' });
+    });
+
+    sortedList.forEach((sitting, index) => {
+      const roomName = String(sitting.roomName || '').trim();
+      if (!roomName) return;
+
+      if (roomOrderByName[roomName] === undefined) roomOrderByName[roomName] = index;
+    });
+
+    details.forEach((sitting) => {
+      const roomName = String(sitting.roomName || '').trim();
+      if (!roomName) return;
+      const slotKey = buildRoomSlotLookupKey(roomName, sitting.startTime, sitting.endTime, sitting.sessionLabel);
+      const sessionKey = buildRoomSessionLookupKey(roomName, sitting.sessionLabel);
+      const sittingClasses = new Set<string>();
+
+      (sitting.students || []).forEach((student) => {
+        const className = extractClassNameFromSittingStudent(student);
+        if (!className) return;
+        sittingClasses.add(className);
+
+      });
+
+      if (sittingClasses.size === 0) return;
+      if (!slotAccumulator[slotKey]) slotAccumulator[slotKey] = new Set<string>();
+      if (!sessionAccumulator[sessionKey]) sessionAccumulator[sessionKey] = new Set<string>();
+      sittingClasses.forEach((className) => slotAccumulator[slotKey].add(className));
+      sittingClasses.forEach((className) => sessionAccumulator[sessionKey].add(className));
+    });
+
+    const roomClassMap = Object.fromEntries(
+      Object.entries(slotAccumulator).map(([key, classSet]) => [key, Array.from(classSet).sort(compareClassName)]),
+    );
+
+    const roomSessionClassMap = Object.fromEntries(
+      Object.entries(sessionAccumulator).map(([key, classSet]) => [key, Array.from(classSet).sort(compareClassName)]),
+    );
+
+    return {
+      roomClassMap,
+      roomSessionClassMap,
+      roomOrderByName,
+    };
+  }, [examSittingsQuery.data]);
 
   const groupedSchedules = useMemo(() => {
     const map = new Map<
@@ -968,7 +1134,7 @@ export default function TeacherWakakurExamsScreen() {
     >();
 
     for (const schedule of filteredSchedules) {
-      const roomName = (schedule.room || '').trim() || 'Belum Diatur';
+      const roomName = String(schedule.room || '').trim() || 'Belum Diatur';
       const examType = resolveScheduleExamType(schedule);
       if (!map.has(roomName)) {
         map.set(roomName, {
@@ -982,13 +1148,95 @@ export default function TeacherWakakurExamsScreen() {
 
       const row = map.get(roomName)!;
       row.totalSchedules += 1;
-      row.classes.add(schedule.class?.name || '-');
+      const slotKey = buildRoomSlotLookupKey(
+        roomName,
+        schedule.startTime,
+        schedule.endTime,
+        schedule.sessionLabel,
+      );
+      const roomSessionKey = buildRoomSessionLookupKey(roomName, schedule.sessionLabel);
+      const classesFromSittings =
+        sittingRoomDerived.roomClassMap[slotKey] ||
+        sittingRoomDerived.roomSessionClassMap[roomSessionKey] ||
+        [];
+      if (classesFromSittings.length > 0) {
+        classesFromSittings.forEach((className) => row.classes.add(className));
+      } else {
+        row.classes.add(schedule.class?.name || '-');
+      }
       row.examTypes.add(examType);
       if (!schedule.proctorId) row.noProctorCount += 1;
     }
 
-    return Array.from(map.values()).sort((a, b) => b.totalSchedules - a.totalSchedules);
-  }, [filteredSchedules]);
+    return Array.from(map.values()).sort((a, b) => {
+      const orderA = sittingRoomDerived.roomOrderByName[a.roomName];
+      const orderB = sittingRoomDerived.roomOrderByName[b.roomName];
+      if (orderA !== undefined && orderB !== undefined && orderA !== orderB) {
+        return orderA - orderB;
+      }
+      if (a.totalSchedules !== b.totalSchedules) return b.totalSchedules - a.totalSchedules;
+      return a.roomName.localeCompare(b.roomName, 'id', { sensitivity: 'base' });
+    });
+  }, [filteredSchedules, sittingRoomDerived]);
+
+  const managedSittings = useMemo(() => {
+    const detailsMap = new Map(
+      (examSittingsQuery.data?.details || []).map((detail) => [Number(detail.id), detail]),
+    );
+    const query = search.trim().toLowerCase();
+
+    return (examSittingsQuery.data?.list || [])
+      .filter((sitting) => {
+        if (examTypeFilter !== 'ALL') {
+          const normalizedType = normalizeProgramCode(sitting.examType);
+          const normalizedFilter = normalizeProgramCode(examTypeFilter);
+          if (normalizedType !== normalizedFilter) return false;
+        }
+        if (!query) return true;
+        const detail = detailsMap.get(Number(sitting.id));
+        const classes = (detail?.students || [])
+          .map((student) => extractClassNameFromSittingStudent(student))
+          .filter((value): value is string => Boolean(value))
+          .join(' ');
+        const haystack = [
+          sitting.roomName || '',
+          sitting.examType || '',
+          sitting.sessionLabel || '',
+          classes,
+          sitting.proctor?.name || '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(query);
+      })
+      .map((sitting) => {
+        const detail = detailsMap.get(Number(sitting.id));
+        const classes = Array.from(
+          new Set(
+            (detail?.students || [])
+              .map((student) => extractClassNameFromSittingStudent(student))
+              .filter((value): value is string => Boolean(value)),
+          ),
+        ).sort(compareClassName);
+        const studentCount = detail?.students?.length || Number(sitting._count?.students || 0);
+        return {
+          ...sitting,
+          classes,
+          studentCount,
+        };
+      })
+      .sort((a, b) => {
+        const timeA = Date.parse(String(a.startTime || ''));
+        const timeB = Date.parse(String(b.startTime || ''));
+        if (Number.isFinite(timeA) && Number.isFinite(timeB) && timeA !== timeB) return timeA - timeB;
+        const roomCompare = String(a.roomName || '').localeCompare(String(b.roomName || ''), 'id', {
+          sensitivity: 'base',
+          numeric: true,
+        });
+        if (roomCompare !== 0) return roomCompare;
+        return Number(a.id) - Number(b.id);
+      });
+  }, [examSittingsQuery.data, examTypeFilter, search]);
 
   const teacherOptions = useMemo(() => {
     const query = teacherSearch.trim().toLowerCase();
@@ -1213,6 +1461,7 @@ export default function TeacherWakakurExamsScreen() {
           refreshing={
             activeYearQuery.isFetching ||
             schedulesQuery.isFetching ||
+            examSittingsQuery.isFetching ||
             teachersQuery.isFetching ||
             examProgramConfigQuery.isFetching ||
             examGradeComponentsQuery.isFetching ||
@@ -1222,6 +1471,7 @@ export default function TeacherWakakurExamsScreen() {
           onRefresh={() => {
             void activeYearQuery.refetch();
             void schedulesQuery.refetch();
+            void examSittingsQuery.refetch();
             void teachersQuery.refetch();
             void examProgramConfigQuery.refetch();
             void examGradeComponentsQuery.refetch();
@@ -1990,11 +2240,7 @@ export default function TeacherWakakurExamsScreen() {
                 </View>
 
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                  {[
-                    { key: 'AUTO', label: 'Otomatis', value: null as 'ODD' | 'EVEN' | null },
-                    { key: 'ODD', label: 'Ganjil', value: 'ODD' as 'ODD' },
-                    { key: 'EVEN', label: 'Genap', value: 'EVEN' as 'EVEN' },
-                  ].map((option) => {
+                  {PROGRAM_FIXED_SEMESTER_OPTIONS.map((option) => {
                     const active = program.fixedSemester === option.value;
                     return (
                       <Pressable
@@ -2029,6 +2275,217 @@ export default function TeacherWakakurExamsScreen() {
                       </Pressable>
                     );
                   })}
+                </View>
+
+                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Target Tingkat Kelas (opsional)</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                  <Pressable
+                    onPress={() => updateProgramDraft(program.rowId, { targetClassLevels: [] })}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: program.targetClassLevels.length === 0 ? BRAND_COLORS.blue : '#d5e1f5',
+                      backgroundColor: program.targetClassLevels.length === 0 ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingVertical: 6,
+                      paddingHorizontal: 10,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: program.targetClassLevels.length === 0 ? BRAND_COLORS.navy : BRAND_COLORS.textMuted,
+                        fontSize: 11,
+                      }}
+                    >
+                      Semua Tingkat
+                    </Text>
+                  </Pressable>
+                  {CLASS_LEVEL_SCOPE_OPTIONS.map((level) => {
+                    const active = program.targetClassLevels.includes(level);
+                    return (
+                      <Pressable
+                        key={`${program.rowId}-level-${level}`}
+                        onPress={() => {
+                          const current = new Set(normalizeClassLevelScope(program.targetClassLevels));
+                          if (current.has(level)) current.delete(level);
+                          else current.add(level);
+                          updateProgramDraft(program.rowId, { targetClassLevels: Array.from(current) });
+                        }}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
+                          backgroundColor: active ? '#e9f1ff' : '#fff',
+                          borderRadius: 999,
+                          paddingVertical: 6,
+                          paddingHorizontal: 10,
+                        }}
+                      >
+                        <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontSize: 11 }}>
+                          {level}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Mapel Diizinkan (opsional)</Text>
+                <TextInput
+                  value={programSubjectSearch[program.rowId] || ''}
+                  onChangeText={(value) =>
+                    setProgramSubjectSearch((prev) => ({
+                      ...prev,
+                      [program.rowId]: value,
+                    }))
+                  }
+                  placeholder="Cari mapel..."
+                  placeholderTextColor="#94a3b8"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#d5e1f5',
+                    borderRadius: 9,
+                    backgroundColor: '#fff',
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    color: BRAND_COLORS.textDark,
+                    marginBottom: 6,
+                  }}
+                />
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                  <Pressable
+                    onPress={() => updateProgramDraft(program.rowId, { allowedSubjectIds: [] })}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: program.allowedSubjectIds.length === 0 ? BRAND_COLORS.blue : '#d5e1f5',
+                      backgroundColor: program.allowedSubjectIds.length === 0 ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingVertical: 6,
+                      paddingHorizontal: 10,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: program.allowedSubjectIds.length === 0 ? BRAND_COLORS.navy : BRAND_COLORS.textMuted,
+                        fontSize: 11,
+                      }}
+                    >
+                      Semua Mapel
+                    </Text>
+                  </Pressable>
+                  {subjects
+                    .filter((subject) => {
+                      const keyword = String(programSubjectSearch[program.rowId] || '').trim().toLowerCase();
+                      if (!keyword) return true;
+                      return (
+                        subject.name.toLowerCase().includes(keyword) || subject.code.toLowerCase().includes(keyword)
+                      );
+                    })
+                    .slice(0, 40)
+                    .map((subject) => {
+                      const active = program.allowedSubjectIds.includes(subject.id);
+                      return (
+                        <Pressable
+                          key={`${program.rowId}-subject-${subject.id}`}
+                          onPress={() => {
+                            const current = new Set(normalizeNumericIds(program.allowedSubjectIds));
+                            if (current.has(subject.id)) current.delete(subject.id);
+                            else current.add(subject.id);
+                            updateProgramDraft(program.rowId, { allowedSubjectIds: Array.from(current) });
+                          }}
+                          style={{
+                            borderWidth: 1,
+                            borderColor: active ? '#22c55e' : '#d5e1f5',
+                            backgroundColor: active ? '#f0fdf4' : '#fff',
+                            borderRadius: 999,
+                            paddingVertical: 6,
+                            paddingHorizontal: 10,
+                          }}
+                        >
+                          <Text style={{ color: active ? '#166534' : BRAND_COLORS.textMuted, fontSize: 11 }}>
+                            {subject.code}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                </View>
+
+                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Pembuat Soal Diizinkan (opsional)</Text>
+                <TextInput
+                  value={programAuthorSearch[program.rowId] || ''}
+                  onChangeText={(value) =>
+                    setProgramAuthorSearch((prev) => ({
+                      ...prev,
+                      [program.rowId]: value,
+                    }))
+                  }
+                  placeholder="Cari guru pembuat soal..."
+                  placeholderTextColor="#94a3b8"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#d5e1f5',
+                    borderRadius: 9,
+                    backgroundColor: '#fff',
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    color: BRAND_COLORS.textDark,
+                    marginBottom: 6,
+                  }}
+                />
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                  <Pressable
+                    onPress={() => updateProgramDraft(program.rowId, { allowedAuthorIds: [] })}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: program.allowedAuthorIds.length === 0 ? BRAND_COLORS.blue : '#d5e1f5',
+                      backgroundColor: program.allowedAuthorIds.length === 0 ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingVertical: 6,
+                      paddingHorizontal: 10,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: program.allowedAuthorIds.length === 0 ? BRAND_COLORS.navy : BRAND_COLORS.textMuted,
+                        fontSize: 11,
+                      }}
+                    >
+                      Semua Guru
+                    </Text>
+                  </Pressable>
+                  {teachers
+                    .filter((teacher) => {
+                      const keyword = String(programAuthorSearch[program.rowId] || '').trim().toLowerCase();
+                      if (!keyword) return true;
+                      return (
+                        teacher.name.toLowerCase().includes(keyword) ||
+                        teacher.username.toLowerCase().includes(keyword)
+                      );
+                    })
+                    .slice(0, 40)
+                    .map((teacher) => {
+                      const active = program.allowedAuthorIds.includes(teacher.id);
+                      return (
+                        <Pressable
+                          key={`${program.rowId}-author-${teacher.id}`}
+                          onPress={() => {
+                            const current = new Set(normalizeNumericIds(program.allowedAuthorIds));
+                            if (current.has(teacher.id)) current.delete(teacher.id);
+                            else current.add(teacher.id);
+                            updateProgramDraft(program.rowId, { allowedAuthorIds: Array.from(current) });
+                          }}
+                          style={{
+                            borderWidth: 1,
+                            borderColor: active ? '#22c55e' : '#d5e1f5',
+                            backgroundColor: active ? '#f0fdf4' : '#fff',
+                            borderRadius: 999,
+                            paddingVertical: 6,
+                            paddingHorizontal: 10,
+                          }}
+                        >
+                          <Text style={{ color: active ? '#166534' : BRAND_COLORS.textMuted, fontSize: 11 }}>
+                            {teacher.username}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
                 </View>
 
                 <TextInput
@@ -2199,10 +2656,10 @@ export default function TeacherWakakurExamsScreen() {
               ) : null}
 
               {section === 'RUANG' ? (
-                roomSummary.length > 0 ? (
-                  roomSummary.map((room) => (
+                managedSittings.length > 0 ? (
+                  managedSittings.map((sitting) => (
                     <View
-                      key={room.roomName}
+                      key={sitting.id}
                       style={{
                         backgroundColor: '#fff',
                         borderWidth: 1,
@@ -2212,17 +2669,39 @@ export default function TeacherWakakurExamsScreen() {
                         marginBottom: 10,
                       }}
                     >
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>{room.roomName}</Text>
-                        <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>{room.totalSchedules} jadwal</Text>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4, gap: 8 }}>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, flex: 1 }}>
+                          {sitting.roomName || '-'}
+                        </Text>
+                        <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>{sitting.studentCount} siswa</Text>
                       </View>
-                      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 6 }}>
-                        Kelas: {Array.from(room.classes).join(', ')}
+
+                      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 2, fontSize: 12 }}>
+                        {formatDateTime(String(sitting.startTime || ''))} - {formatDateTime(String(sitting.endTime || ''))}
                       </Text>
-                      <Text style={{ color: '#64748b', fontSize: 12 }}>
-                        Tipe: {Array.from(room.examTypes).map((type) => examTypeLabel(type)).join(', ')} • Belum pengawas:{' '}
-                        {room.noProctorCount}
+                      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 6, fontSize: 12 }}>
+                        Program: {examTypeLabel(normalizeProgramCode(sitting.examType))} • Sesi: {sitting.sessionLabel || '-'}
                       </Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                        Kelas: {sitting.classes.length > 0 ? sitting.classes.join(', ') : '-'} • Pengawas:{' '}
+                        {sitting.proctor?.name || '-'}
+                      </Text>
+
+                      <Pressable
+                        onPress={() =>
+                          router.push(`/teacher/wakakur-room-manage?sittingId=${encodeURIComponent(String(sitting.id))}` as never)
+                        }
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#bfdbfe',
+                          backgroundColor: '#eff6ff',
+                          borderRadius: 8,
+                          paddingVertical: 9,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Kelola Ruang & Siswa</Text>
+                      </Pressable>
                     </View>
                   ))
                 ) : (

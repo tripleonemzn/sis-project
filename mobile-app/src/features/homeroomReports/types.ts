@@ -1,4 +1,5 @@
-export type HomeroomReportType = 'SBTS' | 'SAS' | 'SAT';
+export type HomeroomReportType = string;
+export type HomeroomReportBaseType = string;
 export type HomeroomSemester = 'ODD' | 'EVEN';
 
 export type HomeroomStudentSummary = {
@@ -20,6 +21,7 @@ export type HomeroomLedgerGrade = {
   nf3: number | null;
   formatif: number | null;
   sbts: number | null;
+  finalComponent?: number | null;
   finalScore: number | null;
   predicate: string | null;
   description: string | null;
@@ -32,6 +34,18 @@ export type HomeroomLedgerStudent = HomeroomStudentSummary & {
 export type HomeroomLedgerData = {
   subjects: HomeroomLedgerSubject[];
   students: HomeroomLedgerStudent[];
+  meta?: {
+    reportType?: string;
+    reportComponentType?: string;
+    reportComponentMode?: string;
+    reportProgramCode?: string | null;
+    reportProgramLabel?: string | null;
+    col1Label?: string;
+    col2Label?: string;
+    formativeSlotCode?: string;
+    midtermSlotCode?: string;
+    finalSlotCode?: string;
+  };
 };
 
 export type HomeroomExtracurricularGrade = {
@@ -118,6 +132,18 @@ export type HomeroomStudentReportData = {
   };
   body: {
     groups: Record<'A' | 'B' | 'C', HomeroomStudentReportSubjectRow[]>;
+    meta?: {
+      reportType?: string;
+      reportComponentType?: string;
+      reportComponentMode?: string;
+      reportProgramCode?: string | null;
+      reportProgramLabel?: string | null;
+      col1Label?: string;
+      col2Label?: string;
+      formativeSlotCode?: string;
+      midtermSlotCode?: string;
+      finalSlotCode?: string;
+    };
     extracurriculars?: Array<{
       name: string;
       grade: string;

@@ -5,12 +5,30 @@ import toast from 'react-hot-toast';
 import { extracurricularService, type Extracurricular } from '../../../services/extracurricular.service';
 import { userService } from '../../../services/user.service';
 import { academicYearService, type AcademicYear } from '../../../services/academicYear.service';
+import type { User } from '../../../types/auth';
 
 interface TutorAssignmentModalProps {
   ekskul: Extracurricular;
   onClose: () => void;
   onUpdate?: () => void;
 }
+
+type ExtracurricularAssignment = {
+  id: number;
+  isActive: boolean;
+  tutor?: {
+    name?: string;
+    username?: string;
+  } | null;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'object' && error !== null) {
+    const normalized = error as { response?: { data?: { message?: string } }; message?: string };
+    return normalized.response?.data?.message || normalized.message || fallback;
+  }
+  return fallback;
+};
 
 export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignmentModalProps) => {
   const queryClient = useQueryClient();
@@ -29,6 +47,7 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
   );
 
   // Set default active academic year
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (academicYears.length > 0 && !selectedAcademicYearId) {
       const active = academicYears.find((ay) => ay.isActive);
@@ -39,6 +58,7 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
       }
     }
   }, [academicYears, selectedAcademicYearId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // 2. Fetch Assignments
   const { data: assignmentsData, isLoading: isLoadingAssignments } = useQuery({
@@ -50,7 +70,7 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
     enabled: !!selectedAcademicYearId,
   });
 
-  const assignments = assignmentsData?.data || [];
+  const assignments: ExtracurricularAssignment[] = assignmentsData?.data || [];
 
   // 3. Fetch Potential Tutors
   const { data: tutorsData, isLoading: isLoadingTutors } = useQuery({
@@ -58,7 +78,7 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
     queryFn: () => userService.getAll({ role: 'EXTRACURRICULAR_TUTOR', limit: 100 }),
   });
 
-  const tutors = tutorsData?.data || [];
+  const tutors: User[] = tutorsData?.data || [];
 
   // Mutations
   const assignMutation = useMutation({
@@ -70,8 +90,8 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
       toast.success('Pembina berhasil ditambahkan');
       setSelectedTutorId('');
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Gagal menambahkan pembina');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menambahkan pembina'));
     },
   });
 
@@ -83,8 +103,8 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
       onUpdate?.();
       toast.success('Pembina berhasil dihapus');
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Gagal menghapus pembina');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menghapus pembina'));
     },
   });
 
@@ -184,7 +204,7 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {assignments.map((assignment: any) => (
+                    {assignments.map((assignment: ExtracurricularAssignment) => (
                       <tr key={assignment.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 font-medium text-gray-900">
                           {assignment.tutor?.name || '-'}

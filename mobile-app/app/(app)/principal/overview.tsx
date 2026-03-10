@@ -23,6 +23,23 @@ export default function PrincipalOverviewScreen() {
   const overviewQuery = usePrincipalOverviewQuery({ enabled: isAuthenticated, user, semester });
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
 
+  const overview = overviewQuery.data?.overview;
+  const topStudents = overview?.topStudents || [];
+  const majors = useMemo(() => overview?.majors || [], [overview?.majors]);
+
+  const summary = useMemo(() => {
+    const totalStudents = majors.reduce((sum, item) => sum + Number(item.totalStudents || 0), 0);
+    const weightedScore = majors.reduce(
+      (sum, item) => sum + Number(item.averageScore || 0) * Number(item.totalStudents || 0),
+      0,
+    );
+    return {
+      totalStudents,
+      totalMajors: majors.length,
+      schoolAverage: totalStudents > 0 ? weightedScore / totalStudents : 0,
+    };
+  }, [majors]);
+
   if (isLoading) return <AppLoadingScreen message="Memuat ringkasan akademik..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
@@ -46,23 +63,6 @@ export default function PrincipalOverviewScreen() {
       </ScrollView>
     );
   }
-
-  const overview = overviewQuery.data?.overview;
-  const topStudents = overview?.topStudents || [];
-  const majors = overview?.majors || [];
-
-  const summary = useMemo(() => {
-    const totalStudents = majors.reduce((sum, item) => sum + Number(item.totalStudents || 0), 0);
-    const weightedScore = majors.reduce(
-      (sum, item) => sum + Number(item.averageScore || 0) * Number(item.totalStudents || 0),
-      0,
-    );
-    return {
-      totalStudents,
-      totalMajors: majors.length,
-      schoolAverage: totalStudents > 0 ? weightedScore / totalStudents : 0,
-    };
-  }, [majors]);
 
   return (
     <ScrollView

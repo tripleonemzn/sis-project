@@ -3,7 +3,7 @@ import { authMiddleware } from '../middleware/auth';
 import { roleMiddleware } from '../middleware/role';
 import {
   getClassReportSummary,
-  getStudentSbtsReport,
+  getStudentReport,
   getClassLedger,
   getClassExtracurricularReport,
   upsertReportNote,
@@ -28,7 +28,8 @@ router.get(
 
 // Teacher (Homeroom) & Admin routes
 router.get('/rankings', roleMiddleware(['ADMIN', 'TEACHER', 'PRINCIPAL']), getClassRankings);
-router.get('/student/sbts', roleMiddleware(['ADMIN', 'TEACHER']), getStudentSbtsReport);
+router.get('/student', roleMiddleware(['ADMIN', 'TEACHER']), getStudentReport);
+router.get('/student/sbts', roleMiddleware(['ADMIN', 'TEACHER']), getStudentReport);
 router.get('/ledger', roleMiddleware(['ADMIN', 'TEACHER']), getClassLedger);
 router.get('/extracurricular', roleMiddleware(['ADMIN', 'TEACHER']), getClassExtracurricularReport);
 router.post('/extracurricular/grade', roleMiddleware(['ADMIN', 'TEACHER']), updateExtracurricularGrade);

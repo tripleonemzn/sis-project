@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -170,25 +170,21 @@ export default function TeacherHomeroomPermissionsScreen() {
   });
 
   const classItems = classesQuery.data || [];
-
-  useEffect(() => {
-    if (selectedClassId || classItems.length === 0) return;
-    setSelectedClassId(classItems[0].id);
-  }, [selectedClassId, classItems]);
+  const effectiveSelectedClassId = selectedClassId ?? classItems[0]?.id ?? null;
 
   const permissionsQuery = useQuery({
     queryKey: [
       'mobile-homeroom-permissions',
-      selectedClassId,
+      effectiveSelectedClassId,
       activeYearQuery.data?.id,
       statusFilter,
       typeFilter,
       search,
     ],
-    enabled: isAuthenticated && !!isAllowed && !!selectedClassId && !!activeYearQuery.data?.id,
+    enabled: isAuthenticated && !!isAllowed && !!effectiveSelectedClassId && !!activeYearQuery.data?.id,
     queryFn: async () =>
       permissionApi.listForHomeroom({
-        classId: Number(selectedClassId),
+        classId: Number(effectiveSelectedClassId),
         academicYearId: Number(activeYearQuery.data?.id),
         status: statusFilter === 'ALL' ? undefined : statusFilter,
         type: typeFilter === 'ALL' ? undefined : typeFilter,
@@ -207,14 +203,18 @@ export default function TeacherHomeroomPermissionsScreen() {
       Alert.alert('Berhasil', message);
       setRejectionNotes((prev) => ({ ...prev, [payload.id]: '' }));
     },
-    onError: (error: any) => {
-      const msg = error?.response?.data?.message || error?.message || 'Gagal memproses persetujuan izin.';
+    onError: (error: unknown) => {
+      const normalized = error as { response?: { data?: { message?: string } }; message?: string };
+      const msg = normalized.response?.data?.message || normalized.message || 'Gagal memproses persetujuan izin.';
       Alert.alert('Proses Gagal', msg);
     },
   });
 
-  const permissions = permissionsQuery.data?.permissions || [];
-  const selectedClass = classItems.find((item) => item.id === selectedClassId) || null;
+  const permissions = useMemo(
+    () => permissionsQuery.data?.permissions || [],
+    [permissionsQuery.data?.permissions],
+  );
+  const selectedClass = classItems.find((item) => item.id === effectiveSelectedClassId) || null;
 
   const summary = useMemo(() => {
     const result = {
@@ -364,7 +364,7 @@ export default function TeacherHomeroomPermissionsScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Pilih Kelas</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
               {classItems.map((classItem) => {
-                const selected = selectedClassId === classItem.id;
+                const selected = effectiveSelectedClassId === classItem.id;
                 return (
                   <View key={classItem.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
                     <Pressable

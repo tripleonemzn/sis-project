@@ -4,10 +4,11 @@ import { useQuery } from '@tanstack/react-query';
 import { auditService, type AuditLog } from '../../../services/audit.service';
 import { authService } from '../../../services/auth.service';
 import { AlertTriangle, Search, Filter, Eye, RefreshCw } from 'lucide-react';
+import type { User } from '../../../types/auth';
 
 export const AuditLogPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [me, setMe] = useState<any>(null);
+  const [me, setMe] = useState<User | null>(null);
 
   useEffect(() => {
     authService.getMe().then((res) => setMe(res.data)).catch(() => setMe(null));
@@ -33,7 +34,7 @@ export const AuditLogPage = () => {
   const canView = useMemo(() => {
     if (!me) return false;
     if (me.role === 'ADMIN') return true;
-    const duties = (me.additionalDuties || []).map((d: string) => String(d).trim().toUpperCase());
+    const duties = (me.additionalDuties || []).map((d) => String(d).trim().toUpperCase());
     return duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
   }, [me]);
 

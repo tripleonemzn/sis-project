@@ -14,8 +14,63 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
+type AxiosLikeError = {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+};
+
+interface InternshipStudentClass {
+  name: string;
+}
+
+interface InternshipStudent {
+  name: string;
+  nis?: string | null;
+  studentClass?: InternshipStudentClass | null;
+}
+
+type InternshipStatus = 'ACTIVE' | 'COMPLETED' | 'PENDING' | string;
+
+interface InternshipJournal {
+  id: number;
+  date: string;
+  createdAt: string;
+  status: 'PENDING' | 'VERIFIED' | 'REJECTED' | string;
+  activity: string;
+  imageUrl?: string | null;
+  feedback?: string | null;
+}
+
+interface InternshipAttendance {
+  id: number;
+  date: string;
+  checkInTime: string;
+  status: 'PRESENT' | 'SICK' | 'PERMISSION' | 'ABSENT' | string;
+  imageUrl?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  note?: string | null;
+}
+
+interface InternshipSummary {
+  id: number;
+  student: InternshipStudent;
+  companyName?: string | null;
+  mentorName?: string | null;
+  status: InternshipStatus;
+  journals?: InternshipJournal[];
+  _count?: {
+    journals?: {
+      status?: number;
+    };
+  };
+}
+
 // Modal Component for Details
-const InternshipDetailModal = ({ internship, onClose }: { internship: any, onClose: () => void }) => {
+const InternshipDetailModal = ({ internship, onClose }: { internship: InternshipSummary, onClose: () => void }) => {
   const [activeTab, setActiveTab] = useState<'journals' | 'attendances'>('journals');
   const queryClient = useQueryClient();
 
@@ -31,8 +86,8 @@ const InternshipDetailModal = ({ internship, onClose }: { internship: any, onClo
     queryFn: () => internshipService.getAttendances(internship.id)
   });
 
-  const journals = journalsData?.data?.data || [];
-  const attendances = attendancesData?.data?.data || [];
+  const journals = (journalsData?.data?.data as InternshipJournal[] | undefined) || [];
+  const attendances = (attendancesData?.data?.data as InternshipAttendance[] | undefined) || [];
 
   const approveJournalMutation = useMutation({
     mutationFn: ({ id, status, feedback }: { id: number, status: string, feedback?: string }) => 
@@ -42,8 +97,9 @@ const InternshipDetailModal = ({ internship, onClose }: { internship: any, onClo
       queryClient.invalidateQueries({ queryKey: ['assigned-internships'] }); // Update main list too
       toast.success('Status jurnal diperbarui');
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || 'Gagal memperbarui jurnal');
+    onError: (err: unknown) => {
+      const axiosErr = err as AxiosLikeError;
+      toast.error(axiosErr.response?.data?.message || 'Gagal memperbarui jurnal');
     }
   });
 
@@ -120,7 +176,7 @@ const InternshipDetailModal = ({ internship, onClose }: { internship: any, onClo
                   <p className="text-gray-500">Belum ada jurnal harian.</p>
                 </div>
               ) : (
-                journals.map((journal: any) => (
+                journals.map((journal) => (
                   <div key={journal.id} className="bg-white border rounded-xl p-5 shadow-sm">
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex items-center gap-2">
@@ -209,7 +265,7 @@ const InternshipDetailModal = ({ internship, onClose }: { internship: any, onClo
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {attendances.map((att: any) => (
+                      {attendances.map((att) => (
                         <tr key={att.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3">
                             <div className="font-medium text-gray-900">
@@ -300,14 +356,14 @@ const Building2 = ({ className }: { className?: string }) => (
 );
 
 export const TeacherInternshipGuidance = () => {
-  const [selectedInternship, setSelectedInternship] = useState<any>(null);
+  const [selectedInternship, setSelectedInternship] = useState<InternshipSummary | null>(null);
   
   const { data: response, isLoading } = useQuery({
     queryKey: ['assigned-internships'],
     queryFn: internshipService.getAssignedInternships
   });
 
-  const internships = response?.data?.data || [];
+  const internships = (response?.data?.data as InternshipSummary[] | undefined) || [];
 
   if (isLoading) {
     return <div className="p-8 text-center flex flex-col items-center justify-center h-64">
@@ -326,7 +382,7 @@ export const TeacherInternshipGuidance = () => {
       </div>
 
       <div className="grid gap-6">
-        {internships.map((internship: any) => (
+        {internships.map((internship) => (
           <div key={internship.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
             <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
@@ -366,9 +422,9 @@ export const TeacherInternshipGuidance = () => {
                   <Clock className="w-4 h-4 text-blue-600" />
                   Status Terkini
                 </h4>
-                {internship._count?.journals?.status > 0 && (
+                {(internship._count?.journals?.status ?? 0) > 0 && (
                    <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded-full animate-pulse">
-                     {internship._count.journals.status} Jurnal Menunggu
+                     {(internship._count?.journals?.status ?? 0)} Jurnal Menunggu
                    </span>
                 )}
               </div>

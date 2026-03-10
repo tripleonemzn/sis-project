@@ -17,7 +17,13 @@ const getErrorMessage = (error: unknown) => {
   return 'Terjadi kesalahan';
 };
 
-export const TeachingLoadSummaryPage = () => {
+type TeachingLoadSummaryScope = 'DEFAULT' | 'CURRICULUM';
+
+type TeachingLoadSummaryPageProps = {
+  scope?: TeachingLoadSummaryScope;
+};
+
+export const TeachingLoadSummaryPage = ({ scope = 'DEFAULT' }: TeachingLoadSummaryPageProps) => {
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<number | ''>('');
   const [selectedTeacherId, setSelectedTeacherId] = useState<number | ''>('');
 
@@ -52,12 +58,15 @@ export const TeachingLoadSummaryPage = () => {
     return academicYears[0]?.id ?? '';
   }, [academicYears, selectedAcademicYearId]);
 
+  const isCurriculumScope = scope === 'CURRICULUM';
+
   const { data: assignmentsData, isLoading: isLoadingAssignments } = useQuery({
-    queryKey: ['teacher-assignments', 'for-teaching-load', effectiveAcademicYearId],
+    queryKey: ['teacher-assignments', 'for-teaching-load', effectiveAcademicYearId, isCurriculumScope ? 'CURRICULUM' : 'DEFAULT'],
     queryFn: () =>
       teacherAssignmentService.list({
         page: 1,
         limit: 1000,
+        scope: isCurriculumScope ? 'CURRICULUM' : undefined,
       }),
     enabled: !!effectiveAcademicYearId,
   });

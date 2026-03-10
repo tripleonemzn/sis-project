@@ -12,14 +12,45 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { internshipService } from '../../../services/internship.service';
-import { classService } from '../../../services/class.service';
+import { classService, type Class } from '../../../services/class.service';
+
+type InternshipRow = {
+  id: number;
+  student?: {
+    nisn?: string | null;
+    name?: string | null;
+    studentClass?: {
+      name?: string | null;
+    } | null;
+  } | null;
+  industry?: {
+    name?: string | null;
+    address?: string | null;
+  } | null;
+};
+
+type InternshipPagination = {
+  totalPages: number;
+  total: number;
+};
+
+type InternshipJournalRow = {
+  id: number;
+  date: string;
+  activity?: string | null;
+  status?: string | null;
+  description?: string | null;
+  imageUrl?: string | null;
+  feedback?: string | null;
+  createdAt?: string | null;
+};
 
 const JournalMonitoringPage = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [search, setSearch] = useState('');
   const [selectedClassId, setSelectedClassId] = useState<string>('');
-  const [selectedInternship, setSelectedInternship] = useState<any>(null);
+  const [selectedInternship, setSelectedInternship] = useState<InternshipRow | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Fetch Classes for Filter
@@ -57,7 +88,7 @@ const JournalMonitoringPage = () => {
     enabled: !!selectedInternship?.id
   });
 
-  const handleViewJournals = (internship: any) => {
+  const handleViewJournals = (internship: InternshipRow) => {
     setSelectedInternship(internship);
     setIsModalOpen(true);
   };
@@ -67,9 +98,17 @@ const JournalMonitoringPage = () => {
     setSelectedInternship(null);
   };
 
-  const internships = internshipsData?.data?.internships || [];
-  const pagination = internshipsData?.data?.pagination;
-  const journals = journalsData?.data || [];
+  const classes: Class[] = Array.isArray(classesData?.classes)
+    ? (classesData.classes as Class[])
+    : [];
+  const internships: InternshipRow[] = Array.isArray(internshipsData?.data?.internships)
+    ? (internshipsData.data.internships as InternshipRow[])
+    : [];
+  const pagination: InternshipPagination | undefined =
+    internshipsData?.data?.pagination as InternshipPagination | undefined;
+  const journals: InternshipJournalRow[] = Array.isArray(journalsData?.data)
+    ? (journalsData.data as InternshipJournalRow[])
+    : [];
 
   return (
     <div className="space-y-6">
@@ -102,7 +141,7 @@ const JournalMonitoringPage = () => {
               onChange={(e) => setSelectedClassId(e.target.value)}
             >
               <option value="">Semua Kelas</option>
-              {classesData?.classes?.map((cls: any) => (
+              {classes.map((cls) => (
                 <option key={cls.id} value={cls.id}>{cls.name}</option>
               ))}
             </select>
@@ -161,7 +200,7 @@ const JournalMonitoringPage = () => {
                   </td>
                 </tr>
               ) : (
-                internships.map((item: any) => (
+                internships.map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-gray-600 font-mono text-sm">
                       {item.student?.nisn || '-'}
@@ -182,12 +221,12 @@ const JournalMonitoringPage = () => {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2 text-gray-700">
                         <Building2 className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm truncate max-w-[200px]" title={item.industry?.name}>
+                        <span className="text-sm truncate max-w-[200px]" title={item.industry?.name || undefined}>
                           {item.industry?.name || '-'}
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-gray-600 text-sm max-w-[200px] truncate" title={item.industry?.address}>
+                    <td className="px-6 py-4 text-gray-600 text-sm max-w-[200px] truncate" title={item.industry?.address || undefined}>
                       {item.industry?.address || '-'}
                     </td>
                     <td className="px-6 py-4 text-right">
@@ -295,7 +334,7 @@ const JournalMonitoringPage = () => {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {journals.map((journal: any) => (
+                  {journals.map((journal) => (
                     <div key={journal.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-6">
                       {/* Date Section */}
                       <div className="flex-shrink-0 md:w-24 flex flex-row md:flex-col items-center md:items-start gap-2 md:gap-0 md:border-r md:border-gray-100 md:pr-6">
@@ -349,7 +388,12 @@ const JournalMonitoringPage = () => {
                         
                         <div className="mt-3 pt-3 border-t border-gray-50 text-xs text-gray-400 flex items-center gap-1">
                           <ClockIcon className="w-3 h-3" />
-                          <span>Diinput pada {new Date(journal.createdAt).toLocaleString('id-ID')}</span>
+                          <span>
+                            Diinput pada{' '}
+                            {journal.createdAt
+                              ? new Date(journal.createdAt).toLocaleString('id-ID')
+                              : '-'}
+                          </span>
                         </div>
                       </div>
                     </div>

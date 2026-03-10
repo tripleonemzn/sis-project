@@ -16,6 +16,21 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+const toPayload = (data: FormValues) => ({
+  code: data.code,
+  name: data.name,
+  description: data.description ?? undefined,
+});
+
+const resolveApiErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'object' && error && 'response' in error) {
+    const message = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+    if (typeof message === 'string' && message.trim().length > 0) return message.trim();
+  }
+  if (error instanceof Error && error.message.trim().length > 0) return error.message.trim();
+  return fallback;
+};
+
 export const SubjectCategoryPage = () => {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
@@ -38,20 +53,21 @@ export const SubjectCategoryPage = () => {
       toast.success('Kategori berhasil dibuat');
       closeModal();
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal membuat kategori');
+    onError: (error: unknown) => {
+      toast.error(resolveApiErrorMessage(error, 'Gagal membuat kategori'));
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: FormValues }) => updateSubjectCategory(id, data),
+    mutationFn: ({ id, data }: { id: number; data: FormValues }) =>
+      updateSubjectCategory(id, toPayload(data)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['subject-categories'] });
       toast.success('Kategori berhasil diperbarui');
       closeModal();
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal memperbarui kategori');
+    onError: (error: unknown) => {
+      toast.error(resolveApiErrorMessage(error, 'Gagal memperbarui kategori'));
     },
   });
 
@@ -61,8 +77,8 @@ export const SubjectCategoryPage = () => {
       queryClient.invalidateQueries({ queryKey: ['subject-categories'] });
       toast.success('Kategori berhasil dihapus');
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menghapus kategori');
+    onError: (error: unknown) => {
+      toast.error(resolveApiErrorMessage(error, 'Gagal menghapus kategori'));
     },
   });
 
@@ -70,7 +86,7 @@ export const SubjectCategoryPage = () => {
     if (editingId) {
       updateMutation.mutate({ id: editingId, data });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate(toPayload(data));
     }
   };
 

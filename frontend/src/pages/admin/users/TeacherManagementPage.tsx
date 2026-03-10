@@ -177,7 +177,7 @@ export const TeacherManagementPage = () => {
         appointmentDate: values.appointmentDate || undefined,
         additionalDuties: processedDuties,
         managedMajorIds: managedMajorIds,
-        documents: documents?.map<any>((d) => ({
+        documents: documents?.map((d) => ({
           title: d.title,
           fileUrl: d.fileUrl,
           category: d.category,
@@ -224,7 +224,7 @@ export const TeacherManagementPage = () => {
         ...rest,
         additionalDuties: processedDuties,
         managedMajorIds: managedMajorIds,
-        documents: documents?.map<any>((d) => ({
+        documents: documents?.map((d) => ({
           title: d.title,
           fileUrl: d.fileUrl,
           category: d.category,

@@ -20,8 +20,7 @@ import { useAuth } from '../../src/features/auth/AuthProvider';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { getApiErrorMessage } from '../../src/lib/api/errorMessage';
 import { BRAND_COLORS } from '../../src/config/brand';
-
-const logoSource = require('../../src/assets/logo_sis_kgb2.png');
+import logoSource from '../../src/assets/logo_sis_kgb2.png';
 
 const loginSchema = z.object({
   username: z.string().min(1, 'Username wajib diisi'),

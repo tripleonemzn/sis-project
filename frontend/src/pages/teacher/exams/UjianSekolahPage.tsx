@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Save, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { gradeService } from '../../../services/grade.service';
@@ -20,7 +20,8 @@ export const UjianSekolahPage = () => {
   const [saving, setSaving] = useState(false);
   
   // Data
-  const [academicYears, setAcademicYears] = useState<any[]>([]);
+  type AcademicYearLite = { id: number | string; name: string; isActive?: boolean };
+  const [academicYears, setAcademicYears] = useState<AcademicYearLite[]>([]);
   const [assignments, setAssignments] = useState<TeacherAssignment[]>([]);
   const [gradeComponents, setGradeComponents] = useState<GradeComponent[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -33,23 +34,7 @@ export const UjianSekolahPage = () => {
   // Grades State: { studentId: score }
   const [grades, setGrades] = useState<Record<number, string>>({});
 
-  useEffect(() => {
-    fetchInitialData();
-  }, []);
-
-  useEffect(() => {
-    if (selectedAssignment) {
-      fetchStudentsAndComponents();
-    }
-  }, [selectedAssignment]);
-
-  useEffect(() => {
-    if (selectedAssignment && selectedComponent && selectedAcademicYear) {
-      fetchExistingGrades();
-    }
-  }, [selectedAssignment, selectedComponent, selectedAcademicYear]);
-
-  const fetchInitialData = async () => {
+  const fetchInitialData = useCallback(async () => {
     try {
       setLoading(true);
       const [ayRes, assignRes] = await Promise.all([
@@ -57,20 +42,21 @@ export const UjianSekolahPage = () => {
         teacherAssignmentService.list({ limit: 1000 })
       ]);
 
-      const academicYearsDataRaw = (ayRes as any).data || (Array.isArray(ayRes) ? ayRes : []);
-      const academicYearsData = Array.isArray(academicYearsDataRaw) ? academicYearsDataRaw : [];
+      const ayPayload = (ayRes as { data?: unknown })?.data ?? ayRes;
+      const academicYearsData = Array.isArray(ayPayload) ? (ayPayload as AcademicYearLite[]) : [];
       setAcademicYears(academicYearsData);
       
-      // Filter assignments for Grade XII only
-      const assignmentsResData = (assignRes as any).data || assignRes;
-      const assignmentsListRaw = assignmentsResData?.assignments || assignmentsResData || [];
-      const assignmentsData = Array.isArray(assignmentsListRaw) ? assignmentsListRaw : [];
+      const assignPayload = (assignRes as { data?: unknown })?.data ?? assignRes;
+      const assignmentsData = Array.isArray(
+        (assignPayload as { assignments?: unknown })?.assignments
+      )
+        ? ((assignPayload as { assignments: TeacherAssignment[] }).assignments)
+        : (Array.isArray(assignPayload) ? (assignPayload as TeacherAssignment[]) : []);
 
-      const xiiAssignments = assignmentsData.filter((a: any) => 
+      const xiiAssignments = assignmentsData.filter((a) => 
         a.class && a.class.name && a.class.name.includes('XII')
       );
 
-      // Filter for specific US subjects (Rule 1)
       const usSubjects = [
         'bahasa indonesia',
         'bahasa inggris',
@@ -82,13 +68,12 @@ export const UjianSekolahPage = () => {
         'bahasa sunda'
       ];
 
-      const filteredAssignments = xiiAssignments.filter((a: any) => {
+      const filteredAssignments = xiiAssignments.filter((a) => {
         const sName = (a.subject?.name || '').toLowerCase();
         return usSubjects.some(us => sName.includes(us));
       });
       
-      // Sort assignments: Subject Name ASC, Class Name ASC
-      filteredAssignments.sort((a: any, b: any) => {
+      filteredAssignments.sort((a, b) => {
         const subjectCompare = (a.subject?.name || '').localeCompare(b.subject?.name || '');
         if (subjectCompare !== 0) return subjectCompare;
         return (a.class?.name || '').localeCompare(b.class?.name || '');
@@ -96,8 +81,7 @@ export const UjianSekolahPage = () => {
 
       setAssignments(filteredAssignments);
 
-      // Set active academic year
-      const activeAy = academicYearsData.find((ay: any) => ay.isActive);
+      const activeAy = academicYearsData.find((ay) => ay.isActive);
       if (activeAy) setSelectedAcademicYear(String(activeAy.id));
 
     } catch (error) {
@@ -106,7 +90,15 @@ export const UjianSekolahPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchInitialData();
+  }, [fetchInitialData]);
+
+ 
+
+ 
 
   const getAvailableComponents = (assignment: TeacherAssignment, allComponents: GradeComponent[]) => {
     const sName = (assignment.subject?.name || '').toLowerCase();
@@ -147,7 +139,7 @@ export const UjianSekolahPage = () => {
     return allComponents.filter(c => allowedTypes.includes(c.type));
   };
 
-  const fetchStudentsAndComponents = async () => {
+  const fetchStudentsAndComponents = useCallback(async () => {
     if (!selectedAssignment) return;
     
     try {
@@ -161,7 +153,8 @@ export const UjianSekolahPage = () => {
         class_id: assignment.classId,
         limit: 100 
       });
-      setStudents((studentRes as any).data || []);
+      const studentPayload = (studentRes as { data?: unknown })?.data ?? studentRes;
+      setStudents(Array.isArray(studentPayload) ? (studentPayload as Student[]) : []);
 
       // Fetch Grade Components for Subject
       const compRes = await gradeService.getComponents({ 
@@ -169,7 +162,7 @@ export const UjianSekolahPage = () => {
         academic_year_id: Number(selectedAcademicYear)
       });
       
-      const allSubjectComponents = (compRes.data || []).filter((c: GradeComponent) => 
+      const allSubjectComponents = (Array.isArray(compRes?.data) ? compRes.data : []).filter((c: GradeComponent) => 
         c.type === 'US_THEORY' || c.type === 'US_PRACTICE'
       );
       
@@ -190,9 +183,9 @@ export const UjianSekolahPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [assignments, selectedAcademicYear, selectedAssignment]);
 
-  const fetchExistingGrades = async () => {
+  const fetchExistingGrades = useCallback(async () => {
     try {
       const assignment = assignments.find(a => String(a.id) === selectedAssignment);
       if (!assignment) return;
@@ -201,14 +194,15 @@ export const UjianSekolahPage = () => {
         academicYearId: Number(selectedAcademicYear),
         subjectId: assignment.subject.id,
         classId: assignment.class.id,
-        type: selectedComponent // Pass the type (e.g., US_THEORY, US_PRACTICE)
+        type: selectedComponent
       });
       
       const gradeMap: Record<number, string> = {};
-      const gradesData = (res as any).data || (Array.isArray(res) ? res : []);
+      const gradesPayload = (res as { data?: unknown })?.data ?? res;
+      type GradeRow = { type?: string; studentId: number; score: number };
+      const gradesData = Array.isArray(gradesPayload) ? (gradesPayload as GradeRow[]) : [];
       
-      gradesData.forEach((g: any) => {
-        // Filter by type if backend returns all types
+      gradesData.forEach((g) => {
         if (g.type === selectedComponent) {
           gradeMap[g.studentId] = String(g.score);
         }
@@ -219,8 +213,19 @@ export const UjianSekolahPage = () => {
       console.error(error);
       toast.error('Gagal memuat nilai siswa');
     }
-  };
+  }, [assignments, selectedAcademicYear, selectedComponent, selectedAssignment]);
 
+  useEffect(() => {
+    if (selectedAssignment) {
+      fetchStudentsAndComponents();
+    }
+  }, [selectedAssignment, fetchStudentsAndComponents]);
+
+  useEffect(() => {
+    if (selectedAssignment && selectedComponent && selectedAcademicYear) {
+      fetchExistingGrades();
+    }
+  }, [selectedAssignment, selectedComponent, selectedAcademicYear, fetchExistingGrades]);
   const handleScoreChange = (studentId: number, value: string) => {
     // Validate: 0-100
     const num = parseFloat(value);

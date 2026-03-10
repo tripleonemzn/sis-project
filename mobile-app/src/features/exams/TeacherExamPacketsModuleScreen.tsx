@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
@@ -32,6 +32,15 @@ function normalizeProgramCode(raw?: string | null): string {
     .replace(/[^A-Z0-9]+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '');
+}
+
+function normalizeClassLevelToken(raw?: string | null): string {
+  const value = String(raw || '').trim().toUpperCase();
+  if (!value) return '';
+  if (value.startsWith('XII')) return 'XII';
+  if (value.startsWith('XI')) return 'XI';
+  if (value.startsWith('X')) return 'X';
+  return value;
 }
 
 function normalizeSemester(raw?: string | null): 'ODD' | 'EVEN' | undefined {
@@ -79,6 +88,59 @@ function resolveExamTypeLabel(type: string, labels: ExamLabelMap): string {
   return cleaned || normalized || '-';
 }
 
+function isMidtermAliasCode(raw?: string | null): boolean {
+  const normalized = normalizeProgramCode(raw);
+  if (!normalized) return false;
+  if (['MIDTERM', 'SBTS', 'PTS', 'UTS'].includes(normalized)) return true;
+  return normalized.includes('MIDTERM');
+}
+
+function isFinalEvenAliasCode(raw?: string | null): boolean {
+  const normalized = normalizeProgramCode(raw);
+  if (!normalized) return false;
+  if (['SAT', 'PAT', 'PSAT', 'FINAL_EVEN'].includes(normalized)) return true;
+  return normalized.includes('FINAL_EVEN');
+}
+
+function isFinalOddAliasCode(raw?: string | null): boolean {
+  const normalized = normalizeProgramCode(raw);
+  if (!normalized) return false;
+  if (['SAS', 'PAS', 'PSAS', 'FINAL_ODD'].includes(normalized)) return true;
+  return normalized.includes('FINAL_ODD');
+}
+
+function isFinalAliasCode(raw?: string | null): boolean {
+  const normalized = normalizeProgramCode(raw);
+  if (!normalized) return false;
+  if (['FINAL', 'SAS', 'SAT', 'PAS', 'PAT', 'PSAS', 'PSAT', 'FINAL_ODD', 'FINAL_EVEN'].includes(normalized)) {
+    return true;
+  }
+  return normalized.includes('FINAL');
+}
+
+function matchProgramByBaseTypeHint(program: ExamProgramItem, hint: string, strictSemester = true): boolean {
+  const normalizedHint = normalizeProgramCode(hint);
+  const baseType = normalizeProgramCode(program.baseTypeCode || program.baseType);
+  const fixedSemester = normalizeSemester(program.fixedSemester);
+
+  if (!normalizedHint || !baseType) return false;
+  if (isMidtermAliasCode(normalizedHint)) {
+    return isMidtermAliasCode(baseType);
+  }
+  if (isFinalEvenAliasCode(normalizedHint)) {
+    if (!isFinalAliasCode(baseType)) return false;
+    return strictSemester ? fixedSemester === 'EVEN' || isFinalEvenAliasCode(baseType) : true;
+  }
+  if (isFinalOddAliasCode(normalizedHint)) {
+    if (!isFinalAliasCode(baseType)) return false;
+    return strictSemester ? fixedSemester === 'ODD' || isFinalOddAliasCode(baseType) : true;
+  }
+  if (isFinalAliasCode(normalizedHint)) {
+    return isFinalAliasCode(baseType);
+  }
+  return baseType === normalizedHint;
+}
+
 export function TeacherExamPacketsModuleScreen({
   title,
   subtitle,
@@ -91,27 +153,16 @@ export function TeacherExamPacketsModuleScreen({
   const { isAuthenticated, isLoading, user } = useAuth();
   const pageContentPadding = getStandardPagePadding(insets, { bottom: 120 });
   const teacherAssignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
-  const assignmentOptions = teacherAssignmentsQuery.data?.assignments || [];
-  const lockedProgramCode = normalizeProgramCode(fixedProgramCode || fixedType);
+  const assignmentOptions = useMemo(
+    () => teacherAssignmentsQuery.data?.assignments || [],
+    [teacherAssignmentsQuery.data?.assignments],
+  );
+  const fixedProgramCodeNormalized = normalizeProgramCode(fixedProgramCode);
+  const fixedBaseTypeHint = normalizeProgramCode(fixedType);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
-  const [typeFilter, setTypeFilter] = useState<ExamTypeFilter>(lockedProgramCode || defaultType);
+  const [typeFilter, setTypeFilter] = useState<ExamTypeFilter>(fixedProgramCodeNormalized || defaultType);
   const [searchQuery, setSearchQuery] = useState('');
   const [semesterFilter, setSemesterFilter] = useState<SemesterFilter>('ODD');
-  const [semesterInitialized, setSemesterInitialized] = useState(false);
-
-  useEffect(() => {
-    if (!selectedAssignmentId && assignmentOptions.length > 0) {
-      setSelectedAssignmentId(assignmentOptions[0].id);
-    }
-  }, [selectedAssignmentId, assignmentOptions]);
-
-  useEffect(() => {
-    if (lockedProgramCode) {
-      setTypeFilter(lockedProgramCode);
-      return;
-    }
-    setTypeFilter(defaultType);
-  }, [lockedProgramCode, defaultType]);
 
   const examProgramsQuery = useQuery({
     queryKey: ['mobile-teacher-exam-programs', teacherAssignmentsQuery.data?.activeYear?.id],
@@ -132,13 +183,24 @@ export function TeacherExamPacketsModuleScreen({
     [examProgramsQuery.data?.programs],
   );
 
-  useEffect(() => {
-    if (lockedProgramCode || typeFilter === 'ALL') return;
+  const lockedProgramCode = useMemo(() => {
+    if (fixedProgramCodeNormalized) return fixedProgramCodeNormalized;
+    if (!fixedBaseTypeHint) return '';
+    const strictMatch = activePrograms.find((program) =>
+      matchProgramByBaseTypeHint(program, fixedBaseTypeHint, true),
+    );
+    const relaxedMatch = activePrograms.find((program) =>
+      matchProgramByBaseTypeHint(program, fixedBaseTypeHint, false),
+    );
+    return normalizeProgramCode((strictMatch || relaxedMatch)?.code);
+  }, [activePrograms, fixedBaseTypeHint, fixedProgramCodeNormalized]);
+
+  const effectiveTypeFilter = useMemo(() => {
+    if (lockedProgramCode) return lockedProgramCode;
+    if (typeFilter === 'ALL') return 'ALL';
     const allowed = new Set(activePrograms.map((program) => normalizeProgramCode(program.code)));
-    if (!allowed.has(typeFilter)) {
-      setTypeFilter('ALL');
-    }
-  }, [lockedProgramCode, typeFilter, activePrograms]);
+    return allowed.has(typeFilter) ? typeFilter : 'ALL';
+  }, [activePrograms, lockedProgramCode, typeFilter]);
 
   const programMap = useMemo(() => {
     const map = new Map<string, ExamProgramItem>();
@@ -168,32 +230,57 @@ export function TeacherExamPacketsModuleScreen({
     ? `Kelola packet ujian ${examTypeLabel(lockedProgramCode)} untuk kelas dan mata pelajaran yang Anda ampu.`
     : subtitle;
 
-  const selectedAssignment = assignmentOptions.find((item) => item.id === selectedAssignmentId) || null;
   const activeYearSemester = normalizeSemester(teacherAssignmentsQuery.data?.activeYear?.semester);
-  const selectedAssignmentSemester = normalizeSemester(selectedAssignment?.academicYear?.semester);
-  const selectedProgramCode = lockedProgramCode || (typeFilter !== 'ALL' ? normalizeProgramCode(typeFilter) : '');
+  const selectedProgramCode =
+    effectiveTypeFilter !== 'ALL' ? normalizeProgramCode(effectiveTypeFilter) : '';
   const selectedProgramMeta = selectedProgramCode ? programMap.get(selectedProgramCode) : undefined;
+  const allowedSubjectIdsByProgram = useMemo(() => {
+    const ids = Array.isArray(selectedProgramMeta?.allowedSubjectIds) ? selectedProgramMeta.allowedSubjectIds : [];
+    return new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0));
+  }, [selectedProgramMeta]);
+  const allowedClassLevelsByProgram = useMemo(() => {
+    const levels = Array.isArray(selectedProgramMeta?.targetClassLevels) ? selectedProgramMeta.targetClassLevels : [];
+    return new Set(
+      levels
+        .map((level) => normalizeClassLevelToken(level))
+        .filter((level) => Boolean(level)),
+    );
+  }, [selectedProgramMeta]);
+  const filteredAssignmentOptions = useMemo(() => {
+    if (!selectedProgramMeta) return assignmentOptions;
+    return assignmentOptions.filter((item) => {
+      const subjectAllowed =
+        allowedSubjectIdsByProgram.size === 0 ||
+        allowedSubjectIdsByProgram.has(Number(item.subject?.id));
+      const assignmentLevel = normalizeClassLevelToken(item.class?.level || item.class?.name);
+      const classLevelAllowed =
+        allowedClassLevelsByProgram.size === 0 ||
+        (assignmentLevel ? allowedClassLevelsByProgram.has(assignmentLevel) : true);
+      return subjectAllowed && classLevelAllowed;
+    });
+  }, [selectedProgramMeta, allowedSubjectIdsByProgram, allowedClassLevelsByProgram, assignmentOptions]);
+  const activeSelectedAssignmentId = useMemo(() => {
+    if (filteredAssignmentOptions.length === 0) return null;
+    if (selectedAssignmentId && filteredAssignmentOptions.some((item) => item.id === selectedAssignmentId)) {
+      return selectedAssignmentId;
+    }
+    return filteredAssignmentOptions[0].id;
+  }, [filteredAssignmentOptions, selectedAssignmentId]);
+  const selectedAssignment =
+    filteredAssignmentOptions.find((item) => item.id === activeSelectedAssignmentId) || null;
+  const selectedAssignmentSemester = normalizeSemester(selectedAssignment?.academicYear?.semester);
   const lockedSemester = selectedProgramMeta?.fixedSemester || null;
   const isSemesterLocked = Boolean(lockedSemester);
   const selectedTypeForQuery = selectedProgramMeta?.baseType || undefined;
+  const effectiveSemesterFilter = useMemo<SemesterFilter>(() => {
+    if (lockedSemester === 'ODD' || lockedSemester === 'EVEN') return lockedSemester;
+    if (semesterFilter === 'ODD' || semesterFilter === 'EVEN') return semesterFilter;
+    if (activeYearSemester === 'ODD' || activeYearSemester === 'EVEN') return activeYearSemester;
+    if (selectedAssignmentSemester === 'ODD' || selectedAssignmentSemester === 'EVEN') return selectedAssignmentSemester;
+    return 'ODD';
+  }, [activeYearSemester, lockedSemester, selectedAssignmentSemester, semesterFilter]);
   const selectedSemesterForQuery: 'ODD' | 'EVEN' | undefined =
-    lockedSemester === 'ODD' || lockedSemester === 'EVEN' ? lockedSemester : semesterFilter;
-
-  useEffect(() => {
-    if (lockedSemester === 'ODD' || lockedSemester === 'EVEN') {
-      setSemesterFilter(lockedSemester);
-      setSemesterInitialized(true);
-      return;
-    }
-
-    if (semesterInitialized) return;
-
-    const preferred = activeYearSemester || selectedAssignmentSemester;
-    if (preferred) {
-      setSemesterFilter(preferred);
-      setSemesterInitialized(true);
-    }
-  }, [lockedSemester, activeYearSemester, selectedAssignmentSemester, semesterInitialized]);
+    effectiveSemesterFilter;
 
   const packetsQuery = useTeacherExamPacketsQuery({
     enabled: isAuthenticated,
@@ -215,7 +302,7 @@ export function TeacherExamPacketsModuleScreen({
     return rows.filter((item) => {
       const type = normalizeProgramCode(item.programCode || item.type);
       const semester = normalizeSemester(item.semester || undefined);
-      if (typeFilter !== 'ALL' && type !== typeFilter) return false;
+      if (effectiveTypeFilter !== 'ALL' && type !== effectiveTypeFilter) return false;
       if (semester && semester !== selectedSemesterForQuery) return false;
       if (!semester) return false;
       if (!q) return true;
@@ -225,7 +312,7 @@ export function TeacherExamPacketsModuleScreen({
         item.subject.code.toLowerCase().includes(q)
       );
     });
-  }, [packetsQuery.data, searchQuery, typeFilter, selectedSemesterForQuery]);
+  }, [packetsQuery.data, searchQuery, effectiveTypeFilter, selectedSemesterForQuery]);
 
   const summary = useMemo(() => {
     const rows = filtered;
@@ -346,8 +433,8 @@ export function TeacherExamPacketsModuleScreen({
       >
         <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Pilih Kelas dan Mata Pelajaran</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
-          {assignmentOptions.map((item) => {
-            const selected = selectedAssignmentId === item.id;
+          {filteredAssignmentOptions.map((item) => {
+            const selected = activeSelectedAssignmentId === item.id;
             return (
               <View key={item.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
                 <Pressable
@@ -371,6 +458,11 @@ export function TeacherExamPacketsModuleScreen({
             );
           })}
         </View>
+        {filteredAssignmentOptions.length === 0 ? (
+          <Text style={{ color: '#b45309', fontSize: 11, marginTop: 4 }}>
+            Tidak ada mapel penugasan yang diizinkan untuk program ini.
+          </Text>
+        ) : null}
       </View>
 
       <View style={{ marginBottom: 10 }}>
@@ -395,7 +487,7 @@ export function TeacherExamPacketsModuleScreen({
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 10 }}>
           {(['ALL', ...activePrograms.map((program) => normalizeProgramCode(program.code))] as ExamTypeFilter[]).map(
             (item) => {
-              const selected = typeFilter === item;
+              const selected = effectiveTypeFilter === item;
               return (
                 <View key={item} style={{ paddingHorizontal: 4, marginBottom: 8 }}>
                   <Pressable
@@ -460,20 +552,19 @@ export function TeacherExamPacketsModuleScreen({
       ) : (
         <View style={{ marginBottom: 10 }}>
           <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700', marginBottom: 6 }}>
-            Semester Packet: {semesterLabel(semesterFilter)}
+            Semester Packet: {semesterLabel(effectiveSemesterFilter)}
           </Text>
           <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
             {([
               { key: 'ODD', label: 'Ganjil' },
               { key: 'EVEN', label: 'Genap' },
             ] as Array<{ key: SemesterFilter; label: string }>).map((item) => {
-            const selected = semesterFilter === item.key;
+            const selected = effectiveSemesterFilter === item.key;
             return (
               <View key={item.key} style={{ width: '50%', paddingHorizontal: 4 }}>
                 <Pressable
                   onPress={() => {
                     setSemesterFilter(item.key);
-                    setSemesterInitialized(true);
                   }}
                   style={{
                     borderWidth: 1,

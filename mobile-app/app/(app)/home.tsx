@@ -32,6 +32,7 @@ import { adminApi } from '../../src/features/admin/adminApi';
 import { principalApi } from '../../src/features/principal/principalApi';
 import { staffApi } from '../../src/features/staff/staffApi';
 import { examApi, ExamProgramItem } from '../../src/features/exams/examApi';
+import { useStudentExamsQuery } from '../../src/features/exams/useStudentExamsQuery';
 import { useParentFinanceOverviewQuery } from '../../src/features/parent/useParentFinanceOverviewQuery';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { applyAppUpdate, checkAppUpdate } from '../../src/features/appUpdate/updateService';
@@ -40,6 +41,7 @@ import { ENV } from '../../src/config/env';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifyInfo, notifySuccess } from '../../src/lib/ui/feedback';
 import type { AuthUser } from '../../src/features/auth/types';
+import { useUnreadNotificationsQuery } from '../../src/features/notifications/useUnreadNotificationsQuery';
 
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
 type DashboardStatItem = { label: string; value: string; color: string; icon?: FeatherIconName; menuKey?: string };
@@ -55,6 +57,7 @@ type MenuIconTone = {
   border: string;
   fg: string;
 };
+type StudentExamStatus = 'OPEN' | 'UPCOMING' | 'MISSED' | 'COMPLETED';
 
 const getTeachingHourValue = (entry: ScheduleEntry) =>
   typeof entry.teachingHour === 'number' ? entry.teachingHour : entry.period;
@@ -100,6 +103,36 @@ function toSemesterLabel(value?: unknown) {
   return null;
 }
 
+function normalizeStudentExamStatus(rawStatus: unknown, hasSubmitted: boolean): StudentExamStatus {
+  if (hasSubmitted) return 'COMPLETED';
+  const value = String(rawStatus || '').toUpperCase();
+  if (value.includes('OPEN') || value.includes('IN_PROGRESS')) return 'OPEN';
+  if (value.includes('UPCOMING')) return 'UPCOMING';
+  if (value.includes('MISSED') || value.includes('TIMEOUT')) return 'MISSED';
+  if (value.includes('COMPLETED')) return 'COMPLETED';
+  return 'UPCOMING';
+}
+
+function getStudentExamStatusTone(status: StudentExamStatus) {
+  if (status === 'OPEN') return { label: 'Berlangsung', bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  if (status === 'COMPLETED') return { label: 'Selesai', bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8' };
+  if (status === 'MISSED') return { label: 'Terlewat', bg: '#fee2e2', border: '#fca5a5', text: '#991b1b' };
+  return { label: 'Akan Datang', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+}
+
+function formatExamDateTime(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function resolveMediaUrl(path?: string | null) {
   if (!path) return null;
   if (/^https?:\/\//i.test(path)) return path;
@@ -127,6 +160,7 @@ function getMenuIconTone(menuKey: string): MenuIconTone {
 }
 
 const getMenuIcon = (menu: RoleMenuItem): FeatherIconName => {
+  if (menu.key.includes('email') || menu.key.includes('mail')) return 'mail';
   if (menu.key.includes('profile')) return 'user';
   if (menu.key.includes('diagnostics')) return 'activity';
   if (menu.key.includes('schedule')) return 'calendar';
@@ -140,6 +174,8 @@ const getMenuIcon = (menu: RoleMenuItem): FeatherIconName => {
   if (menu.key.includes('assessment')) return 'clipboard';
   if (menu.key.includes('user')) return 'users';
   if (menu.key.includes('students')) return 'users';
+  if (menu.key.includes('work-program')) return 'briefcase';
+  if (menu.key.includes('inventory')) return 'archive';
   if (menu.key.includes('payment') || menu.key.includes('finance')) return 'credit-card';
   if (menu.key.includes('approval')) return 'clipboard';
   if (menu.key.includes('master') || menu.key.includes('documents')) return 'archive';
@@ -167,13 +203,6 @@ const getGroupIcon = (group: RoleMenuGroup): FeatherIconName => {
   return 'grid';
 };
 
-const getMenuSubtitle = (menu: RoleMenuItem) => {
-  if (menu.route && menu.webPath) return `Buka modul ${menu.label.toLowerCase()} - tekan lama untuk versi web`;
-  if (menu.route) return `Buka modul ${menu.label.toLowerCase()}`;
-  if (menu.webPath) return 'Buka modul versi web';
-  return 'Modul ini akan segera tersedia';
-};
-
 const getStatIcon = (item: DashboardStatItem, linkedMenu?: RoleMenuItem): FeatherIconName => {
   if (item.icon) return item.icon;
   if (linkedMenu) return getMenuIcon(linkedMenu);
@@ -189,6 +218,12 @@ const getStatIcon = (item: DashboardStatItem, linkedMenu?: RoleMenuItem): Feathe
   if (key.includes('rata') || key.includes('nilai') || key.includes('ranking')) return 'bar-chart-2';
   if (key.includes('assignment')) return 'clipboard';
   return 'circle';
+};
+
+const readSemesterValue = (payload: unknown): string | null => {
+  if (!payload || typeof payload !== 'object') return null;
+  const semester = (payload as { semester?: unknown }).semester;
+  return typeof semester === 'string' ? semester : null;
 };
 
 function AvatarCircle({
@@ -245,16 +280,13 @@ const ROLE_PRIMARY_ACTION_KEYS: Record<string, string[]> = {
 };
 
 const TEACHER_EXAM_MENU_KEYS = new Set([
-  'teacher-exam-formatif',
-  'teacher-exam-sbts',
-  'teacher-exam-sas',
-  'teacher-exam-sat',
+  'teacher-exam-programs',
+]);
+const TEACHER_HOMEROOM_REPORT_MENU_KEYS = new Set([
+  'teacher-homeroom-report',
 ]);
 const STUDENT_EXAM_MENU_KEYS = new Set([
-  'student-exam-formatif',
-  'student-exam-sbts',
-  'student-exam-sas',
-  'student-exam-sat',
+  'student-exam-programs',
 ]);
 
 function normalizeProgramCode(raw?: string | null): string {
@@ -291,12 +323,47 @@ function buildDynamicExamMenuItems(
   });
 }
 
+function buildDynamicHomeroomReportMenuItems(programs: ExamProgramItem[]): RoleMenuItem[] {
+  const sorted = [...programs].sort((a, b) => a.order - b.order || a.code.localeCompare(b.code));
+  return sorted.map((program) => {
+    const code = normalizeProgramCode(program.code);
+    const slug = programCodeToSlug(code);
+    return {
+      key: `teacher-homeroom-report-${slug}`,
+      label: String(program.label || code).trim() || code,
+      route: `/teacher/homeroom-report?programCode=${encodeURIComponent(code)}`,
+    };
+  });
+}
+
+function replaceStaticMenusWithDynamic(
+  items: RoleMenuItem[],
+  staticKeys: Set<string>,
+  dynamicItems: RoleMenuItem[],
+): RoleMenuItem[] {
+  const firstStaticIdx = items.findIndex((item) => staticKeys.has(item.key));
+  if (firstStaticIdx < 0) return items;
+
+  let lastStaticIdx = firstStaticIdx;
+  for (let i = firstStaticIdx; i < items.length; i += 1) {
+    if (staticKeys.has(items[i].key)) {
+      lastStaticIdx = i;
+    }
+  }
+
+  const before = items.slice(0, firstStaticIdx).filter((item) => !staticKeys.has(item.key));
+  const after = items.slice(lastStaticIdx + 1).filter((item) => !staticKeys.has(item.key));
+  return [...before, ...dynamicItems, ...after];
+}
+
 function applyExamProgramsToMenuGroups(
   groups: RoleMenuGroup[],
   role: string,
   programs: ExamProgramItem[],
+  programsResolved: boolean,
 ): RoleMenuGroup[] {
   if (role !== 'TEACHER' && role !== 'STUDENT') return groups;
+  if (!programsResolved) return groups;
 
   const roleTyped = role as 'TEACHER' | 'STUDENT';
   const staticKeys = roleTyped === 'TEACHER' ? TEACHER_EXAM_MENU_KEYS : STUDENT_EXAM_MENU_KEYS;
@@ -304,27 +371,39 @@ function applyExamProgramsToMenuGroups(
     roleTyped === 'TEACHER' ? program.showOnTeacherMenu && program.isActive : program.showOnStudentMenu && program.isActive,
   );
   const dynamicExamItems = buildDynamicExamMenuItems(roleTyped, visiblePrograms);
+  const dynamicHomeroomReportItems =
+    roleTyped === 'TEACHER'
+      ? buildDynamicHomeroomReportMenuItems(
+          visiblePrograms.filter((program) => {
+            const componentType = String(
+              program.gradeComponentTypeCode || program.gradeComponentType || '',
+            )
+              .trim()
+              .toUpperCase();
+            return componentType === 'MIDTERM' || componentType === 'FINAL';
+          }),
+        )
+      : [];
 
   return groups.map((group) => {
-    if (group.key !== 'exams') {
-      return group;
+    if (group.key === 'exams') {
+      return {
+        ...group,
+        items: replaceStaticMenusWithDynamic(group.items, staticKeys, dynamicExamItems),
+      };
     }
 
-    const firstStaticIdx = group.items.findIndex((item) => staticKeys.has(item.key));
-    if (firstStaticIdx < 0) return group;
-    let lastStaticIdx = firstStaticIdx;
-    for (let i = firstStaticIdx; i < group.items.length; i += 1) {
-      if (staticKeys.has(group.items[i].key)) {
-        lastStaticIdx = i;
-      }
+    if (roleTyped === 'TEACHER' && group.key === 'homeroom') {
+      return {
+        ...group,
+        items: replaceStaticMenusWithDynamic(
+          group.items,
+          TEACHER_HOMEROOM_REPORT_MENU_KEYS,
+          dynamicHomeroomReportItems,
+        ),
+      };
     }
-
-    const before = group.items.slice(0, firstStaticIdx).filter((item) => !staticKeys.has(item.key));
-    const after = group.items.slice(lastStaticIdx + 1).filter((item) => !staticKeys.has(item.key));
-    return {
-      ...group,
-      items: [...before, ...dynamicExamItems, ...after],
-    };
+    return group;
   });
 }
 
@@ -339,6 +418,8 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const unreadNotificationsQuery = useUnreadNotificationsQuery(isAuthenticated);
+  const unreadNotificationCount = unreadNotificationsQuery.data ?? 0;
   const profileQuery = useProfileQuery(isAuthenticated);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -410,6 +491,20 @@ export default function HomeScreen() {
     staleTime: 1000 * 60 * 5,
     queryFn: async () => internshipDutyApi.listExaminerInternships(),
   });
+  const studentClassId = profile.studentClass?.id ?? null;
+  const studentScheduleQuery = useQuery({
+    queryKey: ['mobile-home-student-schedule', profile.id, activeAcademicYearQuery.data?.id, studentClassId],
+    enabled: profile.role === 'STUDENT' && Boolean(activeAcademicYearQuery.data?.id) && Boolean(studentClassId),
+    queryFn: () =>
+      scheduleApi.list({
+        academicYearId: activeAcademicYearQuery.data!.id,
+        classId: studentClassId!,
+      }),
+  });
+  const studentExamsQuery = useStudentExamsQuery({
+    enabled: isAuthenticated && profile.role === 'STUDENT',
+    user: profile,
+  });
 
   const examProgramsQuery = useQuery({
     queryKey: ['mobile-home-exam-programs', profile.role, activeAcademicYearQuery.data?.id],
@@ -429,15 +524,22 @@ export default function HomeScreen() {
   const menuGroups = useMemo(
     () =>
       applyExamProgramsToMenuGroups(
-        getGroupedRoleMenu(profile, { hasPendingDefense }).filter((group) => {
-          const key = group.key.toLowerCase();
-          const label = group.label.toLowerCase();
-          return key !== 'dashboard' && label !== 'dashboard';
-        }),
+        getGroupedRoleMenu(profile, { hasPendingDefense })
+          .map((group) => ({
+            ...group,
+            // Keep non-dashboard entries (e.g. Email) even when they are grouped under Dashboard.
+            items: group.items.filter((item) => {
+              const key = item.key.toLowerCase();
+              const label = item.label.toLowerCase();
+              return key !== 'dashboard' && !key.endsWith('-dashboard') && label !== 'dashboard';
+            }),
+          }))
+          .filter((group) => group.items.length > 0),
         profile.role,
         examProgramsQuery.data?.programs || [],
+        examProgramsQuery.isSuccess,
       ),
-    [profile, hasPendingDefense, examProgramsQuery.data?.programs],
+    [profile, hasPendingDefense, examProgramsQuery.data?.programs, examProgramsQuery.isSuccess],
   );
   const adminStatsQuery = useQuery({
     queryKey: ['mobile-home-admin-stats', profile.id],
@@ -711,6 +813,43 @@ export default function HomeScreen() {
     ],
     [profile.role, profile.studentClass?.name, profile.studentClass?.major?.code, profile.studentClass?.major?.name, profile.studentStatus],
   );
+  const todayStudentSchedules = useMemo(() => {
+    if (profile.role !== 'STUDENT') return [] as ScheduleEntry[];
+
+    const now = new Date();
+    const jsDay = now.getDay();
+    const currentDay: DayOfWeek | null = jsDay >= 1 && jsDay <= 6 ? JS_DAY_TO_SCHEDULE_DAY[jsDay - 1] : null;
+    if (!currentDay) return [] as ScheduleEntry[];
+
+    return [...(studentScheduleQuery.data || [])]
+      .filter((entry) => entry.dayOfWeek === currentDay)
+      .sort((a, b) => {
+        const aHour = typeof a.teachingHour === 'number' && a.teachingHour > 0 ? a.teachingHour : a.period;
+        const bHour = typeof b.teachingHour === 'number' && b.teachingHour > 0 ? b.teachingHour : b.period;
+        if (aHour === bHour) return a.period - b.period;
+        return aHour - bHour;
+      });
+  }, [profile.role, studentScheduleQuery.data]);
+  const upcomingStudentExams = useMemo(() => {
+    if (profile.role !== 'STUDENT') return [];
+    const exams = studentExamsQuery.data?.exams || [];
+
+    return [...exams]
+      .filter((item) => {
+        const status = normalizeStudentExamStatus(item.status, Boolean(item.has_submitted));
+        return status === 'UPCOMING' || status === 'OPEN';
+      })
+      .sort((a, b) => {
+        const aTime = new Date(a.startTime).getTime();
+        const bTime = new Date(b.startTime).getTime();
+        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return a.id - b.id;
+        if (Number.isNaN(aTime)) return 1;
+        if (Number.isNaN(bTime)) return -1;
+        if (aTime === bTime) return a.id - b.id;
+        return aTime - bTime;
+      })
+      .slice(0, 5);
+  }, [profile.role, studentExamsQuery.data?.exams]);
 
   const displayName = (profile.name?.trim() || profile.username || 'Pengguna').trim();
   const profilePhotoUrl = useMemo(() => resolveMediaUrl(profile.photo), [profile.photo]);
@@ -723,10 +862,12 @@ export default function HomeScreen() {
     );
   }, [activeAcademicYearQuery.data?.name, teacherAssignmentsQuery.data?.activeYear?.name, adminStatsQuery.data?.activeYearName]);
   const activeAcademicSemesterLabel = useMemo(() => {
-    const semesterFromActiveYear = toSemesterLabel((activeAcademicYearQuery.data as any)?.semester);
+    const semesterFromActiveYear = toSemesterLabel(readSemesterValue(activeAcademicYearQuery.data));
     if (semesterFromActiveYear) return semesterFromActiveYear;
 
-    const semesterFromTeacherAssignments = toSemesterLabel((teacherAssignmentsQuery.data?.activeYear as any)?.semester);
+    const semesterFromTeacherAssignments = toSemesterLabel(
+      readSemesterValue(teacherAssignmentsQuery.data?.activeYear),
+    );
     if (semesterFromTeacherAssignments) return semesterFromTeacherAssignments;
 
     const semesterFromPrincipalOverview = toSemesterLabel(principalStatsQuery.data?.semester);
@@ -966,6 +1107,11 @@ export default function HomeScreen() {
       if (profile.role === 'PARENT') {
         refetches.push(parentOverviewQuery.refetch());
       }
+      if (profile.role === 'STUDENT') {
+        refetches.push(activeAcademicYearQuery.refetch());
+        refetches.push(studentScheduleQuery.refetch());
+        refetches.push(studentExamsQuery.refetch());
+      }
 
       await Promise.all(refetches);
       const updateResult = await checkAppUpdate();
@@ -981,7 +1127,7 @@ export default function HomeScreen() {
               text: 'Update Sekarang',
               style: 'default',
               onPress: () => {
-                void applyAppUpdate().catch((error: any) => {
+                void applyAppUpdate().catch((error: unknown) => {
                   notifyApiError(error, 'Gagal memasang update.');
                 });
               },
@@ -1128,7 +1274,7 @@ export default function HomeScreen() {
         router.replace('/welcome');
         notifySuccess('Logout berhasil');
         setIsLoggingOut(false);
-      } catch (error: any) {
+      } catch (error: unknown) {
         setIsLoggingOut(false);
         notifyApiError(error, 'Gagal logout.');
       }
@@ -1136,10 +1282,7 @@ export default function HomeScreen() {
   };
 
   const handleNotificationPress = () => {
-    notifyInfo('Belum ada notifikasi baru saat ini.', {
-      title: 'Notifikasi',
-      durationMs: 1800,
-    });
+    router.push('/notifications');
   };
 
   const handleSearchBubblePress = () => {
@@ -1391,19 +1534,185 @@ export default function HomeScreen() {
         ) : null}
 
         {profile.role === 'STUDENT' ? (
-          <View
-            style={{
-              backgroundColor: BRAND_COLORS.white,
-              borderRadius: 16,
-              borderWidth: 1,
-              borderColor: '#d6e0f2',
-              padding: 12,
-              marginBottom: 12,
-            }}
-          >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Info Siswa</Text>
-            {renderStatGrid(studentStatCards)}
-          </View>
+          <>
+            <View
+              style={{
+                backgroundColor: BRAND_COLORS.white,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: '#d6e0f2',
+                padding: 12,
+                marginBottom: 12,
+              }}
+            >
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Info Siswa</Text>
+              {renderStatGrid(studentStatCards)}
+            </View>
+
+            <View
+              style={{
+                backgroundColor: BRAND_COLORS.white,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: '#d6e0f2',
+                padding: 12,
+                marginBottom: 12,
+              }}
+            >
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Jadwal Pelajaran Hari Ini</Text>
+              {studentScheduleQuery.isLoading ? (
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Memuat jadwal pelajaran hari ini...</Text>
+              ) : null}
+              {studentScheduleQuery.isError && !studentScheduleQuery.isLoading ? (
+                <Text style={{ color: '#b91c1c', fontSize: 12 }}>
+                  Gagal memuat jadwal pelajaran. Tarik layar ke bawah untuk muat ulang.
+                </Text>
+              ) : null}
+              {!studentScheduleQuery.isLoading && !studentScheduleQuery.isError ? (
+                todayStudentSchedules.length > 0 ? (
+                  <View>
+                    {todayStudentSchedules.map((entry) => {
+                      const teachingHour =
+                        typeof entry.teachingHour === 'number' && entry.teachingHour > 0 ? entry.teachingHour : entry.period;
+                      return (
+                        <View
+                          key={entry.id}
+                          style={{
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: '#d6e2f7',
+                            backgroundColor: '#f8fbff',
+                            paddingHorizontal: 10,
+                            paddingVertical: 9,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
+                            {entry.teacherAssignment.subject.name}
+                          </Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+                            {`Jam ${teachingHour} • ${entry.teacherAssignment.teacher.name}${entry.room ? ` • ${entry.room}` : ''}`}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <View
+                    style={{
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderStyle: 'dashed',
+                      borderColor: '#cbd5e1',
+                      padding: 12,
+                    }}
+                  >
+                    <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center' }}>
+                      Tidak ada jadwal pelajaran untuk hari ini.
+                    </Text>
+                  </View>
+                )
+              ) : null}
+            </View>
+
+            <View
+              style={{
+                backgroundColor: BRAND_COLORS.white,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: '#d6e0f2',
+                padding: 12,
+                marginBottom: 12,
+              }}
+            >
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Jadwal Ujian Terdekat</Text>
+              {studentExamsQuery.isLoading ? (
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Memuat jadwal ujian terdekat...</Text>
+              ) : null}
+              {studentExamsQuery.isError && !studentExamsQuery.isLoading ? (
+                <Text style={{ color: '#b91c1c', fontSize: 12 }}>
+                  Gagal memuat jadwal ujian. Tarik layar ke bawah untuk muat ulang.
+                </Text>
+              ) : null}
+              {!studentExamsQuery.isLoading && !studentExamsQuery.isError ? (
+                upcomingStudentExams.length > 0 ? (
+                  <View>
+                    {upcomingStudentExams.map((item) => {
+                      const status = normalizeStudentExamStatus(item.status, Boolean(item.has_submitted));
+                      const tone = getStudentExamStatusTone(status);
+                      const examType = String(item.packet?.programCode || item.packet?.type || '-')
+                        .trim()
+                        .toUpperCase();
+                      return (
+                        <View
+                          key={item.id}
+                          style={{
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: '#d6e2f7',
+                            backgroundColor: '#f8fbff',
+                            paddingHorizontal: 10,
+                            paddingVertical: 9,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text
+                              style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13, flex: 1, paddingRight: 8 }}
+                              numberOfLines={1}
+                            >
+                              {item.packet?.title || '-'}
+                            </Text>
+                            <Text
+                              style={{
+                                color: tone.text,
+                                backgroundColor: tone.bg,
+                                borderColor: tone.border,
+                                borderWidth: 1,
+                                borderRadius: 999,
+                                paddingHorizontal: 8,
+                                paddingVertical: 2,
+                                fontSize: 10,
+                                fontWeight: '700',
+                              }}
+                            >
+                              {tone.label}
+                            </Text>
+                          </View>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+                            {`${item.packet?.subject?.name || '-'} • ${examType}`}
+                          </Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 1 }}>
+                            Mulai: {formatExamDateTime(item.startTime)}
+                          </Text>
+                          {item.isBlocked ? (
+                            <Text style={{ color: '#991b1b', fontSize: 11, marginTop: 2 }}>
+                              Diblokir: {item.blockReason || 'Akses ujian dibatasi wali kelas.'}
+                            </Text>
+                          ) : null}
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <View
+                    style={{
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderStyle: 'dashed',
+                      borderColor: '#cbd5e1',
+                      padding: 12,
+                    }}
+                  >
+                    <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center' }}>
+                      Tidak ada jadwal ujian aktif saat ini.
+                    </Text>
+                  </View>
+                )
+              ) : null}
+              {studentExamsQuery.data?.fromCache ? <OfflineCacheNotice cachedAt={studentExamsQuery.data.cachedAt} /> : null}
+            </View>
+          </>
         ) : null}
 
         {profile.role === 'TEACHER' ? (
@@ -1900,7 +2209,31 @@ export default function HomeScreen() {
           <View style={{ width: 58 }} />
 
           <Pressable onPress={handleNotificationPress} style={{ alignItems: 'center', width: 56 }}>
-            <Feather name="bell" size={17} color={BRAND_COLORS.white} />
+            <View style={{ position: 'relative' }}>
+              <Feather name="bell" size={17} color={BRAND_COLORS.white} />
+              {unreadNotificationCount > 0 ? (
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: -8,
+                    right: -10,
+                    minWidth: 17,
+                    height: 17,
+                    borderRadius: 999,
+                    backgroundColor: '#ef4444',
+                    borderWidth: 1,
+                    borderColor: BRAND_COLORS.navy,
+                    paddingHorizontal: 4,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>
+                    {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={{ color: BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Notifikasi</Text>
           </Pressable>
 

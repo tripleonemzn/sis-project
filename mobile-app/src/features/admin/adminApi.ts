@@ -633,6 +633,29 @@ type MobileBinaryFile = {
 
 type MobileImportFile = MobileBinaryFile;
 
+type ReactNativeUploadPart = {
+  uri: string;
+  name: string;
+  type: string;
+};
+
+type AdminImportResult = Record<string, unknown>;
+
+function appendMobileFile(
+  formData: FormData,
+  field: string,
+  file: MobileBinaryFile,
+  fallbackName: string,
+  fallbackType: string,
+) {
+  const uploadPart: ReactNativeUploadPart = {
+    uri: file.uri,
+    name: file.name || fallbackName,
+    type: file.type || fallbackType,
+  };
+  formData.append(field, uploadPart as unknown as Blob);
+}
+
 export type AdminSlideshowSlide = {
   id: string;
   filename: string;
@@ -1264,11 +1287,7 @@ export const adminApi = {
     },
   ) {
     const formData = new FormData();
-    formData.append('file', {
-      uri: file.uri,
-      name: file.name || `slide-${Date.now()}.jpg`,
-      type: file.type || 'image/jpeg',
-    } as any);
+    appendMobileFile(formData, 'file', file, `slide-${Date.now()}.jpg`, 'image/jpeg');
     if (typeof payload?.description === 'string') {
       formData.append('description', payload.description);
     }
@@ -1336,12 +1355,14 @@ export const adminApi = {
 
   async importTeachers(file: MobileImportFile) {
     const formData = new FormData();
-    formData.append('file', {
-      uri: file.uri,
-      name: file.name || `teachers-${Date.now()}.xlsx`,
-      type: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    } as any);
-    const response = await apiClient.post<ApiEnvelope<any>>('/data/teachers/import', formData, {
+    appendMobileFile(
+      formData,
+      'file',
+      file,
+      `teachers-${Date.now()}.xlsx`,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    const response = await apiClient.post<ApiEnvelope<AdminImportResult>>('/data/teachers/import', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -1351,12 +1372,14 @@ export const adminApi = {
 
   async importStudents(file: MobileImportFile) {
     const formData = new FormData();
-    formData.append('file', {
-      uri: file.uri,
-      name: file.name || `students-${Date.now()}.xlsx`,
-      type: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    } as any);
-    const response = await apiClient.post<ApiEnvelope<any>>('/data/students/import', formData, {
+    appendMobileFile(
+      formData,
+      'file',
+      file,
+      `students-${Date.now()}.xlsx`,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    const response = await apiClient.post<ApiEnvelope<AdminImportResult>>('/data/students/import', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -1366,12 +1389,14 @@ export const adminApi = {
 
   async importParents(file: MobileImportFile) {
     const formData = new FormData();
-    formData.append('file', {
-      uri: file.uri,
-      name: file.name || `parents-${Date.now()}.xlsx`,
-      type: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    } as any);
-    const response = await apiClient.post<ApiEnvelope<any>>('/data/parents/import', formData, {
+    appendMobileFile(
+      formData,
+      'file',
+      file,
+      `parents-${Date.now()}.xlsx`,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    const response = await apiClient.post<ApiEnvelope<AdminImportResult>>('/data/parents/import', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },

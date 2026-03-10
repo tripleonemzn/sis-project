@@ -1,5 +1,9 @@
 import { apiClient } from '../../lib/api/client';
 import {
+  ExamSittingDetail,
+  ExamSittingListItem,
+  ExamSittingRoom,
+  ExamSittingUpsertPayload,
   PacketItemAnalysisResponse,
   PacketSubmissionsResponse,
   SessionDetailResponse,
@@ -16,7 +20,8 @@ type StudentExamsResponse = {
   statusCode: number;
   success: boolean;
   message: string;
-  data: StudentExamItem[];
+  data?: unknown;
+  exams?: unknown;
 };
 
 type TeacherPacketsResponse = {
@@ -68,6 +73,60 @@ type TeacherScheduleMutationResponse = {
   data: TeacherExamSchedule | null;
 };
 
+type ExamSittingsResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: ExamSittingListItem[];
+};
+
+type ExamSittingDetailResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: ExamSittingDetail;
+};
+
+type ExamSittingMutationResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: ExamSittingListItem | null;
+};
+
+type ExamSittingAssignedStudentsResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: {
+    studentIds: number[];
+  };
+};
+
+type ExamRoomListResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: ExamSittingRoom[];
+};
+
+type StudentUserListResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: Array<{
+    id: number;
+    name: string;
+    username?: string | null;
+    studentClass?: {
+      name?: string | null;
+    } | null;
+    class?: {
+      name?: string | null;
+    } | null;
+  }>;
+};
+
 type PacketItemAnalysisApiResponse = {
   statusCode: number;
   success: boolean;
@@ -88,6 +147,22 @@ type SessionDetailApiResponse = {
   message: string;
   data: SessionDetailResponse;
 };
+
+function parseStudentExamsPayload(payload: unknown): StudentExamItem[] | null {
+  if (Array.isArray(payload)) return payload as StudentExamItem[];
+  if (!payload || typeof payload !== 'object') return null;
+
+  const payloadRecord = payload as { exams?: unknown; data?: unknown };
+  if (Array.isArray(payloadRecord.exams)) return payloadRecord.exams as StudentExamItem[];
+  if (Array.isArray(payloadRecord.data)) return payloadRecord.data as StudentExamItem[];
+
+  if (payloadRecord.data && typeof payloadRecord.data === 'object') {
+    const nestedData = payloadRecord.data as { exams?: unknown };
+    if (Array.isArray(nestedData.exams)) return nestedData.exams as StudentExamItem[];
+  }
+
+  return null;
+}
 
 export type ExamProgramCode = string;
 export type ExamProgramBaseType = string;
@@ -130,6 +205,9 @@ export type ExamProgramItem = {
   isActive: boolean;
   showOnTeacherMenu: boolean;
   showOnStudentMenu: boolean;
+  targetClassLevels?: string[];
+  allowedSubjectIds?: number[];
+  allowedAuthorIds?: number[];
   source: 'default' | 'custom';
 };
 
@@ -241,6 +319,9 @@ export const examApi = {
       isActive?: boolean;
       showOnTeacherMenu?: boolean;
       showOnStudentMenu?: boolean;
+      targetClassLevels?: string[];
+      allowedSubjectIds?: number[];
+      allowedAuthorIds?: number[];
     }>;
   }) {
     const response = await apiClient.put<ExamProgramsUpdateResponse>('/exams/programs', payload);
@@ -248,7 +329,13 @@ export const examApi = {
   },
   async getStudentAvailableExams() {
     const response = await apiClient.get<StudentExamsResponse>('/exams/available');
-    return response.data.data || [];
+    const parsedFromData = parseStudentExamsPayload(response.data.data);
+    if (parsedFromData) return parsedFromData;
+
+    const parsedFromEnvelope = parseStudentExamsPayload(response.data);
+    if (parsedFromEnvelope) return parsedFromEnvelope;
+
+    return [];
   },
   async startStudentExam(scheduleId: number) {
     const response = await apiClient.get<StudentExamStartResponse>(`/exams/${scheduleId}/start`, {
@@ -309,7 +396,10 @@ export const examApi = {
     const response = await apiClient.put<TeacherPacketMutationResponse>(`/exams/packets/${packetId}`, payload);
     return response.data.data;
   },
-  async getPacketItemAnalysis(packetId: number, params?: { classId?: number }) {
+  async getPacketItemAnalysis(
+    packetId: number,
+    params?: { classId?: number; includeContentHtml?: boolean },
+  ) {
     const response = await apiClient.get<PacketItemAnalysisApiResponse>(
       `/exams/packets/${packetId}/item-analysis`,
       { params },
@@ -326,7 +416,12 @@ export const examApi = {
   },
   async getPacketSubmissions(
     packetId: number,
-    params?: { classId?: number; status?: 'IN_PROGRESS' | 'COMPLETED' | 'TIMEOUT' },
+    params?: {
+      classId?: number;
+      status?: 'IN_PROGRESS' | 'COMPLETED' | 'TIMEOUT';
+      page?: number;
+      limit?: number;
+    },
   ) {
     const response = await apiClient.get<PacketSubmissionsApiResponse>(
       `/exams/packets/${packetId}/submissions`,
@@ -373,5 +468,76 @@ export const examApi = {
   async deleteTeacherSchedule(scheduleId: number) {
     const response = await apiClient.delete<TeacherScheduleMutationResponse>(`/exams/schedules/${scheduleId}`);
     return response.data.data;
+  },
+  async getExamSittings(params?: {
+    academicYearId?: number;
+    examType?: string;
+    programCode?: string;
+    date?: string;
+  }) {
+    const response = await apiClient.get<ExamSittingsResponse>('/exam-sittings', {
+      params: {
+        academicYearId: params?.academicYearId,
+        examType: params?.examType,
+        programCode: params?.programCode,
+        date: params?.date,
+      },
+    });
+    return response.data.data || [];
+  },
+  async getExamSittingDetail(sittingId: number) {
+    const response = await apiClient.get<ExamSittingDetailResponse>(`/exam-sittings/${sittingId}`);
+    return response.data.data;
+  },
+  async createExamSitting(payload: ExamSittingUpsertPayload & { studentIds?: number[] }) {
+    const response = await apiClient.post<ExamSittingMutationResponse>('/exam-sittings', payload);
+    return response.data.data;
+  },
+  async updateExamSitting(sittingId: number, payload: ExamSittingUpsertPayload) {
+    const response = await apiClient.put<ExamSittingMutationResponse>(`/exam-sittings/${sittingId}`, payload);
+    return response.data.data;
+  },
+  async updateExamSittingStudents(sittingId: number, studentIds: number[]) {
+    const response = await apiClient.put<{ statusCode: number; success: boolean; message: string; data: null }>(
+      `/exam-sittings/${sittingId}/students`,
+      { studentIds },
+    );
+    return response.data;
+  },
+  async deleteExamSitting(sittingId: number) {
+    const response = await apiClient.delete<{ statusCode: number; success: boolean; message: string; data: null }>(
+      `/exam-sittings/${sittingId}`,
+    );
+    return response.data;
+  },
+  async getExamSittingAssignedStudentIds(params?: {
+    academicYearId?: number;
+    examType?: string;
+    programCode?: string;
+    date?: string;
+  }) {
+    const response = await apiClient.get<ExamSittingAssignedStudentsResponse>('/exam-sittings/assigned-students', {
+      params: {
+        academicYearId: params?.academicYearId,
+        examType: params?.examType,
+        programCode: params?.programCode,
+        date: params?.date,
+      },
+    });
+    return response.data.data?.studentIds || [];
+  },
+  async getExamEligibleRooms() {
+    const response = await apiClient.get<ExamRoomListResponse>('/inventory/rooms');
+    return Array.isArray(response.data?.data) ? response.data.data : [];
+  },
+  async getStudentsByClass(classId: number) {
+    const response = await apiClient.get<StudentUserListResponse>('/users', {
+      params: {
+        role: 'STUDENT',
+        class_id: classId,
+        limit: 500,
+      },
+    });
+    return Array.isArray(response.data?.data) ? response.data.data : [];
   },
 };

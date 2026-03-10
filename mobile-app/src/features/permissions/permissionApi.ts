@@ -40,6 +40,12 @@ type UploadPermissionResponse = {
   };
 };
 
+type ReactNativeFilePart = {
+  uri: string;
+  name: string;
+  type: string;
+};
+
 export const permissionApi = {
   async list() {
     const response = await apiClient.get<PermissionsResponse>('/permissions', {
@@ -101,11 +107,12 @@ export const permissionApi = {
   },
   async uploadFile(file: { uri: string; name?: string; type?: string }) {
     const formData = new FormData();
-    formData.append('file', {
+    const filePart: ReactNativeFilePart = {
       uri: file.uri,
       name: file.name || 'permission-file.jpg',
       type: file.type || 'application/octet-stream',
-    } as any);
+    };
+    formData.append('file', filePart as unknown as Blob);
 
     const response = await apiClient.post<UploadPermissionResponse>('/upload/permission', formData, {
       headers: {

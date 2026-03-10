@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { humasService, type JobVacancy, type IndustryPartner } from '../../../../services/humas.service';
@@ -38,6 +38,14 @@ const vacancySchema = z.object({
 
 type VacancyFormValues = z.infer<typeof vacancySchema>;
 
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'object' && error !== null) {
+    const normalized = error as { response?: { data?: { message?: string } }; message?: string };
+    return normalized.response?.data?.message || normalized.message || fallback;
+  }
+  return fallback;
+};
+
 export const VacanciesTab = () => {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -59,20 +67,20 @@ export const VacanciesTab = () => {
 
   // Mutations
   const createMutation = useMutation({
-    mutationFn: (data: any) => humasService.createVacancy(data),
+    mutationFn: (data: VacancyFormValues) => humasService.createVacancy(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vacancies'] });
       setIsModalOpen(false);
       toast.success('Lowongan berhasil ditambahkan');
       reset();
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menambahkan lowongan');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menambahkan lowongan'));
     }
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => humasService.updateVacancy(id, data),
+    mutationFn: ({ id, data }: { id: number; data: VacancyFormValues }) => humasService.updateVacancy(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vacancies'] });
       setIsModalOpen(false);
@@ -80,8 +88,8 @@ export const VacanciesTab = () => {
       toast.success('Lowongan berhasil diperbarui');
       reset();
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal memperbarui lowongan');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal memperbarui lowongan'));
     }
   });
 
@@ -91,18 +99,20 @@ export const VacanciesTab = () => {
       queryClient.invalidateQueries({ queryKey: ['vacancies'] });
       toast.success('Lowongan berhasil dihapus');
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menghapus lowongan');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menghapus lowongan'));
     }
   });
 
   // Form
-  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<VacancyFormValues>({
+  const { register, handleSubmit, reset, setValue, control, formState: { errors } } = useForm<VacancyFormValues>({
     resolver: zodResolver(vacancySchema),
     defaultValues: {
       isOpen: true
     }
   });
+  const selectedIndustryPartnerId = useWatch({ control, name: 'industryPartnerId' });
+  const isOpenValue = useWatch({ control, name: 'isOpen' });
 
   const handleEdit = (vacancy: JobVacancy) => {
     setEditingVacancy(vacancy);
@@ -137,7 +147,7 @@ export const VacanciesTab = () => {
   const onSubmit = (data: VacancyFormValues) => {
     const payload = {
       ...data,
-      industryPartnerId: data.industryPartnerId ? parseInt(data.industryPartnerId) : undefined,
+      industryPartnerId: data.industryPartnerId || undefined,
       deadline: data.deadline ? new Date(data.deadline).toISOString() : undefined
     };
 
@@ -381,7 +391,7 @@ export const VacanciesTab = () => {
                     <p className="text-xs text-gray-500 mt-1">Pilih jika lowongan berasal dari mitra yang terdaftar</p>
                   </div>
 
-                  {!watch('industryPartnerId') && (
+                  {!selectedIndustryPartnerId && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Nama Perusahaan *</label>
                       <input
@@ -427,11 +437,11 @@ export const VacanciesTab = () => {
                       <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                       <div className="flex items-center gap-4 mt-2">
                         <label className="flex items-center gap-2 cursor-pointer">
-                          <input type="radio" value="true" {...register('isOpen', { setValueAs: v => v === 'true' || v === true })} checked={watch('isOpen') === true} className="text-blue-600 focus:ring-blue-500" />
+                          <input type="radio" value="true" {...register('isOpen', { setValueAs: v => v === 'true' || v === true })} checked={isOpenValue === true} className="text-blue-600 focus:ring-blue-500" />
                           <span className="text-sm text-gray-700">Dibuka</span>
                         </label>
                         <label className="flex items-center gap-2 cursor-pointer">
-                          <input type="radio" value="false" {...register('isOpen', { setValueAs: v => v === 'true' || v === true })} checked={watch('isOpen') === false} className="text-blue-600 focus:ring-blue-500" />
+                          <input type="radio" value="false" {...register('isOpen', { setValueAs: v => v === 'true' || v === true })} checked={isOpenValue === false} className="text-blue-600 focus:ring-blue-500" />
                           <span className="text-sm text-gray-700">Ditutup</span>
                         </label>
                       </div>

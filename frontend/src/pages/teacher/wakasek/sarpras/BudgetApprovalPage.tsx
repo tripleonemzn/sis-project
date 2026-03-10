@@ -16,9 +16,25 @@ import {
 import { liveQueryOptions } from '../../../../lib/query/liveQuery';
 import toast from 'react-hot-toast';
 
+type BudgetApprovalContextUser = {
+  role?: string;
+  additionalDuties?: string[] | null;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'object' && error !== null) {
+    const err = error as { response?: { data?: { message?: string } }; message?: string };
+    return err.response?.data?.message || err.message || fallback;
+  }
+  return fallback;
+};
+
+const BUDGET_STATUS_OPTIONS = ['ALL', 'PENDING', 'APPROVED', 'REJECTED'] as const;
+type BudgetStatusFilter = (typeof BUDGET_STATUS_OPTIONS)[number];
+
 export const BudgetApprovalPage = () => {
   const queryClient = useQueryClient();
-  const { user: contextUser } = useOutletContext<{ user: any }>() || {};
+  const { user: contextUser } = useOutletContext<{ user?: BudgetApprovalContextUser }>() || {};
   const { data: authData } = useQuery({
     queryKey: ['me'],
     queryFn: authService.getMe,
@@ -27,11 +43,14 @@ export const BudgetApprovalPage = () => {
   });
 
   const user = contextUser || authData?.data;
+  const userDuties = ((user?.additionalDuties || []) as string[]).map((duty) =>
+    String(duty || '').trim().toUpperCase(),
+  );
+  const isKesiswaanApprover =
+    userDuties.includes('WAKASEK_KESISWAAN') || userDuties.includes('SEKRETARIS_KESISWAAN');
 
   const [selectedYearId, setSelectedYearId] = useState<number | 'all'>('all');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>(
-    'ALL',
-  );
+  const [statusFilter, setStatusFilter] = useState<BudgetStatusFilter>('ALL');
   const [search, setSearch] = useState('');
   const [selectedForApprove, setSelectedForApprove] = useState<BudgetRequest | null>(null);
   const [selectedDuty, setSelectedDuty] = useState<string | null>(null);
@@ -68,25 +87,30 @@ export const BudgetApprovalPage = () => {
     ...liveQueryOptions,
   });
 
-  let budgets: BudgetRequest[] = budgetsData?.data || budgetsData || [];
+  const budgetsRaw = useMemo<BudgetRequest[]>(() => {
+    if (Array.isArray(budgetsData?.data)) {
+      return budgetsData.data as BudgetRequest[];
+    }
+    if (Array.isArray(budgetsData)) {
+      return budgetsData as BudgetRequest[];
+    }
+    return [];
+  }, [budgetsData]);
 
-  if (statusFilter !== 'ALL') {
-    budgets = budgets.filter((b) => b.status === statusFilter);
-  }
-
-  const searchTerm = search.trim().toLowerCase();
-  if (searchTerm) {
-    budgets = budgets.filter((b) => {
+  const budgets = useMemo(() => {
+    let next = budgetsRaw;
+    if (statusFilter !== 'ALL') {
+      next = next.filter((b) => b.status === statusFilter);
+    }
+    const searchTerm = search.trim().toLowerCase();
+    if (!searchTerm) return next;
+    return next.filter((b) => {
       const title = (b.title || '').toLowerCase();
       const desc = (b.description || '').toLowerCase();
       const requester = (b.requester?.name || '').toLowerCase();
-      return (
-        title.includes(searchTerm) ||
-        desc.includes(searchTerm) ||
-        requester.includes(searchTerm)
-      );
+      return title.includes(searchTerm) || desc.includes(searchTerm) || requester.includes(searchTerm);
     });
-  }
+  }, [budgetsRaw, search, statusFilter]);
 
   const dutyGroups = useMemo(() => {
     const map = new Map<string, BudgetRequest[]>();
@@ -166,8 +190,8 @@ export const BudgetApprovalPage = () => {
       toast.success('Status pengajuan anggaran diperbarui');
       setSelectedForApprove(null);
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Gagal memperbarui status pengajuan');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal memperbarui status pengajuan'));
     },
   });
 
@@ -213,8 +237,8 @@ export const BudgetApprovalPage = () => {
       }
       toast.success('Hasil audit item LPJ disimpan');
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Gagal menyimpan hasil audit item LPJ');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menyimpan hasil audit item LPJ'));
     },
   });
 
@@ -229,8 +253,8 @@ export const BudgetApprovalPage = () => {
       }
       toast.success('Berita Acara LPJ disimpan');
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Gagal menyimpan Berita Acara LPJ');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menyimpan Berita Acara LPJ'));
     },
   });
 
@@ -249,8 +273,8 @@ export const BudgetApprovalPage = () => {
       queryClient.invalidateQueries({ queryKey: ['budget-requests', 'sarpras'] });
       toast.success('Keputusan LPJ berhasil disimpan');
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Gagal menyimpan keputusan LPJ');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menyimpan keputusan LPJ'));
     },
   });
 
@@ -258,9 +282,13 @@ export const BudgetApprovalPage = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Persetujuan Anggaran Sarpras</h1>
+          <h1 className="text-xl font-semibold text-gray-900">
+            {isKesiswaanApprover ? 'Persetujuan Pengajuan Alat Ekskul' : 'Persetujuan Anggaran Sarpras'}
+          </h1>
           <p className="mt-1 text-sm text-gray-500">
-            Kelola pengajuan anggaran dari Program Kerja dan kebutuhan operasional.
+            {isKesiswaanApprover
+              ? 'Verifikasi awal pengajuan alat ekskul sebelum diteruskan ke Sarpras.'
+              : 'Kelola pengajuan anggaran dari Program Kerja dan kebutuhan operasional.'}
           </p>
         </div>
       </div>
@@ -282,7 +310,12 @@ export const BudgetApprovalPage = () => {
             <Filter className="w-4 h-4 text-gray-400" />
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
+              onChange={(e) => {
+                const value = e.target.value as BudgetStatusFilter;
+                if (BUDGET_STATUS_OPTIONS.includes(value)) {
+                  setStatusFilter(value);
+                }
+              }}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
             >
               <option value="ALL">Semua Status</option>
@@ -524,14 +557,41 @@ export const BudgetApprovalPage = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         {budget.status === 'PENDING' ? (
-                          <button
-                            onClick={() => setSelectedForApprove(budget)}
-                            disabled={updateStatusMutation.isPending}
-                            className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-50"
-                          >
-                            <CheckCircle2 className="w-3 h-3 mr-1" />
-                            Setujui & Ajukan ke Principal
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => setSelectedForApprove(budget)}
+                              disabled={updateStatusMutation.isPending}
+                              className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-50"
+                            >
+                              <CheckCircle2 className="w-3 h-3 mr-1" />
+                              {isKesiswaanApprover
+                                ? 'Setujui & Kirim ke Sarpras'
+                                : 'Setujui & Ajukan ke Principal'}
+                            </button>
+                            {(isKesiswaanApprover || budget.additionalDuty === 'PEMBINA_EKSKUL') && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const reason = window.prompt(
+                                    'Masukkan alasan penolakan (opsional):',
+                                    '',
+                                  );
+                                  if (reason === null) return;
+                                  updateStatusMutation.mutate({
+                                    id: budget.id,
+                                    payload: {
+                                      status: 'REJECTED',
+                                      rejectionReason: reason.trim() || undefined,
+                                    },
+                                  });
+                                }}
+                                disabled={updateStatusMutation.isPending}
+                                className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100 disabled:opacity-50"
+                              >
+                                Tolak
+                              </button>
+                            )}
+                          </div>
                         ) : budget.realizationConfirmedAt ? (
                           <button
                             type="button"
@@ -577,11 +637,12 @@ export const BudgetApprovalPage = () => {
               </div>
               <div>
                 <h3 className="font-semibold text-gray-900">
-                  Setujui & Ajukan ke Principal
+                  {isKesiswaanApprover ? 'Setujui & Kirim ke Sarpras' : 'Setujui & Ajukan ke Principal'}
                 </h3>
                 <p className="text-xs text-gray-500">
-                  Pengajuan ini akan disetujui oleh Wakasek Sarpras dan
-                  diteruskan ke Kepala Sekolah untuk proses persetujuan berikutnya.
+                  {isKesiswaanApprover
+                    ? 'Pengajuan alat ekskul yang disetujui akan diteruskan ke Wakasek Sarpras.'
+                    : 'Pengajuan yang disetujui akan diteruskan ke Kepala Sekolah untuk proses persetujuan berikutnya.'}
                 </p>
               </div>
             </div>
@@ -596,12 +657,18 @@ export const BudgetApprovalPage = () => {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Rekomendasi untuk Kepala Sekolah (opsional)
+                  {isKesiswaanApprover
+                    ? 'Catatan untuk Wakasek Sarpras (opsional)'
+                    : 'Rekomendasi untuk Kepala Sekolah (opsional)'}
                 </label>
                 <textarea
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-                  placeholder="Contoh: Pengadaan ini prioritas karena menggantikan perangkat rusak, mohon dipertimbangkan."
+                  placeholder={
+                    isKesiswaanApprover
+                      ? 'Contoh: Prioritas pembinaan lomba semester ini.'
+                      : 'Contoh: Pengadaan ini prioritas karena menggantikan perangkat rusak, mohon dipertimbangkan.'
+                  }
                   value={recommendation}
                   onChange={(e) => setRecommendation(e.target.value)}
                 />
@@ -633,7 +700,7 @@ export const BudgetApprovalPage = () => {
                 {updateStatusMutation.isPending && (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 )}
-                Setujui & Ajukan
+                {isKesiswaanApprover ? 'Setujui & Kirim' : 'Setujui & Ajukan'}
               </button>
             </div>
           </div>

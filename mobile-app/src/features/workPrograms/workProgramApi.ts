@@ -25,6 +25,12 @@ const DEFAULT_PAGINATION = {
   totalPages: 1,
 };
 
+type ReactNativeUploadPart = {
+  uri: string;
+  name: string;
+  type: string;
+};
+
 function sanitizeListLimit(value?: number) {
   const parsed = Number(value || 0);
   if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
@@ -33,11 +39,12 @@ function sanitizeListLimit(value?: number) {
 
 function appendUploadFile(formData: FormData, field: string, file?: WorkProgramUploadFile | null) {
   if (!file?.uri) return;
-  formData.append(field, {
+  const uploadPart: ReactNativeUploadPart = {
     uri: file.uri,
     name: file.name || `${field}-upload`,
     type: file.mimeType || 'application/octet-stream',
-  } as any);
+  };
+  formData.append(field, uploadPart as unknown as Blob);
 }
 
 export const workProgramApi = {

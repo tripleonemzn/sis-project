@@ -6,6 +6,7 @@ import { userService } from '../../../services/user.service';
 import { subjectService, type Subject } from '../../../services/subject.service';
 import { classService, type Class } from '../../../services/class.service';
 import api from '../../../services/api';
+import { academicYearService } from '../../../services/academicYear.service';
 import {
   Loader2,
   ChevronDown,
@@ -36,13 +37,18 @@ const getErrorMessage = (error: unknown) => {
   return 'Terjadi kesalahan';
 };
 
-export const TeacherAssignmentPage = () => {
+type TeacherAssignmentPageScope = 'DEFAULT' | 'CURRICULUM';
+
+type TeacherAssignmentPageProps = {
+  scope?: TeacherAssignmentPageScope;
+};
+
+export const TeacherAssignmentPage = ({ scope = 'DEFAULT' }: TeacherAssignmentPageProps) => {
   const { data: activeYearData } = useQuery({
     queryKey: ['academic-year', 'active'],
     queryFn: async () => {
       try {
-        const res = await api.get('/academic-years/active');
-        return res.data;
+        return await academicYearService.getActiveSafe();
       } catch {
         return null;
       }
@@ -161,18 +167,21 @@ export const TeacherAssignmentPage = () => {
     kkm: number;
   };
 
+  const isCurriculumScope = scope === 'CURRICULUM';
+
   const {
     data: assignmentListData,
     isLoading: loadingAssignments,
     refetch: refetchAssignments,
   } = useQuery({
-    queryKey: ['teacher-assignments', debouncedSearch],
+    queryKey: ['teacher-assignments', debouncedSearch, isCurriculumScope ? 'CURRICULUM' : 'DEFAULT'],
     queryFn: async () => {
       const res = await api.get('/teacher-assignments', {
         params: {
           page: 1,
           limit: 1000,
           search: debouncedSearch || undefined,
+          scope: isCurriculumScope ? 'CURRICULUM' : undefined,
         },
       });
       return res.data;

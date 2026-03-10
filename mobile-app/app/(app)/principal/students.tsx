@@ -25,20 +25,7 @@ export default function PrincipalStudentsScreen() {
     queryFn: () => adminApi.listUsers({ role: 'STUDENT' }),
   });
 
-  if (isLoading) return <AppLoadingScreen message="Memuat data siswa..." />;
-  if (!isAuthenticated) return <Redirect href="/welcome" />;
-
-  if (user?.role !== 'PRINCIPAL') {
-    return (
-      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Data Siswa</Text>
-        <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
-      </ScrollView>
-    );
-  }
-
-  const students = studentsQuery.data || [];
-
+  const students = useMemo(() => studentsQuery.data || [], [studentsQuery.data]);
   const classOptions = useMemo(() => {
     const map = new Map<string, string>();
     for (const item of students) {
@@ -64,6 +51,18 @@ export default function PrincipalStudentsScreen() {
       return haystacks.some((value) => value.toLowerCase().includes(q));
     });
   }, [students, classFilter, search]);
+
+  if (isLoading) return <AppLoadingScreen message="Memuat data siswa..." />;
+  if (!isAuthenticated) return <Redirect href="/welcome" />;
+
+  if (user?.role !== 'PRINCIPAL') {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
+        <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Data Siswa</Text>
+        <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView

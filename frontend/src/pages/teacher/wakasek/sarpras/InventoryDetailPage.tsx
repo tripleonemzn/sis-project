@@ -25,6 +25,18 @@ import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
 
 type InventoryAttributeMap = Record<string, string | number>;
+type InventoryDetailContextUser = {
+  role?: string;
+  additionalDuties?: string[] | null;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'object' && error !== null) {
+    const err = error as { response?: { data?: { message?: string } }; message?: string };
+    return err.response?.data?.message || err.message || fallback;
+  }
+  return fallback;
+};
 
 function normalizeItemAttributes(item?: InventoryItem | null): InventoryAttributeMap {
   if (!item?.attributes || typeof item.attributes !== 'object' || Array.isArray(item.attributes)) {
@@ -53,6 +65,8 @@ function toAttributeText(value: unknown) {
 
 export const InventoryDetailPage = () => {
   const { roomId } = useParams();
+  const normalizedRoomId = Number(roomId);
+  const hasValidRoomId = Number.isInteger(normalizedRoomId) && normalizedRoomId > 0;
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -60,7 +74,7 @@ export const InventoryDetailPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
 
-  const { user: contextUser } = useOutletContext<{ user: any }>() || {};
+  const { user: contextUser } = useOutletContext<{ user?: InventoryDetailContextUser }>() || {};
   const { data: authData } = useQuery({
     queryKey: ['me'],
     queryFn: authService.getMe,
@@ -79,16 +93,16 @@ export const InventoryDetailPage = () => {
 
   // Fetch Room Details
   const { data: roomData, isLoading: isRoomLoading } = useQuery({
-    queryKey: ['room', roomId],
-    queryFn: () => inventoryService.getRoom(Number(roomId)),
-    enabled: !!roomId
+    queryKey: ['room', normalizedRoomId],
+    queryFn: () => inventoryService.getRoom(normalizedRoomId),
+    enabled: hasValidRoomId,
   });
 
   // Fetch Inventory Items
   const { data: itemsData, isLoading: isItemsLoading } = useQuery({
-    queryKey: ['inventory', roomId],
-    queryFn: () => inventoryService.getInventoryByRoom(Number(roomId)),
-    enabled: !!roomId
+    queryKey: ['inventory', normalizedRoomId],
+    queryFn: () => inventoryService.getInventoryByRoom(normalizedRoomId),
+    enabled: hasValidRoomId,
   });
 
   const room = roomData?.data;
@@ -135,10 +149,10 @@ export const InventoryDetailPage = () => {
     mutationFn: inventoryService.deleteInventory,
     onSuccess: () => {
       toast.success('Item berhasil dihapus');
-      queryClient.invalidateQueries({ queryKey: ['inventory', roomId] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', normalizedRoomId] });
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menghapus item');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menghapus item'));
     }
   });
 
@@ -385,7 +399,7 @@ export const InventoryDetailPage = () => {
       {/* Add/Edit Modal */}
       {isModalOpen && (
         <InventoryModal 
-          roomId={Number(roomId)}
+          roomId={normalizedRoomId}
           item={editingItem}
           templateProfile={templateProfile}
           onClose={() => setIsModalOpen(false)} 
@@ -480,8 +494,8 @@ const InventoryModal = ({
       queryClient.invalidateQueries({ queryKey: ['inventory', String(roomId)] });
       onClose();
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menyimpan item');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menyimpan item'));
     }
   });
 
@@ -536,8 +550,8 @@ const InventoryModal = ({
         toast.success(`Kategori "${deletedCategory}" sudah tidak digunakan.`);
       }
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || error?.message || 'Gagal menghapus kategori buku.');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menghapus kategori buku.'));
     },
   });
 

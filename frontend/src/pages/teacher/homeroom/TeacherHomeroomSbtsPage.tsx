@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useOutletContext } from 'react-router-dom';
 import { authService } from '../../../services/auth.service';
@@ -16,14 +16,39 @@ import { HomeroomLedgerPage } from './HomeroomLedgerPage';
 import { HomeroomExtracurricularsPage } from './HomeroomExtracurricularsPage';
 import { HomeroomReportSbtsPage } from './HomeroomReportSbtsPage';
 
-type TabType = 'rapor-sbts' | 'ledger' | 'extracurriculars';
+type TabType = 'rapor' | 'ledger' | 'extracurriculars';
 type SemesterType = 'ODD' | 'EVEN';
 
-export const TeacherHomeroomSbtsPage = () => {
-  const [activeTab, setActiveTab] = useState<TabType>('ledger');
-  const [semester, setSemester] = useState<SemesterType | ''>('');
+function normalizeComponentType(raw: unknown): string {
+  return String(raw || '').trim().toUpperCase();
+}
 
-  const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<{ user: any, activeYear: any }>() || {};
+interface TeacherHomeroomSbtsPageProps {
+  programCode?: string;
+  programBaseType?: string;
+  programLabel?: string;
+  preferenceScope?: string;
+}
+
+export const TeacherHomeroomSbtsPage = ({
+  programCode,
+  programBaseType,
+  programLabel,
+  preferenceScope,
+}: TeacherHomeroomSbtsPageProps) => {
+  const [tabOverride, setTabOverride] = useState<TabType | null>(null);
+  const [semesterOverride, setSemesterOverride] = useState<SemesterType | null>(null);
+  const resolvedReportType = String(programBaseType || '').toUpperCase();
+  const resolvedProgramLabel = String(programLabel || resolvedReportType || 'Rapor');
+  const preferenceKey = useMemo(() => {
+    const scope = String(preferenceScope || programCode || resolvedProgramLabel || resolvedReportType || 'MIDTERM')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '_');
+    return `teacher-homeroom-midterm-active-tab-${scope}`;
+  }, [preferenceScope, programCode, resolvedProgramLabel, resolvedReportType]);
+
+  const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<{ user: unknown; activeYear: unknown }>() || {};
 
   // 1. Get Current User via Query (Database Persistence)
   const { data: authData } = useQuery({
@@ -32,7 +57,7 @@ export const TeacherHomeroomSbtsPage = () => {
     enabled: !contextUser,
     staleTime: 1000 * 60 * 5,
   });
-  const user = contextUser || authData?.data;
+  const user = (contextUser as { id?: number; role?: string } | undefined) || authData?.data;
   const userId = user?.id;
   const queryClient = useQueryClient();
 
@@ -47,7 +72,7 @@ export const TeacherHomeroomSbtsPage = () => {
   });
 
   const updateProfileMutation = useMutation({
-    mutationFn: (data: any) => {
+    mutationFn: (data: Record<string, unknown>) => {
       if (!userId) throw new Error('User ID not found');
       return userService.update(userId, data);
     },
@@ -56,23 +81,19 @@ export const TeacherHomeroomSbtsPage = () => {
     }
   });
 
-  useEffect(() => {
-    if (userData?.data?.preferences) {
-        // @ts-ignore
-        const savedTab = userData.data.preferences['teacher-homeroom-sbts-active-tab'];
-        if (savedTab) {
-            setActiveTab(savedTab as TabType);
-        }
-    }
-  }, [userData]);
+  const savedTab = useMemo<TabType | undefined>(() => {
+    const prefs = (userData?.data?.preferences ?? {}) as Record<string, unknown>;
+    const v = prefs[preferenceKey];
+    return v === 'ledger' || v === 'rapor' || v === 'extracurriculars' ? v : undefined;
+  }, [userData, preferenceKey]);
+  const activeTab = tabOverride ?? savedTab ?? 'ledger';
 
   const handleTabChange = (tab: TabType) => {
-    setActiveTab(tab);
+    setTabOverride(tab);
     if (userId) {
-        // @ts-ignore
-        const currentPrefs = userData?.data?.preferences || {};
-        updateProfileMutation.mutate({
-            preferences: { ...currentPrefs, 'teacher-homeroom-sbts-active-tab': tab }
+      const currentPrefs = ((userData?.data?.preferences ?? {}) as Record<string, unknown>);
+      updateProfileMutation.mutate({
+            preferences: { ...currentPrefs, [preferenceKey]: tab }
         });
     }
   };
@@ -80,23 +101,34 @@ export const TeacherHomeroomSbtsPage = () => {
   // 2. Get Active Academic Year
   const { data: fetchedActiveYear, isLoading: isLoadingYear } = useActiveAcademicYear();
   const activeAcademicYear = contextActiveYear || fetchedActiveYear;
+  const activeAcademicYearId = Number(
+    (activeAcademicYear as { id?: number } | null | undefined)?.id || 0,
+  ) || undefined;
+  const derivedSemester: SemesterType = String((activeAcademicYear as { name?: string } | undefined)?.name || '')
+    .toUpperCase()
+    .includes('GENAP')
+    ? 'EVEN'
+    : 'ODD';
+  const semester = semesterOverride ?? derivedSemester;
 
   // 3. Get Homeroom Class Summary (Filtered by Active Year)
   const { data: classSummary, isLoading: isLoadingClass } = useQuery({
-    queryKey: ['homeroom-class-summary', userId, activeAcademicYear?.id],
+    queryKey: ['homeroom-class-summary', userId, activeAcademicYearId],
     queryFn: async () => {
       if (!userId) return null;
       const response = await classService.list({ teacherId: userId, limit: 100 });
-      const activeClass = response.data.classes.find((c: any) => c.academicYearId === activeAcademicYear?.id);
+      type ClassItem = { id: number; academicYearId: number };
+      const classes = (response.data.classes ?? []) as ClassItem[];
+      const activeClass = classes.find((c) => c.academicYearId === activeAcademicYearId);
       return activeClass || null;
     },
-    enabled: !!userId && user?.role === 'TEACHER' && !!activeAcademicYear?.id,
+    enabled: !!userId && user?.role === 'TEACHER' && !!activeAcademicYearId,
   });
 
   const tabs = [
     { id: 'ledger', label: 'Leger Nilai', icon: FileText },
     { id: 'extracurriculars', label: 'Ekstrakurikuler', icon: Layers },
-    { id: 'rapor-sbts', label: 'Rapor SBTS', icon: FileBarChart },
+    { id: 'rapor', label: `Rapor ${resolvedProgramLabel}`, icon: FileBarChart },
   ];
 
   if (isLoadingYear || isLoadingClass) {
@@ -112,9 +144,9 @@ export const TeacherHomeroomSbtsPage = () => {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Rapor SBTS</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{`Rapor ${resolvedProgramLabel}`}</h1>
           <p className="text-gray-500 text-sm">
-            Kelola rapor tengah semester, leger nilai, dan ekstrakurikuler
+            Kelola rapor, leger nilai, dan ekstrakurikuler sesuai Program Ujian aktif.
           </p>
         </div>
       </div>
@@ -163,10 +195,9 @@ export const TeacherHomeroomSbtsPage = () => {
                 </div>
                 <select
                   value={semester}
-                  onChange={(e) => setSemester(e.target.value as SemesterType)}
+                  onChange={(e) => setSemesterOverride(e.target.value as SemesterType)}
                   className="pl-9 pr-8 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer hover:bg-gray-50 transition-colors"
                 >
-                  <option value="" disabled>Pilih Semester</option>
                   <option value="ODD">Semester Ganjil</option>
                   <option value="EVEN">Semester Genap</option>
                 </select>
@@ -176,22 +207,30 @@ export const TeacherHomeroomSbtsPage = () => {
 
           {/* Tab Content */}
           <div>
-            {activeTab === 'rapor-sbts' && (
+            {activeTab === 'rapor' && (
               <HomeroomReportSbtsPage 
                 classId={classSummary.id} 
                 semester={semester}
+                reportType={resolvedReportType}
+                programCode={programCode}
+                reportLabel={resolvedProgramLabel}
               />
             )}
             {activeTab === 'ledger' && (
               <HomeroomLedgerPage 
                 classId={classSummary.id} 
-                semester={semester as 'ODD' | 'EVEN' | ''} 
+                semester={semester}
+                reportType={resolvedReportType}
+                programCode={programCode}
+                reportComponentType={normalizeComponentType(resolvedReportType || 'MIDTERM')}
               />
             )}
             {activeTab === 'extracurriculars' && (
               <HomeroomExtracurricularsPage 
                 classId={classSummary.id} 
-                semester={semester as 'ODD' | 'EVEN' | ''} 
+                semester={semester}
+                reportType={resolvedReportType}
+                programCode={programCode}
               />
             )}
           </div>

@@ -7,7 +7,7 @@ export interface CpTpAnalysisData {
   academicYearId: number;
   level: string;
   phase?: string;
-  content: any; // Json
+  content: unknown;
   principalName?: string;
   titimangsa?: string;
   updatedAt?: string;

@@ -44,20 +44,8 @@ export default function StaffAdminScreen() {
     },
   });
 
-  if (isLoading) return <AppLoadingScreen message="Memuat administrasi staff..." />;
-  if (!isAuthenticated) return <Redirect href="/welcome" />;
-
-  if (user?.role !== 'STAFF') {
-    return (
-      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Administrasi</Text>
-        <QueryStateView type="error" message="Halaman ini khusus untuk role staff." />
-      </ScrollView>
-    );
-  }
-
-  const budgets = dataQuery.data?.budgets || [];
-  const students = dataQuery.data?.students || [];
+  const budgets = useMemo(() => dataQuery.data?.budgets || [], [dataQuery.data?.budgets]);
+  const students = useMemo(() => dataQuery.data?.students || [], [dataQuery.data?.students]);
 
   const summary = useMemo(() => {
     const pending = budgets.filter((item) => item.status === 'PENDING').length;
@@ -76,6 +64,18 @@ export default function StaffAdminScreen() {
   const recentPendingBudgets = budgets
     .filter((item) => item.status === 'PENDING')
     .slice(0, 6);
+
+  if (isLoading) return <AppLoadingScreen message="Memuat administrasi staff..." />;
+  if (!isAuthenticated) return <Redirect href="/welcome" />;
+
+  if (user?.role !== 'STAFF') {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
+        <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Administrasi</Text>
+        <QueryStateView type="error" message="Halaman ini khusus untuk role staff." />
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView

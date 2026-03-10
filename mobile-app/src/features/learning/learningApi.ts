@@ -49,6 +49,12 @@ type SubmissionMutationResponse = {
   data: LearningSubmission;
 };
 
+type ReactNativeFilePart = {
+  uri: string;
+  name: string;
+  type: string;
+};
+
 export const learningApi = {
   async getMaterials() {
     const response = await apiClient.get<MaterialsResponse>('/materials', {
@@ -99,11 +105,12 @@ export const learningApi = {
       formData.append('content', payload.content.trim());
     }
     if (payload.file?.uri) {
-      formData.append('file', {
+      const filePart: ReactNativeFilePart = {
         uri: payload.file.uri,
         name: payload.file.name || 'submission-file',
         type: payload.file.mimeType || 'application/octet-stream',
-      } as any);
+      };
+      formData.append('file', filePart as unknown as Blob);
     }
     const response = await apiClient.post<SubmissionMutationResponse>('/submissions', formData, {
       headers: {

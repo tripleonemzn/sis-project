@@ -11,12 +11,22 @@ import {
   PlusCircle,
   FileText
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { attendanceService } from '../../services/attendance.service';
 import type { AttendanceStatus, AttendanceRecord } from '../../services/attendance.service';
 import { academicYearService } from '../../services/academicYear.service';
 import { authService } from '../../services/auth.service';
 
-const STATUS_OPTIONS: { value: AttendanceStatus; label: string; icon: any; color: string; activeClass: string; inactiveClass: string }[] = [
+type AttendanceClassPresidentUser = {
+  id?: number;
+  studentClass?: {
+    id?: number;
+    name?: string;
+    presidentId?: number;
+  } | null;
+};
+
+const STATUS_OPTIONS: { value: AttendanceStatus; label: string; icon: LucideIcon; color: string; activeClass: string; inactiveClass: string }[] = [
   { 
     value: 'PRESENT', 
     label: 'Hadir', 
@@ -70,8 +80,9 @@ export const StudentClassAttendancePage = () => {
     queryFn: authService.getMe,
   });
 
-  const user = (userResponse as any)?.data;
+  const user = (userResponse as { data?: AttendanceClassPresidentUser } | undefined)?.data;
   const studentClass = user?.studentClass;
+  const studentClassId = studentClass?.id;
   const isPresident = studentClass?.presidentId === user?.id;
 
   // Get active academic year
@@ -82,19 +93,26 @@ export const StudentClassAttendancePage = () => {
       return res.data;
     },
   });
+  const activeYearId = activeYear?.id;
 
   // Fetch daily attendance data
   const { data: dailyData, isLoading, isError } = useQuery({
-    queryKey: ['student-daily-attendance', studentClass?.id, selectedDate],
-    queryFn: () => attendanceService.getDailyAttendance({
-      date: selectedDate,
-      classId: studentClass!.id,
-      academicYearId: activeYear!.id,
-    }),
-    enabled: !!studentClass?.id && !!activeYear?.id && isPresident,
+    queryKey: ['student-daily-attendance', studentClassId, selectedDate],
+    queryFn: () => {
+      if (!studentClassId || !activeYearId) {
+        throw new Error('Kelas atau tahun ajaran aktif tidak tersedia.');
+      }
+      return attendanceService.getDailyAttendance({
+        date: selectedDate,
+        classId: studentClassId,
+        academicYearId: activeYearId,
+      });
+    },
+    enabled: !!studentClassId && !!activeYearId && isPresident,
   });
 
   // Initialize form data when dailyData changes
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (dailyData?.data) {
       const initialData: Record<number, { status: AttendanceStatus; note: string }> = {};
@@ -109,6 +127,7 @@ export const StudentClassAttendancePage = () => {
       setAttendanceData(initialData);
     }
   }, [dailyData]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleStatusChange = (studentId: number, status: AttendanceStatus) => {
     setAttendanceData(prev => ({
@@ -131,18 +150,31 @@ export const StudentClassAttendancePage = () => {
   };
 
   const saveMutation = useMutation({
-    mutationFn: (records: AttendanceRecord[]) => attendanceService.saveDailyAttendance({
-      date: selectedDate,
-      classId: studentClass!.id,
-      academicYearId: activeYear!.id,
-      records
-    }),
+    mutationFn: (records: AttendanceRecord[]) => {
+      if (!studentClassId || !activeYearId) {
+        throw new Error('Kelas atau tahun ajaran aktif tidak tersedia.');
+      }
+      return attendanceService.saveDailyAttendance({
+        date: selectedDate,
+        classId: studentClassId,
+        academicYearId: activeYearId,
+        records,
+      });
+    },
     onSuccess: () => {
       toast.success('Presensi berhasil disimpan');
       queryClient.invalidateQueries({ queryKey: ['student-daily-attendance'] });
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menyimpan presensi');
+    onError: (error: unknown) => {
+      const message =
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof (error as { response?: { data?: { message?: string } } }).response?.data?.message ===
+          'string'
+          ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+          : 'Gagal menyimpan presensi';
+      toast.error(message || 'Gagal menyimpan presensi');
     },
   });
 

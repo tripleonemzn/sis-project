@@ -36,8 +36,9 @@ export const HumasSettingsPage: React.FC = () => {
       toast.success('Konfigurasi PKL berhasil disimpan');
       queryClient.invalidateQueries({ queryKey: ['active-academic-year'] });
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menyimpan konfigurasi');
+    onError: (error: unknown) => {
+      const normalized = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(normalized.response?.data?.message || normalized.message || 'Gagal menyimpan konfigurasi');
     },
   });
 

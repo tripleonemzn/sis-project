@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
@@ -38,13 +38,13 @@ function normalizeStatus(raw: string, hasSubmitted: boolean): 'OPEN' | 'UPCOMING
 function formatDateTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleDateString('id-ID', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const day = date.getDate();
+  const month = months[date.getMonth()] || '';
+  const year = date.getFullYear();
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  return `${day} ${month} ${year} ${hour}:${minute}`;
 }
 
 function statusStyle(status: 'OPEN' | 'UPCOMING' | 'MISSED' | 'COMPLETED') {
@@ -74,10 +74,6 @@ export default function StudentExamsScreen() {
   const [typeFilter, setTypeFilter] = useState<'ALL' | string>(lockedProgramCode || 'ALL');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
 
-  useEffect(() => {
-    setTypeFilter(lockedProgramCode || 'ALL');
-  }, [lockedProgramCode]);
-
   const examProgramsQuery = useQuery({
     queryKey: ['mobile-student-exam-programs'],
     enabled: isAuthenticated && user?.role === 'STUDENT',
@@ -96,12 +92,11 @@ export default function StudentExamsScreen() {
     [examProgramsQuery.data?.programs],
   );
 
-  useEffect(() => {
-    if (lockedProgramCode || typeFilter === 'ALL') return;
+  const effectiveTypeFilter = useMemo(() => {
+    if (lockedProgramCode) return lockedProgramCode;
+    if (typeFilter === 'ALL') return 'ALL';
     const allowed = new Set(activePrograms.map((program) => normalizeProgramCode(program.code)));
-    if (!allowed.has(typeFilter)) {
-      setTypeFilter('ALL');
-    }
+    return allowed.has(typeFilter) ? typeFilter : 'ALL';
   }, [lockedProgramCode, typeFilter, activePrograms]);
 
   const examTypeLabels = useMemo<ExamLabelMap>(() => {
@@ -126,7 +121,7 @@ export default function StudentExamsScreen() {
     return rows.filter((item) => {
       const type = normalizeProgramCode(item.packet.programCode || item.packet.type);
       const status = normalizeStatus(item.status, item.has_submitted);
-      if (typeFilter !== 'ALL' && type !== typeFilter) return false;
+      if (effectiveTypeFilter !== 'ALL' && type !== effectiveTypeFilter) return false;
       if (statusFilter !== 'ALL' && status !== statusFilter) return false;
       if (!q) return true;
       return (
@@ -135,7 +130,7 @@ export default function StudentExamsScreen() {
         item.packet.subject.code.toLowerCase().includes(q)
       );
     });
-  }, [examsQuery.data?.exams, searchQuery, typeFilter, statusFilter]);
+  }, [effectiveTypeFilter, examsQuery.data?.exams, searchQuery, statusFilter]);
 
   if (isLoading) return <AppLoadingScreen message="Memuat ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -183,7 +178,7 @@ export default function StudentExamsScreen() {
       {!lockedProgramCode ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 10 }}>
           {(['ALL', ...activePrograms.map((program) => normalizeProgramCode(program.code))] as Array<'ALL' | string>).map((item) => {
-            const selected = typeFilter === item;
+            const selected = effectiveTypeFilter === item;
             return (
               <View key={item} style={{ paddingHorizontal: 4, marginBottom: 8 }}>
                 <Pressable

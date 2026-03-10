@@ -4,11 +4,37 @@ import { internshipService } from '../../services/internship.service';
 import { toast } from 'react-hot-toast';
 import { Loader2, Building2, User, School, CheckCircle, AlertCircle } from 'lucide-react';
 
+type InternshipGradeLinkData = {
+  studentName: string;
+  nis: string;
+  companyName: string;
+  mentorName?: string | null;
+  industryScore?: number | null;
+};
+
+function parseGradeLinkData(payload: unknown): InternshipGradeLinkData | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const row = payload as Record<string, unknown>;
+  return {
+    studentName: String(row.studentName || '-'),
+    nis: String(row.nis || '-'),
+    companyName: String(row.companyName || '-'),
+    mentorName: row.mentorName ? String(row.mentorName) : null,
+    industryScore: typeof row.industryScore === 'number' ? row.industryScore : null,
+  };
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (!error || typeof error !== 'object') return fallback;
+  const err = error as { response?: { data?: { message?: string } } };
+  return err.response?.data?.message || fallback;
+}
+
 export const InternshipGradeInputPage = () => {
   const { accessCode } = useParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<InternshipGradeLinkData | null>(null);
   const [score, setScore] = useState<number | ''>('');
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -22,12 +48,13 @@ export const InternshipGradeInputPage = () => {
   const verifyCode = async (code: string) => {
     try {
       const response = await internshipService.verifyAccessCode(code);
-      setData(response.data.data);
-      if (response.data.data.industryScore) {
-         setScore(response.data.data.industryScore);
+      const parsedData = parseGradeLinkData(response.data?.data);
+      setData(parsedData);
+      if (typeof parsedData?.industryScore === 'number') {
+         setScore(parsedData.industryScore);
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Link tidak valid atau kadaluarsa');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Link tidak valid atau kadaluarsa'));
     } finally {
       setLoading(false);
     }
@@ -45,8 +72,8 @@ export const InternshipGradeInputPage = () => {
       });
       setSuccess(true);
       toast.success('Nilai berhasil disimpan');
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Gagal menyimpan nilai');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, 'Gagal menyimpan nilai'));
     } finally {
       setSubmitting(false);
     }

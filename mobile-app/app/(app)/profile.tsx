@@ -17,6 +17,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { useAuth } from '../../src/features/auth/AuthProvider';
+import type { AuthUser } from '../../src/features/auth/types';
 import { MOBILE_PROFILE_QUERY_KEY, useProfileQuery } from '../../src/features/profile/useProfileQuery';
 import { profileApi } from '../../src/features/profile/profileApi';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
@@ -71,6 +72,7 @@ type FormFieldProps = {
   numberOfLines?: number;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
 };
+type ProfileDocument = NonNullable<AuthUser['documents']>[number] & { originalname?: string | null };
 
 const cardStyle = {
   backgroundColor: '#fff',
@@ -149,7 +151,8 @@ function resolveMediaUrl(path?: string | null) {
   return `${webBaseUrl}/${path}`;
 }
 
-function buildForm(profile: any): EditableProfileForm {
+function buildForm(profile: AuthUser | null): EditableProfileForm {
+  if (!profile) return emptyForm;
   return {
     name: toText(profile?.name),
     gender: (profile?.gender as EditableProfileForm['gender']) || '',
@@ -285,7 +288,7 @@ export default function ProfileScreen() {
   const pageContentPadding = getStandardPagePadding(insets, { bottom: 120 });
   const [form, setForm] = useState<EditableProfileForm>(emptyForm);
 
-  const profile = profileQuery.data?.profile as any;
+  const profile = profileQuery.data?.profile ?? null;
   const baseline = useMemo(() => (profile ? buildForm(profile) : emptyForm), [profile]);
 
   const isStudent = profile?.role === 'STUDENT';
@@ -363,7 +366,7 @@ export default function ProfileScreen() {
       await profileQuery.refetch();
       notifySuccess('Profil berhasil diperbarui.');
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal menyimpan perubahan profil.');
     },
   });
@@ -431,7 +434,7 @@ export default function ProfileScreen() {
         type: mime,
       });
 
-      const existingDocs = (profile.documents || []).map((doc: any) => ({
+      const existingDocs = (profile.documents || []).map((doc: ProfileDocument) => ({
         title: doc.title || doc.originalname || 'Dokumen',
         fileUrl: doc.fileUrl,
         category: doc.category || 'Dokumen Pendukung',
@@ -462,8 +465,8 @@ export default function ProfileScreen() {
     if (!profile?.id) return;
     try {
       const nextDocs = (profile.documents || [])
-        .filter((_: any, idx: number) => idx !== index)
-        .map((doc: any) => ({
+        .filter((_, idx: number) => idx !== index)
+        .map((doc: ProfileDocument) => ({
           title: doc.title || doc.originalname || 'Dokumen',
           fileUrl: doc.fileUrl,
           category: doc.category || 'Dokumen Pendukung',
@@ -537,7 +540,7 @@ export default function ProfileScreen() {
               <View style={{ marginTop: 2 }}>
                 <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Anak Terhubung</Text>
                 {(profile.children || []).length > 0 ? (
-                  (profile.children || []).map((child: any) => (
+                  (profile.children || []).map((child) => (
                     <Text key={child.id} style={{ color: '#0f172a', fontSize: 13, marginBottom: 3 }}>
                       {(child.nisn ? `${child.nisn} - ` : '') + child.name}
                     </Text>
@@ -877,7 +880,7 @@ export default function ProfileScreen() {
               ) : null}
 
               {(profile.documents || []).length > 0 ? (
-                (profile.documents || []).map((doc: any, index: number) => (
+                (profile.documents || []).map((doc, index: number) => (
                   <View
                     key={`${doc.fileUrl}-${index}`}
                     style={{

@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
@@ -113,13 +113,13 @@ function formatDateTime(value?: string | null): string {
   if (!value) return '-';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleDateString('id-ID', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const day = date.getDate();
+  const month = months[date.getMonth()] || '';
+  const year = date.getFullYear();
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  return `${day} ${month} ${year} ${hour}:${minute}`;
 }
 
 export default function StudentExamTakeScreen() {
@@ -144,14 +144,36 @@ export default function StudentExamTakeScreen() {
 
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [autosaveState, setAutosaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [isFinalSubmitting, setIsFinalSubmitting] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
-  const initializedRef = useRef(false);
   const answersRef = useRef<Record<string, unknown>>({});
   const autoSubmitGuardRef = useRef(false);
+  const isExamReady = Boolean(startQuery.data);
+  const persistedAnswers = useMemo(
+    () => parseAnswers(startQuery.data?.session?.answers),
+    [startQuery.data?.session?.answers],
+  );
+  const effectiveAnswers = useMemo(
+    () => ({
+      ...persistedAnswers,
+      ...answers,
+    }),
+    [persistedAnswers, answers],
+  );
+  const remainingSeconds = useMemo(() => {
+    if (!startQuery.data) return 0;
+    const durationMinutes =
+      typeof startQuery.data.packet.duration === 'number' && startQuery.data.packet.duration > 0
+        ? startQuery.data.packet.duration
+        : 60;
+    const startedAt = new Date(startQuery.data.session.startTime).getTime();
+    if (Number.isNaN(startedAt)) return durationMinutes * 60;
+    const endAt = startedAt + durationMinutes * 60 * 1000;
+    return Math.max(0, Math.floor((endAt - nowMs) / 1000));
+  }, [startQuery.data, nowMs]);
 
   const submitMutation = useMutation({
     mutationFn: async (payload: { answers: Record<string, unknown>; isFinalSubmit: boolean }) => {
@@ -165,39 +187,20 @@ export default function StudentExamTakeScreen() {
   });
 
   useEffect(() => {
-    answersRef.current = answers;
-  }, [answers]);
+    answersRef.current = effectiveAnswers;
+  }, [effectiveAnswers]);
 
   useEffect(() => {
-    if (!startQuery.data || initializedRef.current) return;
-    initializedRef.current = true;
-
-    const previousAnswers = parseAnswers(startQuery.data.session.answers);
-    setAnswers(previousAnswers);
-
-    const durationMinutes =
-      typeof startQuery.data.packet.duration === 'number' && startQuery.data.packet.duration > 0
-        ? startQuery.data.packet.duration
-        : 60;
-
-    const startedAt = new Date(startQuery.data.session.startTime).getTime();
-    const endAt = startedAt + durationMinutes * 60 * 1000;
-    const now = Date.now();
-    const nextRemaining = Math.max(0, Math.floor((endAt - now) / 1000));
-    setRemainingSeconds(nextRemaining);
-  }, [startQuery.data]);
-
-  useEffect(() => {
-    if (!initializedRef.current || isFinished) return;
+    if (!isExamReady || isFinished) return;
 
     const timer = setInterval(() => {
-      setRemainingSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+      setNowMs(Date.now());
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isFinished]);
+  }, [isExamReady, isFinished]);
 
-  const saveProgress = async (isFinalSubmit: boolean): Promise<boolean> => {
+  const saveProgress = useCallback(async (isFinalSubmit: boolean): Promise<boolean> => {
     if (isFinished) return false;
     if (submitMutation.isPending && !isFinalSubmit) return false;
 
@@ -212,8 +215,9 @@ export default function StudentExamTakeScreen() {
         setLastSavedAt(new Date().toISOString());
       }
       return true;
-    } catch (error: any) {
-      const msg = error?.response?.data?.message || error?.message || 'Gagal menyimpan jawaban.';
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      const msg = err.response?.data?.message || err.message || 'Gagal menyimpan jawaban.';
       if (!isFinalSubmit) {
         setAutosaveState('error');
       } else {
@@ -222,26 +226,24 @@ export default function StudentExamTakeScreen() {
       }
       return false;
     }
-  };
+  }, [isFinished, submitMutation]);
 
   useEffect(() => {
-    if (!initializedRef.current || isFinished || isFinalSubmitting) return;
+    if (!isExamReady || isFinished || isFinalSubmitting) return;
     const interval = setInterval(() => {
       void saveProgress(false);
     }, 20000);
     return () => clearInterval(interval);
-  }, [isFinished, isFinalSubmitting]);
+  }, [isExamReady, isFinished, isFinalSubmitting, saveProgress]);
 
   useEffect(() => {
-    if (!initializedRef.current || isFinished || isFinalSubmitting) return;
+    if (!isExamReady || isFinished || isFinalSubmitting) return;
     if (remainingSeconds > 0) return;
     if (autoSubmitGuardRef.current) return;
 
     autoSubmitGuardRef.current = true;
-    setIsFinalSubmitting(true);
     void (async () => {
       const ok = await saveProgress(true);
-      setIsFinalSubmitting(false);
       if (!ok) return;
       setIsFinished(true);
       Alert.alert('Waktu Habis', 'Ujian otomatis dikumpulkan.', [
@@ -251,10 +253,10 @@ export default function StudentExamTakeScreen() {
         },
       ]);
     })();
-  }, [remainingSeconds, isFinished, isFinalSubmitting, router]);
+  }, [isExamReady, remainingSeconds, isFinished, isFinalSubmitting, router, saveProgress]);
 
   const submitFinal = () => {
-    if (isFinalSubmitting || isFinished) return;
+    if (isFinalSubmitting || isFinished || autoSubmitGuardRef.current) return;
     Alert.alert(
       'Kumpulkan Ujian',
       `Jawaban terisi ${answeredCount}/${questions.length}. Yakin ingin mengumpulkan?`,
@@ -288,19 +290,17 @@ export default function StudentExamTakeScreen() {
   const currentType = currentQuestion ? normalizeQuestionType(currentQuestion) : 'MULTIPLE_CHOICE';
   const currentOptions = currentQuestion?.options || [];
 
-  const answeredCount = useMemo(() => {
-    return questions.reduce((total, question) => {
-      const value = answers[question.id];
-      const type = normalizeQuestionType(question);
-      if (type === 'ESSAY') {
-        return typeof value === 'string' && value.trim().length > 0 ? total + 1 : total;
-      }
-      if (type === 'COMPLEX_MULTIPLE_CHOICE') {
-        return Array.isArray(value) && value.length > 0 ? total + 1 : total;
-      }
-      return typeof value === 'string' && value.length > 0 ? total + 1 : total;
-    }, 0);
-  }, [answers, questions]);
+  const answeredCount = questions.reduce((total, question) => {
+    const value = effectiveAnswers[question.id];
+    const type = normalizeQuestionType(question);
+    if (type === 'ESSAY') {
+      return typeof value === 'string' && value.trim().length > 0 ? total + 1 : total;
+    }
+    if (type === 'COMPLEX_MULTIPLE_CHOICE') {
+      return Array.isArray(value) && value.length > 0 ? total + 1 : total;
+    }
+    return typeof value === 'string' && value.length > 0 ? total + 1 : total;
+  }, 0);
 
   if (isLoading) return <AppLoadingScreen message="Memuat ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -422,7 +422,7 @@ export default function StudentExamTakeScreen() {
         </Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 }}>
           {questions.map((question, index) => {
-            const value = answers[question.id];
+            const value = effectiveAnswers[question.id];
             const type = normalizeQuestionType(question);
             const isAnswered =
               type === 'ESSAY'
@@ -474,7 +474,7 @@ export default function StudentExamTakeScreen() {
 
         {currentType === 'ESSAY' ? (
           <TextInput
-            value={typeof answers[currentQuestion.id] === 'string' ? (answers[currentQuestion.id] as string) : ''}
+            value={typeof effectiveAnswers[currentQuestion.id] === 'string' ? (effectiveAnswers[currentQuestion.id] as string) : ''}
             onChangeText={(value) => {
               setAnswers((prev) => ({
                 ...prev,
@@ -498,7 +498,7 @@ export default function StudentExamTakeScreen() {
           <View>
             {currentOptions.map((option) => {
               const optionText = toPlainText(option.option_text || option.content || '-');
-              const selectedValue = answers[currentQuestion.id];
+              const selectedValue = effectiveAnswers[currentQuestion.id];
               const selected =
                 currentType === 'COMPLEX_MULTIPLE_CHOICE'
                   ? Array.isArray(selectedValue) && selectedValue.includes(option.id)

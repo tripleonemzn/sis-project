@@ -53,19 +53,7 @@ export default function StudentExtracurricularScreen() {
     },
   });
 
-  if (isLoading) return <AppLoadingScreen message="Memuat ekstrakurikuler..." />;
-  if (!isAuthenticated) return <Redirect href="/welcome" />;
-
-  if (user?.role !== 'STUDENT') {
-    return (
-      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Ekstrakurikuler</Text>
-        <QueryStateView type="error" message="Halaman ini khusus untuk role siswa." />
-      </ScrollView>
-    );
-  }
-
-  const list = listQuery.data || [];
+  const list = useMemo(() => listQuery.data || [], [listQuery.data]);
   const filteredList = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return list;
@@ -82,6 +70,18 @@ export default function StudentExtracurricularScreen() {
   }, [list, search]);
 
   const myEnrollment = enrollmentQuery.data;
+
+  if (isLoading) return <AppLoadingScreen message="Memuat ekstrakurikuler..." />;
+  if (!isAuthenticated) return <Redirect href="/welcome" />;
+
+  if (user?.role !== 'STUDENT') {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Ekstrakurikuler</Text>
+        <QueryStateView type="error" message="Halaman ini khusus untuk role siswa." />
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView

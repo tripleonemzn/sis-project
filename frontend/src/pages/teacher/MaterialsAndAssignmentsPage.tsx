@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams, useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 import api from '../../services/api';
 import { authService } from '../../services/auth.service';
+import type { User } from '../../types/auth';
 import toast from 'react-hot-toast';
 import {
   Plus,
@@ -88,6 +89,20 @@ interface TeacherAssignment {
     level: string;
   };
 }
+type PageOutletContext = {
+  user?: User | null;
+  activeYear?: { id?: number | null } | null;
+};
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (typeof error === 'object' && error !== null) {
+    const response = (error as { response?: { data?: { message?: string } } }).response;
+    const message = response?.data?.message;
+    if (message) return message;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
 
 export default function MaterialsAndAssignmentsPage() {
   const navigate = useNavigate();
@@ -154,7 +169,7 @@ export default function MaterialsAndAssignmentsPage() {
     setSearchParams({ tab: activeTab });
   }, [activeTab, setSearchParams]);
 
-  const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<{ user: any, activeYear: any }>() || {};
+  const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<PageOutletContext>() || {};
 
   const { data: authData } = useQuery({
     queryKey: ['me'],
@@ -174,21 +189,7 @@ export default function MaterialsAndAssignmentsPage() {
     }
   }, [activeAcademicYear]);
 
-  useEffect(() => {
-    if (user && activeAcademicYearId) {
-      fetchInitialData();
-    }
-  }, [user, activeAcademicYearId]); // Added activeAcademicYearId dependency
-
-  useEffect(() => {
-    if (activeTab === 'materials') {
-      filterMaterials();
-    } else {
-      filterAssignments();
-    }
-  }, [materials, assignments, selectedClassSubject, searchQuery, activeTab]);
-
-  const fetchInitialData = async () => {
+  const fetchInitialData = useCallback(async () => {
     try {
       if (!user || !activeAcademicYearId) return;
       
@@ -251,9 +252,15 @@ export default function MaterialsAndAssignmentsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeAcademicYearId, user]);
 
-  const filterMaterials = () => {
+  useEffect(() => {
+    if (user && activeAcademicYearId) {
+      fetchInitialData();
+    }
+  }, [user, activeAcademicYearId, fetchInitialData]);
+
+  const filterMaterials = useCallback(() => {
     let filtered = [...materials];
 
     if (selectedClassSubject) {
@@ -273,9 +280,9 @@ export default function MaterialsAndAssignmentsPage() {
     }
 
     setFilteredMaterials(filtered);
-  };
+  }, [materials, searchQuery, selectedClassSubject, teacherAssignments]);
 
-  const filterAssignments = () => {
+  const filterAssignments = useCallback(() => {
     let filtered = [...assignments];
 
     if (selectedClassSubject) {
@@ -295,7 +302,15 @@ export default function MaterialsAndAssignmentsPage() {
     }
 
     setFilteredAssignments(filtered);
-  };
+  }, [assignments, searchQuery, selectedClassSubject, teacherAssignments]);
+
+  useEffect(() => {
+    if (activeTab === 'materials') {
+      filterMaterials();
+    } else {
+      filterAssignments();
+    }
+  }, [activeTab, filterAssignments, filterMaterials]);
 
   // Helper functions
   const formatDate = (dateString: string) => {
@@ -399,9 +414,9 @@ export default function MaterialsAndAssignmentsPage() {
 
       setShowMaterialModal(false);
       fetchInitialData();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Submit error:', error);
-      toast.error(error.response?.data?.message || 'Gagal menyimpan materi');
+      toast.error(getErrorMessage(error, 'Gagal menyimpan materi'));
     } finally {
       setUploading(false);
     }
@@ -413,8 +428,8 @@ export default function MaterialsAndAssignmentsPage() {
       await api.delete(`/materials/${id}`);
       toast.success('Materi berhasil dihapus');
       fetchInitialData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Gagal menghapus materi');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Gagal menghapus materi'));
     }
   };
 
@@ -426,8 +441,8 @@ export default function MaterialsAndAssignmentsPage() {
       );
       toast.success(material.isPublished ? 'Materi disembunyikan' : 'Materi dipublikasikan');
       fetchInitialData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Gagal mengubah status publikasi');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Gagal mengubah status publikasi'));
     }
   };
 
@@ -463,8 +478,8 @@ export default function MaterialsAndAssignmentsPage() {
       toast.success(`${copyingMaterial ? 'Materi' : 'Tugas'} berhasil disalin ke kelas lain`);
       setShowCopyModal(false);
       fetchInitialData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || `Gagal menyalin ${copyingMaterial ? 'materi' : 'tugas'}`);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, `Gagal menyalin ${copyingMaterial ? 'materi' : 'tugas'}`));
     } finally {
       setCopying(false);
     }
@@ -559,9 +574,9 @@ export default function MaterialsAndAssignmentsPage() {
 
       setShowAssignmentModal(false);
       fetchInitialData();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Submit error:', error);
-      toast.error(error.response?.data?.message || 'Gagal menyimpan tugas');
+      toast.error(getErrorMessage(error, 'Gagal menyimpan tugas'));
     } finally {
       setUploading(false);
     }
@@ -573,8 +588,8 @@ export default function MaterialsAndAssignmentsPage() {
       await api.delete(`/assignments/${id}`);
       toast.success('Tugas berhasil dihapus');
       fetchInitialData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Gagal menghapus tugas');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Gagal menghapus tugas'));
     }
   };
 
@@ -586,8 +601,8 @@ export default function MaterialsAndAssignmentsPage() {
       );
       toast.success(assignment.isPublished ? 'Tugas disembunyikan' : 'Tugas dipublikasikan');
       fetchInitialData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Gagal mengubah status publikasi');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Gagal mengubah status publikasi'));
     }
   };
 
@@ -667,7 +682,7 @@ export default function MaterialsAndAssignmentsPage() {
               <option value="">Semua Kelas & Mata Pelajaran</option>
               {teacherAssignments.map((assignment) => (
                 <option key={assignment.id} value={assignment.id}>
-                  {assignment.class.name} - {assignment.subject.name}
+                  {assignment.subject.name} - {assignment.class.name}
                 </option>
               ))}
             </select>
@@ -972,7 +987,7 @@ export default function MaterialsAndAssignmentsPage() {
                   <option value="">Pilih Kelas & Mata Pelajaran</option>
                   {teacherAssignments.map((assignment) => (
                     <option key={assignment.id} value={assignment.id}>
-                      {assignment.class.name} - {assignment.subject.name}
+                      {assignment.subject.name} - {assignment.class.name}
                     </option>
                   ))}
                 </select>
@@ -1111,7 +1126,7 @@ export default function MaterialsAndAssignmentsPage() {
                   <option value="">Pilih Kelas & Mata Pelajaran</option>
                   {teacherAssignments.map((assignment) => (
                     <option key={assignment.id} value={assignment.id}>
-                      {assignment.class.name} - {assignment.subject.name}
+                      {assignment.subject.name} - {assignment.class.name}
                     </option>
                   ))}
                 </select>

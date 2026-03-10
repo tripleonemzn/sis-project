@@ -43,6 +43,7 @@ import budgetLpjRoutes from './budgetLpj.routes';
 import paymentRoutes from './payment.routes';
 import mobileUpdateRoutes from './mobileUpdate.routes';
 import serverRoutes from './server.routes';
+import webmailRoutes from './webmail.routes';
 
 const router = Router();
 
@@ -90,5 +91,6 @@ router.use('/budget-lpj', budgetLpjRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/mobile-updates', mobileUpdateRoutes);
 router.use('/server', serverRoutes);
+router.use('/webmail', webmailRoutes);
 
 export default router;

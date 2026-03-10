@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, Pencil, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { academicYearService } from '../../../services/academicYear.service';
+import { teacherAssignmentService } from '../../../services/teacherAssignment.service';
 import {
-  DEFAULT_GRADE_COMPONENTS,
   examService,
-  DEFAULT_EXAM_PROGRAMS,
   normalizeExamProgramCode,
   type ExamGradeComponent,
   type ExamProgram,
@@ -36,8 +36,10 @@ type ProgramFormRow = {
   isActive: boolean;
   showOnTeacherMenu: boolean;
   showOnStudentMenu: boolean;
+  targetClassLevels: string[];
+  allowedSubjectIds: number[];
+  allowedAuthorIds: number[];
   source: 'default' | 'custom' | 'new';
-  isCodeLocked: boolean;
 };
 
 type GradeComponentFormRow = {
@@ -57,6 +59,40 @@ type GradeComponentFormRow = {
   isActive: boolean;
 };
 
+type AddProgramDraft = {
+  code: string;
+  label: string;
+  shortLabel: string;
+  description: string;
+  gradeComponentCode: string;
+  fixedSemester: '' | 'ODD' | 'EVEN';
+  isActive: boolean;
+  showOnTeacherMenu: boolean;
+  showOnStudentMenu: boolean;
+  targetClassLevels: string[];
+  allowedSubjectIds: number[];
+  allowedAuthorIds: number[];
+};
+
+type AddComponentDraft = {
+  code: string;
+  label: string;
+  description: string;
+  typeCode: string;
+  entryModeCode: string;
+  reportSlotCode: string;
+  includeInFinalScore: boolean;
+  isActive: boolean;
+};
+
+type SubjectAssignmentRow = {
+  subjectId: number;
+  subjectName: string;
+  subjectCode: string;
+  teacherName: string;
+  classLevel: string;
+};
+
 const GRADE_ENTRY_MODE_OPTIONS: Array<{ value: ExamProgramGradeEntryMode; label: string }> = [
   { value: 'NF_SERIES', label: 'NF Bertahap (NF1-NF6)' },
   { value: 'SINGLE_SCORE', label: 'Satu Nilai (Single)' },
@@ -67,9 +103,77 @@ const REPORT_SLOT_OPTIONS: Array<{ value: ExamProgramReportSlot; label: string }
   { value: 'FORMATIF', label: 'Formatif' },
   { value: 'SBTS', label: 'SBTS' },
   { value: 'SAS', label: 'SAS/SAT' },
+  { value: 'SAT', label: 'SAT' },
   { value: 'US_THEORY', label: 'US Teori' },
   { value: 'US_PRACTICE', label: 'US Praktik' },
 ];
+
+const COMPONENT_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'FORMATIVE', label: 'Formatif' },
+  { value: 'MIDTERM', label: 'Tengah Semester' },
+  { value: 'FINAL', label: 'Akhir Semester' },
+  { value: 'SKILL', label: 'Keterampilan' },
+  { value: 'US_THEORY', label: 'US Teori' },
+  { value: 'US_PRACTICE', label: 'US Praktik' },
+  { value: 'CUSTOM', label: 'Custom' },
+];
+
+const TARGET_CLASS_LEVEL_OPTIONS = [
+  { value: 'X', label: 'Kelas X' },
+  { value: 'XI', label: 'Kelas XI' },
+  { value: 'XII', label: 'Kelas XII' },
+];
+
+function normalizeClassLevel(raw: unknown): string {
+  const value = String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+  if (value === '10' || value === 'X') return 'X';
+  if (value === '11' || value === 'XI') return 'XI';
+  if (value === '12' || value === 'XII') return 'XII';
+  return '';
+}
+
+function normalizeClassLevels(raw: unknown): string[] {
+  const source = Array.isArray(raw) ? raw : [];
+  const deduped = new Set<string>();
+  source.forEach((item) => {
+    const level = normalizeClassLevel(item);
+    if (level) deduped.add(level);
+  });
+  return Array.from(deduped);
+}
+
+function normalizeNumericIds(raw: unknown): number[] {
+  const source = Array.isArray(raw) ? raw : [];
+  const deduped = new Set<number>();
+  source.forEach((item) => {
+    const parsed = Number(item);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      deduped.add(Math.round(parsed));
+    }
+  });
+  return Array.from(deduped);
+}
+
+function getComponentTypeLabel(code: string): string {
+  const normalized = normalizeComponentCode(code);
+  const option = COMPONENT_TYPE_OPTIONS.find((item) => item.value === normalized);
+  return option?.label || normalized || '-';
+}
+
+function getEntryModeLabel(code: string): string {
+  const normalized = normalizeComponentCode(code);
+  const option = GRADE_ENTRY_MODE_OPTIONS.find((item) => item.value === normalized);
+  return option?.label || normalized || '-';
+}
+
+function getReportSlotLabel(code: string): string {
+  const normalized = normalizeComponentCode(code);
+  const option = REPORT_SLOT_OPTIONS.find((item) => item.value === normalized);
+  return option?.label || normalized || '-';
+}
 
 function defaultGradeComponentCodeByBaseType(baseType: ExamProgramBaseType): string {
   if (baseType === 'FORMATIF') return 'FORMATIVE';
@@ -102,6 +206,7 @@ function resolveReportSlotByCode(
   if (normalized === 'FORMATIF') return 'FORMATIF';
   if (normalized === 'SBTS') return 'SBTS';
   if (normalized === 'SAS') return 'SAS';
+  if (normalized === 'SAT') return 'SAT';
   if (normalized === 'US_THEORY') return 'US_THEORY';
   if (normalized === 'US_PRACTICE') return 'US_PRACTICE';
   if (normalized === 'NONE') return 'NONE';
@@ -136,8 +241,24 @@ function defaultReportSlotByCode(code: string): ExamProgramReportSlot {
   return 'NONE';
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (typeof error === 'object' && error !== null) {
+    const normalized = error as { response?: { data?: { message?: string }; status?: number }; message?: string };
+    return normalized.response?.data?.message || normalized.message || fallback;
+  }
+  return fallback;
+}
+
+function getErrorStatus(error: unknown): number | null {
+  if (typeof error === 'object' && error !== null) {
+    const normalized = error as { response?: { status?: number } };
+    return typeof normalized.response?.status === 'number' ? normalized.response.status : null;
+  }
+  return null;
+}
+
 function defaultIncludeInFinalScoreBySlot(slot: ExamProgramReportSlot): boolean {
-  return slot === 'FORMATIF' || slot === 'SBTS' || slot === 'SAS';
+  return slot === 'FORMATIF' || slot === 'SBTS' || slot === 'SAS' || slot === 'SAT';
 }
 
 function inferBaseTypeByComponentCode(
@@ -208,20 +329,7 @@ function fallbackComponentRowsFromPrograms(programRows: ProgramFormRow[]): Grade
     order: row.order,
     description: '',
   }));
-  const defaults = DEFAULT_GRADE_COMPONENTS.map((item) => ({
-    code: normalizeComponentCode(item.code),
-    label: String(item.label || item.code).trim(),
-    type: item.type || inferGradeComponentTypeByCode(item.code),
-    typeCode: normalizeComponentCode(item.typeCode || item.type || item.code),
-    entryMode: item.entryMode || inferGradeEntryModeByCode(item.code),
-    entryModeCode: normalizeComponentCode(item.entryModeCode || item.entryMode || inferGradeEntryModeByCode(item.code)),
-    reportSlot: item.reportSlot || defaultReportSlotByCode(item.code),
-    reportSlotCode: normalizeComponentCode(item.reportSlotCode || item.reportSlot || defaultReportSlotByCode(item.code)),
-    includeInFinalScore: item.includeInFinalScore ?? defaultIncludeInFinalScoreBySlot(item.reportSlot || defaultReportSlotByCode(item.code)),
-    order: item.order,
-    description: String(item.description || '').trim(),
-  }));
-  const merged = [...seedRows, ...defaults].filter((item) => Boolean(item.code));
+  const merged = seedRows.filter((item) => Boolean(item.code));
   const deduped = new Map<string, GradeComponentFormRow>();
   merged.forEach((item, index) => {
     deduped.set(item.code, {
@@ -265,39 +373,7 @@ function createNewComponentRow(currentRows: GradeComponentFormRow[]): GradeCompo
 }
 
 function fallbackRows(): ProgramFormRow[] {
-  return sortRows(
-    DEFAULT_EXAM_PROGRAMS.map((program, index) => ({
-      ...(function buildFallbackRow() {
-        const fixedSemester = program.fixedSemester;
-        const componentCode = normalizeComponentCode(
-          program.gradeComponentCode || defaultGradeComponentCodeByBaseType(program.baseType),
-        );
-        return {
-          baseType: inferBaseTypeByComponentCode(componentCode, fixedSemester, program.baseType),
-          baseTypeCode: normalizeComponentCode(program.baseTypeCode || program.baseType || 'FORMATIF'),
-          gradeComponentType: program.gradeComponentType || inferGradeComponentTypeByCode(componentCode),
-          gradeComponentTypeCode: normalizeComponentCode(program.gradeComponentTypeCode || program.gradeComponentType || componentCode),
-          gradeComponentCode: componentCode,
-          gradeEntryMode:
-            program.gradeEntryMode || inferGradeEntryModeByCode(componentCode),
-          gradeEntryModeCode: normalizeComponentCode(program.gradeEntryModeCode || program.gradeEntryMode || inferGradeEntryModeByCode(componentCode)),
-        };
-      })(),
-      rowId: `fallback-${index}-${normalizeExamProgramCode(program.code)}`,
-      code: normalizeExamProgramCode(program.code),
-      gradeComponentLabel: String(program.gradeComponentLabel || program.shortLabel || program.label || '').trim(),
-      label: program.label,
-      shortLabel: program.shortLabel,
-      description: program.description,
-      fixedSemester: program.fixedSemester,
-      order: program.order,
-      isActive: program.isActive,
-      showOnTeacherMenu: program.showOnTeacherMenu,
-      showOnStudentMenu: program.showOnStudentMenu,
-      source: program.source,
-      isCodeLocked: true,
-    })),
-  );
+  return [];
 }
 
 function normalizeRows(programs: ExamProgram[]): ProgramFormRow[] {
@@ -345,8 +421,10 @@ function normalizeRows(programs: ExamProgram[]): ProgramFormRow[] {
         isActive: Boolean(program.isActive),
         showOnTeacherMenu: Boolean(program.showOnTeacherMenu),
         showOnStudentMenu: Boolean(program.showOnStudentMenu),
+        targetClassLevels: normalizeClassLevels(program.targetClassLevels),
+        allowedSubjectIds: normalizeNumericIds(program.allowedSubjectIds),
+        allowedAuthorIds: normalizeNumericIds(program.allowedAuthorIds),
         source: program.source,
-        isCodeLocked: true,
       };
     }),
   );
@@ -387,31 +465,19 @@ function createNewRow(currentRows: ProgramFormRow[], componentRows: GradeCompone
     isActive: true,
     showOnTeacherMenu: true,
     showOnStudentMenu: true,
+    targetClassLevels: [],
+    allowedSubjectIds: [],
+    allowedAuthorIds: [],
     source: 'new',
-    isCodeLocked: false,
   };
-}
-
-function baseTypeLabel(value: ExamProgramBaseType): string {
-  if (value === 'FORMATIF') return 'FORMATIF';
-  if (value === 'SBTS') return 'SBTS';
-  if (value === 'SAS') return 'SAS';
-  if (value === 'SAT') return 'SAT';
-  if (value === 'US_PRACTICE') return 'US PRAKTEK';
-  if (value === 'US_THEORY') return 'US TEORI';
-  return value;
 }
 
 export default function ExamProgramManagementPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [academicYearId, setAcademicYearId] = useState<number | null>(null);
-  const [academicYearName, setAcademicYearName] = useState<string>('-');
   const [rows, setRows] = useState<ProgramFormRow[]>([]);
-  const [initialRows, setInitialRows] = useState<ProgramFormRow[]>([]);
   const [componentRows, setComponentRows] = useState<GradeComponentFormRow[]>([]);
-  const [initialComponentRows, setInitialComponentRows] = useState<GradeComponentFormRow[]>([]);
-  const [codeEditBackup, setCodeEditBackup] = useState<Record<string, string>>({});
-  const [componentEditBackup, setComponentEditBackup] = useState<Record<string, GradeComponentFormRow>>({});
   const [editingComponentRowId, setEditingComponentRowId] = useState<string | null>(null);
   const [endpointUnavailable, setEndpointUnavailable] = useState<boolean>(false);
   const [componentsEndpointUnavailable, setComponentsEndpointUnavailable] = useState<boolean>(false);
@@ -419,11 +485,184 @@ export default function ExamProgramManagementPage() {
   const [saving, setSaving] = useState<boolean>(false);
   const [savingComponents, setSavingComponents] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const [isAddProgramModalOpen, setIsAddProgramModalOpen] = useState<boolean>(false);
+  const [isAddComponentModalOpen, setIsAddComponentModalOpen] = useState<boolean>(false);
+  const [subjectAssignmentRows, setSubjectAssignmentRows] = useState<SubjectAssignmentRow[]>([]);
+  const [activeTab, setActiveTabState] = useState<'PROGRAM' | 'COMPONENT'>(
+    String(searchParams.get('programTab') || '').toLowerCase() === 'component' ? 'COMPONENT' : 'PROGRAM',
+  );
+  const [editingProgramRowId, setEditingProgramRowId] = useState<string | null>(null);
+  const [programDraft, setProgramDraft] = useState<AddProgramDraft>({
+    code: '',
+    label: '',
+    shortLabel: '',
+    description: '',
+    gradeComponentCode: 'FORMATIVE',
+    fixedSemester: '',
+    isActive: true,
+    showOnTeacherMenu: true,
+    showOnStudentMenu: true,
+    targetClassLevels: [],
+    allowedSubjectIds: [],
+    allowedAuthorIds: [],
+  });
+  const [componentDraft, setComponentDraft] = useState<AddComponentDraft>({
+    code: '',
+    label: '',
+    description: '',
+    typeCode: 'CUSTOM',
+    entryModeCode: 'SINGLE_SCORE',
+    reportSlotCode: 'NONE',
+    includeInFinalScore: false,
+    isActive: true,
+  });
+  const [showComponentAdvanced, setShowComponentAdvanced] = useState<boolean>(false);
+  const selectedTargetLevels = useMemo(
+    () => normalizeClassLevels(programDraft.targetClassLevels),
+    [programDraft.targetClassLevels],
+  );
+  const subjectOptions = useMemo(() => {
+    const levelSet = new Set(selectedTargetLevels);
+    const relevantRows = subjectAssignmentRows.filter((row) =>
+      levelSet.size === 0 ? true : levelSet.has(row.classLevel),
+    );
+    const subjectsMap = new Map<
+      number,
+      { id: number; name: string; code: string; teacherNames: Set<string> }
+    >();
+    relevantRows.forEach((row) => {
+      const existing = subjectsMap.get(row.subjectId);
+      if (existing) {
+        if (row.teacherName) existing.teacherNames.add(row.teacherName);
+        return;
+      }
+      subjectsMap.set(row.subjectId, {
+        id: row.subjectId,
+        name: row.subjectName,
+        code: row.subjectCode,
+        teacherNames: row.teacherName ? new Set([row.teacherName]) : new Set<string>(),
+      });
+    });
 
-  const isProgramDirty = useMemo(() => JSON.stringify(rows) !== JSON.stringify(initialRows), [rows, initialRows]);
-  const isComponentDirty = useMemo(
-    () => JSON.stringify(componentRows) !== JSON.stringify(initialComponentRows),
-    [componentRows, initialComponentRows],
+    return Array.from(subjectsMap.values())
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        code: item.code,
+        teacherNames: Array.from(item.teacherNames).sort((a, b) => a.localeCompare(b)),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [selectedTargetLevels, subjectAssignmentRows]);
+
+  const setActiveTab = useCallback(
+    (next: 'PROGRAM' | 'COMPONENT') => {
+      setActiveTabState(next);
+      const params = new URLSearchParams(searchParams);
+      params.set('programTab', next === 'COMPONENT' ? 'component' : 'program');
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  useEffect(() => {
+    const nextTab =
+      String(searchParams.get('programTab') || '').toLowerCase() === 'component' ? 'COMPONENT' : 'PROGRAM';
+    if (nextTab !== activeTab) {
+      setActiveTabState(nextTab);
+    }
+  }, [activeTab, searchParams]);
+
+  const openAddProgramModal = useCallback(() => {
+    const baseRow = createNewRow(rows, componentRows);
+    setProgramDraft({
+      code: '',
+      label: '',
+      shortLabel: '',
+      description: '',
+      gradeComponentCode: baseRow.gradeComponentCode || 'FORMATIVE',
+      fixedSemester: '',
+      isActive: true,
+      showOnTeacherMenu: true,
+      showOnStudentMenu: true,
+      targetClassLevels: [],
+      allowedSubjectIds: [],
+      allowedAuthorIds: [],
+    });
+    setEditingProgramRowId(null);
+    setIsAddProgramModalOpen(true);
+  }, [componentRows, rows]);
+
+  const closeProgramModal = useCallback(() => {
+    setIsAddProgramModalOpen(false);
+    setEditingProgramRowId(null);
+  }, []);
+
+  const openEditProgramModal = useCallback(
+    (rowId: string) => {
+      const target = rows.find((item) => item.rowId === rowId);
+      if (!target) return;
+      setProgramDraft({
+        code: target.code,
+        label: target.label,
+        shortLabel: target.shortLabel || '',
+        description: target.description || '',
+        gradeComponentCode: normalizeComponentCode(target.gradeComponentCode || 'FORMATIVE'),
+        fixedSemester: target.fixedSemester || '',
+        isActive: target.isActive,
+        showOnTeacherMenu: target.showOnTeacherMenu,
+        showOnStudentMenu: target.showOnStudentMenu,
+        targetClassLevels: normalizeClassLevels(target.targetClassLevels),
+        allowedSubjectIds: normalizeNumericIds(target.allowedSubjectIds),
+        allowedAuthorIds: normalizeNumericIds(target.allowedAuthorIds),
+      });
+      setEditingProgramRowId(rowId);
+      setIsAddProgramModalOpen(true);
+    },
+    [rows],
+  );
+
+  const openAddComponentModal = useCallback(() => {
+    setComponentDraft({
+      code: '',
+      label: '',
+      description: '',
+      typeCode: 'CUSTOM',
+      entryModeCode: 'SINGLE_SCORE',
+      reportSlotCode: 'NONE',
+      includeInFinalScore: false,
+      isActive: true,
+    });
+    setShowComponentAdvanced(false);
+    setEditingComponentRowId(null);
+    setIsAddComponentModalOpen(true);
+  }, []);
+
+  const closeComponentModal = useCallback(() => {
+    setIsAddComponentModalOpen(false);
+    setEditingComponentRowId(null);
+    setShowComponentAdvanced(false);
+  }, []);
+
+  const openEditComponentModal = useCallback(
+    (rowId: string) => {
+      const target = componentRows.find((item) => item.rowId === rowId);
+      if (!target) return;
+      const draft = {
+        code: target.code,
+        label: target.label,
+        description: target.description || '',
+        typeCode: normalizeComponentCode(target.typeCode || target.type || target.code),
+        entryModeCode: normalizeComponentCode(target.entryModeCode || target.entryMode || 'SINGLE_SCORE'),
+        reportSlotCode: normalizeComponentCode(target.reportSlotCode || target.reportSlot || 'NONE'),
+        includeInFinalScore: target.includeInFinalScore,
+        isActive: target.isActive,
+      };
+      setComponentDraft(draft);
+      setShowComponentAdvanced(false);
+      setEditingComponentRowId(rowId);
+      setIsAddComponentModalOpen(true);
+    },
+    [componentRows],
   );
 
   const loadPrograms = useCallback(async () => {
@@ -438,9 +677,34 @@ export default function ExamProgramManagementPage() {
       }
 
       setAcademicYearId(Number(activeYear.id));
-      setAcademicYearName(String(activeYear.name || '-'));
       setEndpointUnavailable(false);
       setComponentsEndpointUnavailable(false);
+
+      try {
+        const assignmentRes = await teacherAssignmentService.list({
+          academicYearId: Number(activeYear.id),
+          limit: 1000,
+          scope: 'CURRICULUM',
+        });
+        const assignments = assignmentRes?.data?.assignments || [];
+        const normalizedRows: SubjectAssignmentRow[] = assignments
+          .map((assignment) => {
+            const subjectId = Number(assignment?.subject?.id || 0);
+            if (!subjectId) return null;
+            return {
+              subjectId,
+              subjectName: String(assignment?.subject?.name || '').trim(),
+              subjectCode: String(assignment?.subject?.code || '').trim(),
+              teacherName: String(assignment?.teacher?.name || '').trim(),
+              classLevel: normalizeClassLevel(assignment?.class?.level),
+            } as SubjectAssignmentRow;
+          })
+          .filter((item): item is SubjectAssignmentRow => Boolean(item));
+        setSubjectAssignmentRows(normalizedRows);
+      } catch (assignmentError) {
+        console.error('Gagal memuat opsi mapel/guru untuk scope program ujian', assignmentError);
+        setSubjectAssignmentRows([]);
+      }
 
       let nextRows: ProgramFormRow[] = [];
       try {
@@ -451,8 +715,8 @@ export default function ExamProgramManagementPage() {
         });
         nextRows = normalizeRows(programsRes?.data?.programs || []);
         setEndpointUnavailable(false);
-      } catch (endpointError: any) {
-        if (Number(endpointError?.response?.status) === 404) {
+      } catch (endpointError: unknown) {
+        if (Number(getErrorStatus(endpointError)) === 404) {
           nextRows = fallbackRows();
           setEndpointUnavailable(true);
         } else {
@@ -460,9 +724,6 @@ export default function ExamProgramManagementPage() {
         }
       }
       setRows(nextRows);
-      setInitialRows(nextRows);
-      setCodeEditBackup({});
-      setComponentEditBackup({});
       setEditingComponentRowId(null);
 
       try {
@@ -472,20 +733,18 @@ export default function ExamProgramManagementPage() {
         });
         const nextComponents = normalizeComponentRows(componentsRes?.data?.components || []);
         setComponentRows(nextComponents);
-        setInitialComponentRows(nextComponents);
         setComponentsEndpointUnavailable(false);
-      } catch (componentError: any) {
-        if (Number(componentError?.response?.status) === 404) {
+      } catch (componentError: unknown) {
+        if (Number(getErrorStatus(componentError)) === 404) {
           const fallbackComponents = fallbackComponentRowsFromPrograms(nextRows);
           setComponentRows(fallbackComponents);
-          setInitialComponentRows(fallbackComponents);
           setComponentsEndpointUnavailable(true);
         } else {
           throw componentError;
         }
       }
-    } catch (err: any) {
-      const message = err?.response?.data?.message || err?.message || 'Gagal memuat konfigurasi program ujian.';
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, 'Gagal memuat konfigurasi program ujian.');
       setError(message);
     } finally {
       setLoading(false);
@@ -496,130 +755,343 @@ export default function ExamProgramManagementPage() {
     void loadPrograms();
   }, [loadPrograms]);
 
-  const updateRow = useCallback((rowId: string, patch: Partial<ProgramFormRow>) => {
-    setRows((prev) => prev.map((row) => (row.rowId === rowId ? { ...row, ...patch } : row)));
-  }, []);
-
-  const focusCodeInput = useCallback((rowId: string) => {
-    requestAnimationFrame(() => {
-      const input = document.getElementById(`program-code-${rowId}`) as HTMLInputElement | null;
-      if (input) {
-        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        input.focus();
+  const persistComponentRows = useCallback(
+    async (rowsToPersist: GradeComponentFormRow[], successMessage: string): Promise<boolean> => {
+      if (!academicYearId) {
+        toast.error('Tahun ajaran aktif tidak ditemukan.');
+        return false;
       }
-    });
-  }, []);
-
-  const addRow = useCallback(() => {
-    const newRow = createNewRow(rows, componentRows);
-    setRows((prev) => sortRows([...prev, newRow]));
-    focusCodeInput(newRow.rowId);
-    toast.success('Program baru ditambahkan. Lengkapi kode dan label lalu simpan.');
-  }, [componentRows, focusCodeInput, rows]);
-
-  const unlockCodeEditing = useCallback(
-    (rowId: string) => {
-      const target = rows.find((row) => row.rowId === rowId);
-      if (target) {
-        setCodeEditBackup((prev) => (prev[rowId] !== undefined ? prev : { ...prev, [rowId]: target.code }));
+      if (componentsEndpointUnavailable) {
+        toast.error('Endpoint master komponen nilai belum tersedia di backend.');
+        return false;
       }
-      setRows((prev) => prev.map((row) => (row.rowId === rowId ? { ...row, isCodeLocked: false } : row)));
-      focusCodeInput(rowId);
-      toast(
-        target?.source === 'new'
-          ? 'Mode edit kode aktif.'
-          : 'Mode edit kode aktif. Jika kode diubah, paket ujian dengan kode lama akan dipindahkan otomatis saat simpan.',
-      );
-    },
-    [focusCodeInput, rows],
-  );
 
-  const cancelNewRow = useCallback((rowId: string) => {
-    setRows((prev) => prev.filter((row) => row.rowId !== rowId));
-    setCodeEditBackup((prev) => {
-      const next = { ...prev };
-      delete next[rowId];
-      return next;
-    });
-    toast('Pembuatan program dibatalkan.');
-  }, []);
-
-  const cancelCodeEdit = useCallback(
-    (rowId: string) => {
-      setRows((prev) =>
-        prev.map((row) =>
-          row.rowId === rowId
-            ? { ...row, code: codeEditBackup[rowId] ?? row.code, isCodeLocked: true }
-            : row,
-        ),
-      );
-      setCodeEditBackup((prev) => {
-        const next = { ...prev };
-        delete next[rowId];
-        return next;
+      const normalizedComponents = rowsToPersist.map((row) => {
+        const code = normalizeComponentCode(row.code);
+        const typeCode = normalizeComponentCode(row.typeCode || row.type || code);
+        const entryModeCode = normalizeComponentCode(
+          row.entryModeCode || row.entryMode || inferGradeEntryModeByCode(code),
+        );
+        const reportSlotCode = normalizeComponentCode(
+          row.reportSlotCode || row.reportSlot || defaultReportSlotByCode(code),
+        );
+        const type = inferGradeComponentTypeByCode(typeCode, row.type || inferGradeComponentTypeByCode(code));
+        const entryMode = resolveEntryModeByCode(
+          entryModeCode,
+          row.entryMode || inferGradeEntryModeByCode(code),
+        );
+        const reportSlot = resolveReportSlotByCode(
+          reportSlotCode,
+          row.reportSlot || defaultReportSlotByCode(code),
+        );
+        return {
+          ...row,
+          code,
+          type,
+          typeCode,
+          entryMode,
+          entryModeCode,
+          reportSlot,
+          reportSlotCode,
+          includeInFinalScore: Boolean(row.includeInFinalScore),
+          label: String(row.label || '').trim(),
+          description: String(row.description || '').trim(),
+        };
       });
-      toast('Edit kode dibatalkan.');
-    },
-    [codeEditBackup],
-  );
 
-  const removeRow = useCallback((rowId: string) => {
-    setRows((prev) => prev.filter((row) => row.rowId !== rowId));
-    setCodeEditBackup((prev) => {
-      const next = { ...prev };
-      delete next[rowId];
-      return next;
-    });
-  }, []);
-
-  const updateComponentRow = useCallback((rowId: string, patch: Partial<GradeComponentFormRow>) => {
-    setComponentRows((prev) => prev.map((row) => (row.rowId === rowId ? { ...row, ...patch } : row)));
-  }, []);
-
-  const addComponentRow = useCallback(() => {
-    const newRow = createNewComponentRow(componentRows);
-    setComponentRows((prev) => sortComponentRows([...prev, newRow]));
-    setEditingComponentRowId(newRow.rowId);
-    setComponentEditBackup((prev) => ({ ...prev, [newRow.rowId]: newRow }));
-  }, [componentRows]);
-
-  const removeComponentRow = useCallback((rowId: string) => {
-    setComponentRows((prev) => prev.filter((row) => row.rowId !== rowId));
-    setComponentEditBackup((prev) => {
-      const next = { ...prev };
-      delete next[rowId];
-      return next;
-    });
-    setEditingComponentRowId((prev) => (prev === rowId ? null : prev));
-  }, []);
-
-  const startComponentEdit = useCallback(
-    (rowId: string) => {
-      const target = componentRows.find((row) => row.rowId === rowId);
-      if (!target) return;
-      setComponentEditBackup((prev) => ({ ...prev, [rowId]: { ...target } }));
-      setEditingComponentRowId(rowId);
-    },
-    [componentRows],
-  );
-
-  const cancelComponentEdit = useCallback(
-    (rowId: string) => {
-      const backup = componentEditBackup[rowId];
-      if (backup) {
-        setComponentRows((prev) => prev.map((row) => (row.rowId === rowId ? { ...backup } : row)));
+      const hasEmptyCode = normalizedComponents.some((row) => !row.code);
+      if (hasEmptyCode) {
+        toast.error('Kode komponen nilai wajib diisi.');
+        return false;
       }
-      setComponentEditBackup((prev) => {
-        const next = { ...prev };
-        delete next[rowId];
-        return next;
-      });
-      setEditingComponentRowId((prev) => (prev === rowId ? null : prev));
+
+      const hasEmptyLabel = normalizedComponents.some((row) => !row.label);
+      if (hasEmptyLabel) {
+        toast.error('Label komponen nilai wajib diisi.');
+        return false;
+      }
+
+      const dedupe = new Set<string>();
+      for (const row of normalizedComponents) {
+        if (dedupe.has(row.code)) {
+          toast.error(`Kode komponen nilai duplikat: ${row.code}`);
+          return false;
+        }
+        dedupe.add(row.code);
+      }
+
+      setSavingComponents(true);
+      try {
+        const response = await examService.updateGradeComponents({
+          academicYearId,
+          components: normalizedComponents.map((row) => ({
+            id: row.componentId ?? null,
+            code: row.code,
+            label: row.label,
+            type: row.type,
+            typeCode: row.typeCode,
+            entryMode: row.entryMode,
+            entryModeCode: row.entryModeCode,
+            reportSlot: row.reportSlot,
+            reportSlotCode: row.reportSlotCode,
+            includeInFinalScore: row.includeInFinalScore,
+            description: row.description || null,
+            order: row.order,
+            isActive: row.isActive,
+          })),
+        });
+
+        const nextComponents = normalizeComponentRows(response?.data?.components || []);
+        setComponentRows(nextComponents);
+        setEditingComponentRowId(null);
+        await loadPrograms();
+        toast.success(successMessage);
+        return true;
+      } catch (err: unknown) {
+        const message = getErrorMessage(err, 'Gagal menyimpan master komponen nilai.');
+        toast.error(message);
+        return false;
+      } finally {
+        setSavingComponents(false);
+      }
     },
-    [componentEditBackup],
+    [academicYearId, componentsEndpointUnavailable, loadPrograms],
   );
 
-  const handleSaveComponents = useCallback(async () => {
+  const persistProgramRows = useCallback(
+    async (rowsToPersist: ProgramFormRow[], successMessage: string): Promise<boolean> => {
+      if (!academicYearId) {
+        toast.error('Tahun ajaran aktif tidak ditemukan.');
+        return false;
+      }
+
+      if (endpointUnavailable) {
+        toast.error('Endpoint program ujian belum tersedia di backend. Jalankan update backend terlebih dahulu.');
+        return false;
+      }
+
+      const componentMap = new Map(
+        componentRows.map((component) => [normalizeComponentCode(component.code), component]),
+      );
+
+      const normalizedRows = rowsToPersist.map((row) => {
+        const normalizedComponentCode = normalizeComponentCode(row.gradeComponentCode);
+        const selectedComponent = componentMap.get(normalizedComponentCode);
+        const gradeComponentTypeCode = normalizeComponentCode(
+          selectedComponent?.typeCode ||
+            row.gradeComponentTypeCode ||
+            selectedComponent?.type ||
+            row.gradeComponentType ||
+            normalizedComponentCode,
+        );
+        const gradeEntryModeCode = normalizeComponentCode(
+          selectedComponent?.entryModeCode ||
+            row.gradeEntryModeCode ||
+            selectedComponent?.entryMode ||
+            row.gradeEntryMode ||
+            inferGradeEntryModeByCode(normalizedComponentCode),
+        );
+        const baseTypeCode = normalizeComponentCode(
+          row.baseTypeCode ||
+            inferBaseTypeByComponentCode(
+              normalizedComponentCode,
+              row.fixedSemester,
+              row.baseType || 'FORMATIF',
+            ),
+        );
+        return {
+          ...row,
+          code: normalizeExamProgramCode(row.code),
+          baseType: inferBaseTypeByComponentCode(
+            normalizedComponentCode,
+            row.fixedSemester,
+            row.baseType || baseTypeCode || 'FORMATIF',
+          ),
+          baseTypeCode,
+          gradeComponentType:
+            selectedComponent?.type ||
+            inferGradeComponentTypeByCode(gradeComponentTypeCode, row.gradeComponentType),
+          gradeComponentTypeCode,
+          gradeComponentCode: normalizedComponentCode,
+          gradeComponentLabel: String(
+            selectedComponent?.label || row.gradeComponentLabel || normalizedComponentCode,
+          ).trim(),
+          gradeEntryMode:
+            selectedComponent?.entryMode ||
+            resolveEntryModeByCode(
+              gradeEntryModeCode,
+              row.gradeEntryMode || inferGradeEntryModeByCode(normalizedComponentCode),
+            ),
+          gradeEntryModeCode,
+          label: String(row.label || '').trim(),
+          shortLabel: String(row.shortLabel || '').trim(),
+          description: String(row.description || '').trim(),
+          targetClassLevels: normalizeClassLevels(row.targetClassLevels),
+          allowedSubjectIds: normalizeNumericIds(row.allowedSubjectIds),
+          allowedAuthorIds: [],
+        };
+      });
+
+      const hasEmptyCode = normalizedRows.some((row) => !row.code);
+      if (hasEmptyCode) {
+        toast.error('Kode program ujian wajib diisi.');
+        return false;
+      }
+
+      const hasEmptyLabel = normalizedRows.some((row) => !row.label);
+      if (hasEmptyLabel) {
+        toast.error('Label program ujian wajib diisi.');
+        return false;
+      }
+
+      const hasEmptyComponentCode = normalizedRows.some((row) => !row.gradeComponentCode);
+      if (hasEmptyComponentCode) {
+        toast.error('Kode komponen nilai wajib diisi.');
+        return false;
+      }
+
+      const missingComponentRef = normalizedRows.some((row) => !componentMap.has(row.gradeComponentCode));
+      if (missingComponentRef) {
+        toast.error('Komponen nilai belum terdaftar di Master Komponen Nilai.');
+        return false;
+      }
+
+      const dedupe = new Set<string>();
+      for (const row of normalizedRows) {
+        if (dedupe.has(row.code)) {
+          toast.error(`Kode program duplikat: ${row.code}`);
+          return false;
+        }
+        dedupe.add(row.code);
+      }
+
+      setSaving(true);
+      try {
+        const response = await examService.updatePrograms({
+          academicYearId,
+          programs: normalizedRows.map((row) => ({
+            id: row.configId ?? null,
+            code: row.code,
+            baseType: row.baseType,
+            baseTypeCode: row.baseTypeCode,
+            gradeComponentType: row.gradeComponentType,
+            gradeComponentTypeCode: row.gradeComponentTypeCode,
+            gradeComponentCode: row.gradeComponentCode,
+            gradeComponentLabel: row.gradeComponentLabel || null,
+            gradeEntryMode: row.gradeEntryMode,
+            gradeEntryModeCode: row.gradeEntryModeCode,
+            label: row.label,
+            shortLabel: row.shortLabel || null,
+            description: row.description || null,
+            fixedSemester: row.fixedSemester,
+            order: Number.isFinite(row.order) ? row.order : 0,
+            isActive: row.isActive,
+            showOnTeacherMenu: row.showOnTeacherMenu,
+            showOnStudentMenu: row.showOnStudentMenu,
+            targetClassLevels: row.targetClassLevels,
+            allowedSubjectIds: row.allowedSubjectIds,
+            allowedAuthorIds: [],
+          })),
+        });
+
+        const nextRows = normalizeRows(response?.data?.programs || []);
+        setRows(nextRows);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['sidebar-exam-programs'] }),
+          queryClient.invalidateQueries({ queryKey: ['teacher-exam-programs'] }),
+        ]);
+        toast.success(successMessage);
+        return true;
+      } catch (err: unknown) {
+        const message = getErrorMessage(err, 'Gagal menyimpan konfigurasi program ujian.');
+        toast.error(message);
+        return false;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [academicYearId, componentRows, endpointUnavailable, queryClient],
+  );
+
+  const submitAddProgram = useCallback(async () => {
+    const code = normalizeExamProgramCode(programDraft.code);
+    const label = String(programDraft.label || '').trim();
+    if (!code) {
+      toast.error('Kode program wajib diisi.');
+      return;
+    }
+    if (!label) {
+      toast.error('Label menu wajib diisi.');
+      return;
+    }
+    if (
+      rows.some(
+        (row) => row.rowId !== editingProgramRowId && normalizeExamProgramCode(row.code) === code,
+      )
+    ) {
+      toast.error(`Kode program "${code}" sudah ada.`);
+      return;
+    }
+
+    const selectedComponent =
+      componentRows.find(
+        (item) => normalizeComponentCode(item.code) === normalizeComponentCode(programDraft.gradeComponentCode),
+      ) || componentRows[0];
+    const gradeComponentCode = normalizeComponentCode(
+      selectedComponent?.code || programDraft.gradeComponentCode || 'FORMATIVE',
+    );
+    const gradeComponentTypeCode = normalizeComponentCode(
+      selectedComponent?.typeCode || selectedComponent?.type || gradeComponentCode,
+    );
+    const gradeEntryModeCode = normalizeComponentCode(
+      selectedComponent?.entryModeCode || selectedComponent?.entryMode || inferGradeEntryModeByCode(gradeComponentCode),
+    );
+    const fixedSemester = programDraft.fixedSemester ? (programDraft.fixedSemester as 'ODD' | 'EVEN') : null;
+    const baseTypeCode = inferBaseTypeByComponentCode(gradeComponentCode, fixedSemester, 'FORMATIF');
+    const patch: Partial<ProgramFormRow> = {
+      code,
+      label,
+      shortLabel: String(programDraft.shortLabel || '').trim(),
+      description: String(programDraft.description || '').trim(),
+      gradeComponentCode,
+      gradeComponentTypeCode,
+      gradeComponentType: selectedComponent?.type || inferGradeComponentTypeByCode(gradeComponentTypeCode),
+      gradeComponentLabel: String(selectedComponent?.label || gradeComponentCode).trim(),
+      gradeEntryModeCode,
+      gradeEntryMode: selectedComponent?.entryMode || resolveEntryModeByCode(gradeEntryModeCode),
+      fixedSemester,
+      baseTypeCode,
+      baseType: baseTypeCode,
+      isActive: programDraft.isActive,
+      showOnTeacherMenu: programDraft.showOnTeacherMenu,
+      showOnStudentMenu: programDraft.showOnStudentMenu,
+      targetClassLevels: normalizeClassLevels(programDraft.targetClassLevels),
+      allowedSubjectIds: normalizeNumericIds(programDraft.allowedSubjectIds),
+      allowedAuthorIds: [],
+    };
+
+    const nextRows = editingProgramRowId
+      ? sortRows(rows.map((row) => (row.rowId === editingProgramRowId ? { ...row, ...patch } : row)))
+      : sortRows([
+          ...rows,
+          {
+            ...createNewRow(rows, componentRows),
+            ...patch,
+            configId: undefined,
+            source: 'new',
+          } as ProgramFormRow,
+        ]);
+
+    const ok = await persistProgramRows(
+      nextRows,
+      editingProgramRowId ? 'Program ujian berhasil diperbarui.' : 'Program ujian berhasil ditambahkan.',
+    );
+    if (ok) {
+      closeProgramModal();
+    }
+  }, [closeProgramModal, componentRows, editingProgramRowId, persistProgramRows, programDraft, rows]);
+
+  const submitAddComponent = useCallback(async () => {
     if (!academicYearId) {
       toast.error('Tahun ajaran aktif tidak ditemukan.');
       return;
@@ -629,224 +1101,126 @@ export default function ExamProgramManagementPage() {
       return;
     }
 
-    const normalizedComponents = componentRows.map((row) => {
-      const code = normalizeComponentCode(row.code);
-      const typeCode = normalizeComponentCode(row.typeCode || row.type || code);
-      const entryModeCode = normalizeComponentCode(
-        row.entryModeCode || row.entryMode || inferGradeEntryModeByCode(code),
+    const code = normalizeComponentCode(componentDraft.code);
+    const label = String(componentDraft.label || '').trim();
+    if (!code) {
+      toast.error('Kode komponen wajib diisi.');
+      return;
+    }
+    if (!label) {
+      toast.error('Label komponen wajib diisi.');
+      return;
+    }
+    if (
+      componentRows.some(
+        (row) => row.rowId !== editingComponentRowId && normalizeComponentCode(row.code) === code,
+      )
+    ) {
+      toast.error(`Kode komponen "${code}" sudah ada.`);
+      return;
+    }
+
+    const typeCode = normalizeComponentCode(componentDraft.typeCode || inferGradeComponentTypeByCode(code, 'CUSTOM'));
+    const entryModeCode = normalizeComponentCode(componentDraft.entryModeCode || inferGradeEntryModeByCode(code, 'SINGLE_SCORE'));
+    const reportSlotCode = normalizeComponentCode(componentDraft.reportSlotCode || defaultReportSlotByCode(code));
+    const reportSlot = resolveReportSlotByCode(reportSlotCode, defaultReportSlotByCode(code));
+
+    const patch: Partial<GradeComponentFormRow> = {
+      code,
+      label,
+      description: String(componentDraft.description || '').trim(),
+      typeCode,
+      type: inferGradeComponentTypeByCode(typeCode, inferGradeComponentTypeByCode(code, 'CUSTOM')),
+      entryModeCode,
+      entryMode: resolveEntryModeByCode(entryModeCode, inferGradeEntryModeByCode(code, 'SINGLE_SCORE')),
+      reportSlotCode,
+      reportSlot,
+      includeInFinalScore:
+        componentDraft.includeInFinalScore ?? defaultIncludeInFinalScoreBySlot(reportSlot),
+      isActive: componentDraft.isActive,
+    };
+
+    const nextRows = editingComponentRowId
+      ? sortComponentRows(componentRows.map((row) => (row.rowId === editingComponentRowId ? { ...row, ...patch } : row)))
+      : sortComponentRows([
+          ...componentRows,
+          {
+            ...createNewComponentRow(componentRows),
+            ...patch,
+            componentId: undefined,
+          } as GradeComponentFormRow,
+        ]);
+
+    const normalizedComponents = nextRows.map((row) => {
+      const normalizedCode = normalizeComponentCode(row.code);
+      const normalizedTypeCode = normalizeComponentCode(row.typeCode || row.type || normalizedCode);
+      const normalizedEntryModeCode = normalizeComponentCode(
+        row.entryModeCode || row.entryMode || inferGradeEntryModeByCode(normalizedCode),
       );
-      const reportSlotCode = normalizeComponentCode(
-        row.reportSlotCode || row.reportSlot || defaultReportSlotByCode(code),
+      const normalizedReportSlotCode = normalizeComponentCode(
+        row.reportSlotCode || row.reportSlot || defaultReportSlotByCode(normalizedCode),
       );
-      const type = inferGradeComponentTypeByCode(typeCode, row.type || inferGradeComponentTypeByCode(code));
-      const entryMode = resolveEntryModeByCode(
-        entryModeCode,
-        row.entryMode || inferGradeEntryModeByCode(code),
+      const normalizedType = inferGradeComponentTypeByCode(
+        normalizedTypeCode,
+        row.type || inferGradeComponentTypeByCode(normalizedCode),
       );
-      const reportSlot = resolveReportSlotByCode(
-        reportSlotCode,
-        row.reportSlot || defaultReportSlotByCode(code),
+      const normalizedEntryMode = resolveEntryModeByCode(
+        normalizedEntryModeCode,
+        row.entryMode || inferGradeEntryModeByCode(normalizedCode),
+      );
+      const normalizedReportSlot = resolveReportSlotByCode(
+        normalizedReportSlotCode,
+        row.reportSlot || defaultReportSlotByCode(normalizedCode),
       );
       return {
         ...row,
-        code,
-        type,
-        typeCode,
-        entryMode,
-        entryModeCode,
-        reportSlot,
-        reportSlotCode,
+        code: normalizedCode,
+        label: String(row.label || '').trim(),
+        description: String(row.description || '').trim(),
+        type: normalizedType,
+        typeCode: normalizedTypeCode,
+        entryMode: normalizedEntryMode,
+        entryModeCode: normalizedEntryModeCode,
+        reportSlot: normalizedReportSlot,
+        reportSlotCode: normalizedReportSlotCode,
         includeInFinalScore: Boolean(row.includeInFinalScore),
-        label: String(row.label || '').trim(),
-        description: String(row.description || '').trim(),
       };
     });
 
-    const hasEmptyCode = normalizedComponents.some((row) => !row.code);
-    if (hasEmptyCode) {
-      toast.error('Kode komponen nilai wajib diisi.');
-      return;
-    }
-
-    const hasEmptyLabel = normalizedComponents.some((row) => !row.label);
-    if (hasEmptyLabel) {
-      toast.error('Label komponen nilai wajib diisi.');
-      return;
-    }
-
-    const dedupe = new Set<string>();
-    for (const row of normalizedComponents) {
-      if (dedupe.has(row.code)) {
-        toast.error(`Kode komponen nilai duplikat: ${row.code}`);
-        return;
-      }
-      dedupe.add(row.code);
-    }
-
-    setSavingComponents(true);
-    try {
-      const response = await examService.updateGradeComponents({
-        academicYearId,
-        components: normalizedComponents.map((row) => ({
-          id: row.componentId ?? null,
-          code: row.code,
-          label: row.label,
-          type: row.type,
-          typeCode: row.typeCode,
-          entryMode: row.entryMode,
-          entryModeCode: row.entryModeCode,
-          reportSlot: row.reportSlot,
-          reportSlotCode: row.reportSlotCode,
-          includeInFinalScore: row.includeInFinalScore,
-          description: row.description || null,
-          order: row.order,
-          isActive: row.isActive,
-        })),
-      });
-
-      const nextComponents = normalizeComponentRows(response?.data?.components || []);
-      setComponentRows(nextComponents);
-      setInitialComponentRows(nextComponents);
-      setComponentEditBackup({});
-      setEditingComponentRowId(null);
-      await loadPrograms();
-      toast.success('Master komponen nilai berhasil diperbarui.');
-    } catch (err: any) {
-      const message = err?.response?.data?.message || err?.message || 'Gagal menyimpan master komponen nilai.';
-      toast.error(message);
-    } finally {
-      setSavingComponents(false);
-    }
-  }, [academicYearId, componentRows, componentsEndpointUnavailable, loadPrograms]);
-
-  const handleSave = useCallback(async () => {
-    if (!academicYearId) {
-      toast.error('Tahun ajaran aktif tidak ditemukan.');
-      return;
-    }
-
-    if (endpointUnavailable) {
-      toast.error('Endpoint program ujian belum tersedia di backend. Jalankan update backend terlebih dahulu.');
-      return;
-    }
-
-    const componentMap = new Map(
-      componentRows.map((component) => [normalizeComponentCode(component.code), component]),
+    const ok = await persistComponentRows(
+      normalizedComponents,
+      editingComponentRowId
+        ? 'Komponen nilai berhasil diperbarui.'
+        : 'Komponen nilai baru berhasil ditambahkan.',
     );
-
-    const normalizedRows = rows.map((row) => {
-      const normalizedComponentCode = normalizeComponentCode(row.gradeComponentCode);
-      const selectedComponent = componentMap.get(normalizedComponentCode);
-      const gradeComponentTypeCode = normalizeComponentCode(
-        selectedComponent?.typeCode || row.gradeComponentTypeCode || selectedComponent?.type || row.gradeComponentType || normalizedComponentCode,
-      );
-      const gradeEntryModeCode = normalizeComponentCode(
-        selectedComponent?.entryModeCode || row.gradeEntryModeCode || selectedComponent?.entryMode || row.gradeEntryMode || inferGradeEntryModeByCode(normalizedComponentCode),
-      );
-      const baseTypeCode = normalizeComponentCode(
-        row.baseTypeCode ||
-          inferBaseTypeByComponentCode(
-            normalizedComponentCode,
-            row.fixedSemester,
-            row.baseType || 'FORMATIF',
-          ),
-      );
-      return {
-        ...row,
-        code: normalizeExamProgramCode(row.code),
-        baseType: inferBaseTypeByComponentCode(normalizedComponentCode, row.fixedSemester, row.baseType || baseTypeCode || 'FORMATIF'),
-        baseTypeCode,
-        gradeComponentType:
-          selectedComponent?.type ||
-          inferGradeComponentTypeByCode(gradeComponentTypeCode, row.gradeComponentType),
-        gradeComponentTypeCode,
-        gradeComponentCode: normalizedComponentCode,
-        gradeComponentLabel: String(selectedComponent?.label || row.gradeComponentLabel || normalizedComponentCode).trim(),
-        gradeEntryMode:
-          selectedComponent?.entryMode ||
-          resolveEntryModeByCode(gradeEntryModeCode, row.gradeEntryMode || inferGradeEntryModeByCode(normalizedComponentCode)),
-        gradeEntryModeCode,
-        label: String(row.label || '').trim(),
-        shortLabel: String(row.shortLabel || '').trim(),
-        description: String(row.description || '').trim(),
-      };
-    });
-
-    const hasEmptyCode = normalizedRows.some((row) => !row.code);
-    if (hasEmptyCode) {
-      toast.error('Kode program ujian wajib diisi.');
-      return;
+    if (ok) {
+      closeComponentModal();
     }
+  }, [
+    academicYearId,
+    closeComponentModal,
+    componentDraft,
+    componentRows,
+    componentsEndpointUnavailable,
+    editingComponentRowId,
+    persistComponentRows,
+  ]);
 
-    const hasEmptyLabel = normalizedRows.some((row) => !row.label);
-    if (hasEmptyLabel) {
-      toast.error('Label program ujian wajib diisi.');
-      return;
-    }
+  const removeRow = useCallback(
+    async (rowId: string) => {
+      const nextRows = sortRows(rows.filter((row) => row.rowId !== rowId));
+      await persistProgramRows(nextRows, 'Program ujian berhasil dihapus.');
+    },
+    [persistProgramRows, rows],
+  );
 
-    const hasEmptyComponentCode = normalizedRows.some((row) => !row.gradeComponentCode);
-    if (hasEmptyComponentCode) {
-      toast.error('Kode komponen nilai wajib diisi.');
-      return;
-    }
-
-    const missingComponentRef = normalizedRows.some((row) => !componentMap.has(row.gradeComponentCode));
-    if (missingComponentRef) {
-      toast.error('Komponen nilai belum terdaftar di Master Komponen Nilai.');
-      return;
-    }
-
-    const dedupe = new Set<string>();
-    for (const row of normalizedRows) {
-      if (dedupe.has(row.code)) {
-        toast.error(`Kode program duplikat: ${row.code}`);
-        return;
-      }
-      dedupe.add(row.code);
-    }
-
-    setSaving(true);
-    try {
-      const response = await examService.updatePrograms({
-        academicYearId,
-        programs: normalizedRows.map((row) => ({
-          id: row.configId ?? null,
-          code: row.code,
-          baseType: row.baseType,
-          baseTypeCode: row.baseTypeCode,
-          gradeComponentType: row.gradeComponentType,
-          gradeComponentTypeCode: row.gradeComponentTypeCode,
-          gradeComponentCode: row.gradeComponentCode,
-          gradeComponentLabel: row.gradeComponentLabel || null,
-          gradeEntryMode: row.gradeEntryMode,
-          gradeEntryModeCode: row.gradeEntryModeCode,
-          label: row.label,
-          shortLabel: row.shortLabel || null,
-          description: row.description || null,
-          fixedSemester: row.fixedSemester,
-          order: Number.isFinite(row.order) ? row.order : 0,
-          isActive: row.isActive,
-          showOnTeacherMenu: row.showOnTeacherMenu,
-          showOnStudentMenu: row.showOnStudentMenu,
-        })),
-      });
-
-      const nextRows = normalizeRows(response?.data?.programs || []);
-      setRows(nextRows);
-      setInitialRows(nextRows);
-      setCodeEditBackup({});
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['sidebar-exam-programs'] }),
-        queryClient.invalidateQueries({ queryKey: ['teacher-exam-programs'] }),
-      ]);
-      toast.success('Program ujian berhasil diperbarui.');
-    } catch (err: any) {
-      const message = err?.response?.data?.message || err?.message || 'Gagal menyimpan konfigurasi program ujian.';
-      toast.error(message);
-    } finally {
-      setSaving(false);
-    }
-  }, [academicYearId, componentRows, endpointUnavailable, queryClient, rows]);
+  const removeComponentRow = useCallback(
+    async (rowId: string) => {
+      const nextRows = sortComponentRows(componentRows.filter((row) => row.rowId !== rowId));
+      await persistComponentRows(nextRows, 'Komponen nilai berhasil dihapus.');
+    },
+    [componentRows, persistComponentRows],
+  );
 
   if (loading) {
     return (
@@ -876,41 +1250,56 @@ export default function ExamProgramManagementPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-blue-700 font-semibold">Tahun Ajaran Aktif</p>
-          <p className="text-sm text-blue-900 font-semibold">{academicYearName}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={addRow}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
-          >
-            <Plus className="w-4 h-4" />
-            Tambah Program
-          </button>
-        </div>
-      </div>
-
+    <div className="flex flex-col gap-4">
       {endpointUnavailable ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+        <div className="order-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
           <p className="text-sm text-amber-800">
-            Endpoint `Program Ujian` belum tersedia di backend. Saat ini ditampilkan konfigurasi default.
+            Endpoint `Program Ujian` belum tersedia di backend. Data tidak bisa dimuat dari server.
           </p>
         </div>
       ) : null}
 
       {componentsEndpointUnavailable ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+        <div className="order-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
           <p className="text-sm text-amber-800">
-            Endpoint `Master Komponen Nilai` belum tersedia di backend. Saat ini menggunakan data fallback lokal.
+            Endpoint `Master Komponen Nilai` belum tersedia di backend. Data tidak bisa dimuat dari server.
           </p>
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+      <div className="order-4 rounded-xl border border-gray-200 bg-white px-4 py-3">
+        <div className="flex overflow-x-auto gap-4">
+          <button
+            type="button"
+            onClick={() => setActiveTab('PROGRAM')}
+            className={`flex items-center gap-2 px-4 py-2 border-b-2 whitespace-nowrap transition-colors text-[13px] ${
+              activeTab === 'PROGRAM'
+                ? 'border-blue-600 text-blue-600 font-medium'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Program Ujian
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('COMPONENT')}
+            className={`flex items-center gap-2 px-4 py-2 border-b-2 whitespace-nowrap transition-colors text-[13px] ${
+              activeTab === 'COMPONENT'
+                ? 'border-blue-600 text-blue-600 font-medium'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Master Komponen Nilai
+          </button>
+        </div>
+      </div>
+
+      <div
+        id="master-komponen-section"
+        className={`order-6 rounded-xl border border-gray-200 bg-white p-4 space-y-4 ${
+          activeTab === 'COMPONENT' ? '' : 'hidden'
+        }`}
+      >
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-sm font-semibold text-gray-900">Master Komponen Nilai</h3>
@@ -919,26 +1308,21 @@ export default function ExamProgramManagementPage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={addComponentRow}
+              onClick={openAddComponentModal}
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               <Plus className="w-4 h-4" />
               Tambah Komponen
             </button>
-            <button
-              type="button"
-              onClick={() => void handleSaveComponents()}
-              disabled={!isComponentDirty || savingComponents || componentsEndpointUnavailable}
-              className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
-                !isComponentDirty || savingComponents || componentsEndpointUnavailable
-                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}
-            >
-              {savingComponents ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              Simpan Komponen
-            </button>
+            <span className="text-xs text-emerald-700">Autosave aktif</span>
           </div>
+        </div>
+        <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] text-blue-800 leading-relaxed">
+          <span className="font-semibold">Panduan Aturan Komponen:</span>{' '}
+          <span className="font-medium">Tipe</span> = kategori fungsi nilai,{' '}
+          <span className="font-medium">Input</span> = cara guru mengisi (bertahap/satu nilai),{' '}
+          <span className="font-medium">Slot rapor</span> = posisi komponen pada kalkulasi rapor,{' '}
+          <span className="font-medium">Status</span> = aktif/tidak dan ikut nilai akhir atau tidak.
         </div>
 
         {componentRows.length === 0 ? (
@@ -946,511 +1330,71 @@ export default function ExamProgramManagementPage() {
             Belum ada komponen nilai. Tambahkan komponen dulu sebelum membuat Program Ujian.
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="min-w-[1500px] w-full text-sm">
+          <div className="rounded-lg border border-gray-200">
+            <table className="w-full table-fixed text-xs">
               <thead className="bg-gray-50">
-                <tr className="text-left text-xs uppercase tracking-wide text-gray-500">
+                <tr className="text-left uppercase tracking-wide text-gray-500">
                   <th className="px-3 py-2 w-10">No</th>
-                  <th className="px-3 py-2">Kode</th>
-                  <th className="px-3 py-2">Label</th>
-                  <th className="px-3 py-2">Tipe</th>
-                  <th className="px-3 py-2">Mode Input</th>
-                  <th className="px-3 py-2">Slot Rapor</th>
-                  <th className="px-3 py-2">Urutan</th>
-                  <th className="px-3 py-2 text-center">Aktif</th>
-                  <th className="px-3 py-2 text-center">Nilai Akhir</th>
-                  <th className="px-3 py-2">Deskripsi</th>
-                  <th className="px-3 py-2 text-right">Aksi</th>
+                  <th className="px-3 py-2 w-[36%]">Komponen</th>
+                  <th className="px-3 py-2 w-[28%]">Aturan Komponen</th>
+                  <th className="px-3 py-2 w-[10%]">Urutan</th>
+                  <th className="px-3 py-2 w-[16%]">Status</th>
+                  <th className="px-3 py-2 text-right w-[10%]">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {componentRows.map((component, index) => {
-                  const isEditing = editingComponentRowId === component.rowId;
-                  return (
-                    <tr key={component.rowId} className="align-top">
-                      <td className="px-3 py-2 text-gray-500">{index + 1}</td>
-                      <td className="px-3 py-2">
-                        <input
-                          value={component.code}
-                          onChange={(event) => {
-                            if (!isEditing) return;
-                            const nextCode = normalizeComponentCode(event.target.value);
-                            const nextTypeCode = inferGradeComponentTypeByCode(nextCode, 'CUSTOM');
-                            const nextEntryModeCode = inferGradeEntryModeByCode(nextCode, 'SINGLE_SCORE');
-                            const nextReportSlotCode = defaultReportSlotByCode(nextCode);
-                            updateComponentRow(component.rowId, {
-                              code: nextCode,
-                              typeCode: nextTypeCode,
-                              type: inferGradeComponentTypeByCode(nextTypeCode, component.type),
-                              entryModeCode: nextEntryModeCode,
-                              entryMode: resolveEntryModeByCode(nextEntryModeCode, component.entryMode),
-                              reportSlotCode: nextReportSlotCode,
-                              reportSlot: resolveReportSlotByCode(nextReportSlotCode, component.reportSlot),
-                              includeInFinalScore: defaultIncludeInFinalScoreBySlot(nextReportSlotCode),
-                            });
-                          }}
-                          disabled={!isEditing}
-                          className={`w-[180px] rounded-lg border px-2.5 py-1.5 text-xs ${
-                            isEditing
-                              ? 'border-gray-300 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500'
-                              : 'border-gray-200 bg-gray-100 text-gray-500'
-                          }`}
-                          placeholder="Contoh: PSAJ"
-                          maxLength={50}
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          value={component.label}
-                          onChange={(event) => isEditing && updateComponentRow(component.rowId, { label: event.target.value })}
-                          disabled={!isEditing}
-                          className={`w-[180px] rounded-lg border px-2.5 py-1.5 text-xs ${
-                            isEditing
-                              ? 'border-gray-300 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500'
-                              : 'border-gray-200 bg-gray-100 text-gray-500'
-                          }`}
-                          placeholder="Contoh: Penilaian Akhir"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          value={component.typeCode}
-                          onChange={(event) => {
-                            if (!isEditing) return;
-                            const nextTypeCode = normalizeComponentCode(event.target.value);
-                            updateComponentRow(component.rowId, {
-                              typeCode: nextTypeCode,
-                              type: inferGradeComponentTypeByCode(nextTypeCode, component.type),
-                            });
-                          }}
-                          disabled={!isEditing}
-                          className={`w-[150px] rounded-lg border px-2.5 py-1.5 text-xs ${
-                            isEditing
-                              ? 'border-gray-300 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500'
-                              : 'border-gray-200 bg-gray-100 text-gray-500'
-                          }`}
-                          list="exam-component-type-code-options"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          value={component.entryModeCode}
-                          onChange={(event) => {
-                            if (!isEditing) return;
-                            const nextEntryModeCode = normalizeComponentCode(event.target.value);
-                            updateComponentRow(component.rowId, {
-                              entryModeCode: nextEntryModeCode,
-                              entryMode: resolveEntryModeByCode(nextEntryModeCode, component.entryMode),
-                            });
-                          }}
-                          disabled={!isEditing}
-                          className={`w-[180px] rounded-lg border px-2.5 py-1.5 text-xs ${
-                            isEditing
-                              ? 'border-gray-300 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500'
-                              : 'border-gray-200 bg-gray-100 text-gray-500'
-                          }`}
-                          list="exam-component-entry-mode-options"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          value={component.reportSlotCode}
-                          onChange={(event) => {
-                            if (!isEditing) return;
-                            const nextReportSlotCode = normalizeComponentCode(event.target.value);
-                            updateComponentRow(component.rowId, {
-                              reportSlotCode: nextReportSlotCode,
-                              reportSlot: resolveReportSlotByCode(nextReportSlotCode, component.reportSlot),
-                              includeInFinalScore: defaultIncludeInFinalScoreBySlot(
-                                resolveReportSlotByCode(nextReportSlotCode, component.reportSlot),
-                              ),
-                            });
-                          }}
-                          disabled={!isEditing}
-                          className={`w-[180px] rounded-lg border px-2.5 py-1.5 text-xs ${
-                            isEditing
-                              ? 'border-gray-300 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500'
-                              : 'border-gray-200 bg-gray-100 text-gray-500'
-                          }`}
-                          list="exam-component-report-slot-options"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min={0}
-                          value={component.order}
-                          onChange={(event) =>
-                            isEditing && updateComponentRow(component.rowId, { order: Number(event.target.value) || 0 })
-                          }
-                          disabled={!isEditing}
-                          className={`w-[90px] rounded-lg border px-2.5 py-1.5 text-xs ${
-                            isEditing
-                              ? 'border-gray-300 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500'
-                              : 'border-gray-200 bg-gray-100 text-gray-500'
-                          }`}
-                        />
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <input
-                          type="checkbox"
-                          checked={component.isActive}
-                          onChange={(event) =>
-                            isEditing &&
-                            updateComponentRow(component.rowId, {
-                              isActive: event.target.checked,
-                            })
-                          }
-                          disabled={!isEditing}
-                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <input
-                          type="checkbox"
-                          checked={component.includeInFinalScore}
-                          onChange={(event) =>
-                            isEditing &&
-                            updateComponentRow(component.rowId, {
-                              includeInFinalScore: event.target.checked,
-                            })
-                          }
-                          disabled={!isEditing}
-                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          value={component.description}
-                          onChange={(event) =>
-                            isEditing && updateComponentRow(component.rowId, { description: event.target.value })
-                          }
-                          disabled={!isEditing}
-                          className={`w-[260px] rounded-lg border px-2.5 py-1.5 text-xs ${
-                            isEditing
-                              ? 'border-gray-300 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500'
-                              : 'border-gray-200 bg-gray-100 text-gray-500'
-                          }`}
-                          placeholder="Opsional"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {isEditing ? (
-                            <button
-                              type="button"
-                              onClick={() => cancelComponentEdit(component.rowId)}
-                              className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                              Batal
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => startComponentEdit(component.rowId)}
-                              className="inline-flex items-center gap-1 rounded-md border border-blue-200 px-2 py-1 text-xs text-blue-700 hover:bg-blue-50"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                              Edit
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => removeComponentRow(component.rowId)}
-                            className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            Hapus
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <datalist id="exam-component-type-code-options">
-          <option value="FORMATIVE" />
-          <option value="MIDTERM" />
-          <option value="FINAL" />
-          <option value="SKILL" />
-          <option value="US_PRACTICE" />
-          <option value="US_THEORY" />
-          <option value="CUSTOM" />
-        </datalist>
-        <datalist id="exam-component-entry-mode-options">
-          {GRADE_ENTRY_MODE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value} />
-          ))}
-        </datalist>
-        <datalist id="exam-component-report-slot-options">
-          {REPORT_SLOT_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value} />
-          ))}
-        </datalist>
-      </div>
-
-      <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900">Program Ujian</h3>
-          <p className="text-xs text-gray-500">Susun menu ujian guru/siswa berbasis komponen nilai.</p>
-        </div>
-
-        {rows.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-600">
-            Belum ada konfigurasi program ujian. Klik <span className="font-semibold">Tambah Program</span> untuk mulai membuat.
-          </div>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="min-w-[1800px] w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr className="text-left text-xs uppercase tracking-wide text-gray-500">
-                  <th className="px-3 py-2 w-10">No</th>
-                  <th className="px-3 py-2">Kode Program</th>
-                  <th className="px-3 py-2">Komponen Nilai</th>
-                  <th className="px-3 py-2">Label Komponen</th>
-                  <th className="px-3 py-2">Mode Input</th>
-                  <th className="px-3 py-2">Label Menu</th>
-                  <th className="px-3 py-2">Label Singkat</th>
-                  <th className="px-3 py-2">Urutan</th>
-                  <th className="px-3 py-2">Semester</th>
-                  <th className="px-3 py-2">Pola</th>
-                  <th className="px-3 py-2 text-center">Aktif</th>
-                  <th className="px-3 py-2 text-center">Guru</th>
-                  <th className="px-3 py-2 text-center">Siswa</th>
-                  <th className="px-3 py-2">Deskripsi</th>
-                  <th className="px-3 py-2 text-right">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {rows.map((row, index) => (
-                  <tr key={row.rowId} className="align-top">
+                {componentRows.map((component, index) => (
+                  <tr key={component.rowId} className="align-top">
                     <td className="px-3 py-2 text-gray-500">{index + 1}</td>
-                    <td className="px-3 py-2 space-y-1.5">
-                      <input
-                        id={`program-code-${row.rowId}`}
-                        value={row.code}
-                        onChange={(event) => updateRow(row.rowId, { code: event.target.value.toUpperCase() })}
-                        className={`w-[170px] rounded-lg border px-2.5 py-1.5 text-xs ${
-                          row.isCodeLocked
-                            ? 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
-                            : 'border-gray-300 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500'
-                        }`}
-                        placeholder="Contoh: PSAJ"
-                        disabled={row.isCodeLocked}
-                        maxLength={50}
-                      />
-                      <div className="flex items-center gap-1.5">
-                        {row.isCodeLocked ? (
-                          <button
-                            type="button"
-                            onClick={() => unlockCodeEditing(row.rowId)}
-                            className="inline-flex items-center gap-1 rounded-md border border-blue-200 px-2 py-1 text-xs text-blue-700 hover:bg-blue-50"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                            Edit
-                          </button>
-                        ) : row.source !== 'new' ? (
-                          <button
-                            type="button"
-                            onClick={() => cancelCodeEdit(row.rowId)}
-                            className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                            Batal Edit
-                          </button>
-                        ) : null}
+                    <td className="px-3 py-2">
+                      <p className="font-semibold text-gray-900">{component.label || '-'}</p>
+                      <p className="text-gray-500">Kode: {component.code || '-'}</p>
+                      <p className="text-gray-500 line-clamp-1">{component.description || '-'}</p>
+                    </td>
+                    <td className="px-3 py-2 text-gray-700">
+                      <p>Tipe: {getComponentTypeLabel(component.typeCode || component.type || '')}</p>
+                      <p>Input: {getEntryModeLabel(component.entryModeCode || component.entryMode || '')}</p>
+                      <p>Slot rapor: {getReportSlotLabel(component.reportSlotCode || component.reportSlot || '')}</p>
+                    </td>
+                    <td className="px-3 py-2 text-gray-700">{component.order}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap gap-1 text-[11px]">
+                        <span
+                          className={`rounded-full px-2 py-0.5 ${
+                            component.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {component.isActive ? 'Aktif' : 'Nonaktif'}
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 ${
+                            component.includeInFinalScore
+                              ? 'bg-blue-50 text-blue-700'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {component.includeInFinalScore ? 'Nilai akhir: Ya' : 'Nilai akhir: Tidak'}
+                        </span>
                       </div>
                     </td>
                     <td className="px-3 py-2">
-                      <select
-                        value={row.gradeComponentCode}
-                        onChange={(event) => {
-                          const nextCode = normalizeComponentCode(event.target.value);
-                          const selectedComponent = componentRows.find((item) => normalizeComponentCode(item.code) === nextCode);
-                          const nextGradeTypeCode = normalizeComponentCode(
-                            selectedComponent?.typeCode || selectedComponent?.type || nextCode,
-                          );
-                          const nextGradeEntryModeCode = normalizeComponentCode(
-                            selectedComponent?.entryModeCode || selectedComponent?.entryMode || inferGradeEntryModeByCode(nextCode, row.gradeEntryMode),
-                          );
-                          const nextBaseTypeCode = inferBaseTypeByComponentCode(
-                            nextCode,
-                            row.fixedSemester,
-                            row.baseTypeCode || row.baseType,
-                          );
-                          updateRow(row.rowId, {
-                            gradeComponentCode: nextCode,
-                            gradeComponentType:
-                              selectedComponent?.type || inferGradeComponentTypeByCode(nextGradeTypeCode),
-                            gradeComponentTypeCode: nextGradeTypeCode,
-                            gradeComponentLabel:
-                              selectedComponent?.label || nextCode.replace(/_/g, ' '),
-                            gradeEntryMode:
-                              selectedComponent?.entryMode || resolveEntryModeByCode(nextGradeEntryModeCode, inferGradeEntryModeByCode(nextCode, row.gradeEntryMode)),
-                            gradeEntryModeCode: nextGradeEntryModeCode,
-                            baseType: nextBaseTypeCode,
-                            baseTypeCode: nextBaseTypeCode,
-                          });
-                        }}
-                        className="w-[190px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Pilih komponen nilai</option>
-                        {componentRows.map((component) => (
-                          <option key={component.rowId} value={component.code}>
-                            {component.code} - {component.label}
-                            {component.isActive ? '' : ' (nonaktif)'}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        value={row.gradeComponentLabel}
-                        readOnly
-                        className="w-[190px] rounded-lg border border-gray-200 bg-gray-100 px-2.5 py-1.5 text-xs text-gray-600"
-                        placeholder="Pilih komponen"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        value={row.gradeEntryModeCode}
-                        onChange={(event) => {
-                          const nextGradeEntryModeCode = normalizeComponentCode(event.target.value);
-                          updateRow(row.rowId, {
-                            gradeEntryModeCode: nextGradeEntryModeCode,
-                            gradeEntryMode: resolveEntryModeByCode(nextGradeEntryModeCode, row.gradeEntryMode),
-                          });
-                        }}
-                        className="w-[180px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        list="exam-program-entry-mode-options"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        value={row.label}
-                        onChange={(event) => updateRow(row.rowId, { label: event.target.value })}
-                        className="w-[210px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Contoh: Ulangan Harian"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        value={row.shortLabel}
-                        onChange={(event) => updateRow(row.rowId, { shortLabel: event.target.value })}
-                        className="w-[150px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Contoh: UH"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        min={0}
-                        value={row.order}
-                        onChange={(event) => updateRow(row.rowId, { order: Number(event.target.value) || 0 })}
-                        className="w-[90px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <select
-                        value={row.fixedSemester || ''}
-                        onChange={(event) => {
-                          const nextSemester = event.target.value ? (event.target.value as 'ODD' | 'EVEN') : null;
-                          const componentCode = normalizeComponentCode(row.gradeComponentCode);
-                          const nextBaseTypeCode = inferBaseTypeByComponentCode(
-                            componentCode,
-                            nextSemester,
-                            row.baseTypeCode || row.baseType,
-                          );
-                          updateRow(row.rowId, {
-                            fixedSemester: nextSemester,
-                            baseType: nextBaseTypeCode,
-                            baseTypeCode: nextBaseTypeCode,
-                          });
-                        }}
-                        className="w-[125px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Otomatis</option>
-                        <option value="ODD">Ganjil</option>
-                        <option value="EVEN">Genap</option>
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        value={row.baseTypeCode || row.baseType}
-                        onChange={(event) => {
-                          const nextBaseTypeCode = normalizeComponentCode(event.target.value);
-                          updateRow(row.rowId, {
-                            baseTypeCode: nextBaseTypeCode,
-                            baseType: inferBaseTypeByComponentCode(
-                              normalizeComponentCode(row.gradeComponentCode),
-                              row.fixedSemester,
-                              nextBaseTypeCode || row.baseType,
-                            ),
-                          });
-                        }}
-                        className="w-[130px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        list="exam-program-base-type-options"
-                      />
-                      <p className="mt-1 text-[10px] text-gray-500">{baseTypeLabel(row.baseType)}</p>
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <input
-                        type="checkbox"
-                        checked={row.isActive}
-                        onChange={(event) => updateRow(row.rowId, { isActive: event.target.checked })}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <input
-                        type="checkbox"
-                        checked={row.showOnTeacherMenu}
-                        onChange={(event) => updateRow(row.rowId, { showOnTeacherMenu: event.target.checked })}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <input
-                        type="checkbox"
-                        checked={row.showOnStudentMenu}
-                        onChange={(event) => updateRow(row.rowId, { showOnStudentMenu: event.target.checked })}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="text"
-                        value={row.description}
-                        onChange={(event) => updateRow(row.rowId, { description: event.target.value })}
-                        className="w-[260px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Penjelasan program ujian"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {row.source === 'new' ? (
-                          <button
-                            type="button"
-                            onClick={() => cancelNewRow(row.rowId)}
-                            className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                            Batal
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => removeRow(row.rowId)}
-                            className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            Hapus
-                          </button>
-                        )}
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openEditComponentModal(component.rowId)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-blue-200 text-blue-700 hover:bg-blue-50"
+                          title="Edit komponen"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void removeComponentRow(component.rowId)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-200 text-red-600 hover:bg-red-50"
+                          title="Hapus komponen"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -1459,36 +1403,564 @@ export default function ExamProgramManagementPage() {
             </table>
           </div>
         )}
-        <datalist id="exam-program-entry-mode-options">
-          {GRADE_ENTRY_MODE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value} />
-          ))}
-        </datalist>
-        <datalist id="exam-program-base-type-options">
-          <option value="FORMATIF" />
-          <option value="SBTS" />
-          <option value="SAS" />
-          <option value="SAT" />
-          <option value="US_PRACTICE" />
-          <option value="US_THEORY" />
-        </datalist>
       </div>
 
-      <div className="flex justify-end pt-2">
-        <button
-          type="button"
-          onClick={() => void handleSave()}
-          disabled={!isProgramDirty || saving}
-          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold ${
-            !isProgramDirty || saving
-              ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-              : 'bg-blue-600 text-white hover:bg-blue-700'
-          }`}
-        >
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          Simpan Konfigurasi
-        </button>
+      <div
+        id="program-ujian-section"
+        className={`order-5 rounded-xl border border-gray-200 bg-white p-4 space-y-3 ${
+          activeTab === 'PROGRAM' ? '' : 'hidden'
+        }`}
+      >
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Program Ujian</h3>
+            <p className="text-xs text-gray-500">
+              Data ditampilkan ringkas agar mudah dibaca. Detail ubah lewat tombol edit.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={openAddProgramModal}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <Plus className="w-4 h-4" />
+            Tambah Program
+          </button>
+        </div>
+        <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] text-blue-800 leading-relaxed">
+          <span className="font-semibold">Panduan:</span> gunakan popup <span className="font-medium">Tambah/Edit Program</span>{' '}
+          untuk mengubah data. Tabel ini hanya ringkasan agar tidak membingungkan.
+        </div>
+
+        {rows.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-600">
+            Belum ada konfigurasi program ujian. Klik <span className="font-semibold">Tambah Program</span> untuk mulai membuat.
+          </div>
+        ) : (
+          <div className="rounded-lg border border-gray-200">
+            <table className="w-full table-fixed text-xs">
+              <thead className="bg-gray-50">
+                <tr className="text-left uppercase tracking-wide text-gray-500">
+                  <th className="px-3 py-2 w-10">No</th>
+                  <th className="px-3 py-2 w-[42%]">Program Ujian</th>
+                  <th className="px-3 py-2 w-[23%]">Komponen</th>
+                  <th className="px-3 py-2 w-[11%]">Semester</th>
+                  <th className="px-3 py-2 w-[14%]">Status</th>
+                  <th className="px-3 py-2 text-right w-[10%]">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {rows.map((row, index) => (
+                  <tr key={row.rowId} className="align-top">
+                    <td className="px-3 py-2 text-gray-500">{index + 1}</td>
+                    <td className="px-3 py-2">
+                      <p className="font-semibold text-gray-900">{row.label || '-'}</p>
+                      <p className="text-gray-500">Kode: {row.code || '-'}</p>
+                    </td>
+                    <td className="px-3 py-2">
+                      <p className="font-medium text-gray-800">{row.gradeComponentLabel || '-'}</p>
+                      <p className="text-gray-500">{row.gradeComponentCode || '-'}</p>
+                      <p className="text-gray-500">
+                        Tingkat:{' '}
+                        {row.targetClassLevels.length > 0 ? row.targetClassLevels.join(', ') : 'Semua tingkat'}
+                      </p>
+                      <p className="text-gray-500">
+                        Mapel: {row.allowedSubjectIds.length > 0 ? `${row.allowedSubjectIds.length} dipilih` : 'Semua'}
+                      </p>
+                      <p className="text-gray-500">Pembuat: Sesuai assignment mapel aktif</p>
+                    </td>
+                    <td className="px-3 py-2 text-gray-700">
+                      {row.fixedSemester === 'ODD'
+                        ? 'Ganjil'
+                        : row.fixedSemester === 'EVEN'
+                          ? 'Genap'
+                          : 'Otomatis'}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap gap-1 text-[11px]">
+                        <span
+                          className={`rounded-full px-2 py-0.5 ${
+                            row.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {row.isActive ? 'Aktif' : 'Nonaktif'}
+                        </span>
+                        {row.showOnTeacherMenu ? (
+                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">Guru</span>
+                        ) : null}
+                        {row.showOnStudentMenu ? (
+                          <span className="rounded-full bg-purple-50 px-2 py-0.5 text-purple-700">Siswa</span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openEditProgramModal(row.rowId)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-blue-200 text-blue-700 hover:bg-blue-50"
+                          title="Edit program"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void removeRow(row.rowId)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-200 text-red-600 hover:bg-red-50"
+                          title="Hapus program"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
+
+      {isAddProgramModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-6xl rounded-xl border border-gray-200 bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900">
+                  {editingProgramRowId ? 'Edit Program Ujian' : 'Tambah Program Ujian'}
+                </h4>
+                <p className="text-xs text-gray-500">
+                  {editingProgramRowId
+                    ? 'Perubahan langsung tersimpan ke database saat klik Simpan.'
+                    : 'Program baru langsung tersimpan ke database saat klik Simpan.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeProgramModal}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50"
+                title="Tutup"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Kode Program</span>
+                <input
+                  value={programDraft.code}
+                  onChange={(event) =>
+                    setProgramDraft((prev) => ({ ...prev, code: event.target.value.toUpperCase() }))
+                  }
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="Contoh: PSAJ"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Label Menu</span>
+                <input
+                  value={programDraft.label}
+                  onChange={(event) => setProgramDraft((prev) => ({ ...prev, label: event.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="Contoh: Penilaian Sumatif Akhir Jenjang"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Label Singkat</span>
+                <input
+                  value={programDraft.shortLabel}
+                  onChange={(event) => setProgramDraft((prev) => ({ ...prev, shortLabel: event.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="Contoh: PSAJ"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Komponen Nilai</span>
+                <select
+                  value={programDraft.gradeComponentCode}
+                  onChange={(event) =>
+                    setProgramDraft((prev) => ({
+                      ...prev,
+                      gradeComponentCode: normalizeComponentCode(event.target.value),
+                    }))
+                  }
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  {componentRows.map((component) => (
+                    <option key={component.rowId} value={component.code}>
+                      {component.code} - {component.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Semester Tetap</span>
+                <select
+                  value={programDraft.fixedSemester}
+                  onChange={(event) =>
+                    setProgramDraft((prev) => ({
+                      ...prev,
+                      fixedSemester: event.target.value as '' | 'ODD' | 'EVEN',
+                    }))
+                  }
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="">Otomatis</option>
+                  <option value="ODD">Ganjil</option>
+                  <option value="EVEN">Genap</option>
+                </select>
+              </label>
+              <div className="md:col-span-2 xl:col-span-4 rounded-lg border border-gray-200 p-3">
+                <p className="text-xs font-medium text-gray-700">Target Tingkat Kelas (opsional)</p>
+                <p className="text-[11px] text-gray-500">
+                  Kosongkan jika program berlaku untuk semua tingkat.
+                </p>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {TARGET_CLASS_LEVEL_OPTIONS.map((option) => {
+                    const checked = programDraft.targetClassLevels.includes(option.value);
+                    return (
+                      <label
+                        key={option.value}
+                        className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) =>
+                            setProgramDraft((prev) => {
+                              const current = new Set(normalizeClassLevels(prev.targetClassLevels));
+                              if (event.target.checked) current.add(option.value);
+                              else current.delete(option.value);
+                              return { ...prev, targetClassLevels: Array.from(current) };
+                            })
+                          }
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        {option.label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="md:col-span-2 xl:col-span-4 rounded-lg border border-gray-200 p-3">
+                <p className="text-xs font-medium text-gray-700">Mapel Diizinkan (opsional)</p>
+                <p className="text-[11px] text-gray-500">
+                  Default kategori baru: semua mapel (tanpa pembatasan). Jika dipilih, hanya mapel ini yang bisa dipakai saat buat paket ujian.
+                </p>
+                <div className="mt-2 max-h-28 overflow-y-auto rounded-lg border border-gray-100">
+                  {subjectOptions.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-gray-500">
+                      {selectedTargetLevels.length > 0
+                        ? `Tidak ada assignment mapel pada tingkat ${selectedTargetLevels.join(', ')}.`
+                        : 'Belum ada data mapel dari assignment guru.'}
+                    </p>
+                  ) : (
+                    <div className="space-y-1 p-2">
+                      {subjectOptions.map((subject) => {
+                        const checked = programDraft.allowedSubjectIds.includes(subject.id);
+                        return (
+                          <label key={subject.id} className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-gray-50">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(event) =>
+                                setProgramDraft((prev) => {
+                                  const current = new Set(normalizeNumericIds(prev.allowedSubjectIds));
+                                  if (event.target.checked) current.add(subject.id);
+                                  else current.delete(subject.id);
+                                  return { ...prev, allowedSubjectIds: Array.from(current) };
+                                })
+                              }
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-xs text-gray-500">{subject.code}</span>
+                            <span className="text-sm text-gray-700">
+                              {subject.name}
+                              {subject.teacherNames.length > 0 ? ` -- ${subject.teacherNames.join(', ')}` : ''}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="md:col-span-2 xl:col-span-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                <p className="text-xs font-medium text-emerald-800">Pembuat Soal Mengikuti Assignment</p>
+                <p className="text-[11px] text-emerald-700">
+                  Tidak ada pilih guru manual. Guru hanya bisa membuat ujian jika memang memiliki assignment mapel pada tahun ajaran aktif.
+                </p>
+              </div>
+              <div className="md:col-span-2 xl:col-span-4 grid gap-2 sm:grid-cols-3">
+                <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={programDraft.isActive}
+                    onChange={(event) =>
+                      setProgramDraft((prev) => ({ ...prev, isActive: event.target.checked }))
+                    }
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  Aktif
+                </label>
+                <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={programDraft.showOnTeacherMenu}
+                    onChange={(event) =>
+                      setProgramDraft((prev) => ({ ...prev, showOnTeacherMenu: event.target.checked }))
+                    }
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  Tampil di Guru
+                </label>
+                <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={programDraft.showOnStudentMenu}
+                    onChange={(event) =>
+                      setProgramDraft((prev) => ({ ...prev, showOnStudentMenu: event.target.checked }))
+                    }
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  Tampil di Siswa (menu ujian)
+                </label>
+              </div>
+              <label className="space-y-1 md:col-span-2 xl:col-span-4">
+                <span className="text-xs font-medium text-gray-600">Deskripsi</span>
+                <textarea
+                  rows={2}
+                  value={programDraft.description}
+                  onChange={(event) => setProgramDraft((prev) => ({ ...prev, description: event.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="Penjelasan singkat tujuan program ujian"
+                />
+              </label>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={closeProgramModal}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={submitAddProgram}
+                disabled={saving}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {editingProgramRowId ? 'Simpan Perubahan' : 'Simpan Program'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isAddComponentModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-2xl rounded-xl border border-gray-200 bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900">
+                  {editingComponentRowId ? 'Edit Komponen Nilai' : 'Tambah Komponen Nilai'}
+                </h4>
+                <p className="text-xs text-gray-500">
+                  {editingComponentRowId
+                    ? 'Perbarui aturan komponen nilai melalui form ini.'
+                    : 'Atur komponen yang akan dipakai oleh Program Ujian.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeComponentModal}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50"
+                title="Tutup"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2">
+              <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800 md:col-span-2">
+                Komponen baru selalu dibuat sebagai <span className="font-semibold">custom</span>. Isi kode, nama,
+                lalu sesuaikan mode lanjutan jika memang dibutuhkan.
+              </div>
+
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Kode Komponen</span>
+                <input
+                  value={componentDraft.code}
+                  onChange={(event) =>
+                    setComponentDraft((prev) => ({ ...prev, code: normalizeComponentCode(event.target.value) }))
+                  }
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="Contoh: FORMATIVE"
+                />
+                <p className="text-[11px] text-gray-500">
+                  Dipakai sistem sebagai identitas unik komponen dan penghubung ke Program Ujian.
+                </p>
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Nama Komponen</span>
+                <input
+                  value={componentDraft.label}
+                  onChange={(event) => setComponentDraft((prev) => ({ ...prev, label: event.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="Contoh: Formatif"
+                />
+                <p className="text-[11px] text-gray-500">
+                  Nama yang ditampilkan ke pengguna (dropdown nilai, label komponen, dan ringkasan UI).
+                </p>
+              </label>
+
+              <label className="space-y-1 md:col-span-2">
+                <span className="text-xs font-medium text-gray-600">Deskripsi</span>
+                <textarea
+                  rows={2}
+                  value={componentDraft.description}
+                  onChange={(event) => setComponentDraft((prev) => ({ ...prev, description: event.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="Deskripsi singkat komponen nilai"
+                />
+                <p className="text-[11px] text-gray-500">
+                  Catatan internal agar tim paham tujuan komponen ini (opsional).
+                </p>
+              </label>
+
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 md:col-span-2">
+                <p className="font-medium text-gray-800">Preview Dampak Komponen</p>
+                <p>Input nilai: {componentDraft.entryModeCode || '-'}</p>
+                <p>Masuk slot rapor: {componentDraft.reportSlotCode || '-'}</p>
+                <p>Ikut hitung nilai akhir: {componentDraft.includeInFinalScore ? 'Ya' : 'Tidak'}</p>
+              </div>
+
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={componentDraft.isActive}
+                  onChange={(event) => setComponentDraft((prev) => ({ ...prev, isActive: event.target.checked }))}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                Aktif
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={componentDraft.includeInFinalScore}
+                  onChange={(event) =>
+                    setComponentDraft((prev) => ({
+                      ...prev,
+                      includeInFinalScore: event.target.checked,
+                    }))
+                  }
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                Ikut Nilai Akhir
+              </label>
+
+              <div className="md:col-span-2">
+                <button
+                  type="button"
+                  onClick={() => setShowComponentAdvanced((prev) => !prev)}
+                  className="text-xs font-medium text-blue-700 hover:underline"
+                >
+                  {showComponentAdvanced ? 'Sembunyikan mode lanjutan' : 'Tampilkan mode lanjutan'}
+                </button>
+                {showComponentAdvanced ? (
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    Mode lanjutan dibatasi pilihan sistem agar konfigurasi tetap valid.
+                  </p>
+                ) : null}
+              </div>
+
+              {showComponentAdvanced ? (
+                <>
+                  <label className="space-y-1">
+                    <span className="text-xs font-medium text-gray-600">Tipe Komponen</span>
+                    <select
+                      value={componentDraft.typeCode}
+                      onChange={(event) =>
+                        setComponentDraft((prev) => ({ ...prev, typeCode: normalizeComponentCode(event.target.value) }))
+                      }
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                      {COMPONENT_TYPE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs font-medium text-gray-600">Mode Input</span>
+                    <select
+                      value={componentDraft.entryModeCode}
+                      onChange={(event) =>
+                        setComponentDraft((prev) => ({
+                          ...prev,
+                          entryModeCode: normalizeComponentCode(event.target.value),
+                        }))
+                      }
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                      {GRADE_ENTRY_MODE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs font-medium text-gray-600">Slot Rapor</span>
+                    <select
+                      value={componentDraft.reportSlotCode}
+                      onChange={(event) =>
+                        setComponentDraft((prev) => ({
+                          ...prev,
+                          reportSlotCode: normalizeComponentCode(event.target.value),
+                        }))
+                      }
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                      {REPORT_SLOT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : null}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={closeComponentModal}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={submitAddComponent}
+                disabled={savingComponents || componentsEndpointUnavailable}
+                className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
+                  savingComponents || componentsEndpointUnavailable
+                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                {savingComponents ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {editingComponentRowId ? 'Simpan Perubahan' : 'Simpan Komponen'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
     </div>
   );
 }

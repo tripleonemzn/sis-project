@@ -6,18 +6,25 @@ import api from '../../../services/api';
 interface HomeroomLedgerPageProps {
   classId: number;
   semester: 'ODD' | 'EVEN' | '';
-  reportType?: 'SBTS' | 'SAS' | 'SAT';
+  reportType?: string;
+  programCode?: string;
+  reportComponentType?: string;
 }
 
 interface LedgerGrade {
   nf1: number | null;
   nf2: number | null;
   nf3: number | null;
+  nf4?: number | null;
+  nf5?: number | null;
+  nf6?: number | null;
   formatif: number | null;
   sbts: number | null;
+  finalComponent?: number | null;
   finalScore: number | null;
   predicate: string | null;
   description: string | null;
+  slotScores?: Record<string, number | null>;
 }
 
 interface LedgerStudent {
@@ -37,21 +44,90 @@ interface LedgerSubject {
 interface LedgerResponse {
   subjects: LedgerSubject[];
   students: LedgerStudent[];
+  meta?: {
+    reportType?: string;
+    reportComponentType?: string;
+    reportComponentMode?: string;
+    col1Label?: string;
+    col2Label?: string;
+    formativeSlotCode?: string;
+    midtermSlotCode?: string;
+    finalSlotCode?: string;
+  };
 }
 
-export const HomeroomLedgerPage = ({ classId, semester, reportType = 'SBTS' }: HomeroomLedgerPageProps) => {
+const normalizeLedgerCode = (raw: unknown): string =>
+  String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const isMidtermAliasCode = (raw: unknown): boolean => {
+  const normalized = normalizeLedgerCode(raw);
+  if (!normalized) return false;
+  if (['MIDTERM', 'SBTS', 'PTS', 'UTS'].includes(normalized)) return true;
+  return normalized.includes('MIDTERM');
+};
+
+const isFinalAliasCode = (raw: unknown): boolean => {
+  const normalized = normalizeLedgerCode(raw);
+  if (!normalized) return false;
+  if (['FINAL', 'SAS', 'SAT', 'PAS', 'PAT', 'PSAS', 'PSAT'].includes(normalized)) return true;
+  return normalized.includes('FINAL');
+};
+
+export const HomeroomLedgerPage = ({
+  classId,
+  semester,
+  reportType = '',
+  programCode,
+  reportComponentType: reportComponentTypeProp,
+}: HomeroomLedgerPageProps) => {
+  const normalizedReportType = normalizeLedgerCode(reportType);
+
   const { data: ledgerData, isLoading, error } = useQuery<LedgerResponse>({
-    queryKey: ['class-ledger', classId, semester],
+    queryKey: ['class-ledger', classId, semester, normalizedReportType, String(programCode || '')],
     queryFn: async () => {
       const response = await api.get('/reports/ledger', {
-        params: { classId, semester }
+        params: {
+          classId,
+          semester,
+          ...(programCode ? { programCode } : {}),
+          ...(!programCode && normalizedReportType ? { reportType: normalizedReportType } : {}),
+        }
       });
       return response.data.data;
     },
     enabled: !!classId && !!semester
   });
 
-  const isSasOrSat = reportType === 'SAS' || reportType === 'SAT';
+  const reportComponentMode = String(ledgerData?.meta?.reportComponentMode || '')
+    .trim()
+    .toUpperCase();
+  const reportComponentType = String(ledgerData?.meta?.reportComponentType || '')
+    .trim()
+    .toUpperCase();
+  const normalizedComponentTypeProp = String(reportComponentTypeProp || '')
+    .trim()
+    .toUpperCase();
+  const fallbackAsMidterm =
+    isMidtermAliasCode(normalizedComponentTypeProp) ||
+    isMidtermAliasCode(normalizedReportType);
+  const fallbackAsFinal =
+    isFinalAliasCode(normalizedComponentTypeProp) ||
+    isFinalAliasCode(normalizedReportType) ||
+    (Boolean(normalizedReportType) && !fallbackAsMidterm);
+  const isMidtermView =
+    isMidtermAliasCode(reportComponentMode) ||
+    isMidtermAliasCode(reportComponentType) ||
+    (!reportComponentType && fallbackAsMidterm);
+  const isFinalView =
+    isFinalAliasCode(reportComponentMode) ||
+    isFinalAliasCode(reportComponentType) ||
+    (!reportComponentType && fallbackAsFinal);
 
   if (!semester) {
     return (
@@ -87,6 +163,9 @@ export const HomeroomLedgerPage = ({ classId, semester, reportType = 'SBTS' }: H
     );
   }
 
+  const headerCol1 = ledgerData.meta?.col1Label || (isMidtermView ? 'Komponen 1' : 'Nilai Akhir');
+  const headerCol2 = ledgerData.meta?.col2Label || 'Komponen 2';
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
@@ -113,12 +192,12 @@ export const HomeroomLedgerPage = ({ classId, semester, reportType = 'SBTS' }: H
                 {ledgerData.subjects.map((subject) => (
                   <Fragment key={`sub-header-${subject.id}`}>
                     <th className="px-2 py-2 text-center border-r border-gray-200 w-[60px] text-xs">
-                      {isSasOrSat ? 'NILAI AKHIR' : 'FORMATIF'}
+                      {headerCol1}
                     </th>
-                    <th className={isSasOrSat 
+                    <th className={isFinalView 
                       ? "px-2 py-2 text-left border-r border-gray-200 w-[240px] min-w-[240px] max-w-[240px] text-xs bg-blue-50" 
                       : "px-2 py-2 text-center border-r border-gray-200 w-[60px] text-xs bg-blue-50"}>
-                      {isSasOrSat ? 'CAPAIAN KOMPETENSI' : 'SBTS'}
+                      {headerCol2}
                     </th>
                   </Fragment>
                 ))}
@@ -143,12 +222,21 @@ export const HomeroomLedgerPage = ({ classId, semester, reportType = 'SBTS' }: H
                     let col1Value: React.ReactNode = '-';
                     let col2Value: React.ReactNode = '-';
 
-                    if (isSasOrSat) {
-                      col1Value = grades?.finalScore ? Math.round(grades.finalScore) : '-';
+                    if (isFinalView) {
+                      col1Value =
+                        grades?.finalScore !== null && grades?.finalScore !== undefined
+                          ? Math.round(grades.finalScore)
+                          : '-';
                       col2Value = (grades?.description && grades.description.trim() !== '') ? grades.description : '-';
                     } else {
-                      col1Value = grades?.formatif ? Math.round(grades.formatif) : '-';
-                      col2Value = grades?.sbts ?? '-';
+                      col1Value =
+                        grades?.formatif !== null && grades?.formatif !== undefined
+                          ? Math.round(grades.formatif)
+                          : '-';
+                      col2Value =
+                        grades?.sbts !== null && grades?.sbts !== undefined
+                          ? Math.round(grades.sbts)
+                          : '-';
                     }
 
                     return (
@@ -156,7 +244,7 @@ export const HomeroomLedgerPage = ({ classId, semester, reportType = 'SBTS' }: H
                         <td className="px-2 py-3 text-center border-r border-gray-200 text-gray-600">
                           {col1Value}
                         </td>
-                        <td className={isSasOrSat 
+                        <td className={isFinalView 
                           ? "px-2 py-3 text-left border-r border-gray-200 font-medium text-blue-700 bg-blue-50/30 w-[240px] min-w-[240px] max-w-[240px] whitespace-normal break-words"
                           : "px-2 py-3 text-center border-r border-gray-200 font-medium text-blue-700 bg-blue-50/30"}>
                           {col2Value}
@@ -172,17 +260,17 @@ export const HomeroomLedgerPage = ({ classId, semester, reportType = 'SBTS' }: H
       </div>
       
       <div className="text-xs text-gray-500 italic mt-2">
-        {isSasOrSat ? (
+        {isFinalView ? (
           <>
-            * NILAI AKHIR: Nilai Rapor Akhir Semester.
+            * {headerCol1}: Nilai rapor akhir hasil kalkulasi backend.
             <br />
-            * CAPAIAN KOMPETENSI: Predikat Capaian Kompetensi (A/B/C/D).
+            * {headerCol2}: Catatan/capaian kompetensi siswa per mata pelajaran.
           </>
         ) : (
           <>
-            * FORMATIF: Rata-rata Nilai Formatif (NF1, NF2, NF3).
+            * {headerCol1}: Rata-rata komponen formatif dari konfigurasi aktif.
             <br />
-            * SBTS: Sumatif Bersama Tengah Semester.
+            * {headerCol2}: Nilai komponen tengah semester dari konfigurasi aktif.
           </>
         )}
         <br />

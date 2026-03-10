@@ -92,6 +92,11 @@ function parseNumberInput(value: string) {
   return parsed;
 }
 
+function resolveApiErrorMessage(error: unknown, fallback: string) {
+  const apiError = error as { response?: { data?: { message?: string } }; message?: string };
+  return apiError?.response?.data?.message || apiError?.message || fallback;
+}
+
 function toInputDate(value?: string | null) {
   if (!value) return '';
   const date = new Date(value);
@@ -478,7 +483,7 @@ function InventoryCard({
         </Text>
       ) : null}
 
-      {!!item.description ? (
+      {item.description ? (
         <Text style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
           {templateProfile.descriptionLabel}: {item.description}
         </Text>
@@ -587,7 +592,8 @@ export default function TeacherSarprasInventoryScreen() {
 
   useEffect(() => {
     if (inventoryScope !== 'LIBRARY' && section === 'PEMINJAMAN') {
-      setSection('RINGKASAN');
+      const timerId = setTimeout(() => setSection('RINGKASAN'), 0);
+      return () => clearTimeout(timerId);
     }
   }, [inventoryScope, section]);
 
@@ -608,7 +614,7 @@ export default function TeacherSarprasInventoryScreen() {
     queryFn: () => sarprasApi.listRoomCategories(),
   });
 
-  const categories = categoriesQuery.data || [];
+  const categories = useMemo(() => categoriesQuery.data || [], [categoriesQuery.data]);
   const scopedCategories = useMemo(() => {
     if (inventoryScope === 'ALL') return categories;
     return categories.filter((category) => {
@@ -622,11 +628,12 @@ export default function TeacherSarprasInventoryScreen() {
 
   useEffect(() => {
     if (!scopedCategories.length) {
-      setSelectedCategoryId(null);
-      return;
+      const timerId = setTimeout(() => setSelectedCategoryId(null), 0);
+      return () => clearTimeout(timerId);
     }
     if (!selectedCategoryId || !scopedCategories.some((category) => category.id === selectedCategoryId)) {
-      setSelectedCategoryId(scopedCategories[0].id);
+      const timerId = setTimeout(() => setSelectedCategoryId(scopedCategories[0].id), 0);
+      return () => clearTimeout(timerId);
     }
   }, [scopedCategories, selectedCategoryId]);
 
@@ -636,15 +643,16 @@ export default function TeacherSarprasInventoryScreen() {
     queryFn: () => sarprasApi.listRooms({ categoryId: Number(selectedCategoryId) }),
   });
 
-  const rooms = roomsQuery.data || [];
+  const rooms = useMemo(() => roomsQuery.data || [], [roomsQuery.data]);
 
   useEffect(() => {
     if (!rooms.length) {
-      setSelectedRoomId(null);
-      return;
+      const timerId = setTimeout(() => setSelectedRoomId(null), 0);
+      return () => clearTimeout(timerId);
     }
     if (!selectedRoomId || !rooms.some((room) => room.id === selectedRoomId)) {
-      setSelectedRoomId(rooms[0].id);
+      const timerId = setTimeout(() => setSelectedRoomId(rooms[0].id), 0);
+      return () => clearTimeout(timerId);
     }
   }, [rooms, selectedRoomId]);
 
@@ -671,9 +679,9 @@ export default function TeacherSarprasInventoryScreen() {
     queryFn: () => sarprasApi.getLibraryLoanSettings(),
   });
 
-  const inventoryItems = inventoryQuery.data || [];
-  const libraryLoanClassOptions = libraryLoanClassesQuery.data || [];
-  const libraryLoans = libraryLoansQuery.data || [];
+  const inventoryItems = useMemo(() => inventoryQuery.data || [], [inventoryQuery.data]);
+  const libraryLoanClassOptions = useMemo(() => libraryLoanClassesQuery.data || [], [libraryLoanClassesQuery.data]);
+  const libraryLoans = useMemo(() => libraryLoansQuery.data || [], [libraryLoansQuery.data]);
   const libraryLoanSettings = (libraryLoanSettingsQuery.data || { finePerDay: 1000 }) as SarprasLibraryLoanSettings;
   const libraryLoanFinePerDay = Math.max(0, Number(libraryLoanSettings?.finePerDay || 1000));
   const selectedCategory = scopedCategories.find((category) => category.id === selectedCategoryId) || null;
@@ -694,7 +702,8 @@ export default function TeacherSarprasInventoryScreen() {
 
   useEffect(() => {
     if (inventoryScope !== 'LIBRARY') return;
-    setLoanFinePerDayInput(String(libraryLoanFinePerDay));
+    const timerId = setTimeout(() => setLoanFinePerDayInput(String(libraryLoanFinePerDay)), 0);
+    return () => clearTimeout(timerId);
   }, [inventoryScope, libraryLoanFinePerDay]);
 
   const filteredRooms = useMemo(() => {
@@ -870,8 +879,8 @@ export default function TeacherSarprasInventoryScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-categories'] });
       if (row?.id) setSelectedCategoryId(row.id);
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || error?.message || 'Tidak dapat menyimpan kategori.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Tidak dapat menyimpan kategori.'));
     },
   });
 
@@ -882,8 +891,8 @@ export default function TeacherSarprasInventoryScreen() {
       resetCategoryEditor();
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-categories'] });
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || 'Tidak dapat menghapus kategori.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Tidak dapat menghapus kategori.'));
     },
   });
 
@@ -914,8 +923,8 @@ export default function TeacherSarprasInventoryScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-rooms'] });
       if (row?.id) setSelectedRoomId(row.id);
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || error?.message || 'Tidak dapat menyimpan ruangan.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Tidak dapat menyimpan ruangan.'));
     },
   });
 
@@ -928,8 +937,8 @@ export default function TeacherSarprasInventoryScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-rooms'] });
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-inventory'] });
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || 'Tidak dapat menghapus ruangan.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Tidak dapat menghapus ruangan.'));
     },
   });
 
@@ -1008,8 +1017,8 @@ export default function TeacherSarprasInventoryScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-rooms'] });
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-inventory'] });
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || error?.message || 'Tidak dapat menyimpan item inventaris.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Tidak dapat menyimpan item inventaris.'));
     },
   });
 
@@ -1021,8 +1030,8 @@ export default function TeacherSarprasInventoryScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-rooms'] });
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-inventory'] });
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || 'Tidak dapat menghapus item inventaris.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Tidak dapat menghapus item inventaris.'));
     },
   });
 
@@ -1080,10 +1089,10 @@ export default function TeacherSarprasInventoryScreen() {
       resetLoanEditor();
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-library-loans'] });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       Alert.alert(
         'Gagal',
-        error?.response?.data?.message || error?.message || 'Tidak dapat menyimpan data peminjaman buku.',
+        resolveApiErrorMessage(error, 'Tidak dapat menyimpan data peminjaman buku.'),
       );
     },
   });
@@ -1103,8 +1112,8 @@ export default function TeacherSarprasInventoryScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-library-loan-settings'] });
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-library-loans'] });
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || error?.message || 'Gagal memperbarui tarif denda.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Gagal memperbarui tarif denda.'));
     },
   });
 
@@ -1115,8 +1124,8 @@ export default function TeacherSarprasInventoryScreen() {
       resetLoanEditor();
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-library-loans'] });
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || 'Tidak dapat menghapus data peminjaman buku.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Tidak dapat menghapus data peminjaman buku.'));
     },
   });
 
@@ -1130,8 +1139,8 @@ export default function TeacherSarprasInventoryScreen() {
       Alert.alert('Berhasil', 'Status pengembalian diperbarui menjadi Dikembalikan.');
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-library-loans'] });
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || 'Tidak dapat memperbarui status pengembalian.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Tidak dapat memperbarui status pengembalian.'));
     },
   });
 
@@ -1168,8 +1177,8 @@ export default function TeacherSarprasInventoryScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-inventory'] });
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-rooms'] });
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || error?.message || 'Tidak dapat menghapus kategori buku.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Tidak dapat menghapus kategori buku.'));
     },
   });
 

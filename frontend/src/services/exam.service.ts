@@ -42,178 +42,15 @@ export interface ExamProgram {
     isActive: boolean;
     showOnTeacherMenu: boolean;
     showOnStudentMenu: boolean;
+    targetClassLevels?: string[];
+    allowedSubjectIds?: number[];
+    allowedAuthorIds?: number[];
     source: 'default' | 'custom';
 }
 
-export const DEFAULT_EXAM_PROGRAMS: ExamProgram[] = [
-    {
-        code: 'FORMATIF',
-        baseType: 'FORMATIF',
-        baseTypeCode: 'FORMATIF',
-        gradeComponentType: 'FORMATIVE',
-        gradeComponentTypeCode: 'FORMATIVE',
-        gradeComponentCode: 'FORMATIVE',
-        gradeComponentLabel: 'Formatif',
-        gradeEntryMode: 'NF_SERIES',
-        gradeEntryModeCode: 'NF_SERIES',
-        label: 'Formatif (Quiz)',
-        shortLabel: 'Formatif',
-        description: 'Penilaian formatif harian.',
-        fixedSemester: null,
-        order: 10,
-        isActive: true,
-        showOnTeacherMenu: true,
-        showOnStudentMenu: true,
-        source: 'default',
-    },
-    {
-        code: 'SBTS',
-        baseType: 'SBTS',
-        baseTypeCode: 'SBTS',
-        gradeComponentType: 'MIDTERM',
-        gradeComponentTypeCode: 'MIDTERM',
-        gradeComponentCode: 'MIDTERM',
-        gradeComponentLabel: 'SBTS',
-        gradeEntryMode: 'SINGLE_SCORE',
-        gradeEntryModeCode: 'SINGLE_SCORE',
-        label: 'SBTS',
-        shortLabel: 'SBTS',
-        description: 'Sumatif tengah semester.',
-        fixedSemester: null,
-        order: 20,
-        isActive: true,
-        showOnTeacherMenu: true,
-        showOnStudentMenu: true,
-        source: 'default',
-    },
-    {
-        code: 'SAS',
-        baseType: 'SAS',
-        baseTypeCode: 'SAS',
-        gradeComponentType: 'FINAL',
-        gradeComponentTypeCode: 'FINAL',
-        gradeComponentCode: 'FINAL',
-        gradeComponentLabel: 'SAS/SAT',
-        gradeEntryMode: 'SINGLE_SCORE',
-        gradeEntryModeCode: 'SINGLE_SCORE',
-        label: 'SAS',
-        shortLabel: 'SAS',
-        description: 'Sumatif akhir semester ganjil.',
-        fixedSemester: 'ODD',
-        order: 30,
-        isActive: true,
-        showOnTeacherMenu: true,
-        showOnStudentMenu: true,
-        source: 'default',
-    },
-    {
-        code: 'SAT',
-        baseType: 'SAT',
-        baseTypeCode: 'SAT',
-        gradeComponentType: 'FINAL',
-        gradeComponentTypeCode: 'FINAL',
-        gradeComponentCode: 'FINAL',
-        gradeComponentLabel: 'SAS/SAT',
-        gradeEntryMode: 'SINGLE_SCORE',
-        gradeEntryModeCode: 'SINGLE_SCORE',
-        label: 'SAT',
-        shortLabel: 'SAT',
-        description: 'Sumatif akhir semester genap.',
-        fixedSemester: 'EVEN',
-        order: 40,
-        isActive: true,
-        showOnTeacherMenu: true,
-        showOnStudentMenu: true,
-        source: 'default',
-    },
-];
+export const DEFAULT_EXAM_PROGRAMS: ExamProgram[] = [];
 
-export const DEFAULT_GRADE_COMPONENTS: ExamGradeComponent[] = [
-    {
-        code: 'FORMATIVE',
-        label: 'Formatif',
-        type: 'FORMATIVE',
-        typeCode: 'FORMATIVE',
-        entryMode: 'NF_SERIES',
-        entryModeCode: 'NF_SERIES',
-        reportSlot: 'FORMATIF',
-        reportSlotCode: 'FORMATIF',
-        includeInFinalScore: true,
-        description: 'Nilai formatif bertahap (NF1-NF6).',
-        order: 10,
-        isActive: true,
-    },
-    {
-        code: 'MIDTERM',
-        label: 'SBTS',
-        type: 'MIDTERM',
-        typeCode: 'MIDTERM',
-        entryMode: 'SINGLE_SCORE',
-        entryModeCode: 'SINGLE_SCORE',
-        reportSlot: 'SBTS',
-        reportSlotCode: 'SBTS',
-        includeInFinalScore: true,
-        description: 'Nilai ujian tengah semester.',
-        order: 20,
-        isActive: true,
-    },
-    {
-        code: 'FINAL',
-        label: 'SAS/SAT',
-        type: 'FINAL',
-        typeCode: 'FINAL',
-        entryMode: 'SINGLE_SCORE',
-        entryModeCode: 'SINGLE_SCORE',
-        reportSlot: 'SAS',
-        reportSlotCode: 'SAS',
-        includeInFinalScore: true,
-        description: 'Nilai ujian akhir semester.',
-        order: 30,
-        isActive: true,
-    },
-    {
-        code: 'SKILL',
-        label: 'Skill',
-        type: 'SKILL',
-        typeCode: 'SKILL',
-        entryMode: 'SINGLE_SCORE',
-        entryModeCode: 'SINGLE_SCORE',
-        reportSlot: 'NONE',
-        reportSlotCode: 'NONE',
-        includeInFinalScore: false,
-        description: null,
-        order: 40,
-        isActive: true,
-    },
-    {
-        code: 'US_PRACTICE',
-        label: 'US Praktik',
-        type: 'US_PRACTICE',
-        typeCode: 'US_PRACTICE',
-        entryMode: 'SINGLE_SCORE',
-        entryModeCode: 'SINGLE_SCORE',
-        reportSlot: 'US_PRACTICE',
-        reportSlotCode: 'US_PRACTICE',
-        includeInFinalScore: false,
-        description: null,
-        order: 50,
-        isActive: true,
-    },
-    {
-        code: 'US_THEORY',
-        label: 'US Teori',
-        type: 'US_THEORY',
-        typeCode: 'US_THEORY',
-        entryMode: 'SINGLE_SCORE',
-        entryModeCode: 'SINGLE_SCORE',
-        reportSlot: 'US_THEORY',
-        reportSlotCode: 'US_THEORY',
-        includeInFinalScore: false,
-        description: null,
-        order: 60,
-        isActive: true,
-    },
-];
+export const DEFAULT_GRADE_COMPONENTS: ExamGradeComponent[] = [];
 
 export const normalizeExamProgramCode = (raw: unknown): string => {
     return String(raw || '')
@@ -287,12 +124,15 @@ export interface ExamPacket {
     type: ExamType;
     programCode?: string | null;
     duration: number; // minutes
+    publishedQuestionCount?: number | null;
+    totalQuestionPoolCount?: number;
     kkm: number;
     instructions?: string;
     subjectId: number;
     subject?: { id: number; name: string; code: string };
     authorId: number;
     academicYearId: number;
+    semester?: string;
     academicYear?: { id: number; name: string };
     questions?: Question[];
     _count?: {
@@ -309,11 +149,27 @@ export interface ExamSchedule {
     class?: { id: number; name: string };
     startTime: string;
     endTime: string;
+    sessionId?: number | null;
+    sessionLabel?: string | null;
+    programSession?: {
+        id: number;
+        label: string;
+        displayOrder?: number;
+    } | null;
     token?: string;
     isActive: boolean;
     _count?: {
         sessions: number;
     };
+}
+
+export interface ExamProgramSession {
+    id: number;
+    academicYearId: number;
+    programCode: string;
+    label: string;
+    displayOrder: number;
+    isActive: boolean;
 }
 
 export interface ExamRestriction {
@@ -339,6 +195,10 @@ export interface PacketItemAnalysisQuestionRow {
     orderNumber: number;
     type: string;
     contentPreview: string;
+    contentHtml: string | null;
+    questionImageUrl: string | null;
+    questionVideoUrl: string | null;
+    questionVideoType: string | null;
     scoreWeight: number;
     answeredCount: number;
     unansweredCount: number;
@@ -397,6 +257,14 @@ export interface PacketSubmissionSessionRow {
     objectiveTotal: number;
     objectiveCorrect: number;
     objectiveIncorrect: number;
+    monitoring?: {
+        totalViolations: number;
+        tabSwitchCount: number;
+        fullscreenExitCount: number;
+        appSwitchCount: number;
+        lastViolationType: string | null;
+        lastViolationAt: string | null;
+    };
 }
 
 export interface PacketSubmissionsSummary {
@@ -405,6 +273,10 @@ export interface PacketSubmissionsSummary {
     statusFilter: string | null;
     scheduleCount: number;
     sessionCount: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    pageSessionCount: number;
     participantCount: number;
     submittedCount: number;
     inProgressCount: number;
@@ -458,6 +330,14 @@ export interface SessionDetailResponse {
         score: number | null;
         startTime: string;
         submitTime: string | null;
+        monitoring?: {
+            totalViolations: number;
+            tabSwitchCount: number;
+            fullscreenExitCount: number;
+            appSwitchCount: number;
+            lastViolationType: string | null;
+            lastViolationAt: string | null;
+        };
         schedule: {
             id: number;
             startTime: string;
@@ -546,6 +426,39 @@ export const examService = {
             };
         };
     },
+    getProgramSessions: async (params: {
+        academicYearId: number;
+        programCode?: string;
+        examType?: string;
+        includeInactive?: boolean;
+    }) => {
+        const response = await api.get('/exams/program-sessions', { params });
+        return response.data as {
+            statusCode: number;
+            success: boolean;
+            message: string;
+            data: {
+                academicYearId: number;
+                programCode: string;
+                sessions: ExamProgramSession[];
+            };
+        };
+    },
+    createProgramSession: async (payload: {
+        academicYearId: number;
+        programCode?: string;
+        examType?: string;
+        label: string;
+        displayOrder?: number;
+    }) => {
+        const response = await api.post('/exams/program-sessions', payload);
+        return response.data as {
+            statusCode: number;
+            success: boolean;
+            message: string;
+            data: ExamProgramSession;
+        };
+    },
     updatePrograms: async (payload: {
         academicYearId?: number;
         programs: Array<{
@@ -567,6 +480,9 @@ export const examService = {
             isActive?: boolean;
             showOnTeacherMenu?: boolean;
             showOnStudentMenu?: boolean;
+            targetClassLevels?: string[];
+            allowedSubjectIds?: number[];
+            allowedAuthorIds?: number[];
         }>;
     }) => {
         const response = await api.put('/exams/programs', payload);
@@ -600,7 +516,7 @@ export const examService = {
         const response = await api.get(`/exams/packets/${id}`);
         return response.data;
     },
-    getPacketItemAnalysis: async (id: number, params?: { classId?: number }) => {
+    getPacketItemAnalysis: async (id: number, params?: { classId?: number; includeContentHtml?: boolean }) => {
         const response = await api.get(`/exams/packets/${id}/item-analysis`, { params });
         return response.data as { statusCode: number; success: boolean; message: string; data: PacketItemAnalysisResponse };
     },
@@ -610,7 +526,12 @@ export const examService = {
     },
     getPacketSubmissions: async (
         id: number,
-        params?: { classId?: number; status?: 'IN_PROGRESS' | 'COMPLETED' | 'TIMEOUT' },
+        params?: {
+            classId?: number;
+            status?: 'IN_PROGRESS' | 'COMPLETED' | 'TIMEOUT';
+            page?: number;
+            limit?: number;
+        },
     ) => {
         const response = await api.get(`/exams/packets/${id}/submissions`, { params });
         return response.data as { statusCode: number; success: boolean; message: string; data: PacketSubmissionsResponse };
@@ -635,8 +556,30 @@ export const examService = {
         const response = await api.get('/exams/schedules', { params });
         return response.data;
     },
-    createSchedule: async (data: { packetId: number; classIds: number[]; startTime: string; endTime: string; proctorId?: number; room?: string }) => {
+    createSchedule: async (data: {
+        packetId: number;
+        classIds: number[];
+        startTime: string;
+        endTime: string;
+        proctorId?: number;
+        room?: string;
+        sessionId?: number | null;
+    }) => {
         const response = await api.post('/exams/schedules', data);
+        return response.data;
+    },
+    updateSchedule: async (
+        id: number,
+        data: {
+            startTime?: string;
+            endTime?: string;
+            proctorId?: number | null;
+            room?: string | null;
+            isActive?: boolean;
+            sessionId?: number | null;
+        },
+    ) => {
+        const response = await api.patch(`/exams/schedules/${id}`, data);
         return response.data;
     },
     deleteSchedule: async (id: number) => {
@@ -644,14 +587,14 @@ export const examService = {
         return response.data;
     },
     getAvailableExams: async () => {
-        const response = await api.get(`/exams/available?_t=${Date.now()}`);
+        const response = await api.get('/exams/available');
         return response.data;
     },
-    getRestrictions: async (params: { classId: number; academicYearId: number; semester: string; examType: string; page?: number; limit?: number; search?: string }) => {
+    getRestrictions: async (params: { classId: number; academicYearId: number; semester: string; examType?: string; programCode?: string; page?: number; limit?: number; search?: string }) => {
         const response = await api.get('/exams/restrictions', { params });
         return response.data;
     },
-    updateRestriction: async (data: { studentId: number; academicYearId: number; semester: string; examType: string; isBlocked: boolean; reason?: string }) => {
+    updateRestriction: async (data: { studentId: number; academicYearId: number; semester: string; examType?: string; programCode?: string; isBlocked: boolean; reason?: string }) => {
         const response = await api.put('/exams/restrictions', data);
         return response.data;
     }

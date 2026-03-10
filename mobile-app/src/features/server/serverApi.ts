@@ -127,6 +127,52 @@ export type ServerMonitoringResponse = {
   } | null;
 };
 
+export type WebmailResetResponse = {
+  user: {
+    id: number;
+    username: string;
+    name: string;
+    role: string;
+    email: string | null;
+  };
+  mailboxIdentity: string;
+  password: string;
+  generatedBySystem: boolean;
+  resetAt: string;
+};
+
+export type WebmailResetHistoryItem = {
+  id: number;
+  createdAt: string;
+  actor: {
+    id: number;
+    username: string;
+    name: string;
+    role: string | null;
+  };
+  targetUser: {
+    id: number | null;
+    username: string | null;
+    name: string | null;
+    role: string | null;
+    email: string | null;
+  };
+  mailboxIdentity: string | null;
+  generatedBySystem: boolean;
+  passwordLength: number;
+  reason: string | null;
+};
+
+export type WebmailResetHistoryResponse = {
+  logs: WebmailResetHistoryItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
 export const serverApi = {
   async getInfo() {
     const response = await apiClient.get<ApiEnvelope<ServerInfoResponse>>('/server/info');
@@ -140,6 +186,24 @@ export const serverApi = {
 
   async getMonitoring() {
     const response = await apiClient.get<ApiEnvelope<ServerMonitoringResponse>>('/server/monitoring');
+    return response.data.data;
+  },
+
+  async getWebmailResetHistory(params?: { page?: number; limit?: number; search?: string }) {
+    const response = await apiClient.get<ApiEnvelope<WebmailResetHistoryResponse>>(
+      '/server/webmail/reset-history',
+      {
+        params,
+      },
+    );
+    return response.data.data;
+  },
+
+  async resetWebmailMailboxPassword(payload: { identifier: string; password?: string; reason?: string }) {
+    const response = await apiClient.post<ApiEnvelope<WebmailResetResponse>>(
+      '/server/webmail/reset-mailbox-password',
+      payload,
+    );
     return response.data.data;
   },
 };

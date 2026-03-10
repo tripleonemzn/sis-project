@@ -50,14 +50,9 @@ const STRICT_WEB_PARITY_KEYS = new Set<string>([
   'teacher-modules',
   'teacher-kktp',
   'teacher-proctoring',
-  'teacher-exam-formatif',
-  'teacher-exam-sbts',
-  'teacher-exam-sas',
-  'teacher-exam-sat',
+  'teacher-exam-programs',
   'teacher-exam-bank',
-  'teacher-homeroom-sbts',
-  'teacher-homeroom-sas',
-  'teacher-homeroom-sat',
+  'teacher-homeroom-report',
   'teacher-training-classes',
   'teacher-training-attendance',
   'teacher-training-grades',
@@ -171,19 +166,17 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       route: '/student/internship?tab=REPORT',
     },
     {
-      key: 'student-exam-formatif',
-      label: 'Formatif (Quiz)',
-      route: '/exams?programCode=FORMATIF',
+      key: 'student-exam-programs',
+      label: 'Ujian Online',
+      route: '/exams',
     },
-    { key: 'student-exam-sbts', label: 'SBTS', route: '/exams?programCode=SBTS' },
-    { key: 'student-exam-sas', label: 'SAS', route: '/exams?programCode=SAS' },
-    { key: 'student-exam-sat', label: 'SAT', route: '/exams?programCode=SAT' },
     { key: 'student-grade-history', label: 'Riwayat Nilai', route: '/grades' },
     { key: 'student-finance', label: 'Keuangan', route: '/student/finance' },
     { key: 'student-profile-web', label: 'Profile', route: '/profile' },
   ],
   TEACHER: [
     { key: 'teacher-dashboard', label: 'Dashboard', route: '/home' },
+    { key: 'teacher-email', label: 'Email', route: '/email' },
     { key: 'teaching-schedule', label: 'Jadwal Mengajar', route: '/schedule' },
     { key: 'teacher-classes', label: 'Kelas & Mapel', route: '/teacher/classes' },
     {
@@ -238,24 +231,9 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       route: '/teacher/proctoring',
     },
     {
-      key: 'teacher-exam-formatif',
-      label: 'Formatif (Quiz)',
-      route: '/teacher/exams?programCode=FORMATIF',
-    },
-    {
-      key: 'teacher-exam-sbts',
-      label: 'SBTS',
-      route: '/teacher/exams?programCode=SBTS',
-    },
-    {
-      key: 'teacher-exam-sas',
-      label: 'SAS',
-      route: '/teacher/exams?programCode=SAS',
-    },
-    {
-      key: 'teacher-exam-sat',
-      label: 'SAT',
-      route: '/teacher/exams?programCode=SAT',
+      key: 'teacher-exam-programs',
+      label: 'Program Ujian',
+      route: '/teacher/exams',
     },
     {
       key: 'teacher-exam-bank',
@@ -278,19 +256,9 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       route: '/teacher/homeroom-permissions',
     },
     {
-      key: 'teacher-homeroom-sbts',
-      label: 'Rapor SBTS',
-      route: '/teacher/homeroom-sbts',
-    },
-    {
-      key: 'teacher-homeroom-sas',
-      label: 'Rapor SAS',
-      route: '/teacher/homeroom-sas',
-    },
-    {
-      key: 'teacher-homeroom-sat',
-      label: 'Rapor SAT',
-      route: '/teacher/homeroom-sat',
+      key: 'teacher-homeroom-report',
+      label: 'Rapor Wali Kelas',
+      route: '/teacher/homeroom-report',
     },
     {
       key: 'teacher-training-classes',
@@ -456,6 +424,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
   ],
   ADMIN: [
     { key: 'admin-dashboard', label: 'Dashboard', route: '/home' },
+    { key: 'admin-email', label: 'Email', route: '/email' },
     { key: 'admin-academic-years', label: 'Tahun Ajaran', route: '/admin/academic?section=academic-years' },
     { key: 'admin-majors', label: 'Kompetensi Keahlian', route: '/admin/master-data?section=majors' },
     { key: 'admin-classes', label: 'Kelas', route: '/admin/master-data?section=classes' },
@@ -540,6 +509,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     { key: 'admin-exam-sessions', label: 'Sesi Ujian', route: '/admin/academic?section=exam-sessions' },
     { key: 'admin-slideshow', label: 'Slideshow', route: '/admin/slideshow' },
     { key: 'admin-server-area', label: 'Area Server', route: '/admin/server-area' },
+    { key: 'admin-webmail', label: 'Webmail Admin', route: '/admin/server-area?tab=webmail' },
     { key: 'admin-school-profile', label: 'Profil Sekolah', route: '/profile' },
     { key: 'admin-password', label: 'Ubah Password', route: '/profile' },
   ],
@@ -563,6 +533,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       label: 'Dashboard',
       route: '/principal/overview',
     },
+    { key: 'principal-email', label: 'Email', route: '/email' },
     {
       key: 'principal-reports',
       label: 'Rapor & Ranking',
@@ -583,6 +554,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
   ],
   STAFF: [
     { key: 'staff-dashboard', label: 'Dashboard', route: '/home' },
+    { key: 'staff-email', label: 'Email', route: '/email' },
     { key: 'staff-payments', label: 'Pembayaran (SPP)', route: '/staff/payments' },
     { key: 'staff-students', label: 'Data Siswa', route: '/staff/students' },
     { key: 'staff-admin', label: 'Administrasi', route: '/staff/admin' },
@@ -603,7 +575,10 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
   ],
   EXTRACURRICULAR_TUTOR: [
     { key: 'tutor-dashboard', label: 'Dashboard', route: '/tutor/dashboard' },
+    { key: 'tutor-email', label: 'Email', route: '/email' },
     { key: 'tutor-members', label: 'Anggota & Nilai', route: '/tutor/members' },
+    { key: 'tutor-work-program', label: 'Program Kerja', route: '/tutor/work-program' },
+    { key: 'tutor-inventory', label: 'Inventaris Ekskul', route: '/tutor/inventory' },
     { key: 'tutor-profile', label: 'Profil', route: '/profile' },
   ],
 };
@@ -734,6 +709,22 @@ function dedupeMenuByKey(items: RoleMenuItem[]) {
   return result;
 }
 
+const DEMO_ROLE_KEYS: Array<keyof typeof ROLE_MENUS> = [
+  'ADMIN',
+  'TEACHER',
+  'STUDENT',
+  'PRINCIPAL',
+  'STAFF',
+  'PARENT',
+  'EXAMINER',
+  'EXTRACURRICULAR_TUTOR',
+];
+
+function getDemoRoleMenu() {
+  const allMenus = DEMO_ROLE_KEYS.flatMap((role) => ROLE_MENUS[role] || []);
+  return materializeMenuTargets(dedupeMenuByKey(allMenus));
+}
+
 type GroupDefinition = {
   key: string;
   label: string;
@@ -763,14 +754,14 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     {
       key: 'exams',
       label: 'UJIAN ONLINE',
-      menuKeys: ['student-exam-formatif', 'student-exam-sbts', 'student-exam-sas', 'student-exam-sat'],
+      menuKeys: ['student-exam-programs'],
     },
     { key: 'grades', label: 'NILAI SAYA', menuKeys: ['student-grade-history'] },
     { key: 'administration', label: 'ADMINISTRASI', menuKeys: ['student-finance'] },
     { key: 'settings', label: 'PENGATURAN', menuKeys: ['student-profile-web'] },
   ],
   TEACHER: [
-    { key: 'dashboard', label: 'Dashboard', menuKeys: ['teacher-dashboard'] },
+    { key: 'dashboard', label: 'Dashboard', menuKeys: ['teacher-dashboard', 'teacher-email'] },
     {
       key: 'academic',
       label: 'AKADEMIK',
@@ -793,10 +784,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
       label: 'UJIAN',
       menuKeys: [
         'teacher-proctoring',
-        'teacher-exam-formatif',
-        'teacher-exam-sbts',
-        'teacher-exam-sas',
-        'teacher-exam-sat',
+        'teacher-exam-programs',
         'teacher-exam-bank',
       ],
     },
@@ -807,9 +795,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
         'teacher-homeroom-attendance',
         'teacher-homeroom-behavior',
         'teacher-homeroom-permissions',
-        'teacher-homeroom-sbts',
-        'teacher-homeroom-sas',
-        'teacher-homeroom-sat',
+        'teacher-homeroom-report',
       ],
     },
     {
@@ -885,7 +871,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     { key: 'settings', label: 'PENGATURAN', menuKeys: ['teacher-profile'] },
   ],
   ADMIN: [
-    { key: 'dashboard', label: 'Dashboard', menuKeys: ['admin-dashboard'] },
+    { key: 'dashboard', label: 'Dashboard', menuKeys: ['admin-dashboard', 'admin-email'] },
     {
       key: 'master-data',
       label: 'MASTER DATA',
@@ -936,18 +922,18 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     {
       key: 'settings',
       label: 'PENGATURAN',
-      menuKeys: ['admin-slideshow', 'admin-server-area', 'admin-school-profile', 'admin-password'],
+      menuKeys: ['admin-slideshow', 'admin-server-area', 'admin-webmail', 'admin-school-profile', 'admin-password'],
     },
   ],
   PRINCIPAL: [
-    { key: 'dashboard', label: 'Dashboard', menuKeys: ['principal-dashboard'] },
+    { key: 'dashboard', label: 'Dashboard', menuKeys: ['principal-dashboard', 'principal-email'] },
     { key: 'academic', label: 'AKADEMIK', menuKeys: ['principal-reports', 'principal-attendance'] },
     { key: 'finance', label: 'KEUANGAN', menuKeys: ['principal-finance-requests'] },
     { key: 'students', label: 'KESISWAAN', menuKeys: ['principal-students'] },
     { key: 'teachers', label: 'SDM GURU', menuKeys: ['principal-teachers'] },
   ],
   STAFF: [
-    { key: 'dashboard', label: 'Dashboard', menuKeys: ['staff-dashboard'] },
+    { key: 'dashboard', label: 'Dashboard', menuKeys: ['staff-dashboard', 'staff-email'] },
     { key: 'payments', label: 'Pembayaran (SPP)', menuKeys: ['staff-payments'] },
     { key: 'students', label: 'Data Siswa', menuKeys: ['staff-students'] },
     { key: 'administration', label: 'Administrasi', menuKeys: ['staff-admin'] },
@@ -965,8 +951,10 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     { key: 'settings', label: 'PENGATURAN', menuKeys: ['examiner-profile'] },
   ],
   EXTRACURRICULAR_TUTOR: [
-    { key: 'dashboard', label: 'Dashboard', menuKeys: ['tutor-dashboard'] },
+    { key: 'dashboard', label: 'Dashboard', menuKeys: ['tutor-dashboard', 'tutor-email'] },
     { key: 'members', label: 'Anggota & Nilai', menuKeys: ['tutor-members'] },
+    { key: 'work-program', label: 'Program Kerja', menuKeys: ['tutor-work-program'] },
+    { key: 'inventory', label: 'Inventaris Ekskul', menuKeys: ['tutor-inventory'] },
     { key: 'settings', label: 'PENGATURAN', menuKeys: ['tutor-profile'] },
   ],
   CALON_SISWA: [
@@ -1110,7 +1098,7 @@ function buildTeacherGroups(
     };
   };
 
-  pushGroup('dashboard', 'Dashboard', pickMenus(byKey, ['teacher-dashboard']));
+  pushGroup('dashboard', 'Dashboard', pickMenus(byKey, ['teacher-dashboard', 'teacher-email']));
   pushGroup(
     'academic',
     'AKADEMIK',
@@ -1140,10 +1128,7 @@ function buildTeacherGroups(
     'UJIAN',
     pickMenus(byKey, [
       'teacher-proctoring',
-      'teacher-exam-formatif',
-      'teacher-exam-sbts',
-      'teacher-exam-sas',
-      'teacher-exam-sat',
+      'teacher-exam-programs',
       'teacher-exam-bank',
     ]),
   );
@@ -1156,9 +1141,7 @@ function buildTeacherGroups(
         'teacher-homeroom-attendance',
         'teacher-homeroom-behavior',
         'teacher-homeroom-permissions',
-        'teacher-homeroom-sbts',
-        'teacher-homeroom-sas',
-        'teacher-homeroom-sat',
+        'teacher-homeroom-report',
       ]),
     );
   }
@@ -1319,6 +1302,7 @@ if (__DEV__) {
 
 export function getRoleMenu(user?: AuthUser | null): RoleMenuItem[] {
   if (!user) return materializeMenuTargets(BASE_MENU);
+  if (user.isDemo) return getDemoRoleMenu();
 
   const roleItems = ROLE_MENUS[user.role] || BASE_MENU;
   const filteredItems = roleItems.filter((item) => shouldShowMenuItem(user, item));
@@ -1335,6 +1319,10 @@ export function getGroupedRoleMenu(user?: AuthUser | null, options?: RoleMenuBui
         items: menus,
       },
     ];
+  }
+
+  if (user.isDemo) {
+    return buildGroupedMenu('DEMO', menus);
   }
 
   if (user.role === 'STUDENT' && isStudentAlumni(user)) {

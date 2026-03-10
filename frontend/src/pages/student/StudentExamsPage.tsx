@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
@@ -20,12 +20,69 @@ import {
 
 type ExamProgramLabelMap = Record<string, string>
 
+type ExamPacketPayload = {
+  title?: string
+  description?: string
+  type?: string
+  programCode?: string
+  duration?: number
+  subject?: {
+    id?: string
+    name?: string
+  }
+  questionCount?: number
+  questions?: unknown[]
+}
+
+type ExamSessionPayload = {
+  id?: number
+  status?: string
+  startTime?: string | null
+  endTime?: string | null
+  submitTime?: string | null
+  submittedAt?: string | null
+  updatedAt?: string | null
+  isFinal?: boolean
+  score?: number | null
+}
+
+type ExamAvailabilityPayload = {
+  id: string
+  packet?: ExamPacketPayload
+  sessionLabel?: string | null
+  startTime: string
+  endTime: string
+  status: string
+  has_submitted?: boolean
+  sessions?: ExamSessionPayload[]
+  isBlocked?: boolean
+  blockReason?: string
+}
+
+type SuppressedExamPayload = {
+  exam_id?: string | number
+  title?: string
+  reason?: string
+}
+
+type AvailableExamsResponsePayload = {
+  exams?: ExamAvailabilityPayload[]
+  suppressed?: SuppressedExamPayload[]
+}
+
+type VendorFullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void>
+  mozRequestFullScreen?: () => Promise<void>
+  msRequestFullscreen?: () => Promise<void>
+}
+
 interface Exam {
   id: string
   title: string
   description: string
   type: string
   programCode?: string
+  sessionLabel?: string | null
   start_time: string
   end_time: string
   duration: number
@@ -53,7 +110,6 @@ export default function StudentExamsPage() {
   const { programCode: programSlugParam } = useParams<{ programCode?: string }>()
   const [loading, setLoading] = useState(true)
   const [exams, setExams] = useState<Exam[]>([])
-  const [filteredExams, setFilteredExams] = useState<Exam[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [programFilter, setProgramFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -98,9 +154,28 @@ export default function StudentExamsPage() {
     setProgramFilter('all')
   }, [location.pathname, programSlugParam, examPrograms])
 
-  useEffect(() => {
-    filterExams()
-  }, [exams, searchQuery, programFilter, statusFilter])
+  const getSessionPriority = (status: string | null | undefined) => {
+    const normalized = String(status || '').toUpperCase()
+    if (normalized === 'COMPLETED') return 5
+    if (normalized === 'TIMEOUT') return 4
+    if (normalized === 'IN_PROGRESS') return 3
+    if (normalized === 'NOT_STARTED') return 2
+    return 1
+  }
+
+  const pickBestSession = (sessions: ExamSessionPayload[] | null | undefined): ExamSessionPayload | null => {
+    if (!Array.isArray(sessions) || sessions.length === 0) return null
+    const sorted = [...sessions].sort((a, b) => {
+      const rankDiff = getSessionPriority(b.status) - getSessionPriority(a.status)
+      if (rankDiff !== 0) return rankDiff
+      const updatedDiff = new Date(String(b.updatedAt || 0)).getTime() - new Date(String(a.updatedAt || 0)).getTime()
+      if (updatedDiff !== 0) return updatedDiff
+      const submitDiff = new Date(String(b.submitTime || b.submittedAt || 0)).getTime() - new Date(String(a.submitTime || a.submittedAt || 0)).getTime()
+      if (submitDiff !== 0) return submitDiff
+      return new Date(String(b.startTime || 0)).getTime() - new Date(String(a.startTime || 0)).getTime()
+    })
+    return sorted[0] || null
+  }
 
   const fetchExamProgramLabels = async () => {
     try {
@@ -128,7 +203,7 @@ export default function StudentExamsPage() {
         nextLabels[code] = label
       })
       setExamProgramLabels(nextLabels)
-    } catch (error) {
+    } catch {
       setExamPrograms([])
       setExamProgramLabels({})
     }
@@ -142,36 +217,51 @@ export default function StudentExamsPage() {
 
       const resData = res.data || []
       // support new shape: { exams: [], suppressed: [] } or legacy array
-      const rawData = Array.isArray(resData) ? resData : (resData.exams || [])
-      const suppressed = Array.isArray(resData) ? [] : (resData.suppressed || [])
+      const payload = Array.isArray(resData)
+        ? { exams: resData as ExamAvailabilityPayload[], suppressed: [] as SuppressedExamPayload[] }
+        : (resData as AvailableExamsResponsePayload)
+      const rawData = Array.isArray(payload.exams) ? payload.exams : []
+      const suppressed = Array.isArray(payload.suppressed) ? payload.suppressed : []
       
-      const mappedExams = rawData.map((item: any) => ({
-        id: item.id,
-        title: item.packet?.title || 'Untitled Exam',
-        description: item.packet?.description || '',
-        type: item.packet?.type || 'QUIZ',
-        programCode: normalizeExamProgramCode(item.packet?.programCode || item.packet?.type || ''),
-        start_time: item.startTime,
-        end_time: item.endTime,
-        duration: item.packet?.duration || 0,
-        is_published: true,
-        subject: item.packet?.subject || { name: 'Unknown Subject' },
-        question_count: Array.isArray(item.packet?.questions) ? item.packet.questions.length : 0,
-        total_points: 100,
-        status: item.status,
-        has_submitted: 
-          item.has_submitted || 
-          item.status === 'COMPLETED' || 
-          item.status === 'GRADED' || 
-          !!(item.sessions?.[0]?.submittedAt || item.sessions?.[0]?.endTime || item.sessions?.[0]?.isFinal),
-        score: item.sessions?.[0] ? {
-            score: item.sessions[0].score || 0,
+      const mappedExams: Exam[] = rawData.map((item: ExamAvailabilityPayload) => {
+        const bestSession = pickBestSession(item.sessions)
+        const normalizedStatus = String(item.status || bestSession?.status || '').toUpperCase()
+        const hasSubmitted =
+          Boolean(item.has_submitted) ||
+          normalizedStatus === 'COMPLETED' ||
+          normalizedStatus === 'TIMEOUT' ||
+          Boolean(bestSession?.submitTime || bestSession?.submittedAt || bestSession?.isFinal)
+
+        return {
+          id: item.id,
+          title: item.packet?.title || 'Untitled Exam',
+          description: item.packet?.description || '',
+          type: item.packet?.type || 'QUIZ',
+          programCode: normalizeExamProgramCode(item.packet?.programCode || item.packet?.type || ''),
+          sessionLabel: item.sessionLabel || null,
+          start_time: item.startTime,
+          end_time: item.endTime,
+          duration: item.packet?.duration || 0,
+          is_published: true,
+          subject: {
+            id: String(item.packet?.subject?.id || ''),
+            name: String(item.packet?.subject?.name || 'Unknown Subject'),
+          },
+          question_count:
+            Number(item.packet?.questionCount) ||
+            (Array.isArray(item.packet?.questions) ? item.packet.questions.length : 0),
+          total_points: 100,
+          status: normalizedStatus,
+          has_submitted: hasSubmitted,
+          score: typeof bestSession?.score === 'number' ? {
+            score: bestSession.score,
             max_score: 100,
             percentage: 0
-        } : undefined,
-        isBlocked: item.isBlocked,
-        blockReason: item.blockReason
-      }))
+          } : undefined,
+          isBlocked: item.isBlocked,
+          blockReason: item.blockReason
+        }
+      })
 
       // If just submitted, ensure the corresponding exam is marked completed
       const justSubmittedId = sessionStorage.getItem('just_submitted_exam_id')
@@ -188,20 +278,24 @@ export default function StudentExamsPage() {
           <div>
             <div className="font-semibold">Beberapa ujian disembunyikan oleh wali kelas</div>
             <ul className="mt-1">
-              {suppressed.slice(0,3).map((s: any) => (<li key={s.exam_id}>{s.title}{s.reason ? ` — ${s.reason}` : ''}</li>))}
+              {suppressed.slice(0, 3).map((suppressedExam) => (
+                <li key={String(suppressedExam.exam_id || suppressedExam.title || Math.random())}>
+                  {suppressedExam.title || 'Ujian'}{suppressedExam.reason ? ` — ${suppressedExam.reason}` : ''}
+                </li>
+              ))}
             </ul>
             <div className="text-xs mt-2">Hubungi wali kelas untuk informasi lebih lanjut</div>
           </div>
         ), { duration: 10000 })
       }
-    } catch (error: any) {
+    } catch {
       toast.error('Gagal memuat data ujian')
     } finally {
       setLoading(false)
     }
   }
 
-  const filterExams = () => {
+  const filteredExams = useMemo(() => {
     let filtered = [...exams]
 
     if (programFilter !== 'all') {
@@ -222,14 +316,16 @@ export default function StudentExamsPage() {
       )
     }
 
-    setFilteredExams(filtered)
-  }
+    return filtered
+  }, [exams, programFilter, searchQuery, statusFilter])
 
   const getExamStatus = (exam: Exam) => {
-    if (exam.status === 'ongoing' || exam.status === 'IN_PROGRESS' && !exam.has_submitted) return 'available'
-    if (exam.status === 'completed' || exam.has_submitted) return 'completed'
-    if (exam.status === 'upcoming') return 'upcoming'
-    if (exam.status === 'missed') return 'expired'
+    const normalizedStatus = String(exam.status || '').toUpperCase()
+    if (exam.has_submitted || normalizedStatus === 'COMPLETED' || normalizedStatus === 'TIMEOUT') return 'completed'
+    if (normalizedStatus === 'GRADED') return 'graded'
+    if (normalizedStatus === 'IN_PROGRESS' || normalizedStatus === 'OPEN' || normalizedStatus === 'ONGOING') return 'available'
+    if (normalizedStatus === 'UPCOMING') return 'upcoming'
+    if (normalizedStatus === 'MISSED' || normalizedStatus === 'EXPIRED') return 'expired'
     
     const now = new Date()
     const startTime = new Date(exam.start_time)
@@ -272,18 +368,18 @@ export default function StudentExamsPage() {
     if (!selectedExam) return
 
     // Request fullscreen FIRST to preserve user gesture
-    const elem = document.documentElement
+    const elem = document.documentElement as VendorFullscreenElement
     try {
       if (elem.requestFullscreen) {
         await elem.requestFullscreen()
-      } else if ((elem as any).webkitRequestFullscreen) {
-        await (elem as any).webkitRequestFullscreen()
-      } else if ((elem as any).mozRequestFullScreen) {
-        await (elem as any).mozRequestFullScreen()
-      } else if ((elem as any).msRequestFullscreen) {
-        await (elem as any).msRequestFullscreen()
+      } else if (elem.webkitRequestFullscreen) {
+        await elem.webkitRequestFullscreen()
+      } else if (elem.mozRequestFullScreen) {
+        await elem.mozRequestFullScreen()
+      } else if (elem.msRequestFullscreen) {
+        await elem.msRequestFullscreen()
       }
-    } catch (err) {
+    } catch {
       toast.error('Gagal masuk fullscreen otomatis. Mohon tekan F11.')
     }
 
@@ -292,7 +388,9 @@ export default function StudentExamsPage() {
     // Persist last visited exams page context for return navigation
     try {
       sessionStorage.setItem('last_exam_route', location.pathname)
-    } catch {}
+    } catch {
+      toast.error('Gagal menyimpan konteks ujian.')
+    }
 
     // Give browser a moment to update state before navigating
     // This prevents the next page from thinking we're not in fullscreen
@@ -531,6 +629,11 @@ export default function StudentExamsPage() {
                                   {exam.description}
                                 </div>
                               )}
+                              {exam.sessionLabel ? (
+                                <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                  {exam.sessionLabel}
+                                </span>
+                              ) : null}
                             </div>
                           </div>
                         </td>
@@ -629,6 +732,9 @@ export default function StudentExamsPage() {
               </div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Mulai Ujian?</h2>
               <p className="text-gray-600 font-medium">{selectedExam.title}</p>
+              {selectedExam.sessionLabel ? (
+                <p className="text-sm text-indigo-600 font-medium mt-1">{selectedExam.sessionLabel}</p>
+              ) : null}
               <div className="flex items-center justify-center gap-4 mt-2 text-sm text-gray-500">
                 <span className="flex items-center gap-1">
                   <Clock className="w-4 h-4" /> {selectedExam.duration} Menit

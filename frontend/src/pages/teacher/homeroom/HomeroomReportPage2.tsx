@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, Printer, Search } from 'lucide-react';
 import { classService } from '../../../services/class.service';
@@ -7,21 +7,77 @@ import api from '../../../services/api';
 interface HomeroomReportPage2Props {
   classId: number;
   semester: 'ODD' | 'EVEN' | '';
+  reportType?: string;
+  programCode?: string;
+  reportLabel?: string;
 }
 
-export const HomeroomReportPage2 = ({ classId, semester }: HomeroomReportPage2Props) => {
+type StudentListItem = {
+  id: number;
+  name: string;
+  nis?: string | null;
+  nisn?: string | null;
+};
+
+type ReportRow = {
+  name?: string;
+  ekskulName?: string;
+  grade?: string | null;
+  description?: string | null;
+  rank?: string | number | null;
+  level?: string | null;
+  year?: string | number | null;
+};
+
+type StudentReportPayload = {
+  header: {
+    studentName?: string;
+    schoolName?: string;
+    academicYear?: string;
+    fase?: string;
+    class?: string;
+    semester?: string;
+    nisn?: string;
+    nis?: string;
+  };
+  body: {
+    extracurriculars: ReportRow[];
+    achievements: ReportRow[];
+    attendance?: {
+      sick?: number;
+      s?: number;
+      permission?: number;
+      i?: number;
+      absent?: number;
+      a?: number;
+    };
+    homeroomNote?: string;
+  };
+  footer: {
+    signatures: {
+      parent: { title?: string; name?: string };
+      homeroom: { title?: string; name?: string };
+      principal: { title?: string; name?: string };
+    };
+  };
+};
+
+export const HomeroomReportPage2 = ({
+  classId,
+  semester,
+  reportType,
+  programCode,
+  reportLabel,
+}: HomeroomReportPage2Props) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [printPlace, setPrintPlace] = useState('Bekasi');
-  const [printDate, setPrintDate] = useState('');
+  const [printDate, setPrintDate] = useState(() =>
+    new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
+  );
   const [printSchoolAddress, setPrintSchoolAddress] = useState('Jl. Anggrek 1, Duren Jaya Bekasi Timur');
   const printIframeRef = useRef<HTMLIFrameElement>(null);
-
-  // Set default date to today formatted ID
-  useEffect(() => {
-    const today = new Date();
-    const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
-    setPrintDate(today.toLocaleDateString('id-ID', options));
-  }, []);
+  const resolvedReportType = String(reportType || '').toUpperCase();
+  const resolvedReportLabel = String(reportLabel || resolvedReportType || 'Rapor');
 
   const { data: classData, isLoading } = useQuery({
     queryKey: ['class-students', classId],
@@ -29,25 +85,23 @@ export const HomeroomReportPage2 = ({ classId, semester }: HomeroomReportPage2Pr
     enabled: !!classId && !!semester
   });
 
-  const students = classData?.students || [];
-  const filteredStudents = students.filter((s: any) => 
+  const students: StudentListItem[] = classData?.students || [];
+  const filteredStudents = students.filter((s) => 
     s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (s.nis && s.nis.includes(searchQuery))
   );
 
   const handlePrint = async (studentId: number) => {
     try {
-      // Re-using the same endpoint as Rapor 1 since it likely contains all needed data
-      // If specific fields (achievements/attendance) are missing, we handle them gracefully
-      const reportType = semester === 'ODD' ? 'SAS' : 'SAT';
-      const response = await api.get('/reports/student/sbts', {
+      const response = await api.get('/reports/student', {
         params: { 
           studentId, 
           semester,
-          type: reportType 
+          ...(programCode ? { programCode } : {}),
+          ...(!programCode && resolvedReportType ? { type: resolvedReportType } : {}),
         }
       });
-      const reportData = response.data.data;
+      const reportData = response.data.data as StudentReportPayload;
       printReport(reportData);
     } catch (error) {
       console.error('Failed to fetch report', error);
@@ -55,17 +109,20 @@ export const HomeroomReportPage2 = ({ classId, semester }: HomeroomReportPage2Pr
     }
   };
 
-  const printReport = (data: any) => {
+  const printReport = (data: StudentReportPayload) => {
     const iframe = printIframeRef.current;
     if (!iframe || !iframe.contentWindow) {
       console.error('Print iframe not found');
       return;
     }
     const printDoc = iframe.contentWindow.document;
-    const isSat = data.header.semester === 'Genap';
+    const normalizedSemesterLabel = String(data?.header?.semester || '').trim().toUpperCase();
+    const isSat =
+      String(semester || '').toUpperCase() === 'EVEN' ||
+      normalizedSemesterLabel.includes('GENAP');
 
     // Helper for Extracurriculars
-    const renderExtracurriculars = (items: any[]) => {
+    const renderExtracurriculars = (items: ReportRow[]) => {
       if (!items || items.length === 0) {
         return `
           <tr>
@@ -85,7 +142,7 @@ export const HomeroomReportPage2 = ({ classId, semester }: HomeroomReportPage2Pr
     };
 
     // Helper for Achievements (Mocked if missing)
-    const renderAchievements = (items: any[]) => {
+    const renderAchievements = (items: ReportRow[]) => {
       if (!items || items.length === 0) {
         return `
           <tr>
@@ -120,7 +177,7 @@ export const HomeroomReportPage2 = ({ classId, semester }: HomeroomReportPage2Pr
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Rapor Halaman 2 - ${data.header.studentName}</title>
+        <title>Rapor ${resolvedReportLabel} Halaman 2 - ${data.header.studentName}</title>
         <style>
           @page { size: A4; margin: ${isSat ? '0.8cm' : '1cm'}; }
           body { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; line-height: 1.3; }
@@ -231,7 +288,7 @@ export const HomeroomReportPage2 = ({ classId, semester }: HomeroomReportPage2Pr
           <br><br>
         </div>
 
-        ${data.header.semester === 'Genap' ? `
+        ${isSat ? `
         <div class="keputusan-box" style="margin-top: 8px;">
             <strong>Keputusan:</strong><br>
             Berdasarkan pencapaian kompetensi pada semester 1 dan 2, peserta didik ditetapkan:<br>
@@ -369,7 +426,7 @@ export const HomeroomReportPage2 = ({ classId, semester }: HomeroomReportPage2Pr
                   </td>
                 </tr>
               ) : (
-                filteredStudents.map((student: any, index: number) => (
+                filteredStudents.map((student, index: number) => (
                   <tr key={student.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm text-gray-500">{index + 1}</td>
                     <td className="px-6 py-4 text-sm text-gray-900">

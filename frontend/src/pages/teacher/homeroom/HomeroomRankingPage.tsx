@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { reportService } from '../../../services/report.service';
 import { Loader2, Printer, Calendar as CalendarIcon, Trophy } from 'lucide-react';
@@ -11,6 +11,19 @@ interface HomeroomRankingPageProps {
   academicYearId: number;
   semester: 'ODD' | 'EVEN';
 }
+
+type RankingStudentRow = {
+  rank: number;
+  totalScore: number;
+  averageScore: number;
+  predicate?: string;
+  student: {
+    id: number;
+    name: string;
+    nisn?: string;
+    nis?: string;
+  };
+};
 
 export const HomeroomRankingPage = ({ classId, academicYearId, semester }: HomeroomRankingPageProps) => {
   const [titimangsa, setTitimangsa] = useState<Date>(new Date());
@@ -25,12 +38,6 @@ export const HomeroomRankingPage = ({ classId, academicYearId, semester }: Homer
     refetchOnWindowFocus: true,
     refetchOnMount: true
   });
-
-  useEffect(() => {
-    if (printFrameRef.current?.contentDocument?.body) {
-      setIframeBody(printFrameRef.current.contentDocument.body);
-    }
-  }, [printFrameRef.current]);
 
   const handlePrint = () => {
     if (!printFrameRef.current?.contentWindow) return;
@@ -98,7 +105,7 @@ export const HomeroomRankingPage = ({ classId, academicYearId, semester }: Homer
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                    {data.rankings.map((student: any, index: number) => {
+                    {data.rankings.map((student: RankingStudentRow, index: number) => {
                          let rowClass = 'hover:bg-gray-50';
                          let badgeClass = 'bg-gray-100 text-gray-700';
                          
@@ -139,6 +146,7 @@ export const HomeroomRankingPage = ({ classId, academicYearId, semester }: Homer
       {/* Hidden Print Iframe */}
       <iframe 
         ref={printFrameRef}
+        onLoad={() => setIframeBody(printFrameRef.current?.contentDocument?.body ?? null)}
         className="fixed opacity-0 pointer-events-none"
         title="Print Frame"
         style={{ width: '0px', height: '0px', position: 'absolute', left: '-9999px' }}

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { 
     createExamSitting, 
     getExamSittings, 
+    getAssignedSittingStudents,
     getMyExamSitting,
     getExamSittingDetail, 
     updateExamSitting,
@@ -16,6 +17,7 @@ router.use(authenticate);
 
 // List and Create
 router.get('/', getExamSittings);
+router.get('/assigned-students', getAssignedSittingStudents);
 router.get('/my-sitting', getMyExamSitting);
 router.post('/', authorize(['ADMIN', 'TEACHER']), createExamSitting);
 

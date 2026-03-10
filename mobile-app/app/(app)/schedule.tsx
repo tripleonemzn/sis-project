@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -65,24 +65,19 @@ export default function ScheduleScreen() {
   const scheduleQuery = useScheduleQuery({ enabled: isAuthenticated, user });
   const [activeDay, setActiveDay] = useState<DayOfWeek>('MONDAY');
   const pageContentPadding = getStandardPagePadding(insets);
-  const entries = scheduleQuery.data?.entries || [];
+  const entries = useMemo(() => scheduleQuery.data?.entries || [], [scheduleQuery.data?.entries]);
   const availableDays = useMemo(
     () => DAY_ORDER.filter((day) => entries.some((entry) => entry.dayOfWeek === day)),
     [entries],
   );
   const dayTabs = availableDays.length > 0 ? availableDays : DAY_ORDER;
-
-  useEffect(() => {
-    if (!dayTabs.includes(activeDay)) {
-      setActiveDay(dayTabs[0]);
-    }
-  }, [dayTabs, activeDay]);
+  const effectiveActiveDay = dayTabs.includes(activeDay) ? activeDay : dayTabs[0];
 
   if (isLoading) return <AppLoadingScreen message="Memuat jadwal..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
   const dayEntries = entries
-    .filter((entry) => entry.dayOfWeek === activeDay && entry.teachingHour !== null)
+    .filter((entry) => entry.dayOfWeek === effectiveActiveDay && entry.teachingHour !== null)
     .sort((a, b) => {
       const aHour = typeof a.teachingHour === 'number' ? a.teachingHour : a.period;
       const bHour = typeof b.teachingHour === 'number' ? b.teachingHour : b.period;
@@ -123,14 +118,14 @@ export default function ScheduleScreen() {
                   onPress={() => setActiveDay(day)}
                   style={{
                     borderWidth: 1,
-                    borderColor: activeDay === day ? '#2563eb' : '#cbd5e1',
-                    backgroundColor: activeDay === day ? '#2563eb' : '#fff',
+                  borderColor: effectiveActiveDay === day ? '#2563eb' : '#cbd5e1',
+                  backgroundColor: effectiveActiveDay === day ? '#2563eb' : '#fff',
                     borderRadius: 10,
                     paddingVertical: 10,
                     alignItems: 'center',
                   }}
                 >
-                  <Text style={{ color: activeDay === day ? '#fff' : '#334155', fontWeight: '600' }}>
+                  <Text style={{ color: effectiveActiveDay === day ? '#fff' : '#334155', fontWeight: '600' }}>
                     {DAY_LABELS[day]}
                   </Text>
                 </Pressable>
@@ -158,8 +153,8 @@ export default function ScheduleScreen() {
               <Text style={{ fontWeight: '700', marginBottom: 4, color: '#0f172a' }}>
                 Tidak ada jadwal
               </Text>
-              <Text style={{ color: '#64748b' }}>
-                Belum ada entri jadwal untuk hari {DAY_LABELS[activeDay]}.
+                <Text style={{ color: '#64748b' }}>
+                Belum ada entri jadwal untuk hari {DAY_LABELS[effectiveActiveDay]}.
               </Text>
             </View>
           )}

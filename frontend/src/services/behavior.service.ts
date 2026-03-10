@@ -23,6 +23,13 @@ export interface StudentBehavior {
   };
 }
 
+interface BehaviorMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
 export interface CreateBehaviorPayload {
   studentId: number;
   classId: number;
@@ -52,7 +59,7 @@ export const behaviorService = {
     page?: number;
     limit?: number;
   }) => {
-    const response = await api.get<{ data: { behaviors: StudentBehavior[]; meta: any } }>('/behaviors', { params });
+    const response = await api.get<{ data: { behaviors: StudentBehavior[]; meta: BehaviorMeta } }>('/behaviors', { params });
     return response.data.data;
   },
 

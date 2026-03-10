@@ -1,5 +1,5 @@
 import { Outlet, Navigate, useLocation, Link } from 'react-router-dom';
-import { Sidebar } from '../components/layout/Sidebar';
+import { Sidebar, getMenuItems, type MenuItem } from '../components/layout/Sidebar';
 import { Menu, ChevronRight, Home } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -8,7 +8,9 @@ import { NotificationDropdown } from '../components/layout/NotificationDropdown'
 import clsx from 'clsx';
 import { useActiveAcademicYear } from '../hooks/useActiveAcademicYear';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
-import { examProgramCodeToSlug } from '../services/exam.service';
+import { examProgramCodeToSlug, examService, type ExamProgram } from '../services/exam.service';
+import type { ApiResponse } from '../types/api.types';
+import type { User } from '../types/auth';
 
 const titleCaseFromSlug = (slug: string): string => {
   const cleaned = String(slug || '').trim().replace(/-/g, ' ');
@@ -20,18 +22,83 @@ const titleCaseFromSlug = (slug: string): string => {
     .join(' ');
 };
 
+const normalizeProgramCodeKey = (raw: unknown): string => {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+};
+
+type SidebarCrumbConfig = {
+  label: string;
+  group?: string;
+};
+
+type BreadcrumbProgramLookup = {
+  examProgramLabelBySlug: Record<string, string>;
+  examProgramLabelByCode: Record<string, string>;
+  homeroomProgramLabelBySlug: Record<string, string>;
+};
+
+const getSidebarRoleCode = (roleSegment: string): User['role'] | null => {
+  const map: Record<string, User['role']> = {
+    admin: 'ADMIN',
+    teacher: 'TEACHER',
+    examiner: 'EXAMINER',
+    tutor: 'EXTRACURRICULAR_TUTOR',
+    student: 'STUDENT',
+    principal: 'PRINCIPAL',
+    staff: 'STAFF',
+    parent: 'PARENT',
+  };
+  return map[roleSegment] || null;
+};
+
+const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record<string, SidebarCrumbConfig> => {
+  const roleCode = getSidebarRoleCode(roleSegment);
+  if (!roleCode || !user) return {};
+  const menuItems = getMenuItems({ ...user, role: roleCode });
+  const prefix = `/${roleSegment}/`;
+  const lookup: Record<string, SidebarCrumbConfig> = {};
+
+  const walk = (item: MenuItem, parentGroup?: string) => {
+    const rawPath = String(item?.path || '');
+    if (rawPath.startsWith(prefix)) {
+      const key = rawPath.slice(prefix.length).split('?')[0];
+      if (key && !lookup[key]) {
+        lookup[key] = { label: String(item.label || key), group: parentGroup };
+      }
+    }
+    if (Array.isArray(item?.children) && item.children.length > 0) {
+      item.children.forEach((child: MenuItem) => walk(child, String(item.label || parentGroup || '')));
+    }
+  };
+
+  menuItems.forEach((item) => walk(item, undefined));
+  return lookup;
+};
+
 // Helper untuk breadcrumbs map
   const getBreadcrumbs = (
-    location: { pathname: string; search: string; state?: { type?: string; programCode?: string; programLabel?: string; exam?: any } | null }, 
-    user: any // Pass user object to access dynamic data
+    location: { pathname: string; search: string; state?: unknown }, 
+    user: User | null,
+    programLookup?: BreadcrumbProgramLookup,
   ) => {
-    const { pathname, state } = location;
+    const { pathname } = location;
+    const state =
+      location.state && typeof location.state === 'object'
+        ? (location.state as { type?: string; programCode?: string; programLabel?: string; exam?: unknown })
+        : null;
     const paths = pathname.split('/').filter(Boolean);
     if (paths.length === 0) return [];
 
     const role = paths[0];
     const segments = paths.slice(1);
     const breadcrumbs: { label: string; path: string | null }[] = [];
+    const sidebarLookup = buildSidebarCrumbLookup(role, user);
 
     if (segments.length === 0) {
       if (role === 'email' || pathname === '/email') {
@@ -65,8 +132,12 @@ const titleCaseFromSlug = (slug: string): string => {
       let name = dutyNames[dutyCode] || dutyCode.replace(/_/g, ' ').toUpperCase();
       
       // Enhance KAPROG with Major Name if available
-      if ((dutyCode === 'KAPROG' || dutyCode === 'HEAD_PROGRAM' || dutyCode === 'TUGAS_TAMBAHAN') && user?.managedMajors?.length > 0) {
-        const majorCodes = user.managedMajors.map((m: any) => m.code).join(' & ');
+      const managedMajors = user?.managedMajors || [];
+      if (
+        (dutyCode === 'KAPROG' || dutyCode === 'HEAD_PROGRAM' || dutyCode === 'TUGAS_TAMBAHAN') &&
+        managedMajors.length > 0
+      ) {
+        const majorCodes = managedMajors.map((m) => m.code).join(' & ');
         name = `KAKOM ${majorCodes}`;
       }
       
@@ -120,8 +191,18 @@ const titleCaseFromSlug = (slug: string): string => {
     const first = segments[0];
     // Check for 2-level depth match (e.g. exams/edit)
     const second = segments.length > 1 ? `${first}/${segments[1]}` : null;
-    
-    const config = mapping[fullKey] || (second && mapping[second]) || mapping[first];
+    const sidebarMatchKey = [fullKey, second, first].find((key) => key && sidebarLookup[key]) || null;
+    const sidebarConfig = sidebarMatchKey ? sidebarLookup[sidebarMatchKey] : null;
+    const config =
+      (sidebarConfig
+        ? {
+            label: sidebarConfig.label,
+            group: sidebarConfig.group || undefined,
+          }
+        : null) ||
+      mapping[fullKey] ||
+      (second && mapping[second]) ||
+      mapping[first];
 
     if (config?.group) {
       breadcrumbs.push({ label: config.group, path: null });
@@ -132,10 +213,19 @@ const titleCaseFromSlug = (slug: string): string => {
 
       // Special handling for Teacher Exams
       if (first === 'exams') {
+         if (segments[1] && !['program', 'bank', 'create', 'edit'].includes(segments[1])) {
+             const legacySlug = String(segments[1] || '').trim();
+             const legacyLookupLabel = programLookup?.examProgramLabelBySlug?.[legacySlug];
+             if (legacyLookupLabel) {
+                 breadcrumbs.push({ label: legacyLookupLabel, path: `/${role}/exams/program/${legacySlug}` });
+                 return breadcrumbs;
+             }
+         }
          if (segments[1] === 'program' && segments[2]) {
              const slug = String(segments[2] || '').trim();
+             const lookupLabel = programLookup?.examProgramLabelBySlug?.[slug];
              const typeLabel =
-               String(state?.programLabel || state?.programCode || '').trim() || titleCaseFromSlug(slug);
+               String(lookupLabel || state?.programLabel || state?.programCode || '').trim() || titleCaseFromSlug(slug);
              breadcrumbs.push({ label: typeLabel, path: `/${role}/exams/program/${slug}` });
              return breadcrumbs;
          }
@@ -143,7 +233,8 @@ const titleCaseFromSlug = (slug: string): string => {
              const type = String(state?.type || '').toUpperCase();
              const normalizedProgramCode = String(state?.programCode || '').trim();
              const programSlug = normalizedProgramCode ? examProgramCodeToSlug(normalizedProgramCode) : '';
-             let typeLabel = state?.programLabel || normalizedProgramCode || type || 'Ujian';
+             const lookupLabel = programLookup?.examProgramLabelByCode?.[normalizeProgramCodeKey(normalizedProgramCode)];
+             let typeLabel = state?.programLabel || lookupLabel || normalizedProgramCode || type || 'Ujian';
              let typePath = programSlug ? `/teacher/exams/program/${programSlug}` : '/teacher/exams';
 
              if (type === 'BANK_SOAL') {
@@ -174,7 +265,8 @@ const titleCaseFromSlug = (slug: string): string => {
 
       // Determine the path for the config
       let path = first;
-      if (mapping[fullKey]) path = fullKey;
+      if (sidebarMatchKey) path = sidebarMatchKey;
+      else if (mapping[fullKey]) path = fullKey;
       else if (second && mapping[second] === config) path = second;
 
       breadcrumbs.push({ label: config.label, path: `/${role}/${path}` });
@@ -222,8 +314,8 @@ const titleCaseFromSlug = (slug: string): string => {
       'exams-group': { label: 'UJIAN', group: 'UJIAN' },
       'proctoring': { label: 'Jadwal Mengawas', group: 'UJIAN' },
       'exams/formatif': { label: 'Formatif (Quiz)', group: 'UJIAN' },
-      'exams/sbts': { label: 'SBTS', group: 'UJIAN' },
-      'exams/sas-sat': { label: 'SAS / SAT', group: 'UJIAN' },
+      'exams/sbts': { label: 'Program Ujian', group: 'UJIAN' },
+      'exams/sas-sat': { label: 'Program Ujian', group: 'UJIAN' },
       'exams/program': { label: 'Program Ujian', group: 'UJIAN' },
       'exams/bank': { label: 'Bank Soal', group: 'UJIAN' },
       'exams/create': { label: 'Buat Ujian Baru', group: 'UJIAN' },
@@ -235,9 +327,10 @@ const titleCaseFromSlug = (slug: string): string => {
       'wali-kelas/attendance': { label: 'Rekap Presensi', group: 'WALI KELAS' },
       'wali-kelas/behavior': { label: 'Catatan Perilaku', group: 'WALI KELAS' },
       'wali-kelas/permissions': { label: 'Persetujuan Izin', group: 'WALI KELAS' },
-      'wali-kelas/rapor-sbts': { label: 'Rapor SBTS', group: 'WALI KELAS' },
-      'wali-kelas/rapor-sas': { label: 'Rapor SAS', group: 'WALI KELAS' },
-      'wali-kelas/rapor-sat': { label: 'Rapor SAT', group: 'WALI KELAS' },
+      'wali-kelas/rapor-sbts': { label: 'Rapor Wali Kelas', group: 'WALI KELAS' },
+      'wali-kelas/rapor-sas': { label: 'Rapor Wali Kelas', group: 'WALI KELAS' },
+      'wali-kelas/rapor-sat': { label: 'Rapor Wali Kelas', group: 'WALI KELAS' },
+      'wali-kelas/rapor/program': { label: 'Program Ujian', group: 'WALI KELAS' },
 
       // KELAS TRAINING
       training: { label: 'KELAS TRAINING', group: 'KELAS TRAINING' },
@@ -250,6 +343,7 @@ const titleCaseFromSlug = (slug: string): string => {
       // WAKASEK KURIKULUM
       'wakasek/curriculum': { label: 'Kelola Kurikulum', group: 'WAKASEK KURIKULUM' },
       'wakasek/exams': { label: 'Kelola Ujian', group: 'WAKASEK KURIKULUM' },
+      'wakasek/students': { label: 'Kelola Kesiswaan', group: 'WAKASEK KESISWAAN' },
       'wakasek/exam-schedules': { label: 'Kelola Jadwal Ujian', group: 'WAKASEK KURIKULUM' },
       'wakasek/exam-rooms': { label: 'Kelola Ruang Ujian', group: 'WAKASEK KURIKULUM' },
       'wakasek/proctor-schedule': { label: 'Kelola Jadwal Mengawas', group: 'WAKASEK KURIKULUM' },
@@ -263,7 +357,8 @@ const titleCaseFromSlug = (slug: string): string => {
       'wakasek/student-reports': { label: 'Laporan Kesiswaan', group: 'WAKASEK KESISWAAN' },
 
       // WAKASEK SARPRAS
-      'sarpras/inventory': { label: 'Inventaris', group: 'WAKASEK SARPRAS' },
+      'sarpras/inventory': { label: 'Aset Sekolah', group: 'WAKASEK SARPRAS' },
+      'sarpras/budgets': { label: 'Persetujuan Anggaran', group: 'WAKASEK SARPRAS' },
       'sarpras/reports': { label: 'Laporan', group: 'WAKASEK SARPRAS' },
 
       // WAKASEK HUMAS
@@ -296,8 +391,18 @@ const titleCaseFromSlug = (slug: string): string => {
     
     // Check for 2-level depth match (e.g. exams/edit)
     const second = segments.length > 1 ? `${first}/${segments[1]}` : null;
-    
-    let config = mapping[fullKey] || (second && mapping[second]) || mapping[first];
+    const sidebarMatchKey = [fullKey, second, first].find((key) => key && sidebarLookup[key]) || null;
+    const sidebarConfig = sidebarMatchKey ? sidebarLookup[sidebarMatchKey] : null;
+    let config =
+      (sidebarConfig
+        ? {
+            label: sidebarConfig.label,
+            group: sidebarConfig.group || undefined,
+          }
+        : null) ||
+      mapping[fullKey] ||
+      (second && mapping[second]) ||
+      mapping[first];
 
     // Dynamic Group Override for Work Programs & Duties
     const queryParams = new URLSearchParams(location.search);
@@ -314,12 +419,14 @@ const titleCaseFromSlug = (slug: string): string => {
         else if (config.group === 'WAKASEK SARPRAS') dutyCode = 'WAKASEK_SARPRAS';
         else if (config.group === 'WAKASEK HUMAS') dutyCode = 'WAKASEK_HUMAS';
         else if (config.group === 'TUGAS TAMBAHAN') {
+             const managedMajors = user?.managedMajors || [];
+             const additionalDuties = user?.additionalDuties || [];
              // Try to infer KAPROG or other duties
-             if (user?.managedMajors?.length > 0) dutyCode = 'KAPROG';
+             if (managedMajors.length > 0) dutyCode = 'KAPROG';
              // If user has other duties that map to TUGAS TAMBAHAN, use the first one
-             else if (user?.additionalDuties?.length > 0) {
+             else if (additionalDuties.length > 0) {
                  // Prioritize non-wakasek duties for TUGAS TAMBAHAN group
-                 const otherDuty = user.additionalDuties.find((d: string) => !d.startsWith('WAKASEK'));
+                 const otherDuty = additionalDuties.find((d: string) => !d.startsWith('WAKASEK'));
                  if (otherDuty) dutyCode = otherDuty;
              }
         }
@@ -328,7 +435,7 @@ const titleCaseFromSlug = (slug: string): string => {
     }
 
     if (isDutyContext && dutyCode) {
-        let resolvedName = getDutyName(dutyCode);
+        const resolvedName = getDutyName(dutyCode);
         
         if (resolvedName !== 'UNKNOWN') {
            config = { ...config, group: resolvedName };
@@ -337,8 +444,9 @@ const titleCaseFromSlug = (slug: string): string => {
     
     // Final safety check for KAPROG TKJ specific request (Global override)
     // This ensures even if logic above misses, we force KAKOM TKJ for TUGAS TAMBAHAN group
-    if (config?.group === 'TUGAS TAMBAHAN' && user?.managedMajors?.length > 0) {
-         const majorCodes = user.managedMajors.map((m: any) => m.code).join(' & ');
+    const managedMajors = user?.managedMajors || [];
+    if (config?.group === 'TUGAS TAMBAHAN' && managedMajors.length > 0) {
+         const majorCodes = managedMajors.map((m) => m.code).join(' & ');
          config = { ...config, group: `KAKOM ${majorCodes}` };
     }
 
@@ -357,15 +465,196 @@ const titleCaseFromSlug = (slug: string): string => {
       breadcrumbs.push({ label: config.group, path: null });
     }
 
+    // Dynamic breadcrumbs for teacher exam create/edit/detail routes with numeric packet id
+    if (first === 'exams') {
+      const examAction = String(segments[2] || '').toLowerCase();
+      const isNumericPacketRoute = /^\d+$/.test(String(segments[1] || ''));
+      const isCreateRoute = String(segments[1] || '').toLowerCase() === 'create';
+      const supportedPacketActions = ['edit', 'schedule', 'item-analysis', 'submissions'];
+
+      if (isCreateRoute || (isNumericPacketRoute && supportedPacketActions.includes(examAction))) {
+        const stateProgramCode = String(state?.programCode || '').trim();
+        const normalizedProgramCode = normalizeProgramCodeKey(stateProgramCode);
+        const lookupLabel = programLookup?.examProgramLabelByCode?.[normalizedProgramCode];
+        const stateProgramLabel = String(state?.programLabel || '').trim();
+        const fallbackType = String(state?.type || '').trim();
+        const programLabel = stateProgramLabel || lookupLabel || stateProgramCode || fallbackType || 'Program Ujian';
+        const programPath = stateProgramCode
+          ? `/${role}/exams/program/${examProgramCodeToSlug(stateProgramCode)}`
+          : '/teacher/exams';
+
+        const actionLabelMap: Record<string, string> = {
+          create: 'Buat Ujian Baru',
+          edit: 'Buat Ujian Baru',
+          schedule: 'Jadwal Ujian',
+          'item-analysis': 'Analisis Butir Soal',
+          submissions: 'Submisi Ujian',
+        };
+        const actionLabel = isCreateRoute ? actionLabelMap.create : actionLabelMap[examAction] || 'Ujian';
+
+        breadcrumbs.push({ label: programLabel, path: programPath });
+        breadcrumbs.push({ label: actionLabel, path: null });
+        return breadcrumbs;
+      }
+    }
+
+    // Dynamic breadcrumbs for active tabs/sub-tabs on Wakasek hubs
+    if (fullKey === 'wakasek/exams') {
+      breadcrumbs.push({ label: config?.label || 'Kelola Ujian', path: `/${role}/wakasek/exams` });
+      const section = String(queryParams.get('section') || 'program').toLowerCase();
+      const sectionLabelMap: Record<string, string> = {
+        program: 'Program Ujian',
+        jadwal: 'Jadwal Ujian',
+        ruang: 'Ruang Ujian',
+        mengawas: 'Jadwal Mengawas',
+      };
+      const sectionLabel = sectionLabelMap[section];
+      if (sectionLabel) {
+        const sectionPath = `/${role}/wakasek/exams?section=${section}`;
+        if (section === 'program') {
+          breadcrumbs.push({ label: sectionLabel, path: sectionPath });
+          const programTab = String(queryParams.get('programTab') || 'program').toLowerCase();
+          if (programTab === 'component') {
+            breadcrumbs.push({ label: 'Master Komponen Nilai', path: null });
+          }
+        } else {
+          breadcrumbs.push({ label: sectionLabel, path: null });
+        }
+      }
+      return breadcrumbs;
+    }
+
+    if (fullKey === 'wakasek/curriculum') {
+      breadcrumbs.push({ label: config?.label || 'Kelola Kurikulum', path: `/${role}/wakasek/curriculum` });
+      const section = String(queryParams.get('section') || 'kategori').toLowerCase();
+      const sectionLabelMap: Record<string, string> = {
+        kategori: 'Kategori Mapel',
+        mapel: 'Mata Pelajaran',
+        kkm: 'Data KKM',
+        assignment: 'Assignment Guru',
+        kalender: 'Kalender Akademik',
+        jadwal: 'Jadwal Pelajaran',
+        rekap: 'Rekap Jam Mengajar',
+      };
+      const sectionLabel = sectionLabelMap[section];
+      if (sectionLabel) {
+        breadcrumbs.push({ label: sectionLabel, path: null });
+      }
+      return breadcrumbs;
+    }
+
+    if (fullKey === 'wakasek/students') {
+      breadcrumbs.push({ label: config?.label || 'Kelola Kesiswaan', path: `/${role}/wakasek/students` });
+      const section = String(queryParams.get('section') || 'ekskul').toLowerCase();
+      const sectionLabelMap: Record<string, string> = {
+        ekskul: 'Ekstrakurikuler',
+        siswa: 'Kelola Siswa',
+        ortu: 'Kelola Orang Tua',
+        pembina: 'Kelola Pembina Ekskul',
+        absensi: 'Rekap Absensi',
+      };
+      const sectionLabel = sectionLabelMap[section];
+      if (sectionLabel) {
+        breadcrumbs.push({ label: sectionLabel, path: null });
+      }
+      return breadcrumbs;
+    }
+
+    if (fullKey === 'materials') {
+      breadcrumbs.push({ label: config?.label || 'Materi & Tugas', path: `/${role}/materials` });
+      const tab = String(queryParams.get('tab') || 'materials').toLowerCase();
+      const tabLabel = tab === 'assignments' ? 'Tugas' : 'Materi';
+      breadcrumbs.push({ label: tabLabel, path: null });
+      return breadcrumbs;
+    }
+
+    if (fullKey === 'humas/partners') {
+      breadcrumbs.push({ label: config?.label || 'Mitra Industri', path: `/${role}/humas/partners` });
+      const tab = String(queryParams.get('tab') || 'partners').toLowerCase();
+      const tabLabelMap: Record<string, string> = {
+        partners: 'Mitra Industri',
+        bkk: 'Informasi BKK',
+      };
+      if (tabLabelMap[tab]) {
+        breadcrumbs.push({ label: tabLabelMap[tab], path: null });
+      }
+      return breadcrumbs;
+    }
+
+    if (fullKey === 'wakasek/internship-components') {
+      breadcrumbs.push({
+        label: config?.label || 'Nilai PKL',
+        path: `/${role}/wakasek/internship-components`,
+      });
+      const tab = String(queryParams.get('tab') || 'industry').toLowerCase();
+      const tabLabelMap: Record<string, string> = {
+        industry: 'Nilai PKL (Industri)',
+        components: 'Nilai Sidang PKL (Komponen)',
+        summary: 'Rekap Nilai PKL',
+      };
+      if (tabLabelMap[tab]) {
+        breadcrumbs.push({ label: tabLabelMap[tab], path: null });
+      }
+      return breadcrumbs;
+    }
+
+    if (fullKey === 'work-programs') {
+      const duty = queryParams.get('duty');
+      const basePath = duty ? `/${role}/work-programs?duty=${encodeURIComponent(duty)}` : `/${role}/work-programs`;
+      breadcrumbs.push({ label: config?.label || 'Program Kerja', path: basePath });
+      const tab = String(queryParams.get('tab') || 'PROGRAM').toUpperCase();
+      if (tab === 'BUDGET') {
+        breadcrumbs.push({ label: 'Pengajuan Anggaran', path: null });
+      }
+      return breadcrumbs;
+    }
+
+    if (fullKey === 'head-library/inventory') {
+      breadcrumbs.push({
+        label: config?.label || 'Kelola Perpustakaan',
+        path: `/${role}/head-library/inventory?filter=library`,
+      });
+      const libraryTab = String(queryParams.get('libraryTab') || 'INVENTARIS').toUpperCase();
+      const tabLabel = libraryTab === 'PEMINJAMAN' ? 'Daftar Peminjaman Buku' : 'Inventaris Perpustakaan';
+      breadcrumbs.push({ label: tabLabel, path: null });
+      return breadcrumbs;
+    }
+
+    if (first === 'wali-kelas' && segments[1] === 'rapor' && segments[2] === 'program' && segments[3]) {
+      const slug = String(segments[3] || '').trim();
+      const lookupLabel = programLookup?.homeroomProgramLabelBySlug?.[slug] || programLookup?.examProgramLabelBySlug?.[slug];
+      const labelFromState = String(lookupLabel || state?.programLabel || state?.programCode || '').trim();
+      const reportProgramLabel = labelFromState || titleCaseFromSlug(slug);
+      breadcrumbs.push({ label: 'WALI KELAS', path: `/${role}/wali-kelas` });
+      breadcrumbs.push({ label: reportProgramLabel, path: `/${role}/wali-kelas/rapor/program/${slug}` });
+      return breadcrumbs;
+    }
+
+    if (first === 'proctoring' && segments[1]) {
+      breadcrumbs.push({ label: 'UJIAN', path: null });
+      breadcrumbs.push({ label: 'Jadwal Mengawas', path: `/${role}/proctoring` });
+      breadcrumbs.push({ label: 'Pantau Ujian', path: null });
+      return breadcrumbs;
+    }
+
     if (config) {
       let shouldAddParent = true;
 
       // Special handling for Teacher Exams
       if (first === 'exams') {
+         if (segments[1] && !['program', 'bank', 'create', 'edit'].includes(segments[1])) {
+             const legacySlug = String(segments[1] || '').trim();
+             const legacyLookupLabel = programLookup?.examProgramLabelBySlug?.[legacySlug];
+             if (legacyLookupLabel) {
+                 breadcrumbs.push({ label: legacyLookupLabel, path: `/${role}/exams/program/${legacySlug}` });
+                 return breadcrumbs;
+             }
+         }
          if (segments[1] === 'program' && segments[2]) {
              const slug = String(segments[2] || '').trim();
+             const lookupLabel = programLookup?.examProgramLabelBySlug?.[slug];
              const typeLabel =
-               String(state?.programLabel || state?.programCode || '').trim() || titleCaseFromSlug(slug);
+               String(lookupLabel || state?.programLabel || state?.programCode || '').trim() || titleCaseFromSlug(slug);
              breadcrumbs.push({ label: typeLabel, path: `/${role}/exams/program/${slug}` });
              return breadcrumbs;
          }
@@ -373,7 +662,8 @@ const titleCaseFromSlug = (slug: string): string => {
              const type = String(state?.type || '').toUpperCase();
              const normalizedProgramCode = String(state?.programCode || '').trim();
              const programSlug = normalizedProgramCode ? examProgramCodeToSlug(normalizedProgramCode) : '';
-             let typeLabel = state?.programLabel || normalizedProgramCode || type || 'Ujian';
+             const lookupLabel = programLookup?.examProgramLabelByCode?.[normalizeProgramCodeKey(normalizedProgramCode)];
+             let typeLabel = state?.programLabel || lookupLabel || normalizedProgramCode || type || 'Ujian';
              let typePath = programSlug ? `/teacher/exams/program/${programSlug}` : '/teacher/exams';
 
              if (type === 'BANK_SOAL') {
@@ -394,14 +684,15 @@ const titleCaseFromSlug = (slug: string): string => {
       // Check for parent category (e.g. exams -> exams/create)
       if (shouldAddParent && first !== fullKey && mapping[first] && mapping[first].group === config.group) {
           // Avoid duplicating if the config IS the first segment
-          if (mapping[first] !== config) {
+          if (mapping[first] !== config && mapping[first].label !== config.label) {
               breadcrumbs.push({ label: mapping[first].label, path: `/${role}/${first}` });
           }
       }
 
       // Determine the path for the config
       let path = first;
-      if (mapping[fullKey]) path = fullKey;
+      if (sidebarMatchKey) path = sidebarMatchKey;
+      else if (mapping[fullKey]) path = fullKey;
       else if (second && mapping[second] === config) path = second;
 
       breadcrumbs.push({ label: config.label, path: `/${role}/${path}` });
@@ -437,8 +728,18 @@ const titleCaseFromSlug = (slug: string): string => {
     const fullKey = segments.join('/');
     const first = segments[0];
     const second = segments.length > 1 ? `${first}/${segments[1]}` : null;
-    
-    const config = mapping[fullKey] || (second && mapping[second]) || mapping[first];
+    const sidebarMatchKey = [fullKey, second, first].find((key) => key && sidebarLookup[key]) || null;
+    const sidebarConfig = sidebarMatchKey ? sidebarLookup[sidebarMatchKey] : null;
+    const config =
+      (sidebarConfig
+        ? {
+            label: sidebarConfig.label,
+            group: sidebarConfig.group || undefined,
+          }
+        : null) ||
+      mapping[fullKey] ||
+      (second && mapping[second]) ||
+      mapping[first];
 
     if (config?.group) {
       breadcrumbs.push({ label: config.group, path: null });
@@ -446,7 +747,8 @@ const titleCaseFromSlug = (slug: string): string => {
 
     if (config) {
       let path = first;
-      if (mapping[fullKey]) path = fullKey;
+      if (sidebarMatchKey) path = sidebarMatchKey;
+      else if (mapping[fullKey]) path = fullKey;
       else if (second && mapping[second] === config) path = second;
 
       breadcrumbs.push({ label: config.label, path: `/${role}/${path}` });
@@ -471,9 +773,9 @@ const titleCaseFromSlug = (slug: string): string => {
       'exams': { label: 'UJIAN ONLINE', group: 'UJIAN ONLINE' },
       'exams-group': { label: 'UJIAN ONLINE', group: 'UJIAN ONLINE' },
       'exams/formatif': { label: 'Formatif (Quiz)', group: 'UJIAN ONLINE' },
-      'exams/sbts': { label: 'SBTS', group: 'UJIAN ONLINE' },
-      'exams/sas': { label: 'SAS', group: 'UJIAN ONLINE' },
-      'exams/sat': { label: 'SAT', group: 'UJIAN ONLINE' },
+      'exams/sbts': { label: 'Program Ujian', group: 'UJIAN ONLINE' },
+      'exams/sas': { label: 'Program Ujian', group: 'UJIAN ONLINE' },
+      'exams/sat': { label: 'Program Ujian', group: 'UJIAN ONLINE' },
       'exams/program': { label: 'Program Ujian', group: 'UJIAN ONLINE' },
 
       // NILAI SAYA / AKADEMIK (depending on status)
@@ -504,33 +806,59 @@ const titleCaseFromSlug = (slug: string): string => {
     const fullKey = segments.join('/');
     const first = segments[0];
     const second = segments.length > 1 ? `${first}/${segments[1]}` : null;
-    
-    let config = mapping[fullKey] || (second && mapping[second]) || mapping[first];
+    const sidebarMatchKey = [fullKey, second, first].find((key) => key && sidebarLookup[key]) || null;
+    const sidebarConfig = sidebarMatchKey ? sidebarLookup[sidebarMatchKey] : null;
+    let config =
+      (sidebarConfig
+        ? {
+            label: sidebarConfig.label,
+            group: sidebarConfig.group || undefined,
+          }
+        : null) ||
+      mapping[fullKey] ||
+      (second && mapping[second]) ||
+      mapping[first];
 
     if (first === 'exams' && segments[1] === 'program' && segments[2]) {
       const slug = String(segments[2] || '').trim();
+      const lookupLabel = programLookup?.examProgramLabelBySlug?.[slug];
       const typeLabel =
-        String(state?.programLabel || state?.programCode || '').trim() || titleCaseFromSlug(slug);
+        String(lookupLabel || state?.programLabel || state?.programCode || '').trim() || titleCaseFromSlug(slug);
       breadcrumbs.push({ label: 'UJIAN ONLINE', path: null });
       breadcrumbs.push({ label: typeLabel, path: `/${role}/exams/program/${slug}` });
       return breadcrumbs;
     }
 
+    if (first === 'exams' && segments[1] && !['program', 'take'].includes(segments[1])) {
+      const legacySlug = String(segments[1] || '').trim();
+      const legacyLookupLabel = programLookup?.examProgramLabelBySlug?.[legacySlug];
+      if (legacyLookupLabel) {
+        breadcrumbs.push({ label: 'UJIAN ONLINE', path: null });
+        breadcrumbs.push({ label: legacyLookupLabel, path: `/${role}/exams/program/${legacySlug}` });
+        return breadcrumbs;
+      }
+    }
+
     // Handle "Take Exam" page specifically
     if (first === 'exams' && segments[segments.length - 1] === 'take') {
-	       const examState = state?.exam;
-	       if (examState) {
-	           const type = String(examState.type || '').toUpperCase();
-	           const programCode = String(examState.programCode || '').trim();
-	           const programSlug = programCode ? examProgramCodeToSlug(programCode) : '';
-	           const typeLabel = examState.programLabel || programCode || type || 'Ujian';
-	           const typePath = programSlug ? `/student/exams/program/${programSlug}` : '/student/exams';
+      const examStateRaw = state?.exam;
+      const examState =
+        examStateRaw && typeof examStateRaw === 'object'
+          ? (examStateRaw as { type?: unknown; programCode?: unknown; programLabel?: unknown })
+          : null;
+      if (examState) {
+        const type = String(examState.type || '').toUpperCase();
+        const programCode = String(examState.programCode || '').trim();
+        const programSlug = programCode ? examProgramCodeToSlug(programCode) : '';
+        const lookupLabel = programLookup?.examProgramLabelByCode?.[normalizeProgramCodeKey(programCode)];
+        const typeLabel = String(examState.programLabel || lookupLabel || programCode || type || 'Ujian');
+        const typePath = programSlug ? `/student/exams/program/${programSlug}` : '/student/exams';
 
-           // Push the type breadcrumb
-           breadcrumbs.push({ label: 'UJIAN ONLINE', path: null }); // Group
-           breadcrumbs.push({ label: typeLabel, path: typePath }); // The specific list page
-           
-           // Final current page
+        // Push the type breadcrumb
+        breadcrumbs.push({ label: 'UJIAN ONLINE', path: null }); // Group
+        breadcrumbs.push({ label: typeLabel, path: typePath }); // The specific list page
+
+        // Final current page
            config = { label: 'Mengerjakan Ujian', group: undefined };
        } else {
            config = { label: 'Mengerjakan Ujian', group: 'UJIAN ONLINE' };
@@ -541,9 +869,20 @@ const titleCaseFromSlug = (slug: string): string => {
       breadcrumbs.push({ label: config.group, path: null });
     }
 
+    const queryParams = new URLSearchParams(location.search);
+
+    if (fullKey === 'learning') {
+      breadcrumbs.push({ label: config?.label || 'Materi & Tugas', path: `/${role}/learning` });
+      const tab = String(queryParams.get('tab') || 'materials').toLowerCase();
+      const tabLabel = tab === 'assignments' ? 'Tugas' : 'Materi';
+      breadcrumbs.push({ label: tabLabel, path: null });
+      return breadcrumbs;
+    }
+
     if (config) {
       let path = first;
-      if (mapping[fullKey]) path = fullKey;
+      if (sidebarMatchKey) path = sidebarMatchKey;
+      else if (mapping[fullKey]) path = fullKey;
       else if (second && mapping[second] === config) path = second;
 
       breadcrumbs.push({ label: config.label, path: `/${role}/${path}` });
@@ -553,6 +892,43 @@ const titleCaseFromSlug = (slug: string): string => {
       breadcrumbs.push({ label, path: `/${role}/${first}` });
     }
 
+    return breadcrumbs;
+  }
+
+  if (role === 'tutor') {
+    const fullKey = segments.join('/');
+    const first = segments[0];
+    const sidebarMatchKey = [fullKey, first].find((key) => key && sidebarLookup[key]) || null;
+    const sidebarConfig = sidebarMatchKey ? sidebarLookup[sidebarMatchKey] : null;
+    const queryParams = new URLSearchParams(location.search);
+
+    if (first === 'work-programs') {
+      const baseLabel = sidebarConfig?.label || 'Program Kerja';
+      breadcrumbs.push({
+        label: baseLabel,
+        path: `/${role}/work-programs?duty=PEMBINA_EKSKUL`,
+      });
+
+      const activeTab = String(queryParams.get('tab') || 'PROGRAM').toUpperCase();
+      if (activeTab === 'BUDGET') {
+        const section = String(queryParams.get('section') || 'REQUEST').toUpperCase();
+        breadcrumbs.push({
+          label: section === 'LPJ' ? 'LPJ Program Kerja' : 'Pengajuan Alat',
+          path: null,
+        });
+      }
+      return breadcrumbs;
+    }
+
+    if (sidebarConfig) {
+      if (sidebarConfig.group) {
+        breadcrumbs.push({ label: sidebarConfig.group, path: null });
+      }
+      breadcrumbs.push({ label: sidebarConfig.label, path: `/${role}/${sidebarMatchKey}` });
+    } else {
+      const label = first.charAt(0).toUpperCase() + first.slice(1).replace(/-/g, ' ');
+      breadcrumbs.push({ label, path: `/${role}/${first}` });
+    }
     return breadcrumbs;
   }
 
@@ -567,10 +943,20 @@ const titleCaseFromSlug = (slug: string): string => {
     
     const fullKey = segments.join('/');
     const first = segments[0];
-    const config = mapping[fullKey] || mapping[first];
+    const sidebarMatchKey = [fullKey, first].find((key) => key && sidebarLookup[key]) || null;
+    const sidebarConfig = sidebarMatchKey ? sidebarLookup[sidebarMatchKey] : null;
+    const config =
+      (sidebarConfig
+        ? {
+            label: sidebarConfig.label,
+            group: sidebarConfig.group || undefined,
+          }
+        : null) ||
+      mapping[fullKey] ||
+      mapping[first];
 
     if (config) {
-      breadcrumbs.push({ label: config.label, path: `/${role}/${first}` });
+      breadcrumbs.push({ label: config.label, path: `/${role}/${sidebarMatchKey || first}` });
     } else {
       const label = first.charAt(0).toUpperCase() + first.slice(1).replace(/-/g, ' ');
       breadcrumbs.push({ label, path: `/${role}/${first}` });
@@ -587,10 +973,20 @@ const titleCaseFromSlug = (slug: string): string => {
     
     const fullKey = segments.join('/');
     const first = segments[0];
-    const config = mapping[fullKey] || mapping[first];
+    const sidebarMatchKey = [fullKey, first].find((key) => key && sidebarLookup[key]) || null;
+    const sidebarConfig = sidebarMatchKey ? sidebarLookup[sidebarMatchKey] : null;
+    const config =
+      (sidebarConfig
+        ? {
+            label: sidebarConfig.label,
+            group: sidebarConfig.group || undefined,
+          }
+        : null) ||
+      mapping[fullKey] ||
+      mapping[first];
 
     if (config) {
-      breadcrumbs.push({ label: config.label, path: `/${role}/${first}` });
+      breadcrumbs.push({ label: config.label, path: `/${role}/${sidebarMatchKey || first}` });
     } else {
       const label = first.charAt(0).toUpperCase() + first.slice(1).replace(/-/g, ' ');
       breadcrumbs.push({ label, path: `/${role}/${first}` });
@@ -607,10 +1003,20 @@ const titleCaseFromSlug = (slug: string): string => {
     
     const fullKey = segments.join('/');
     const first = segments[0];
-    const config = mapping[fullKey] || mapping[first];
+    const sidebarMatchKey = [fullKey, first].find((key) => key && sidebarLookup[key]) || null;
+    const sidebarConfig = sidebarMatchKey ? sidebarLookup[sidebarMatchKey] : null;
+    const config =
+      (sidebarConfig
+        ? {
+            label: sidebarConfig.label,
+            group: sidebarConfig.group || undefined,
+          }
+        : null) ||
+      mapping[fullKey] ||
+      mapping[first];
 
     if (config) {
-      breadcrumbs.push({ label: config.label, path: `/${role}/${first}` });
+      breadcrumbs.push({ label: config.label, path: `/${role}/${sidebarMatchKey || first}` });
     } else {
       const label = first.charAt(0).toUpperCase() + first.slice(1).replace(/-/g, ' ');
       breadcrumbs.push({ label, path: `/${role}/${first}` });
@@ -628,30 +1034,81 @@ const titleCaseFromSlug = (slug: string): string => {
 
 export const DashboardLayout = () => {
   // const queryClient = useQueryClient();
-  const { data: userResponse, isLoading: isUserLoading } = useQuery({
+  const { data: userResponse, isLoading: isUserLoading } = useQuery<ApiResponse<User>>({
     queryKey: ['me'],
     queryFn: authService.getMe,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
-  const user = (userResponse as any)?.data;
+  const user = userResponse?.data || null;
   useRealtimeSync(Boolean(user));
+  const { data: activeYear, error: activeYearError, isLoading: isLoadingYear } = useActiveAcademicYear();
 
   const displayUser = user;
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [activeSemester, setActiveSemester] = useState<'ODD' | 'EVEN' | undefined>(undefined);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const location = useLocation();
-  const breadcrumbs = getBreadcrumbs(location, user);
+  const examProgramLabelsQuery = useQuery({
+    queryKey: ['breadcrumb-exam-program-labels', user?.role, activeYear?.id],
+    enabled: Boolean(user) && (user?.role === 'TEACHER' || user?.role === 'STUDENT'),
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const roleContext = user?.role === 'STUDENT' ? 'student' : 'teacher';
+      const response = await examService.getPrograms({
+        academicYearId: activeYear?.id,
+        roleContext,
+      });
+      return response?.data?.programs || [];
+    },
+  });
+
+  const breadcrumbProgramLookup: BreadcrumbProgramLookup = (() => {
+    const programs = Array.isArray(examProgramLabelsQuery.data) ? (examProgramLabelsQuery.data as ExamProgram[]) : [];
+    const examProgramLabelBySlug: Record<string, string> = {};
+    const examProgramLabelByCode: Record<string, string> = {};
+    const homeroomProgramLabelBySlug: Record<string, string> = {};
+
+    for (const program of programs) {
+      const code = String(program?.code || '').trim();
+      const label = String(program?.label || program?.shortLabel || code).trim();
+      if (!code || !label) continue;
+      const slug = examProgramCodeToSlug(code);
+      const normalizedCode = normalizeProgramCodeKey(code);
+      examProgramLabelBySlug[slug] = label;
+      examProgramLabelByCode[normalizedCode] = label;
+
+      const componentType = String(
+        program?.gradeComponentTypeCode || program?.gradeComponentType || '',
+      )
+        .trim()
+        .toUpperCase();
+      if (componentType === 'MIDTERM' || componentType === 'FINAL') {
+        homeroomProgramLabelBySlug[slug] = label;
+      }
+    }
+
+    return {
+      examProgramLabelBySlug,
+      examProgramLabelByCode,
+      homeroomProgramLabelBySlug,
+    };
+  })();
+
+  const breadcrumbs = getBreadcrumbs(location, user, breadcrumbProgramLookup);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
+      const fullscreenDoc = document as Document & {
+        webkitFullscreenElement?: Element | null;
+        mozFullScreenElement?: Element | null;
+        msFullscreenElement?: Element | null;
+      };
       const isFS = !!(
         document.fullscreenElement ||
-        (document as any).webkitFullscreenElement ||
-        (document as any).mozFullScreenElement ||
-        (document as any).msFullscreenElement
+        fullscreenDoc.webkitFullscreenElement ||
+        fullscreenDoc.mozFullScreenElement ||
+        fullscreenDoc.msFullscreenElement
       );
       setIsFullscreen(isFS);
     };
@@ -672,17 +1129,25 @@ export const DashboardLayout = () => {
     };
   }, []);
 
-  const { data: activeYear, error: activeYearError, isLoading: isLoadingYear } = useActiveAcademicYear();
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   if (activeYearError) {
      console.error("Active Year Query Error:", activeYearError);
   }
 
-  useEffect(() => {
-    if (activeYear) {
-      setActiveSemester(activeYear.semester);
-    }
-  }, [activeYear]);
+  const activeSemester = activeYear?.semester;
 
   // Handle logout - REMOVED unused function
   // const handleLogout = ... (moved to Sidebar or other component if needed)
@@ -732,15 +1197,15 @@ export const DashboardLayout = () => {
   }
 
   return (
-    <div className="flex h-screen bg-[#F3F4F6]">
+    <div className="relative isolate flex h-screen bg-[#F3F4F6]">
       {/* Sidebar for Desktop - Hidden in Fullscreen */}
       {!isFullscreen && <Sidebar user={user} activeSemester={activeSemester} />}
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="relative z-0 flex-1 min-w-0 flex flex-col overflow-hidden">
         {/* Header with Breadcrumbs - Hidden in Fullscreen */}
         {!isFullscreen && (
-        <header className="bg-white/80 backdrop-blur-md h-16 flex items-center justify-between px-6 z-10">
+        <header className="bg-white/80 backdrop-blur-md h-16 flex items-center justify-between px-6 z-20">
           <div className="flex items-center gap-4">
             <button 
               type="button"
@@ -777,7 +1242,16 @@ export const DashboardLayout = () => {
                       {crumb.label}
                     </Link>
                   ) : (
-                    <span className="text-gray-400 uppercase tracking-wider text-xs font-bold px-1">{crumb.label}</span>
+                    <span
+                      className={clsx(
+                        'px-1',
+                        index === breadcrumbs.length - 1
+                          ? 'text-blue-600 font-semibold'
+                          : 'text-gray-500 font-medium',
+                      )}
+                    >
+                      {crumb.label}
+                    </span>
                   )}
                 </div>
               ))}
@@ -802,7 +1276,7 @@ export const DashboardLayout = () => {
       {/* Mobile Sidebar Overlay */}
       {isMobileMenuOpen && !isFullscreen && (
         <div 
-          className="fixed inset-0 bg-black/30 z-20 md:hidden"
+          className="fixed inset-0 bg-black/30 z-[60] md:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
@@ -810,10 +1284,10 @@ export const DashboardLayout = () => {
       {/* Mobile Sidebar */}
       {!isFullscreen && (
       <div className={clsx(
-        "fixed inset-y-0 left-0 w-64 bg-white shadow-xl transform transition-transform duration-300 ease-in-out z-30 md:hidden",
+        "fixed inset-y-0 left-0 w-64 bg-white shadow-xl transform transition-transform duration-300 ease-in-out z-[70] md:hidden",
         isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
       )}>
-        <Sidebar user={displayUser || { name: 'Guest', role: 'GUEST' }} />
+        <Sidebar user={displayUser || { id: 0, name: 'Guest', role: 'GUEST' }} />
       </div>
       )}
     </div>

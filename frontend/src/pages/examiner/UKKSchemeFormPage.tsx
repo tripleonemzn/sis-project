@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useForm, useFieldArray, type Control, type UseFormRegister, type UseFormSetValue, type UseFormWatch } from 'react-hook-form';
+import { useForm, useFieldArray, useWatch, type Control, type UseFormRegister, type UseFormSetValue, type UseFormWatch } from 'react-hook-form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useOutletContext } from 'react-router-dom';
 import { authService } from '../../services/auth.service';
@@ -26,6 +26,28 @@ interface SchemeForm {
     }[];
   }[];
 }
+type MajorOption = { id: string | number; name: string };
+type AcademicYearOption = { id: string | number; name: string; isActive?: boolean };
+type SubjectOption = {
+  id: string | number;
+  name?: string | null;
+  category?: string | null;
+  subjectCategory?: { code?: string | null; name?: string | null } | null;
+};
+type SchemeCriterionRaw = {
+  id?: string;
+  name: string;
+  maxScore: number;
+  group?: string;
+  aliases?: string[];
+};
+type SchemeDetailPayload = {
+  name: string;
+  academicYearId: string | number;
+  subjectId?: string | number;
+  majorId?: string | number;
+  criteria?: SchemeCriterionRaw[] | string | null;
+};
 
 const generateId = () => Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
 
@@ -152,7 +174,7 @@ export const UKKSchemeFormPage = () => {
   const user = contextUser || (authData?.data as User) || {};
   const examinerMajorId = user.examinerMajorId;
 
-  const { control, register, handleSubmit, setValue, watch, formState: { errors } } = useForm<SchemeForm>({
+  const { control, register, handleSubmit, setValue, getValues, watch, formState: { errors } } = useForm<SchemeForm>({
     defaultValues: {
       groups: [
         { name: 'Persiapan Kerja', criteria: [] }
@@ -175,7 +197,12 @@ export const UKKSchemeFormPage = () => {
     queryKey: ['majors'],
     queryFn: async () => {
       const res = await majorService.list({ limit: 100 });
-      return (res as any).data?.majors || (res as any).data || res || [];
+      const payload = res as
+        | { data?: { majors?: MajorOption[] } | MajorOption[]; majors?: MajorOption[] }
+        | MajorOption[];
+      if (Array.isArray(payload)) return payload;
+      if (Array.isArray(payload.data)) return payload.data;
+      return payload.data?.majors || payload.majors || [];
     }
   });
 
@@ -184,12 +211,12 @@ export const UKKSchemeFormPage = () => {
     queryFn: async () => {
       const res = await subjectService.list({ limit: 1000 });
       // Handle various response structures
-      const responseData = (res as any).data || res;
+      const responseData = (res as { data?: unknown }).data || res;
       const allSubjects = Array.isArray(responseData) 
-        ? responseData 
-        : (responseData?.subjects || []);
+        ? (responseData as SubjectOption[])
+        : ((responseData as { subjects?: SubjectOption[] })?.subjects || []);
 
-      const filtered = allSubjects.filter((s: any) => {
+      const filtered = allSubjects.filter((s: SubjectOption) => {
         const name = (s.name || '').toLowerCase();
         // Check nested subjectCategory or flat category
         const catObj = s.subjectCategory || {};
@@ -206,9 +233,7 @@ export const UKKSchemeFormPage = () => {
                catName.includes('KEJURUAN');
       });
 
-      // Fallback: If no vocational subjects found, return all subjects
-      // This prevents blocking the user if the category data is messy
-      return filtered.length > 0 ? filtered : allSubjects;
+      return filtered;
     }
   });
 
@@ -226,9 +251,15 @@ export const UKKSchemeFormPage = () => {
     }
 
     if (!isEditMode) {
-      const years = academicYears?.data?.academicYears || academicYears?.academicYears || (Array.isArray(academicYears) ? academicYears : []);
+      const yearPayload = academicYears as
+        | { data?: { academicYears?: AcademicYearOption[] }; academicYears?: AcademicYearOption[] }
+        | AcademicYearOption[]
+        | undefined;
+      const years = Array.isArray(yearPayload)
+        ? yearPayload
+        : yearPayload?.data?.academicYears || yearPayload?.academicYears || [];
       if (years && years.length > 0) {
-        const active = years.find((ay: any) => ay.isActive);
+        const active = years.find((ay: AcademicYearOption) => ay.isActive);
         if (active) setValue('academicYearId', String(active.id));
       }
     }
@@ -237,17 +268,17 @@ export const UKKSchemeFormPage = () => {
   // Auto-select first UKK subject
   useEffect(() => {
     if (subjects && subjects.length > 0) {
-      const currentSubjectId = watch('subjectId');
+      const currentSubjectId = getValues('subjectId');
       if (!currentSubjectId) {
         setValue('subjectId', String(subjects[0].id));
       }
     }
-  }, [subjects, setValue, watch]);
+  }, [subjects, setValue, getValues]);
 
   // Load Edit Data
   useEffect(() => {
     if (isEditMode && schemeDetail) {
-      const data = (schemeDetail as any).data || schemeDetail;
+      const data = ((schemeDetail as { data?: SchemeDetailPayload })?.data || schemeDetail) as SchemeDetailPayload;
       setValue('name', data.name);
       setValue('academicYearId', String(data.academicYearId));
       
@@ -261,23 +292,27 @@ export const UKKSchemeFormPage = () => {
         setValue('majorId', String(data.majorId));
       }
       
-      let criteriaData = data.criteria;
+      let criteriaData: SchemeCriterionRaw[] = [];
+      const rawCriteria = data.criteria;
       // Handle potential stringified JSON
-      if (typeof criteriaData === 'string') {
+      if (typeof rawCriteria === 'string') {
         try {
-          criteriaData = JSON.parse(criteriaData);
+          const parsed = JSON.parse(rawCriteria) as unknown;
+          criteriaData = Array.isArray(parsed) ? (parsed as SchemeCriterionRaw[]) : [];
         } catch (e) {
           console.error('Failed to parse criteria JSON', e);
           criteriaData = [];
         }
+      } else if (Array.isArray(rawCriteria)) {
+        criteriaData = rawCriteria;
       }
 
       if (criteriaData && Array.isArray(criteriaData)) {
         // Group by 'group' field
-        const grouped: Record<string, any[]> = {};
-        const ungrouped: any[] = [];
+        const grouped: Record<string, SchemeCriterionRaw[]> = {};
+        const ungrouped: SchemeCriterionRaw[] = [];
 
-        criteriaData.forEach((c: any) => {
+        criteriaData.forEach((c: SchemeCriterionRaw) => {
           if (c.group) {
             if (!grouped[c.group]) grouped[c.group] = [];
             grouped[c.group].push(c);
@@ -289,9 +324,9 @@ export const UKKSchemeFormPage = () => {
         const newGroups = Object.keys(grouped).map(groupName => ({
           name: groupName,
           criteria: grouped[groupName].map(c => ({ 
-            id: c.id || generateId(),
+            id: String(c.id || generateId()),
             name: c.name, 
-            maxScore: c.maxScore,
+            maxScore: Number(c.maxScore),
             aliases: Array.isArray(c.aliases) ? c.aliases : []
           }))
         }));
@@ -300,9 +335,9 @@ export const UKKSchemeFormPage = () => {
           newGroups.push({
             name: 'Umum',
             criteria: ungrouped.map(c => ({ 
-              id: c.id || generateId(),
+              id: String(c.id || generateId()),
               name: c.name, 
-              maxScore: c.maxScore,
+              maxScore: Number(c.maxScore),
               aliases: Array.isArray(c.aliases) ? c.aliases : []
             }))
           });
@@ -313,10 +348,16 @@ export const UKKSchemeFormPage = () => {
         }
       }
     }
-  }, [schemeDetail, isEditMode, setValue]);
+  }, [schemeDetail, isEditMode, setValue, examinerMajorId]);
 
   const mutation = useMutation({
-    mutationFn: (data: any) => {
+    mutationFn: (data: {
+      name: string;
+      subjectId: number;
+      majorId: number;
+      academicYearId: number;
+      criteria: Array<SchemeCriterionRaw & { group: string }>;
+    }) => {
       if (isEditMode) return ukkSchemeService.updateScheme(Number(id), data);
       return ukkSchemeService.createScheme(data);
     },
@@ -350,8 +391,17 @@ export const UKKSchemeFormPage = () => {
     });
   };
 
-  const selectedMajor = majors?.find((m: any) => String(m.id) === String(watch('majorId')));
-  const activeYear = (academicYears?.data?.academicYears || academicYears?.academicYears || []).find((ay: any) => String(ay.id) === String(watch('academicYearId')));
+  const watchedMajorId = useWatch({ control, name: 'majorId' });
+  const watchedAcademicYearId = useWatch({ control, name: 'academicYearId' });
+  const selectedMajor = majors?.find((m: MajorOption) => String(m.id) === String(watchedMajorId));
+  const yearPayload = academicYears as
+    | { data?: { academicYears?: AcademicYearOption[] }; academicYears?: AcademicYearOption[] }
+    | AcademicYearOption[]
+    | undefined;
+  const yearOptions = Array.isArray(yearPayload)
+    ? yearPayload
+    : yearPayload?.data?.academicYears || yearPayload?.academicYears || [];
+  const activeYear = yearOptions.find((ay: AcademicYearOption) => String(ay.id) === String(watchedAcademicYearId));
 
   if (isLoadingSubjects || isLoadingDetail || isLoadingMajors || isLoadingAcademicYears) {
     return (
@@ -412,9 +462,14 @@ export const UKKSchemeFormPage = () => {
                 
                 {/* Subject Selection - Hidden Auto */}
                 <input type="hidden" {...register('subjectId', { required: 'Mata pelajaran wajib dipilih (otomatis)' })} />
+                {(!subjects || subjects.length === 0) && (
+                  <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                    Belum ada mapel UKK/kejuruan yang terdeteksi. Periksa kategori mapel agar tidak tercampur dengan mapel umum.
+                  </div>
+                )}
                 
                 {/* Major Selection - Auto or Block */}
-                {(!examinerMajorId || (majors && !majors.find((m: any) => String(m.id) === String(examinerMajorId)))) ? (
+                {(!examinerMajorId || (majors && !majors.find((m: MajorOption) => String(m.id) === String(examinerMajorId)))) ? (
                   <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
                      <h3 className="text-red-700 font-bold flex items-center gap-2">
                        <Info className="w-5 h-5" /> Akses Ditolak

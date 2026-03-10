@@ -31,13 +31,70 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+import type { User } from '../../../types/auth';
+
+interface Colleague {
+  id: number;
+  name: string;
+  nis?: string;
+  className?: string;
+}
+
+interface Internship {
+  id: number;
+  status: string;
+  student?: {
+    name: string;
+    nis?: string;
+    studentClass?: {
+      name: string;
+    };
+  };
+  companyName?: string;
+  companyAddress?: string;
+  startDate?: string;
+  endDate?: string;
+  mentorName?: string;
+  mentorPhone?: string;
+  rejectionReason?: string;
+  forceReject?: boolean;
+  academicYear?: {
+    name: string;
+  };
+  colleagues?: Colleague[];
+  teacherId?: number;
+  companyLatitude?: number | null;
+  companyLongitude?: number | null;
+  createdAt: string;
+  acceptanceLetterUrl?: string;
+  reportUrl?: string;
+  examinerId?: number;
+  defenseDate?: string;
+  defenseRoom?: string;
+}
+
+interface ApiError {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+}
+
+interface AcademicYear {
+  id: number;
+  name: string;
+  semester: string;
+  isActive: boolean;
+}
+
 export const InternshipApprovalPage = () => {
   const [statusFilter, setStatusFilter] = useState<string>('PROPOSED');
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
 
-  const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<{ user: any, activeYear: any }>() || {};
+  const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<{ user: User, activeYear: AcademicYear }>() || {};
 
   // Get Current User via Query (Database Persistence)
   const { data: authData } = useQuery({
@@ -65,7 +122,7 @@ export const InternshipApprovalPage = () => {
   });
 
   const updateProfileMutation = useMutation({
-    mutationFn: (data: any) => {
+    mutationFn: (data: Partial<User>) => {
       if (!userId) throw new Error('User ID not found');
       return userService.update(userId, data);
     },
@@ -79,7 +136,7 @@ export const InternshipApprovalPage = () => {
     }
   });
 
-  const [selectedInternship, setSelectedInternship] = useState<any>(null);
+  const [selectedInternship, setSelectedInternship] = useState<Internship | null>(null);
   const [selectedInternshipIds, setSelectedInternshipIds] = useState<number[]>([]);
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
   
@@ -130,7 +187,7 @@ Adapun nama siswa/i kami adalah:`,
         try {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) return parsed;
-        } catch (e) { console.error(e); }
+        } catch (e: unknown) { console.error(e); }
       }
       return [] as { name: string; phone: string }[];
     })(),
@@ -142,24 +199,28 @@ Adapun nama siswa/i kami adalah:`,
 
   // Load saved contact persons from database preferences
   useEffect(() => {
-    if (userData?.data?.preferences) {
-      // @ts-ignore
-      const prefs = userData.data.preferences;
-      if (prefs?.print_config_contact_persons && Array.isArray(prefs.print_config_contact_persons)) {
-        console.log("DEBUG: Database preferences loaded:", prefs.print_config_contact_persons);
-        setPrintConfig(prev => {
-          // Hanya update jika state saat ini benar-benar kosong
-          // Ini mencegah data database menimpa data yang baru saja diketik/diedit
-          if (prev.contactPersons.length === 0 && prefs.print_config_contact_persons.length > 0) {
-            return { 
-              ...prev, 
-              contactPersons: [...prefs.print_config_contact_persons].map(cp => ({ ...cp }))
-            };
-          }
-          return prev;
-        });
+    const prefs = (userData?.data?.preferences ?? {}) as Record<string, unknown>;
+    const raw = prefs['print_config_contact_persons'];
+    const cpsFromPrefs = Array.isArray(raw)
+      ? raw.filter((item): item is { name: string; phone: string } => {
+          if (!item || typeof item !== 'object') return false;
+          const record = item as Record<string, unknown>;
+          return typeof record.name === 'string' && typeof record.phone === 'string';
+        })
+      : [];
+
+    if (cpsFromPrefs.length === 0) return;
+
+    console.log("DEBUG: Database preferences loaded:", cpsFromPrefs);
+    setPrintConfig(prev => {
+      if (prev.contactPersons.length === 0 && cpsFromPrefs.length > 0) {
+        return { 
+          ...prev, 
+          contactPersons: cpsFromPrefs.map(cp => ({ ...cp }))
+        };
       }
-    }
+      return prev;
+    });
   }, [userData]);
 
   // Persist CP to localStorage on every change - UNTUK KEANDALAN ANTAR TAB
@@ -181,8 +242,7 @@ Adapun nama siswa/i kami adalah:`,
     // Simpan ke localStorage segera
     localStorage.setItem('pkl_print_default_cps', JSON.stringify(cpsToSave));
     
-    // @ts-ignore
-    const currentPrefs = userData?.data?.preferences || {};
+    const currentPrefs = (userData?.data?.preferences ?? {}) as Record<string, unknown>;
     const newPrefs = {
         ...currentPrefs,
         print_config_contact_persons: cpsToSave
@@ -205,25 +265,40 @@ Adapun nama siswa/i kami adalah:`,
     setPrintType('group');
     
     // Ambil data CP terbaru (prioritas: current state > localStorage > database)
-    let finalCPs = printConfig.contactPersons;
+    let finalCPs: { name: string; phone: string }[] = printConfig.contactPersons;
     
     if (finalCPs.length === 0) {
       const saved = localStorage.getItem('pkl_print_default_cps');
       if (saved) {
         try {
-          finalCPs = JSON.parse(saved);
-        } catch (e) {}
+          const parsed = JSON.parse(saved) as unknown;
+          if (Array.isArray(parsed)) {
+            finalCPs = parsed.filter((item): item is { name: string; phone: string } => {
+              if (!item || typeof item !== 'object') return false;
+              const record = item as Record<string, unknown>;
+              return typeof record.name === 'string' && typeof record.phone === 'string';
+            });
+          }
+        } catch { /* ignore */ }
       }
     }
 
-    if (finalCPs.length === 0 && userData?.data?.preferences?.print_config_contact_persons) {
-      finalCPs = userData.data.preferences.print_config_contact_persons;
+    if (finalCPs.length === 0) {
+      const prefs = (userData?.data?.preferences ?? {}) as Record<string, unknown>;
+      const raw = prefs['print_config_contact_persons'];
+      if (Array.isArray(raw)) {
+        finalCPs = raw.filter((item): item is { name: string; phone: string } => {
+          if (!item || typeof item !== 'object') return false;
+          const record = item as Record<string, unknown>;
+          return typeof record.name === 'string' && typeof record.phone === 'string';
+        });
+      }
     }
     
     setPrintConfig(prev => ({
       ...prev,
       letterNumber: 'B.108/KGB2.K/K/AK/I/2026',
-      contactPersons: [...finalCPs].map((cp: any) => ({ ...cp }))
+      contactPersons: finalCPs.map((cp) => ({ ...cp }))
     }));
     setIsPrintModalOpen(true);
   };
@@ -245,7 +320,7 @@ Adapun nama siswa/i kami adalah:`,
         closingText: printConfig.closingText?.replace(/\n/g, '<br/>')
       };
 
-      let response;
+      let response: { data: { data: { html: string } } };
       if (printType === 'group') {
         console.log("Fetching group print data...");
         response = await internshipService.printGroupLetter({
@@ -284,9 +359,10 @@ Adapun nama siswa/i kami adalah:`,
       }
       
       setIsPrintModalOpen(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("executePrint error:", error);
-      toast.error(error.response?.data?.message || 'Gagal memuat surat');
+      const err = error as ApiError;
+      toast.error(err.response?.data?.message || 'Gagal memuat surat');
     } finally {
       setIsPrinting(false);
     }
@@ -319,15 +395,27 @@ Adapun nama siswa/i kami adalah:`,
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => 
+    mutationFn: ({ id, data }: { 
+      id: number; 
+      data: {
+        status: string;
+        rejectionReason?: string;
+        teacherId?: number;
+        mentorName?: string;
+        mentorPhone?: string;
+        companyLatitude?: number;
+        companyLongitude?: number;
+      } 
+    }) => 
       internshipService.updateStatus(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['internships-all'] });
       toast.success('Status PKL berhasil diperbarui');
       closeModal();
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal memperbarui status');
+    onError: (error: unknown) => {
+      const err = error as ApiError;
+      toast.error(err.response?.data?.message || 'Gagal memperbarui status');
     }
   });
 
@@ -340,8 +428,9 @@ Adapun nama siswa/i kami adalah:`,
       setIsAssignExaminerModalOpen(false);
       setSelectedExaminerId('');
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menugaskan penguji');
+    onError: (error: unknown) => {
+      const err = error as ApiError;
+      toast.error(err.response?.data?.message || 'Gagal menugaskan penguji');
     }
   });
 
@@ -353,8 +442,9 @@ Adapun nama siswa/i kami adalah:`,
       setIsDeleteModalOpen(false);
       setDeleteTargetId(null);
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menghapus pengajuan');
+    onError: (error: unknown) => {
+      const err = error as ApiError;
+      toast.error(err.response?.data?.message || 'Gagal menghapus pengajuan');
       setIsDeleteModalOpen(false);
       setDeleteTargetId(null);
     }
@@ -372,7 +462,7 @@ Adapun nama siswa/i kami adalah:`,
   };
 
   const scheduleDefenseMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => 
+    mutationFn: ({ id, data }: { id: number; data: { defenseDate: string; defenseRoom: string } }) => 
       internshipService.scheduleDefense(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['internships-all'] });
@@ -381,13 +471,18 @@ Adapun nama siswa/i kami adalah:`,
       setDefenseDate('');
       setDefenseRoom('');
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menyimpan jadwal sidang');
+    onError: (error: unknown) => {
+      const err = error as ApiError;
+      toast.error(err.response?.data?.message || 'Gagal menyimpan jadwal sidang');
     }
   });
 
   const handleAssignExaminer = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedInternship) {
+      toast.error('Data pengajuan tidak ditemukan');
+      return;
+    }
     if (!selectedExaminerId) {
       toast.error('Silakan pilih penguji');
       return;
@@ -400,6 +495,10 @@ Adapun nama siswa/i kami adalah:`,
 
   const handleScheduleDefense = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedInternship) {
+      toast.error('Data pengajuan tidak ditemukan');
+      return;
+    }
     if (!defenseDate || !defenseRoom) {
       toast.error('Tanggal dan ruangan wajib diisi');
       return;
@@ -413,33 +512,33 @@ Adapun nama siswa/i kami adalah:`,
     });
   };
 
-  const openAssignExaminerModal = (internship: any) => {
+  const openAssignExaminerModal = (internship: Internship) => {
     setSelectedInternship(internship);
     setSelectedExaminerId(internship.examinerId || '');
     setIsAssignExaminerModalOpen(true);
   };
 
-  const openScheduleDefenseModal = (internship: any) => {
+  const openScheduleDefenseModal = (internship: Internship) => {
     setSelectedInternship(internship);
     setDefenseDate(internship.defenseDate ? new Date(internship.defenseDate).toISOString().slice(0, 16) : '');
     setDefenseRoom(internship.defenseRoom || '');
     setIsScheduleDefenseModalOpen(true);
   };
 
-  const openVerifyModal = (internship: any) => {
+  const openVerifyModal = (internship: Internship) => {
     setSelectedInternship(internship);
     // Pre-fill if exists (though usually empty at this stage)
     setSelectedTeacherId(internship.teacherId || '');
     setMentorName(internship.mentorName || '');
     setMentorPhone(internship.mentorPhone || '');
-    setCompanyLatitude(internship.companyLatitude || '');
-    setCompanyLongitude(internship.companyLongitude || '');
+    setCompanyLatitude(internship.companyLatitude?.toString() || '');
+    setCompanyLongitude(internship.companyLongitude?.toString() || '');
     setRejectionReason('');
     setIsRejecting(false);
     setIsVerifyModalOpen(true);
   };
 
-  const openIndividualPrintModal = async (internship: any) => {
+  const openIndividualPrintModal = async (internship: Internship) => {
     // Show loading toast because we need to fetch colleagues
     const loadingToast = toast.loading('Menyiapkan data cetak...');
     
@@ -452,19 +551,34 @@ Adapun nama siswa/i kami adalah:`,
       setPrintType('individual');
       
       // Ambil data CP terbaru (prioritas: current state > localStorage > database)
-      let finalCPs = printConfig.contactPersons;
+      let finalCPs: { name: string; phone: string }[] = printConfig.contactPersons;
       
       if (finalCPs.length === 0) {
         const saved = localStorage.getItem('pkl_print_default_cps');
         if (saved) {
           try {
-            finalCPs = JSON.parse(saved);
-          } catch (e) {}
+            const parsed = JSON.parse(saved) as unknown;
+            if (Array.isArray(parsed)) {
+              finalCPs = parsed.filter((item): item is { name: string; phone: string } => {
+                if (!item || typeof item !== 'object') return false;
+                const record = item as Record<string, unknown>;
+                return typeof record.name === 'string' && typeof record.phone === 'string';
+              });
+            }
+          } catch { /* ignore */ }
         }
       }
 
-      if (finalCPs.length === 0 && userData?.data?.preferences?.print_config_contact_persons) {
-        finalCPs = userData.data.preferences.print_config_contact_persons;
+      if (finalCPs.length === 0) {
+        const prefs = (userData?.data?.preferences ?? {}) as Record<string, unknown>;
+        const raw = prefs['print_config_contact_persons'];
+        if (Array.isArray(raw)) {
+          finalCPs = raw.filter((item): item is { name: string; phone: string } => {
+            if (!item || typeof item !== 'object') return false;
+            const record = item as Record<string, unknown>;
+            return typeof record.name === 'string' && typeof record.phone === 'string';
+          });
+        }
       }
       
       setPrintConfig(prev => ({
@@ -476,7 +590,7 @@ Adapun nama siswa/i kami adalah:`,
         companyName: fullInternship.companyName || '',
         companyAddress: fullInternship.companyAddress || '',
         recipientName: fullInternship.mentorName || '',
-        contactPersons: [...finalCPs].map((cp: any) => ({ ...cp })),
+        contactPersons: finalCPs.map((cp) => ({ ...cp })),
         openingText: `Sesuai dengan Kurikulum Merdeka untuk Sekolah Menengah Kejuruan (SMK) Karya Guna Bhakti 2 diwajibkan untuk melaksanakan Program Praktik Kerja Lapangan pada semester IV Tahun Ajaran ${fullInternship.academicYear?.name || '2025/2026'} bagi siswa/i tingkat XI (Sebelas).
 
 Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami untuk dapat diberikan kesempatan melaksanakan Praktik Kerja Lapangan pada Perusahaan / Instansi yang Bapak / Ibu pimpin.
@@ -486,7 +600,7 @@ Adapun nama siswa/i kami adalah:`,
       
       toast.dismiss(loadingToast);
       setIsIndividualPrintModalOpen(true);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Failed to fetch internship detail:", error);
       toast.error('Gagal mengambil data detail PKL');
       toast.dismiss(loadingToast);
@@ -545,6 +659,7 @@ Adapun nama siswa/i kami adalah:`,
 
   const handleSubmitVerification = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedInternship) return;
     
     // Check if we are rejecting (either via toggle or forced reject)
     const isRejectAction = isRejecting || selectedInternship?.forceReject;
@@ -581,9 +696,9 @@ Adapun nama siswa/i kami adalah:`,
 
   const internshipsResponse = data?.data?.data;
   // Handle both array (legacy) and paginated response (new)
-  const internships = Array.isArray(internshipsResponse) 
+  const internships = (Array.isArray(internshipsResponse) 
     ? internshipsResponse 
-    : (internshipsResponse?.internships || internshipsResponse?.data || []);
+    : (internshipsResponse?.internships || internshipsResponse?.data || [])) as Internship[];
     
   const meta = !Array.isArray(internshipsResponse) ? internshipsResponse?.pagination || internshipsResponse?.meta : { 
     total: internships.length, 
@@ -591,9 +706,9 @@ Adapun nama siswa/i kami adalah:`,
     limit: internships.length || 10 
   };
 
-  const teachers = teachersData?.data || [];
-  const examiners = examinersData?.data || [];
-  const filteredExaminers = examiners.filter((examiner: any) =>
+  const teachers = (teachersData?.data || []) as User[];
+  const examiners = (examinersData?.data || []) as User[];
+  const filteredExaminers = examiners.filter((examiner) =>
     examiner.name.toLowerCase().includes(examinerSearch.toLowerCase())
   );
 
@@ -713,9 +828,9 @@ Adapun nama siswa/i kami adalah:`,
                       <input 
                         type="checkbox" 
                         className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-                        onChange={(e) => {
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                           if (e.target.checked) {
-                            setSelectedInternshipIds(filteredInternships.map((i: any) => i.id));
+                            setSelectedInternshipIds(filteredInternships.map((i) => i.id));
                           } else {
                             setSelectedInternshipIds([]);
                           }
@@ -732,7 +847,7 @@ Adapun nama siswa/i kami adalah:`,
                 </tr>
               </thead>
               <tbody>
-                {filteredInternships.map((internship: any) => (
+                {filteredInternships.map((internship) => (
                   <tr key={internship.id} className="bg-white border-b border-gray-300 hover:bg-gray-50 transition-colors">
                     <td className="w-4 p-4">
                       <div className="flex items-center">
@@ -1058,7 +1173,7 @@ Adapun nama siswa/i kami adalah:`,
                         required
                       >
                         <option value="">-- Pilih Guru (Wajib) --</option>
-                        {teachers.map((teacher: any) => (
+                        {teachers.map((teacher) => (
                           <option key={teacher.id} value={teacher.id}>
                             {teacher.name}
                           </option>
@@ -1177,7 +1292,7 @@ Adapun nama siswa/i kami adalah:`,
                     >
                       <span className={selectedExaminerId ? 'text-gray-900' : 'text-gray-500'}>
                         {selectedExaminerId
-                          ? examiners.find((t: any) => t.id === selectedExaminerId)?.name || 'Pilih Penguji'
+                          ? examiners.find((t) => t.id === selectedExaminerId)?.name || 'Pilih Penguji'
                           : 'Pilih Penguji'}
                       </span>
                       <ChevronDown size={16} className="text-gray-500" />
@@ -1195,7 +1310,7 @@ Adapun nama siswa/i kami adalah:`,
                             autoFocus
                           />
                         </div>
-                        {filteredExaminers.map((t: any) => {
+                        {filteredExaminers.map((t) => {
                           const isSelected = selectedExaminerId === t.id;
                           return (
                             <div

@@ -7,7 +7,8 @@ import { toast } from 'react-hot-toast';
 interface HomeroomExtracurricularsPageProps {
   classId: number;
   semester: 'ODD' | 'EVEN' | '';
-  reportType?: 'SBTS' | 'SAS' | 'SAT';
+  reportType?: string;
+  programCode?: string;
 }
 
 interface StudentAchievement {
@@ -103,6 +104,7 @@ const StudentRow = ({
   const [catatan, setCatatan] = useState(student.catatan);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCatatan(student.catatan);
   }, [student.catatan]);
 
@@ -202,10 +204,23 @@ const StudentRow = ({
   );
 };
 
-export const HomeroomExtracurricularsPage = ({ classId, semester, reportType = 'SBTS' }: HomeroomExtracurricularsPageProps) => {
+export const HomeroomExtracurricularsPage = ({
+  classId,
+  semester,
+  reportType = '',
+  programCode,
+}: HomeroomExtracurricularsPageProps) => {
   const queryClient = useQueryClient();
   const [isAchievementModalOpen, setIsAchievementModalOpen] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
+  const normalizedReportType = String(reportType || '').toUpperCase();
+  const extracurricularQueryKey = [
+    'extracurricular-report',
+    classId,
+    semester,
+    normalizedReportType,
+    String(programCode || ''),
+  ];
   
   // Achievement Form State
   const [achName, setAchName] = useState('');
@@ -214,10 +229,17 @@ export const HomeroomExtracurricularsPage = ({ classId, semester, reportType = '
   const [achYear, setAchYear] = useState(new Date().getFullYear());
 
   const { data: students, isLoading } = useQuery<StudentExtracurricular[]>({
-    queryKey: ['extracurricular-report', classId, semester, reportType],
+    queryKey: extracurricularQueryKey,
     queryFn: async () => {
       if (!classId || !semester) return [];
-      const res = await api.get('/reports/extracurricular', { params: { classId, semester, reportType } });
+      const res = await api.get('/reports/extracurricular', {
+        params: {
+          classId,
+          semester,
+          ...(programCode ? { programCode } : {}),
+          ...(!programCode && normalizedReportType ? { reportType: normalizedReportType } : {}),
+        },
+      });
       return res.data.data;
     },
     enabled: !!classId && !!semester
@@ -229,18 +251,25 @@ export const HomeroomExtracurricularsPage = ({ classId, semester, reportType = '
     },
     onSuccess: () => {
       toast.success('Catatan disimpan', { id: 'autosave-note', duration: 2000 });
-      queryClient.invalidateQueries({ queryKey: ['extracurricular-report', classId, semester] });
+      queryClient.invalidateQueries({ queryKey: extracurricularQueryKey });
     },
     onError: () => toast.error('Gagal menyimpan catatan')
   });
 
   const updateGradeMutation = useMutation({
     mutationFn: async ({ enrollmentId, grade, description }: { enrollmentId: number, grade: string, description: string }) => {
-      await api.post('/reports/extracurricular/grade', { enrollmentId, grade, description, semester, reportType });
+      await api.post('/reports/extracurricular/grade', {
+        enrollmentId,
+        grade,
+        description,
+        semester,
+        ...(programCode ? { programCode } : {}),
+        ...(!programCode && normalizedReportType ? { reportType: normalizedReportType } : {}),
+      });
     },
     onSuccess: () => {
       toast.success('Nilai ekstrakurikuler disimpan', { id: 'autosave-grade', duration: 2000 });
-      queryClient.invalidateQueries({ queryKey: ['extracurricular-report', classId, semester] });
+      queryClient.invalidateQueries({ queryKey: extracurricularQueryKey });
     },
     onError: () => toast.error('Gagal menyimpan nilai')
   });
@@ -252,7 +281,7 @@ export const HomeroomExtracurricularsPage = ({ classId, semester, reportType = '
     onSuccess: () => {
       toast.success('Prestasi berhasil ditambahkan');
       closeAchievementModal();
-      queryClient.invalidateQueries({ queryKey: ['extracurricular-report', classId, semester] });
+      queryClient.invalidateQueries({ queryKey: extracurricularQueryKey });
     },
     onError: () => toast.error('Gagal menambah prestasi')
   });
@@ -263,7 +292,7 @@ export const HomeroomExtracurricularsPage = ({ classId, semester, reportType = '
     },
     onSuccess: () => {
       toast.success('Prestasi dihapus');
-      queryClient.invalidateQueries({ queryKey: ['extracurricular-report', classId, semester] });
+      queryClient.invalidateQueries({ queryKey: extracurricularQueryKey });
     },
     onError: () => toast.error('Gagal menghapus prestasi')
   });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
@@ -33,6 +33,7 @@ type LocalImageFile = {
   uri: string;
   name?: string;
   type?: string;
+  size?: number;
 };
 
 const toMediaUrl = (url: string) => {
@@ -62,7 +63,7 @@ export default function AdminSlideshowScreen() {
     enabled: isAuthenticated && isAdmin,
   });
 
-  const slides = slideshowQuery.data?.slides || [];
+  const slides = useMemo(() => slideshowQuery.data?.slides || [], [slideshowQuery.data?.slides]);
   const settings = slideshowQuery.data?.settings;
   const activeSlideCount = slides.filter((item) => item.isActive !== false).length;
 
@@ -102,10 +103,15 @@ export default function AdminSlideshowScreen() {
       });
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
+      if (typeof asset.size === 'number' && asset.size > 1 * 1024 * 1024) {
+        notifyInfo('Ukuran file slideshow maksimal 1MB.');
+        return;
+      }
       setUploadFile({
         uri: asset.uri,
         name: asset.name,
         type: asset.mimeType || 'image/jpeg',
+        size: asset.size,
       });
     } catch (error) {
       notifyApiError(error, 'Gagal memilih gambar slideshow.');
@@ -115,6 +121,10 @@ export default function AdminSlideshowScreen() {
   const uploadSlide = async () => {
     if (!uploadFile) {
       notifyInfo('Pilih foto terlebih dahulu.');
+      return;
+    }
+    if (typeof uploadFile.size === 'number' && uploadFile.size > 1 * 1024 * 1024) {
+      notifyInfo('Ukuran file slideshow maksimal 1MB.');
       return;
     }
     if (pendingActionKey) return;
@@ -377,7 +387,7 @@ export default function AdminSlideshowScreen() {
                 {uploadFile ? 'Ganti Foto' : 'Pilih Foto'}
               </Text>
               <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
-                {uploadFile?.name || 'Format: JPG/JPEG/PNG/WEBP, maksimal 5MB'}
+                {uploadFile?.name || 'Format: JPG/JPEG/PNG/WEBP, maksimal 1MB'}
               </Text>
             </Pressable>
 

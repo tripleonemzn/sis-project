@@ -20,6 +20,50 @@ function normalizeCode(raw: unknown): string {
     .replace(/^_+|_+$/g, '')
 }
 
+function isFormativeAliasCode(raw: unknown): boolean {
+  const normalized = normalizeCode(raw)
+  if (!normalized) return false
+  return normalized === 'FORMATIF' || normalized === 'FORMATIVE' || normalized.startsWith('NF')
+}
+
+function isMidtermAliasCode(raw: unknown): boolean {
+  const normalized = normalizeCode(raw)
+  if (!normalized) return false
+  if (['SBTS', 'MIDTERM', 'PTS', 'UTS'].includes(normalized)) return true
+  return normalized.includes('MIDTERM')
+}
+
+function isFinalEvenAliasCode(raw: unknown): boolean {
+  const normalized = normalizeCode(raw)
+  if (!normalized) return false
+  if (['SAT', 'PAT', 'PSAT', 'FINAL_EVEN'].includes(normalized)) return true
+  return normalized === 'FINAL' || normalized.includes('FINAL_EVEN')
+}
+
+function isFinalOddAliasCode(raw: unknown): boolean {
+  const normalized = normalizeCode(raw)
+  if (!normalized) return false
+  if (['SAS', 'PAS', 'PSAS', 'FINAL_ODD'].includes(normalized)) return true
+  return normalized.includes('FINAL_ODD')
+}
+
+function isFinalAliasCode(raw: unknown): boolean {
+  const normalized = normalizeCode(raw)
+  if (!normalized) return false
+  if (isFinalOddAliasCode(normalized) || isFinalEvenAliasCode(normalized)) return true
+  return normalized === 'FINAL' || normalized.includes('FINAL')
+}
+
+function isUsTheoryAliasCode(raw: unknown): boolean {
+  const normalized = normalizeCode(raw)
+  return normalized === 'US_THEORY' || normalized === 'US_TEORI'
+}
+
+function isUsPracticeAliasCode(raw: unknown): boolean {
+  const normalized = normalizeCode(raw)
+  return normalized === 'US_PRACTICE' || normalized === 'US_PRAKTEK'
+}
+
 function clampScore(value: number): number {
   if (!Number.isFinite(value)) return 0
   if (value < 0) return 0
@@ -48,15 +92,33 @@ function defaultReportSlotCodeByComponentType(type?: GradeComponentType | null):
   return String(defaultReportSlotByComponentType(type) || 'NONE')
 }
 
+function inferReportSlotCodeFromAlias(
+  rawCode: unknown,
+  fallback = 'NONE',
+  fixedSemester?: Semester | null,
+): string {
+  const code = normalizeCode(rawCode)
+  if (!code) return fallback
+  if (isFormativeAliasCode(code)) return 'FORMATIF'
+  if (isMidtermAliasCode(code)) return 'SBTS'
+  if (isFinalEvenAliasCode(code)) return 'SAT'
+  if (isFinalOddAliasCode(code)) return 'SAS'
+  if (isFinalAliasCode(code)) return fixedSemester === Semester.EVEN ? 'SAT' : 'SAS'
+  if (isUsTheoryAliasCode(code)) return 'US_THEORY'
+  if (isUsPracticeAliasCode(code)) return 'US_PRACTICE'
+  if (code === 'NONE') return 'NONE'
+  return fallback
+}
+
 function mapReportSlotEnumFromCode(
   code: string,
   fallback: ReportComponentSlot = ReportComponentSlot.NONE,
 ): ReportComponentSlot {
-  if (code === 'FORMATIF') return ReportComponentSlot.FORMATIF
-  if (code === 'SBTS') return ReportComponentSlot.SBTS
-  if (code === 'SAS') return ReportComponentSlot.SAS
-  if (code === 'US_THEORY') return ReportComponentSlot.US_THEORY
-  if (code === 'US_PRACTICE') return ReportComponentSlot.US_PRACTICE
+  if (isFormativeAliasCode(code)) return ReportComponentSlot.FORMATIF
+  if (isMidtermAliasCode(code)) return ReportComponentSlot.SBTS
+  if (isFinalAliasCode(code)) return ReportComponentSlot.SAS
+  if (isUsTheoryAliasCode(code)) return ReportComponentSlot.US_THEORY
+  if (isUsPracticeAliasCode(code)) return ReportComponentSlot.US_PRACTICE
   if (code === 'NONE') return ReportComponentSlot.NONE
   return fallback
 }
@@ -80,21 +142,33 @@ function defaultComponentCodeByExamType(type?: ExamType | null): string {
   return 'CUSTOM'
 }
 
+function defaultComponentCodeByBaseTypeCode(code?: string | null): string {
+  const normalized = normalizeCode(code)
+  if (!normalized) return 'CUSTOM'
+  if (isFormativeAliasCode(normalized)) return 'FORMATIVE'
+  if (isMidtermAliasCode(normalized)) return 'MIDTERM'
+  if (isFinalAliasCode(normalized)) return 'FINAL'
+  if (isUsPracticeAliasCode(normalized)) return 'US_PRACTICE'
+  if (isUsTheoryAliasCode(normalized)) return 'US_THEORY'
+  return normalized
+}
+
 function mapComponentTypeFromCode(
   code: string,
   fallback: GradeComponentType = GradeComponentType.CUSTOM,
 ): GradeComponentType {
-  if (code === 'FORMATIVE') return GradeComponentType.FORMATIVE
-  if (code === 'MIDTERM') return GradeComponentType.MIDTERM
-  if (code === 'FINAL') return GradeComponentType.FINAL
-  if (code === 'US_THEORY') return GradeComponentType.US_THEORY
-  if (code === 'US_PRACTICE') return GradeComponentType.US_PRACTICE
-  if (code === 'SKILL') return GradeComponentType.SKILL
+  const normalized = normalizeCode(code)
+  if (isFormativeAliasCode(normalized)) return GradeComponentType.FORMATIVE
+  if (isMidtermAliasCode(normalized)) return GradeComponentType.MIDTERM
+  if (isFinalAliasCode(normalized)) return GradeComponentType.FINAL
+  if (isUsTheoryAliasCode(normalized)) return GradeComponentType.US_THEORY
+  if (isUsPracticeAliasCode(normalized)) return GradeComponentType.US_PRACTICE
+  if (normalized === 'SKILL') return GradeComponentType.SKILL
   return fallback
 }
 
 function defaultEntryModeByCode(code: string): GradeEntryMode {
-  return code === 'FORMATIVE' ? GradeEntryMode.NF_SERIES : GradeEntryMode.SINGLE_SCORE
+  return isFormativeAliasCode(code) ? GradeEntryMode.NF_SERIES : GradeEntryMode.SINGLE_SCORE
 }
 
 function defaultReportSlotByExamType(type?: ExamType | null): ReportComponentSlot {
@@ -107,7 +181,7 @@ function defaultReportSlotByExamType(type?: ExamType | null): ReportComponentSlo
 }
 
 function defaultReportSlotCodeByExamType(type?: ExamType | null): string {
-  return String(defaultReportSlotByExamType(type) || 'NONE')
+  return inferReportSlotCodeFromAlias(type, String(defaultReportSlotByExamType(type) || 'NONE'))
 }
 
 function toFiniteNumber(value: unknown): number | null {
@@ -146,11 +220,14 @@ async function resolveComponentConfig(
 
   const resolvedType = componentMaster?.type || mapComponentTypeFromCode(componentCode, fallbackType || GradeComponentType.CUSTOM)
   const resolvedTypeCode = normalizeCode(componentMaster?.typeCode || resolvedType || componentCode || 'CUSTOM')
-  const resolvedEntryMode = componentMaster?.entryMode || defaultEntryModeByCode(componentCode)
+  const resolvedEntryMode =
+    componentMaster?.entryMode ||
+    defaultEntryModeByCode(componentCode || defaultComponentCodeByType(resolvedType))
   const resolvedEntryModeCode = normalizeCode(componentMaster?.entryModeCode || resolvedEntryMode || 'SINGLE_SCORE')
   const resolvedReportSlot = componentMaster?.reportSlot || defaultReportSlotByComponentType(resolvedType)
-  const resolvedReportSlotCode = normalizeCode(
-    componentMaster?.reportSlotCode || resolvedReportSlot || defaultReportSlotCodeByComponentType(resolvedType),
+  const resolvedReportSlotCode = inferReportSlotCodeFromAlias(
+    componentMaster?.reportSlotCode || resolvedReportSlot || componentCode || resolvedTypeCode,
+    defaultReportSlotCodeByComponentType(resolvedType),
   )
   return {
     componentCode: componentCode || defaultComponentCodeByType(resolvedType),
@@ -161,6 +238,30 @@ async function resolveComponentConfig(
     entryMode: resolvedEntryMode,
     entryModeCode: resolvedEntryModeCode || String(resolvedEntryMode || 'SINGLE_SCORE'),
   }
+}
+
+async function resolveDefaultFormativeComponentCode(academicYearId: number): Promise<string> {
+  try {
+    const formativeComponent = await prisma.examGradeComponent.findFirst({
+      where: {
+        academicYearId,
+        isActive: true,
+        OR: [
+          { entryMode: GradeEntryMode.NF_SERIES },
+          { entryModeCode: 'NF_SERIES' },
+          { type: GradeComponentType.FORMATIVE },
+          { typeCode: 'FORMATIVE' },
+        ],
+      },
+      orderBy: [{ displayOrder: 'asc' }, { id: 'asc' }],
+      select: { code: true },
+    })
+    const resolvedCode = normalizeCode(formativeComponent?.code)
+    if (resolvedCode) return resolvedCode
+  } catch {
+    // fallback below
+  }
+  return 'FORMATIVE'
 }
 
 async function resolveProgramConfig(params: {
@@ -176,7 +277,9 @@ async function resolveProgramConfig(params: {
           code: normalizedProgramCode,
         },
         select: {
+          baseType: true,
           baseTypeCode: true,
+          fixedSemester: true,
           gradeComponentCode: true,
           gradeComponentType: true,
           gradeComponentTypeCode: true,
@@ -186,7 +289,10 @@ async function resolveProgramConfig(params: {
       })
     : null
 
-  const fallbackCode = defaultComponentCodeByExamType(params.examType)
+  const fallbackCode =
+    defaultComponentCodeByBaseTypeCode(
+      normalizeCode(programConfig?.baseTypeCode || programConfig?.baseType),
+    ) || defaultComponentCodeByExamType(params.examType)
   const componentCode = normalizeCode(programConfig?.gradeComponentCode || fallbackCode)
   const componentConfig = await resolveComponentConfig(
     params.academicYearId,
@@ -194,16 +300,27 @@ async function resolveProgramConfig(params: {
     programConfig?.gradeComponentType || mapComponentTypeFromCode(componentCode),
   )
 
-  const fallbackProgramSlotCode = defaultReportSlotCodeByExamType(params.examType)
+  const fallbackProgramSlotCode = inferReportSlotCodeFromAlias(
+    programConfig?.baseTypeCode || programConfig?.baseType || params.examType,
+    defaultReportSlotCodeByExamType(params.examType),
+    programConfig?.fixedSemester || null,
+  )
+  const resolvedProgramSlotCode = inferReportSlotCodeFromAlias(
+    componentConfig.reportSlotCode || fallbackProgramSlotCode,
+    fallbackProgramSlotCode,
+    programConfig?.fixedSemester || null,
+  )
   return {
     componentCode: componentConfig.componentCode,
     componentType: componentConfig.componentType,
     componentTypeCode:
       normalizeCode(programConfig?.gradeComponentTypeCode || componentConfig.componentTypeCode) ||
       componentConfig.componentTypeCode,
-    reportSlot: componentConfig.reportSlot || defaultReportSlotByExamType(params.examType),
-    reportSlotCode:
-      normalizeCode(componentConfig.reportSlotCode || fallbackProgramSlotCode) || fallbackProgramSlotCode,
+    reportSlot: mapReportSlotEnumFromCode(
+      resolvedProgramSlotCode,
+      componentConfig.reportSlot || defaultReportSlotByExamType(params.examType),
+    ),
+    reportSlotCode: resolvedProgramSlotCode,
     entryMode: programConfig?.gradeEntryMode || componentConfig.entryMode,
     entryModeCode:
       normalizeCode(programConfig?.gradeEntryModeCode || componentConfig.entryModeCode) ||
@@ -520,7 +637,12 @@ export async function upsertScoreEntryFromAssignmentSubmission(params: {
   score: number
   maxScore?: number | null
 }) {
-  const componentConfig = await resolveComponentConfig(params.academicYearId, 'FORMATIVE', GradeComponentType.FORMATIVE)
+  const formativeCode = await resolveDefaultFormativeComponentCode(params.academicYearId)
+  const componentConfig = await resolveComponentConfig(
+    params.academicYearId,
+    formativeCode,
+    GradeComponentType.FORMATIVE,
+  )
 
   await upsertScoreEntry({
     studentId: params.studentId,

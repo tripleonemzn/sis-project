@@ -18,6 +18,7 @@ import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
 
 type ScoreMap = Record<number, Record<string, number>>;
+type StudentClassWithLevel = NonNullable<AdminUser['studentClass']> & { level?: string | null };
 
 function parseSchemeId(raw?: string | string[]) {
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -31,7 +32,8 @@ function normalizeKey(value?: string) {
 }
 
 function isGradeTwelve(studentClass: AdminUser['studentClass'] | null | undefined) {
-  const level = normalizeKey((studentClass as any)?.level);
+  const classWithLevel = studentClass as StudentClassWithLevel | null | undefined;
+  const level = normalizeKey(classWithLevel?.level || '');
   const className = normalizeKey(studentClass?.name);
   return level === 'XII' || level === '12' || className.startsWith('XII') || className.startsWith('12');
 }
@@ -183,8 +185,11 @@ export default function ExaminerAssessmentScreen() {
   }, [students, search, selectedClassId]);
 
   useEffect(() => {
-    setAllScores({});
-    setChangedStudentIds(new Set());
+    const timerId = setTimeout(() => {
+      setAllScores({});
+      setChangedStudentIds(new Set());
+    }, 0);
+    return () => clearTimeout(timerId);
   }, [schemeId]);
 
   useEffect(() => {
@@ -213,7 +218,10 @@ export default function ExaminerAssessmentScreen() {
       seededScores[assessment.studentId] = studentScore;
     }
 
-    setAllScores(seededScores);
+    const timerId = setTimeout(() => {
+      setAllScores(seededScores);
+    }, 0);
+    return () => clearTimeout(timerId);
   }, [
     schemeId,
     schemeDetailQuery.data,
@@ -279,7 +287,7 @@ export default function ExaminerAssessmentScreen() {
       ]);
       await assessmentsQuery.refetch();
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal menyimpan nilai UKK.');
     },
   });

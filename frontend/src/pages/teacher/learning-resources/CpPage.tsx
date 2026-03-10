@@ -22,8 +22,16 @@ import type { TeacherAssignment } from '../../../services/teacherAssignment.serv
 import { academicYearService } from '../../../services/academicYear.service';
 import { userService } from '../../../services/user.service';
 import { cpTpAnalysisService } from '../../../services/cpTpAnalysis.service';
+import type { User } from '../../../types/auth';
 
 // --- Types ---
+
+interface AcademicYear {
+  id: number;
+  name: string;
+  semester: string;
+  isActive: boolean;
+}
 
 interface AnalysisItem {
   id: string;
@@ -40,6 +48,17 @@ interface AnalysisRow {
   items: AnalysisItem[];
 }
 
+interface TeachingContext {
+  key: string;
+  subjectId: number;
+  subjectName: string;
+  subjectCode: string;
+  level: string;
+  phase: 'E' | 'F';
+  majors: string[];
+  label: string;
+}
+
 const PROFILE_DIMENSIONS = [
   "Beriman, bertakwa kepada Tuhan YME, dan berakhlak mulia",
   "Berkebinekaan global",
@@ -52,7 +71,7 @@ const PROFILE_DIMENSIONS = [
 const CpPage = () => {
   const queryClient = useQueryClient();
 
-  const { user: contextUser } = useOutletContext<{ user: any, activeYear: any }>() || {};
+  const { user: contextUser } = useOutletContext<{ user: User, activeYear: AcademicYear }>() || {};
 
   // --- Auth & Preferences ---
   const { data: authData } = useQuery({
@@ -71,7 +90,7 @@ const CpPage = () => {
   });
 
   const updateProfileMutation = useMutation({
-    mutationFn: (data: any) => userService.update(userId!, data),
+    mutationFn: (data: Partial<User>) => userService.update(userId!, data),
     onSuccess: () => {
        queryClient.invalidateQueries({ queryKey: ['user-profile', userId] });
     }
@@ -132,7 +151,7 @@ const CpPage = () => {
           if (usersRes.data && usersRes.data.length > 0) {
              setPrincipalName(usersRes.data[0].name);
           }
-        } catch (err) {
+        } catch (err: unknown) {
           console.error('Failed to fetch principal', err);
         }
 
@@ -146,7 +165,7 @@ const CpPage = () => {
              setCurrentTeacherId(assignResponse.data.assignments[0].teacherId);
           }
         }
-      } catch (e) {
+      } catch (e: unknown) {
         console.error('Failed to initialize page data', e);
       }
     };
@@ -156,9 +175,9 @@ const CpPage = () => {
   // Restore preferences
   useEffect(() => {
     if (userData?.data?.preferences && assignments.length > 0 && !selectedContextKey) {
-        // @ts-ignore
-        const savedKey = userData.data.preferences['cp-last-context-key'];
-        if (savedKey) {
+        const prefs = (userData?.data?.preferences ?? {}) as Record<string, unknown>;
+        const savedKey = prefs['cp-last-context-key'];
+        if (typeof savedKey === 'string' && savedKey) {
             setSelectedContextKey(savedKey);
         }
     }
@@ -200,7 +219,7 @@ const CpPage = () => {
             setLastSaved(null);
         }
         setLoadStatus('success');
-      } catch (e) {
+      } catch (e: unknown) {
         console.error('Failed to load analysis', e);
         setDocumentRows([]); 
         setLoadStatus('error'); // Prevent auto-save
@@ -238,7 +257,7 @@ const CpPage = () => {
       });
     }
     return acc;
-  }, [] as any[]);
+  }, [] as TeachingContext[]);
 
   const handleContextChange = (key: string) => {
     // Just update the key; let the useEffect handle loading
@@ -246,8 +265,7 @@ const CpPage = () => {
     
     // Persist to database preferences
     if (userId) {
-        // @ts-ignore
-        const currentPrefs = userData?.data?.preferences || {};
+        const currentPrefs = (userData?.data?.preferences ?? {}) as Record<string, unknown>;
         updateProfileMutation.mutate({
             preferences: { ...currentPrefs, 'cp-last-context-key': key }
         });
@@ -383,7 +401,7 @@ const CpPage = () => {
     }]);
   };
 
-  const updateItem = (id: string, field: keyof AnalysisItem, value: any) => {
+  const updateItem = (id: string, field: keyof AnalysisItem, value: string | string[]) => {
     setAnalysisItems(items => items.map(item => 
       item.id === id ? { ...item, [field]: value } : item
     ));

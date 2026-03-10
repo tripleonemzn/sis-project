@@ -3,6 +3,38 @@ import prisma from '../utils/prisma';
 import { ApiResponseHelper } from '../utils/ApiResponse';
 import { ApiError } from '../utils/api';
 
+const buildVocationalSubjectWhere = () => ({
+  OR: [
+    {
+      category: {
+        is: {
+          code: {
+            in: ['PRODUKTIF', 'KEJURUAN', 'KOMPETENSI_KEAHLIAN', 'UKK'],
+          },
+        },
+      },
+    },
+    {
+      category: {
+        is: {
+          name: { contains: 'KEJURUAN', mode: 'insensitive' as const },
+        },
+      },
+    },
+    {
+      category: {
+        is: {
+          name: { contains: 'KOMPETENSI', mode: 'insensitive' as const },
+        },
+      },
+    },
+    { name: { contains: 'KEJURUAN', mode: 'insensitive' as const } },
+    { name: { contains: 'KOMPETENSI', mode: 'insensitive' as const } },
+    { name: { contains: 'PRODUKTIF', mode: 'insensitive' as const } },
+    { name: { contains: 'UKK', mode: 'insensitive' as const } },
+  ],
+});
+
 export const createScheme = async (req: Request, res: Response) => {
   try {
     const examinerId = (req as any).user.id;
@@ -10,6 +42,20 @@ export const createScheme = async (req: Request, res: Response) => {
 
     if (!name || !subjectId || !academicYearId || !criteria) {
       throw new ApiError(400, 'Missing required fields');
+    }
+
+    const vocationalSubject = await prisma.subject.findFirst({
+      where: {
+        id: Number(subjectId),
+        ...buildVocationalSubjectWhere(),
+      },
+      select: { id: true },
+    });
+    if (!vocationalSubject) {
+      throw new ApiError(
+        400,
+        'Mata pelajaran yang dipilih bukan mapel UKK/kejuruan. Pilih mapel kejuruan yang valid.',
+      );
     }
 
     const scheme = await prisma.ukkScheme.create({
@@ -40,17 +86,26 @@ export const getSchemes = async (req: Request, res: Response) => {
     const { academicYearId } = req.query;
 
     const where: any = {
-      OR: [
-        { examinerId },
-        { assignedExaminers: { some: { id: examinerId } } }
-      ]
+      OR: [{ examinerId }, { assignedExaminers: { some: { id: examinerId } } }],
     };
     if (academicYearId) where.academicYearId = Number(academicYearId);
 
     const schemes = await prisma.ukkScheme.findMany({
       where,
       include: {
-        subject: { select: { id: true, name: true } },
+        subject: {
+          select: {
+            id: true,
+            name: true,
+            category: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+              },
+            },
+          },
+        },
         major: { select: { id: true, name: true } },
         academicYear: { select: { id: true, name: true } },
         assignedExaminers: { select: { id: true, name: true } }
@@ -72,7 +127,19 @@ export const getSchemeDetail = async (req: Request, res: Response) => {
     const scheme = await prisma.ukkScheme.findUnique({
       where: { id: Number(id) },
       include: {
-        subject: { select: { id: true, name: true } },
+        subject: {
+          select: {
+            id: true,
+            name: true,
+            category: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+              },
+            },
+          },
+        },
         major: { select: { id: true, name: true } },
         academicYear: { select: { id: true, name: true } },
         assignedExaminers: { select: { id: true, name: true } }

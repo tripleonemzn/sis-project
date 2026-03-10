@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
@@ -7,32 +7,74 @@ import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
+import { examApi, ExamProgramItem } from '../../../src/features/exams/examApi';
 import { tutorApi } from '../../../src/features/tutor/tutorApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
 
-type ReportType = 'SBTS' | 'SAS' | 'SAT';
 type SemesterType = 'ODD' | 'EVEN';
+
+function normalizeProgramCode(raw: unknown): string {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function resolveTutorReportSlot(
+  program: ExamProgramItem | null | undefined,
+  semester: SemesterType,
+): 'SBTS' | 'SAS' | 'SAT' | '' {
+  if (!program) return '';
+  const baseType = normalizeProgramCode(program.baseTypeCode || program.baseType);
+  if (baseType === 'SAT') return 'SAT';
+  if (baseType === 'SAS') return 'SAS';
+  if (baseType === 'SBTS') return 'SBTS';
+  const componentType = normalizeProgramCode(
+    program.gradeComponentTypeCode || program.gradeComponentType,
+  );
+  if (componentType === 'MIDTERM') return 'SBTS';
+  if (componentType === 'FINAL') {
+    const fixedSemester = program.fixedSemester || null;
+    if (fixedSemester === 'EVEN') return 'SAT';
+    if (fixedSemester === 'ODD') return 'SAS';
+    return semester === 'EVEN' ? 'SAT' : 'SAS';
+  }
+  return '';
+}
+
+function isMidtermAliasCode(raw: unknown): boolean {
+  const code = normalizeProgramCode(raw);
+  if (!code) return false;
+  return ['SBTS', 'MIDTERM', 'PTS', 'UTS'].includes(code) || code.includes('MIDTERM');
+}
+
+function isFinalAliasCode(raw: unknown): boolean {
+  const code = normalizeProgramCode(raw);
+  if (!code) return false;
+  if (['FINAL', 'SAS', 'SAT', 'PAS', 'PAT', 'PSAS', 'PSAT', 'FINAL_EVEN', 'FINAL_ODD'].includes(code)) {
+    return true;
+  }
+  return code.includes('FINAL');
+}
 
 function getExistingGrade(
   row: Awaited<ReturnType<typeof tutorApi.listMembers>>[number],
-  reportType: ReportType,
+  program: ExamProgramItem | null,
   semester: SemesterType,
 ) {
-  if (reportType === 'SAS') {
-    return { grade: row.gradeSas || '', description: row.descSas || '' };
-  }
-
-  if (reportType === 'SAT') {
-    return { grade: row.gradeSat || '', description: row.descSat || '' };
-  }
-
-  if (semester === 'EVEN') {
+  const slot = resolveTutorReportSlot(program, semester);
+  if (slot === 'SAS') return { grade: row.gradeSas || '', description: row.descSas || '' };
+  if (slot === 'SAT') return { grade: row.gradeSat || '', description: row.descSat || '' };
+  if (slot === 'SBTS' && semester === 'EVEN') {
     return { grade: row.gradeSbtsEven || '', description: row.descSbtsEven || '' };
   }
-
-  return { grade: row.gradeSbtsOdd || '', description: row.descSbtsOdd || '' };
+  if (slot === 'SBTS') return { grade: row.gradeSbtsOdd || '', description: row.descSbtsOdd || '' };
+  return { grade: row.grade || '', description: row.description || '' };
 }
 
 export default function TutorMembersScreen() {
@@ -44,9 +86,9 @@ export default function TutorMembersScreen() {
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
 
   const [search, setSearch] = useState('');
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
-  const [reportType, setReportType] = useState<ReportType>('SBTS');
-  const [semester, setSemester] = useState<SemesterType>('ODD');
+  const [selectedAssignmentIdState, setSelectedAssignmentIdState] = useState<number | null>(null);
+  const [selectedProgramCodeState, setSelectedProgramCodeState] = useState<string>('');
+  const [semesterState, setSemesterState] = useState<SemesterType>('ODD');
   const [gradeMap, setGradeMap] = useState<Record<number, string>>({});
   const [descriptionMap, setDescriptionMap] = useState<Record<number, string>>({});
 
@@ -62,32 +104,91 @@ export default function TutorMembersScreen() {
     queryFn: () => tutorApi.listAssignments(activeYearQuery.data?.id),
   });
 
-  const assignments = assignmentsQuery.data || [];
-
-  useEffect(() => {
-    if (!assignments.length) {
-      setSelectedAssignmentId(null);
-      return;
+  const assignments = useMemo(() => assignmentsQuery.data || [], [assignmentsQuery.data]);
+  const selectedAssignmentId = useMemo(() => {
+    if (!assignments.length) return null;
+    if (
+      selectedAssignmentIdState &&
+      assignments.some((item) => item.id === selectedAssignmentIdState)
+    ) {
+      return selectedAssignmentIdState;
     }
 
     const queryEkskulId = Number(params.ekskulId || 0);
     const queryAcademicYearId = Number(params.academicYearId || 0);
-
     if (queryEkskulId && queryAcademicYearId) {
       const found = assignments.find(
-        (item) => Number(item.ekskulId) === queryEkskulId && Number(item.academicYearId) === queryAcademicYearId,
+        (item) =>
+          Number(item.ekskulId) === queryEkskulId &&
+          Number(item.academicYearId) === queryAcademicYearId,
       );
-      if (found) {
-        setSelectedAssignmentId(found.id);
-        return;
-      }
+      if (found) return found.id;
     }
-
-    if (selectedAssignmentId && assignments.some((item) => item.id === selectedAssignmentId)) return;
-    setSelectedAssignmentId(assignments[0].id);
-  }, [assignments, params.ekskulId, params.academicYearId, selectedAssignmentId]);
+    return assignments[0].id;
+  }, [assignments, params.ekskulId, params.academicYearId, selectedAssignmentIdState]);
 
   const selectedAssignment = assignments.find((item) => item.id === selectedAssignmentId) || null;
+
+  const reportProgramsQuery = useQuery({
+    queryKey: [
+      'mobile-tutor-members-report-programs',
+      selectedAssignment?.academicYearId,
+    ],
+    enabled: Boolean(selectedAssignment?.academicYearId),
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const result = await examApi.getExamPrograms({
+        academicYearId: Number(selectedAssignment?.academicYearId),
+        roleContext: 'student',
+      });
+      return result.programs || [];
+    },
+  });
+
+  const reportPrograms = useMemo(() => {
+    const rows = reportProgramsQuery.data || [];
+    return rows
+      .filter((program) => {
+        if (!program.isActive || !program.showOnStudentMenu) return false;
+        const baseType = normalizeProgramCode(program.baseTypeCode || program.baseType);
+        if (isMidtermAliasCode(baseType) || isFinalAliasCode(baseType)) return true;
+        const componentType = normalizeProgramCode(
+          program.gradeComponentTypeCode || program.gradeComponentType,
+        );
+        return isMidtermAliasCode(componentType) || isFinalAliasCode(componentType);
+      })
+      .sort((a, b) => a.order - b.order || a.code.localeCompare(b.code));
+  }, [reportProgramsQuery.data]);
+
+  const selectedProgramCode = useMemo(() => {
+    if (!reportPrograms.length) return '';
+    const normalizedCurrent = normalizeProgramCode(selectedProgramCodeState);
+    const exists = reportPrograms.some(
+      (item) => normalizeProgramCode(item.code) === normalizedCurrent,
+    );
+    if (exists) return normalizedCurrent;
+    return normalizeProgramCode(reportPrograms[0].code);
+  }, [reportPrograms, selectedProgramCodeState]);
+
+  const selectedReportProgram = useMemo(
+    () =>
+      reportPrograms.find(
+        (item) => normalizeProgramCode(item.code) === normalizeProgramCode(selectedProgramCode),
+      ) || null,
+    [reportPrograms, selectedProgramCode],
+  );
+
+  const selectedReportSlot = useMemo(
+    () => resolveTutorReportSlot(selectedReportProgram, selectedReportProgram?.fixedSemester || semesterState),
+    [selectedReportProgram, semesterState],
+  );
+  const effectiveReportType = useMemo(
+    () =>
+      selectedReportSlot ||
+      normalizeProgramCode(selectedReportProgram?.code || selectedProgramCode || ''),
+    [selectedReportSlot, selectedProgramCode, selectedReportProgram?.code],
+  );
+  const semester = selectedReportProgram?.fixedSemester || semesterState;
 
   const membersQuery = useQuery({
     queryKey: [
@@ -109,7 +210,8 @@ export default function TutorMembersScreen() {
         enrollmentId: payload.enrollmentId,
         grade: payload.grade,
         description: payload.description,
-        reportType,
+        reportType: effectiveReportType || undefined,
+        programCode: selectedReportProgram?.code || undefined,
         semester,
       });
     },
@@ -128,19 +230,7 @@ export default function TutorMembersScreen() {
     },
   });
 
-  if (isLoading) return <AppLoadingScreen message="Memuat anggota ekskul..." />;
-  if (!isAuthenticated) return <Redirect href="/welcome" />;
-
-  if (user?.role !== 'EXTRACURRICULAR_TUTOR') {
-    return (
-      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Anggota & Nilai</Text>
-        <QueryStateView type="error" message="Halaman ini khusus untuk role pembina ekstrakurikuler." />
-      </ScrollView>
-    );
-  }
-
-  const members = membersQuery.data || [];
+  const members = useMemo(() => membersQuery.data || [], [membersQuery.data]);
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return members;
@@ -154,6 +244,19 @@ export default function TutorMembersScreen() {
       return haystacks.some((value) => value.toLowerCase().includes(q));
     });
   }, [members, search]);
+
+  if (isLoading) return <AppLoadingScreen message="Memuat anggota ekskul..." />;
+  if (!isAuthenticated) return <Redirect href="/welcome" />;
+
+  if (user?.role !== 'EXTRACURRICULAR_TUTOR') {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
+        <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Anggota & Nilai</Text>
+        <QueryStateView type="error" message="Halaman ini khusus untuk role pembina ekstrakurikuler." />
+      </ScrollView>
+    );
+  }
+  const hasFixedSemester = selectedReportProgram?.fixedSemester != null;
 
   return (
     <ScrollView
@@ -171,7 +274,7 @@ export default function TutorMembersScreen() {
     >
       <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Anggota & Nilai Ekskul</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Input nilai ekstrakurikuler sesuai jenis rapor dan semester.
+        Input nilai ekstrakurikuler sesuai Program Ujian aktif dan semester.
       </Text>
 
       <View
@@ -191,7 +294,11 @@ export default function TutorMembersScreen() {
             return (
               <View key={item.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
                 <Pressable
-                  onPress={() => setSelectedAssignmentId(item.id)}
+                  onPress={() => {
+                    setSelectedAssignmentIdState(item.id);
+                    setGradeMap({});
+                    setDescriptionMap({});
+                  }}
                   style={{
                     borderWidth: 1,
                     borderColor: selected ? BRAND_COLORS.blue : '#d6e2f7',
@@ -213,29 +320,66 @@ export default function TutorMembersScreen() {
           })}
         </View>
 
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Jenis Penilaian</Text>
-        <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
-          {(['SBTS', 'SAS', 'SAT'] as ReportType[]).map((item) => {
-            const selected = reportType === item;
-            return (
-              <View key={item} style={{ width: '33.3333%', paddingHorizontal: 4 }}>
-                <Pressable
-                  onPress={() => setReportType(item)}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: selected ? BRAND_COLORS.blue : '#d6e2f7',
-                    backgroundColor: selected ? '#e9f1ff' : '#fff',
-                    borderRadius: 10,
-                    paddingVertical: 8,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}>{item}</Text>
-                </Pressable>
-              </View>
-            );
-          })}
-        </View>
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Program Ujian</Text>
+        {reportProgramsQuery.isLoading ? (
+          <QueryStateView type="loading" message="Memuat program ujian..." />
+        ) : reportPrograms.length > 0 ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
+            {reportPrograms.map((program) => {
+              const code = normalizeProgramCode(program.code);
+              const selected = normalizeProgramCode(selectedProgramCode) === code;
+              return (
+                <View key={program.code} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                  <Pressable
+                    onPress={() => {
+                      setSelectedProgramCodeState(code);
+                      setGradeMap({});
+                      setDescriptionMap({});
+                    }}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: selected ? BRAND_COLORS.blue : '#d6e2f7',
+                      backgroundColor: selected ? '#e9f1ff' : '#fff',
+                      borderRadius: 10,
+                      paddingVertical: 8,
+                      paddingHorizontal: 10,
+                    }}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}
+                    >
+                      {String(program.label || program.shortLabel || program.code)}
+                    </Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+                      {program.fixedSemester === 'ODD'
+                        ? 'Semester Ganjil'
+                        : program.fixedSemester === 'EVEN'
+                        ? 'Semester Genap'
+                        : 'Semester Otomatis'}
+                    </Text>
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#facc15',
+              borderRadius: 10,
+              backgroundColor: '#fef9c3',
+              padding: 10,
+              marginBottom: 8,
+            }}
+          >
+            <Text style={{ color: '#854d0e', fontWeight: '700' }}>Program ujian belum tersedia.</Text>
+            <Text style={{ color: '#854d0e', fontSize: 12, marginTop: 2 }}>
+              Aktifkan program ujian komponen rapor dari menu Wakasek Kurikulum.
+            </Text>
+          </View>
+        )}
 
         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Semester</Text>
         <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
@@ -244,14 +388,20 @@ export default function TutorMembersScreen() {
             return (
               <View key={item} style={{ width: '50%', paddingHorizontal: 4 }}>
                 <Pressable
-                  onPress={() => setSemester(item)}
+                  onPress={() => {
+                    setSemesterState(item);
+                    setGradeMap({});
+                    setDescriptionMap({});
+                  }}
+                  disabled={Boolean(selectedReportProgram?.fixedSemester)}
                   style={{
                     borderWidth: 1,
                     borderColor: selected ? BRAND_COLORS.blue : '#d6e2f7',
-                    backgroundColor: selected ? '#e9f1ff' : '#fff',
+                    backgroundColor: selected ? '#e9f1ff' : hasFixedSemester ? '#f1f5f9' : '#fff',
                     borderRadius: 10,
                     paddingVertical: 8,
                     alignItems: 'center',
+                    opacity: hasFixedSemester ? 0.75 : 1,
                   }}
                 >
                   <Text style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}>
@@ -299,7 +449,7 @@ export default function TutorMembersScreen() {
       {!membersQuery.isLoading && !membersQuery.isError ? (
         filteredMembers.length > 0 ? (
           filteredMembers.map((item) => {
-            const existing = getExistingGrade(item, reportType, semester);
+            const existing = getExistingGrade(item, selectedReportProgram, semester);
             const currentGrade = gradeMap[item.id] ?? existing.grade;
             const currentDescription = descriptionMap[item.id] ?? existing.description;
 
@@ -368,7 +518,11 @@ export default function TutorMembersScreen() {
                 />
 
                 <Pressable
-                  disabled={saveMutation.isPending || !String(currentGrade || '').trim()}
+                  disabled={
+                    saveMutation.isPending ||
+                    !selectedReportProgram ||
+                    !String(currentGrade || '').trim()
+                  }
                   onPress={() =>
                     saveMutation.mutate({
                       enrollmentId: item.id,
@@ -379,7 +533,7 @@ export default function TutorMembersScreen() {
                   style={{
                     marginTop: 10,
                     backgroundColor:
-                      saveMutation.isPending || !String(currentGrade || '').trim()
+                      saveMutation.isPending || !selectedReportProgram || !String(currentGrade || '').trim()
                         ? '#93c5fd'
                         : BRAND_COLORS.blue,
                     borderRadius: 10,

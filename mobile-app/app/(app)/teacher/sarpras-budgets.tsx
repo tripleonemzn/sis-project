@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -21,9 +21,9 @@ import { sarprasApi } from '../../../src/features/sarpras/sarprasApi';
 import {
   SarprasBudgetRequest,
   SarprasBudgetStatus,
-  SarprasLpjInvoice,
   SarprasLpjInvoiceStatus,
 } from '../../../src/features/sarpras/types';
+import { getApiErrorMessage } from '../../../src/lib/api/errorMessage';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
 type StatusFilter = 'ALL' | SarprasBudgetStatus;
@@ -198,9 +198,8 @@ export default function TeacherSarprasBudgetsScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-budgets-list'] });
       Alert.alert('Berhasil', 'Pengajuan berhasil diteruskan ke Kepala Sekolah.');
     },
-    onError: (error: any) => {
-      const msg = error?.response?.data?.message || error?.message || 'Gagal memproses pengajuan anggaran.';
-      Alert.alert('Proses Gagal', msg);
+    onError: (error: unknown) => {
+      Alert.alert('Proses Gagal', getApiErrorMessage(error, 'Gagal memproses pengajuan anggaran.'));
     },
   });
 
@@ -217,9 +216,8 @@ export default function TeacherSarprasBudgetsScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-budget-lpj', auditBudgetId] });
       Alert.alert('Berhasil', 'Audit item LPJ berhasil disimpan.');
     },
-    onError: (error: any) => {
-      const msg = error?.response?.data?.message || error?.message || 'Gagal menyimpan audit item LPJ.';
-      Alert.alert('Proses Gagal', msg);
+    onError: (error: unknown) => {
+      Alert.alert('Proses Gagal', getApiErrorMessage(error, 'Gagal menyimpan audit item LPJ.'));
     },
   });
 
@@ -230,9 +228,8 @@ export default function TeacherSarprasBudgetsScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-budget-lpj', auditBudgetId] });
       Alert.alert('Berhasil', 'Berita acara LPJ berhasil disimpan.');
     },
-    onError: (error: any) => {
-      const msg = error?.response?.data?.message || error?.message || 'Gagal menyimpan berita acara LPJ.';
-      Alert.alert('Proses Gagal', msg);
+    onError: (error: unknown) => {
+      Alert.alert('Proses Gagal', getApiErrorMessage(error, 'Gagal menyimpan berita acara LPJ.'));
     },
   });
 
@@ -244,13 +241,12 @@ export default function TeacherSarprasBudgetsScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-sarpras-budgets-list'] });
       Alert.alert('Berhasil', 'Keputusan LPJ berhasil diproses.');
     },
-    onError: (error: any) => {
-      const msg = error?.response?.data?.message || error?.message || 'Gagal memproses keputusan LPJ.';
-      Alert.alert('Proses Gagal', msg);
+    onError: (error: unknown) => {
+      Alert.alert('Proses Gagal', getApiErrorMessage(error, 'Gagal memproses keputusan LPJ.'));
     },
   });
 
-  const budgets = budgetsQuery.data || [];
+  const budgets = useMemo(() => budgetsQuery.data || [], [budgetsQuery.data]);
 
   const dutyOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -283,20 +279,15 @@ export default function TeacherSarprasBudgetsScreen() {
   const totalAmount = filteredBudgets.reduce((sum, budget) => sum + Number(budget.totalAmount || 0), 0);
   const pendingCount = budgets.filter((budget) => budget.status === 'PENDING').length;
   const lpjReadyCount = budgets.filter((budget) => budget.status === 'APPROVED' && !!budget.lpjSubmittedAt).length;
-  const lpjInvoices = lpjAuditQuery.data?.invoices || [];
-  const selectedInvoice =
-    lpjInvoices.find((invoice) => invoice.id === selectedInvoiceId) ||
-    (lpjInvoices.length > 0 ? lpjInvoices[lpjInvoices.length - 1] : null);
-
-  useEffect(() => {
-    if (!lpjInvoices.length) {
-      setSelectedInvoiceId(null);
-      return;
-    }
-    if (!selectedInvoiceId || !lpjInvoices.some((invoice) => invoice.id === selectedInvoiceId)) {
-      setSelectedInvoiceId(lpjInvoices[lpjInvoices.length - 1].id);
-    }
+  const lpjInvoices = useMemo(() => lpjAuditQuery.data?.invoices || [], [lpjAuditQuery.data?.invoices]);
+  const activeSelectedInvoiceId = useMemo(() => {
+    if (!lpjInvoices.length) return null;
+    if (selectedInvoiceId && lpjInvoices.some((invoice) => invoice.id === selectedInvoiceId)) return selectedInvoiceId;
+    return lpjInvoices[lpjInvoices.length - 1].id;
   }, [lpjInvoices, selectedInvoiceId]);
+  const selectedInvoice =
+    lpjInvoices.find((invoice) => invoice.id === activeSelectedInvoiceId) ||
+    (lpjInvoices.length > 0 ? lpjInvoices[lpjInvoices.length - 1] : null);
 
   const handleForward = (budget: SarprasBudgetRequest) => {
     Alert.alert(

@@ -10,7 +10,37 @@ export const apiClient = axios.create({
   timeout: 15000,
 });
 
+const BACKOFF_WINDOW_MS = 3000;
+const readEndpointBackoffUntil = new Map<string, number>();
+type BackoffError = Error & {
+  config: unknown;
+  response: {
+    status: number;
+    data: {
+      message: string;
+    };
+  };
+};
+
+function normalizeBackoffKey(url: unknown): string {
+  return String(url || '').split('?')[0] || '';
+}
+
 apiClient.interceptors.request.use(async (config) => {
+  const method = String(config.method || 'get').toUpperCase();
+  if (method === 'GET') {
+    const key = normalizeBackoffKey(config.url);
+    if (key) {
+      const until = readEndpointBackoffUntil.get(key) || 0;
+      if (until > Date.now()) {
+        const error = new Error(`REQUEST_BACKOFF:${key}`) as BackoffError;
+        error.config = config;
+        error.response = { status: 503, data: { message: 'Endpoint sementara ditunda (backoff).' } };
+        return Promise.reject(error);
+      }
+    }
+  }
+
   const token = await tokenStorage.getAccessToken();
   if (token) {
     if (isJwtExpired(token)) {
@@ -28,6 +58,15 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const status = error?.response?.status;
+    if (status === 503) {
+      const method = String(error?.config?.method || 'get').toUpperCase();
+      if (method === 'GET') {
+        const key = normalizeBackoffKey(error?.config?.url);
+        if (key) {
+          readEndpointBackoffUntil.set(key, Date.now() + BACKOFF_WINDOW_MS);
+        }
+      }
+    }
     if (status === 401) {
       await authEventLogger.log('UNAUTHORIZED_401', 'Server mengembalikan status 401.');
       await tokenStorage.clearAll();

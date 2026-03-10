@@ -8,7 +8,7 @@ import { Calendar, FolderCog, School, UserCheck } from 'lucide-react';
 
 export default function ExamManagementHubPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const active = searchParams.get('section') || 'jadwal';
+  const active = searchParams.get('section') || 'program';
 
   const setActive = useCallback((next: string) => {
     const params = new URLSearchParams(searchParams);
@@ -17,10 +17,10 @@ export default function ExamManagementHubPage() {
   }, [searchParams, setSearchParams]);
 
   const items = useMemo(() => ([
+    { id: 'program', label: 'Program Ujian', icon: FolderCog },
     { id: 'jadwal', label: 'Jadwal Ujian', icon: Calendar },
     { id: 'ruang', label: 'Ruang Ujian', icon: School },
     { id: 'mengawas', label: 'Jadwal Mengawas', icon: UserCheck },
-    { id: 'program', label: 'Program Ujian', icon: FolderCog },
   ]), []);
 
   return (
@@ -40,7 +40,7 @@ export default function ExamManagementHubPage() {
                 <button
                   key={item.id}
                   onClick={() => setActive(item.id)}
-                  className={`flex items-center gap-2 px-4 py-3 border-b-2 whitespace-nowrap transition-colors text-sm ${
+                  className={`flex items-center gap-2 px-4 py-3 border-b-2 whitespace-nowrap transition-colors text-[13px] ${
                     isActive
                       ? 'border-blue-600 text-blue-600 font-medium'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'

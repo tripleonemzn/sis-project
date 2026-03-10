@@ -140,6 +140,17 @@ const userFormSchema = z.object({
 });
 
 type UserFormValues = z.infer<typeof userFormSchema>;
+type UserFormRole = UserFormValues['role'];
+
+const USER_FORM_ROLES: UserFormRole[] = ['ADMIN', 'TEACHER', 'STUDENT', 'PRINCIPAL', 'STAFF', 'PARENT', 'EXAMINER'];
+
+function resolveUserFormRole(role?: User['role'] | null): UserFormRole {
+  const normalized = String(role || '').toUpperCase();
+  if (USER_FORM_ROLES.includes(normalized as UserFormRole)) {
+    return normalized as UserFormRole;
+  }
+  return 'STUDENT';
+}
 
 const tabs = [
   { id: 'account', label: 'Data Akun' },
@@ -189,12 +200,12 @@ export const UserProfilePage = () => {
   
   const queryClient = useQueryClient();
 
-  const { data: userResponse, isLoading: isUserLoading } = useQuery({
+  const { data: userResponse, isLoading: isUserLoading } = useQuery<{ data: User }>({
     queryKey: ['me'],
     queryFn: authService.getMe,
   });
 
-  const user = (userResponse as any)?.data as User | undefined;
+  const user = userResponse?.data;
   const fixedRole = user?.role || 'STUDENT'; // Default fallback, but should wait for user data
 
   const { data: studentsForParent } = useQuery<{ data: User[] }>({
@@ -247,21 +258,21 @@ export const UserProfilePage = () => {
       const formDuties = (user.additionalDuties || []).filter(d => d !== 'KAPROG');
       
       // Handle managedMajors (array) or managedMajor (single object) or managedMajorId
-      const managedMajors = (user as any).managedMajors || [];
+      const managedMajors = user.managedMajors || [];
       if (managedMajors.length > 0) {
-        managedMajors.forEach((major: any) => {
+        managedMajors.forEach((major) => {
           formDuties.push(`KAPROG:${major.id}`);
         });
-      } else if ((user as any).managedMajorId) {
-        formDuties.push(`KAPROG:${(user as any).managedMajorId}`);
-      } else if ((user as any).managedMajor?.id) {
-         formDuties.push(`KAPROG:${(user as any).managedMajor.id}`);
+      } else if (user.managedMajorId) {
+        formDuties.push(`KAPROG:${user.managedMajorId}`);
+      } else if (user.managedMajor?.id) {
+         formDuties.push(`KAPROG:${user.managedMajor.id}`);
       }
 
-      const formattedData: any = {
+      const formattedData: UserFormValues = {
         username: user.username,
         name: user.name,
-        role: user.role,
+        role: resolveUserFormRole(user.role),
         password: '',
         nip: user.nip || '',
         nis: user.nis || '',
@@ -405,16 +416,16 @@ export const UserProfilePage = () => {
 
        if (fixedRole === 'STUDENT') {
          if (typeof data.childNumber === 'string' && data.childNumber.trim().length > 0) {
-           (basePayload as any).childNumber = Number(data.childNumber);
+           basePayload.childNumber = Number(data.childNumber);
          }
          if (typeof data.siblingsCount === 'string' && data.siblingsCount.trim().length > 0) {
-           (basePayload as any).siblingsCount = Number(data.siblingsCount);
+           basePayload.siblingsCount = Number(data.siblingsCount);
          }
        }
 
        const finalPayload: Partial<UserWrite> = {
         ...basePayload,
-        documents: documents?.map<any>((d) => ({
+        documents: documents?.map((d) => ({
           title: d.title,
           fileUrl: d.fileUrl,
           category: d.category,
@@ -460,7 +471,7 @@ export const UserProfilePage = () => {
 
     setIsUploading(true);
     try {
-      const newDocs: any[] = [];
+      const newDocs: Array<{ title: string; fileUrl: string; category: string }> = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const result = await uploadService.uploadTeacherDocument(file);
@@ -562,9 +573,9 @@ export const UserProfilePage = () => {
           toast.success('Foto profil berhasil diperbarui');
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      const msg = error.response?.data?.message || 'Gagal memproses foto';
+      const msg = getErrorMessage(error) || 'Gagal memproses foto';
       toast.error(msg);
     } finally {
       setIsUploadingPhoto(false);
@@ -792,7 +803,7 @@ export const UserProfilePage = () => {
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
                       >
                         <option value="">Pilih Jurusan</option>
-                        {majorsData?.data?.majors?.map((major: any) => (
+                        {majors.map((major: Major) => (
                           <option key={major.id} value={major.id}>
                             {major.name} ({major.code})
                           </option>

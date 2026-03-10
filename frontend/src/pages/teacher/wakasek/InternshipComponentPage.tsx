@@ -47,6 +47,50 @@ interface Internship {
   accessCodeExpiresAt?: string;
 }
 
+type ActiveYearContext = {
+  activeYear?: {
+    id?: number;
+  } | null;
+};
+
+type ClassListPayload = {
+  classes?: Class[];
+};
+
+type InternshipListPayload = {
+  internships?: Internship[];
+  data?: Internship[];
+  pagination?: InternshipPaginationMeta;
+  meta?: InternshipPaginationMeta;
+};
+
+type InternshipPaginationMeta = {
+  total?: number;
+  page?: number;
+  limit?: number;
+};
+
+type NormalizedPaginationMeta = {
+  total: number;
+  page: number;
+  limit: number;
+};
+
+type AssessmentComponentForm = {
+  name: string;
+  weight: number;
+  description: string;
+  isActive: boolean;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'object' && error !== null) {
+    const err = error as { response?: { data?: { message?: string } }; message?: string };
+    return err.response?.data?.message || err.message || fallback;
+  }
+  return fallback;
+};
+
 export const InternshipComponentPage = () => {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -79,7 +123,7 @@ export const InternshipComponentPage = () => {
   // ================= QUERIES =================
 
   // 0. Get Active Academic Year from Context (DashboardLayout)
-  const context = useOutletContext<{ activeYear: any }>();
+  const context = useOutletContext<ActiveYearContext>();
   const activeYear = context?.activeYear;
   const activeYearId = activeYear?.id;
 
@@ -88,9 +132,9 @@ export const InternshipComponentPage = () => {
     queryKey: ['classes'],
     queryFn: () => classService.list({ limit: 100 })
   });
-  const rawClassesData = classesResponse?.data as any;
+  const rawClassesData = classesResponse?.data as ClassListPayload | Class[] | undefined;
   // Handle response structure { classes: [...], pagination: ... } from class.controller.ts
-  const classes = (rawClassesData?.classes || (Array.isArray(rawClassesData) ? rawClassesData : [])) as Class[];
+  const classes: Class[] = Array.isArray(rawClassesData) ? rawClassesData : rawClassesData?.classes || [];
 
   // 1. Fetch Components (for Tab 2)
   const { data: componentsResponse, isLoading: isLoadingComponents } = useQuery({
@@ -100,7 +144,7 @@ export const InternshipComponentPage = () => {
   });
 
   // 2. Fetch Internships (for Tab 1 & 3)
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState<number>(1);
   const [limit, setLimit] = useState(10);
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
@@ -126,12 +170,23 @@ export const InternshipComponentPage = () => {
 
   const components = componentsResponse?.data?.data || [];
   // Handle new response structure { data: [...], meta: ... }
-  const rawInternshipsData = (internshipsResponse?.data as any)?.data;
+  const rawInternshipsData = (
+    internshipsResponse?.data as { data?: InternshipListPayload | Internship[] } | undefined
+  )?.data;
   const internships: Internship[] = Array.isArray(rawInternshipsData) 
     ? rawInternshipsData 
     : (rawInternshipsData?.internships || rawInternshipsData?.data || []);
   
-  const meta = rawInternshipsData?.pagination || rawInternshipsData?.meta || { total: 0, page: 1, limit: 10 };
+  const meta: NormalizedPaginationMeta = (() => {
+    const source: InternshipPaginationMeta | undefined = !Array.isArray(rawInternshipsData)
+      ? rawInternshipsData?.pagination || rawInternshipsData?.meta
+      : undefined;
+    return {
+      total: Number(source?.total ?? 0),
+      page: Number(source?.page ?? page),
+      limit: Number(source?.limit ?? limit),
+    };
+  })();
 
   // No client-side filtering needed anymore
   const filteredInternships = internships;
@@ -146,21 +201,21 @@ export const InternshipComponentPage = () => {
       toast.success('Komponen penilaian berhasil dibuat');
       closeModal();
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal membuat komponen');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal membuat komponen'));
     }
   });
 
   const updateComponentMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => 
+    mutationFn: ({ id, data }: { id: number; data: AssessmentComponentForm }) => 
       internshipService.updateAssessmentComponent(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['internship-components'] });
       toast.success('Komponen penilaian berhasil diperbarui');
       closeModal();
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal memperbarui komponen');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal memperbarui komponen'));
     }
   });
 
@@ -170,8 +225,8 @@ export const InternshipComponentPage = () => {
       queryClient.invalidateQueries({ queryKey: ['internship-components'] });
       toast.success('Komponen penilaian berhasil dihapus');
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menghapus komponen');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menghapus komponen'));
     }
   });
 
@@ -184,8 +239,8 @@ export const InternshipComponentPage = () => {
       toast.success('Nilai Industri berhasil disimpan');
       setEditingScores({});
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menyimpan nilai');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menyimpan nilai'));
     }
   });
 
@@ -195,8 +250,8 @@ export const InternshipComponentPage = () => {
       queryClient.invalidateQueries({ queryKey: ['all-internships'] });
       toast.success('Link akses berhasil dibuat');
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal membuat link');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal membuat link'));
     }
   });
 

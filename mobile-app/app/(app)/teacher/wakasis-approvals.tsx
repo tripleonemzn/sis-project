@@ -163,8 +163,9 @@ export default function TeacherWakasisApprovalsScreen() {
       setRejectingId(null);
       setRejectionNote('');
     },
-    onError: (error: any) => {
-      const msg = error?.response?.data?.message || error?.message || 'Gagal memproses persetujuan.';
+    onError: (error: unknown) => {
+      const normalized = error as { response?: { data?: { message?: string } }; message?: string };
+      const msg = normalized.response?.data?.message || normalized.message || 'Gagal memproses persetujuan.';
       Alert.alert('Proses Gagal', msg);
     },
   });
@@ -178,7 +179,7 @@ export default function TeacherWakasisApprovalsScreen() {
     return classesQuery.data?.find((item) => item.id === selectedClassId)?.name || `Kelas ${selectedClassId}`;
   }, [selectedClassId, classesQuery.data]);
 
-  const statusStats = useMemo(() => {
+  const statusStats = (() => {
     const result = { PENDING: 0, APPROVED: 0, REJECTED: 0 };
     for (const item of permissions) {
       if (item.status === 'PENDING') result.PENDING += 1;
@@ -186,7 +187,7 @@ export default function TeacherWakasisApprovalsScreen() {
       if (item.status === 'REJECTED') result.REJECTED += 1;
     }
     return result;
-  }, [permissions]);
+  })();
 
   const openAttachment = async (permission: KesiswaanPermission) => {
     const url = resolveFileUrl(permission.fileUrl);

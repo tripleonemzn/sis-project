@@ -10,6 +10,12 @@ export interface SubjectCategory {
   };
 }
 
+interface SubjectCategoryPayload {
+  code: string;
+  name: string;
+  description?: string;
+}
+
 interface ApiResponse<T> {
   statusCode: number;
   data: T;
@@ -22,12 +28,12 @@ export const getSubjectCategories = async () => {
   return response.data.data;
 };
 
-export const createSubjectCategory = async (data: any) => {
+export const createSubjectCategory = async (data: SubjectCategoryPayload) => {
   const response = await api.post<ApiResponse<SubjectCategory>>('/subject-categories', data);
   return response.data.data;
 };
 
-export const updateSubjectCategory = async (id: number, data: any) => {
+export const updateSubjectCategory = async (id: number, data: Partial<SubjectCategoryPayload>) => {
   const response = await api.patch<ApiResponse<SubjectCategory>>(`/subject-categories/${id}`, data);
   return response.data.data;
 };

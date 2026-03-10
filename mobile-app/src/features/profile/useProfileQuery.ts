@@ -16,8 +16,8 @@ type ProfileQueryData = {
 export function useProfileQuery(enabled: boolean) {
   return useQuery({
     queryKey: MOBILE_PROFILE_QUERY_KEY,
-    staleTime: 0,
-    refetchOnMount: 'always',
+    staleTime: 60_000,
+    refetchOnMount: false,
     refetchOnReconnect: true,
     queryFn: async (): Promise<ProfileQueryData> => {
       try {

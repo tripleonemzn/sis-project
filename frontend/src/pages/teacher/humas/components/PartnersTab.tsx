@@ -21,6 +21,14 @@ const partnerSchema = z.object({
 
 type PartnerFormValues = z.infer<typeof partnerSchema>;
 
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'object' && error !== null) {
+    const normalized = error as { response?: { data?: { message?: string } }; message?: string };
+    return normalized.response?.data?.message || normalized.message || fallback;
+  }
+  return fallback;
+};
+
 export const PartnersTab = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
@@ -50,13 +58,13 @@ export const PartnersTab = () => {
       reset();
       Swal.fire('Berhasil', 'Data mitra berhasil ditambahkan', 'success');
     },
-    onError: (error: any) => {
-      Swal.fire('Gagal', error.response?.data?.message || 'Terjadi kesalahan', 'error');
+    onError: (error: unknown) => {
+      Swal.fire('Gagal', getErrorMessage(error, 'Terjadi kesalahan'), 'error');
     }
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => humasService.updatePartner(id, data),
+    mutationFn: ({ id, data }: { id: number; data: Partial<IndustryPartner> }) => humasService.updatePartner(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['partners'] });
       setIsModalOpen(false);
@@ -64,8 +72,8 @@ export const PartnersTab = () => {
       reset();
       Swal.fire('Berhasil', 'Data mitra berhasil diperbarui', 'success');
     },
-    onError: (error: any) => {
-      Swal.fire('Gagal', error.response?.data?.message || 'Terjadi kesalahan', 'error');
+    onError: (error: unknown) => {
+      Swal.fire('Gagal', getErrorMessage(error, 'Terjadi kesalahan'), 'error');
     }
   });
 
@@ -75,8 +83,8 @@ export const PartnersTab = () => {
       queryClient.invalidateQueries({ queryKey: ['partners'] });
       Swal.fire('Berhasil', 'Data mitra berhasil dihapus', 'success');
     },
-    onError: (error: any) => {
-      Swal.fire('Gagal', error.response?.data?.message || 'Terjadi kesalahan', 'error');
+    onError: (error: unknown) => {
+      Swal.fire('Gagal', getErrorMessage(error, 'Terjadi kesalahan'), 'error');
     }
   });
 

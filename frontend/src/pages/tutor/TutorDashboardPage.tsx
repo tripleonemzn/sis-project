@@ -5,10 +5,25 @@ import { authService } from '../../services/auth.service';
 import { useMemo } from 'react';
 import { Trophy } from 'lucide-react';
 import { Link, useOutletContext } from 'react-router-dom';
+import type { User as AuthUser } from '../../types/auth';
+
+interface AcademicYear {
+  id: number;
+  name: string;
+  isActive: boolean;
+}
+
+interface TutorAssignment {
+  id: number;
+  isActive: boolean;
+  ekskul: {
+    id: number;
+    name: string;
+  };
+}
 
 export const TutorDashboardPage = () => {
-  // Get Current User via Query (Database Persistence)
-  const { user: contextUser } = useOutletContext<{ user: any }>() || {};
+  const { user: contextUser } = useOutletContext<{ user?: AuthUser | null }>() || {};
   const { data: authData } = useQuery({
     queryKey: ['me'],
     queryFn: authService.getMe,
@@ -23,8 +38,8 @@ export const TutorDashboardPage = () => {
   });
 
   const activeAcademicYear = useMemo(() => {
-    const list = academicYearData?.data?.academicYears || academicYearData?.academicYears || [];
-    return list.find((ay: any) => ay.isActive) || list[0];
+    const list = (academicYearData?.data?.academicYears || academicYearData?.academicYears || []) as AcademicYear[];
+    return list.find((ay) => ay.isActive) || list[0];
   }, [academicYearData]);
 
   const activeAcademicYearId = activeAcademicYear?.id;
@@ -35,7 +50,7 @@ export const TutorDashboardPage = () => {
     enabled: !!activeAcademicYearId,
   });
 
-  const assignments = assignmentsData?.data || [];
+  const assignments = (assignmentsData?.data || []) as TutorAssignment[];
 
   return (
     <div className="p-6">
@@ -45,17 +60,22 @@ export const TutorDashboardPage = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <Link
+          to="/tutor/members"
+          className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        >
+        <div className="p-6 rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-sky-100/80 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-blue-100 rounded-lg text-blue-600">
+            <div className="p-3 bg-blue-100 rounded-lg text-blue-700">
               <Trophy size={24} />
             </div>
             <div>
-              <p className="text-sm text-gray-500">Ekstrakurikuler</p>
-              <h3 className="text-2xl font-bold">{assignments.length}</h3>
+              <p className="text-sm text-blue-700/80">Ekstrakurikuler</p>
+              <h3 className="text-2xl font-bold text-blue-900">{assignments.length}</h3>
             </div>
           </div>
         </div>
+        </Link>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -83,7 +103,7 @@ export const TutorDashboardPage = () => {
                   <td colSpan={3} className="px-6 py-4 text-center text-gray-500">Belum ada penugasan</td>
                 </tr>
               ) : (
-                assignments.map((assignment: any) => (
+                assignments.map((assignment) => (
                   <tr key={assignment.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="font-medium text-gray-900">{assignment.ekskul.name}</div>

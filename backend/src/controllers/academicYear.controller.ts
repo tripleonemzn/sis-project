@@ -14,12 +14,36 @@ const academicYearSchema = z.object({
 });
 
 const updateAcademicYearSchema = academicYearSchema.partial();
+const ACTIVE_ACADEMIC_YEAR_CACHE_TTL_MS = 10000;
+let activeAcademicYearCache:
+  | {
+      expiresAt: number;
+      payload: unknown;
+    }
+  | null = null;
+
+function clearActiveAcademicYearCache() {
+  activeAcademicYearCache = null;
+}
+
+function getActiveAcademicYearCache(): unknown | null {
+  if (!activeAcademicYearCache) return null;
+  if (activeAcademicYearCache.expiresAt <= Date.now()) {
+    activeAcademicYearCache = null;
+    return null;
+  }
+  return activeAcademicYearCache.payload;
+}
+
+function setActiveAcademicYearCache(payload: unknown) {
+  activeAcademicYearCache = {
+    payload,
+    expiresAt: Date.now() + ACTIVE_ACADEMIC_YEAR_CACHE_TTL_MS,
+  };
+}
 
 export const getAcademicYears = asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 10, isActive, search } = req.query;
-  
-  // Debug log
-  console.log(`[getAcademicYears] User: ${(req as any).user?.id} (${(req as any).user?.role}), Query:`, req.query);
 
   const pageNum = Number(page);
   const limitNum = Number(limit);
@@ -55,6 +79,12 @@ export const getAcademicYears = asyncHandler(async (req: Request, res: Response)
 });
 
 export const getActiveAcademicYear = asyncHandler(async (req: Request, res: Response) => {
+  const cachedPayload = getActiveAcademicYearCache();
+  if (cachedPayload) {
+    res.setHeader('Cache-Control', 'private, max-age=10');
+    return res.status(200).json(new ApiResponse(200, cachedPayload, 'Tahun akademik aktif berhasil diambil'));
+  }
+
   const academicYear = await prisma.academicYear.findFirst({
     where: { isActive: true },
     include: {
@@ -86,7 +116,11 @@ export const getActiveAcademicYear = asyncHandler(async (req: Request, res: Resp
     currentSemester = 'ODD';
   }
 
-  res.status(200).json(new ApiResponse(200, { ...academicYear, semester: currentSemester }, 'Tahun akademik aktif berhasil diambil'));
+  const payload = { ...academicYear, semester: currentSemester };
+  setActiveAcademicYearCache(payload);
+  res.setHeader('Cache-Control', 'private, max-age=10');
+
+  res.status(200).json(new ApiResponse(200, payload, 'Tahun akademik aktif berhasil diambil'));
 });
 
 export const getAcademicYearById = asyncHandler(async (req: Request, res: Response) => {
@@ -153,6 +187,7 @@ export const createAcademicYear = asyncHandler(async (req: Request, res: Respons
       pklEligibleGrades: body.pklEligibleGrades,
     } as any,
   });
+  clearActiveAcademicYearCache();
 
   res.status(201).json(new ApiResponse(201, academicYear, 'Tahun akademik berhasil dibuat'));
 });
@@ -213,6 +248,7 @@ export const updateAcademicYear = asyncHandler(async (req: Request, res: Respons
     where: { id: Number(id) },
     data: body as any,
   });
+  clearActiveAcademicYearCache();
 
   res.status(200).json(new ApiResponse(200, updatedYear, 'Tahun akademik berhasil diperbarui'));
 });
@@ -243,6 +279,7 @@ export const deleteAcademicYear = asyncHandler(async (req: Request, res: Respons
   await prisma.academicYear.delete({
     where: { id: Number(id) },
   });
+  clearActiveAcademicYearCache();
 
   res.status(200).json(new ApiResponse(200, null, 'Tahun akademik berhasil dihapus'));
 });
@@ -267,6 +304,7 @@ export const activateAcademicYear = asyncHandler(async (req: Request, res: Respo
     where: { id: Number(id) },
     data: { isActive: true },
   });
+  clearActiveAcademicYearCache();
 
   res.status(200).json(new ApiResponse(200, updatedYear, 'Tahun akademik berhasil diaktifkan'));
 });
@@ -314,6 +352,7 @@ export const updatePklConfig = asyncHandler(async (req: Request, res: Response) 
     where: { id: activeYear.id },
     data: { pklEligibleGrades } as any,
   });
+  clearActiveAcademicYearCache();
 
   res.status(200).json(new ApiResponse(200, updatedYear, 'Konfigurasi PKL berhasil diperbarui'));
 });

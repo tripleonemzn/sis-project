@@ -101,7 +101,7 @@ export default function PermissionsScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-student-permissions', user?.id] });
       notifySuccess('Pengajuan izin berhasil dikirim.');
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal mengajukan izin.');
     },
   });

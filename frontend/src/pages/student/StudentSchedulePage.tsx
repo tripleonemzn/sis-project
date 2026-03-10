@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
@@ -28,6 +28,15 @@ interface ScheduleEntry {
     };
   };
 }
+
+type StudentScheduleOutletContext = {
+  user?: {
+    studentClass?: {
+      id?: number | null;
+      academicYearId?: number | null;
+    } | null;
+  } | null;
+};
 
 const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'];
 const DAY_NAMES: Record<string, string> = {
@@ -69,11 +78,7 @@ export default function StudentSchedulePage() {
     return (currentDay === 'SUNDAY' || currentDay === 'SATURDAY') ? 'MONDAY' : currentDay;
   });
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const { user: contextUser } = useOutletContext<{ user: any }>() || {};
+  const { user: contextUser } = useOutletContext<StudentScheduleOutletContext>() || {};
   const { data: authData } = useQuery({
     queryKey: ['me'],
     queryFn: authService.getMe,
@@ -82,7 +87,7 @@ export default function StudentSchedulePage() {
   });
   const user = contextUser || authData?.data;
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       if (!user) return;
 
@@ -116,7 +121,11 @@ export default function StudentSchedulePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const filteredSchedules = schedules
     .filter(s => s.dayOfWeek === activeDay)

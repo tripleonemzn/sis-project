@@ -106,11 +106,7 @@ export default function StudentClassAttendanceScreen() {
     },
   });
 
-  if (isLoading) return <AppLoadingScreen message="Memuat presensi kelas..." />;
-  if (!isAuthenticated) return <Redirect href="/welcome" />;
-  if (user?.role !== 'STUDENT') return <Redirect href="/home" />;
-
-  const rows = attendanceQuery.data || [];
+  const rows = useMemo(() => attendanceQuery.data || [], [attendanceQuery.data]);
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
@@ -125,6 +121,10 @@ export default function StudentClassAttendanceScreen() {
           .includes(q),
     );
   }, [rows, search]);
+
+  if (isLoading) return <AppLoadingScreen message="Memuat presensi kelas..." />;
+  if (!isAuthenticated) return <Redirect href="/welcome" />;
+  if (user?.role !== 'STUDENT') return <Redirect href="/home" />;
 
   return (
     <ScrollView
@@ -318,4 +318,3 @@ export default function StudentClassAttendanceScreen() {
     </ScrollView>
   );
 }
-

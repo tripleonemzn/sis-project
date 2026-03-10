@@ -9,6 +9,8 @@ export function QueryProvider({ children }: PropsWithChildren) {
           queries: {
             retry: 1,
             staleTime: 30_000,
+            refetchOnReconnect: false,
+            refetchOnWindowFocus: false,
           },
         },
       }),
@@ -16,4 +18,3 @@ export function QueryProvider({ children }: PropsWithChildren) {
 
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }
-

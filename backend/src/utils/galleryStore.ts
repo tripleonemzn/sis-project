@@ -146,7 +146,8 @@ const writeLegacyDescriptions = async (baseDir: string, slides: GallerySlideReco
 
 export const getGalleryMetadataPath = (baseDir: string) => path.join(baseDir, GALLERY_METADATA_FILENAME);
 
-export const toPublicGalleryImageUrl = (filename: string) => `/api/foto_kegiatan/${filename}`;
+export const toPublicGalleryImageUrl = (filename: string) =>
+  `/api/public/foto-kegiatan/file?name=${encodeURIComponent(filename)}`;
 
 export const listGallerySlides = async (baseDir: string) => {
   await fs.promises.mkdir(baseDir, { recursive: true });

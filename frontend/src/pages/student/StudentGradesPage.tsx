@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { authService } from '../../services/auth.service';
@@ -41,12 +41,18 @@ interface StudentGrade {
   kkm?: number;
 }
 
+type StudentGradesOutletContext = {
+  user?: {
+    id?: number | string;
+  } | null;
+};
+
 export default function StudentGradesPage() {
   const [loading, setLoading] = useState(true);
   const [grades, setGrades] = useState<StudentGrade[]>([]);
   const [semester, setSemester] = useState<string>('');
   
-  const { user: contextUser } = useOutletContext<{ user: any }>() || {};
+  const { user: contextUser } = useOutletContext<StudentGradesOutletContext>() || {};
   const { data: authData } = useQuery({
     queryKey: ['me'],
     queryFn: authService.getMe,
@@ -55,22 +61,13 @@ export default function StudentGradesPage() {
   });
   const user = contextUser || authData?.data;
 
-  useEffect(() => {
-    if (semester && user) {
-      fetchGrades();
-    } else {
-      setGrades([]);
-      if (!semester) setLoading(false);
-    }
-  }, [semester, user]);
-
-  const fetchGrades = async () => {
+  const fetchGrades = useCallback(async () => {
     try {
-      if (!user) return;
+      if (!user?.id) return;
       
       setLoading(true);
       
-      const params: any = {
+      const params: { student_id: number | string; semester?: string } = {
         student_id: user.id
       };
 
@@ -92,7 +89,16 @@ export default function StudentGradesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [semester, user]);
+
+  useEffect(() => {
+    if (semester && user) {
+      fetchGrades();
+    } else {
+      setGrades([]);
+      if (!semester) setLoading(false);
+    }
+  }, [semester, user, fetchGrades]);
 
   // Group grades by Subject
   const gradesBySubject = grades.reduce((acc, grade) => {
@@ -128,13 +134,8 @@ export default function StudentGradesPage() {
             const isFormatif = grade.component.type === 'FORMATIVE' || grade.component.type === 'FORMATIF';
             const hasNfDetails = isFormatif && (grade.nf1 || grade.nf2 || grade.nf3 || grade.nf4 || grade.nf5 || grade.nf6);
             
-            // Determine display type
-            let displayType = grade.component.type;
-            if (isFormatif) displayType = 'FORMATIF';
-            else if (grade.component.type === 'MIDTERM') displayType = 'SBTS';
-            else if (grade.component.type === 'FINAL') {
-              displayType = grade.semester === 'ODD' ? 'SAS' : 'SAT';
-            }
+            // Use configured component naming instead of fixed SBTS/SAS/SAT aliases.
+            const displayType = String(grade.component.name || grade.component.type || '-').toUpperCase();
 
             return (
               <tr key={grade.id} className="hover:bg-gray-50 transition-colors">

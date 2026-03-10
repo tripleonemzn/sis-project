@@ -8,12 +8,11 @@ import {
   syncScoreEntriesFromStudentGrade,
 } from '../services/scoreEntry.service'
 
-type ReportSlotKey = 'FORMATIF' | 'SBTS' | 'SAS' | 'US_THEORY' | 'US_PRACTICE'
-
 const DEFAULT_REPORT_SLOT_CODE = 'NONE'
 
 type ExamComponentRule = {
   code: string
+  componentType: GradeComponentType
   reportSlot: ReportComponentSlot
   reportSlotCode: string
   includeInFinalScore: boolean
@@ -31,6 +30,11 @@ type SemesterRange = {
 
 type StudentScoreEntryFindManyDelegate = {
   findMany: (args: unknown) => Promise<unknown[]>
+}
+
+type AuthUserLike = {
+  id?: number | string
+  role?: string | null
 }
 
 function getStudentScoreEntryDelegate(): StudentScoreEntryFindManyDelegate | null {
@@ -56,6 +60,68 @@ async function deleteStudentGradeScoreEntriesByPrefix(gradeId: number) {
   })
 }
 
+function toPositiveInt(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === '') return null
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed <= 0) return null
+  return parsed
+}
+
+function isTeacherUser(user: AuthUserLike | null | undefined): boolean {
+  return String(user?.role || '').toUpperCase() === 'TEACHER'
+}
+
+async function resolveStudentClassId(studentId: number): Promise<number | null> {
+  const student = await prisma.user.findUnique({
+    where: { id: studentId },
+    select: { classId: true },
+  })
+  return Number(student?.classId || 0) || null
+}
+
+async function ensureTeacherCanAccessGradeContext(params: {
+  user: AuthUserLike
+  subjectId: number
+  academicYearId: number
+  classId?: number | null
+  studentId?: number | null
+}) {
+  if (!isTeacherUser(params.user)) return
+
+  const teacherId = Number(params.user?.id || 0)
+  if (!Number.isFinite(teacherId) || teacherId <= 0) {
+    throw new ApiError(401, 'Sesi login tidak valid.')
+  }
+
+  let resolvedClassId = Number(params.classId || 0)
+  if (!resolvedClassId && params.studentId) {
+    resolvedClassId = Number(await resolveStudentClassId(Number(params.studentId))) || 0
+  }
+
+  if (!Number.isFinite(resolvedClassId) || resolvedClassId <= 0) {
+    throw new ApiError(400, 'class_id atau student_id valid wajib diisi.')
+  }
+
+  const assignment = await prisma.teacherAssignment.findFirst({
+    where: {
+      teacherId,
+      academicYearId: Number(params.academicYearId),
+      subjectId: Number(params.subjectId),
+      classId: resolvedClassId,
+    },
+    select: {
+      id: true,
+    },
+  })
+
+  if (!assignment) {
+    throw new ApiError(
+      403,
+      'Anda tidak memiliki assignment mapel-kelas ini. Input nilai ditolak.',
+    )
+  }
+}
+
 function normalizeComponentCode(raw: unknown): string {
   return String(raw || '')
     .trim()
@@ -64,6 +130,67 @@ function normalizeComponentCode(raw: unknown): string {
     .replace(/[^A-Z0-9]+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '')
+}
+
+function isFormativeAliasCode(raw: unknown): boolean {
+  const normalized = normalizeComponentCode(raw)
+  if (!normalized) return false
+  return (
+    normalized === 'FORMATIF' ||
+    normalized === 'FORMATIVE' ||
+    normalized.startsWith('NF')
+  )
+}
+
+function isMidtermAliasCode(raw: unknown): boolean {
+  const normalized = normalizeComponentCode(raw)
+  if (!normalized) return false
+  if (['SBTS', 'MIDTERM', 'PTS', 'UTS'].includes(normalized)) return true
+  return normalized.includes('MIDTERM')
+}
+
+function isFinalAliasCode(raw: unknown): boolean {
+  const normalized = normalizeComponentCode(raw)
+  if (!normalized) return false
+  if (['SAS', 'SAT', 'FINAL', 'PAS', 'PAT', 'PSAS', 'PSAT'].includes(normalized)) return true
+  return normalized.includes('FINAL')
+}
+
+function isFinalEvenAliasCode(raw: unknown): boolean {
+  const normalized = normalizeComponentCode(raw)
+  if (!normalized) return false
+  if (['SAT', 'PAT', 'PSAT', 'FINAL_EVEN'].includes(normalized)) return true
+  return normalized.includes('FINAL_EVEN') || normalized.includes('EVEN')
+}
+
+function isFinalOddAliasCode(raw: unknown): boolean {
+  const normalized = normalizeComponentCode(raw)
+  if (!normalized) return false
+  if (['SAS', 'PAS', 'PSAS', 'FINAL_ODD'].includes(normalized)) return true
+  return normalized.includes('FINAL_ODD') || normalized.includes('ODD')
+}
+
+function inferGradeComponentTypeBySlotCode(
+  slotCode: string,
+  fallback: GradeComponentType = GradeComponentType.CUSTOM,
+): GradeComponentType {
+  if (isFormativeAliasCode(slotCode)) return GradeComponentType.FORMATIVE
+  if (isMidtermAliasCode(slotCode)) return GradeComponentType.MIDTERM
+  if (isFinalAliasCode(slotCode)) return GradeComponentType.FINAL
+  return fallback
+}
+
+function formatSlotDisplayLabel(slotCode: string, fallback = 'Komponen'): string {
+  const normalized = normalizeComponentCode(slotCode)
+  if (!normalized || normalized === DEFAULT_REPORT_SLOT_CODE) return fallback
+  if (isFormativeAliasCode(normalized)) return 'Formatif'
+  if (isMidtermAliasCode(normalized)) return 'Midterm'
+  if (isFinalAliasCode(normalized)) return 'Final'
+  return normalized
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+    .join(' ')
 }
 
 function defaultReportSlotByType(type: GradeComponentType): ReportComponentSlot {
@@ -75,12 +202,58 @@ function defaultReportSlotByType(type: GradeComponentType): ReportComponentSlot 
   return ReportComponentSlot.NONE
 }
 
-function defaultIncludeInFinalBySlot(slot: ReportComponentSlot): boolean {
-  return slot === ReportComponentSlot.FORMATIF || slot === ReportComponentSlot.SBTS || slot === ReportComponentSlot.SAS
+function defaultIncludeInFinalBySlot(
+  slot: ReportComponentSlot | null | undefined,
+  slotCode?: string | null,
+): boolean {
+  const normalized = normalizeReportSlotCode(slotCode || slot)
+  return isFormativeAliasCode(normalized) || isMidtermAliasCode(normalized) || isFinalAliasCode(normalized)
 }
 
 function defaultGradeEntryModeByCode(code: string): GradeEntryMode {
-  return normalizeComponentCode(code) === 'FORMATIVE' ? GradeEntryMode.NF_SERIES : GradeEntryMode.SINGLE_SCORE
+  return isFormativeAliasCode(code) ? GradeEntryMode.NF_SERIES : GradeEntryMode.SINGLE_SCORE
+}
+
+function normalizeGradeEntryModeCode(raw: unknown): GradeEntryMode | null {
+  const normalized = normalizeComponentCode(raw)
+  if (normalized === 'NF_SERIES') return GradeEntryMode.NF_SERIES
+  if (normalized === 'SINGLE_SCORE') return GradeEntryMode.SINGLE_SCORE
+  return null
+}
+
+async function resolveGradeEntryModeFromMasterConfig(params: {
+  academicYearId: number
+  componentCode?: string | null
+  componentType: GradeComponentType
+}): Promise<GradeEntryMode> {
+  const normalizedCode = normalizeComponentCode(params.componentCode || defaultComponentCodeByType(params.componentType))
+  const fallback = defaultGradeEntryModeByCode(normalizedCode)
+  if (!normalizedCode) return fallback
+
+  try {
+    const config = await (prisma.examGradeComponent as any).findFirst({
+      where: {
+        academicYearId: Number(params.academicYearId),
+        code: normalizedCode,
+      },
+      select: {
+        entryMode: true,
+        entryModeCode: true,
+      },
+    })
+    const resolved =
+      normalizeGradeEntryModeCode(config?.entryModeCode) ||
+      normalizeGradeEntryModeCode(config?.entryMode)
+    return resolved || fallback
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === 'P2021' || error.code === 'P2022')
+    ) {
+      return fallback
+    }
+    throw error
+  }
 }
 
 function defaultComponentCodeByType(type: GradeComponentType): string {
@@ -290,12 +463,15 @@ async function getExamComponentRuleMap(academicYearId: number): Promise<Map<stri
       },
       select: {
         code: true,
+        type: true,
         reportSlot: true,
         reportSlotCode: true,
         includeInFinalScore: true,
       },
+      orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
     })) as Array<{
       code: string
+      type: GradeComponentType
       reportSlot: ReportComponentSlot
       reportSlotCode?: string | null
       includeInFinalScore: boolean
@@ -311,6 +487,7 @@ async function getExamComponentRuleMap(academicYearId: number): Promise<Map<stri
           code,
           {
             code,
+            componentType: row.type,
             reportSlot: row.reportSlot,
             reportSlotCode,
             includeInFinalScore: row.includeInFinalScore,
@@ -330,9 +507,11 @@ async function getExamComponentRuleMap(academicYearId: number): Promise<Map<stri
         },
         select: {
           code: true,
+          type: true,
           reportSlot: true,
           includeInFinalScore: true,
         },
+        orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
       })
 
       return new Map(
@@ -342,6 +521,7 @@ async function getExamComponentRuleMap(academicYearId: number): Promise<Map<stri
             code,
             {
               code,
+              componentType: row.type,
               reportSlot: row.reportSlot,
               reportSlotCode: normalizeReportSlotCode(row.reportSlot),
               includeInFinalScore: row.includeInFinalScore,
@@ -368,7 +548,9 @@ function computeDynamicReportFromGrades(
     const configuredRule = normalizedCode ? componentRuleMap.get(normalizedCode) : undefined
     const reportSlot = configuredRule?.reportSlot || defaultReportSlotByType(grade.component.type)
     const reportSlotCode = normalizeReportSlotCode(configuredRule?.reportSlotCode || reportSlot)
-    const includeInFinal = configuredRule?.includeInFinalScore ?? defaultIncludeInFinalBySlot(reportSlot)
+    const includeInFinal =
+      configuredRule?.includeInFinalScore ??
+      defaultIncludeInFinalBySlot(reportSlot, reportSlotCode)
 
     if (reportSlotCode !== DEFAULT_REPORT_SLOT_CODE) {
       const bucket = slotBuckets.get(reportSlotCode) || []
@@ -412,18 +594,77 @@ function computeDynamicReportFromGrades(
   }
 }
 
-function buildLegacySlotScoreMap(slotScoresByCode: Record<string, number | null>): Record<ReportSlotKey, number | null> {
-  const getValue = (slotCode: ReportSlotKey) => {
-    const value = slotScoresByCode[slotCode]
-    return value === undefined ? null : value
+function buildLegacySlotScoreMap(slotScoresByCode: Record<string, number | null>): Record<string, number | null> {
+  const firstMatch = (...candidates: string[]) => {
+    for (const candidate of candidates) {
+      const normalized = normalizeReportSlotCode(candidate)
+      if (!normalized || normalized === DEFAULT_REPORT_SLOT_CODE) continue
+      if (Object.prototype.hasOwnProperty.call(slotScoresByCode, normalized)) {
+        const value = slotScoresByCode[normalized]
+        return value === undefined ? null : value
+      }
+    }
+    return null
   }
+
+  const formativeValue =
+    firstMatch(
+      ...Object.keys(slotScoresByCode).filter((slot) => isFormativeAliasCode(slot)),
+      'FORMATIF',
+      'FORMATIVE',
+    ) ?? null
+  const midtermValue =
+    firstMatch(
+      ...Object.keys(slotScoresByCode).filter((slot) => isMidtermAliasCode(slot)),
+      'SBTS',
+      'MIDTERM',
+      'PTS',
+      'UTS',
+    ) ?? null
+  const sasValue =
+    firstMatch(
+      ...Object.keys(slotScoresByCode).filter((slot) => isFinalAliasCode(slot) && normalizeReportSlotCode(slot) !== 'SAT'),
+      'SAS',
+      'FINAL_ODD',
+      'PAS',
+      'PSAS',
+      'FINAL',
+    ) ?? null
+  const satValue =
+    firstMatch(
+      ...Object.keys(slotScoresByCode).filter((slot) => normalizeReportSlotCode(slot) === 'SAT' || normalizeReportSlotCode(slot) === 'FINAL_EVEN'),
+      'SAT',
+      'FINAL_EVEN',
+      'PAT',
+      'PSAT',
+    ) ?? null
+
   return {
-    FORMATIF: getValue('FORMATIF'),
-    SBTS: getValue('SBTS'),
-    SAS: getValue('SAS'),
-    US_THEORY: getValue('US_THEORY'),
-    US_PRACTICE: getValue('US_PRACTICE'),
+    ...slotScoresByCode,
+    FORMATIF: slotScoresByCode.FORMATIF ?? formativeValue,
+    SBTS: slotScoresByCode.SBTS ?? midtermValue,
+    SAS: slotScoresByCode.SAS ?? sasValue,
+    SAT: slotScoresByCode.SAT ?? satValue,
+    US_THEORY: slotScoresByCode.US_THEORY ?? firstMatch('US_THEORY', 'US_TEORI'),
+    US_PRACTICE: slotScoresByCode.US_PRACTICE ?? firstMatch('US_PRACTICE', 'US_PRAKTEK'),
   }
+}
+
+function parseSlotScoreMap(raw: unknown): Record<string, number | null> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const result: Record<string, number | null> = {}
+  Object.entries(raw as Record<string, unknown>).forEach(([key, value]) => {
+    const slotCode = normalizeReportSlotCode(key)
+    if (!slotCode || slotCode === DEFAULT_REPORT_SLOT_CODE) return
+    if (value === null || value === undefined || value === '') {
+      result[slotCode] = null
+      return
+    }
+    const numericValue = Number(value)
+    if (!Number.isFinite(numericValue)) return
+    result[slotCode] = numericValue
+  })
+  return result
 }
 
 function resolveSemesterRange(
@@ -450,16 +691,41 @@ function resolveSemesterRange(
 
 function defaultReportSlotByExamType(type: string | null | undefined): ReportComponentSlot {
   const normalizedType = normalizeComponentCode(type)
-  if (normalizedType === 'FORMATIF') return ReportComponentSlot.FORMATIF
-  if (normalizedType === 'SBTS') return ReportComponentSlot.SBTS
-  if (normalizedType === 'SAS' || normalizedType === 'SAT') return ReportComponentSlot.SAS
-  if (normalizedType === 'US_THEORY') return ReportComponentSlot.US_THEORY
-  if (normalizedType === 'US_PRACTICE') return ReportComponentSlot.US_PRACTICE
+  if (isFormativeAliasCode(normalizedType)) return ReportComponentSlot.FORMATIF
+  if (isMidtermAliasCode(normalizedType)) return ReportComponentSlot.SBTS
+  if (isFinalAliasCode(normalizedType)) return ReportComponentSlot.SAS
+  if (normalizedType === 'US_THEORY' || normalizedType === 'US_TEORI') return ReportComponentSlot.US_THEORY
+  if (normalizedType === 'US_PRACTICE' || normalizedType === 'US_PRAKTEK') return ReportComponentSlot.US_PRACTICE
   return ReportComponentSlot.NONE
 }
 
 function defaultReportSlotCodeByExamType(type: string | null | undefined): string {
+  const normalizedType = normalizeComponentCode(type)
+  if (isFinalEvenAliasCode(normalizedType)) {
+    return 'SAT'
+  }
+  if (isFinalOddAliasCode(normalizedType)) {
+    return 'SAS'
+  }
+  if (isMidtermAliasCode(normalizedType)) return 'SBTS'
+  if (isFormativeAliasCode(normalizedType)) return 'FORMATIF'
   return normalizeReportSlotCode(defaultReportSlotByExamType(type))
+}
+
+function resolveReportSlotCodeByExamContext(
+  type: string | null | undefined,
+  fixedSemester?: Semester | null,
+): string {
+  const normalizedType = normalizeComponentCode(type)
+  if (!normalizedType) return DEFAULT_REPORT_SLOT_CODE
+  if (isFinalEvenAliasCode(normalizedType)) return 'SAT'
+  if (isFinalOddAliasCode(normalizedType)) return 'SAS'
+  if (normalizedType === 'FINAL') {
+    if (fixedSemester === Semester.EVEN) return 'SAT'
+    if (fixedSemester === Semester.ODD) return 'SAS'
+    return 'SAS'
+  }
+  return defaultReportSlotCodeByExamType(normalizedType)
 }
 
 async function getProgramReportSlotMap(
@@ -477,12 +743,14 @@ async function getProgramReportSlotMap(
         baseType: true,
         baseTypeCode: true,
         gradeComponentCode: true,
+        fixedSemester: true,
       },
     })) as Array<{
       code: string
       baseType: string
       baseTypeCode?: string | null
       gradeComponentCode?: string | null
+      fixedSemester?: Semester | null
     }>
 
     const map = new Map<string, string>()
@@ -493,7 +761,10 @@ async function getProgramReportSlotMap(
         ? componentRuleMap.get(normalizedComponentCode)?.reportSlotCode
         : undefined
       const fallbackSlotCode = normalizeReportSlotCode(
-        row.baseTypeCode || defaultReportSlotCodeByExamType(row.baseType),
+        resolveReportSlotCodeByExamContext(
+          row.baseTypeCode || row.baseType,
+          row.fixedSemester || null,
+        ),
       )
       if (normalizedProgramCode) {
         map.set(normalizedProgramCode, configuredSlotCode || fallbackSlotCode)
@@ -514,7 +785,9 @@ async function getProgramReportSlotMap(
         select: {
           code: true,
           baseType: true,
+          baseTypeCode: true,
           gradeComponentCode: true,
+          fixedSemester: true,
         },
       })
 
@@ -525,7 +798,10 @@ async function getProgramReportSlotMap(
         const configuredSlotCode = normalizedComponentCode
           ? componentRuleMap.get(normalizedComponentCode)?.reportSlotCode
           : undefined
-        const fallbackSlotCode = defaultReportSlotCodeByExamType(row.baseType)
+        const fallbackSlotCode = resolveReportSlotCodeByExamContext(
+          (row as any).baseTypeCode || row.baseType,
+          row.fixedSemester || null,
+        )
         if (normalizedProgramCode) {
           map.set(normalizedProgramCode, configuredSlotCode || fallbackSlotCode)
         }
@@ -547,12 +823,65 @@ function resolveIncludedReportSlots(componentRuleMap: Map<string, ExamComponentR
   })
 
   if (includeSlots.size === 0) {
-    includeSlots.add('FORMATIF')
-    includeSlots.add('SBTS')
-    includeSlots.add('SAS')
+    componentRuleMap.forEach((rule) => {
+      const slotCode = normalizeReportSlotCode(rule.reportSlotCode || rule.reportSlot)
+      if (slotCode !== DEFAULT_REPORT_SLOT_CODE) {
+        includeSlots.add(slotCode)
+      }
+    })
   }
 
   return includeSlots
+}
+
+function resolvePrimarySlotCodesFromRules(componentRuleMap: Map<string, ExamComponentRule>): {
+  formative: string
+  midterm: string
+  final: string
+} {
+  const availableSlots: string[] = []
+  let formativeByType: string | null = null
+  let midtermByType: string | null = null
+  let finalByType: string | null = null
+
+  componentRuleMap.forEach((rule) => {
+    const slotCode = normalizeReportSlotCode(rule.reportSlotCode || rule.reportSlot)
+    if (slotCode === DEFAULT_REPORT_SLOT_CODE) return
+    if (!availableSlots.includes(slotCode)) {
+      availableSlots.push(slotCode)
+    }
+    if (rule.componentType === GradeComponentType.FORMATIVE && !formativeByType) {
+      formativeByType = slotCode
+      return
+    }
+    if (rule.componentType === GradeComponentType.MIDTERM && !midtermByType) {
+      midtermByType = slotCode
+      return
+    }
+    if (rule.componentType === GradeComponentType.FINAL && !finalByType) {
+      finalByType = slotCode
+    }
+  })
+
+  const firstSlot = availableSlots[0] || 'FORMATIF'
+  const secondSlot = availableSlots[1] || firstSlot
+  const lastSlot = availableSlots[availableSlots.length - 1] || secondSlot
+
+  const formativeByAlias = availableSlots.find((slot) => isFormativeAliasCode(slot)) || null
+  const midtermByAlias = availableSlots.find((slot) => isMidtermAliasCode(slot)) || null
+  const finalByAlias = availableSlots.find((slot) => isFinalAliasCode(slot)) || null
+
+  const formative = formativeByType || formativeByAlias || firstSlot
+  const midterm =
+    midtermByType ||
+    (midtermByAlias && midtermByAlias !== formative ? midtermByAlias : null) ||
+    secondSlot
+  const final =
+    finalByType ||
+    (finalByAlias && finalByAlias !== formative ? finalByAlias : null) ||
+    lastSlot
+
+  return { formative, midterm, final }
 }
 
 function recomputeFinalScoreFromSlots(
@@ -568,6 +897,13 @@ function recomputeFinalScoreFromSlots(
     return selectedSlotScores.reduce((sum, value) => sum + value, 0) / selectedSlotScores.length
   }
 
+  const allSlotScores = Object.values(slotScores).filter(
+    (value): value is number => value !== null && value !== undefined,
+  )
+  if (allSlotScores.length > 0) {
+    return allSlotScores.reduce((sum, value) => sum + value, 0) / allSlotScores.length
+  }
+
   return fallbackScore
 }
 
@@ -578,8 +914,9 @@ async function collectDynamicFormativeScores(params: {
   semester: Semester
   semesterRange: SemesterRange
   programSlotMap: Map<string, string>
+  formativeSlotCode: string
 }): Promise<number[]> {
-  const { studentId, subjectId, academicYearId, semester, semesterRange, programSlotMap } = params
+  const { studentId, subjectId, academicYearId, semester, semesterRange, programSlotMap, formativeSlotCode } = params
 
   const [examSessions, assignmentSubmissions] = await Promise.all([
     prisma.studentExamSession.findMany({
@@ -643,7 +980,7 @@ async function collectDynamicFormativeScores(params: {
       const reportSlotCode =
         (normalizedProgramCode ? programSlotMap.get(normalizedProgramCode) : undefined) ||
         defaultReportSlotCodeByExamType(packet?.type)
-      return reportSlotCode === 'FORMATIF'
+      return reportSlotCode === formativeSlotCode
     })
     .map((session) => Number(session.score))
     .filter((score) => Number.isFinite(score))
@@ -729,15 +1066,6 @@ async function collectDynamicSlotScoresFromScoreEntries(params: {
               subjectId,
               academicYearId,
               semester,
-              reportSlot: {
-                in: [
-                  ReportComponentSlot.FORMATIF,
-                  ReportComponentSlot.SBTS,
-                  ReportComponentSlot.SAS,
-                  ReportComponentSlot.US_THEORY,
-                  ReportComponentSlot.US_PRACTICE,
-                ],
-              },
             },
             select: {
               reportSlot: true,
@@ -858,8 +1186,23 @@ export const getGradeComponents = async (req: Request, res: Response) => {
     const masterMap = new Map(
       masterComponents.map((item) => [normalizeComponentCode(item.code), item]),
     )
+    const hasAcademicYearScope = Number.isFinite(Number(resolvedAcademicYearId)) && Number(resolvedAcademicYearId) > 0
+    const allowedMasterCodes = new Set(
+      masterComponents
+        .map((item) => normalizeComponentCode(item.code))
+        .filter((code) => !!code),
+    )
+    const sourceComponents = hasAcademicYearScope
+      ? components.filter((component) => {
+          const normalizedCode = normalizeComponentCode(
+            component.code || component.typeCode || defaultComponentCodeByType(component.type),
+          )
+          if (!normalizedCode) return false
+          return allowedMasterCodes.has(normalizedCode)
+        })
+      : components
 
-    const formattedComponents = components
+    const formattedComponents = sourceComponents
       .map((component) => {
         const normalizedCode =
           normalizeComponentCode(component.code || component.typeCode || defaultComponentCodeByType(component.type))
@@ -875,7 +1218,8 @@ export const getGradeComponents = async (req: Request, res: Response) => {
           reportSlot,
           reportSlotCode,
           includeInFinalScore:
-            master?.includeInFinalScore ?? defaultIncludeInFinalBySlot(reportSlot),
+            master?.includeInFinalScore ??
+            defaultIncludeInFinalBySlot(reportSlot, reportSlotCode),
           displayOrder: Number(master?.displayOrder ?? 999),
           academicYearId: resolvedAcademicYearId,
         }
@@ -940,6 +1284,7 @@ export const syncReportGrade = async (
     }
 
     const includeSlots = resolveIncludedReportSlots(componentRuleMap)
+    const primarySlots = resolvePrimarySlotCodesFromRules(componentRuleMap)
     const semesterRange = resolveSemesterRange(academicYear, semester)
     const programSlotMap = await getProgramReportSlotMap(academicYearId, componentRuleMap)
 
@@ -965,10 +1310,11 @@ export const syncReportGrade = async (
       semester,
       semesterRange,
       programSlotMap,
+      formativeSlotCode: primarySlots.formative,
     })
 
-    if (entrySlotScores.FORMATIF === undefined && dynamicFormativeScores.length > 0) {
-      dynamicResult.slotScoresByCode.FORMATIF = calculateAverage(dynamicFormativeScores)
+    if (entrySlotScores[primarySlots.formative] === undefined && dynamicFormativeScores.length > 0) {
+      dynamicResult.slotScoresByCode[primarySlots.formative] = calculateAverage(dynamicFormativeScores)
     }
 
     dynamicResult.legacySlotScores = buildLegacySlotScoreMap(dynamicResult.slotScoresByCode)
@@ -978,9 +1324,9 @@ export const syncReportGrade = async (
       dynamicResult.finalScore,
     )
     const reportScores = {
-      FORMATIVE: dynamicResult.legacySlotScores.FORMATIF,
-      MIDTERM: dynamicResult.legacySlotScores.SBTS,
-      FINAL: dynamicResult.legacySlotScores.SAS,
+      FORMATIVE: dynamicResult.slotScoresByCode[primarySlots.formative] ?? null,
+      MIDTERM: dynamicResult.slotScoresByCode[primarySlots.midterm] ?? null,
+      FINAL: dynamicResult.slotScoresByCode[primarySlots.final] ?? null,
     }
 
     // Get KKM
@@ -1098,28 +1444,45 @@ export const getStudentGrades = async (req: Request, res: Response) => {
     } = req.query
 
     const where: any = {}
-    const user = (req as any).user
-    let targetStudentId = student_id ? Number(student_id) : undefined;
-
+    const user = (req as any).user as AuthUserLike
+    const parsedStudentId = toPositiveInt(student_id)
+    const parsedSubjectId = toPositiveInt(subject_id)
+    const parsedAcademicYearId = toPositiveInt(academic_year_id)
+    const parsedClassId = toPositiveInt(class_id)
     // Security: Student can only view their own grades
-    if (user.role === 'STUDENT') {
+    if (String(user?.role || '').toUpperCase() === 'STUDENT') {
       where.studentId = user.id
-      targetStudentId = user.id;
     } else {
-      if (student_id) where.studentId = Number(student_id)
+      if (isTeacherUser(user)) {
+        if (!parsedSubjectId || !parsedAcademicYearId) {
+          throw new ApiError(400, 'subject_id dan academic_year_id wajib diisi untuk akses nilai guru.')
+        }
+        if (!parsedClassId && !parsedStudentId) {
+          throw new ApiError(400, 'Guru wajib memilih class_id atau student_id untuk melihat nilai.')
+        }
+        await ensureTeacherCanAccessGradeContext({
+          user,
+          subjectId: parsedSubjectId,
+          academicYearId: parsedAcademicYearId,
+          classId: parsedClassId,
+          studentId: parsedStudentId,
+        })
+      }
+
+      if (parsedStudentId) where.studentId = parsedStudentId
 
       // If class_id is provided (and not student), filter by students in that class
-      if (class_id) {
+      if (parsedClassId) {
         const students = await prisma.user.findMany({
-          where: { classId: Number(class_id) },
+          where: { classId: parsedClassId },
           select: { id: true }
         })
         where.studentId = { in: students.map(s => s.id) }
       }
     }
 
-    if (subject_id) where.subjectId = Number(subject_id)
-    if (academic_year_id) where.academicYearId = Number(academic_year_id)
+    if (parsedSubjectId) where.subjectId = parsedSubjectId
+    if (parsedAcademicYearId) where.academicYearId = parsedAcademicYearId
     if (semester) where.semester = semester as Semester
 
     const grades = await prisma.studentGrade.findMany({
@@ -1147,6 +1510,7 @@ export const getStudentGrades = async (req: Request, res: Response) => {
             code: true,
             name: true,
             type: true,
+            typeCode: true,
             weight: true
           }
         },
@@ -1363,10 +1727,14 @@ export const getStudentGrades = async (req: Request, res: Response) => {
         }
 
         for (const row of formattedGradesWithSeries) {
-          const componentCode = normalizeComponentCode(row.component?.code)
+          const componentCode = normalizeComponentCode(
+            row.component?.code || row.component?.typeCode || row.component?.type,
+          )
           const configuredEntryMode = componentCode ? entryModeByCode.get(componentCode) : null
-          const isNfSeries =
-            configuredEntryMode === 'NF_SERIES' || row.component?.type === GradeComponentType.FORMATIVE
+          const inferredEntryMode = normalizeComponentCode(
+            configuredEntryMode || defaultGradeEntryModeByCode(componentCode),
+          )
+          const isNfSeries = inferredEntryMode === 'NF_SERIES'
           if (!isNfSeries) continue
           const nfRows = (seriesMap.get(Number(row.id)) || []).sort((a, b) => a.order - b.order)
           if (nfRows.length > 0) {
@@ -1405,6 +1773,7 @@ export const createOrUpdateStudentGrade = async (req: Request, res: Response) =>
       nf1, nf2, nf3, nf4, nf5, nf6,
       formative_series,
     } = req.body
+    const user = (req as any).user as AuthUserLike
 
     const normalizedSeries = normalizeFormativeSeries(formative_series)
 
@@ -1420,15 +1789,27 @@ export const createOrUpdateStudentGrade = async (req: Request, res: Response) =>
       throw new ApiError(400, 'All fields are required')
     }
 
+    await ensureTeacherCanAccessGradeContext({
+      user,
+      subjectId: Number(subject_id),
+      academicYearId: Number(academic_year_id),
+      studentId: Number(student_id),
+    })
+
     const component = await prisma.gradeComponent.findUnique({
       where: { id: Number(grade_component_id) },
-      select: { type: true },
+      select: { type: true, code: true },
     })
     if (!component) {
       throw new ApiError(404, 'Komponen nilai tidak ditemukan.')
     }
 
-    const isFormativeComponent = component.type === GradeComponentType.FORMATIVE
+    const componentEntryMode = await resolveGradeEntryModeFromMasterConfig({
+      academicYearId: Number(academic_year_id),
+      componentCode: component.code,
+      componentType: component.type,
+    })
+    const isFormativeComponent = componentEntryMode === GradeEntryMode.NF_SERIES
     const parsedNf1 = parseOptionalScoreValue(nf1, 'NF1')
     const parsedNf2 = parseOptionalScoreValue(nf2, 'NF2')
     const parsedNf3 = parseOptionalScoreValue(nf3, 'NF3')
@@ -1621,9 +2002,93 @@ export const createOrUpdateStudentGrade = async (req: Request, res: Response) =>
 export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Response) => {
   try {
     const { grades } = req.body
+    const user = (req as any).user as AuthUserLike
 
     if (!Array.isArray(grades) || grades.length === 0) {
       throw new ApiError(400, 'Grades array is required')
+    }
+
+    if (isTeacherUser(user)) {
+      const studentIds = Array.from(
+        new Set(
+          grades
+            .map((item: any) => toPositiveInt(item?.student_id))
+            .filter((item): item is number => Boolean(item)),
+        ),
+      )
+      const subjectIds = Array.from(
+        new Set(
+          grades
+            .map((item: any) => toPositiveInt(item?.subject_id))
+            .filter((item): item is number => Boolean(item)),
+        ),
+      )
+      const academicYearIds = Array.from(
+        new Set(
+          grades
+            .map((item: any) => toPositiveInt(item?.academic_year_id))
+            .filter((item): item is number => Boolean(item)),
+        ),
+      )
+
+      if (studentIds.length === 0 || subjectIds.length === 0 || academicYearIds.length === 0) {
+        throw new ApiError(400, 'Data bulk nilai tidak valid. student_id, subject_id, academic_year_id wajib diisi.')
+      }
+
+      const studentRows = await prisma.user.findMany({
+        where: { id: { in: studentIds } },
+        select: { id: true, classId: true },
+      })
+      const studentClassMap = new Map<number, number>()
+      studentRows.forEach((row) => {
+        const classId = Number(row.classId || 0)
+        if (Number.isFinite(classId) && classId > 0) {
+          studentClassMap.set(Number(row.id), classId)
+        }
+      })
+      const classIds = Array.from(new Set(Array.from(studentClassMap.values())))
+
+      const teacherId = Number(user?.id || 0)
+      if (!Number.isFinite(teacherId) || teacherId <= 0) {
+        throw new ApiError(401, 'Sesi login tidak valid.')
+      }
+
+      const assignmentRows = await prisma.teacherAssignment.findMany({
+        where: {
+          teacherId,
+          subjectId: { in: subjectIds },
+          academicYearId: { in: academicYearIds },
+          classId: { in: classIds.length > 0 ? classIds : [0] },
+        },
+        select: {
+          subjectId: true,
+          academicYearId: true,
+          classId: true,
+        },
+      })
+      const assignmentKeySet = new Set(
+        assignmentRows.map((row) => `${row.subjectId}:${row.academicYearId}:${row.classId}`),
+      )
+
+      for (const gradeData of grades) {
+        const studentId = toPositiveInt(gradeData?.student_id)
+        const subjectId = toPositiveInt(gradeData?.subject_id)
+        const academicYearId = toPositiveInt(gradeData?.academic_year_id)
+        if (!studentId || !subjectId || !academicYearId) {
+          throw new ApiError(400, 'Data bulk nilai tidak valid pada salah satu baris.')
+        }
+        const classId = Number(studentClassMap.get(studentId) || 0)
+        if (!classId) {
+          throw new ApiError(400, `Siswa ${studentId} tidak memiliki kelas aktif.`)
+        }
+        const key = `${subjectId}:${academicYearId}:${classId}`
+        if (!assignmentKeySet.has(key)) {
+          throw new ApiError(
+            403,
+            `Anda tidak memiliki assignment mapel-kelas untuk siswa ${studentId}. Simpan bulk nilai ditolak.`,
+          )
+        }
+      }
     }
 
     const results = {
@@ -1633,7 +2098,10 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
     }
 
     const uniqueKeys = new Set<string>();
-    const componentTypeCache = new Map<number, GradeComponentType>()
+    const componentConfigCache = new Map<
+      number,
+      { type: GradeComponentType; code?: string | null; entryMode: GradeEntryMode }
+    >()
 
     for (const gradeData of grades) {
       try {
@@ -1653,20 +2121,29 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
         uniqueKeys.add(`${student_id}-${subject_id}-${academic_year_id}-${semester}`);
 
         const componentId = Number(grade_component_id)
-        let componentType = componentTypeCache.get(componentId)
-        if (!componentType) {
+        let componentConfig = componentConfigCache.get(componentId)
+        if (!componentConfig) {
           const component = await prisma.gradeComponent.findUnique({
             where: { id: componentId },
-            select: { type: true },
+            select: { type: true, code: true },
           })
           if (!component) {
             throw new ApiError(404, `Komponen nilai tidak ditemukan (id=${componentId}).`)
           }
-          componentType = component.type
-          componentTypeCache.set(componentId, componentType)
+          const entryMode = await resolveGradeEntryModeFromMasterConfig({
+            academicYearId: Number(academic_year_id),
+            componentCode: component.code,
+            componentType: component.type,
+          })
+          componentConfig = {
+            type: component.type,
+            code: component.code,
+            entryMode,
+          }
+          componentConfigCache.set(componentId, componentConfig)
         }
 
-        const isFormativeComponent = componentType === GradeComponentType.FORMATIVE
+        const isFormativeComponent = componentConfig.entryMode === GradeEntryMode.NF_SERIES
         const normalizedSeries = normalizeFormativeSeries(formative_series)
         const parsedNf1 = parseOptionalScoreValue(nf1, 'NF1')
         const parsedNf2 = parseOptionalScoreValue(nf2, 'NF2')
@@ -1938,6 +2415,7 @@ export const generateReportGrades = async (req: Request, res: Response) => {
     const reportGrades = []
     const componentRuleMap = await getExamComponentRuleMap(Number(academic_year_id))
     const includeSlots = resolveIncludedReportSlots(componentRuleMap)
+    const primarySlots = resolvePrimarySlotCodesFromRules(componentRuleMap)
     const academicYear = await prisma.academicYear.findUnique({
       where: { id: Number(academic_year_id) },
       select: {
@@ -1975,15 +2453,16 @@ export const generateReportGrades = async (req: Request, res: Response) => {
         semester: semester as Semester,
         semesterRange,
         programSlotMap,
+        formativeSlotCode: primarySlots.formative,
       })
-      if (entrySlotScores.FORMATIF === undefined && dynamicFormativeScores.length > 0) {
-        dynamicResult.slotScoresByCode.FORMATIF = calculateAverage(dynamicFormativeScores)
+      if (entrySlotScores[primarySlots.formative] === undefined && dynamicFormativeScores.length > 0) {
+        dynamicResult.slotScoresByCode[primarySlots.formative] = calculateAverage(dynamicFormativeScores)
       }
       dynamicResult.legacySlotScores = buildLegacySlotScoreMap(dynamicResult.slotScoresByCode)
       const reportScores = {
-        FORMATIVE: dynamicResult.legacySlotScores.FORMATIF,
-        MIDTERM: dynamicResult.legacySlotScores.SBTS,
-        FINAL: dynamicResult.legacySlotScores.SAS,
+        FORMATIVE: dynamicResult.slotScoresByCode[primarySlots.formative] ?? null,
+        MIDTERM: dynamicResult.slotScoresByCode[primarySlots.midterm] ?? null,
+        FINAL: dynamicResult.slotScoresByCode[primarySlots.final] ?? null,
       }
       const finalScore = recomputeFinalScoreFromSlots(
         dynamicResult.slotScoresByCode,
@@ -2108,46 +2587,67 @@ export const getReportGrades = async (req: Request, res: Response) => {
       academic_year_id,
       semester,
       class_id,
-      subject_id
+      subject_id,
+      include_meta,
     } = req.query
 
-    const user = (req as any).user;
+    const user = (req as any).user as AuthUserLike;
+    const parsedStudentId = toPositiveInt(student_id)
+    const parsedAcademicYearId = toPositiveInt(academic_year_id)
+    const parsedClassId = toPositiveInt(class_id)
+    const parsedSubjectId = toPositiveInt(subject_id)
     const where: any = {}
     
     // Security: Students can only view their own grades
-    if (user.role === 'STUDENT') {
+    if (String(user?.role || '').toUpperCase() === 'STUDENT') {
       where.studentId = user.id;
     } else {
-      if (student_id) where.studentId = Number(student_id)
+      if (isTeacherUser(user)) {
+        if (!parsedSubjectId || !parsedAcademicYearId) {
+          throw new ApiError(400, 'subject_id dan academic_year_id wajib diisi untuk akses nilai rapor guru.')
+        }
+        if (!parsedClassId && !parsedStudentId) {
+          throw new ApiError(400, 'Guru wajib memilih class_id atau student_id untuk melihat nilai rapor.')
+        }
+        await ensureTeacherCanAccessGradeContext({
+          user,
+          subjectId: parsedSubjectId,
+          academicYearId: parsedAcademicYearId,
+          classId: parsedClassId,
+          studentId: parsedStudentId,
+        })
+      }
+
+      if (parsedStudentId) where.studentId = parsedStudentId
       
       // If class_id is provided, filter by students in that class
-      if (class_id) {
+      if (parsedClassId) {
         const students = await prisma.user.findMany({
-          where: { classId: Number(class_id) },
+          where: { classId: parsedClassId },
           select: { id: true }
         })
         where.studentId = { in: students.map(s => s.id) }
   
         // LAZY SYNC: If we are in a specific context (Class + Subject + Year + Sem),
         // ensure ReportGrades exist for all students.
-        if (students.length > 0 && subject_id && academic_year_id && semester) {
+        if (students.length > 0 && parsedSubjectId && parsedAcademicYearId && semester) {
           const syncWhere: Prisma.ReportGradeWhereInput = {
             studentId: { in: students.map((s) => s.id) },
-            subjectId: Number(subject_id),
-            academicYearId: Number(academic_year_id),
+            subjectId: parsedSubjectId,
+            academicYearId: parsedAcademicYearId,
             semester: semester as Semester,
           };
           const existingCount = await prisma.reportGrade.count({ where: syncWhere });
           
           // If count mismatch (or force check), run sync
           if (existingCount < students.length) {
-              console.log(`[LazySync] Syncing ReportGrades for Class ${class_id} Subject ${subject_id}`);
+              console.log(`[LazySync] Syncing ReportGrades for Class ${parsedClassId} Subject ${parsedSubjectId}`);
               // Use Promise.all with chunking or just all at once (assuming class size < 50)
               await Promise.all(students.map(s => 
                   syncReportGrade(
                       s.id, 
-                      Number(subject_id), 
-                      Number(academic_year_id), 
+                      parsedSubjectId, 
+                      parsedAcademicYearId, 
                       semester as Semester
                   ).catch(err => console.error(`Failed to sync student ${s.id}:`, err))
               ));
@@ -2156,9 +2656,9 @@ export const getReportGrades = async (req: Request, res: Response) => {
       }
     }
 
-    if (academic_year_id) where.academicYearId = Number(academic_year_id)
+    if (parsedAcademicYearId) where.academicYearId = parsedAcademicYearId
     if (semester) where.semester = semester as Semester
-    if (subject_id) where.subjectId = Number(subject_id)
+    if (parsedSubjectId) where.subjectId = parsedSubjectId
 
     const reportGrades = await prisma.reportGrade.findMany({
       where,
@@ -2222,7 +2722,155 @@ export const getReportGrades = async (req: Request, res: Response) => {
       return nameA.localeCompare(nameB);
     });
 
-    return ApiResponseHelper.success(res, result, 'Report grades retrieved successfully')
+    const includeMeta = ['1', 'true', 'yes'].includes(String(include_meta || '').trim().toLowerCase())
+    if (!includeMeta) {
+      return ApiResponseHelper.success(res, result, 'Report grades retrieved successfully')
+    }
+
+    const resolvedAcademicYearId = Number(academic_year_id)
+    const discoveredSlotSet = new Set<string>()
+    result.forEach((row: any) => {
+      const parsed = parseSlotScoreMap(row?.slotScores)
+      Object.keys(parsed).forEach((slotCode) => {
+        const normalized = normalizeReportSlotCode(slotCode)
+        if (normalized && normalized !== DEFAULT_REPORT_SLOT_CODE) {
+          discoveredSlotSet.add(normalized)
+        }
+      })
+      if (row?.formatifScore !== null && row?.formatifScore !== undefined) {
+        discoveredSlotSet.add('FORMATIF')
+      }
+      if (row?.sbtsScore !== null && row?.sbtsScore !== undefined) {
+        discoveredSlotSet.add('SBTS')
+      }
+      if (row?.sasScore !== null && row?.sasScore !== undefined) {
+        discoveredSlotSet.add('SAS')
+      }
+      if (row?.satScore !== null && row?.satScore !== undefined) {
+        discoveredSlotSet.add('SAT')
+      }
+    })
+    const discoveredSlots = Array.from(discoveredSlotSet)
+    const fallbackIncludeSlots =
+      discoveredSlots.length > 0 ? discoveredSlots : ['FORMATIF']
+    const fallbackFormativeSlot =
+      fallbackIncludeSlots.find((slot) => isFormativeAliasCode(slot)) ||
+      fallbackIncludeSlots[0] ||
+      'FORMATIF'
+    const fallbackMidtermSlot =
+      fallbackIncludeSlots.find(
+        (slot) => isMidtermAliasCode(slot) && slot !== fallbackFormativeSlot,
+      ) ||
+      fallbackIncludeSlots.find((slot) => slot !== fallbackFormativeSlot) ||
+      fallbackIncludeSlots[0] ||
+      fallbackFormativeSlot
+    const fallbackFinalSlot =
+      fallbackIncludeSlots.find(
+        (slot) =>
+          isFinalAliasCode(slot) &&
+          slot !== fallbackFormativeSlot &&
+          slot !== fallbackMidtermSlot,
+      ) ||
+      fallbackIncludeSlots[fallbackIncludeSlots.length - 1] ||
+      fallbackMidtermSlot ||
+      fallbackFormativeSlot
+    const fallbackPrimary = {
+      formative: fallbackFormativeSlot,
+      midterm: fallbackMidtermSlot,
+      final: fallbackFinalSlot,
+    }
+    const fallbackSlotLabels: Record<string, { label: string; componentType: GradeComponentType }> = {}
+    fallbackIncludeSlots.forEach((slotCode, index) => {
+      const normalized = normalizeReportSlotCode(slotCode)
+      if (!normalized || normalized === DEFAULT_REPORT_SLOT_CODE) return
+      const label = formatSlotDisplayLabel(normalized, `Komponen ${index + 1}`)
+      fallbackSlotLabels[normalized] = {
+        label,
+        componentType: inferGradeComponentTypeBySlotCode(
+          normalized,
+          normalized === fallbackPrimary.formative
+            ? GradeComponentType.FORMATIVE
+            : normalized === fallbackPrimary.midterm
+              ? GradeComponentType.MIDTERM
+              : normalized === fallbackPrimary.final
+                ? GradeComponentType.FINAL
+                : GradeComponentType.CUSTOM,
+        ),
+      }
+    })
+    const meta = {
+      primarySlots: fallbackPrimary,
+      includeSlots: fallbackIncludeSlots,
+      slotLabels: fallbackSlotLabels,
+    }
+
+    if (Number.isFinite(resolvedAcademicYearId) && resolvedAcademicYearId > 0) {
+      const [componentRuleMap, masterComponents] = await Promise.all([
+        getExamComponentRuleMap(resolvedAcademicYearId).catch(() => new Map<string, ExamComponentRule>()),
+        prisma.examGradeComponent
+          .findMany({
+            where: {
+              academicYearId: resolvedAcademicYearId,
+              isActive: true,
+            },
+            select: {
+              code: true,
+              label: true,
+              type: true,
+              reportSlot: true,
+              reportSlotCode: true,
+              displayOrder: true,
+            },
+            orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
+          })
+          .catch(() => []),
+      ])
+
+      const resolvedPrimary = resolvePrimarySlotCodesFromRules(componentRuleMap)
+      const resolvedIncludeSlots = Array.from(resolveIncludedReportSlots(componentRuleMap))
+      const slotLabels: Record<string, { label: string; componentType: GradeComponentType }> = {}
+
+      masterComponents.forEach((component) => {
+        const slotCode = normalizeReportSlotCode(component.reportSlotCode || component.reportSlot)
+        if (!slotCode || slotCode === DEFAULT_REPORT_SLOT_CODE) return
+        if (slotLabels[slotCode]) return
+        const label = String(component.label || component.code || slotCode).trim() || slotCode
+        slotLabels[slotCode] = {
+          label,
+          componentType: component.type,
+        }
+      })
+
+      const ensureSlotLabel = (
+        slotCode: string,
+        fallbackLabel: string,
+        fallbackType: GradeComponentType,
+      ) => {
+        if (!slotLabels[slotCode]) {
+          slotLabels[slotCode] = {
+            label: formatSlotDisplayLabel(slotCode, fallbackLabel),
+            componentType: inferGradeComponentTypeBySlotCode(slotCode, fallbackType),
+          }
+        }
+      }
+
+      ensureSlotLabel(resolvedPrimary.formative, 'Formatif', GradeComponentType.FORMATIVE)
+      ensureSlotLabel(resolvedPrimary.midterm, 'Midterm', GradeComponentType.MIDTERM)
+      ensureSlotLabel(resolvedPrimary.final, 'Final', GradeComponentType.FINAL)
+
+      meta.primarySlots = resolvedPrimary
+      meta.includeSlots = resolvedIncludeSlots.length > 0 ? resolvedIncludeSlots : meta.includeSlots
+      meta.slotLabels = slotLabels
+    }
+
+    return ApiResponseHelper.success(
+      res,
+      {
+        rows: result,
+        meta,
+      },
+      'Report grades retrieved successfully',
+    )
   } catch (error) {
     console.error('Get report grades error:', error)
     throw new ApiError(500, 'Failed to retrieve report grades')
@@ -2236,7 +2884,8 @@ export const updateReportGrade = async (req: Request, res: Response) => {
       formatif_score,
       sbts_score,
       sas_score,
-      competency_desc
+      competency_desc,
+      slot_scores,
     } = req.body
 
     // Get existing report grade
@@ -2248,49 +2897,80 @@ export const updateReportGrade = async (req: Request, res: Response) => {
       throw new ApiError(404, 'Report grade not found')
     }
 
-    // Calculate new final score if component scores are provided
+    const user = (req as any).user as AuthUserLike
+    await ensureTeacherCanAccessGradeContext({
+      user,
+      subjectId: existingGrade.subjectId,
+      academicYearId: existingGrade.academicYearId,
+      studentId: existingGrade.studentId,
+    })
+
+    const componentRuleMap = await getExamComponentRuleMap(existingGrade.academicYearId)
+    const includeSlots = resolveIncludedReportSlots(componentRuleMap)
+    const primarySlots = resolvePrimarySlotCodesFromRules(componentRuleMap)
+    const nextSlotScores = parseSlotScoreMap(existingGrade.slotScores)
+
+    if (nextSlotScores[primarySlots.formative] === undefined && existingGrade.formatifScore !== null) {
+      nextSlotScores[primarySlots.formative] = existingGrade.formatifScore
+    }
+    if (nextSlotScores[primarySlots.midterm] === undefined && existingGrade.sbtsScore !== null) {
+      nextSlotScores[primarySlots.midterm] = existingGrade.sbtsScore
+    }
+    if (nextSlotScores[primarySlots.final] === undefined && existingGrade.sasScore !== null) {
+      nextSlotScores[primarySlots.final] = existingGrade.sasScore
+    }
+
+    let scoreUpdated = false
+    const legacyUpdates: Array<{ slotCode: string; value: number | null | undefined }> = [
+      {
+        slotCode: primarySlots.formative,
+        value: parseOptionalScoreValue(formatif_score, 'formatif_score'),
+      },
+      {
+        slotCode: primarySlots.midterm,
+        value: parseOptionalScoreValue(sbts_score, 'sbts_score'),
+      },
+      {
+        slotCode: primarySlots.final,
+        value: parseOptionalScoreValue(sas_score, 'sas_score'),
+      },
+    ]
+    legacyUpdates.forEach((entry) => {
+      if (entry.value === undefined) return
+      nextSlotScores[entry.slotCode] = entry.value
+      scoreUpdated = true
+    })
+
+    if (slot_scores !== undefined) {
+      if (slot_scores === null) {
+        Object.keys(nextSlotScores).forEach((slotCode) => {
+          delete nextSlotScores[slotCode]
+        })
+        scoreUpdated = true
+      } else {
+        if (typeof slot_scores !== 'object' || Array.isArray(slot_scores)) {
+          throw new ApiError(400, 'slot_scores harus berupa object.')
+        }
+        Object.entries(slot_scores as Record<string, unknown>).forEach(([rawSlot, rawValue]) => {
+          const slotCode = normalizeReportSlotCode(rawSlot)
+          if (slotCode === DEFAULT_REPORT_SLOT_CODE) return
+          const parsed = parseOptionalScoreValue(rawValue, `slot_scores.${slotCode}`)
+          if (parsed !== undefined) {
+            nextSlotScores[slotCode] = parsed
+            scoreUpdated = true
+          }
+        })
+      }
+    }
+
     let finalScore = existingGrade.finalScore
     let predicate = existingGrade.predicate
-
-    if (formatif_score !== undefined || sbts_score !== undefined || sas_score !== undefined) {
-      const components = await prisma.gradeComponent.findMany({
-        where: {
-          isActive: true,
-          subjectId: existingGrade.subjectId,
-          type: {
-            in: [GradeComponentType.FORMATIVE, GradeComponentType.MIDTERM, GradeComponentType.FINAL],
-          },
-        }
-      })
-
-      const scores = {
-        FORMATIVE: formatif_score !== undefined ? formatif_score : existingGrade.formatifScore,
-        MIDTERM: sbts_score !== undefined ? sbts_score : existingGrade.sbtsScore,
-        FINAL: sas_score !== undefined ? sas_score : existingGrade.sasScore
-      }
-
-      finalScore = 0
-      let totalWeight = 0
-
-      for (const component of components) {
-        const componentType = component.type as 'FORMATIVE' | 'MIDTERM' | 'FINAL'
-        const score = scores[componentType]
-        if (score !== null && score !== undefined) {
-          finalScore += score * (component.weight / 100)
-          totalWeight += component.weight
-        }
-      }
-
-      if (totalWeight > 0 && totalWeight !== 100) {
-        finalScore = (finalScore / totalWeight) * 100
-      } else if (totalWeight === 0) {
-        const availableScores = [scores.FORMATIVE, scores.MIDTERM, scores.FINAL].filter(
-          (value): value is number => value !== null && value !== undefined
-        )
-        finalScore = availableScores.length
-          ? availableScores.reduce((sum, value) => sum + value, 0) / availableScores.length
-          : 0
-      }
+    if (scoreUpdated) {
+      finalScore = recomputeFinalScoreFromSlots(
+        nextSlotScores,
+        includeSlots,
+        existingGrade.finalScore,
+      )
 
       let kkm = 75
       const student = await prisma.user.findUnique({
@@ -2309,16 +2989,30 @@ export const updateReportGrade = async (req: Request, res: Response) => {
         })
         if (assignment) kkm = assignment.kkm
       }
-
       predicate = calculatePredicate(finalScore, kkm)
     }
+
+    const slotScorePayload = Object.fromEntries(
+      Object.entries(nextSlotScores).filter(([slotCode]) => slotCode !== DEFAULT_REPORT_SLOT_CODE),
+    )
 
     const reportGrade = await prisma.reportGrade.update({
       where: { id: Number(id) },
       data: {
-        formatifScore: formatif_score !== undefined ? formatif_score : undefined,
-        sbtsScore: sbts_score !== undefined ? sbts_score : undefined,
-        sasScore: sas_score !== undefined ? sas_score : undefined,
+        formatifScore:
+          nextSlotScores[primarySlots.formative] !== undefined
+            ? nextSlotScores[primarySlots.formative]
+            : null,
+        sbtsScore:
+          nextSlotScores[primarySlots.midterm] !== undefined
+            ? nextSlotScores[primarySlots.midterm]
+            : null,
+        sasScore:
+          nextSlotScores[primarySlots.final] !== undefined
+            ? nextSlotScores[primarySlots.final]
+            : null,
+        slotScores:
+          Object.keys(slotScorePayload).length > 0 ? slotScorePayload : Prisma.JsonNull,
         finalScore: finalScore,
         predicate,
         description: competency_desc !== undefined ? competency_desc : undefined

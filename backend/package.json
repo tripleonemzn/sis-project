@@ -9,12 +9,14 @@
     "dev": "nodemon --exec 'node -r ts-node/register' src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "generate:deskripsi-foto": "node -r ts-node/register src/scripts/generate_deskripsi_foto.ts",
+    "images:optimize:questions": "node -r ts-node/register src/scripts/optimize_question_images.ts",
+    "videos:optimize:questions": "node -r ts-node/register src/scripts/optimize_question_videos.ts",
     "scores:backfill": "node -r ts-node/register src/scripts/backfill_score_entries.ts",
     "import:students": "node -r ts-node/register src/scripts/import_students_from_input.ts",
     "import:subjects": "node -r ts-node/register src/scripts/import_subjects_from_input.ts",
     "service:status": "pm2 status && systemctl is-active nginx || true",
-    "service:health": "curl -s -o /dev/null -w 'Web:%{http_code}\\n' http://127.0.0.1/ && curl -s -o /dev/null -w 'API:%{http_code}\\n' http://127.0.0.1/api/public/foto-kegiatan || true",
-    "service:restart": "pm2 restart sis-backend && systemctl reload nginx || true"
+    "service:health": "curl -s -o /dev/null -w 'Backend:%{http_code}\\n' http://127.0.0.1:3000/ && curl -s -o /dev/null -w 'Backend API:%{http_code}\\n' http://127.0.0.1:3000/api/public/foto-kegiatan || true",
+    "service:restart": "pm2 startOrReload ecosystem.config.cjs --only sis-backend --update-env && systemctl reload nginx || true"
   },
   "prisma": {
     "seed": "node -r ts-node/register prisma/seed.ts"
@@ -25,9 +27,11 @@
   "dependencies": {
     "@prisma/client": "^6.19.1",
     "@types/bcryptjs": "^2.4.6",
+    "@types/compression": "^1.8.1",
     "axios": "^1.13.4",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.3",
+    "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.1",
     "exceljs": "^4.4.0",
@@ -37,6 +41,7 @@
     "multer": "^1.4.5-lts.1",
     "openai": "^6.16.0",
     "qrcode": "^1.5.4",
+    "sharp": "^0.34.5",
     "ws": "^8.19.0",
     "zod": "^3.22.4"
   },
@@ -48,6 +53,7 @@
     "@types/multer": "^1.4.11",
     "@types/node": "^20.19.30",
     "@types/qrcode": "^1.5.6",
+    "@types/ws": "^8.18.1",
     "nodemon": "^3.0.3",
     "prisma": "^6.2.1",
     "ts-node": "^10.9.2",

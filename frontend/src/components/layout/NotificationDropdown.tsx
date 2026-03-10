@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Bell, Clock } from 'lucide-react';
 import api from '../../services/api';
 import clsx from 'clsx';
@@ -12,9 +12,13 @@ interface Notification {
   message: string;
   type: string;
   isRead: boolean;
-  data: any;
+  data: {
+    scheduleId?: number | string;
+  } | null;
   createdAt: string;
 }
+
+const UNREAD_POLL_INTERVAL_MS = 120000;
 
 export const NotificationDropdown = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -23,11 +27,13 @@ export const NotificationDropdown = () => {
   const [loading, setLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const location = useLocation();
+  const isExamTakePage = /^\/student\/exams\/\d+\/take$/.test(location.pathname);
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = async (limit = 10) => {
     try {
       setLoading(true);
-      const response = await api.get('/notifications?limit=10');
+      const response = await api.get('/notifications', { params: { limit } });
       if (response.data?.data?.notifications) {
         setNotifications(response.data.data.notifications || []);
         setUnreadCount(response.data.data.unreadCount || 0);
@@ -43,13 +49,55 @@ export const NotificationDropdown = () => {
     }
   };
 
+  const fetchUnreadCount = async () => {
+    try {
+      const response = await api.get('/notifications/unread-count');
+      const nextUnreadCount = Number(response.data?.data?.unreadCount || 0);
+      setUnreadCount(Number.isFinite(nextUnreadCount) ? nextUnreadCount : 0);
+    } catch (error) {
+      console.error('Failed to fetch unread notification count:', error);
+    }
+  };
+
   useEffect(() => {
-    fetchNotifications();
-    
-    // Poll every 1 minute
-    const interval = setInterval(fetchNotifications, 60000);
-    return () => clearInterval(interval);
-  }, []);
+    if (isExamTakePage) return;
+
+    let intervalId: number | null = null;
+    const startPolling = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (intervalId !== null) return;
+      intervalId = window.setInterval(() => {
+        void fetchUnreadCount();
+      }, UNREAD_POLL_INTERVAL_MS);
+    };
+    const stopPolling = () => {
+      if (intervalId === null) return;
+      window.clearInterval(intervalId);
+      intervalId = null;
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchUnreadCount();
+        startPolling();
+        return;
+      }
+      stopPolling();
+    };
+
+    void fetchUnreadCount();
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isExamTakePage]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void fetchNotifications(10);
+  }, [isOpen]);
 
   // Click outside to close
   useEffect(() => {
@@ -126,7 +174,9 @@ export const NotificationDropdown = () => {
                     </button>
                 )}
                 <button 
-                    onClick={fetchNotifications}
+                    onClick={() => {
+                      void fetchNotifications(10);
+                    }}
                     className="text-xs text-gray-500 hover:text-gray-700"
                 >
                     Refresh

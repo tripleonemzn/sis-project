@@ -4,12 +4,37 @@ import { uploadService } from '../../../services/upload.service';
 import { UserCheck, Clock, CheckCircle, AlertCircle, Calendar, Camera } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
+type InternshipRecord = {
+  id: number;
+  status: string;
+  companyLatitude?: number | null;
+  companyLongitude?: number | null;
+};
+
+type AttendanceRecord = {
+  id: number;
+  date: string;
+  status: 'PRESENT' | 'SICK' | 'PERMISSION' | string;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
+  isVerified?: boolean;
+};
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (typeof error === 'object' && error !== null) {
+    const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+    if (message) return message;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
 const StudentInternshipAttendance = () => {
-  const [internship, setInternship] = useState<any>(null);
-  const [attendances, setAttendances] = useState<any[]>([]);
+  const [internship, setInternship] = useState<InternshipRecord | null>(null);
+  const [attendances, setAttendances] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [todayAttendance, setTodayAttendance] = useState<any>(null);
+  const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
 
   const fetchData = async () => {
@@ -26,8 +51,8 @@ const StudentInternshipAttendance = () => {
             
             // Check if already attended today
             const today = new Date().toISOString().split('T')[0];
-            const found = attendancesRes.data.data.find((a: any) => a.date.startsWith(today));
-            setTodayAttendance(found);
+            const found = (attendancesRes.data.data as AttendanceRecord[]).find((a) => a.date.startsWith(today));
+            setTodayAttendance(found ?? null);
           } catch (attError) {
              console.error('Error fetching attendances:', attError);
           }
@@ -35,10 +60,11 @@ const StudentInternshipAttendance = () => {
       } else {
         setInternship(null);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching internship:', error);
-      if (error.response?.status !== 404) {
-        setError(error.message || 'Gagal memuat data PKL');
+      const statusCode = (error as { response?: { status?: number } }).response?.status;
+      if (statusCode !== 404) {
+        setError(getErrorMessage(error, 'Gagal memuat data PKL'));
       }
     } finally {
       setLoading(false);
@@ -111,9 +137,9 @@ const StudentInternshipAttendance = () => {
         const toastId = toast.loading('Mengambil lokasi...');
         try {
             location = await getLocation();
-        } catch (locError: any) {
+        } catch (locError: unknown) {
             toast.dismiss(toastId);
-            toast.error(locError.message);
+            toast.error(getErrorMessage(locError, 'Gagal mengambil lokasi GPS.'));
             return;
         }
         toast.dismiss(toastId);
@@ -152,7 +178,7 @@ const StudentInternshipAttendance = () => {
               const uploadRes = await uploadService.uploadInternshipFile(photoFile);
               uploadedImageUrl = uploadRes.url;
               toast.dismiss(uploadToast);
-            } catch (e) {
+            } catch {
               toast.dismiss(uploadToast);
               toast.error('Gagal mengupload foto');
               return;
@@ -171,8 +197,8 @@ const StudentInternshipAttendance = () => {
       toast.success('Absensi berhasil dicatat');
       setPhotoFile(null);
       fetchData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Gagal mencatat absensi');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Gagal mencatat absensi'));
     }
   };
 

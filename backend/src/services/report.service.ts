@@ -1,6 +1,439 @@
 import prisma from '../utils/prisma';
-import { Semester, ExamType, Prisma } from '@prisma/client';
+import { Semester, ExamType, Prisma, GradeComponentType } from '@prisma/client';
 import { ApiError } from '../utils/api';
+
+const normalizeLedgerCode = (raw: unknown): string =>
+  String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const parseScoreNumber = (raw: unknown): number | null => {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return null;
+  return value;
+};
+
+const parseSlotScoreMap = (raw: unknown): Record<string, number | null> => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const result: Record<string, number | null> = {};
+  Object.entries(raw as Record<string, unknown>).forEach(([key, value]) => {
+    const normalizedKey = normalizeLedgerCode(key);
+    if (!normalizedKey) return;
+    const parsed = parseScoreNumber(value);
+    result[normalizedKey] = parsed;
+  });
+  return result;
+};
+
+type ReportScoreCarrier = {
+  formatifScore?: number | null;
+  sbtsScore?: number | null;
+  sasScore?: number | null;
+  satScore?: number | null;
+  slotScores?: unknown;
+};
+
+const readSlotOrLegacyScore = (
+  slotScores: Record<string, number | null>,
+  slotCode: string | null | undefined,
+  legacyValue: number | null | undefined,
+): number | null => {
+  const normalizedSlotCode = normalizeLedgerCode(slotCode);
+  if (
+    normalizedSlotCode &&
+    Object.prototype.hasOwnProperty.call(slotScores, normalizedSlotCode)
+  ) {
+    return slotScores[normalizedSlotCode] ?? null;
+  }
+  return legacyValue ?? null;
+};
+
+const resolveLegacyFinalScore = (
+  reportScore: ReportScoreCarrier | null | undefined,
+  finalSlotCode: string | null | undefined,
+): number | null => {
+  const normalizedFinalSlot = canonicalizeReportSlotAlias(finalSlotCode);
+  if (normalizedFinalSlot === 'SAT') {
+    if (reportScore?.satScore !== null && reportScore?.satScore !== undefined) {
+      return reportScore.satScore;
+    }
+    return reportScore?.sasScore ?? null;
+  }
+  if (reportScore?.sasScore !== null && reportScore?.sasScore !== undefined) {
+    return reportScore.sasScore;
+  }
+  return reportScore?.satScore ?? null;
+};
+
+const isMidtermAliasCode = (raw: unknown): boolean => {
+  const normalized = normalizeLedgerCode(raw);
+  if (!normalized) return false;
+  if (['SBTS', 'MIDTERM', 'PTS', 'UTS'].includes(normalized)) return true;
+  return normalized.includes('MIDTERM');
+};
+
+const isFormativeAliasCode = (raw: unknown): boolean => {
+  const normalized = normalizeLedgerCode(raw);
+  if (!normalized) return false;
+  return normalized === 'FORMATIF' || normalized === 'FORMATIVE' || normalized.startsWith('NF');
+};
+
+const isFinalAliasCode = (raw: unknown): boolean => {
+  const normalized = normalizeLedgerCode(raw);
+  if (!normalized) return false;
+  if (['SAS', 'SAT', 'FINAL', 'PAS', 'PAT', 'PSAS', 'PSAT'].includes(normalized)) return true;
+  return normalized.includes('FINAL');
+};
+
+const isFinalEvenAliasCode = (raw: unknown): boolean => {
+  const normalized = normalizeLedgerCode(raw);
+  if (!normalized) return false;
+  if (['SAT', 'PAT', 'PSAT', 'FINAL_EVEN'].includes(normalized)) return true;
+  return normalized.includes('FINAL_EVEN');
+};
+
+const isFinalOddAliasCode = (raw: unknown): boolean => {
+  const normalized = normalizeLedgerCode(raw);
+  if (!normalized) return false;
+  if (['SAS', 'PAS', 'PSAS', 'FINAL_ODD'].includes(normalized)) return true;
+  return normalized.includes('FINAL_ODD');
+};
+
+const inferExamTypeFromAlias = (raw: unknown): ExamType | null => {
+  const normalized = normalizeLedgerCode(raw);
+  if (!normalized) return null;
+  if ((Object.values(ExamType) as string[]).includes(normalized)) return normalized as ExamType;
+  if (isFormativeAliasCode(normalized)) return ExamType.FORMATIF;
+  if (isMidtermAliasCode(normalized)) return ExamType.SBTS;
+  if (isFinalEvenAliasCode(normalized)) return ExamType.SAT;
+  if (isFinalOddAliasCode(normalized)) return ExamType.SAS;
+  if (isFinalAliasCode(normalized)) return ExamType.SAS;
+  return null;
+};
+
+const inferMidtermByReportType = (raw: unknown): boolean => {
+  return isMidtermAliasCode(raw);
+};
+
+const resolveMidtermMode = (
+  programComponentType: string | null | undefined,
+  reportSlotCode: string | null | undefined,
+  reportTypeFallback: unknown,
+): boolean => {
+  const normalizedComponentType = normalizeLedgerCode(programComponentType);
+  if (isMidtermAliasCode(normalizedComponentType)) return true;
+  if (isFinalAliasCode(normalizedComponentType)) return false;
+
+  const normalizedSlotCode = normalizeLedgerCode(reportSlotCode);
+  if (isMidtermAliasCode(normalizedSlotCode)) return true;
+  if (isFinalAliasCode(normalizedSlotCode)) return false;
+
+  return inferMidtermByReportType(reportTypeFallback);
+};
+
+type ExtracurricularScoreCarrier = {
+  grade?: string | null;
+  description?: string | null;
+  gradeSbtsOdd?: string | null;
+  descSbtsOdd?: string | null;
+  gradeSas?: string | null;
+  descSas?: string | null;
+  gradeSbtsEven?: string | null;
+  descSbtsEven?: string | null;
+  gradeSat?: string | null;
+  descSat?: string | null;
+};
+
+type ExtracurricularFieldPair = {
+  gradeField: keyof ExtracurricularScoreCarrier;
+  descriptionField: keyof ExtracurricularScoreCarrier;
+};
+
+type ExtracurricularReportContext = {
+  reportSlotCode?: string | null;
+  programComponentType?: string | null;
+  fixedSemester?: Semester | null;
+};
+
+type ResolvedReportProgramContext = {
+  reportSlotCode: string;
+  programComponentType: string;
+  fixedSemester: Semester | null;
+  programCode: string | null;
+  programLabel: string | null;
+};
+
+type ProgramReportAliasSource = {
+  baseType?: ExamType | string | null;
+  baseTypeCode?: string | null;
+  gradeComponentType?: GradeComponentType | string | null;
+  gradeComponentTypeCode?: string | null;
+  fixedSemester?: Semester | null;
+};
+
+type ExamGradeComponentLite = {
+  code: string;
+  type: GradeComponentType | string;
+  reportSlot: string | null;
+  reportSlotCode: string | null;
+  entryMode?: string | null;
+  entryModeCode?: string | null;
+};
+
+const isFormativeComponentLike = (component: ExamGradeComponentLite): boolean => {
+  const typeCode = normalizeLedgerCode(component.type);
+  if (isFormativeAliasCode(typeCode)) return true;
+  const entryModeCode = normalizeLedgerCode(component.entryModeCode || component.entryMode);
+  if (entryModeCode === 'NF_SERIES') return true;
+  const componentCode = normalizeLedgerCode(component.code);
+  return isFormativeAliasCode(componentCode);
+};
+
+const isMidtermComponentLike = (component: ExamGradeComponentLite): boolean => {
+  const typeCode = normalizeLedgerCode(component.type);
+  if (isMidtermAliasCode(typeCode)) return true;
+  const slotCode = normalizeLedgerCode(component.reportSlotCode || component.reportSlot);
+  if (isMidtermAliasCode(slotCode)) return true;
+  const componentCode = normalizeLedgerCode(component.code);
+  return isMidtermAliasCode(componentCode);
+};
+
+const isFinalComponentLike = (component: ExamGradeComponentLite): boolean => {
+  const typeCode = normalizeLedgerCode(component.type);
+  if (isFinalAliasCode(typeCode)) return true;
+  const slotCode = normalizeLedgerCode(component.reportSlotCode || component.reportSlot);
+  if (isFinalAliasCode(slotCode)) return true;
+  const componentCode = normalizeLedgerCode(component.code);
+  return isFinalAliasCode(componentCode);
+};
+
+const canonicalizeReportSlotAlias = (raw: unknown, fixedSemester?: Semester | null): string => {
+  const normalized = normalizeLedgerCode(raw);
+  if (!normalized || normalized === 'NONE') return '';
+  if (isMidtermAliasCode(normalized)) return 'SBTS';
+  if (isFinalEvenAliasCode(normalized)) return 'SAT';
+  if (isFinalOddAliasCode(normalized)) return 'SAS';
+  if (isFinalAliasCode(normalized)) {
+    return fixedSemester === Semester.EVEN ? 'SAT' : 'SAS';
+  }
+  return normalized;
+};
+
+const pickReportComponentLike = <T extends ExamGradeComponentLite>(
+  components: T[],
+  matcher: (component: T) => boolean,
+  resolveSlotCode: (component?: T | null, fallback?: string) => string,
+  fallbackSlot?: string,
+): T | null => {
+  const withSlot =
+    components.find(
+      (item) => matcher(item) && resolveSlotCode(item, fallbackSlot) !== 'NONE',
+    ) || null;
+  if (withSlot) return withSlot;
+  return components.find((item) => matcher(item)) || null;
+};
+
+const resolveCoreReportComponents = <T extends ExamGradeComponentLite>(
+  components: T[],
+  resolveSlotCode: (component?: T | null, fallback?: string) => string,
+  resolvedReportSlotCode?: string | null,
+): { formativeComponent: T | null; midtermComponent: T | null; finalComponent: T | null } => {
+  const normalizedResolvedSlot = normalizeLedgerCode(resolvedReportSlotCode);
+  const firstFormativeSlot =
+    components
+      .map((component) => resolveSlotCode(component))
+      .find((slotCode, index) => slotCode !== 'NONE' && isFormativeComponentLike(components[index])) || '';
+  const formativeFallbackSlot = normalizedResolvedSlot || firstFormativeSlot || 'FORMATIF';
+  const finalFallbackSlot = normalizedResolvedSlot || undefined;
+
+  const formativeComponent = pickReportComponentLike(
+    components,
+    isFormativeComponentLike,
+    resolveSlotCode,
+    formativeFallbackSlot,
+  );
+  const midtermComponent = pickReportComponentLike(
+    components,
+    isMidtermComponentLike,
+    resolveSlotCode,
+  );
+  const finalComponent = pickReportComponentLike(
+    components,
+    isFinalComponentLike,
+    resolveSlotCode,
+    finalFallbackSlot,
+  );
+
+  return { formativeComponent, midtermComponent, finalComponent };
+};
+
+const buildProgramReportAliases = (program: ProgramReportAliasSource): string[] => {
+  const aliases = new Set<string>();
+  const addAlias = (value: unknown) => {
+    const normalized = normalizeLedgerCode(value);
+    if (!normalized || normalized === 'NONE') return;
+    aliases.add(normalized);
+  };
+
+  addAlias(program.baseTypeCode);
+  addAlias(program.baseType);
+
+  const componentType = normalizeLedgerCode(
+    program.gradeComponentTypeCode || program.gradeComponentType,
+  );
+  if (isMidtermAliasCode(componentType)) {
+    addAlias('MIDTERM');
+    addAlias('SBTS');
+  }
+  if (isFinalAliasCode(componentType)) {
+    addAlias('FINAL');
+    if (program.fixedSemester === Semester.EVEN) {
+      addAlias('SAT');
+      addAlias('FINAL_EVEN');
+    } else if (program.fixedSemester === Semester.ODD) {
+      addAlias('SAS');
+      addAlias('FINAL_ODD');
+    } else {
+      addAlias('SAS');
+      addAlias('SAT');
+      addAlias('FINAL_ODD');
+      addAlias('FINAL_EVEN');
+    }
+  }
+
+  return Array.from(aliases);
+};
+
+const isProgramMatchReportType = (
+  program: ProgramReportAliasSource,
+  reportType: unknown,
+): boolean => {
+  const normalizedReportType = normalizeLedgerCode(reportType);
+  if (!normalizedReportType) return false;
+  return buildProgramReportAliases(program).includes(normalizedReportType);
+};
+
+const inferReportSlotFromProgramContext = (params: {
+  programComponentType?: string | null;
+  fixedSemester?: Semester | null;
+  baseTypeCode?: string | null;
+  baseType?: ExamType | string | null;
+}): string => {
+  const baseTypeCode =
+    canonicalizeReportSlotAlias(params.baseTypeCode, params.fixedSemester) ||
+    canonicalizeReportSlotAlias(params.baseType, params.fixedSemester);
+  if (baseTypeCode && baseTypeCode !== 'NONE') return baseTypeCode;
+
+  const componentType = normalizeLedgerCode(params.programComponentType);
+  if (isMidtermAliasCode(componentType)) return 'SBTS';
+  if (isFinalAliasCode(componentType)) {
+    if (params.fixedSemester === Semester.EVEN) return 'SAT';
+    if (params.fixedSemester === Semester.ODD) return 'SAS';
+    return 'SAS';
+  }
+  return 'NONE';
+};
+
+const resolveFinalSlotByFallback = (params: {
+  inferredSlot: string;
+  fallbackSlot: string;
+  fixedSemester?: Semester | null;
+}): string => {
+  const normalizedInferred = canonicalizeReportSlotAlias(params.inferredSlot, params.fixedSemester);
+  if (!normalizedInferred) return '';
+  if (params.fixedSemester || !isFinalAliasCode(normalizedInferred)) return normalizedInferred;
+  const normalizedFallback = canonicalizeReportSlotAlias(params.fallbackSlot, params.fixedSemester);
+  if (normalizedFallback && isFinalAliasCode(normalizedFallback)) {
+    return normalizedFallback;
+  }
+  return normalizedInferred;
+};
+
+const EXTRACURRICULAR_FIELDS_BY_SLOT: Record<'ODD' | 'EVEN', Record<string, ExtracurricularFieldPair>> = {
+  ODD: {
+    SBTS: { gradeField: 'gradeSbtsOdd', descriptionField: 'descSbtsOdd' },
+    SAS: { gradeField: 'gradeSas', descriptionField: 'descSas' },
+    SAT: { gradeField: 'gradeSat', descriptionField: 'descSat' },
+  },
+  EVEN: {
+    SBTS: { gradeField: 'gradeSbtsEven', descriptionField: 'descSbtsEven' },
+    SAS: { gradeField: 'gradeSas', descriptionField: 'descSas' },
+    SAT: { gradeField: 'gradeSat', descriptionField: 'descSat' },
+  },
+};
+
+const resolveExtracurricularFields = (
+  semester: Semester,
+  context: ExtracurricularReportContext,
+): ExtracurricularFieldPair | null => {
+  const normalizedSemester = semester === Semester.EVEN ? 'EVEN' : 'ODD';
+  const normalizedSlot = canonicalizeReportSlotAlias(
+    context.reportSlotCode,
+    context.fixedSemester || semester,
+  );
+  if (normalizedSlot) {
+    const bySlot = EXTRACURRICULAR_FIELDS_BY_SLOT[normalizedSemester][normalizedSlot];
+    if (bySlot) return bySlot;
+  }
+
+  const componentType = normalizeLedgerCode(context.programComponentType);
+  if (isMidtermAliasCode(componentType)) {
+    return normalizedSemester === 'EVEN'
+      ? { gradeField: 'gradeSbtsEven', descriptionField: 'descSbtsEven' }
+      : { gradeField: 'gradeSbtsOdd', descriptionField: 'descSbtsOdd' };
+  }
+
+  if (isFinalAliasCode(componentType)) {
+    const finalSemester = context.fixedSemester || semester;
+    const normalizedFinalSemester = finalSemester === Semester.EVEN ? 'EVEN' : 'ODD';
+    return normalizedFinalSemester === 'EVEN'
+      ? { gradeField: 'gradeSat', descriptionField: 'descSat' }
+      : { gradeField: 'gradeSas', descriptionField: 'descSas' };
+  }
+
+  return null;
+};
+
+const readExtracurricularScore = (
+  enrollment: ExtracurricularScoreCarrier,
+  semester: Semester,
+  context: ExtracurricularReportContext,
+): { grade: string | null; description: string | null } => {
+  const fields = resolveExtracurricularFields(semester, context);
+  if (fields) {
+    const grade = enrollment[fields.gradeField];
+    const description = enrollment[fields.descriptionField];
+    if (grade || description) {
+      return { grade: grade || null, description: description || null };
+    }
+  }
+  return {
+    grade: enrollment.grade || null,
+    description: enrollment.description || null,
+  };
+};
+
+const buildExtracurricularUpdateData = (
+  semester: Semester,
+  context: ExtracurricularReportContext,
+  grade: string,
+  description: string,
+): Record<string, string> => {
+  const fields = resolveExtracurricularFields(semester, context);
+  if (fields) {
+    return {
+      grade,
+      description,
+      [fields.gradeField]: grade,
+      [fields.descriptionField]: description,
+    };
+  }
+  return { grade, description };
+};
 
 interface ReportSignature {
   title: string;
@@ -10,12 +443,162 @@ interface ReportSignature {
   place?: string;
 }
 
+type ReportProgramContextSource = {
+  code?: string | null;
+  displayLabel?: string | null;
+  shortLabel?: string | null;
+  gradeComponentCode?: string | null;
+  gradeComponentType?: GradeComponentType | string | null;
+  gradeComponentTypeCode?: string | null;
+  baseType?: ExamType | string | null;
+  baseTypeCode?: string | null;
+  fixedSemester?: Semester | null;
+};
+
 export class ReportService {
-  async getStudentSbtsReport(
+  private async buildReportProgramContext(
+    academicYearId: number,
+    fallback: string,
+    program: ReportProgramContextSource | null,
+  ): Promise<ResolvedReportProgramContext> {
+    if (!program) {
+      return {
+        reportSlotCode: fallback,
+        programComponentType: '',
+        fixedSemester: null,
+        programCode: null,
+        programLabel: null,
+      };
+    }
+
+    const programCode = normalizeLedgerCode(program.code) || null;
+    const programLabel =
+      String(program.displayLabel || program.shortLabel || program.code || '').trim() || null;
+    const componentCode = normalizeLedgerCode(program.gradeComponentCode);
+    const programComponentType = normalizeLedgerCode(
+      program.gradeComponentTypeCode || program.gradeComponentType,
+    );
+    if (componentCode) {
+      const component = await prisma.examGradeComponent.findFirst({
+        where: {
+          academicYearId,
+          code: componentCode,
+        },
+        select: {
+          reportSlot: true,
+          reportSlotCode: true,
+        },
+      });
+      const slotFromComponent =
+        normalizeLedgerCode(component?.reportSlotCode) || normalizeLedgerCode(component?.reportSlot);
+      if (slotFromComponent && slotFromComponent !== 'NONE') {
+        return {
+          reportSlotCode: slotFromComponent,
+          programComponentType,
+          fixedSemester: program.fixedSemester || null,
+          programCode,
+          programLabel,
+        };
+      }
+    }
+
+    const inferredSlot = inferReportSlotFromProgramContext({
+      programComponentType,
+      fixedSemester: program.fixedSemester || null,
+      baseTypeCode: program.baseTypeCode,
+      baseType: program.baseType,
+    });
+    const preferredInferredSlot = resolveFinalSlotByFallback({
+      inferredSlot,
+      fallbackSlot: fallback,
+      fixedSemester: program.fixedSemester || null,
+    });
+    const reportSlotCode =
+      preferredInferredSlot && preferredInferredSlot !== 'NONE' ? preferredInferredSlot : fallback;
+    return {
+      reportSlotCode,
+      programComponentType,
+      fixedSemester: program.fixedSemester || null,
+      programCode,
+      programLabel,
+    };
+  }
+
+  private async resolveReportProgramContext(
+    academicYearId: number,
+    reportType: ExamType,
+    reportProgramCode?: string | null,
+  ): Promise<ResolvedReportProgramContext> {
+    const fallback = normalizeLedgerCode(reportType) || 'NONE';
+    const mappedFallbackType = inferExamTypeFromAlias(fallback);
+    const normalizedProgramCode = normalizeLedgerCode(reportProgramCode);
+    const programSelect = {
+      code: true,
+      displayLabel: true,
+      shortLabel: true,
+      gradeComponentCode: true,
+      gradeComponentType: true,
+      gradeComponentTypeCode: true,
+      baseType: true,
+      baseTypeCode: true,
+      fixedSemester: true,
+    } satisfies Prisma.ExamProgramConfigSelect;
+
+    const programByCode = normalizedProgramCode
+      ? await prisma.examProgramConfig.findFirst({
+          where: {
+            academicYearId,
+            code: normalizedProgramCode,
+          },
+          select: programSelect,
+        })
+      : null;
+
+    if (programByCode) {
+      return this.buildReportProgramContext(academicYearId, fallback, programByCode);
+    }
+
+    const semesterScopedFilter =
+      reportType === ExamType.SAT
+        ? [{ fixedSemester: null }, { fixedSemester: Semester.EVEN }]
+        : reportType === ExamType.SAS
+          ? [{ fixedSemester: null }, { fixedSemester: Semester.ODD }]
+          : null;
+
+    const aliasFilter: Prisma.ExamProgramConfigWhereInput = {
+      OR: [
+        { baseTypeCode: fallback },
+        { code: fallback },
+        ...(mappedFallbackType ? [{ baseType: mappedFallbackType }] : []),
+      ],
+    };
+
+    const programByType =
+      fallback && fallback !== 'NONE'
+        ? await prisma.examProgramConfig.findFirst({
+            where: {
+              academicYearId,
+              isActive: true,
+              ...(semesterScopedFilter
+                ? {
+                    AND: [{ OR: semesterScopedFilter }, aliasFilter],
+                  }
+                : aliasFilter),
+            },
+            orderBy: [{ displayOrder: 'asc' }, { id: 'asc' }],
+            select: programSelect,
+          })
+        : null;
+
+    return this.buildReportProgramContext(academicYearId, fallback, programByType);
+  }
+
+  async getStudentReport(
     studentId: number,
     academicYearId: number,
     semester: Semester,
-    type: ExamType = ExamType.SBTS
+    type: ExamType,
+    reportProgramCode?: string | null,
   ) {
     // 1. Fetch Student Info
     const student = await prisma.user.findUnique({
@@ -49,8 +632,14 @@ export class ReportService {
         },
       },
     });
+    const reportProgramContext = await this.resolveReportProgramContext(
+      academicYearId,
+      type,
+      reportProgramCode,
+    );
+    const resolvedReportSlotCode = reportProgramContext.reportSlotCode;
 
-    // 3. Fetch Grades (Formatif & SBTS/SAS/SAT)
+    // 3. Fetch subject grades and report-grade snapshots for selected report context.
     // We need all subjects assigned to this class
     const teacherAssignments = await prisma.teacherAssignment.findMany({
       where: {
@@ -81,7 +670,7 @@ export class ReportService {
       },
     });
 
-    // Fetch Report Grades (SBTS Score or SAS/SAT Score)
+    // Fetch report-grade rows (slot-based values + legacy fallback columns)
     const reportGrades = await prisma.reportGrade.findMany({
       where: {
         studentId,
@@ -89,6 +678,99 @@ export class ReportService {
         semester,
       },
     });
+
+    const [examGradeComponents, examPrograms] = await Promise.all([
+      prisma.examGradeComponent.findMany({
+        where: {
+          academicYearId,
+          isActive: true,
+        },
+        select: {
+          code: true,
+          label: true,
+          type: true,
+          reportSlot: true,
+          reportSlotCode: true,
+          displayOrder: true,
+        },
+        orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
+      }),
+      prisma.examProgramConfig.findMany({
+        where: {
+          academicYearId,
+          isActive: true,
+        },
+        select: {
+          code: true,
+          displayLabel: true,
+          shortLabel: true,
+          baseType: true,
+          baseTypeCode: true,
+          gradeComponentType: true,
+          gradeComponentTypeCode: true,
+          fixedSemester: true,
+          displayOrder: true,
+        },
+        orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
+      }),
+    ]);
+
+    const resolveSlotCode = (component?: (typeof examGradeComponents)[number] | null, fallback?: string) => {
+      const normalized =
+        normalizeLedgerCode(component?.reportSlotCode) ||
+        normalizeLedgerCode(component?.reportSlot) ||
+        normalizeLedgerCode(fallback);
+      return normalized || normalizeLedgerCode(fallback) || 'NONE';
+    };
+
+    const { formativeComponent, midtermComponent, finalComponent } = resolveCoreReportComponents(
+      examGradeComponents,
+      resolveSlotCode,
+      resolvedReportSlotCode,
+    );
+
+    const normalizedReportType = normalizeLedgerCode(type);
+    const normalizedReportProgramCode =
+      normalizeLedgerCode(reportProgramCode) || normalizeLedgerCode(reportProgramContext.programCode);
+    const activeProgram =
+      (normalizedReportProgramCode
+        ? examPrograms.find((item) => normalizeLedgerCode(item.code) === normalizedReportProgramCode)
+        : null) ??
+      examPrograms.find((item) => isProgramMatchReportType(item, normalizedReportType)) ??
+      null;
+    const activeProgramComponentType =
+      normalizeLedgerCode(activeProgram?.gradeComponentTypeCode || activeProgram?.gradeComponentType) ||
+      reportProgramContext.programComponentType;
+    const isMidtermReport = resolveMidtermMode(
+      activeProgramComponentType,
+      resolvedReportSlotCode,
+      type,
+    );
+    const responseComponentType =
+      normalizeLedgerCode(activeProgramComponentType) || (isMidtermReport ? 'MIDTERM' : 'FINAL');
+    const responseComponentMode = isMidtermReport ? 'MIDTERM' : 'FINAL';
+    const defaultPrimarySlot = resolveSlotCode(
+      formativeComponent || examGradeComponents[0] || null,
+      resolvedReportSlotCode || 'FORMATIF',
+    );
+    const formativeSlotCode = resolveSlotCode(formativeComponent, defaultPrimarySlot);
+    const midtermSlotCode = resolveSlotCode(midtermComponent);
+    const finalSlotCode = resolveSlotCode(
+      finalComponent,
+      isMidtermReport ? undefined : resolvedReportSlotCode,
+    );
+    const col1Label =
+      isMidtermReport ? String(formativeComponent?.label || 'Komponen 1').trim() : 'Nilai Akhir';
+    const col2Label =
+      isMidtermReport
+        ? String(
+            midtermComponent?.label ||
+              reportProgramContext.programLabel ||
+              activeProgram?.displayLabel ||
+              activeProgram?.shortLabel ||
+              'Komponen 2',
+          ).trim()
+        : 'Capaian Kompetensi';
 
     // Fetch Extracurriculars
     const enrollments = await prisma.ekstrakurikulerEnrollment.findMany({
@@ -101,41 +783,24 @@ export class ReportService {
       }
     });
 
-    const extracurriculars = enrollments.map(e => {
-        let grade = null;
-        let description = null;
-        const enrollment = e as any; // Cast for dynamic fields
-
-        if (semester === Semester.ODD) {
-            if (type === ExamType.SBTS) {
-                grade = enrollment.gradeSbtsOdd;
-                description = enrollment.descSbtsOdd;
-            } else if (type === ExamType.SAS) {
-                grade = enrollment.gradeSas;
-                description = enrollment.descSas;
-            }
-        } else {
-            if (type === ExamType.SBTS) {
-                grade = enrollment.gradeSbtsEven;
-                description = enrollment.descSbtsEven;
-            } else if (type === ExamType.SAT) {
-                grade = enrollment.gradeSat;
-                description = enrollment.descSat;
-            }
-        }
-        
-        // Fallback
-        if (!grade && !description) {
-            grade = enrollment.grade;
-            description = enrollment.description;
-        }
-
+    const extracurriculars = enrollments
+      .map((e) => {
+        const score = readExtracurricularScore(
+          e as unknown as ExtracurricularScoreCarrier,
+          semester,
+          {
+            reportSlotCode: resolvedReportSlotCode,
+            programComponentType: activeProgramComponentType,
+            fixedSemester: activeProgram?.fixedSemester || reportProgramContext.fixedSemester,
+          },
+        );
         return {
-            name: e.ekskul?.name || '',
-            grade: grade || '-',
-            description: description || '-'
+          name: e.ekskul?.name || '',
+          grade: score.grade || '-',
+          description: score.description || '-',
         };
-    }).filter(e => e.grade !== '-' || e.description !== '-');
+      })
+      .filter((e) => e.grade !== '-' || e.description !== '-');
 
     // 4. Map Data
     const groups: Record<string, any[]> = {
@@ -155,7 +820,9 @@ export class ReportService {
       const subject = assignment.subject;
       const grade = studentGrades.find((g) => g.subjectId === subject.id);
       const report = reportGrades.find((r) => r.subjectId === subject.id);
+      const reportScore = report as unknown as ReportScoreCarrier;
       const kkm = assignment.kkm || 75;
+      const slotScores = parseSlotScoreMap((report as any)?.slotScores);
 
       let col1Score: number | null = 0;
       let col1Predicate: string | null = null;
@@ -172,21 +839,25 @@ export class ReportService {
           return 'D';
       };
 
-      if (type === ExamType.SBTS) {
-        // SBTS Logic: Formatif (NF1-NF3) & SBTS Score
-        // FIX: Use pre-calculated ReportGrade values if available, fallback to manual calc
+      if (isMidtermReport) {
+        // MIDTERM-like report: component-1 (formatif aggregate) + exam component.
         
-        let formatifAvg = report?.formatifScore ?? 0;
-        const sbtsScore = report?.sbtsScore ?? 0;
+        const nfs = [grade?.nf1, grade?.nf2, grade?.nf3, grade?.nf4, grade?.nf5, grade?.nf6].filter(
+          (n): n is number => n !== null && n !== undefined,
+        );
+        const fallbackFormative = nfs.length > 0 ? nfs.reduce((a, b) => a + b, 0) / nfs.length : 0;
+        let formatifAvg =
+          readSlotOrLegacyScore(slotScores, formativeSlotCode, reportScore?.formatifScore) ??
+          fallbackFormative;
+        const sbtsScore =
+          readSlotOrLegacyScore(slotScores, midtermSlotCode, reportScore?.sbtsScore) ?? 0;
 
         // Fallback calculation if reportGrade is not synced yet (though syncReportGrade should handle it)
         if (!report) {
-            const nfs = [grade?.nf1, grade?.nf2, grade?.nf3].filter((n): n is number => n !== null && n !== undefined);
-            formatifAvg = nfs.length > 0 ? nfs.reduce((a, b) => a + b, 0) / nfs.length : 0;
+            formatifAvg = fallbackFormative;
         }
 
-        // Final Score for SBTS Report usually is (Formatif + SBTS) / 2 or just list them
-        // Assuming (Formatif + SBTS) / 2 for Final Column if needed
+        // Final score for midterm report is derived from the weighted aggregate.
         const finalScore = (formatifAvg + sbtsScore) / 2;
 
         col1Score = formatifAvg > 0 ? Math.round(formatifAvg) : null;
@@ -198,39 +869,26 @@ export class ReportService {
         finalScoreVal = finalScore > 0 ? Math.round(finalScore) : null;
         finalPredicateVal = finalScore > 0 ? getPredicate(finalScore, kkm) : null;
         
-        // SBTS: KET dibiarkan kosong (tanpa tanda '-')
+        // Midterm report keeps KET empty.
         description = '';
 
       } else {
-        // SAS/SAT Logic: Nilai Akhir & Capaian Kompetensi
-        // Column 1: Nilai Akhir (Rapor)
-        // Column 2: Capaian Kompetensi (Deskripsi/Predicate) - Using description for now as requested or competency logic
+        // FINAL-like report: column-1 final score, column-2 competency narrative.
 
-        // Based on user request:
-        // 1. Formatif -> Nilai Akhir (terintegrasi otomatis dari Komponen SAS/SAT field Nilai Rapor SAS)
-        // 2. SBTS -> Capaian Kompetensi (terintegrasi otomatis dari Capaian Kompetensi)
-        
-        // In DB: ReportGrade has finalScore, predicate, description (competency_desc)
-        // Mapping:
-        // col1 (Nilai Akhir) = report.finalScore
-        // col2 (Capaian Kompetensi) = report.description (or predicate if preferred, user said "Capaian Kompetensi")
-
-        const finalScore = report?.finalScore ?? 0;
+        const finalComponentScore =
+          readSlotOrLegacyScore(
+            slotScores,
+            finalSlotCode,
+            resolveLegacyFinalScore(reportScore, finalSlotCode),
+          ) ?? 0;
+        const finalScore = report?.finalScore ?? finalComponentScore ?? 0;
         
         col1Score = finalScore > 0 ? Math.round(finalScore) : null;
         col1Predicate = finalScore > 0 ? getPredicate(finalScore, kkm) : null;
 
-        // For Capaian Kompetensi, user wants it in the second column usually used for SBTS
-        // We will pass it as a special structure or reuse fields but mapped differently in frontend
-        // Here we map to generic structure
-        
-        // Note: col2 is usually numeric in previous logic, but for SAS/SAT "Capaian Kompetensi" is text/predicate.
-        // We'll treat col2Score as null if it's text, or pass text in separate field.
-        // User said: "rubah SBTS menjadi Capaian Kompetensi"
-        
-        col2Score = null; // No numeric score for competency in this column context usually
-        col2Predicate = report?.predicate ?? null; // Use predicate for short display
-        description = report?.description || '-'; // Full description
+        col2Score = null;
+        col2Predicate = report?.predicate ?? null;
+        description = report?.description || '-';
       }
 
       const item = {
@@ -243,15 +901,15 @@ export class ReportService {
           predicate: col1Predicate,
         },
         col2: {
-          score: col2Score, // For SBTS this is score, for SAS/SAT this might be null if only predicate/desc needed
-          predicate: col2Predicate, // For SAS/SAT this is the Predicate (A/B/C/D)
-          description: description // Full text
+          score: col2Score,
+          predicate: col2Predicate,
+          description: description
         },
         final: {
           score: finalScoreVal,
           predicate: finalPredicateVal,
         },
-        // Backward compatibility for SBTS Frontend if not updated yet (aliasing)
+        // Backward compatibility aliases for existing UI consumers
         formatif: {
           score: col1Score,
           predicate: col1Predicate,
@@ -262,6 +920,7 @@ export class ReportService {
         },
         teacherName: assignment.teacher.name,
         description: description,
+        slotScores,
       };
 
       const catCode = subject.category?.code;
@@ -401,7 +1060,32 @@ export class ReportService {
         extracurriculars,
         achievements,
         attendance: { sick: attSick, permission: attPerm, absent: attAbsent },
-        homeroomNote: homeroomNote?.note || ''
+        homeroomNote: homeroomNote?.note || '',
+        meta: {
+          reportType: normalizedReportType,
+          reportComponentType: responseComponentType,
+          reportComponentMode: responseComponentMode,
+          reportProgramCode:
+            activeProgram?.code ||
+            reportProgramContext.programCode ||
+            normalizedReportProgramCode ||
+            null,
+          reportProgramLabel:
+            String(
+              activeProgram?.displayLabel ||
+                activeProgram?.shortLabel ||
+                activeProgram?.code ||
+                reportProgramContext.programLabel ||
+                reportProgramContext.programCode ||
+                '',
+            ).trim() || null,
+          resolvedReportSlotCode,
+          col1Label,
+          col2Label,
+          formativeSlotCode,
+          midtermSlotCode,
+          finalSlotCode,
+        },
       },
       footer: {
         date: reportDate?.date ? new Date(reportDate.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
@@ -426,11 +1110,36 @@ export class ReportService {
     };
   }
 
+  async getStudentSbtsReport(
+    studentId: number,
+    academicYearId: number,
+    semester: Semester,
+    type: ExamType,
+    reportProgramCode?: string | null,
+  ) {
+    return this.getStudentReport(
+      studentId,
+      academicYearId,
+      semester,
+      type,
+      reportProgramCode,
+    );
+  }
+
   async getClassLedger(
     classId: number,
     academicYearId: number,
-    semester: Semester
+    semester: Semester,
+    reportType: ExamType,
+    reportProgramCode?: string | null,
   ) {
+    const reportProgramContext = await this.resolveReportProgramContext(
+      academicYearId,
+      reportType,
+      reportProgramCode,
+    );
+    const resolvedReportSlotCode = reportProgramContext.reportSlotCode;
+
     // 1. Fetch Class & Students
     const classData = await prisma.class.findUnique({
       where: { id: classId },
@@ -487,26 +1196,118 @@ export class ReportService {
         return a.code.localeCompare(b.code);
       });
 
-    // 3. Fetch Grades for all students in the class
+    // 3. Fetch Grades & dynamic exam config for this class context
     const studentIds = classData.students.map(s => s.id);
     
-    // Fetch Formative Grades (NF1-3) from StudentGrade
-    const studentGrades = await prisma.studentGrade.findMany({
-      where: {
-        studentId: { in: studentIds },
-        academicYearId,
-        semester,
-      },
-    });
+    const [studentGrades, reportGrades, examGradeComponents, examPrograms] = await Promise.all([
+      prisma.studentGrade.findMany({
+        where: {
+          studentId: { in: studentIds },
+          academicYearId,
+          semester,
+        },
+      }),
+      prisma.reportGrade.findMany({
+        where: {
+          studentId: { in: studentIds },
+          academicYearId,
+          semester,
+        },
+      }),
+      prisma.examGradeComponent.findMany({
+        where: {
+          academicYearId,
+          isActive: true,
+        },
+        select: {
+          code: true,
+          label: true,
+          type: true,
+          reportSlot: true,
+          reportSlotCode: true,
+          displayOrder: true,
+        },
+        orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
+      }),
+      prisma.examProgramConfig.findMany({
+        where: {
+          academicYearId,
+          isActive: true,
+        },
+        select: {
+          code: true,
+          displayLabel: true,
+          shortLabel: true,
+          baseType: true,
+          baseTypeCode: true,
+          gradeComponentType: true,
+          gradeComponentTypeCode: true,
+          fixedSemester: true,
+          displayOrder: true,
+        },
+        orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
+      }),
+    ]);
 
-    // Fetch SBTS Scores from ReportGrade
-    const reportGrades = await prisma.reportGrade.findMany({
-      where: {
-        studentId: { in: studentIds },
-        academicYearId,
-        semester,
-      },
-    });
+    const resolveSlotCode = (component?: (typeof examGradeComponents)[number] | null, fallback?: string) => {
+      const normalized =
+        normalizeLedgerCode(component?.reportSlotCode) ||
+        normalizeLedgerCode(component?.reportSlot) ||
+        normalizeLedgerCode(fallback);
+      return normalized || normalizeLedgerCode(fallback) || 'NONE';
+    };
+
+    const { formativeComponent, midtermComponent, finalComponent } = resolveCoreReportComponents(
+      examGradeComponents,
+      resolveSlotCode,
+      resolvedReportSlotCode,
+    );
+
+    const normalizedReportType = normalizeLedgerCode(reportType);
+    const normalizedReportProgramCode =
+      normalizeLedgerCode(reportProgramCode) || normalizeLedgerCode(reportProgramContext.programCode);
+    const activeProgram =
+      (normalizedReportProgramCode
+        ? examPrograms.find((item) => normalizeLedgerCode(item.code) === normalizedReportProgramCode)
+        : null) ??
+      examPrograms.find((item) => isProgramMatchReportType(item, normalizedReportType)) ??
+      null;
+    const activeProgramComponentType =
+      normalizeLedgerCode(activeProgram?.gradeComponentTypeCode || activeProgram?.gradeComponentType) ||
+      reportProgramContext.programComponentType;
+    const isMidtermReport = resolveMidtermMode(
+      activeProgramComponentType,
+      resolvedReportSlotCode,
+      reportType,
+    );
+    const responseComponentType =
+      normalizeLedgerCode(activeProgramComponentType) || (isMidtermReport ? 'MIDTERM' : 'FINAL');
+    const responseComponentMode = isMidtermReport ? 'MIDTERM' : 'FINAL';
+    const defaultPrimarySlot = resolveSlotCode(
+      formativeComponent || examGradeComponents[0] || null,
+      resolvedReportSlotCode || 'FORMATIF',
+    );
+    const formativeSlotCode = resolveSlotCode(formativeComponent, defaultPrimarySlot);
+    const midtermSlotCode = resolveSlotCode(midtermComponent);
+    const finalSlotCode = resolveSlotCode(
+      finalComponent,
+      isMidtermReport ? undefined : resolvedReportSlotCode,
+    );
+
+    const col1Label =
+      isMidtermReport
+        ? String(formativeComponent?.label || 'Komponen 1').trim()
+        : 'Nilai Akhir';
+    const col2Label =
+      isMidtermReport
+        ? String(
+            midtermComponent?.label ||
+              reportProgramContext.programLabel ||
+              activeProgram?.displayLabel ||
+              activeProgram?.shortLabel ||
+              'Komponen 2',
+          ).trim()
+        : 'Capaian Kompetensi';
 
     // 4. Transform data
     const students = classData.students.map(student => {
@@ -515,21 +1316,37 @@ export class ReportService {
       subjects.forEach(subject => {
         const sGrade = studentGrades.find(sg => sg.studentId === student.id && sg.subjectId === subject.id);
         const rGrade = reportGrades.find(rg => rg.studentId === student.id && rg.subjectId === subject.id);
+        const reportScore = rGrade as unknown as ReportScoreCarrier;
         
-        const nfs = [sGrade?.nf1, sGrade?.nf2, sGrade?.nf3].filter((n): n is number => n !== null && n !== undefined);
-        
-        // FIX: Use pre-calculated ReportGrade.formatifScore if available, fallback to manual calc
-        const formatifAvg = rGrade?.formatifScore ?? (nfs.length > 0 ? nfs.reduce((a, b) => a + b, 0) / nfs.length : null);
+        const nfs = [sGrade?.nf1, sGrade?.nf2, sGrade?.nf3, sGrade?.nf4, sGrade?.nf5, sGrade?.nf6].filter(
+          (n): n is number => n !== null && n !== undefined,
+        );
+        const formativeFallback = nfs.length > 0 ? nfs.reduce((a, b) => a + b, 0) / nfs.length : null;
+        const slotScores = parseSlotScoreMap((rGrade as any)?.slotScores);
+        const formatifAvg =
+          readSlotOrLegacyScore(slotScores, formativeSlotCode, reportScore?.formatifScore) ??
+          formativeFallback;
+        const midtermScore = readSlotOrLegacyScore(slotScores, midtermSlotCode, reportScore?.sbtsScore);
+        const finalComponentScore = readSlotOrLegacyScore(
+          slotScores,
+          finalSlotCode,
+          resolveLegacyFinalScore(reportScore, finalSlotCode),
+        );
 
         grades[subject.id] = {
           nf1: sGrade?.nf1 ?? null,
           nf2: sGrade?.nf2 ?? null,
           nf3: sGrade?.nf3 ?? null,
+          nf4: sGrade?.nf4 ?? null,
+          nf5: sGrade?.nf5 ?? null,
+          nf6: sGrade?.nf6 ?? null,
           formatif: formatifAvg,
-          sbts: rGrade?.sbtsScore ?? null,
+          sbts: midtermScore,
+          finalComponent: finalComponentScore,
           finalScore: rGrade?.finalScore ?? null,
           predicate: rGrade?.predicate ?? null,
           description: rGrade?.description ?? null,
+          slotScores,
         };
       });
 
@@ -545,6 +1362,31 @@ export class ReportService {
     return {
       subjects: subjects.map(s => ({ id: s.id, name: s.name, code: s.code })),
       students,
+      meta: {
+        reportType: normalizedReportType,
+        reportComponentType: responseComponentType,
+        reportComponentMode: responseComponentMode,
+        reportProgramCode:
+          activeProgram?.code ||
+          reportProgramContext.programCode ||
+          normalizedReportProgramCode ||
+          null,
+        reportProgramLabel:
+          String(
+            activeProgram?.displayLabel ||
+              activeProgram?.shortLabel ||
+              activeProgram?.code ||
+              reportProgramContext.programLabel ||
+              reportProgramContext.programCode ||
+              '',
+          ).trim() || null,
+        resolvedReportSlotCode,
+        col1Label,
+        col2Label,
+        formativeSlotCode,
+        midtermSlotCode,
+        finalSlotCode,
+      },
     };
   }
 
@@ -552,8 +1394,16 @@ export class ReportService {
     classId: number,
     academicYearId: number,
     semester: Semester,
-    reportType: ExamType = ExamType.SBTS
+    reportType: ExamType,
+    reportProgramCode?: string | null,
   ) {
+    const reportProgramContext = await this.resolveReportProgramContext(
+      academicYearId,
+      reportType,
+      reportProgramCode,
+    );
+    const resolvedReportSlotCode = reportProgramContext.reportSlotCode;
+
     // 1. Fetch Class & Students
     const classData = await prisma.class.findUnique({
       where: { id: classId },
@@ -657,41 +1507,21 @@ export class ReportService {
       const studentEnrollments = enrollments
         .filter(e => e.studentId === student.id)
         .map(e => {
-          let grade = null;
-          let description = null;
-
-          // Cast to any to avoid stale type errors until IDE restart
-          const enrollment = e as any;
-
-          if (semester === Semester.ODD) {
-            if (reportType === ExamType.SBTS) {
-              grade = enrollment.gradeSbtsOdd;
-              description = enrollment.descSbtsOdd;
-            } else if (reportType === ExamType.SAS) {
-              grade = enrollment.gradeSas;
-              description = enrollment.descSas;
-            }
-          } else {
-            if (reportType === ExamType.SBTS) {
-              grade = enrollment.gradeSbtsEven;
-              description = enrollment.descSbtsEven;
-            } else if (reportType === ExamType.SAT) {
-              grade = enrollment.gradeSat;
-              description = enrollment.descSat;
-            }
-          }
-
-          // Fallback to old fields if new ones are empty (for backward compatibility during migration)
-          if (!grade && !description) {
-            grade = enrollment.grade;
-            description = enrollment.description;
-          }
+          const score = readExtracurricularScore(
+            e as unknown as ExtracurricularScoreCarrier,
+            semester,
+            {
+              reportSlotCode: resolvedReportSlotCode,
+              programComponentType: reportProgramContext.programComponentType,
+              fixedSemester: reportProgramContext.fixedSemester,
+            },
+          );
 
           return {
             id: e.id,
             ekskulName: e.ekskul?.name || '',
-            grade: grade || '',
-            description: description || ''
+            grade: score.grade || '',
+            description: score.description || ''
           };
         });
 
@@ -725,27 +1555,29 @@ export class ReportService {
     grade: string, 
     description: string,
     semester: Semester,
-    reportType: ExamType
+    reportType: ExamType,
+    academicYearId?: number,
+    reportProgramCode?: string | null,
   ) {
-    let data: any = {};
+    const reportProgramContext =
+      Number.isFinite(Number(academicYearId)) && Number(academicYearId) > 0
+        ? await this.resolveReportProgramContext(Number(academicYearId), reportType, reportProgramCode)
+        : {
+            reportSlotCode: normalizeLedgerCode(reportType) || 'NONE',
+            programComponentType: '',
+            fixedSemester: null,
+          };
 
-    if (semester === Semester.ODD) {
-      if (reportType === ExamType.SBTS) {
-        data = { gradeSbtsOdd: grade, descSbtsOdd: description };
-      } else if (reportType === ExamType.SAS) {
-        data = { gradeSas: grade, descSas: description };
-      }
-    } else {
-      if (reportType === ExamType.SBTS) {
-        data = { gradeSbtsEven: grade, descSbtsEven: description };
-      } else if (reportType === ExamType.SAT) {
-        data = { gradeSat: grade, descSat: description };
-      }
-    }
-
-    // Fallback/Legacy: also update main fields for now to ensure data is visible everywhere
-    // data.grade = grade;
-    // data.description = description;
+    const data = buildExtracurricularUpdateData(
+      semester,
+      {
+        reportSlotCode: reportProgramContext.reportSlotCode,
+        programComponentType: reportProgramContext.programComponentType,
+        fixedSemester: reportProgramContext.fixedSemester,
+      },
+      grade,
+      description,
+    );
 
     const enrollment = await prisma.ekstrakurikulerEnrollment.update({
       where: { id: enrollmentId },

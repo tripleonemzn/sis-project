@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Save, Loader2, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { gradeService } from '../../services/grade.service';
@@ -7,6 +7,10 @@ import { academicYearService } from '../../services/academicYear.service';
 import type { AcademicYear } from '../../services/academicYear.service';
 import { teacherAssignmentService } from '../../services/teacherAssignment.service';
 import type { TeacherAssignment } from '../../services/teacherAssignment.service';
+import {
+  formatTeacherAssignmentLabel,
+  sortTeacherAssignmentsBySubjectClass,
+} from '../../services/teacherAssignment.service';
 import { userService } from '../../services/user.service';
 import type { User } from '../../types/auth';
 
@@ -29,6 +33,7 @@ interface StudentReportGrade {
   sbtsScore: number | null;
   sasScore: number | null;
   finalScore: number | null;
+  slotScores?: Record<string, number | null> | null;
   description?: string | null;
 }
 
@@ -37,6 +42,57 @@ interface LocalAcademicYear {
   name: string;
   is_active: boolean;
 }
+
+type ApiGradeRow = {
+  id?: number | string;
+  studentId?: number | string;
+  student_id?: number | string;
+  subjectId?: number | string;
+  subject_id?: number | string;
+  academicYearId?: number | string;
+  academic_year_id?: number | string;
+  componentId?: number | string;
+  component_id?: number | string;
+  semester?: string;
+  score?: number | string | null;
+  nf1?: number | string | null;
+  nf2?: number | string | null;
+  nf3?: number | string | null;
+  nf4?: number | string | null;
+  nf5?: number | string | null;
+  nf6?: number | string | null;
+  formativeSeries?: number[] | null;
+  component?: {
+    type?: string | null;
+  } | null;
+};
+
+type ApiReportGradeRow = {
+  studentId?: number | string;
+  formatifScore?: number | null;
+  sbtsScore?: number | null;
+  sasScore?: number | null;
+  finalScore?: number | null;
+  slotScores?: Record<string, number | null> | null;
+  description?: string | null;
+};
+
+type GradeBulkPayload = {
+  student_id: number;
+  subject_id: number;
+  academic_year_id: number;
+  grade_component_id: number;
+  semester: 'ODD' | 'EVEN';
+  score: number | null;
+  nf1?: number | null;
+  nf2?: number | null;
+  nf3?: number | null;
+  nf4?: number | null;
+  nf5?: number | null;
+  nf6?: number | null;
+  formative_series?: number[];
+  description?: string;
+};
 
 const TEACHER_GRADES_FILTER_STORAGE_KEY = 'teacher-grades:filters:v1';
 
@@ -76,43 +132,111 @@ const formatSeriesValues = (values: number[]) =>
     .map((value) => (Number.isInteger(value) ? String(value) : value.toFixed(2)))
     .join(', ');
 
-const resolveComponentReportSlot = (
-  component?: GradeComponent,
-): 'NONE' | 'FORMATIF' | 'SBTS' | 'SAS' | 'US_THEORY' | 'US_PRACTICE' => {
-  const explicit = String(component?.reportSlot || '').toUpperCase();
-  if (
-    explicit === 'FORMATIF' ||
-    explicit === 'SBTS' ||
-    explicit === 'SAS' ||
-    explicit === 'US_THEORY' ||
-    explicit === 'US_PRACTICE' ||
-    explicit === 'NONE'
-  ) {
-    return explicit;
+const resolveComponentReportSlotCode = (component?: GradeComponent): string => {
+  const explicit = normalizeSlotCode(component?.reportSlotCode || component?.reportSlot);
+  if (explicit) return explicit;
+  const fromCode = normalizeSlotCode(component?.code || component?.typeCode || '');
+  if (fromCode && fromCode !== 'NONE') {
+    return fromCode === 'FORMATIVE' ? 'FORMATIF' : fromCode;
   }
   if (component?.type === 'FORMATIVE') return 'FORMATIF';
-  if (component?.type === 'MIDTERM') return 'SBTS';
-  if (component?.type === 'FINAL') return 'SAS';
+  if (component?.type === 'MIDTERM') return 'MIDTERM';
+  if (component?.type === 'FINAL') return 'FINAL';
   if (component?.type === 'US_THEORY') return 'US_THEORY';
   if (component?.type === 'US_PRACTICE') return 'US_PRACTICE';
   return 'NONE';
 };
 
 const resolveComponentEntryMode = (component?: GradeComponent): 'NF_SERIES' | 'SINGLE_SCORE' => {
-  const explicit = String(component?.entryMode || '').toUpperCase();
+  const explicit = normalizeSlotCode(component?.entryModeCode || component?.entryMode);
   if (explicit === 'NF_SERIES' || explicit === 'SINGLE_SCORE') {
     return explicit;
   }
-  return component?.type === 'FORMATIVE' ? 'NF_SERIES' : 'SINGLE_SCORE';
+  const fallbackCode = normalizeSlotCode(component?.code || component?.typeCode || '');
+  return fallbackCode === 'FORMATIVE' ? 'NF_SERIES' : 'SINGLE_SCORE';
 };
 
 const buildComponentDisplayLabel = (component: GradeComponent) => {
   const baseLabel = String(component.name || component.code || 'Komponen').trim();
   const entryMode = resolveComponentEntryMode(component);
-  const reportSlot = resolveComponentReportSlot(component);
-  if (entryMode === 'NF_SERIES') return `${baseLabel} [NF Series]`;
-  if (reportSlot !== 'NONE') return `${baseLabel} [${reportSlot}]`;
-  return baseLabel;
+  const reportSlot = resolveComponentReportSlotCode(component);
+  const modeLabel = entryMode === 'NF_SERIES' ? 'Bertahap' : 'Satu Nilai';
+  const slotLabel = reportSlot !== 'NONE' ? reportSlot : 'Tanpa Slot Rapor';
+  return `${baseLabel} (${modeLabel} • ${slotLabel})`;
+};
+
+const resolveReadableComponentLabel = (component?: GradeComponent, fallback = 'Komponen') => {
+  const label = String(component?.name || component?.code || '').trim();
+  return label || fallback;
+};
+
+const normalizeSlotCode = (raw: unknown): string => String(raw || '').trim().toUpperCase();
+
+const resolvePrimarySlots = (components: GradeComponent[]) => {
+  const availableSlots: string[] = [];
+  let formativeByType: string | null = null;
+  let midtermByType: string | null = null;
+  let finalByType: string | null = null;
+
+  components.forEach((item) => {
+    const slotCode = normalizeSlotCode(resolveComponentReportSlotCode(item));
+    if (!slotCode || slotCode === 'NONE') return;
+    if (!availableSlots.includes(slotCode)) {
+      availableSlots.push(slotCode);
+    }
+
+    const componentType = String(item.type || '').trim().toUpperCase();
+    const entryMode = resolveComponentEntryMode(item);
+    if (!formativeByType && (entryMode === 'NF_SERIES' || componentType === 'FORMATIVE')) {
+      formativeByType = slotCode;
+      return;
+    }
+    if (!midtermByType && componentType === 'MIDTERM') {
+      midtermByType = slotCode;
+      return;
+    }
+    if (!finalByType && componentType === 'FINAL') {
+      finalByType = slotCode;
+    }
+  });
+
+  const firstSlot = availableSlots[0] || 'NONE';
+  const nonFormativeSlots = availableSlots.filter((slot) => slot !== formativeByType);
+  const secondSlot = nonFormativeSlots[0] || availableSlots[1] || firstSlot;
+  const lastSlot =
+    nonFormativeSlots[nonFormativeSlots.length - 1] ||
+    availableSlots[availableSlots.length - 1] ||
+    secondSlot;
+
+  const formative = formativeByType || firstSlot || 'FORMATIF';
+  const midterm = midtermByType || secondSlot || formative || 'NONE';
+  const final = finalByType || lastSlot || midterm || formative || 'NONE';
+
+  return {
+    formative,
+    midterm,
+    final,
+  };
+};
+
+const resolveReportSlotScore = (
+  report: StudentReportGrade | undefined,
+  slotCode: string,
+  fallback: number | null | undefined,
+): number | null => {
+  if (!report) return fallback ?? null;
+  const normalizedSlot = normalizeSlotCode(slotCode);
+  const slotScores = report.slotScores;
+  if (slotScores && typeof slotScores === 'object' && normalizedSlot) {
+    const dynamic = slotScores[normalizedSlot];
+    if (dynamic !== undefined && dynamic !== null && Number.isFinite(Number(dynamic))) {
+      return Number(dynamic);
+    }
+  }
+  if (fallback !== undefined && fallback !== null && Number.isFinite(Number(fallback))) {
+    return Number(fallback);
+  }
+  return null;
 };
 
 export const TeacherGradesPage = () => {
@@ -140,37 +264,138 @@ export const TeacherGradesPage = () => {
   const [formativeNewScoreDraft, setFormativeNewScoreDraft] = useState<Record<number, string>>({});
   const [isFilterRestoreDone, setIsFilterRestoreDone] = useState(false);
   
+  const selectedAcademicYearNum = Number(selectedAcademicYear);
+  const assignmentOptions = useMemo(() => {
+    if (!Number.isFinite(selectedAcademicYearNum) || selectedAcademicYearNum <= 0) {
+      return assignments;
+    }
+    return assignments.filter((assignment) => Number(assignment.academicYearId) === selectedAcademicYearNum);
+  }, [assignments, selectedAcademicYearNum]);
+
   // Check selected component mode/slot dynamically
   const selectedComponentObj = gradeComponents.find(c => c.id.toString() === selectedComponent);
   const selectedComponentEntryMode = resolveComponentEntryMode(selectedComponentObj);
-  const selectedComponentReportSlot = resolveComponentReportSlot(selectedComponentObj);
+  const selectedComponentSlotCode = resolveComponentReportSlotCode(selectedComponentObj);
   const isFormatifComponent = selectedComponentEntryMode === 'NF_SERIES';
-  const isSbtsComponent = selectedComponentReportSlot === 'SBTS';
-  const isSasComponent = selectedComponentReportSlot === 'SAS';
+  // Derived state for filtered components
+  const selectedAssignmentObj = assignmentOptions.find(a => a.id.toString() === selectedAssignment);
+  const filteredComponents = selectedAssignmentObj
+    ? gradeComponents.filter(c => c.subjectId === selectedAssignmentObj.subject.id)
+    : gradeComponents;
+  const primarySlots = resolvePrimarySlots(filteredComponents);
+  const formativePrimarySlot = primarySlots.formative;
+  const midtermPrimarySlot = primarySlots.midterm;
+  const finalPrimarySlot = primarySlots.final;
+  const hasFormativeSeriesComponent = filteredComponents.some(
+    (item) => resolveComponentEntryMode(item) === 'NF_SERIES',
+  );
+  const hasDistinctMidtermFormula =
+    hasFormativeSeriesComponent &&
+    normalizeSlotCode(midtermPrimarySlot) !== 'NONE' &&
+    normalizeSlotCode(midtermPrimarySlot) !== normalizeSlotCode(formativePrimarySlot);
+  const hasDistinctFinalFormula =
+    hasFormativeSeriesComponent &&
+    normalizeSlotCode(finalPrimarySlot) !== 'NONE' &&
+    normalizeSlotCode(finalPrimarySlot) !== normalizeSlotCode(formativePrimarySlot) &&
+    normalizeSlotCode(finalPrimarySlot) !== normalizeSlotCode(midtermPrimarySlot);
+  const isMidtermComponent =
+    !isFormatifComponent &&
+    hasDistinctMidtermFormula &&
+    selectedComponentSlotCode === midtermPrimarySlot;
+  const isFinalComponent =
+    !isFormatifComponent &&
+    hasDistinctFinalFormula &&
+    selectedComponentSlotCode === finalPrimarySlot;
+  const selectedComponentReportSlotLabel =
+    selectedComponentSlotCode && selectedComponentSlotCode !== 'NONE' ? selectedComponentSlotCode : 'TANPA SLOT';
+  const selectedComponentInputModeLabel =
+    selectedComponentEntryMode === 'NF_SERIES' ? 'Bertahap (banyak butir nilai)' : 'Satu nilai per siswa';
+  const formativeComponentLabel = resolveReadableComponentLabel(
+    filteredComponents.find(
+      (item) =>
+        resolveComponentEntryMode(item) === 'NF_SERIES' ||
+        resolveComponentReportSlotCode(item) === formativePrimarySlot,
+    ),
+    'Komponen 1',
+  );
+  const midtermComponentLabel = resolveReadableComponentLabel(
+    filteredComponents.find((item) => resolveComponentReportSlotCode(item) === midtermPrimarySlot),
+    'Komponen 2',
+  );
+  const finalComponentLabel = resolveReadableComponentLabel(
+    filteredComponents.find((item) => resolveComponentReportSlotCode(item) === finalPrimarySlot),
+    'Komponen 3',
+  );
+  const selectedComponentFlowLabel = isFormatifComponent
+    ? 'Formatif Bertahap'
+    : isMidtermComponent
+      ? 'Komponen Tengah Semester'
+      : isFinalComponent
+        ? 'Komponen Akhir Semester/Tahun'
+        : 'Komponen Input Sederhana';
+  const selectedComponentFormulaHint = isFormatifComponent
+    ? `Input bertahap, sistem hitung rata-rata ${resolveReadableComponentLabel(selectedComponentObj, 'komponen')} otomatis.`
+    : isMidtermComponent
+      ? `Nilai rapor dihitung dari rata-rata (${formativeComponentLabel} + ${resolveReadableComponentLabel(selectedComponentObj, 'komponen ini')}).`
+      : isFinalComponent
+        ? `Nilai rapor dihitung dari rata-rata (${formativeComponentLabel} + ${midtermComponentLabel} + ${resolveReadableComponentLabel(selectedComponentObj, 'komponen ini')}).`
+        : 'Komponen ini memakai satu nilai per siswa.';
+  const primaryFormativeComponentId =
+    filteredComponents.find((item) => resolveComponentEntryMode(item) === 'NF_SERIES')?.id ?? null;
 
   const getDescription = () => {
     const componentName = String(selectedComponentObj?.name || selectedComponentObj?.code || 'komponen ini').trim();
     if (isFormatifComponent) {
-      return `Nilai ${componentName} diinput per butir. Rata-rata formatif, SBTS, SAS, dan nilai rapor dihitung dari backend (single source of truth).`;
+      return `Komponen ${componentName} diinput per butir, rata-rata dihitung otomatis oleh sistem.`;
     }
-    if (isSbtsComponent) {
-      return `Nilai ${componentName} adalah nilai tengah semester. Nilai rapor SBTS mengikuti kalkulasi backend berdasarkan konfigurasi komponen aktif.`;
+    if (isMidtermComponent) {
+      return `Komponen ${componentName} diinput satu nilai, lalu dipadukan sesuai rumus komponen aktif.`;
     }
-    if (isSasComponent) {
-      return `Nilai ${componentName} adalah nilai akhir semester/tahun. Nilai rapor akhir mengikuti kalkulasi backend berdasarkan konfigurasi komponen aktif.`;
+    if (isFinalComponent) {
+      return `Komponen ${componentName} diinput satu nilai, lalu dipadukan ke nilai rapor akhir.`;
     }
-    return "Input nilai per komponen untuk siswa";
+    return `Komponen ${componentName} menggunakan input satu nilai per siswa.`;
   };
 
-  // Derived state for filtered components
-  const selectedAssignmentObj = assignments.find(a => a.id.toString() === selectedAssignment);
-  const filteredComponents = selectedAssignmentObj
-    ? gradeComponents.filter(c => c.subjectId === selectedAssignmentObj.subject.id)
-    : gradeComponents;
+  const fetchAssignmentsByAcademicYear = async (
+    academicYearId: string,
+    preferredAssignmentId?: string,
+  ) => {
+    const parsedAcademicYearId = Number(academicYearId);
+    if (!Number.isFinite(parsedAcademicYearId) || parsedAcademicYearId <= 0) {
+      setAssignments([]);
+      setSelectedAssignment('');
+      return;
+    }
+
+    const assignRes = await teacherAssignmentService.list({
+      limit: 1000,
+      academicYearId: parsedAcademicYearId,
+    });
+    const assignResponse = assignRes as { data?: { assignments?: TeacherAssignment[] }, assignments?: TeacherAssignment[] };
+    const assignsData = assignResponse.data?.assignments || assignResponse.assignments || [];
+
+    if (!Array.isArray(assignsData)) {
+      setAssignments([]);
+      setSelectedAssignment('');
+      return;
+    }
+
+    const sorted = sortTeacherAssignmentsBySubjectClass(assignsData as TeacherAssignment[]);
+    setAssignments(sorted);
+
+    setSelectedAssignment((previous) => {
+      const candidate = preferredAssignmentId ?? previous;
+      if (candidate && sorted.some((assignment) => assignment.id.toString() === candidate)) {
+        return candidate;
+      }
+      return '';
+    });
+  };
 
   useEffect(() => {
     fetchInitialData();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     try {
@@ -194,7 +419,7 @@ export const TeacherGradesPage = () => {
     if (selectedAssignment) {
       fetchStudents();
     }
-  }, [selectedAssignment]);
+  }, [selectedAssignment]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (selectedAssignment && selectedAcademicYear) {
@@ -203,17 +428,17 @@ export const TeacherGradesPage = () => {
     }
     setGradeComponents([]);
     setSelectedComponent('');
-  }, [selectedAssignment, selectedAcademicYear, assignments]);
+  }, [selectedAssignment, selectedAcademicYear, assignments]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (selectedAssignment && selectedComponent && selectedAcademicYear && selectedSemester) {
       fetchExistingGrades();
     }
-  }, [selectedAssignment, selectedComponent, selectedAcademicYear, selectedSemester]);
+  }, [selectedAssignment, selectedComponent, selectedAcademicYear, selectedSemester]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-fill descriptions for missing entries (defensive fix)
   useEffect(() => {
-    if (isSasComponent && (competencySettings.A || competencySettings.B || competencySettings.C || competencySettings.D)) {
+    if (isFinalComponent && (competencySettings.A || competencySettings.B || competencySettings.C || competencySettings.D)) {
         setDescriptions(prev => {
             const next = { ...prev };
             let hasChanges = false;
@@ -246,17 +471,14 @@ export const TeacherGradesPage = () => {
             return hasChanges ? next : prev;
         });
     }
-  }, [grades, isSasComponent, competencySettings, students, reportGradeMap, kkm, gradeComponents]);
+  }, [grades, isFinalComponent, competencySettings, students, reportGradeMap, kkm, gradeComponents]);
 
   const fetchInitialData = async () => {
     try {
       setLoading(true);
       setIsFilterRestoreDone(false);
       
-      const [ayRes, assignRes] = await Promise.all([
-        academicYearService.list({ limit: 100 }),
-        teacherAssignmentService.list({ limit: 1000 }),
-      ]);
+      const ayRes = await academicYearService.list({ limit: 100 });
 
       let restoredFilter: {
         academicYear?: string;
@@ -291,20 +513,22 @@ export const TeacherGradesPage = () => {
         }
       }
 
-      // Handle Assignments
-      const assignResponse = assignRes as { data?: { assignments?: TeacherAssignment[] }, assignments?: TeacherAssignment[] };
-      const assignsData = assignResponse.data?.assignments || assignResponse.assignments || [];
-      if (Array.isArray(assignsData)) {
-        const sorted = assignsData.sort((a: TeacherAssignment, b: TeacherAssignment) => {
-          const subjectCompare = a.subject.name.localeCompare(b.subject.name);
-          if (subjectCompare !== 0) return subjectCompare;
-          return a.class.name.localeCompare(b.class.name);
-        });
-        setAssignments(sorted);
-        const restoredAssignment = restoredFilter?.assignment;
-        if (restoredAssignment && sorted.some((assignment) => assignment.id.toString() === restoredAssignment)) {
-          setSelectedAssignment(restoredAssignment);
-        }
+      const normalizedAcademicYears = Array.isArray(ays) ? ays : [];
+      const targetAcademicYear = restoredFilter?.academicYear && normalizedAcademicYears.some((item) => item.id.toString() === restoredFilter.academicYear)
+        ? restoredFilter.academicYear
+        : undefined;
+      const restoredAssignment = restoredFilter?.assignment;
+      const initialAcademicYearId = targetAcademicYear || (
+        (() => {
+          const activeAy = normalizedAcademicYears.find((ay) => ay.isActive);
+          return activeAy ? activeAy.id.toString() : '';
+        })()
+      );
+
+      if (initialAcademicYearId) {
+        await fetchAssignmentsByAcademicYear(initialAcademicYearId, restoredAssignment);
+      } else {
+        setAssignments([]);
       }
 
       if (restoredFilter?.component) {
@@ -323,9 +547,28 @@ export const TeacherGradesPage = () => {
     }
   };
 
+  useEffect(() => {
+    if (!selectedAcademicYear || !isFilterRestoreDone) return;
+    fetchAssignmentsByAcademicYear(selectedAcademicYear).catch((error) => {
+      console.error('Fetch assignments by academic year error:', error);
+      toast.error('Gagal memuat assignment guru');
+      setAssignments([]);
+      setSelectedAssignment('');
+    });
+  }, [selectedAcademicYear, isFilterRestoreDone]);
+
+  useEffect(() => {
+    if (!selectedAssignment) return;
+    const stillExists = assignmentOptions.some((assignment) => assignment.id.toString() === selectedAssignment);
+    if (!stillExists) {
+      setSelectedAssignment('');
+      setSelectedComponent('');
+    }
+  }, [assignmentOptions, selectedAssignment]);
+
   const fetchGradeComponents = async () => {
     try {
-      const assignment = assignments.find(a => a.id.toString() === selectedAssignment);
+      const assignment = selectedAssignmentObj;
       if (!assignment || !selectedAcademicYear) return;
 
       const response = await gradeService.getComponents({
@@ -364,7 +607,7 @@ export const TeacherGradesPage = () => {
       if (!selectedAssignment) return;
       
       // Get fresh assignment for KKM
-      const assignment = assignments.find(a => a.id === parseInt(selectedAssignment));
+      const assignment = selectedAssignmentObj;
       
       if (assignment) {
         setKkm(assignment.kkm);
@@ -414,7 +657,7 @@ export const TeacherGradesPage = () => {
 
   const fetchExistingGrades = async () => {
     try {
-      const assignment = assignments.find(a => a.id.toString() === selectedAssignment);
+      const assignment = selectedAssignmentObj;
       if (!assignment) return;
 
       const response = await gradeService.getGradesByClassSubject(
@@ -424,10 +667,16 @@ export const TeacherGradesPage = () => {
         selectedSemester
       );
 
-      const allGradesResponse = response as { data?: any[] } | any[];
-      const rawGrades = ('data' in allGradesResponse && Array.isArray(allGradesResponse.data) ? allGradesResponse.data : (Array.isArray(allGradesResponse) ? allGradesResponse : [])) as any[];
-      const latestGradesByKey = new Map<string, any>();
-      rawGrades.forEach((row: any) => {
+      const allGradesResponse = response as { data?: ApiGradeRow[] } | ApiGradeRow[];
+      const rawGrades = (
+        'data' in allGradesResponse && Array.isArray(allGradesResponse.data)
+          ? allGradesResponse.data
+          : Array.isArray(allGradesResponse)
+            ? allGradesResponse
+            : []
+      ) as ApiGradeRow[];
+      const latestGradesByKey = new Map<string, ApiGradeRow>();
+      rawGrades.forEach((row: ApiGradeRow) => {
         const studentId = Number(row?.studentId ?? row?.student_id);
         const subjectId = Number(row?.subjectId ?? row?.subject_id);
         const academicYearId = Number(row?.academicYearId ?? row?.academic_year_id);
@@ -451,29 +700,34 @@ export const TeacherGradesPage = () => {
               academic_year_id: parseInt(selectedAcademicYear),
               semester: selectedSemester
           });
-          const reportResponse = reportRes as { data?: any[] } | any[];
+          const reportResponse = reportRes as { data?: ApiReportGradeRow[] } | ApiReportGradeRow[];
           const reportData = 'data' in reportResponse && Array.isArray(reportResponse.data) ? reportResponse.data : (Array.isArray(reportResponse) ? reportResponse : []);
           const nextReportMap: Record<number, StudentReportGrade> = {};
           const nextDescriptions: Record<number, string> = {};
 
           if (Array.isArray(reportData)) {
-              reportData.forEach((r: any) => {
-                  if (!r?.studentId) return;
-                  nextReportMap[r.studentId] = {
-                      studentId: Number(r.studentId),
+              reportData.forEach((r: ApiReportGradeRow) => {
+                  const studentId = Number(r?.studentId);
+                  if (!studentId) return;
+                  nextReportMap[studentId] = {
+                      studentId,
                       formatifScore: r.formatifScore ?? null,
                       sbtsScore: r.sbtsScore ?? null,
                       sasScore: r.sasScore ?? null,
                       finalScore: r.finalScore ?? null,
+                      slotScores:
+                        r.slotScores && typeof r.slotScores === 'object'
+                          ? (r.slotScores as Record<string, number | null>)
+                          : null,
                       description: r.description ?? null,
                   };
-                  if (r.description) {
-                      nextDescriptions[r.studentId] = r.description;
+                  if (typeof r.description === 'string' && r.description.trim()) {
+                      nextDescriptions[studentId] = r.description;
                   }
               });
           }
           setReportGradeMap(nextReportMap);
-          setDescriptions(isSasComponent ? nextDescriptions : {});
+          setDescriptions(isFinalComponent ? nextDescriptions : {});
       } catch (e) {
           console.error('Error fetching report grades', e);
           setReportGradeMap({});
@@ -483,19 +737,29 @@ export const TeacherGradesPage = () => {
       // Update grades array
       setGrades(prevGrades => prevGrades.map(grade => {
         const existing = allGrades.find(
-            (g: any) => (g.studentId === grade.student_id || g.student_id === grade.student_id) && 
-            g.componentId.toString() === selectedComponent
+            (g: ApiGradeRow) => (g.studentId === grade.student_id || g.student_id === grade.student_id) &&
+            String(Number(g.componentId || g.component_id || 0)) === selectedComponent
         );
         
         // Find FORMATIVE data for NF values regardless of selected component
-        const formatifData = allGrades.find(
-            (g: any) => (g.studentId === grade.student_id || g.student_id === grade.student_id) && 
-            (g.component?.type === 'FORMATIVE' || g.component?.type === 'FORMATIF')
-        );
+        const formatifData =
+          allGrades.find(
+            (g: ApiGradeRow) =>
+              (g.studentId === grade.student_id || g.student_id === grade.student_id) &&
+              Number(g.componentId || g.component_id) === Number(primaryFormativeComponentId || -1),
+          ) ||
+          allGrades.find(
+            (g: ApiGradeRow) =>
+              (g.studentId === grade.student_id || g.student_id === grade.student_id) &&
+              (g.component?.type === 'FORMATIVE' || g.component?.type === 'FORMATIF'),
+          );
 
         return {
             ...grade,
-            score: existing ? existing.score.toString() : '',
+            score:
+              existing?.score === null || existing?.score === undefined || existing?.score === ''
+                ? ''
+                : String(existing.score),
             formativeSeriesInput: (() => {
                 const dynamicSeries = Array.isArray(formatifData?.formativeSeries)
                   ? formatifData.formativeSeries
@@ -657,7 +921,7 @@ export const TeacherGradesPage = () => {
   };
 
   const handleRefreshDescriptions = async (silent = false, saveToBackend = false) => {
-    if (!isSasComponent) return;
+    if (!isFinalComponent) return;
     
     if (!competencySettings.A && !competencySettings.B && !competencySettings.C && !competencySettings.D) {
         if (!silent) toast.error('Pengaturan Capaian Kompetensi belum diatur');
@@ -700,7 +964,7 @@ export const TeacherGradesPage = () => {
         
         // If requested, save to backend immediately using the NEW descriptions
         if (saveToBackend && updateCount > 0 && selectedAssignment && selectedAcademicYear && selectedComponent) {
-            const assignment = assignments.find(a => a.id.toString() === selectedAssignment);
+            const assignment = selectedAssignmentObj;
             if (assignment) {
                 const gradesPayload = students.map(student => {
                      const grade = grades.find(g => g.student_id === student.id);
@@ -732,10 +996,10 @@ export const TeacherGradesPage = () => {
       return;
     }
 
-    const assignment = assignments.find(a => a.id.toString() === selectedAssignment);
+    const assignment = selectedAssignmentObj;
     if (!assignment) return;
 
-    let gradesPayload: any[] = [];
+    let gradesPayload: GradeBulkPayload[] = [];
 
     if (isFormatifComponent) {
         gradesPayload = grades.map(g => {
@@ -760,7 +1024,7 @@ export const TeacherGradesPage = () => {
                 subject_id: assignment.subject.id,
                 academic_year_id: parseInt(selectedAcademicYear),
                 grade_component_id: parseInt(selectedComponent),
-                semester: selectedSemester,
+                semester: selectedSemester as 'ODD' | 'EVEN',
                 score: scoreValue,
                 formative_series: seriesValues,
             };
@@ -771,9 +1035,9 @@ export const TeacherGradesPage = () => {
             subject_id: assignment.subject.id,
             academic_year_id: parseInt(selectedAcademicYear),
             grade_component_id: parseInt(selectedComponent),
-            semester: selectedSemester,
+            semester: selectedSemester as 'ODD' | 'EVEN',
             score: grade.score === '' ? null : parseFloat(grade.score),
-            description: isSasComponent ? (descriptions[grade.student_id] || '') : undefined
+            description: isFinalComponent ? (descriptions[grade.student_id] || '') : undefined
         }));
     }
 
@@ -782,9 +1046,10 @@ export const TeacherGradesPage = () => {
         await gradeService.bulkInputGrades({ grades: gradesPayload });
         toast.success('Nilai berhasil disimpan');
         fetchExistingGrades();
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const runtimeError = error as { message?: string };
         console.error('Save grades error:', error);
-        toast.error(error.message || 'Gagal menyimpan nilai');
+        toast.error(runtimeError?.message || 'Gagal menyimpan nilai');
     } finally {
         setSaving(false);
     }
@@ -807,21 +1072,35 @@ export const TeacherGradesPage = () => {
       </div>
 
       {/* Description Box */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-blue-800 text-sm">
-        <div className="flex items-start">
-            <div className="flex-shrink-0 mt-0.5">
-                <svg className="h-5 w-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                </svg>
-            </div>
-            <div className="ml-3">
-                <h3 className="text-sm font-medium text-blue-800">Informasi Penilaian</h3>
-                <div className="mt-1 text-sm text-blue-700">
-                    {getDescription()}
-                </div>
-            </div>
-        </div>
+      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+        <span className="font-semibold">Informasi Penilaian:</span> {getDescription()}
       </div>
+
+      {selectedComponentObj ? (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
+              <span className="mr-1 text-gray-500">Komponen:</span>
+              <span className="font-semibold">{resolveReadableComponentLabel(selectedComponentObj, '-')}</span>
+            </span>
+            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
+              <span className="mr-1 text-gray-500">Mode:</span>
+              <span className="font-semibold">{selectedComponentInputModeLabel}</span>
+            </span>
+            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
+              <span className="mr-1 text-gray-500">Slot:</span>
+              <span className="font-semibold">{selectedComponentReportSlotLabel}</span>
+            </span>
+            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
+              <span className="mr-1 text-gray-500">Masuk Nilai Akhir:</span>
+              <span className="font-semibold">{selectedComponentObj.includeInFinalScore ? 'Ya' : 'Tidak'}</span>
+            </span>
+          </div>
+          <p className="mt-2 text-xs text-blue-700">
+            {selectedComponentFlowLabel}: {selectedComponentFormulaHint}
+          </p>
+        </div>
+      ) : null}
 
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
@@ -877,8 +1156,10 @@ export const TeacherGradesPage = () => {
                         disabled={!selectedSemester}
                     >
                         <option value="">Pilih Kelas & Mapel</option>
-                        {assignments.map(a => (
-                            <option key={a.id} value={a.id}>{a.class.name} - {a.subject.name} (KKM: {a.kkm})</option>
+                        {assignmentOptions.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {formatTeacherAssignmentLabel(a)} (KKM: {a.kkm})
+                            </option>
                         ))}
                     </select>
                     {!selectedSemester && (
@@ -888,7 +1169,7 @@ export const TeacherGradesPage = () => {
             </div>
 
             <div className="md:col-span-2 lg:col-span-2">
-                <div className={isSasComponent ? "flex gap-2 items-end" : ""}>
+                <div className={isFinalComponent ? "flex gap-2 items-end" : ""}>
                         <div className="flex-1">
                             <label htmlFor="grade-component" className="block text-sm font-medium text-gray-700 mb-2">Komponen Nilai</label>
                             <div className="relative">
@@ -910,7 +1191,7 @@ export const TeacherGradesPage = () => {
                                 )}
                             </div>
                         </div>
-                        {isSasComponent && (
+                        {isFinalComponent && (
                             <div className="flex gap-2">
                                 <button 
                                     onClick={() => setShowSettingsModal(true)}
@@ -940,21 +1221,21 @@ export const TeacherGradesPage = () => {
                               {isFormatifComponent ? (
                                   <>
                                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entri Formatif (Dinamis)</th>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ SBTS</th>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-green-50">x̄ SAS</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ Referensi {midtermComponentLabel}</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-green-50">x̄ Referensi {finalComponentLabel}</th>
                                   </>
-                              ) : isSbtsComponent ? (
+                              ) : isMidtermComponent ? (
                                   <>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ NF</th>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai SBTS</th>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-yellow-50">Nilai Rapor SBTS</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ Referensi {formativeComponentLabel}</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai {midtermComponentLabel}</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-yellow-50">Nilai Rapor {midtermComponentLabel}</th>
                                   </>
-                              ) : isSasComponent ? (
+                              ) : isFinalComponent ? (
                                   <>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ NF</th>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Nilai SBTS</th>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai SAS</th>
-                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-yellow-50">Nilai Rapor SAS</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ Referensi {formativeComponentLabel}</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Nilai {midtermComponentLabel}</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai {finalComponentLabel}</th>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-yellow-50">Nilai Rapor {finalComponentLabel}</th>
                                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Capaian Kompetensi</th>
                                   </>
                               ) : (
@@ -973,8 +1254,8 @@ export const TeacherGradesPage = () => {
                                   if (!grade) return null;
                                   
                                   const report = reportGradeMap[student.id];
-	                                  const backendFormative = report?.formatifScore ?? null;
-	                                  const backendSbts = report?.sbtsScore ?? null;
+	                                  const backendFormative = resolveReportSlotScore(report, formativePrimarySlot, report?.formatifScore ?? null);
+	                                  const backendSbts = resolveReportSlotScore(report, midtermPrimarySlot, report?.sbtsScore ?? null);
 	                                  const backendFinal = report?.finalScore ?? null;
 	                                  const currentScore = (() => {
 	                                    const parsed = Number(grade.score);
@@ -1001,7 +1282,7 @@ export const TeacherGradesPage = () => {
                                       ? previewFormative.toFixed(2)
                                       : '-';
 	                                  const previewSbtsFinal = (() => {
-	                                    if (!isSbtsComponent) return backendFinal;
+	                                    if (!isMidtermComponent) return backendFinal;
 	                                    const values = [previewFormative, currentScore]
 	                                      .map((value) => Number(value))
 	                                      .filter((value) => Number.isFinite(value));
@@ -1009,7 +1290,7 @@ export const TeacherGradesPage = () => {
 	                                    return avg === null ? backendFinal : avg;
 	                                  })();
 	                                  const previewSasFinal = (() => {
-	                                    if (!isSasComponent) return backendFinal;
+	                                    if (!isFinalComponent) return backendFinal;
 	                                    const values = [previewFormative, backendSbts, currentScore]
 	                                      .map((value) => Number(value))
 	                                      .filter((value) => Number.isFinite(value));
@@ -1017,9 +1298,9 @@ export const TeacherGradesPage = () => {
 	                                    return avg === null ? backendFinal : avg;
 	                                  })();
 	                                  const rowStatusScorePreview =
-	                                    isSbtsComponent
+	                                    isMidtermComponent
 	                                      ? previewSbtsFinal ?? 0
-	                                      : isSasComponent
+	                                      : isFinalComponent
 	                                        ? previewSasFinal ?? 0
 	                                        : rowStatusScore;
 
@@ -1094,7 +1375,7 @@ export const TeacherGradesPage = () => {
                                                       {displayFormative}
                                                   </td>
                                               </>
-                                          ) : isSbtsComponent ? (
+                                          ) : isMidtermComponent ? (
                                               <>
 	                                                  <td className={`px-6 py-4 whitespace-nowrap text-center text-sm ${(backendFormative ?? 0) < kkm && backendFormative !== null ? 'text-red-600 font-bold' : 'text-gray-500'} bg-blue-50`}>{displayFormative}</td>
                                                   <td className="px-6 py-4 whitespace-nowrap text-center">
@@ -1112,7 +1393,7 @@ export const TeacherGradesPage = () => {
 	                                                      {previewSbtsFinal !== null && previewSbtsFinal !== undefined ? previewSbtsFinal.toFixed(2) : '-'}
 	                                                  </td>
                                               </>
-                                          ) : isSasComponent ? (
+                                          ) : isFinalComponent ? (
                                               <>
                                                   <td className={`px-6 py-4 whitespace-nowrap text-center text-sm ${(backendFormative ?? 0) < kkm && backendFormative !== null ? 'text-red-600 font-bold' : 'text-gray-500'} bg-blue-50`}>{displayFormative}</td>
 	                                                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500 bg-gray-50">{backendSbts !== null && backendSbts !== undefined ? backendSbts.toFixed(2) : '-'}</td>

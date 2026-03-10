@@ -6,8 +6,20 @@ import { internshipService } from '../../services/internship.service';
 import { userService } from '../../services/user.service';
 import { Loader2, AlertCircle, Printer, X } from 'lucide-react';
 
+type PklPrintStudent = {
+  id?: number;
+  name: string;
+  nis?: string;
+  className?: string;
+  studentClass?: {
+    name?: string;
+  };
+};
+
 const PklLetterPrint: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const normalizedInternshipId = Number(id);
+  const hasValidInternshipId = Number.isInteger(normalizedInternshipId) && normalizedInternshipId > 0;
 
   // Fungsi pembantu untuk memformat tanggal dengan aman
   const formatDate = (dateStr: string | null | undefined) => {
@@ -16,7 +28,7 @@ const PklLetterPrint: React.FC = () => {
       const d = new Date(dateStr);
       if (isNaN(d.getTime())) return '';
       return d.toISOString().split('T')[0];
-    } catch (e) {
+    } catch {
       return '';
     }
   };
@@ -27,7 +39,7 @@ const PklLetterPrint: React.FC = () => {
       const d = new Date(dateStr);
       if (isNaN(d.getTime())) return '-';
       return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-    } catch (e) {
+    } catch {
       return '-';
     }
   };
@@ -57,7 +69,7 @@ const PklLetterPrint: React.FC = () => {
   const [recipientName, setRecipientName] = useState(savedConfig?.recipientName || '');
   const [openingText, setOpeningText] = useState(savedConfig?.openingText || '');
   const [closingText] = useState(savedConfig?.closingText || 'Demikian permohonan ini kami sampaikan, atas perhatian dan kerja sama Bapak / Ibu kami ucapkan terima kasih.');
-  const [students] = useState<any[]>(() => {
+  const [students] = useState<PklPrintStudent[]>(() => {
     const mainStudent = savedConfig?.student;
     if (mainStudent) {
       return [{
@@ -76,9 +88,9 @@ const PklLetterPrint: React.FC = () => {
   const [useBarcode] = useState(savedConfig?.useBarcode || false);
 
   const { data: internshipData, isLoading: isLoadingInternship, error: internshipError } = useQuery({
-    queryKey: ['internship-detail-print', id],
-    queryFn: () => internshipService.getInternshipDetail(Number(id)),
-    enabled: !!id,
+    queryKey: ['internship-detail-print', normalizedInternshipId],
+    queryFn: () => internshipService.getInternshipDetail(normalizedInternshipId),
+    enabled: hasValidInternshipId,
   });
 
   const { data: principalData, isLoading: isLoadingPrincipal } = useQuery({
@@ -96,6 +108,7 @@ const PklLetterPrint: React.FC = () => {
   const showLoader = isLoading && !hasConfigData;
 
   // Sync state dengan data dari database jika config tidak lengkap
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     console.log("DEBUG: useEffect sync running", { internship: !!internship, savedConfig: !!savedConfig });
     
@@ -147,34 +160,19 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
         console.log("DEBUG: Individual print student locked to:", mainStudent.name);
       }
     }
-  }, [internship, savedConfig]);
-
-  if (showLoader) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="text-center p-8">
-          <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
-          <h1 className="text-xl font-semibold text-gray-800">Memuat Data Surat...</h1>
-        </div>
-      </div>
-    );
-  }
-
-  if (error && !hasConfigData) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center bg-red-50">
-        <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
-        <h1 className="text-2xl font-bold text-red-900">Gagal Memuat Data</h1>
-        <p className="text-red-700 mt-2">Data pengajuan PKL tidak ditemukan atau terjadi kesalahan sistem.</p>
-        <button 
-          onClick={() => window.location.reload()}
-          className="mt-6 px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-        >
-          Coba Lagi
-        </button>
-      </div>
-    );
-  }
+  }, [
+    internship,
+    savedConfig,
+    letterNumber,
+    companyName,
+    companyAddress,
+    recipientName,
+    startDate,
+    endDate,
+    openingText,
+    students.length,
+  ]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Auto-print effect - Gunakan delay yang cukup
   useEffect(() => {
@@ -201,6 +199,33 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
       return () => clearTimeout(timer);
     }
   }, [isLoading, internship, savedConfig, companyName, students]);
+
+  if (showLoader) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="text-center p-8">
+          <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
+          <h1 className="text-xl font-semibold text-gray-800">Memuat Data Surat...</h1>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !hasConfigData) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center bg-red-50">
+        <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
+        <h1 className="text-2xl font-bold text-red-900">Gagal Memuat Data</h1>
+        <p className="text-red-700 mt-2">Data pengajuan PKL tidak ditemukan atau terjadi kesalahan sistem.</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-6 px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+        >
+          Coba Lagi
+        </button>
+      </div>
+    );
+  }
  
    return (
     <div className="bg-[#525659] min-h-screen">

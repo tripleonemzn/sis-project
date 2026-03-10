@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
@@ -13,6 +13,53 @@ import {
   Shield,
   CheckCircle
 } from 'lucide-react'
+import { QuestionMediaImage } from '../../components/common/QuestionMediaImage'
+import { enhanceQuestionHtml } from '../../utils/questionMedia'
+
+type StudentExamAnswerValue =
+  | string
+  | string[]
+  | number
+  | null
+  | Record<string, unknown>
+
+type StudentExamAnswers = Record<string, StudentExamAnswerValue>
+
+type MonitoringStats = {
+  totalViolations: number
+  tabSwitchCount: number
+  fullscreenExitCount: number
+  appSwitchCount: number
+  lastViolationType: string | null
+  lastViolationAt: string | null
+  currentQuestionIndex: number
+  currentQuestionNumber: number
+  currentQuestionId: string | null
+  lastSyncAt: string | null
+}
+
+type FullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void> | void
+  mozRequestFullScreen?: () => Promise<void> | void
+  msRequestFullscreen?: () => Promise<void> | void
+}
+
+type FullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null
+  mozFullScreenElement?: Element | null
+  msFullscreenElement?: Element | null
+  webkitExitFullscreen?: () => Promise<void> | void
+  mozCancelFullScreen?: () => Promise<void> | void
+  msExitFullscreen?: () => Promise<void> | void
+}
+
+type ExamQuestionOption = Record<string, unknown> & {
+  id?: string | number
+  option_text?: string
+  content?: string
+  option_image_url?: string | null
+  image_url?: string | null
+}
 
 interface Question {
   id: string
@@ -39,8 +86,8 @@ interface Question {
   points: number
   order_number: number
   section: 'OBJECTIVE' | 'ESSAY'
-  correct_answer: any
-  options?: any[]
+  correct_answer: unknown
+  options?: ExamQuestionOption[]
 }
 
 interface Exam {
@@ -58,15 +105,47 @@ interface Exam {
   questions: Question[]
 }
 
+function isLikelyMobileDevice(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const userAgent = navigator.userAgent || ''
+  const mobileUserAgent =
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent)
+  const coarsePointer =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(pointer: coarse)').matches
+  return mobileUserAgent || coarsePointer
+}
+
+function supportsDocumentFullscreen(): boolean {
+  if (typeof document === 'undefined') return false
+  const root = document.documentElement as FullscreenElement
+  return Boolean(
+    root?.requestFullscreen ||
+      root?.webkitRequestFullscreen ||
+      root?.mozRequestFullScreen ||
+      root?.msRequestFullscreen,
+  )
+}
+
+const MIN_PROGRESS_SYNC_GAP_MS = 5000
+const DEFAULT_PROGRESS_SYNC_DELAY_MS = 1400
+const FAST_PROGRESS_SYNC_DELAY_MS = 850
+const HEARTBEAT_PROGRESS_SYNC_INTERVAL_MS = 20000
+
 export default function StudentExamTakePage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const requiresFullscreen = useMemo(
+    () => supportsDocumentFullscreen() && !isLikelyMobileDevice(),
+    [],
+  )
   
   // Exam data
   const [exam, setExam] = useState<Exam | null>(null)
   const [loading, setLoading] = useState(true)
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
-  const [answers, setAnswers] = useState<Record<string, any>>({})
+  const [answers, setAnswers] = useState<StudentExamAnswers>({})
   
   // Timer
   const [timeRemaining, setTimeRemaining] = useState(0)
@@ -82,12 +161,34 @@ export default function StudentExamTakePage() {
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const violationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const progressSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const endTimeRef = useRef<number | null>(null)
+  const fetchedExamKeyRef = useRef<string | null>(null)
+  const violationsRef = useRef(0)
 
   const hasStartedRef = useRef(false)
+  const answersRef = useRef<StudentExamAnswers>({})
+  const hasDirtyProgressRef = useRef(false)
+  const lastSyncedFingerprintRef = useRef('')
+  const lastProgressSyncAtRef = useRef(0)
+  const monitoringStatsRef = useRef<MonitoringStats>({
+    totalViolations: 0,
+    tabSwitchCount: 0,
+    fullscreenExitCount: 0,
+    appSwitchCount: 0,
+    lastViolationType: null as string | null,
+    lastViolationAt: null as string | null,
+    currentQuestionIndex: 0,
+    currentQuestionNumber: 1,
+    currentQuestionId: null as string | null,
+    lastSyncAt: null as string | null,
+  })
+  const lastViolationFingerprintRef = useRef<{ key: string; at: number } | null>(null)
+  const lastWindowBlurAtRef = useRef(0)
+  const blurViolationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   // Get current user
-  const { user: contextUser } = useOutletContext<{ user: any }>() || {};
+  const { user: contextUser } = useOutletContext<{ user: Record<string, unknown> }>() || {};
   const { data: authData } = useQuery({
     queryKey: ['me'],
     queryFn: authService.getMe,
@@ -96,12 +197,23 @@ export default function StudentExamTakePage() {
   })
   const user = contextUser || authData?.data
 
-  // Fetch exam data
+  // Keep ref in sync so async callbacks can read latest value
   useEffect(() => {
-    if (id && user) {
-      fetchExam()
-    }
-  }, [id, user])
+    violationsRef.current = violations
+  }, [violations])
+
+  useEffect(() => {
+    answersRef.current = answers
+  }, [answers])
+
+  // Fetch exam data once per exam+student key
+  useEffect(() => {
+    if (!id || !user?.id) return
+    const fetchKey = `${id}:${user.id}`
+    if (fetchedExamKeyRef.current === fetchKey) return
+    fetchedExamKeyRef.current = fetchKey
+    fetchExam()
+  }, [id, user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check fullscreen status
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -110,9 +222,9 @@ export default function StudentExamTakePage() {
     const checkFullscreen = () => {
       const isFS = !!(
         document.fullscreenElement ||
-        (document as any).webkitFullscreenElement ||
-        (document as any).mozFullScreenElement ||
-        (document as any).msFullscreenElement
+        (document as FullscreenDocument).webkitFullscreenElement ||
+        (document as FullscreenDocument).mozFullScreenElement ||
+        (document as FullscreenDocument).msFullscreenElement
       )
       setIsFullscreen(isFS)
     }
@@ -130,16 +242,21 @@ export default function StudentExamTakePage() {
   }, [])
   
   const enterFullscreen = async () => {
+    if (!requiresFullscreen) {
+      setIsFullscreen(true)
+      return
+    }
     const elem = document.documentElement
+    const fullscreenElem = elem as FullscreenElement
     try {
       if (elem.requestFullscreen) {
         await elem.requestFullscreen()
-      } else if ((elem as any).webkitRequestFullscreen) {
-        await (elem as any).webkitRequestFullscreen()
-      } else if ((elem as any).mozRequestFullScreen) {
-        await (elem as any).mozRequestFullScreen()
-      } else if ((elem as any).msRequestFullscreen) {
-        await (elem as any).msRequestFullscreen()
+      } else if (fullscreenElem.webkitRequestFullscreen) {
+        await fullscreenElem.webkitRequestFullscreen()
+      } else if (fullscreenElem.mozRequestFullScreen) {
+        await fullscreenElem.mozRequestFullScreen()
+      } else if (fullscreenElem.msRequestFullscreen) {
+        await fullscreenElem.msRequestFullscreen()
       }
       setIsFullscreen(true)
     } catch (err) {
@@ -150,12 +267,19 @@ export default function StudentExamTakePage() {
 
   // Setup lockdown when exam is loaded AND fullscreen is active
   useEffect(() => {
-    if (exam && exam.questions && exam.questions.length > 0 && !loading && isFullscreen && !hasStartedRef.current) {
+    if (
+      exam &&
+      exam.questions &&
+      exam.questions.length > 0 &&
+      !loading &&
+      (isFullscreen || !requiresFullscreen) &&
+      !hasStartedRef.current
+    ) {
       hasStartedRef.current = true
       setupLockdown()
       startTimer()
     }
-  }, [exam, loading, isFullscreen])
+  }, [exam, loading, isFullscreen, requiresFullscreen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cleanup on unmount
   useEffect(() => {
@@ -164,10 +288,119 @@ export default function StudentExamTakePage() {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current)
       }
+      if (progressSyncTimeoutRef.current) {
+        clearTimeout(progressSyncTimeoutRef.current)
+      }
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasAutoSubmitted = useRef(false)
+
+  const buildFormattedAnswers = useCallback(
+    (answerSource: StudentExamAnswers) => {
+      const formattedAnswers: StudentExamAnswers = {}
+      exam?.questions.forEach(q => {
+        formattedAnswers[q.id] = answerSource[q.id] ?? null
+      })
+      formattedAnswers.__monitoring = {
+        ...monitoringStatsRef.current,
+      }
+      return formattedAnswers
+    },
+    [exam],
+  )
+
+  const buildSyncFingerprint = useCallback((formattedAnswers: StudentExamAnswers) => {
+    const monitoring =
+      formattedAnswers.__monitoring && typeof formattedAnswers.__monitoring === 'object'
+        ? { ...(formattedAnswers.__monitoring as Record<string, unknown>) }
+        : null
+    if (monitoring) {
+      delete monitoring.lastSyncAt
+    }
+    const normalized = monitoring
+      ? { ...formattedAnswers, __monitoring: monitoring }
+      : formattedAnswers
+    return JSON.stringify(normalized)
+  }, [])
+
+  const syncProgressInBackground = useCallback(
+    async (answerSource: StudentExamAnswers, options?: { force?: boolean }) => {
+      if (!id || !user || !exam || submitting || hasAutoSubmitted.current) return
+      const nowMs = Date.now()
+      if (!options?.force && nowMs - lastProgressSyncAtRef.current < MIN_PROGRESS_SYNC_GAP_MS) {
+        return
+      }
+
+      const formattedAnswers = buildFormattedAnswers(answerSource)
+      const syncFingerprint = buildSyncFingerprint(formattedAnswers)
+      if (!options?.force && syncFingerprint === lastSyncedFingerprintRef.current) {
+        hasDirtyProgressRef.current = false
+        return
+      }
+
+      try {
+        await api.post(`/exams/${id}/answers`, {
+          student_id: user.id,
+          answers: formattedAnswers,
+          finish: false,
+          is_final_submit: false,
+        })
+        lastProgressSyncAtRef.current = Date.now()
+        lastSyncedFingerprintRef.current = syncFingerprint
+        hasDirtyProgressRef.current = false
+        monitoringStatsRef.current = {
+          ...monitoringStatsRef.current,
+          lastSyncAt: new Date().toISOString(),
+        }
+      } catch {
+        // Silent: jangan ganggu siswa saat ujian berjalan
+        hasDirtyProgressRef.current = true
+      }
+    },
+    [id, user, exam, submitting, buildFormattedAnswers, buildSyncFingerprint],
+  )
+
+  const queueProgressSync = useCallback(
+    (answerSource: StudentExamAnswers, delay = DEFAULT_PROGRESS_SYNC_DELAY_MS, options?: { force?: boolean }) => {
+      hasDirtyProgressRef.current = true
+      if (progressSyncTimeoutRef.current) {
+        clearTimeout(progressSyncTimeoutRef.current)
+      }
+      progressSyncTimeoutRef.current = setTimeout(() => {
+        syncProgressInBackground(answerSource, options)
+      }, delay)
+    },
+    [syncProgressInBackground],
+  )
+
+  const syncCurrentQuestionProgress = useCallback(
+    (nextQuestionIndex: number, answerSource?: StudentExamAnswers) => {
+      const question = exam?.questions?.[nextQuestionIndex]
+      monitoringStatsRef.current = {
+        ...monitoringStatsRef.current,
+        currentQuestionIndex: nextQuestionIndex,
+        currentQuestionNumber: nextQuestionIndex + 1,
+        currentQuestionId: question?.id || null,
+      }
+      queueProgressSync(answerSource ?? answers, FAST_PROGRESS_SYNC_DELAY_MS)
+    },
+    [exam, answers, queueProgressSync],
+  )
+
+  useEffect(() => {
+    if (!examStartTime || !exam) return
+    syncCurrentQuestionProgress(currentQuestionIndex)
+  }, [examStartTime, exam, currentQuestionIndex, syncCurrentQuestionProgress])
+
+  useEffect(() => {
+    if (!examStartTime || !exam || hasAutoSubmitted.current) return
+    const heartbeat = setInterval(() => {
+      if (!hasDirtyProgressRef.current) return
+      syncProgressInBackground(answersRef.current)
+    }, HEARTBEAT_PROGRESS_SYNC_INTERVAL_MS)
+    return () => clearInterval(heartbeat)
+  }, [examStartTime, exam, syncProgressInBackground])
 
   const handleAutoSubmit = useCallback(async (reason: string) => {
     // Prevent multiple auto-submits
@@ -185,10 +418,7 @@ export default function StudentExamTakePage() {
     
     setSubmitting(true)
 
-    const formattedAnswers: Record<string, any> = {}
-    exam?.questions.forEach(q => {
-      formattedAnswers[q.id] = answers[q.id] || null
-    })
+    const formattedAnswers = buildFormattedAnswers(answers)
 
     try {
       await api.post(
@@ -203,16 +433,19 @@ export default function StudentExamTakePage() {
       // Navigate immediately regardless of response
       try {
         sessionStorage.setItem('just_submitted_exam_id', String(id))
-      } catch {}
+      } catch {
+        // Ignore sessionStorage failures during forced navigation.
+      }
       const returnRoute = sessionStorage.getItem('last_exam_route') || '/student/exams'
       navigate(returnRoute, { replace: true })
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error auto-submitting:', error)
       // Still navigate even if submit fails
       const returnRoute = sessionStorage.getItem('last_exam_route') || '/student/exams'
       navigate(returnRoute, { replace: true })
     }
-  }, [submitting, exam, answers, id, navigate])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitting, answers, id, navigate, buildFormattedAnswers])
 
   // Auto-submit when time runs out
   useEffect(() => {
@@ -223,7 +456,8 @@ export default function StudentExamTakePage() {
 
   // Auto-submit on 4th violation
   useEffect(() => {
-    if (violations >= 4 && examStartTime && !hasAutoSubmitted.current) {
+    const effectiveViolations = Math.max(violations, monitoringStatsRef.current.totalViolations)
+    if (effectiveViolations >= 4 && examStartTime && !hasAutoSubmitted.current) {
       handleAutoSubmit('Terlalu banyak pelanggaran')
     }
   }, [violations, examStartTime, handleAutoSubmit])
@@ -250,17 +484,73 @@ export default function StudentExamTakePage() {
         const examData = response.data.data
         
         // Check if exam is already completed/submitted
-        if (examData.session && (examData.session.status === 'COMPLETED' || examData.session.status === 'GRADED')) {
-           try {
-             sessionStorage.setItem('just_submitted_exam_id', String(id))
-           } catch {}
-           const returnRoute = sessionStorage.getItem('last_exam_route') || '/student/exams'
-           navigate(returnRoute, { replace: true })
-           return
+	        if (examData.session && (examData.session.status === 'COMPLETED' || examData.session.status === 'GRADED')) {
+	           try {
+	             sessionStorage.setItem('just_submitted_exam_id', String(id))
+	           } catch {
+	             // Ignore sessionStorage failures during redirect.
+	           }
+	           const returnRoute = sessionStorage.getItem('last_exam_route') || '/student/exams'
+	           navigate(returnRoute, { replace: true })
+	           return
         }
 
         // Handle wrapper structure from backend (session + packet)
         const packet = examData.packet || examData
+        const existingSessionAnswers = (examData.session?.answers && typeof examData.session.answers === 'object')
+          ? { ...(examData.session.answers as Record<string, unknown>) }
+          : null;
+
+        if (existingSessionAnswers) {
+          const monitoring = existingSessionAnswers.__monitoring;
+          if (monitoring && typeof monitoring === 'object') {
+            const monitoringPayload = monitoring as Partial<MonitoringStats>;
+            const normalizedStats = {
+              totalViolations: Number(monitoringPayload.totalViolations || 0),
+              tabSwitchCount: Number(monitoringPayload.tabSwitchCount || 0),
+              fullscreenExitCount: Number(monitoringPayload.fullscreenExitCount || 0),
+              appSwitchCount: Number(monitoringPayload.appSwitchCount || 0),
+              lastViolationType: monitoringPayload.lastViolationType ? String(monitoringPayload.lastViolationType) : null,
+              lastViolationAt: monitoringPayload.lastViolationAt ? String(monitoringPayload.lastViolationAt) : null,
+              currentQuestionIndex: Number.isFinite(Number(monitoringPayload.currentQuestionIndex))
+                ? Number(monitoringPayload.currentQuestionIndex)
+                : 0,
+              currentQuestionNumber: Number.isFinite(Number(monitoringPayload.currentQuestionNumber))
+                ? Number(monitoringPayload.currentQuestionNumber)
+                : 1,
+              currentQuestionId: monitoringPayload.currentQuestionId ? String(monitoringPayload.currentQuestionId) : null,
+              lastSyncAt: monitoringPayload.lastSyncAt ? String(monitoringPayload.lastSyncAt) : null,
+            }
+            const mergedStats = {
+              totalViolations: Math.max(
+                normalizedStats.totalViolations,
+                monitoringStatsRef.current.totalViolations,
+                violationsRef.current,
+              ),
+              tabSwitchCount: Math.max(normalizedStats.tabSwitchCount, monitoringStatsRef.current.tabSwitchCount),
+              fullscreenExitCount: Math.max(
+                normalizedStats.fullscreenExitCount,
+                monitoringStatsRef.current.fullscreenExitCount,
+              ),
+              appSwitchCount: Math.max(normalizedStats.appSwitchCount, monitoringStatsRef.current.appSwitchCount),
+              lastViolationType:
+                normalizedStats.lastViolationType || monitoringStatsRef.current.lastViolationType || null,
+              lastViolationAt: normalizedStats.lastViolationAt || monitoringStatsRef.current.lastViolationAt || null,
+              currentQuestionIndex: Number.isFinite(normalizedStats.currentQuestionIndex)
+                ? normalizedStats.currentQuestionIndex
+                : monitoringStatsRef.current.currentQuestionIndex,
+              currentQuestionNumber: Number.isFinite(normalizedStats.currentQuestionNumber)
+                ? normalizedStats.currentQuestionNumber
+                : monitoringStatsRef.current.currentQuestionNumber,
+              currentQuestionId: normalizedStats.currentQuestionId || monitoringStatsRef.current.currentQuestionId || null,
+              lastSyncAt: normalizedStats.lastSyncAt || monitoringStatsRef.current.lastSyncAt || null,
+            }
+            monitoringStatsRef.current = mergedStats
+            setViolations(mergedStats.totalViolations)
+          }
+          delete existingSessionAnswers.__monitoring;
+          setAnswers(existingSessionAnswers as StudentExamAnswers);
+        }
         
         // Normalize questions
         let questions = packet.questions;
@@ -275,7 +565,7 @@ export default function StudentExamTakePage() {
 
         if (questions && Array.isArray(questions)) {
           // Helper for randomization
-          const shuffleArray = (array: any[]) => {
+          const shuffleArray = <T,>(array: T[]) => {
             for (let i = array.length - 1; i > 0; i--) {
               const j = Math.floor(Math.random() * (i + 1));
               [array[i], array[j]] = [array[j], array[i]];
@@ -285,12 +575,12 @@ export default function StudentExamTakePage() {
 
           // 1. Process questions and randomize options
           let processedQuestions = questions
-            .filter((q: any) => q)
-            .map((q: any) => ({
+            .filter((q: Record<string, unknown>) => q)
+            .map((q: Record<string, unknown>) => ({
               ...q,
               question_text: q.question_text || q.content,
               question_type: q.question_type || q.type,
-              options: q.options ? shuffleArray(q.options.map((opt: any) => ({
+              options: Array.isArray(q.options) ? shuffleArray(q.options.map((opt: Record<string, unknown>) => ({
                 ...opt,
                 option_text: opt.option_text || opt.content
               }))) : []
@@ -327,9 +617,11 @@ export default function StudentExamTakePage() {
            endTimeRef.current = Date.now() + (packet.duration * 60 * 1000);
          }
       }
-    } catch (error: any) {
-      console.error('❌ Error fetching exam:', error.response?.data || error)
-      const errorMessage = error.response?.data?.message || 'Gagal memuat ujian'
+    } catch (error: unknown) {
+      const apiError = error as { response?: { data?: { message?: string } } }
+      fetchedExamKeyRef.current = null
+      console.error('❌ Error fetching exam:', apiError.response?.data || error)
+      const errorMessage = apiError.response?.data?.message || 'Gagal memuat ujian'
       toast.error(errorMessage)
       navigate('/student/exams')
     } finally {
@@ -345,7 +637,7 @@ export default function StudentExamTakePage() {
     document.addEventListener('contextmenu', preventContextMenu)
     
     // Prevent keyboard shortcuts
-    document.addEventListener('keydown', preventKeyboardShortcuts)
+    window.addEventListener('keydown', preventKeyboardShortcuts, true)
     
     // Detect fullscreen changes
     document.addEventListener('fullscreenchange', handleFullscreenChange)
@@ -358,6 +650,7 @@ export default function StudentExamTakePage() {
     
     // Detect window blur (switching to other apps)
     window.addEventListener('blur', handleWindowBlur)
+    window.addEventListener('focus', handleWindowFocus)
     
     // Prevent copy/paste
     document.addEventListener('copy', preventCopyPaste)
@@ -371,16 +664,22 @@ export default function StudentExamTakePage() {
 
   const cleanupLockdown = () => {
     document.removeEventListener('contextmenu', preventContextMenu)
-    document.removeEventListener('keydown', preventKeyboardShortcuts)
+    window.removeEventListener('keydown', preventKeyboardShortcuts, true)
     document.removeEventListener('fullscreenchange', handleFullscreenChange)
     document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
     document.removeEventListener('mozfullscreenchange', handleFullscreenChange)
     document.removeEventListener('MSFullscreenChange', handleFullscreenChange)
     document.removeEventListener('visibilitychange', handleVisibilityChange)
     window.removeEventListener('blur', handleWindowBlur)
+    window.removeEventListener('focus', handleWindowFocus)
     document.removeEventListener('copy', preventCopyPaste)
     document.removeEventListener('paste', preventCopyPaste)
     document.removeEventListener('cut', preventCopyPaste)
+
+    if (blurViolationTimeoutRef.current) {
+      clearTimeout(blurViolationTimeoutRef.current)
+      blurViolationTimeoutRef.current = null
+    }
     
     document.body.style.userSelect = ''
     document.body.style.webkitUserSelect = ''
@@ -389,29 +688,30 @@ export default function StudentExamTakePage() {
   }
 
   const requestFullscreen = () => {
+    if (!requiresFullscreen) return
     const elem = document.documentElement
     if (elem.requestFullscreen) {
       elem.requestFullscreen().catch(() => {
         recordViolation('Gagal masuk fullscreen')
       })
-    } else if ((elem as any).webkitRequestFullscreen) {
-      (elem as any).webkitRequestFullscreen()
-    } else if ((elem as any).mozRequestFullScreen) {
-      (elem as any).mozRequestFullScreen()
-    } else if ((elem as any).msRequestFullscreen) {
-      (elem as any).msRequestFullscreen()
+    } else if ((elem as FullscreenElement).webkitRequestFullscreen) {
+      (elem as FullscreenElement).webkitRequestFullscreen?.()
+    } else if ((elem as FullscreenElement).mozRequestFullScreen) {
+      (elem as FullscreenElement).mozRequestFullScreen?.()
+    } else if ((elem as FullscreenElement).msRequestFullscreen) {
+      (elem as FullscreenElement).msRequestFullscreen?.()
     }
   }
 
   const exitFullscreen = () => {
     if (document.exitFullscreen) {
       document.exitFullscreen().catch(() => {})
-    } else if ((document as any).webkitExitFullscreen) {
-      (document as any).webkitExitFullscreen()
-    } else if ((document as any).mozCancelFullScreen) {
-      (document as any).mozCancelFullScreen()
-    } else if ((document as any).msExitFullscreen) {
-      (document as any).msExitFullscreen()
+    } else if ((document as FullscreenDocument).webkitExitFullscreen) {
+      (document as FullscreenDocument).webkitExitFullscreen?.()
+    } else if ((document as FullscreenDocument).mozCancelFullScreen) {
+      (document as FullscreenDocument).mozCancelFullScreen?.()
+    } else if ((document as FullscreenDocument).msExitFullscreen) {
+      (document as FullscreenDocument).msExitFullscreen?.()
     }
   }
 
@@ -461,14 +761,15 @@ export default function StudentExamTakePage() {
   }
 
   const handleFullscreenChange = () => {
+    if (!requiresFullscreen) return
     const isCurrentlyFullscreen = !!(
       document.fullscreenElement ||
-      (document as any).webkitFullscreenElement ||
-      (document as any).mozFullScreenElement ||
-      (document as any).msFullscreenElement
+      (document as FullscreenDocument).webkitFullscreenElement ||
+      (document as FullscreenDocument).mozFullScreenElement ||
+      (document as FullscreenDocument).msFullscreenElement
     )
 
-    if (!isCurrentlyFullscreen && examStartTime) {
+    if (!isCurrentlyFullscreen && (examStartTime || hasStartedRef.current)) {
       recordViolation('Keluar dari fullscreen')
       // Try to re-enter fullscreen
       setTimeout(() => {
@@ -478,25 +779,79 @@ export default function StudentExamTakePage() {
   }
 
   const handleVisibilityChange = () => {
-    if (document.hidden && examStartTime) {
-      recordViolation('Berpindah tab')
+    if (!examStartTime || !document.hidden) return
+    const now = Date.now()
+    const recentlyBlurred = now - lastWindowBlurAtRef.current < 1200
+    recordViolation(recentlyBlurred ? 'Alt+Tab / berpindah aplikasi' : 'Berpindah tab')
+  }
+
+  const handleWindowFocus = () => {
+    if (blurViolationTimeoutRef.current) {
+      clearTimeout(blurViolationTimeoutRef.current)
+      blurViolationTimeoutRef.current = null
     }
   }
 
   const handleWindowBlur = () => {
-    if (examStartTime) {
-      recordViolation('Berpindah aplikasi')
+    if (!examStartTime) return
+    lastWindowBlurAtRef.current = Date.now()
+    if (blurViolationTimeoutRef.current) {
+      clearTimeout(blurViolationTimeoutRef.current)
     }
+    // Delay short time: if tab becomes hidden immediately after blur,
+    // visibilitychange handler will classify it as Alt+Tab/tab switch.
+    blurViolationTimeoutRef.current = setTimeout(() => {
+      if (!document.hidden) {
+        recordViolation('Berpindah aplikasi')
+      }
+      blurViolationTimeoutRef.current = null
+    }, 180)
   }
 
   const recordViolation = (type: string) => {
-    // Grace period: Don't record violations in the first 5 seconds
-    if (examStartTime && (new Date().getTime() - examStartTime.getTime()) < 5000) {
+    const normalizedType = type.toLowerCase()
+    const isFullscreenOrShortcut = normalizedType.includes('fullscreen') || normalizedType.includes('tombol terlarang')
+
+    // Grace period: only for soft signals (tab/app) to avoid false positives right after exam starts
+    if (!isFullscreenOrShortcut && examStartTime && (new Date().getTime() - examStartTime.getTime()) < 1000) {
       return;
     }
 
+    const fingerprintKey = normalizedType.includes('fullscreen')
+      ? 'fullscreen'
+      : normalizedType.includes('tab')
+        ? 'tab'
+        : normalizedType.includes('aplikasi')
+          ? 'app'
+          : normalizedType.includes('tombol terlarang')
+            ? `shortcut:${normalizedType}`
+            : normalizedType
+    const nowMs = Date.now()
+    if (
+      lastViolationFingerprintRef.current &&
+      lastViolationFingerprintRef.current.key === fingerprintKey &&
+      nowMs - lastViolationFingerprintRef.current.at < 700
+    ) {
+      return
+    }
+    lastViolationFingerprintRef.current = { key: fingerprintKey, at: nowMs }
+
     setViolations(prev => {
       const newCount = prev + 1
+      const nextStats = {
+        ...monitoringStatsRef.current,
+        totalViolations: newCount,
+        lastViolationType: type,
+        lastViolationAt: new Date().toISOString(),
+      }
+      if (normalizedType.includes('tab')) {
+        nextStats.tabSwitchCount += 1
+      } else if (normalizedType.includes('fullscreen')) {
+        nextStats.fullscreenExitCount += 1
+      } else if (normalizedType.includes('aplikasi')) {
+        nextStats.appSwitchCount += 1
+      }
+      monitoringStatsRef.current = nextStats
       
       setLastViolationType(type)
       setShowViolationWarning(true)
@@ -521,6 +876,7 @@ export default function StudentExamTakePage() {
           icon: '🚨'
         })
       }
+      queueProgressSync(answers, FAST_PROGRESS_SYNC_DELAY_MS)
 
       return newCount
     })
@@ -569,8 +925,9 @@ export default function StudentExamTakePage() {
     return 'text-green-600'
   }
 
-  const handleAnswerChange = (questionId: string, answer: any, isComplex: boolean = false) => {
+  const handleAnswerChange = (questionId: string, answer: StudentExamAnswerValue, isComplex: boolean = false) => {
     setAnswers(prev => {
+      let nextAnswers: StudentExamAnswers = prev
       if (isComplex) {
         // Handle Complex Multiple Choice (Array of IDs)
         const currentAnswers = (prev[questionId] as string[]) || [];
@@ -578,24 +935,30 @@ export default function StudentExamTakePage() {
         
         if (currentAnswers.includes(answerId)) {
           // Remove if exists
-          return {
+          nextAnswers = {
             ...prev,
             [questionId]: currentAnswers.filter(id => id !== answerId)
           };
+          queueProgressSync(nextAnswers);
+          return nextAnswers;
         } else {
           // Add if not exists
-          return {
+          nextAnswers = {
             ...prev,
             [questionId]: [...currentAnswers, answerId]
           };
+          queueProgressSync(nextAnswers);
+          return nextAnswers;
         }
       }
       
       // Simple Multiple Choice / Essay
-      return {
+      nextAnswers = {
         ...prev,
         [questionId]: answer
       };
+      queueProgressSync(nextAnswers);
+      return nextAnswers;
     });
   }
 
@@ -635,10 +998,7 @@ export default function StudentExamTakePage() {
       setSubmitting(true)
 
       // Format answers
-      const formattedAnswers: Record<string, any> = {}
-      exam?.questions.forEach(q => {
-        formattedAnswers[q.id] = answers[q.id] || null
-      })
+      const formattedAnswers = buildFormattedAnswers(answers)
 
       const response = await api.post(
         `/exams/${id}/answers`,
@@ -655,20 +1015,47 @@ export default function StudentExamTakePage() {
         // Immediate navigation without toast as requested by user
         try {
           sessionStorage.setItem('just_submitted_exam_id', String(id))
-        } catch {}
+        } catch {
+          // Ignore sessionStorage failures during submit navigation.
+        }
         
         const returnRoute = sessionStorage.getItem('last_exam_route') || '/student/exams'
         navigate(returnRoute)
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const apiError = error as { response?: { data?: { message?: string } } }
       console.error('Error submitting exam:', error)
-      toast.error(error.response?.data?.message || 'Gagal mengumpulkan ujian')
+      toast.error(apiError.response?.data?.message || 'Gagal mengumpulkan ujian')
       setSubmitting(false)
     }
   }
 
+  const currentQuestion = exam?.questions?.[currentQuestionIndex] ?? null
+  const currentQuestionHtml = useMemo(
+    () =>
+      enhanceQuestionHtml(currentQuestion?.question_text || currentQuestion?.content || '', {
+        useQuestionImageThumbnail: true,
+      }),
+    [currentQuestion?.question_text, currentQuestion?.content],
+  )
+  const optionHtmlById = useMemo(() => {
+    const mapped = new Map<string, string>()
+    const options = Array.isArray(currentQuestion?.options) ? currentQuestion.options : []
+    options.forEach((option) => {
+      const optionId = String(option.id ?? '')
+      if (!optionId) return
+      mapped.set(
+        optionId,
+        enhanceQuestionHtml(option.option_text || option.content || '', {
+          useQuestionImageThumbnail: true,
+        }),
+      )
+    })
+    return mapped
+  }, [currentQuestion?.options])
+
   // Fullscreen Gate - MUST enter fullscreen before starting exam
-  if (!isFullscreen) {
+  if (requiresFullscreen && !isFullscreen) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-8 text-center">
@@ -740,8 +1127,6 @@ export default function StudentExamTakePage() {
     )
   }
 
-  const currentQuestion = exam.questions[currentQuestionIndex]
-  
   // Safety check for current question
   if (!currentQuestion) {
     return (
@@ -759,14 +1144,16 @@ export default function StudentExamTakePage() {
 
   const answeredCount = Object.keys(answers).length
   const totalQuestions = exam.questions.length
+  const effectiveViolations = Math.max(violations, monitoringStatsRef.current.totalViolations)
 
   const mediaSection = (
     <>
       {(currentQuestion.question_image_url || currentQuestion.image_url) && (
         <div className="mb-8 flex justify-center">
-          <img 
+          <QuestionMediaImage
             src={currentQuestion.question_image_url || currentQuestion.image_url || ''} 
             alt="Question" 
+            preferThumbnail
             className="max-w-full max-h-[500px] rounded-lg shadow-sm border border-gray-200"
           />
         </div>
@@ -779,6 +1166,7 @@ export default function StudentExamTakePage() {
                 <iframe
                     src={currentQuestion.question_video_url || currentQuestion.video_url || ''}
                     className="w-full h-full"
+                    loading="lazy"
                     allowFullScreen
                     title="YouTube Video"
                 />
@@ -787,6 +1175,7 @@ export default function StudentExamTakePage() {
             <video 
               src={currentQuestion.question_video_url || currentQuestion.video_url || ''} 
               controls 
+              preload="metadata"
               className="max-w-full max-h-[500px] mx-auto rounded-lg shadow-sm border border-gray-200"
             />
           )}
@@ -822,7 +1211,7 @@ export default function StudentExamTakePage() {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 rounded-lg border border-red-100">
                 <AlertTriangle className="w-4 h-4" />
-                <span className="font-bold">{violations}/3</span>
+                <span className="font-bold">{effectiveViolations}/3</span>
                 <span className="text-xs">Pelanggaran</span>
               </div>
               
@@ -847,10 +1236,10 @@ export default function StudentExamTakePage() {
       </div>
 
       {/* Main Content */}
-      <div className="pt-24 pb-24 max-w-7xl mx-auto px-4">
-        <div className="flex gap-6">
+      <div className="pt-24 pb-24 max-w-7xl mx-auto px-4 overflow-x-hidden">
+        <div className="flex gap-6 items-start">
           {/* Left: Question Area */}
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 min-h-[60vh]">
               {/* Question Header */}
               <div className="flex justify-between items-start mb-6">
@@ -864,8 +1253,9 @@ export default function StudentExamTakePage() {
 
               {/* Question Text */}
               <div 
-                className="prose max-w-none text-lg text-gray-800 mb-8"
-                dangerouslySetInnerHTML={{ __html: currentQuestion.question_text || currentQuestion.content || '' }}
+                className="prose max-w-none text-lg text-gray-800 mb-8 [&_*]:max-w-full [&_*]:whitespace-normal [&_*]:break-words [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:ml-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:ml-2 [&_li]:my-1"
+                style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                dangerouslySetInnerHTML={{ __html: currentQuestionHtml }}
               />
 
               {/* Media (Bottom) */}
@@ -874,17 +1264,24 @@ export default function StudentExamTakePage() {
               {/* Options */}
               {currentQuestion.question_type !== 'ESSAY' && (
                 <div className="space-y-3">
-                  {currentQuestion.options?.map((option) => {
-                    const isComplex = currentQuestion.question_type === 'COMPLEX_MULTIPLE_CHOICE';
-                    const isSelected = isComplex 
-                        ? (answers[currentQuestion.id] as string[] || []).includes(option.id)
-                        : answers[currentQuestion.id] === option.id;
+	                  {currentQuestion.options?.map((option) => {
+	                    const isComplex = currentQuestion.question_type === 'COMPLEX_MULTIPLE_CHOICE';
+                      const optionId = String(option.id ?? '');
+                      const optionImageSrc =
+                        typeof option.option_image_url === 'string'
+                          ? option.option_image_url
+                          : typeof option.image_url === 'string'
+                            ? option.image_url
+                            : null;
+	                    const isSelected = isComplex 
+	                        ? (answers[currentQuestion.id] as string[] || []).includes(optionId)
+	                        : String(answers[currentQuestion.id] ?? '') === optionId;
 
-                    return (
-                    <label 
-                      key={option.id}
+	                    return (
+	                    <label 
+	                      key={optionId}
                       className={`
-                        flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all hover:bg-gray-50
+                        flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all hover:bg-gray-50 min-w-0
                         ${isSelected 
                           ? 'border-blue-500 bg-blue-50/50' 
                           : 'border-gray-200'}
@@ -892,22 +1289,27 @@ export default function StudentExamTakePage() {
                     >
                       <div className="flex items-center h-full pt-1">
                         <input
-                          type={isComplex ? "checkbox" : "radio"}
-                          name={`question-${currentQuestion.id}`}
-                          value={option.id}
-                          checked={isSelected}
-                          onChange={() => handleAnswerChange(currentQuestion.id, option.id, isComplex)}
-                          className={`w-5 h-5 text-blue-600 border-gray-300 focus:ring-blue-500 ${isComplex ? 'rounded' : ''}`}
-                        />
+	                          type={isComplex ? "checkbox" : "radio"}
+	                          name={`question-${currentQuestion.id}`}
+	                          value={optionId}
+	                          checked={isSelected}
+	                          onChange={() => handleAnswerChange(currentQuestion.id, optionId, isComplex)}
+	                          className={`w-5 h-5 text-blue-600 border-gray-300 focus:ring-blue-500 ${isComplex ? 'rounded' : ''}`}
+	                        />
                       </div>
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         {/* Support both option_text (legacy) and content (new) */}
-                        <div className="font-medium text-gray-700" dangerouslySetInnerHTML={{ __html: option.option_text || option.content || '' }}></div>
-                        {(option.option_image_url || option.image_url) && (
-                          <img 
-                            src={option.option_image_url || option.image_url} 
-                            alt="Option" 
-                            className="mt-2 max-h-40 rounded border border-gray-200"
+	                        <div
+	                          className="font-medium text-gray-700 break-words [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:ml-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:ml-2 [&_li]:my-1"
+	                          style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+	                          dangerouslySetInnerHTML={{ __html: optionHtmlById.get(optionId) || '' }}
+	                        ></div>
+	                        {optionImageSrc && (
+	                          <QuestionMediaImage
+	                            src={optionImageSrc}
+	                            alt="Option" 
+	                            preferThumbnail
+	                            className="mt-2 max-h-40 rounded border border-gray-200"
                           />
                         )}
                       </div>
@@ -917,16 +1319,25 @@ export default function StudentExamTakePage() {
               )}
 
               {/* Essay Input */}
-              {currentQuestion.question_type === 'ESSAY' && (
-                <div>
-                  <textarea
-                    value={answers[currentQuestion.id] || ''}
-                    onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value)}
-                    className="w-full h-48 p-4 border border-gray-300 rounded-xl focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none text-gray-700"
-                    placeholder="Tulis jawaban Anda di sini..."
-                  />
-                </div>
-              )}
+	              {currentQuestion.question_type === 'ESSAY' && (
+	                <div>
+                  {(() => {
+                    const essayValue = answers[currentQuestion.id];
+                    const normalizedEssayValue =
+                      typeof essayValue === 'string' || typeof essayValue === 'number'
+                        ? String(essayValue)
+                        : '';
+                    return (
+	                  <textarea
+	                    value={normalizedEssayValue}
+	                    onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value)}
+	                    className="w-full h-48 p-4 border border-gray-300 rounded-xl focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none text-gray-700"
+	                    placeholder="Tulis jawaban Anda di sini..."
+	                  />
+                    )
+                  })()}
+	                </div>
+	              )}
             </div>
 
             {/* Navigation Buttons */}

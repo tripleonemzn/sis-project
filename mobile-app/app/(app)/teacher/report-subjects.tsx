@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
@@ -7,7 +7,11 @@ import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { useTeacherAssignmentsQuery } from '../../../src/features/teacherAssignments/useTeacherAssignmentsQuery';
-import { TeacherSubjectReportItem, teacherReportApi } from '../../../src/features/teacherReports/teacherReportApi';
+import {
+  TeacherSubjectReportItem,
+  TeacherSubjectReportMeta,
+  teacherReportApi,
+} from '../../../src/features/teacherReports/teacherReportApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
 
@@ -34,6 +38,48 @@ function parseOptionalScore(raw: string) {
   return { value, invalid: false };
 }
 
+function normalizeSlotCode(raw: string | null | undefined) {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function resolvePrimarySlots(meta: TeacherSubjectReportMeta | null | undefined) {
+  const includeSlots = Array.isArray(meta?.includeSlots)
+    ? meta.includeSlots.map((slot) => normalizeSlotCode(slot)).filter(Boolean)
+    : [];
+  const firstSlot = includeSlots[0] || 'FORMATIF';
+  const secondSlot = includeSlots[1] || firstSlot;
+  const lastSlot = includeSlots[includeSlots.length - 1] || secondSlot;
+
+  return {
+    formative: normalizeSlotCode(meta?.primarySlots?.formative) || firstSlot,
+    midterm: normalizeSlotCode(meta?.primarySlots?.midterm) || secondSlot,
+    final: normalizeSlotCode(meta?.primarySlots?.final) || lastSlot,
+  };
+}
+
+function readRowSlotScore(
+  row: TeacherSubjectReportItem,
+  slotCode: string,
+  fallback: number | null | undefined,
+) {
+  const normalizedSlotCode = normalizeSlotCode(slotCode);
+  if (
+    normalizedSlotCode &&
+    row.slotScores &&
+    typeof row.slotScores === 'object' &&
+    Object.prototype.hasOwnProperty.call(row.slotScores, normalizedSlotCode)
+  ) {
+    return row.slotScores[normalizedSlotCode] ?? null;
+  }
+  return fallback ?? null;
+}
+
 export default function TeacherSubjectReportScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -46,21 +92,13 @@ export default function TeacherSubjectReportScreen() {
   const [semester, setSemester] = useState<Semester>('ODD');
   const [searchQuery, setSearchQuery] = useState('');
   const [editingRow, setEditingRow] = useState<TeacherSubjectReportItem | null>(null);
-  const [editingFormatif, setEditingFormatif] = useState('');
-  const [editingSbts, setEditingSbts] = useState('');
-  const [editingSas, setEditingSas] = useState('');
+  const [editingSlotValues, setEditingSlotValues] = useState<Record<string, string>>({});
   const [editingDescription, setEditingDescription] = useState('');
-
-  useEffect(() => {
-    if (!selectedAssignmentId && assignments.length > 0) {
-      setSelectedAssignmentId(assignments[0].id);
-    }
-  }, [selectedAssignmentId, assignments]);
-
-  const selectedAssignment = assignments.find((item) => item.id === selectedAssignmentId) || null;
+  const effectiveSelectedAssignmentId = selectedAssignmentId ?? assignments[0]?.id ?? null;
+  const selectedAssignment = assignments.find((item) => item.id === effectiveSelectedAssignmentId) || null;
 
   const reportQuery = useQuery({
-    queryKey: ['mobile-teacher-subject-report', user?.id, selectedAssignmentId, semester],
+    queryKey: ['mobile-teacher-subject-report', user?.id, effectiveSelectedAssignmentId, semester],
     enabled: isAuthenticated && user?.role === 'TEACHER' && !!selectedAssignment,
     queryFn: () =>
       teacherReportApi.getSubjectReport({
@@ -70,9 +108,34 @@ export default function TeacherSubjectReportScreen() {
         semester,
       }),
   });
+  const reportRows = useMemo(() => reportQuery.data?.rows || [], [reportQuery.data?.rows]);
+  const reportMeta = reportQuery.data?.meta || null;
+  const primarySlots = useMemo(() => resolvePrimarySlots(reportMeta), [reportMeta]);
+  const slotEditOrder = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [primarySlots.formative, primarySlots.midterm, primarySlots.final]
+            .map((slot) => normalizeSlotCode(slot))
+            .filter(Boolean),
+        ),
+      ),
+    [primarySlots.formative, primarySlots.midterm, primarySlots.final],
+  );
+  const slotLabelsByCode = useMemo(() => {
+    const labels = reportMeta?.slotLabels || {};
+    const getLabel = (slot: string, fallback: string) =>
+      String(labels[slot]?.label || fallback).trim() || fallback;
+    return {
+      [primarySlots.formative]: getLabel(primarySlots.formative, 'Formatif'),
+      [primarySlots.midterm]: getLabel(primarySlots.midterm, 'Midterm'),
+      [primarySlots.final]: getLabel(primarySlots.final, 'Final'),
+    } as Record<string, string>;
+  }, [reportMeta, primarySlots.formative, primarySlots.midterm, primarySlots.final]);
+  const slotInputWidth = `${100 / Math.max(slotEditOrder.length, 1)}%` as `${number}%`;
 
   const filteredRows = useMemo(() => {
-    const rows = reportQuery.data || [];
+    const rows = reportRows;
     const q = searchQuery.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((item) => {
@@ -81,7 +144,7 @@ export default function TeacherSubjectReportScreen() {
       const nisn = item.student?.nisn?.toLowerCase() || '';
       return name.includes(q) || nis.includes(q) || nisn.includes(q);
     });
-  }, [reportQuery.data, searchQuery]);
+  }, [reportRows, searchQuery]);
 
   const summary = useMemo(() => {
     const rows = filteredRows;
@@ -102,44 +165,54 @@ export default function TeacherSubjectReportScreen() {
 
   const openEditModal = (row: TeacherSubjectReportItem) => {
     setEditingRow(row);
-    setEditingFormatif(row.formatifScore !== null && row.formatifScore !== undefined ? String(row.formatifScore) : '');
-    setEditingSbts(row.sbtsScore !== null && row.sbtsScore !== undefined ? String(row.sbtsScore) : '');
-    setEditingSas(row.sasScore !== null && row.sasScore !== undefined ? String(row.sasScore) : '');
+    const nextValues: Record<string, string> = {};
+    slotEditOrder.forEach((slotCode) => {
+      const fallback =
+        slotCode === primarySlots.formative
+          ? row.formatifScore
+          : slotCode === primarySlots.midterm
+            ? row.sbtsScore
+            : slotCode === primarySlots.final
+              ? row.sasScore
+              : null;
+      const score = readRowSlotScore(row, slotCode, fallback);
+      nextValues[slotCode] = score !== null && score !== undefined ? String(score) : '';
+    });
+    setEditingSlotValues(nextValues);
     setEditingDescription(row.description || '');
   };
 
   const saveEditMutation = useMutation({
     mutationFn: async () => {
       if (!editingRow) throw new Error('Data rapor tidak ditemukan.');
-      const formatifParsed = parseOptionalScore(editingFormatif);
-      const sbtsParsed = parseOptionalScore(editingSbts);
-      const sasParsed = parseOptionalScore(editingSas);
-
-      if (formatifParsed.invalid || sbtsParsed.invalid || sasParsed.invalid) {
-        throw new Error('Nilai harus berupa angka.');
-      }
-
-      for (const score of [formatifParsed.value, sbtsParsed.value, sasParsed.value]) {
-        if (score !== null && (score < 0 || score > 100)) {
+      const slotScoresPayload: Record<string, number | null> = {};
+      for (const slotCode of slotEditOrder) {
+        const parsed = parseOptionalScore(editingSlotValues[slotCode] || '');
+        if (parsed.invalid) {
+          throw new Error('Nilai harus berupa angka.');
+        }
+        if (parsed.value !== null && (parsed.value < 0 || parsed.value > 100)) {
           throw new Error('Nilai harus dalam rentang 0 - 100.');
         }
+        slotScoresPayload[slotCode] = parsed.value;
       }
 
       return teacherReportApi.updateReportGrade(editingRow.id, {
-        formatifScore: formatifParsed.value,
-        sbtsScore: sbtsParsed.value,
-        sasScore: sasParsed.value,
+        formatifScore: slotScoresPayload[primarySlots.formative] ?? null,
+        sbtsScore: slotScoresPayload[primarySlots.midterm] ?? null,
+        sasScore: slotScoresPayload[primarySlots.final] ?? null,
+        slotScores: slotScoresPayload,
         description: editingDescription.trim(),
       });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: ['mobile-teacher-subject-report', user?.id, selectedAssignmentId, semester],
+        queryKey: ['mobile-teacher-subject-report', user?.id, effectiveSelectedAssignmentId, semester],
       });
       setEditingRow(null);
       notifySuccess('Data rapor berhasil diperbarui.');
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal menyimpan perubahan rapor.');
     },
   });
@@ -196,7 +269,7 @@ export default function TeacherSubjectReportScreen() {
               <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Pilih Kelas & Mapel</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
                 {assignments.map((item) => {
-                  const selected = selectedAssignmentId === item.id;
+                  const selected = effectiveSelectedAssignmentId === item.id;
                   return (
                     <View key={item.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
                       <Pressable
@@ -351,9 +424,20 @@ export default function TeacherSubjectReportScreen() {
                           </View>
                           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
                             {[
-                              { label: 'NF', value: roundScore(item.formatifScore) },
-                              { label: 'SBTS', value: roundScore(item.sbtsScore) },
-                              { label: 'SAS', value: roundScore(item.sasScore) },
+                              {
+                                label: slotLabelsByCode[primarySlots.formative] || primarySlots.formative,
+                                value: roundScore(
+                                  readRowSlotScore(item, primarySlots.formative, item.formatifScore),
+                                ),
+                              },
+                              {
+                                label: slotLabelsByCode[primarySlots.midterm] || primarySlots.midterm,
+                                value: roundScore(readRowSlotScore(item, primarySlots.midterm, item.sbtsScore)),
+                              },
+                              {
+                                label: slotLabelsByCode[primarySlots.final] || primarySlots.final,
+                                value: roundScore(readRowSlotScore(item, primarySlots.final, item.sasScore)),
+                              },
                               { label: 'Akhir', value: roundScore(item.finalScore) },
                             ].map((score) => (
                               <View key={score.label} style={{ width: '25%', paddingHorizontal: 4, marginBottom: 6 }}>
@@ -473,61 +557,34 @@ export default function TeacherSubjectReportScreen() {
               {editingRow?.student?.name || '-'}
             </Text>
 
-            <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
-              <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>NF</Text>
-                <TextInput
-                  value={editingFormatif}
-                  onChangeText={setEditingFormatif}
-                  keyboardType="numeric"
-                  placeholder="0-100"
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    color: '#0f172a',
-                    backgroundColor: '#fff',
-                  }}
-                />
-              </View>
-              <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>SBTS</Text>
-                <TextInput
-                  value={editingSbts}
-                  onChangeText={setEditingSbts}
-                  keyboardType="numeric"
-                  placeholder="0-100"
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    color: '#0f172a',
-                    backgroundColor: '#fff',
-                  }}
-                />
-              </View>
-              <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>SAS</Text>
-                <TextInput
-                  value={editingSas}
-                  onChangeText={setEditingSas}
-                  keyboardType="numeric"
-                  placeholder="0-100"
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    color: '#0f172a',
-                    backgroundColor: '#fff',
-                  }}
-                />
-              </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
+              {slotEditOrder.map((slotCode) => (
+                <View key={slotCode} style={{ width: slotInputWidth, paddingHorizontal: 4, marginBottom: 8 }}>
+                  <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>
+                    {slotLabelsByCode[slotCode] || slotCode}
+                  </Text>
+                  <TextInput
+                    value={editingSlotValues[slotCode] || ''}
+                    onChangeText={(value) =>
+                      setEditingSlotValues((prev) => ({
+                        ...prev,
+                        [slotCode]: value,
+                      }))
+                    }
+                    keyboardType="numeric"
+                    placeholder="0-100"
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#cbd5e1',
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
+                      color: '#0f172a',
+                      backgroundColor: '#fff',
+                    }}
+                  />
+                </View>
+              ))}
             </View>
 
             <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>Capaian Kompetensi</Text>

@@ -11,7 +11,8 @@ import {
     Trash2,
     BookOpen,
     BarChart3,
-    Users
+    Users,
+    X,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import {
@@ -19,13 +20,31 @@ import {
     findExamProgramBySlug,
     normalizeExamProgramCode,
 } from '../../../services/exam.service';
-import type { ExamPacket, ExamProgram, ExamType } from '../../../services/exam.service';
+import type { ExamPacket, ExamProgram, ExamSchedule, ExamType } from '../../../services/exam.service';
 import { academicYearService } from '../../../services/academicYear.service';
 import { teacherAssignmentService } from '../../../services/teacherAssignment.service';
+import type { TeacherAssignment } from '../../../services/teacherAssignment.service';
 
 import { QuestionBankView } from '../../../components/teacher/exams/QuestionBankView';
 
 type SemesterFilter = 'GANJIL' | 'GENAP' | '';
+type CreateExamInfoDraft = {
+    title: string;
+    assignmentId: string;
+    subjectId: string;
+    semester: 'ODD' | 'EVEN';
+    duration: string;
+    instructions: string;
+};
+
+type ScheduleDraftRow = {
+    classId: number;
+    className: string;
+    startTime: string;
+    endTime: string;
+    selected: boolean;
+    existingScheduleId?: number;
+};
 
 const LEGACY_ROUTE_PROGRAM_MAP: Record<string, string> = {
     '/formatif': 'FORMATIF',
@@ -65,17 +84,71 @@ const fromSemesterFilter = (semester: SemesterFilter): 'ODD' | 'EVEN' | undefine
     return undefined;
 };
 
+const toDateTimeLocalValue = (value?: string | null): string => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+const resolveProgramPacketType = (program?: ExamProgram | null): ExamType => {
+    const baseType = normalizeExamProgramCode(program?.baseType || program?.baseTypeCode);
+    if (baseType) return baseType as ExamType;
+    const componentType = normalizeExamProgramCode(program?.gradeComponentTypeCode || program?.gradeComponentType);
+    if (componentType === 'FORMATIVE') return 'FORMATIF';
+    return 'FORMATIF';
+};
+
+const normalizeClassLevelToken = (raw?: string | null): string => {
+    const value = String(raw || '').trim().toUpperCase();
+    if (!value) return '';
+    if (value.startsWith('XII')) return 'XII';
+    if (value.startsWith('XI')) return 'XI';
+    if (value.startsWith('X')) return 'X';
+    return value;
+};
+
+const buildAssignmentDisplayLabel = (assignment: TeacherAssignment): string => {
+    const subjectName = String(assignment.subject?.name || '-').trim();
+    const className = String(assignment.class?.name || '-').trim();
+    const teacherName = String(assignment.teacher?.name || '-').trim();
+    return `${subjectName} — ${className} — ${teacherName}`;
+};
+
 export const ExamListPage = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const { programCode: programSlugParam } = useParams<{ programCode?: string }>();
+    const { programCode: programSlugParam, legacyProgramCode } = useParams<{
+      programCode?: string;
+      legacyProgramCode?: string;
+    }>();
 
     // Filters with persistence
     const [search, setSearch] = useState('');
     const [selectedSubject, setSelectedSubject] = useState('');
     const [subjects, setSubjects] = useState<{id: number, name: string}[]>([]);
+    const [assignmentOptions, setAssignmentOptions] = useState<TeacherAssignment[]>([]);
     const [activeAcademicYear, setActiveAcademicYear] = useState<{id: number, name: string, semester?: string} | null>(null);
     const [selectedSemester, setSelectedSemester] = useState<SemesterFilter>('');
+    const [isCreateInfoModalOpen, setIsCreateInfoModalOpen] = useState(false);
+    const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+    const [schedulePacket, setSchedulePacket] = useState<ExamPacket | null>(null);
+    const [scheduleRows, setScheduleRows] = useState<ScheduleDraftRow[]>([]);
+    const [isScheduleLoading, setIsScheduleLoading] = useState(false);
+    const [isScheduleSaving, setIsScheduleSaving] = useState(false);
+    const [createExamInfoDraft, setCreateExamInfoDraft] = useState<CreateExamInfoDraft>({
+        title: '',
+        assignmentId: '',
+        subjectId: '',
+        semester: 'ODD',
+        duration: '',
+        instructions: '',
+    });
     const isBankSoal = location.pathname.includes('/bank');
 
     const fetchInitialData = useCallback(async () => {
@@ -91,7 +164,8 @@ export const ExamListPage = () => {
             }
             
             // Extract unique subjects from assignments
-            const assignments = assignRes.data?.assignments || [];
+            const assignments = (assignRes.data?.assignments || []) as TeacherAssignment[];
+            setAssignmentOptions(assignments);
             const uniqueSubjects = Array.from(new Map(assignments.map((a: { subject: { id: number; name: string } }) => [a.subject.id, a.subject])).values());
             setSubjects(uniqueSubjects as {id: number, name: string}[]);
 
@@ -130,8 +204,9 @@ export const ExamListPage = () => {
     const selectedProgram = useMemo<ExamProgram | null>(() => {
         if (isBankSoal) return null;
 
-        if (programSlugParam) {
-            return findExamProgramBySlug(teacherPrograms, programSlugParam) || null;
+        const requestedProgramSlug = String(programSlugParam || legacyProgramCode || '').trim();
+        if (requestedProgramSlug) {
+            return findExamProgramBySlug(teacherPrograms, requestedProgramSlug) || null;
         }
 
         if (legacyRouteProgramCode) {
@@ -144,14 +219,135 @@ export const ExamListPage = () => {
         }
 
         return teacherPrograms[0] || null;
-    }, [isBankSoal, programSlugParam, teacherPrograms, legacyRouteProgramCode]);
+    }, [isBankSoal, programSlugParam, legacyProgramCode, teacherPrograms, legacyRouteProgramCode]);
 
     const selectedProgramCode = useMemo(
         () => normalizeExamProgramCode(selectedProgram?.code),
         [selectedProgram?.code],
     );
-    const selectedProgramBaseType = selectedProgram?.baseType as ExamType | undefined;
+    const selectedProgramBaseType = useMemo(
+        () => (selectedProgram ? resolveProgramPacketType(selectedProgram) : undefined),
+        [selectedProgram],
+    );
     const isSemesterLockedByProgram = Boolean(selectedProgram?.fixedSemester);
+    const allowedSubjectIdsByProgram = useMemo(() => {
+        const ids = Array.isArray(selectedProgram?.allowedSubjectIds) ? selectedProgram?.allowedSubjectIds : [];
+        return new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0));
+    }, [selectedProgram?.allowedSubjectIds]);
+    const allowedClassLevelsByProgram = useMemo(() => {
+        const levels = Array.isArray(selectedProgram?.targetClassLevels) ? selectedProgram?.targetClassLevels : [];
+        return new Set(
+            levels
+                .map((level) => normalizeClassLevelToken(level))
+                .filter((level) => Boolean(level)),
+        );
+    }, [selectedProgram?.targetClassLevels]);
+    const filteredAssignmentsByProgram = useMemo(() => {
+        if (!selectedProgram) return assignmentOptions;
+        return assignmentOptions.filter((assignment) => {
+            const subjectAllowed =
+                allowedSubjectIdsByProgram.size === 0 ||
+                allowedSubjectIdsByProgram.has(Number(assignment.subject?.id));
+            const assignmentLevel = normalizeClassLevelToken(assignment.class?.level || assignment.class?.name);
+            const classLevelAllowed =
+                allowedClassLevelsByProgram.size === 0 ||
+                (assignmentLevel ? allowedClassLevelsByProgram.has(assignmentLevel) : true);
+            return subjectAllowed && classLevelAllowed;
+        });
+    }, [selectedProgram, assignmentOptions, allowedSubjectIdsByProgram, allowedClassLevelsByProgram]);
+    const filteredSubjects = useMemo(() => {
+        if (filteredAssignmentsByProgram.length > 0) {
+            return Array.from(
+                new Map(
+                    filteredAssignmentsByProgram.map((assignment) => [assignment.subject.id, assignment.subject]),
+                ).values(),
+            ) as { id: number; name: string }[];
+        }
+        if (!selectedProgram || allowedSubjectIdsByProgram.size === 0) return subjects;
+        return subjects.filter((subject) => allowedSubjectIdsByProgram.has(subject.id));
+    }, [filteredAssignmentsByProgram, allowedSubjectIdsByProgram, selectedProgram, subjects]);
+
+    const openCreateInfoModal = () => {
+        if (!selectedProgram) {
+            toast.error('Program ujian belum dipilih');
+            return;
+        }
+        if (filteredAssignmentsByProgram.length === 0) {
+            toast.error('Program ini belum memiliki assignment mapel-kelas yang diizinkan.');
+            return;
+        }
+
+        const fixedSemester = selectedProgram.fixedSemester;
+        const semesterFromFilter = fromSemesterFilter(selectedSemester);
+        const assignmentFromDraft = filteredAssignmentsByProgram.find(
+            (assignment) => String(assignment.id) === String(createExamInfoDraft.assignmentId),
+        );
+        const assignmentFromFilterSubject =
+            selectedSubject
+                ? filteredAssignmentsByProgram.find(
+                      (assignment) => String(assignment.subject?.id) === String(selectedSubject),
+                  )
+                : undefined;
+        const fallbackAssignment =
+            assignmentFromDraft || assignmentFromFilterSubject || filteredAssignmentsByProgram[0];
+
+        setCreateExamInfoDraft((prev) => ({
+            ...prev,
+            assignmentId: String(prev.assignmentId || fallbackAssignment?.id || ''),
+            subjectId: String(prev.subjectId || fallbackAssignment?.subject?.id || ''),
+            semester: fixedSemester || semesterFromFilter || prev.semester || 'ODD',
+        }));
+        setIsCreateInfoModalOpen(true);
+    };
+
+    const handleCreateExamFromModal = () => {
+        if (!selectedProgram) {
+            toast.error('Program ujian tidak ditemukan');
+            return;
+        }
+        if (!createExamInfoDraft.title.trim()) {
+            toast.error('Judul ujian wajib diisi');
+            return;
+        }
+        const selectedAssignment = filteredAssignmentsByProgram.find(
+            (assignment) => String(assignment.id) === String(createExamInfoDraft.assignmentId),
+        );
+        if (!selectedAssignment) {
+            toast.error('Assignment mapel-kelas wajib dipilih');
+            return;
+        }
+
+        const resolvedSubjectId = Number(selectedAssignment.subject?.id);
+        if (!Number.isFinite(resolvedSubjectId) || resolvedSubjectId <= 0) {
+            toast.error('Mapel assignment tidak valid');
+            return;
+        }
+
+        const duration = Number(createExamInfoDraft.duration);
+        if (!Number.isFinite(duration) || duration <= 0) {
+            toast.error('Durasi ujian wajib diisi');
+            return;
+        }
+
+        const finalType = selectedProgramBaseType || resolveProgramPacketType(selectedProgram);
+        navigate('/teacher/exams/create', {
+            state: {
+                type: finalType,
+                programCode: selectedProgram.code || '',
+                programLabel: selectedProgram.label || selectedProgram.code || finalType,
+                fixedSemester: selectedProgram.fixedSemester || null,
+                packetDraft: {
+                    title: createExamInfoDraft.title.trim(),
+                    teacherAssignmentId: Number(selectedAssignment.id),
+                    subjectId: resolvedSubjectId,
+                    semester: createExamInfoDraft.semester,
+                    duration,
+                    instructions: createExamInfoDraft.instructions,
+                },
+            },
+        });
+        setIsCreateInfoModalOpen(false);
+    };
 
     useEffect(() => {
         if (isBankSoal) return;
@@ -191,6 +387,22 @@ export const ExamListPage = () => {
             }),
         );
     }, [isBankSoal, selectedProgramCode, selectedSemester, selectedSubject]);
+
+    useEffect(() => {
+        if (filteredSubjects.length === 0) {
+            setSelectedSubject('');
+            setCreateExamInfoDraft((prev) => ({ ...prev, subjectId: '' }));
+            return;
+        }
+        if (selectedSubject && !filteredSubjects.some((subject) => String(subject.id) === String(selectedSubject))) {
+            setSelectedSubject('');
+        }
+        setCreateExamInfoDraft((prev) => {
+            if (!prev.subjectId) return prev;
+            if (filteredSubjects.some((subject) => String(subject.id) === String(prev.subjectId))) return prev;
+            return { ...prev, subjectId: '' };
+        });
+    }, [filteredSubjects, selectedSubject]);
 
     const getPageTitle = () => {
         if (isBankSoal) return 'Bank Soal';
@@ -270,6 +482,162 @@ export const ExamListPage = () => {
         }
     };
 
+    const handleScheduleRowChange = (
+        classId: number,
+        field: 'selected' | 'startTime' | 'endTime',
+        value: boolean | string,
+    ) => {
+        setScheduleRows((prev) =>
+            prev.map((row) => (row.classId === classId ? { ...row, [field]: value } : row)),
+        );
+    };
+
+    const openScheduleModal = async (packet: ExamPacket) => {
+        setIsScheduleLoading(true);
+        setSchedulePacket(packet);
+        setIsScheduleModalOpen(true);
+
+        try {
+            const subjectId = Number(packet.subjectId || packet.subject?.id || 0);
+            const assignmentClasses = assignmentOptions
+                .filter((assignment) => Number(assignment.subject?.id) === subjectId)
+                .map((assignment) => assignment.class)
+                .filter((klass) => Boolean(klass?.id))
+                .map((klass) => ({ id: Number(klass.id), name: String(klass.name || '-') }));
+
+            const uniqueClasses = Array.from(new Map(assignmentClasses.map((klass) => [klass.id, klass])).values());
+
+            const scheduleRes = await examService.getSchedules({
+                packetId: Number(packet.id),
+            });
+            const schedulePayload = Array.isArray(scheduleRes?.data)
+                ? scheduleRes.data
+                : Array.isArray(scheduleRes?.data?.schedules)
+                ? scheduleRes.data.schedules
+                : [];
+            const packetSchedules = schedulePayload as ExamSchedule[];
+
+            const classRowsMap = new Map<number, ScheduleDraftRow>();
+            uniqueClasses.forEach((klass) => {
+                classRowsMap.set(klass.id, {
+                    classId: klass.id,
+                    className: klass.name,
+                    startTime: '',
+                    endTime: '',
+                    selected: false,
+                });
+            });
+
+            packetSchedules.forEach((schedule) => {
+                const classId = Number(schedule.classId);
+                const existing = classRowsMap.get(classId);
+                const nextRow: ScheduleDraftRow = {
+                    classId,
+                    className: String(existing?.className || schedule.class?.name || `Kelas ${classId}`),
+                    startTime: toDateTimeLocalValue(schedule.startTime),
+                    endTime: toDateTimeLocalValue(schedule.endTime),
+                    selected: true,
+                    existingScheduleId: Number(schedule.id),
+                };
+                classRowsMap.set(classId, nextRow);
+            });
+
+            const nextRows = Array.from(classRowsMap.values()).sort((a, b) =>
+                a.className.localeCompare(b.className, 'id', { numeric: true, sensitivity: 'base' }),
+            );
+            setScheduleRows(nextRows);
+        } catch (error) {
+            console.error('Error loading schedule modal:', error);
+            toast.error('Gagal memuat data jadwal ujian.');
+            setScheduleRows([]);
+        } finally {
+            setIsScheduleLoading(false);
+        }
+    };
+
+    const closeScheduleModal = () => {
+        if (isScheduleSaving) return;
+        setIsScheduleModalOpen(false);
+        setSchedulePacket(null);
+        setScheduleRows([]);
+        setIsScheduleLoading(false);
+    };
+
+    const handleSaveScheduleModal = async () => {
+        if (!schedulePacket || !activeAcademicYear?.id) {
+            toast.error('Data jadwal tidak valid.');
+            return;
+        }
+
+        const selectedRows = scheduleRows.filter((row) => row.selected);
+        if (selectedRows.length === 0) {
+            toast.error('Pilih minimal satu kelas.');
+            return;
+        }
+
+        const invalid = selectedRows.find((row) => !row.startTime || !row.endTime);
+        if (invalid) {
+            toast.error(`Lengkapi waktu mulai/selesai untuk ${invalid.className}.`);
+            return;
+        }
+
+        setIsScheduleSaving(true);
+        try {
+            const isNotFound = (error: unknown) =>
+                Number((error as { response?: { status?: number } })?.response?.status) === 404;
+
+            for (const row of scheduleRows) {
+                if (!row.selected) {
+                    if (row.existingScheduleId) {
+                        try {
+                            await examService.deleteSchedule(row.existingScheduleId);
+                        } catch (error) {
+                            if (!isNotFound(error)) {
+                                throw error;
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                const payload = {
+                    startTime: new Date(row.startTime).toISOString(),
+                    endTime: new Date(row.endTime).toISOString(),
+                };
+
+                if (row.existingScheduleId) {
+                    try {
+                        await examService.updateSchedule(row.existingScheduleId, payload);
+                    } catch (error) {
+                        if (!isNotFound(error)) {
+                            throw error;
+                        }
+                        await examService.createSchedule({
+                            packetId: Number(schedulePacket.id),
+                            classIds: [Number(row.classId)],
+                            ...payload,
+                        });
+                    }
+                    continue;
+                }
+
+                await examService.createSchedule({
+                    packetId: Number(schedulePacket.id),
+                    classIds: [Number(row.classId)],
+                    ...payload,
+                });
+            }
+            toast.success('Jadwal ujian berhasil disimpan.');
+            closeScheduleModal();
+            refetchPackets();
+        } catch (error) {
+            console.error('Error saving schedule modal:', error);
+            toast.error('Gagal menyimpan jadwal ujian.');
+        } finally {
+            setIsScheduleSaving(false);
+        }
+    };
+
     /* 
     // Old manual fetch
     const fetchPackets = useCallback(async () => {
@@ -323,17 +691,7 @@ export const ExamListPage = () => {
                 </div>
                 {!isBankSoal && selectedProgram && (
                     <button 
-                        onClick={() => {
-                            const finalType = selectedProgramBaseType || ('FORMATIF' as ExamType);
-                            navigate('/teacher/exams/create', {
-                                state: {
-                                    type: finalType,
-                                    programCode: selectedProgram?.code || finalType,
-                                    programLabel: selectedProgram?.label || finalType,
-                                    fixedSemester: selectedProgram?.fixedSemester || null,
-                                },
-                            });
-                        }}
+                        onClick={openCreateInfoModal}
                         className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-normal"
                     >
                         <Plus className="w-4 h-4" />
@@ -384,7 +742,7 @@ export const ExamListPage = () => {
                             onChange={(e) => setSelectedSubject(e.target.value)}
                         >
                             <option value="">Pilih Mata Pelajaran</option>
-                            {subjects.map(s => (
+                            {filteredSubjects.map(s => (
                                 <option key={s.id} value={s.id}>{s.name}</option>
                             ))}
                         </select>
@@ -462,7 +820,7 @@ export const ExamListPage = () => {
                             <div className="pt-3 border-t border-gray-100 space-y-2">
                                 <div className="grid grid-cols-3 gap-2">
                                     <button 
-                                        onClick={() => navigate(`/teacher/exams/${packet.id}/schedule`)}
+                                        onClick={() => openScheduleModal(packet)}
                                         className="px-2 py-1.5 bg-blue-50 text-blue-600 text-xs font-bold rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-1 border border-blue-100"
                                     >
                                         <Calendar className="w-3 h-3" />
@@ -511,6 +869,303 @@ export const ExamListPage = () => {
                             </div>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {isScheduleModalOpen && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                    onClick={closeScheduleModal}
+                >
+                    <div
+                        className="w-full max-w-5xl rounded-2xl border border-slate-200 bg-white shadow-2xl"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                            <div>
+                                <h3 className="text-lg font-semibold text-slate-900">
+                                    Atur Jadwal Ujian
+                                </h3>
+                                <p className="text-sm text-slate-500">
+                                    {schedulePacket?.title || 'Packet ujian'}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeScheduleModal}
+                                className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-100"
+                                disabled={isScheduleSaving}
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        <div className="max-h-[70vh] overflow-y-auto px-6 py-5">
+                            {isScheduleLoading ? (
+                                <div className="py-12 text-center text-sm text-slate-500">Memuat data kelas...</div>
+                            ) : scheduleRows.length === 0 ? (
+                                <div className="py-12 text-center text-sm text-slate-500">
+                                    Tidak ada kelas assignment untuk mapel pada packet ini.
+                                </div>
+                            ) : (
+                                <div className="overflow-hidden rounded-xl border border-slate-200">
+                                    <table className="w-full min-w-[760px] text-sm">
+                                        <thead className="bg-slate-50 text-slate-600">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left font-semibold w-14">Pilih</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Kelas</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Mulai</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Selesai</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {scheduleRows.map((row) => (
+                                                <tr key={row.classId} className="border-t border-slate-100">
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            id={`schedule-select-${row.classId}`}
+                                                            type="checkbox"
+                                                            checked={row.selected}
+                                                            onChange={(event) =>
+                                                                handleScheduleRowChange(
+                                                                    row.classId,
+                                                                    'selected',
+                                                                    event.target.checked,
+                                                                )
+                                                            }
+                                                            className="h-4 w-4"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3 font-medium text-slate-800">{row.className}</td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            id={`schedule-start-${row.classId}`}
+                                                            type="datetime-local"
+                                                            value={row.startTime}
+                                                            disabled={!row.selected}
+                                                            onChange={(event) =>
+                                                                handleScheduleRowChange(
+                                                                    row.classId,
+                                                                    'startTime',
+                                                                    event.target.value,
+                                                                )
+                                                            }
+                                                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            id={`schedule-end-${row.classId}`}
+                                                            type="datetime-local"
+                                                            value={row.endTime}
+                                                            disabled={!row.selected}
+                                                            onChange={(event) =>
+                                                                handleScheduleRowChange(
+                                                                    row.classId,
+                                                                    'endTime',
+                                                                    event.target.value,
+                                                                )
+                                                            }
+                                                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                                                        />
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={closeScheduleModal}
+                                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                                disabled={isScheduleSaving}
+                            >
+                                Batal
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveScheduleModal}
+                                disabled={isScheduleSaving || isScheduleLoading}
+                                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                            >
+                                {isScheduleSaving ? 'Menyimpan...' : 'Simpan Jadwal'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isCreateInfoModalOpen && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                    onClick={() => setIsCreateInfoModalOpen(false)}
+                >
+                    <div
+                        className="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white shadow-2xl"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                            <div>
+                                <h3 className="text-lg font-semibold text-slate-900">Informasi Ujian</h3>
+                                <p className="text-sm text-slate-500">Isi data utama sebelum lanjut ke butir soal.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsCreateInfoModalOpen(false)}
+                                className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-100"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4 px-6 py-5 md:grid-cols-2">
+                            <div>
+                                <label htmlFor="create-exam-title" className="mb-1 block text-sm font-medium text-slate-700">
+                                    Judul Ujian
+                                </label>
+                                <input
+                                    id="create-exam-title"
+                                    type="text"
+                                    value={createExamInfoDraft.title}
+                                    onChange={(event) =>
+                                        setCreateExamInfoDraft((prev) => ({ ...prev, title: event.target.value }))
+                                    }
+                                    placeholder="Masukkan judul ujian"
+                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                />
+                            </div>
+
+                            <div>
+                                    <label htmlFor="create-exam-assignment" className="mb-1 block text-sm font-medium text-slate-700">
+                                        Mapel & Kelas (Assignment)
+                                    </label>
+                                    <select
+                                        id="create-exam-assignment"
+                                        value={createExamInfoDraft.assignmentId}
+                                        onChange={(event) => {
+                                            const selectedAssignment = filteredAssignmentsByProgram.find(
+                                                (assignment) =>
+                                                    String(assignment.id) === String(event.target.value),
+                                            );
+                                            setCreateExamInfoDraft((prev) => ({
+                                                ...prev,
+                                                assignmentId: event.target.value,
+                                                subjectId: String(selectedAssignment?.subject?.id || ''),
+                                            }));
+                                        }}
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                    >
+                                        <option value="">Pilih assignment mapel-kelas</option>
+                                        {filteredAssignmentsByProgram.map((assignment) => (
+                                            <option key={assignment.id} value={assignment.id}>
+                                                {buildAssignmentDisplayLabel(assignment)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                            <div>
+                                <label htmlFor="create-exam-year" className="mb-1 block text-sm font-medium text-slate-700">
+                                    Tahun Ajaran
+                                </label>
+                                <input
+                                    id="create-exam-year"
+                                    value={activeAcademicYear?.name || '-'}
+                                    readOnly
+                                    className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-600"
+                                />
+                            </div>
+
+                            <div>
+                                <label htmlFor="create-exam-semester" className="mb-1 block text-sm font-medium text-slate-700">
+                                    Semester
+                                </label>
+                                <select
+                                    id="create-exam-semester"
+                                    value={createExamInfoDraft.semester}
+                                    disabled={Boolean(selectedProgram?.fixedSemester)}
+                                    onChange={(event) =>
+                                        setCreateExamInfoDraft((prev) => ({
+                                            ...prev,
+                                            semester: event.target.value as 'ODD' | 'EVEN',
+                                        }))
+                                    }
+                                    className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none ${
+                                        selectedProgram?.fixedSemester ? 'cursor-not-allowed bg-slate-100 text-slate-500' : ''
+                                    }`}
+                                >
+                                    <option value="ODD">Ganjil</option>
+                                    <option value="EVEN">Genap</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label htmlFor="create-exam-type" className="mb-1 block text-sm font-medium text-slate-700">
+                                    Tipe Ujian
+                                </label>
+                                <input
+                                    id="create-exam-type"
+                                    readOnly
+                                    value={selectedProgram?.label || selectedProgram?.code || '-'}
+                                    className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-600"
+                                />
+                            </div>
+
+                            <div>
+                                <label htmlFor="create-exam-duration" className="mb-1 block text-sm font-medium text-slate-700">
+                                    Durasi (menit)
+                                </label>
+                                <input
+                                    id="create-exam-duration"
+                                    type="number"
+                                    value={createExamInfoDraft.duration}
+                                    onChange={(event) =>
+                                        setCreateExamInfoDraft((prev) => ({ ...prev, duration: event.target.value }))
+                                    }
+                                    placeholder="Contoh: 90"
+                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                />
+                            </div>
+
+                            <div className="md:col-span-2">
+                                <label htmlFor="create-exam-instructions" className="mb-1 block text-sm font-medium text-slate-700">
+                                    Instruksi Ujian
+                                </label>
+                                <input
+                                    id="create-exam-instructions"
+                                    type="text"
+                                    value={createExamInfoDraft.instructions}
+                                    onChange={(event) =>
+                                        setCreateExamInfoDraft((prev) => ({ ...prev, instructions: event.target.value }))
+                                    }
+                                    placeholder="Instruksi / catatan untuk siswa"
+                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                />
+                            </div>
+
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={() => setIsCreateInfoModalOpen(false)}
+                                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCreateExamFromModal}
+                                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                            >
+                                Simpan Informasi
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

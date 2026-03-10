@@ -1,13 +1,12 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
 import { tutorService } from '../../services/tutor.service';
 import { academicYearService } from '../../services/academicYear.service';
+import { examService, type ExamProgram } from '../../services/exam.service';
 import { Trophy, Save, Loader2, Filter } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 type Semester = 'ODD' | 'EVEN';
-type ReportType = 'SBTS' | 'SAS' | 'SAT';
 
 interface AcademicYear {
   id: number;
@@ -60,33 +59,115 @@ interface Enrollment {
   student: Student;
 }
 
-export const TutorMembersPage = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const urlEkskulId = Number(searchParams.get('ekskulId'));
+interface ReportProgramOption {
+  code: string;
+  label: string;
+  baseType: string;
+  gradeComponentType: string;
+  fixedSemester: Semester | null;
+  displayOrder: number;
+}
 
+type GradePredicate = 'SB' | 'B' | 'C' | 'K';
+
+const GRADE_OPTIONS: Array<{ value: GradePredicate; label: string }> = [
+  { value: 'SB', label: 'Sangat Baik (SB)' },
+  { value: 'B', label: 'Baik (B)' },
+  { value: 'C', label: 'Cukup (C)' },
+  { value: 'K', label: 'Kurang (K)' },
+];
+
+const EMPTY_TEMPLATES: Record<GradePredicate, string> = {
+  SB: '',
+  B: '',
+  C: '',
+  K: '',
+};
+
+function normalizeProgramCode(raw: unknown): string {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function isMidtermAliasCode(raw: unknown): boolean {
+  const code = normalizeProgramCode(raw);
+  if (!code) return false;
+  if (['MIDTERM', 'SBTS', 'PTS', 'UTS'].includes(code)) return true;
+  return code.includes('MIDTERM');
+}
+
+function isFinalEvenAliasCode(raw: unknown): boolean {
+  const code = normalizeProgramCode(raw);
+  if (!code) return false;
+  if (['SAT', 'PAT', 'PSAT', 'FINAL_EVEN'].includes(code)) return true;
+  return code.includes('EVEN');
+}
+
+function isFinalOddAliasCode(raw: unknown): boolean {
+  const code = normalizeProgramCode(raw);
+  if (!code) return false;
+  if (['SAS', 'PAS', 'PSAS', 'FINAL_ODD'].includes(code)) return true;
+  return code.includes('ODD');
+}
+
+function isFinalAliasCode(raw: unknown): boolean {
+  const code = normalizeProgramCode(raw);
+  if (!code) return false;
+  if (['FINAL', 'SAS', 'SAT', 'PAS', 'PAT', 'PSAS', 'PSAT', 'FINAL_EVEN', 'FINAL_ODD'].includes(code)) return true;
+  return code.includes('FINAL');
+}
+
+function resolveTutorReportSlot(
+  program: ReportProgramOption | null | undefined,
+  semester: Semester,
+): 'SBTS' | 'SAS' | 'SAT' | '' {
+  if (!program) return '';
+  const componentType = normalizeProgramCode(program.gradeComponentType);
+  if (isMidtermAliasCode(componentType)) return 'SBTS';
+  if (isFinalAliasCode(componentType)) {
+    const fixedSemester = program.fixedSemester || null;
+    if (fixedSemester === 'EVEN') return 'SAT';
+    if (fixedSemester === 'ODD') return 'SAS';
+    return semester === 'EVEN' ? 'SAT' : 'SAS';
+  }
+  const baseType = normalizeProgramCode(program.baseType);
+  if (isFinalEvenAliasCode(baseType)) return 'SAT';
+  if (isFinalOddAliasCode(baseType)) return 'SAS';
+  if (isFinalAliasCode(baseType)) return semester === 'EVEN' ? 'SAT' : 'SAS';
+  if (isMidtermAliasCode(baseType)) return 'SBTS';
+  return '';
+}
+
+function formatProgramSemesterLabel(fixedSemester: Semester | null): string {
+  if (fixedSemester === 'ODD') return 'Semester Ganjil';
+  if (fixedSemester === 'EVEN') return 'Semester Genap';
+  return 'Semua Semester';
+}
+
+export const TutorMembersPage = () => {
   const [semester, setSemester] = useState<Semester>('ODD');
-  const [reportType, setReportType] = useState<ReportType>('SBTS');
-  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<number | null>(null);
-  const [selectedEkskulId, setSelectedEkskulId] = useState<number>(urlEkskulId);
+  const [reportType, setReportType] = useState('');
 
   const { data: academicYearData } = useQuery({
     queryKey: ['academic-years', 'active'],
     queryFn: () => academicYearService.list({ page: 1, limit: 100 }),
   });
 
-  // Handle potential API response structure variations
-  const academicYears: AcademicYear[] = (academicYearData?.data?.academicYears || academicYearData?.academicYears || []) as AcademicYear[];
+  const academicYears = useMemo<AcademicYear[]>(
+    () =>
+      (academicYearData?.data?.academicYears || academicYearData?.academicYears || []) as AcademicYear[],
+    [academicYearData],
+  );
   
   const activeAcademicYear = useMemo(() => {
     return academicYears.find((ay) => ay.isActive) || academicYears[0];
   }, [academicYears]);
-
-  // Initialize academic year
-  useEffect(() => {
-    if (activeAcademicYear && !selectedAcademicYearId) {
-      setSelectedAcademicYearId(activeAcademicYear.id);
-    }
-  }, [activeAcademicYear, selectedAcademicYearId]);
+  const selectedAcademicYearId = activeAcademicYear?.id ?? null;
 
   // Fetch assignments for the selected academic year to populate Ekskul dropdown
   const { data: assignmentsData } = useQuery({
@@ -98,29 +179,105 @@ export const TutorMembersPage = () => {
   // Type assertion for API response
   const assignments: TutorAssignment[] = (assignmentsData?.data || []) as TutorAssignment[];
 
-  // Validate/Update selectedEkskulId when assignments change
-  useEffect(() => {
-    if (assignments.length > 0) {
-      const exists = assignments.find((a) => a.ekskulId === selectedEkskulId);
-      if (!exists && !urlEkskulId) {
-        // Default to first assignment if none selected or current one invalid
-        setSelectedEkskulId(assignments[0].ekskulId);
-      } else if (!exists && urlEkskulId) {
-        // If URL has ID but it's not in this year's assignments, default to first if invalid
-         if (assignments.length > 0) setSelectedEkskulId(assignments[0].ekskulId);
-      }
-    }
-  }, [assignments, selectedEkskulId, urlEkskulId]);
+  const selectedEkskulId = assignments[0]?.ekskulId || 0;
 
-  // Sync URL with selected ekskul
-  useEffect(() => {
-    if (selectedEkskulId) {
-      setSearchParams(prev => {
-        prev.set('ekskulId', String(selectedEkskulId));
-        return prev;
+  const { data: reportProgramsData } = useQuery({
+    queryKey: ['tutor-report-programs', selectedAcademicYearId],
+    queryFn: async () => {
+      if (!selectedAcademicYearId) return [];
+      const response = await examService.getPrograms({
+        academicYearId: selectedAcademicYearId,
+        roleContext: 'teacher',
+        includeInactive: false,
+      });
+      return (response?.data?.programs || []) as ExamProgram[];
+    },
+    enabled: !!selectedAcademicYearId,
+  });
+
+  const reportPrograms = useMemo<ReportProgramOption[]>(() => {
+    const programs = Array.isArray(reportProgramsData) ? reportProgramsData : [];
+    const options: ReportProgramOption[] = [];
+
+    for (const program of programs) {
+      const baseType = String(program.baseTypeCode || program.baseType || '').toUpperCase();
+      const gradeComponentType = String(
+        program.gradeComponentTypeCode || program.gradeComponentType || '',
+      ).toUpperCase();
+      const isReportComponent =
+        isMidtermAliasCode(gradeComponentType) ||
+        isFinalAliasCode(gradeComponentType) ||
+        isMidtermAliasCode(baseType) ||
+        isFinalAliasCode(baseType);
+      if (!isReportComponent) continue;
+      if (!program.isActive) continue;
+
+      const fixedSemester = (program.fixedSemester as Semester | null) || null;
+      const baseLabel = String(program.shortLabel || program.label || program.code || baseType).trim();
+      options.push({
+        code: String(program.code || '').toUpperCase(),
+        label: `${baseLabel} • ${formatProgramSemesterLabel(fixedSemester)}`,
+        baseType,
+        gradeComponentType,
+        fixedSemester,
+        displayOrder: Number(program.order ?? 0),
       });
     }
-  }, [selectedEkskulId, setSearchParams]);
+
+    return options.sort((a, b) => {
+      if (a.displayOrder !== b.displayOrder) return a.displayOrder - b.displayOrder;
+      return a.code.localeCompare(b.code);
+    });
+  }, [reportProgramsData]);
+
+  const effectiveSelectedReportType = useMemo(() => {
+    if (reportPrograms.length === 0) return '';
+    const exists = reportPrograms.some((option) => option.code === reportType);
+    return exists ? reportType : reportPrograms[0].code;
+  }, [reportPrograms, reportType]);
+
+  const selectedReportProgram = useMemo(
+    () => reportPrograms.find((option) => option.code === effectiveSelectedReportType) || null,
+    [reportPrograms, effectiveSelectedReportType],
+  );
+  const effectiveSemester = selectedReportProgram?.fixedSemester || semester;
+
+  const selectedReportBaseType = selectedReportProgram?.baseType || '';
+  const selectedReportSlot = useMemo(
+    () => resolveTutorReportSlot(selectedReportProgram, effectiveSemester),
+    [selectedReportProgram, effectiveSemester],
+  );
+  const effectiveReportType = useMemo(
+    () =>
+      selectedReportSlot ||
+      effectiveSelectedReportType ||
+      selectedReportProgram?.code ||
+      selectedReportBaseType ||
+      '',
+    [selectedReportSlot, effectiveSelectedReportType, selectedReportProgram, selectedReportBaseType],
+  );
+  const templateContextKey = useMemo(
+    () =>
+      [
+        selectedEkskulId || '',
+        selectedAcademicYearId || '',
+        effectiveSemester,
+        selectedReportProgram?.code || '',
+        selectedReportSlot || '',
+        effectiveSelectedReportType || '',
+      ].join(':'),
+    [
+      selectedEkskulId,
+      selectedAcademicYearId,
+      effectiveSemester,
+      selectedReportProgram,
+      selectedReportSlot,
+      effectiveSelectedReportType,
+    ],
+  );
+  const [gradeTemplateEditsByContext, setGradeTemplateEditsByContext] = useState<
+    Record<string, Record<GradePredicate, string>>
+  >({});
 
   const { data: membersData, isLoading } = useQuery({
     queryKey: ['tutor-members', selectedEkskulId, selectedAcademicYearId],
@@ -131,13 +288,53 @@ export const TutorMembersPage = () => {
   const members: Enrollment[] = (membersData?.data || []) as Enrollment[];
 
   const queryClient = useQueryClient();
+  const { data: gradeTemplateData, isFetching: isFetchingTemplates } = useQuery({
+    queryKey: [
+      'tutor-grade-templates',
+      selectedEkskulId,
+      selectedAcademicYearId,
+      effectiveSemester,
+      selectedReportProgram?.code,
+      selectedReportSlot,
+      effectiveSelectedReportType,
+    ],
+    queryFn: () =>
+      tutorService.getGradeTemplates({
+        ekskulId: selectedEkskulId,
+        academicYearId: selectedAcademicYearId!,
+        semester: effectiveSemester,
+        reportType: effectiveReportType || undefined,
+        programCode: selectedReportProgram?.code || undefined,
+      }),
+    enabled:
+      !!selectedEkskulId &&
+      !!selectedAcademicYearId &&
+      !!(selectedReportProgram?.code || effectiveSelectedReportType),
+  });
+
+  const serverGradeTemplates = useMemo<Record<GradePredicate, string>>(() => {
+    const templatesRaw = gradeTemplateData?.data?.templates;
+    return (
+      templatesRaw && typeof templatesRaw === 'object'
+        ? {
+            SB: String(templatesRaw.SB || ''),
+            B: String(templatesRaw.B || ''),
+            C: String(templatesRaw.C || ''),
+            K: String(templatesRaw.K || ''),
+          }
+        : EMPTY_TEMPLATES
+    );
+  }, [gradeTemplateData]);
+  const gradeTemplates = gradeTemplateEditsByContext[templateContextKey] || serverGradeTemplates;
+
   const { mutateAsync: saveGrade } = useMutation({
     mutationFn: (payload: { 
       enrollmentId: number; 
       grade: string; 
       description: string;
       semester: Semester;
-      reportType: ReportType;
+      reportType: string;
+      programCode?: string;
     }) => tutorService.inputGrade(payload),
     onSuccess: () => {
       toast.success('Nilai tersimpan');
@@ -148,25 +345,70 @@ export const TutorMembersPage = () => {
     }
   });
 
-  const [localValues, setLocalValues] = useState<Record<number, { grade: string; description: string }>>({});
+  const { mutateAsync: saveGradeTemplates, isPending: isSavingGradeTemplates } = useMutation({
+    mutationFn: (templates: Record<GradePredicate, string>) =>
+      tutorService.saveGradeTemplates({
+        ekskulId: selectedEkskulId,
+        academicYearId: selectedAcademicYearId!,
+        semester: effectiveSemester,
+        reportType: effectiveReportType || undefined,
+        programCode: selectedReportProgram?.code || undefined,
+        templates,
+      }),
+    onSuccess: () => {
+      toast.success('Template deskripsi berhasil disimpan');
+      queryClient.invalidateQueries({
+        queryKey: [
+          'tutor-grade-templates',
+          selectedEkskulId,
+          selectedAcademicYearId,
+          effectiveSemester,
+          selectedReportProgram?.code,
+          selectedReportSlot,
+          effectiveSelectedReportType,
+        ],
+      });
+    },
+    onError: () => {
+      toast.error('Gagal menyimpan template deskripsi');
+    },
+  });
 
-  // Reset local values when context changes
-  useEffect(() => {
-    setLocalValues({});
-  }, [semester, reportType, membersData]);
+  const localValueContextKey = useMemo(
+    () =>
+      [
+        selectedEkskulId || '',
+        selectedAcademicYearId || '',
+        effectiveSemester,
+        selectedReportProgram?.code || '',
+        selectedReportSlot || '',
+        effectiveSelectedReportType || '',
+      ].join(':'),
+    [
+      selectedEkskulId,
+      selectedAcademicYearId,
+      effectiveSemester,
+      selectedReportProgram,
+      selectedReportSlot,
+      effectiveSelectedReportType,
+    ],
+  );
+  const [localValuesByContext, setLocalValuesByContext] = useState<
+    Record<string, Record<number, { grade: string; description: string }>>
+  >({});
+  const localValues = localValuesByContext[localValueContextKey] || {};
 
   const getDataForContext = (en: Enrollment) => {
     if (!en) return { grade: '', description: '' };
-    
-    if (semester === 'ODD') {
-      if (reportType === 'SBTS') return { grade: en.gradeSbtsOdd, description: en.descSbtsOdd };
-      if (reportType === 'SAS') return { grade: en.gradeSas, description: en.descSas };
-    } else {
-      if (reportType === 'SBTS') return { grade: en.gradeSbtsEven, description: en.descSbtsEven };
-      if (reportType === 'SAT') return { grade: en.gradeSat, description: en.descSat };
+
+    const slot = resolveTutorReportSlot(selectedReportProgram, effectiveSemester);
+    if (slot === 'SBTS') {
+      if (effectiveSemester === 'ODD') return { grade: en.gradeSbtsOdd, description: en.descSbtsOdd };
+      return { grade: en.gradeSbtsEven, description: en.descSbtsEven };
     }
-    // Fallback logic if needed
-    return { grade: '', description: '' };
+    if (slot === 'SAT') return { grade: en.gradeSat, description: en.descSat };
+    if (slot === 'SAS') return { grade: en.gradeSas, description: en.descSas };
+    return { grade: en.grade || '', description: en.description || '' };
   };
 
   const handleChange = (id: number, key: 'grade' | 'description', value: string) => {
@@ -175,13 +417,42 @@ export const TutorMembersPage = () => {
 
     const currentData = getDataForContext(member);
     
-    setLocalValues(prev => ({
-      ...prev,
-      [id]: {
-        grade: key === 'grade' ? value : (prev[id]?.grade ?? currentData.grade ?? ''),
-        description: key === 'description' ? value : (prev[id]?.description ?? currentData.description ?? '')
+    setLocalValuesByContext((prev) => {
+      const scoped = prev[localValueContextKey] || {};
+      const existingGrade = (scoped[id]?.grade ?? currentData.grade ?? '').toUpperCase();
+      const existingDescription = scoped[id]?.description ?? currentData.description ?? '';
+
+      if (key === 'description') {
+        return {
+          ...prev,
+          [localValueContextKey]: {
+            ...scoped,
+            [id]: {
+              grade: existingGrade,
+              description: value,
+            },
+          },
+        };
       }
-    }));
+
+      const nextGrade = value.toUpperCase();
+      const nextTemplate = gradeTemplates[nextGrade as GradePredicate] || '';
+      const previousTemplate = gradeTemplates[existingGrade as GradePredicate] || '';
+      const shouldApplyTemplate =
+        Boolean(nextTemplate) &&
+        (!existingDescription.trim() || existingDescription.trim() === previousTemplate.trim());
+
+      return {
+        ...prev,
+        [localValueContextKey]: {
+          ...scoped,
+          [id]: {
+            grade: nextGrade,
+            description: shouldApplyTemplate ? nextTemplate : existingDescription,
+          },
+        },
+      };
+    });
   };
 
   const handleSave = async (id: number) => {
@@ -199,22 +470,20 @@ export const TutorMembersPage = () => {
       enrollmentId: id,
       grade: gradeToSave,
       description: descToSave,
-      semester,
-      reportType
+      semester: effectiveSemester,
+      reportType: effectiveReportType,
+      programCode: selectedReportProgram?.code || undefined,
     });
   };
 
   const handleSemesterChange = (s: Semester) => {
     setSemester(s);
-    // Auto-switch report type if invalid for semester
-    if (s === 'ODD' && reportType === 'SAT') setReportType('SAS');
-    if (s === 'EVEN' && reportType === 'SAS') setReportType('SAT');
   };
 
   const currentEkskulName = assignments.find((a) => a.ekskulId === selectedEkskulId)?.ekskul?.name || 'Ekstrakurikuler';
 
   return (
-    <div className="p-6">
+    <div className="space-y-6">
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Anggota Ekstrakurikuler</h1>
@@ -222,62 +491,35 @@ export const TutorMembersPage = () => {
         </div>
         
         <div className="flex flex-wrap gap-3">
-           {/* Academic Year Filter */}
-           <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm">
+          <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
             <Filter size={16} className="text-gray-500" />
             <select 
-              value={selectedAcademicYearId || ''}
-              onChange={(e) => setSelectedAcademicYearId(Number(e.target.value))}
-              className="bg-transparent border-none text-sm font-medium focus:ring-0 cursor-pointer max-w-[150px]"
-            >
-              {academicYears.map((ay) => (
-                <option key={ay.id} value={ay.id}>
-                  {ay.name} {ay.isActive ? '(Aktif)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Ekskul Filter */}
-          <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm">
-            <Filter size={16} className="text-gray-500" />
-            <select 
-              value={selectedEkskulId || ''}
-              onChange={(e) => setSelectedEkskulId(Number(e.target.value))}
-              className="bg-transparent border-none text-sm font-medium focus:ring-0 cursor-pointer max-w-[200px]"
-            >
-              {assignments.map((a) => (
-                <option key={a.id} value={a.ekskulId}>
-                  {a.ekskul.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm">
-            <Filter size={16} className="text-gray-500" />
-            <select 
-              value={semester}
+              value={effectiveSemester}
               onChange={(e) => handleSemesterChange(e.target.value as Semester)}
-              className="bg-transparent border-none text-sm font-medium focus:ring-0 cursor-pointer"
+              disabled={Boolean(selectedReportProgram?.fixedSemester)}
+              className="bg-transparent border-0 text-sm font-medium text-gray-700 focus:ring-0 cursor-pointer"
             >
               <option value="ODD">Semester Ganjil</option>
               <option value="EVEN">Semester Genap</option>
             </select>
           </div>
 
-          <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm">
+          <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
             <Filter size={16} className="text-gray-500" />
             <select 
-              value={reportType}
-              onChange={(e) => setReportType(e.target.value as ReportType)}
-              className="bg-transparent border-none text-sm font-medium focus:ring-0 cursor-pointer"
+              value={effectiveSelectedReportType}
+              onChange={(e) => setReportType(e.target.value)}
+              disabled={reportPrograms.length === 0}
+              className="bg-transparent border-0 text-sm font-medium text-gray-700 focus:ring-0 cursor-pointer"
             >
-              <option value="SBTS">Rapor SBTS</option>
-              {semester === 'ODD' ? (
-                <option value="SAS">Rapor SAS</option>
+              {reportPrograms.length === 0 ? (
+                <option value="">Belum ada program rapor aktif</option>
               ) : (
-                <option value="SAT">Rapor SAT</option>
+                reportPrograms.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.label}
+                  </option>
+                ))
               )}
             </select>
           </div>
@@ -291,9 +533,67 @@ export const TutorMembersPage = () => {
             <div>
               <h2 className="text-lg font-semibold text-gray-800">{currentEkskulName}</h2>
               <p className="text-sm text-gray-500">
-                {semester === 'ODD' ? 'Ganjil' : 'Genap'} - {reportType}
+                {effectiveSemester === 'ODD' ? 'Ganjil' : 'Genap'} -{' '}
+                {selectedReportProgram?.label || selectedReportBaseType || '-'}
+              </p>
+              <p className="text-xs text-gray-400">
+                Tahun ajaran aktif: {activeAcademicYear?.name || '-'}
               </p>
             </div>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/60">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-800">Template Deskripsi Predikat</h3>
+              <p className="text-xs text-gray-500">
+                Template tersimpan per ekskul, semester, dan komponen rapor.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => saveGradeTemplates(gradeTemplates)}
+              disabled={
+                isSavingGradeTemplates ||
+                isFetchingTemplates ||
+                !selectedEkskulId ||
+                !selectedAcademicYearId ||
+                !selectedReportProgram
+              }
+              className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isSavingGradeTemplates ? (
+                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4 mr-1" />
+              )}
+              Simpan Template
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+            {GRADE_OPTIONS.map((option) => (
+              <div key={option.value} className="bg-white rounded-lg border border-gray-200 p-3">
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  {option.label}
+                </label>
+                <textarea
+                  rows={2}
+                  value={gradeTemplates[option.value]}
+                  onChange={(e) =>
+                    setGradeTemplateEditsByContext((prev) => ({
+                      ...prev,
+                      [templateContextKey]: {
+                        ...(prev[templateContextKey] || EMPTY_TEMPLATES),
+                        [option.value]: e.target.value,
+                      },
+                    }))
+                  }
+                  className="w-full rounded-lg border-gray-300 text-xs focus:ring-blue-500 focus:border-blue-500"
+                  placeholder={`Template deskripsi ${option.value}`}
+                />
+              </div>
+            ))}
           </div>
         </div>
 
@@ -338,11 +638,12 @@ export const TutorMembersPage = () => {
                           onChange={(e) => handleChange(en.id, 'grade', e.target.value)}
                           className="rounded-lg border-gray-300 text-sm focus:ring-blue-500 focus:border-blue-500"
                         >
-                          <option value="">Pilih Nilai</option>
-                          <option value="A">A (Sangat Baik)</option>
-                          <option value="B">B (Baik)</option>
-                          <option value="C">C (Cukup)</option>
-                          <option value="D">D (Kurang)</option>
+                          <option value="">Pilih Predikat</option>
+                          {GRADE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
                         </select>
                       </td>
                       <td className="px-6 py-4">
@@ -351,7 +652,7 @@ export const TutorMembersPage = () => {
                           value={lv.description}
                           onChange={(e) => handleChange(en.id, 'description', e.target.value)}
                           className="w-full rounded-lg border-gray-300 text-sm focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="Deskripsi pencapaian..."
+                          placeholder="Deskripsi pencapaian siswa..."
                         />
                       </td>
                       <td className="px-6 py-4 text-right">

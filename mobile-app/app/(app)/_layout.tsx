@@ -7,7 +7,8 @@ import { View, Pressable, Text, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { BRAND_COLORS } from '../../src/config/brand';
-import { notifyApiError, notifyInfo, notifySuccess } from '../../src/lib/ui/feedback';
+import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
+import { useUnreadNotificationsQuery } from '../../src/features/notifications/useUnreadNotificationsQuery';
 
 export default function AppProtectedLayout() {
   const { isLoading, isAuthenticated, logout } = useAuth();
@@ -17,6 +18,9 @@ export default function AppProtectedLayout() {
   const pathname = usePathname();
   const [isLogoutConfirmVisible, setIsLogoutConfirmVisible] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const isHome = pathname === '/home';
+  const unreadNotificationsQuery = useUnreadNotificationsQuery(isAuthenticated && !isHome);
+  const unreadCount = unreadNotificationsQuery.data ?? 0;
 
   if (isLoading) {
     return <AppLoadingScreen message="Memulihkan sesi..." />;
@@ -26,14 +30,10 @@ export default function AppProtectedLayout() {
     return <Redirect href="/welcome" />;
   }
 
-  const isHome = pathname === '/home';
   const showGlobalFooter = !isHome;
 
   const handleNotificationPress = () => {
-    notifyInfo('Belum ada notifikasi baru saat ini.', {
-      title: 'Notifikasi',
-      durationMs: 1800,
-    });
+    router.push('/notifications');
   };
 
   const handleLogout = () => {
@@ -51,7 +51,7 @@ export default function AppProtectedLayout() {
         router.replace('/welcome');
         notifySuccess('Logout berhasil');
         setIsLoggingOut(false);
-      } catch (error: any) {
+      } catch (error: unknown) {
         setIsLoggingOut(false);
         notifyApiError(error, 'Gagal logout.');
       }
@@ -80,7 +80,7 @@ export default function AppProtectedLayout() {
                 paddingVertical: 12,
                 flexDirection: 'row',
                 alignItems: 'center',
-                justifyContent: 'space-between',
+                justifyContent: 'space-around',
                 shadowColor: '#0b1b42',
                 shadowOffset: { width: 0, height: 7 },
                 shadowOpacity: 0.2,
@@ -88,24 +88,41 @@ export default function AppProtectedLayout() {
                 elevation: 10,
               }}
             >
-              <Pressable onPress={() => router.replace('/home')} style={{ alignItems: 'center', width: 56 }}>
-                <Feather name="home" size={17} color={BRAND_COLORS.gold} />
-                <Text style={{ color: BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Home</Text>
-              </Pressable>
-
-              <Pressable onPress={() => router.push('/profile')} style={{ alignItems: 'center', width: 56 }}>
+              <Pressable onPress={() => router.push('/profile')} style={{ alignItems: 'center', width: 64 }}>
                 <Feather name="user" size={17} color={BRAND_COLORS.white} />
                 <Text style={{ color: BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Profil</Text>
               </Pressable>
 
-              <View style={{ width: 58 }} />
-
-              <Pressable onPress={handleNotificationPress} style={{ alignItems: 'center', width: 56 }}>
-                <Feather name="bell" size={17} color={BRAND_COLORS.white} />
+              <Pressable onPress={handleNotificationPress} style={{ alignItems: 'center', width: 64 }}>
+                <View style={{ position: 'relative' }}>
+                  <Feather name="bell" size={17} color={BRAND_COLORS.white} />
+                  {unreadCount > 0 ? (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: -8,
+                        right: -10,
+                        minWidth: 17,
+                        height: 17,
+                        borderRadius: 999,
+                        backgroundColor: '#ef4444',
+                        borderWidth: 1,
+                        borderColor: BRAND_COLORS.navy,
+                        paddingHorizontal: 4,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
                 <Text style={{ color: BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>Notifikasi</Text>
               </Pressable>
 
-              <Pressable onPress={handleLogout} disabled={isLoggingOut} style={{ alignItems: 'center', width: 56 }}>
+              <Pressable onPress={handleLogout} disabled={isLoggingOut} style={{ alignItems: 'center', width: 64 }}>
                 <Feather name="log-out" size={17} color={BRAND_COLORS.white} />
                 <Text style={{ color: BRAND_COLORS.white, fontSize: 11, marginTop: 2 }}>
                   {isLoggingOut ? 'Proses' : 'Logout'}

@@ -81,7 +81,7 @@ export default function AttendanceScreen() {
     month,
     year,
   });
-  const records = attendanceQuery.data?.records || [];
+  const records = useMemo(() => attendanceQuery.data?.records || [], [attendanceQuery.data?.records]);
   const stats = useMemo(() => {
     const result = { present: 0, sick: 0, permission: 0, absent: 0, late: 0 };
     for (const item of records) {

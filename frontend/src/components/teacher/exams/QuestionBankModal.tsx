@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { X, Search, Plus, Check } from 'lucide-react';
 import { examService } from '../../../services/exam.service';
 import type { Question } from '../../../services/exam.service';
 import { academicYearService } from '../../../services/academicYear.service';
 import { toast } from 'react-hot-toast';
+import { enhanceQuestionHtml } from '../../../utils/questionMedia';
 
 interface QuestionBankModalProps {
     onClose: () => void;
@@ -13,7 +14,7 @@ interface QuestionBankModalProps {
     initialSemester?: string;
 }
 
-export const QuestionBankModal = ({ onClose, onSelectQuestions, initialSubjectId, initialAcademicYearId, initialSemester }: QuestionBankModalProps) => {
+export const QuestionBankModal = ({ onClose, onSelectQuestions, initialSubjectId, initialAcademicYearId }: QuestionBankModalProps) => {
     const [questions, setQuestions] = useState<Question[]>([]);
     const [loading, setLoading] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -23,7 +24,7 @@ export const QuestionBankModal = ({ onClose, onSelectQuestions, initialSubjectId
     const [filters, setFilters] = useState({
         subjectId: initialSubjectId?.toString() || '',
         academicYearId: initialAcademicYearId?.toString() || '',
-        semester: initialSemester || 'ODD',
+        semester: '',
         type: '',
         search: ''
     });
@@ -33,20 +34,23 @@ export const QuestionBankModal = ({ onClose, onSelectQuestions, initialSubjectId
     const [totalPages, setTotalPages] = useState(1);
 
     useEffect(() => {
-        academicYearService.list({ limit: 100 }).then(res => {
-            if (res.data && res.data.academicYears) {
-                setAcademicYears(res.data.academicYears);
-            } else if (Array.isArray(res)) {
-                setAcademicYears(res);
-            }
-        });
+        academicYearService
+            .list({ limit: 100 })
+            .then((res) => {
+                if (res.data && res.data.academicYears) {
+                    setAcademicYears(res.data.academicYears);
+                } else if (Array.isArray(res)) {
+                    setAcademicYears(res);
+                } else {
+                    setAcademicYears([]);
+                }
+            })
+            .catch(() => {
+                setAcademicYears([]);
+            });
     }, []);
 
-    useEffect(() => {
-        fetchQuestions();
-    }, [page, filters.subjectId, filters.academicYearId, filters.semester, filters.type]);
-
-    const fetchQuestions = async () => {
+    const fetchQuestions = useCallback(async () => {
         setLoading(true);
         try {
             const res = await examService.getQuestions({
@@ -69,7 +73,11 @@ export const QuestionBankModal = ({ onClose, onSelectQuestions, initialSubjectId
         } finally {
             setLoading(false);
         }
-    };
+    }, [filters.academicYearId, filters.search, filters.semester, filters.subjectId, filters.type, page]);
+
+    useEffect(() => {
+        fetchQuestions();
+    }, [fetchQuestions]);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
@@ -192,7 +200,9 @@ export const QuestionBankModal = ({ onClose, onSelectQuestions, initialSubjectId
                                         </div>
                                         <div 
                                             className="text-sm text-gray-700 line-clamp-2 prose prose-sm max-w-none"
-                                            dangerouslySetInnerHTML={{ __html: q.content }}
+                                            dangerouslySetInnerHTML={{
+                                                __html: enhanceQuestionHtml(q.content, { useQuestionImageThumbnail: true }),
+                                            }}
                                         />
                                     </div>
                                 </div>

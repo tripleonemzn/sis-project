@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
@@ -155,40 +155,37 @@ export default function TeacherHomeroomBehaviorScreen() {
     },
   });
 
-  const classItems = classesQuery.data || [];
-  const selectedClass = classItems.find((item) => item.id === selectedClassId) || null;
-
-  useEffect(() => {
-    if (selectedClassId || classItems.length === 0) return;
-    setSelectedClassId(classItems[0].id);
-  }, [selectedClassId, classItems]);
+  const classItems = useMemo(() => classesQuery.data || [], [classesQuery.data]);
+  const activeClassId = useMemo(() => {
+    if (selectedClassId && classItems.some((item) => item.id === selectedClassId)) return selectedClassId;
+    return classItems[0]?.id ?? null;
+  }, [classItems, selectedClassId]);
+  const selectedClass = classItems.find((item) => item.id === activeClassId) || null;
 
   const classDetailQuery = useQuery({
-    queryKey: ['mobile-homeroom-behavior-class-detail', selectedClassId],
-    enabled: isAuthenticated && !!isAllowed && !!selectedClassId,
-    queryFn: async () => adminApi.getClassById(Number(selectedClassId)),
+    queryKey: ['mobile-homeroom-behavior-class-detail', activeClassId],
+    enabled: isAuthenticated && !!isAllowed && !!activeClassId,
+    queryFn: async () => adminApi.getClassById(Number(activeClassId)),
   });
 
-  const students = classDetailQuery.data?.students || [];
-
-  useEffect(() => {
-    if (!students.length) return;
-    if (form.studentId) return;
-    setForm((prev) => ({ ...prev, studentId: students[0].id }));
-  }, [students, form.studentId]);
+  const students = useMemo(() => classDetailQuery.data?.students || [], [classDetailQuery.data?.students]);
+  const activeStudentId = useMemo(() => {
+    if (form.studentId && students.some((student) => student.id === form.studentId)) return form.studentId;
+    return students[0]?.id ?? null;
+  }, [form.studentId, students]);
 
   const behaviorsQuery = useQuery({
     queryKey: [
       'mobile-homeroom-behaviors',
-      selectedClassId,
+      activeClassId,
       activeYearQuery.data?.id,
       typeFilter,
       search,
     ],
-    enabled: isAuthenticated && !!isAllowed && !!selectedClassId && !!activeYearQuery.data?.id,
+    enabled: isAuthenticated && !!isAllowed && !!activeClassId && !!activeYearQuery.data?.id,
     queryFn: async () =>
       kesiswaanApi.getBehaviors({
-        classId: Number(selectedClassId),
+        classId: Number(activeClassId),
         academicYearId: Number(activeYearQuery.data?.id),
         type: typeFilter === 'ALL' ? undefined : typeFilter,
         search: search.trim() || undefined,
@@ -197,7 +194,7 @@ export default function TeacherHomeroomBehaviorScreen() {
       }),
   });
 
-  const behaviors = behaviorsQuery.data?.behaviors || [];
+  const behaviors = useMemo(() => behaviorsQuery.data?.behaviors || [], [behaviorsQuery.data?.behaviors]);
 
   const resetForm = () => {
     setEditingBehaviorId(null);
@@ -209,7 +206,7 @@ export default function TeacherHomeroomBehaviorScreen() {
 
   const createMutation = useMutation({
     mutationFn: () => {
-      if (!selectedClassId || !activeYearQuery.data?.id || !form.studentId) {
+      if (!activeClassId || !activeYearQuery.data?.id || !activeStudentId) {
         throw new Error('Data kelas, tahun ajaran, atau siswa belum lengkap.');
       }
 
@@ -219,8 +216,8 @@ export default function TeacherHomeroomBehaviorScreen() {
       }
 
       return kesiswaanApi.createBehavior({
-        studentId: form.studentId,
-        classId: Number(selectedClassId),
+        studentId: activeStudentId,
+        classId: Number(activeClassId),
         academicYearId: Number(activeYearQuery.data.id),
         date: form.date,
         type: form.type,
@@ -235,7 +232,7 @@ export default function TeacherHomeroomBehaviorScreen() {
       resetForm();
       setShowForm(false);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal menambahkan catatan perilaku.');
     },
   });
@@ -263,7 +260,7 @@ export default function TeacherHomeroomBehaviorScreen() {
       resetForm();
       setShowForm(false);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal memperbarui catatan perilaku.');
     },
   });
@@ -277,7 +274,7 @@ export default function TeacherHomeroomBehaviorScreen() {
         resetForm();
       }
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal menghapus catatan perilaku.');
     },
   });
@@ -303,10 +300,8 @@ export default function TeacherHomeroomBehaviorScreen() {
     return result;
   }, [behaviors]);
 
-  const selectedStudent = students.find((student) => student.id === form.studentId) || null;
-
   const handleSubmit = () => {
-    if (!form.studentId) {
+    if (!activeStudentId) {
       notifyInfo('Pilih siswa terlebih dahulu.', { title: 'Validasi' });
       return;
     }
@@ -442,7 +437,7 @@ export default function TeacherHomeroomBehaviorScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Pilih Kelas</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
               {classItems.map((classItem) => {
-                const selected = selectedClassId === classItem.id;
+                const selected = activeClassId === classItem.id;
                 return (
                   <View key={classItem.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
                     <Pressable
@@ -565,7 +560,7 @@ export default function TeacherHomeroomBehaviorScreen() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 10 }}>
             {students.length > 0 ? (
               students.map((student) => {
-                const selected = form.studentId === student.id;
+                const selected = activeStudentId === student.id;
                 return (
                   <View key={student.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
                     <Pressable

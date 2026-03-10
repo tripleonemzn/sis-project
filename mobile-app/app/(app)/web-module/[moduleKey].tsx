@@ -25,15 +25,11 @@ export default function GenericWebModuleScreen() {
   const [isOpening, setIsOpening] = useState(false);
   const [hasAutoOpened, setHasAutoOpened] = useState(false);
 
-  if (isLoading) return <AppLoadingScreen message="Memuat modul..." />;
-  if (!isAuthenticated) return <Redirect href="/welcome" />;
-  if (!user) return <Redirect href="/welcome" />;
-
   const moduleKey = typeof params.moduleKey === 'string' ? params.moduleKey : '';
   const pathOverride = typeof params.path === 'string' ? params.path.trim() : '';
   const urlOverride = typeof params.url === 'string' ? params.url.trim() : '';
   const labelOverride = typeof params.label === 'string' ? params.label.trim() : '';
-  const menuItem = getRoleMenu(user).find((item) => item.key === moduleKey);
+  const menuItem = user ? getRoleMenu(user).find((item) => item.key === moduleKey) : null;
   const effectiveWebPath = pathOverride || menuItem?.webPath || '';
   const effectiveLabel = labelOverride || menuItem?.label || 'Modul Web';
   const moduleUrl = useMemo(
@@ -58,6 +54,10 @@ export default function GenericWebModuleScreen() {
     setHasAutoOpened(true);
     void openModuleUrl();
   }, [hasAutoOpened, moduleUrl, openModuleUrl]);
+
+  if (isLoading) return <AppLoadingScreen message="Memuat modul..." />;
+  if (!isAuthenticated) return <Redirect href="/welcome" />;
+  if (!user) return <Redirect href="/welcome" />;
 
   if (!moduleKey || !moduleUrl) {
     return (

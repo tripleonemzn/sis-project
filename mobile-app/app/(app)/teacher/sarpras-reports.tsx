@@ -172,9 +172,9 @@ export default function TeacherSarprasReportsScreen() {
     },
   });
 
-  const categories = reportQuery.data?.categories || [];
-  const rooms = reportQuery.data?.rooms || [];
-  const budgets = reportQuery.data?.budgets || [];
+  const categories = useMemo(() => reportQuery.data?.categories || [], [reportQuery.data?.categories]);
+  const rooms = useMemo(() => reportQuery.data?.rooms || [], [reportQuery.data?.rooms]);
+  const budgets = useMemo(() => reportQuery.data?.budgets || [], [reportQuery.data?.budgets]);
   const query = search.trim().toLowerCase();
 
   const roomSummary = useMemo(() => {

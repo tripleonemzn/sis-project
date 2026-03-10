@@ -7,6 +7,7 @@ import { AppUpdateManager } from '../src/features/appUpdate/AppUpdateManager';
 import { AppNoticeHost } from '../src/components/AppNoticeHost';
 import { PushPermissionManager } from '../src/features/pushNotifications/PushPermissionManager';
 import { installMobileWebRedirectGuard } from '../src/lib/navigation/mobileWebGuard';
+import { NotificationRealtimeBridge } from '../src/features/notifications/NotificationRealtimeBridge';
 
 export default function RootLayout() {
   useEffect(() => {
@@ -20,6 +21,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false }} />
         <PushPermissionManager />
         <AppUpdateManager />
+        <NotificationRealtimeBridge />
         <AppNoticeHost />
       </AuthProvider>
     </QueryProvider>

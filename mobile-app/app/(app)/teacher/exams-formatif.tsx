@@ -1,12 +1,5 @@
-import { TeacherExamPacketsModuleScreen } from '../../../src/features/exams/TeacherExamPacketsModuleScreen';
+import { Redirect } from 'expo-router';
 
 export default function TeacherExamFormatifScreen() {
-  return (
-    <TeacherExamPacketsModuleScreen
-      title="Ujian Formatif"
-      subtitle="Kelola packet ujian formatif untuk kelas dan mata pelajaran yang Anda ampu."
-      fixedType="FORMATIF"
-      defaultType="FORMATIF"
-    />
-  );
+  return <Redirect href="/teacher/exams?type=FORMATIF" />;
 }

@@ -1,20 +1,20 @@
 # Mobile Parity Audit (All Roles)
 
-Generated: 2026-02-25T01:14:25.046Z
+Generated: 2026-03-09T08:44:02.708Z
 
 ## Ringkasan per Role
 
 | Role | Total | Native Only | Native + Web Fallback | Web Bridge Route | Route Tree Punya openURL |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| ADMIN | 31 | 31 | 0 | 0 | 0 |
+| ADMIN | 33 | 33 | 0 | 0 | 0 |
 | CALON_SISWA | 2 | 2 | 0 | 0 | 0 |
 | EXAMINER | 4 | 4 | 0 | 0 | 0 |
-| EXTRACURRICULAR_TUTOR | 3 | 3 | 0 | 0 | 0 |
+| EXTRACURRICULAR_TUTOR | 6 | 6 | 0 | 0 | 0 |
 | PARENT | 4 | 4 | 0 | 0 | 0 |
-| PRINCIPAL | 6 | 6 | 0 | 0 | 0 |
-| STAFF | 4 | 4 | 0 | 0 | 0 |
-| STUDENT | 18 | 18 | 0 | 0 | 0 |
-| TEACHER | 58 | 58 | 0 | 0 | 0 |
+| PRINCIPAL | 7 | 7 | 0 | 0 | 0 |
+| STAFF | 5 | 5 | 0 | 0 | 0 |
+| STUDENT | 15 | 15 | 0 | 0 | 0 |
+| TEACHER | 54 | 54 | 0 | 0 | 0 |
 | UMUM | 2 | 2 | 0 | 0 | 0 |
 
 ## Detail Web Bridge per Role
@@ -83,5 +83,5 @@ Generated: 2026-02-25T01:14:25.046Z
 
 ## Semua Pemanggilan Linking.openURL (Global)
 
-- `app/(app)/web-module/[moduleKey].tsx:48`
+- `app/(app)/web-module/[moduleKey].tsx:44`
 

@@ -101,9 +101,19 @@ export const AssignmentSubmissionsPage = () => {
       setFeedbackInput('');
       await queryClient.invalidateQueries({ queryKey: ['teacher-assignment-submissions', assignmentId] });
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || error?.message || 'Gagal menyimpan nilai.';
-      toast.error(message);
+    onError: (error: unknown) => {
+      const message: string =
+        typeof error === 'object' &&
+        error !== null &&
+          'response' in error &&
+          typeof (error as { response?: { data?: { message?: string } } }).response?.data?.message ===
+            'string'
+          ? ((error as { response?: { data?: { message?: string } } }).response?.data?.message ??
+              'Gagal menyimpan nilai.')
+          : error instanceof Error
+            ? error.message
+            : 'Gagal menyimpan nilai.';
+      toast.error(message || 'Gagal menyimpan nilai.');
     },
   });
 

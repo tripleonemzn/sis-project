@@ -7,6 +7,7 @@ export type TeacherSubjectReportItem = {
   sbtsScore: number | null;
   sasScore: number | null;
   finalScore: number | null;
+  slotScores?: Record<string, number | null> | null;
   predicate: string | null;
   description: string | null;
   student?: {
@@ -17,11 +18,24 @@ export type TeacherSubjectReportItem = {
   } | null;
 };
 
+export type TeacherSubjectReportMeta = {
+  primarySlots: {
+    formative: string;
+    midterm: string;
+    final: string;
+  };
+  includeSlots: string[];
+  slotLabels: Record<string, { label: string; componentType: string }>;
+};
+
 type TeacherSubjectReportResponse = {
   statusCode: number;
   success: boolean;
   message: string;
-  data: TeacherSubjectReportItem[];
+  data: {
+    rows: TeacherSubjectReportItem[];
+    meta: TeacherSubjectReportMeta | null;
+  };
 };
 
 type TeacherSubjectReportMutationResponse = {
@@ -44,9 +58,10 @@ export const teacherReportApi = {
         subject_id: params.subjectId,
         academic_year_id: params.academicYearId,
         semester: params.semester,
+        include_meta: 1,
       },
     });
-    return response.data.data || [];
+    return response.data.data || { rows: [], meta: null };
   },
   async updateReportGrade(
     id: number,
@@ -54,6 +69,7 @@ export const teacherReportApi = {
       formatifScore?: number | null;
       sbtsScore?: number | null;
       sasScore?: number | null;
+      slotScores?: Record<string, number | null>;
       description?: string;
     },
   ) {
@@ -61,6 +77,7 @@ export const teacherReportApi = {
       formatif_score: payload.formatifScore,
       sbts_score: payload.sbtsScore,
       sas_score: payload.sasScore,
+      slot_scores: payload.slotScores,
       competency_desc: payload.description,
     });
     return response.data.data;

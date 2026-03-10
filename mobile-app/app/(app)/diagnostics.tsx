@@ -1,6 +1,6 @@
 import { Redirect, useRouter } from 'expo-router';
 import Constants from 'expo-constants';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
@@ -76,7 +76,7 @@ export default function DiagnosticsScreen() {
     }
   };
 
-  const loadSyncStatus = async () => {
+  const loadSyncStatus = useCallback(async () => {
     if (!user) return;
     const [profile, schedule, grades, attendance] = await Promise.all([
       offlineCache.summarizeByPrefix('mobile_cache_profile'),
@@ -85,9 +85,9 @@ export default function DiagnosticsScreen() {
       offlineCache.summarizeByPrefix(`mobile_cache_attendance_${user.id}_`),
     ]);
     return { profile, schedule, grades, attendance } satisfies SyncStatus;
-  };
+  }, [user]);
 
-  const refreshSyncStatus = async () => {
+  const refreshSyncStatus = useCallback(async () => {
     setIsSyncStatusLoading(true);
     try {
       const nextSyncStatus = await loadSyncStatus();
@@ -95,11 +95,11 @@ export default function DiagnosticsScreen() {
     } finally {
       setIsSyncStatusLoading(false);
     }
-  };
+  }, [loadSyncStatus]);
 
   useEffect(() => {
-    refreshSyncStatus();
-  }, [user?.id, user?.role]);
+    void refreshSyncStatus();
+  }, [refreshSyncStatus]);
 
   const clearLocalCache = async () => {
     setIsClearingCache(true);

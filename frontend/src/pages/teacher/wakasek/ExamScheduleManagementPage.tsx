@@ -13,8 +13,10 @@ import api from '../../../services/api';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
+import { useSearchParams } from 'react-router-dom';
 import type { AcademicYear } from '../../../services/academicYear.service';
-import { examService, type ExamProgram } from '../../../services/exam.service';
+import { examService, type ExamProgram, type ExamProgramSession } from '../../../services/exam.service';
+import { isNonScheduledExamProgram, resolveProgramCodeFromParam } from '../../../lib/examProgramMenu';
 
 interface Subject {
   id: number;
@@ -22,15 +24,45 @@ interface Subject {
   code: string;
 }
 
+interface TeacherAssignmentOption {
+  id: number;
+  subject: {
+    id: number;
+    name: string;
+    code: string;
+  };
+  teacher?: {
+    id: number;
+    name: string;
+  } | null;
+  class: {
+    id: number;
+    name: string;
+    level?: string;
+  };
+}
+
+interface SubjectOptionWithTeachers extends Subject {
+  teacherNames: string[];
+}
+
 interface ClassData {
   id: number;
   name: string;
+  level?: string;
 }
 
 interface ExamSchedule {
   id: number;
   startTime: string;
   endTime: string;
+  sessionId?: number | null;
+  sessionLabel?: string | null;
+  programSession?: {
+    id: number;
+    label: string;
+    displayOrder?: number;
+  } | null;
   room: string | null;
   examType: string;
   academicYearId?: number;
@@ -59,6 +91,7 @@ interface GroupedExamSchedule {
   key: string;
   subjectName: string;
   subjectCode: string;
+  sessionLabel: string | null;
   startTime: string;
   endTime: string;
   schedules: ExamSchedule[];
@@ -66,18 +99,46 @@ interface GroupedExamSchedule {
   readyCount: number;
 }
 
+const normalizeClassLevelToken = (raw: unknown): string => {
+  const value = String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+  if (!value) return '';
+  if (value === '10' || value === 'X') return 'X';
+  if (value === '11' || value === 'XI') return 'XI';
+  if (value === '12' || value === 'XII') return 'XII';
+  if (value.startsWith('XII')) return 'XII';
+  if (value.startsWith('XI')) return 'XI';
+  if (value.startsWith('X')) return 'X';
+  return '';
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'object' && error !== null) {
+    const normalized = error as { response?: { data?: { message?: string } }; message?: string };
+    return normalized.response?.data?.message || normalized.message || fallback;
+  }
+  return fallback;
+};
+
 const ExamScheduleManagementPage = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const programParamKey = 'jadwalProgram';
   const [examPrograms, setExamPrograms] = useState<ExamProgram[]>([]);
   const [activeProgramCode, setActiveProgramCode] = useState<string>('');
   const [schedules, setSchedules] = useState<ExamSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
+  const [programSessions, setProgramSessions] = useState<ExamProgramSession[]>([]);
+  const [newSessionLabel, setNewSessionLabel] = useState('');
+  const [creatingSession, setCreatingSession] = useState(false);
 
   // Form Data
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [classes, setClasses] = useState<ClassData[]>([]);
-  const [proctors, setProctors] = useState<{ id: number; name: string }[]>([]);
+  const [assignmentOptions, setAssignmentOptions] = useState<TeacherAssignmentOption[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   // selectedAcademicYear used for filtering list (default to active)
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
@@ -85,10 +146,10 @@ const ExamScheduleManagementPage = () => {
   const [formData, setFormData] = useState({
     subjectId: '',
     classIds: [] as string[],
-    proctorId: '',
     date: '',
     startTime: '',
     endTime: '',
+    sessionId: '',
     academicYearId: '',
     semester: ''
   });
@@ -98,7 +159,7 @@ const ExamScheduleManagementPage = () => {
   const visiblePrograms = useMemo(
     () =>
       [...examPrograms]
-        .filter((program) => Boolean(program?.isActive))
+        .filter((program) => Boolean(program?.isActive) && !isNonScheduledExamProgram(program))
         .sort(
           (a, b) =>
             Number(a.order || 0) - Number(b.order || 0) ||
@@ -110,6 +171,109 @@ const ExamScheduleManagementPage = () => {
   const activeProgram = useMemo(
     () => visiblePrograms.find((program) => program.code === activeProgramCode) || null,
     [visiblePrograms, activeProgramCode],
+  );
+
+  const allowedSubjectIdsByProgram = useMemo(() => {
+    const ids = Array.isArray(activeProgram?.allowedSubjectIds) ? activeProgram.allowedSubjectIds : [];
+    return new Set(ids.map((item) => Number(item)).filter((item) => Number.isFinite(item) && item > 0));
+  }, [activeProgram?.allowedSubjectIds]);
+
+  const allowedClassLevelsByProgram = useMemo(() => {
+    const levels = Array.isArray(activeProgram?.targetClassLevels) ? activeProgram.targetClassLevels : [];
+    return new Set(
+      levels
+        .map((level) => normalizeClassLevelToken(level))
+        .filter((level): level is string => Boolean(level)),
+    );
+  }, [activeProgram?.targetClassLevels]);
+
+  const baseFilteredClasses = useMemo(() => {
+    if (allowedClassLevelsByProgram.size === 0) return classes;
+    return classes.filter((classItem) => {
+      const normalizedLevel = normalizeClassLevelToken(classItem.level || classItem.name);
+      return normalizedLevel ? allowedClassLevelsByProgram.has(normalizedLevel) : false;
+    });
+  }, [classes, allowedClassLevelsByProgram]);
+
+  const filteredAssignmentsByProgram = useMemo(() => {
+    return assignmentOptions.filter((assignment) => {
+      const subjectAllowed =
+        allowedSubjectIdsByProgram.size === 0 ||
+        allowedSubjectIdsByProgram.has(Number(assignment.subject?.id || 0));
+
+      const classLevel = normalizeClassLevelToken(assignment.class?.level || assignment.class?.name);
+      const levelAllowed =
+        allowedClassLevelsByProgram.size === 0 ||
+        (classLevel ? allowedClassLevelsByProgram.has(classLevel) : false);
+
+      return subjectAllowed && levelAllowed;
+    });
+  }, [assignmentOptions, allowedClassLevelsByProgram, allowedSubjectIdsByProgram]);
+
+  const subjectOptions = useMemo<SubjectOptionWithTeachers[]>(() => {
+    const map = new Map<number, { id: number; name: string; code: string; teacherNames: Set<string> }>();
+
+    filteredAssignmentsByProgram.forEach((assignment) => {
+      const subjectId = Number(assignment.subject?.id || 0);
+      if (!subjectId) return;
+      const existing = map.get(subjectId);
+      if (existing) {
+        const teacherName = String(assignment.teacher?.name || '').trim();
+        if (teacherName) existing.teacherNames.add(teacherName);
+        return;
+      }
+      const teacherNames = new Set<string>();
+      const teacherName = String(assignment.teacher?.name || '').trim();
+      if (teacherName) teacherNames.add(teacherName);
+      map.set(subjectId, {
+        id: subjectId,
+        name: String(assignment.subject?.name || '').trim(),
+        code: String(assignment.subject?.code || '').trim(),
+        teacherNames,
+      });
+    });
+
+    if (map.size === 0) {
+      const fallback = allowedSubjectIdsByProgram.size === 0
+        ? subjects
+        : subjects.filter((subject) => allowedSubjectIdsByProgram.has(Number(subject.id)));
+      return fallback
+        .map((subject) => ({
+          ...subject,
+          teacherNames: [],
+        }))
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    }
+
+    return Array.from(map.values())
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        code: item.code,
+        teacherNames: Array.from(item.teacherNames).sort((a, b) => a.localeCompare(b)),
+      }))
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  }, [allowedSubjectIdsByProgram, filteredAssignmentsByProgram, subjects]);
+
+  const selectedSubjectIdNumber = useMemo(() => Number(formData.subjectId || 0), [formData.subjectId]);
+
+  const filteredClasses = useMemo(() => {
+    if (!selectedSubjectIdNumber) return baseFilteredClasses;
+
+    const classIdsForSelectedSubject = new Set<number>(
+      filteredAssignmentsByProgram
+        .filter((assignment) => Number(assignment.subject?.id || 0) === selectedSubjectIdNumber)
+        .map((assignment) => Number(assignment.class?.id || 0))
+        .filter((id) => Number.isFinite(id) && id > 0),
+    );
+
+    if (classIdsForSelectedSubject.size === 0) return baseFilteredClasses;
+    return baseFilteredClasses.filter((classItem) => classIdsForSelectedSubject.has(Number(classItem.id)));
+  }, [baseFilteredClasses, filteredAssignmentsByProgram, selectedSubjectIdNumber]);
+
+  const requestedProgramCode = useMemo(
+    () => String(searchParams.get(programParamKey) || '').trim().toUpperCase(),
+    [searchParams],
   );
 
   // Fetch initial data
@@ -145,20 +309,26 @@ const ExamScheduleManagementPage = () => {
     try {
       const response = await examService.getPrograms({
         academicYearId: Number(selectedAcademicYear),
-        roleContext: 'teacher',
+        roleContext: 'all',
         includeInactive: false,
       });
-      const programs = (response?.data?.programs || []).filter((item) => Boolean(item?.showOnTeacherMenu));
+      const programs = response?.data?.programs || [];
+      const scheduledPrograms = programs.filter((program) => !isNonScheduledExamProgram(program));
+      const resolvedRequestedCode = resolveProgramCodeFromParam(scheduledPrograms, requestedProgramCode);
       setExamPrograms(programs);
       setActiveProgramCode((prev) =>
-        programs.some((program) => program.code === prev) ? prev : (programs[0]?.code || ''),
+        scheduledPrograms.some((program) => program.code === resolvedRequestedCode)
+          ? resolvedRequestedCode
+          : scheduledPrograms.some((program) => program.code === prev)
+            ? prev
+            : (scheduledPrograms[0]?.code || ''),
       );
     } catch (error) {
       console.error('Error fetching exam programs:', error);
       setExamPrograms([]);
       setActiveProgramCode('');
     }
-  }, [selectedAcademicYear]);
+  }, [selectedAcademicYear, requestedProgramCode]);
 
   const fetchSchedules = useCallback(async () => {
     if (!selectedAcademicYear || !activeProgramCode) {
@@ -186,15 +356,46 @@ const ExamScheduleManagementPage = () => {
     }
   }, [activeProgramCode, selectedAcademicYear]);
 
+  const fetchProgramSessions = useCallback(
+    async (targetAcademicYearId: string, targetProgramCode: string) => {
+      const ayId = Number(targetAcademicYearId || 0);
+      if (!ayId || !targetProgramCode) {
+        setProgramSessions([]);
+        return;
+      }
+      try {
+        const response = await examService.getProgramSessions({
+          academicYearId: ayId,
+          programCode: targetProgramCode,
+        });
+        const sessions = Array.isArray(response?.data?.sessions) ? response.data.sessions : [];
+        setProgramSessions(sessions);
+      } catch (error) {
+        console.error('Error fetching program sessions:', error);
+        setProgramSessions([]);
+      }
+    },
+    [],
+  );
+
   const fetchFormData = useCallback(async () => {
     try {
       // Fetch subjects instead of packets
       // Fetch classes with high limit to ensure all are shown
       // Academic years already fetched in initial data, but we can ensure they are up to date
-      const [subjectsRes, classesRes, proctorsRes] = await Promise.all([
-        api.get('/subjects?limit=1000'), 
+      const assignmentAcademicYearId = Number(formData.academicYearId || selectedAcademicYear || 0);
+      const [subjectsRes, classesRes, assignmentsRes] = await Promise.all([
+        api.get('/subjects?limit=1000'),
         api.get('/classes?limit=1000'),
-        api.get('/users?role=TEACHER&limit=1000')
+        assignmentAcademicYearId > 0
+          ? api.get('/teacher-assignments', {
+              params: {
+                limit: 1000,
+                academicYearId: assignmentAcademicYearId,
+                scope: 'CURRICULUM',
+              },
+            })
+          : Promise.resolve({ data: { data: { assignments: [] } } }),
       ]);
 
       setSubjects(subjectsRes.data?.data?.subjects || subjectsRes.data?.data || []);
@@ -202,10 +403,11 @@ const ExamScheduleManagementPage = () => {
       // Handle potential different response structures for classes
       const classesData = classesRes.data?.data;
       setClasses(Array.isArray(classesData) ? classesData : classesData?.classes || []);
-
-      // Handle proctors
-      const proctorsData = proctorsRes.data?.data?.users || proctorsRes.data?.data || [];
-      setProctors(proctorsData.map((u: any) => ({ id: u.id, name: u.name || u.username })));
+      const assignmentsData =
+        assignmentsRes?.data?.data?.assignments ||
+        assignmentsRes?.data?.assignments ||
+        [];
+      setAssignmentOptions(Array.isArray(assignmentsData) ? assignmentsData : []);
 
       // Set default form academic year to selected one or active
       if (!formData.academicYearId && selectedAcademicYear) {
@@ -220,6 +422,7 @@ const ExamScheduleManagementPage = () => {
       toast.error('Gagal memuat data form');
       setSubjects([]);
       setClasses([]);
+      setAssignmentOptions([]);
     }
   }, [formData.academicYearId, selectedAcademicYear]);
 
@@ -236,6 +439,15 @@ const ExamScheduleManagementPage = () => {
       setSchedules([]);
     }
   }, [fetchSchedules, selectedAcademicYear, activeProgramCode]);
+
+  useEffect(() => {
+    const currentParam = String(searchParams.get(programParamKey) || '').trim().toUpperCase();
+    if (!activeProgramCode) return;
+    if (currentParam === activeProgramCode) return;
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set(programParamKey, activeProgramCode);
+    setSearchParams(nextParams, { replace: true });
+  }, [activeProgramCode, searchParams, setSearchParams]);
 
   // Auto-set Semester & Academic Year when Modal opens
   useEffect(() => {
@@ -259,6 +471,44 @@ const ExamScheduleManagementPage = () => {
     }
   }, [showModal, fetchFormData]);
 
+  useEffect(() => {
+    if (!showModal) return;
+    void fetchProgramSessions(formData.academicYearId || selectedAcademicYear, activeProgramCode);
+  }, [
+    showModal,
+    formData.academicYearId,
+    selectedAcademicYear,
+    activeProgramCode,
+    fetchProgramSessions,
+  ]);
+
+  useEffect(() => {
+    if (!showModal) return;
+    setFormData((prev) => {
+      if (!prev.sessionId) return prev;
+      const sessionExists = programSessions.some((session) => String(session.id) === String(prev.sessionId));
+      if (sessionExists) return prev;
+      return { ...prev, sessionId: '' };
+    });
+  }, [programSessions, showModal]);
+
+  useEffect(() => {
+    if (!showModal) return;
+    setFormData((prev) => {
+      const allowedClassIdSet = new Set(filteredClasses.map((item) => item.id.toString()));
+      const nextClassIds = prev.classIds.filter((id) => allowedClassIdSet.has(id));
+      const subjectStillValid =
+        !prev.subjectId || subjectOptions.some((subject) => String(subject.id) === String(prev.subjectId));
+      const nextSubjectId = subjectStillValid ? prev.subjectId : '';
+      if (nextClassIds.length === prev.classIds.length && nextSubjectId === prev.subjectId) return prev;
+      return {
+        ...prev,
+        classIds: nextClassIds,
+        subjectId: nextSubjectId,
+      };
+    });
+  }, [showModal, filteredClasses, subjectOptions]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -280,11 +530,11 @@ const ExamScheduleManagementPage = () => {
         date: formData.date,
         startTime: formData.startTime,
         endTime: formData.endTime,
+        sessionId: formData.sessionId ? parseInt(formData.sessionId, 10) : null,
         examType: activeProgramCode,
         programCode: activeProgramCode,
         academicYearId: parseInt(formData.academicYearId, 10),
-        semester: activeProgram?.fixedSemester || formData.semester || 'ODD',
-        proctorId: formData.proctorId ? parseInt(formData.proctorId, 10) : undefined
+        semester: activeProgram?.fixedSemester || formData.semester || 'ODD'
       };
 
       await api.post('/exams/schedules', payload);
@@ -301,6 +551,7 @@ const ExamScheduleManagementPage = () => {
         date: '',
         startTime: '',
         endTime: '',
+        sessionId: prev.sessionId,
         // Keep AY/Semester as they might add more for same period
       }));
     } catch (err: unknown) {
@@ -312,6 +563,55 @@ const ExamScheduleManagementPage = () => {
     }
   };
 
+  const handleCreateSession = async () => {
+    const academicYearId = Number(formData.academicYearId || selectedAcademicYear || 0);
+    const label = newSessionLabel.trim();
+    if (!academicYearId) {
+      toast.error('Pilih tahun ajaran dulu sebelum menambah sesi.');
+      return;
+    }
+    if (!activeProgramCode) {
+      toast.error('Program ujian belum dipilih.');
+      return;
+    }
+    if (!label) {
+      toast.error('Nama sesi tidak boleh kosong.');
+      return;
+    }
+
+    setCreatingSession(true);
+    try {
+      const response = await examService.createProgramSession({
+        academicYearId,
+        programCode: activeProgramCode,
+        label,
+      });
+      const created = response?.data;
+      if (created?.id) {
+        setProgramSessions((prev) => {
+          const next = [...prev];
+          const existingIndex = next.findIndex((item) => item.id === created.id);
+          if (existingIndex >= 0) {
+            next[existingIndex] = created;
+          } else {
+            next.push(created);
+          }
+          return next.sort(
+            (a, b) => Number(a.displayOrder || 0) - Number(b.displayOrder || 0) || Number(a.id) - Number(b.id),
+          );
+        });
+        setFormData((prev) => ({ ...prev, sessionId: String(created.id) }));
+      }
+      setNewSessionLabel('');
+      toast.success('Sesi berhasil ditambahkan.');
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, 'Gagal menambahkan sesi.');
+      toast.error(message);
+    } finally {
+      setCreatingSession(false);
+    }
+  };
+
   const handleDelete = async (id: number) => {
     if (!confirm('Apakah Anda yakin ingin menghapus jadwal ini?')) return;
     
@@ -319,9 +619,9 @@ const ExamScheduleManagementPage = () => {
       await api.delete(`/exams/schedules/${id}`);
       toast.success('Jadwal berhasil dihapus');
       setSchedules(prev => prev.filter(s => s.id !== id));
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error deleting schedule:', error);
-      toast.error(error.response?.data?.message || 'Gagal menghapus jadwal');
+      toast.error(getErrorMessage(error, 'Gagal menghapus jadwal'));
     }
   };
 
@@ -338,7 +638,7 @@ const ExamScheduleManagementPage = () => {
 
   const toggleAllClasses = (checked: boolean) => {
     if (checked) {
-      setFormData(prev => ({ ...prev, classIds: classes.map(c => c.id.toString()) }));
+      setFormData(prev => ({ ...prev, classIds: filteredClasses.map(c => c.id.toString()) }));
     } else {
       setFormData(prev => ({ ...prev, classIds: [] }));
     }
@@ -350,19 +650,25 @@ const ExamScheduleManagementPage = () => {
     );
   };
 
+  const resolveScheduleSessionLabel = (schedule: ExamSchedule): string | null => {
+    return String(schedule.programSession?.label || schedule.sessionLabel || '').trim() || null;
+  };
+
   const getGroupedSchedules = (): GroupedExamSchedule[] => {
     const groups: Record<string, GroupedExamSchedule> = {};
 
     schedules.forEach(schedule => {
       const subjectId = schedule.subject?.id || schedule.subject?.name || 'unknown';
       const timeKey = `${schedule.startTime}-${schedule.endTime}`;
-      const key = `${subjectId}-${timeKey}`;
+      const normalizedSessionLabel = resolveScheduleSessionLabel(schedule);
+      const key = `${subjectId}-${timeKey}-${normalizedSessionLabel || '__NO_SESSION__'}`;
 
       if (!groups[key]) {
         groups[key] = {
           key,
           subjectName: schedule.subject?.name || schedule.packet?.subject?.name || (schedule.packet ? 'Unknown Subject' : 'Jadwal Tanpa Soal'),
           subjectCode: schedule.subject?.code || '-',
+          sessionLabel: normalizedSessionLabel,
           startTime: schedule.startTime,
           endTime: schedule.endTime,
           schedules: [],
@@ -379,9 +685,11 @@ const ExamScheduleManagementPage = () => {
     });
 
     // Sort by startTime
-    return Object.values(groups).sort((a, b) => 
-      new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-    );
+    return Object.values(groups).sort((a, b) => {
+      const byTime = new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+      if (byTime !== 0) return byTime;
+      return String(a.sessionLabel || '').localeCompare(String(b.sessionLabel || ''), 'id');
+    });
   };
 
   const groupedSchedules = getGroupedSchedules();
@@ -400,7 +708,10 @@ const ExamScheduleManagementPage = () => {
              {/* Dropdown removed */}
 
             <button 
-              onClick={() => setShowModal(true)}
+              onClick={() => {
+                setNewSessionLabel('');
+                setShowModal(true);
+              }}
               disabled={!activeProgramCode}
               className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
                 !activeProgramCode
@@ -427,7 +738,7 @@ const ExamScheduleManagementPage = () => {
                   key={program.code}
                   onClick={() => setActiveProgramCode(program.code)}
                   className={`
-                    px-4 py-2 text-sm font-medium rounded-md transition-colors
+                    px-4 py-2 text-[13px] font-medium rounded-md transition-colors
                     ${activeProgramCode === program.code
                       ? 'bg-blue-50 text-blue-700'
                       : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
@@ -467,6 +778,7 @@ const ExamScheduleManagementPage = () => {
                   <th className="w-10 px-6 py-3"></th>
                   <th className="px-6 py-3 font-semibold text-gray-900">WAKTU PELAKSANAAN</th>
                   <th className="px-6 py-3 font-semibold text-gray-900">MATA PELAJARAN</th>
+                  <th className="px-6 py-3 font-semibold text-gray-900">SESI</th>
                   <th className="px-6 py-3 font-semibold text-gray-900">TOTAL KELAS</th>
                   <th className="px-6 py-3 font-semibold text-gray-900">STATUS SOAL</th>
                   <th className="px-6 py-3 font-semibold text-gray-900 text-right">AKSI</th>
@@ -507,6 +819,15 @@ const ExamScheduleManagementPage = () => {
                           <div className="text-gray-500 text-xs">
                             {group.subjectCode}
                           </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          {group.sessionLabel ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                              {group.sessionLabel}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">Tanpa sesi</span>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
@@ -553,7 +874,7 @@ const ExamScheduleManagementPage = () => {
                       
                       {isExpanded && (
                         <tr>
-                          <td colSpan={6} className="px-0 py-0 border-t-0 bg-gray-50/50">
+                          <td colSpan={7} className="px-0 py-0 border-t-0 bg-gray-50/50">
                             <div className="px-6 py-4 border-l-4 border-blue-500 ml-6 my-2">
                               <h4 className="text-sm font-semibold text-gray-900 mb-3">Detail Jadwal per Kelas</h4>
                               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -561,6 +882,7 @@ const ExamScheduleManagementPage = () => {
                                   <thead className="bg-gray-50 border-b border-gray-200">
                                     <tr>
                                       <th className="px-4 py-2 text-left font-medium text-gray-700">Kelas</th>
+                                      <th className="px-4 py-2 text-left font-medium text-gray-700">Sesi</th>
                                       <th className="px-4 py-2 text-left font-medium text-gray-700">Status Soal</th>
                                       <th className="px-4 py-2 text-right font-medium text-gray-700">Aksi</th>
                                     </tr>
@@ -572,6 +894,15 @@ const ExamScheduleManagementPage = () => {
                                       <tr key={schedule.id} className="hover:bg-gray-50">
                                         <td className="px-4 py-2 font-medium text-gray-900">
                                           {schedule.class.name}
+                                        </td>
+                                        <td className="px-4 py-2">
+                                          {resolveScheduleSessionLabel(schedule) ? (
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                              {resolveScheduleSessionLabel(schedule)}
+                                            </span>
+                                          ) : (
+                                            <span className="text-xs text-gray-400">Tanpa sesi</span>
+                                          )}
                                         </td>
                                         <td className="px-4 py-2">
                                           {schedule.packet ? (
@@ -676,14 +1007,25 @@ const ExamScheduleManagementPage = () => {
                     className="block w-full border border-gray-300 rounded-lg shadow-sm py-2.5 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm appearance-none"
                   >
                     <option value="">Pilih Mata Pelajaran...</option>
-                    {subjects.map(subject => (
+                    {subjectOptions.map(subject => (
                       <option key={subject.id} value={subject.id.toString()}>
                         {subject.name} ({subject.code})
+                        {subject.teacherNames.length > 0 ? ` -- ${subject.teacherNames.join(', ')}` : ''}
                       </option>
                     ))}
                   </select>
                   <ChevronDown className="absolute right-3 top-3 text-gray-400 pointer-events-none" size={16} />
                 </div>
+                {subjectOptions.length === 0 ? (
+                  <p className="text-xs text-amber-700 mt-1">
+                    Belum ada assignment mapel-guru untuk tahun ajaran ini.
+                  </p>
+                ) : null}
+                {allowedSubjectIdsByProgram.size > 0 ? (
+                  <p className="text-xs text-blue-600 mt-1">
+                    Scope program aktif membatasi mapel pada daftar yang diizinkan.
+                  </p>
+                ) : null}
               </div>
 
               {/* Class Selection */}
@@ -695,7 +1037,7 @@ const ExamScheduleManagementPage = () => {
                   <label className="flex items-center gap-2 text-sm cursor-pointer text-blue-600 font-medium select-none">
                     <input
                       type="checkbox"
-                      checked={classes.length > 0 && formData.classIds.length === classes.length}
+                      checked={filteredClasses.length > 0 && formData.classIds.length === filteredClasses.length}
                       onChange={(e) => toggleAllClasses(e.target.checked)}
                       className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
@@ -703,7 +1045,7 @@ const ExamScheduleManagementPage = () => {
                   </label>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-2 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-3">
-                  {classes.map((cls) => (
+                  {filteredClasses.map((cls) => (
                     <label key={cls.id} htmlFor={`class-${cls.id}`} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 p-1 rounded select-none">
                       <input
                         id={`class-${cls.id}`}
@@ -720,10 +1062,55 @@ const ExamScheduleManagementPage = () => {
                 <p className="text-xs text-gray-500 mt-1">
                   {formData.classIds.length} kelas dipilih.
                 </p>
+                {allowedClassLevelsByProgram.size > 0 ? (
+                  <p className="text-xs text-blue-600 mt-1">
+                    Scope program aktif membatasi tingkat kelas: {Array.from(allowedClassLevelsByProgram).join(', ')}.
+                  </p>
+                ) : null}
               </div>
 
               {/* Date & Time */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label htmlFor="sessionId" className="block text-sm font-medium text-gray-700 mb-2">
+                    Sesi Ujian (Opsional)
+                  </label>
+                  <select
+                    id="sessionId"
+                    name="sessionId"
+                    value={formData.sessionId}
+                    onChange={(e) => setFormData({ ...formData, sessionId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Tanpa sesi</option>
+                    {programSessions.map((session) => (
+                      <option key={session.id} value={session.id}>
+                        {session.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      type="text"
+                      value={newSessionLabel}
+                      onChange={(e) => setNewSessionLabel(e.target.value)}
+                      placeholder="Tambah sesi baru (contoh: Sesi 1)"
+                      maxLength={60}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCreateSession}
+                      disabled={creatingSession}
+                      className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-60"
+                    >
+                      {creatingSession ? 'Menyimpan...' : 'Tambah Sesi'}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Pilih dari master sesi agar konsisten. Jika belum ada, tambahkan lewat kolom di atas.
+                  </p>
+                </div>
                 <div>
                   <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-2">
                     Tanggal <span className="text-red-500">*</span>
@@ -765,23 +1152,6 @@ const ExamScheduleManagementPage = () => {
                     onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
-                </div>
-
-                {/* Proctor Selection (Added per user request) */}
-                <div className="col-span-2">
-                  <label htmlFor="proctorId" className="block text-sm font-medium text-gray-700 mb-1">Pengawas (Opsional)</label>
-                  <select
-                    id="proctorId"
-                    value={formData.proctorId}
-                    onChange={(e) => setFormData({ ...formData, proctorId: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">-- Pilih Pengawas --</option>
-                    {proctors.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">Anda juga dapat mengatur pengawas nanti di menu "Kelola Jadwal Mengawas"</p>
                 </div>
               </div>
 

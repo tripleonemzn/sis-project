@@ -38,6 +38,13 @@ export interface StudentPermission {
   };
 }
 
+interface PermissionMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
 export const permissionService = {
   getPermissions: async (params?: {
     classId?: number;
@@ -47,7 +54,7 @@ export const permissionService = {
     page?: number;
     limit?: number;
     search?: string;
-  }): Promise<ApiResponse<{ permissions: StudentPermission[]; meta: any }>> => {
+  }): Promise<ApiResponse<{ permissions: StudentPermission[]; meta: PermissionMeta }>> => {
     const response = await api.get('/permissions', { params });
     return response.data;
   },

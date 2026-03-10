@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Eye, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Eye, RefreshCw, X } from 'lucide-react';
 import { examService } from '../../../services/exam.service';
 import { liveQueryOptions } from '../../../lib/query/liveQuery';
 
@@ -52,17 +52,23 @@ function correctnessLabel(value: boolean | null): string {
 }
 
 export const ExamSubmissionsPage = () => {
+  const PAGE_SIZE = 50;
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const packetId = Number(id);
   const [statusFilter, setStatusFilter] = useState<SessionStatusFilter>('');
+  const [page, setPage] = useState(1);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
 
   const submissionsQuery = useQuery({
-    queryKey: ['exam-packet-submissions', packetId, statusFilter],
+    queryKey: ['exam-packet-submissions', packetId, statusFilter, page],
     enabled: Number.isFinite(packetId) && packetId > 0,
     queryFn: async () => {
-      const response = await examService.getPacketSubmissions(packetId, statusFilter ? { status: statusFilter } : undefined);
+      const response = await examService.getPacketSubmissions(packetId, {
+        ...(statusFilter ? { status: statusFilter } : {}),
+        page,
+        limit: PAGE_SIZE,
+      });
       return response.data;
     },
     ...liveQueryOptions,
@@ -83,6 +89,13 @@ export const ExamSubmissionsPage = () => {
     return submissionsQuery.data.sessions.find((item) => item.sessionId === selectedSessionId) || null;
   }, [selectedSessionId, submissionsQuery.data]);
 
+  const summary = submissionsQuery.data?.summary;
+  const packet = submissionsQuery.data?.packet;
+  const totalPages = summary?.totalPages || 1;
+  const currentPage = summary?.page || page;
+  const canPrevPage = currentPage > 1;
+  const canNextPage = currentPage < totalPages;
+
   if (!Number.isFinite(packetId) || packetId <= 0) {
     return (
       <div className="p-6">
@@ -91,9 +104,6 @@ export const ExamSubmissionsPage = () => {
       </div>
     );
   }
-
-  const summary = submissionsQuery.data?.summary;
-  const packet = submissionsQuery.data?.packet;
 
   return (
     <div className="space-y-5">
@@ -118,7 +128,11 @@ export const ExamSubmissionsPage = () => {
         <div className="flex items-center gap-2">
           <select
             value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as SessionStatusFilter)}
+            onChange={(event) => {
+              setStatusFilter(event.target.value as SessionStatusFilter);
+              setSelectedSessionId(null);
+              setPage(1);
+            }}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
           >
             <option value="">Semua Status</option>
@@ -137,7 +151,7 @@ export const ExamSubmissionsPage = () => {
       </div>
 
       {summary ? (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <p className="text-xs text-gray-500">Total Sesi</p>
             <p className="text-2xl font-bold text-gray-900">{summary.sessionCount}</p>
@@ -153,6 +167,13 @@ export const ExamSubmissionsPage = () => {
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <p className="text-xs text-gray-500">Rata-rata Nilai</p>
             <p className="text-2xl font-bold text-gray-900">{summary.averageScore === null ? '-' : summary.averageScore.toFixed(2)}</p>
+          </div>
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <p className="text-xs text-gray-500">Halaman</p>
+            <p className="text-2xl font-bold text-gray-900">{summary.page}/{summary.totalPages}</p>
+            <p className="text-xs text-gray-500 mt-1">
+              Tampil {summary.pageSessionCount} dari {summary.sessionCount} sesi
+            </p>
           </div>
         </div>
       ) : null}
@@ -171,59 +192,102 @@ export const ExamSubmissionsPage = () => {
 
       {!submissionsQuery.isLoading && !submissionsQuery.isError && submissionsQuery.data ? (
         submissionsQuery.data.sessions.length > 0 ? (
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] text-sm">
-                <thead className="bg-gray-50 text-gray-600">
-                  <tr>
-                    <th className="text-left px-4 py-3 font-semibold">Siswa</th>
-                    <th className="text-left px-4 py-3 font-semibold">Status</th>
-                    <th className="text-left px-4 py-3 font-semibold">Nilai</th>
-                    <th className="text-left px-4 py-3 font-semibold">Progress Jawaban</th>
-                    <th className="text-left px-4 py-3 font-semibold">Waktu</th>
-                    <th className="text-left px-4 py-3 font-semibold">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {submissionsQuery.data.sessions.map((item) => (
-                    <tr key={item.sessionId} className="border-t border-gray-100 align-top">
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-gray-900">{item.student.name}</p>
-                        <p className="text-xs text-gray-500">NIS: {item.student.nis || '-'}</p>
-                        <p className="text-xs text-gray-500">Kelas: {item.class?.name || '-'}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-1 rounded-full border font-semibold ${statusClass(item.status)}`}>
-                          {statusLabel(item.status)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-700">{item.score === null ? '-' : item.score.toFixed(2)}</td>
-                      <td className="px-4 py-3 text-xs text-gray-700 space-y-1">
-                        <p>
-                          {item.answeredCount}/{item.totalQuestions} ({formatPercent(item.completionRate)})
-                        </p>
-                        <p>Objektif benar: {item.objectiveCorrect}</p>
-                        <p>Objektif salah: {item.objectiveIncorrect}</p>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-700 space-y-1">
-                        <p>Mulai: {formatDateTime(item.startTime)}</p>
-                        <p>Kumpul: {formatDateTime(item.submitTime)}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => setSelectedSessionId(item.sessionId)}
-                          className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold"
-                        >
-                          <Eye className="w-3 h-3" />
-                          Detail
-                        </button>
-                      </td>
+          <>
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] text-sm">
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th className="text-left px-4 py-3 font-semibold w-16">No</th>
+                      <th className="text-left px-4 py-3 font-semibold">Nama Siswa</th>
+                      <th className="text-left px-4 py-3 font-semibold">Status</th>
+                      <th className="text-left px-4 py-3 font-semibold">Nilai</th>
+                      <th className="text-left px-4 py-3 font-semibold">Progress Jawaban</th>
+                      <th className="text-left px-4 py-3 font-semibold">Waktu</th>
+                      <th className="text-left px-4 py-3 font-semibold">Aksi</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {submissionsQuery.data.sessions.map((item, index) => (
+                      <tr key={item.sessionId} className="border-t border-gray-100 align-top">
+                        <td className="px-4 py-3 text-gray-700">
+                          {(currentPage - 1) * PAGE_SIZE + index + 1}
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-gray-900">{item.student.name}</p>
+                          <p className="text-xs text-gray-500">NIS: {item.student.nis || '-'}</p>
+                          <p className="text-xs text-gray-500">Kelas: {item.class?.name || '-'}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs px-2 py-1 rounded-full border font-semibold ${statusClass(item.status)}`}>
+                            {statusLabel(item.status)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-700">{item.score === null ? '-' : item.score.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-xs text-gray-700 space-y-1">
+                          <p>
+                            {item.answeredCount}/{item.totalQuestions} ({formatPercent(item.completionRate)})
+                          </p>
+                          <p>Objektif benar: {item.objectiveCorrect}</p>
+                          <p>Objektif salah: {item.objectiveIncorrect}</p>
+                          <p>
+                            Pelanggaran: {item.monitoring?.totalViolations || 0}
+                            {' '}(
+                            tab: {item.monitoring?.tabSwitchCount || 0},{' '}
+                            fullscreen: {item.monitoring?.fullscreenExitCount || 0},{' '}
+                            app: {item.monitoring?.appSwitchCount || 0}
+                            )
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-700 space-y-1">
+                          <p>Mulai: {formatDateTime(item.startTime)}</p>
+                          <p>Kumpul: {formatDateTime(item.submitTime)}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => setSelectedSessionId(item.sessionId)}
+                            className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold"
+                          >
+                            <Eye className="w-3 h-3" />
+                            Detail
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+            <div className="px-4 py-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-gray-500">
+                Halaman {currentPage} dari {totalPages}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (!canPrevPage) return;
+                    setSelectedSessionId(null);
+                    setPage((prev) => Math.max(1, prev - 1));
+                  }}
+                  disabled={!canPrevPage}
+                  className="px-3 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Sebelumnya
+                </button>
+                <button
+                  onClick={() => {
+                    if (!canNextPage) return;
+                    setSelectedSessionId(null);
+                    setPage((prev) => prev + 1);
+                  }}
+                  disabled={!canNextPage}
+                  className="px-3 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Berikutnya
+                </button>
+              </div>
+            </div>
+          </>
         ) : (
           <div className="bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center text-gray-500">
             Belum ada sesi ujian yang cocok dengan filter saat ini.
@@ -232,7 +296,8 @@ export const ExamSubmissionsPage = () => {
       ) : null}
 
       {selectedSessionId ? (
-        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+        <div className="fixed inset-0 z-[90] bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4 w-full max-w-5xl max-h-[90vh] overflow-auto">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-semibold text-gray-900">Detail Jawaban Sesi</h2>
@@ -242,8 +307,9 @@ export const ExamSubmissionsPage = () => {
             </div>
             <button
               onClick={() => setSelectedSessionId(null)}
-              className="px-3 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50"
+              className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50"
             >
+              <X className="w-4 h-4" />
               Tutup Detail
             </button>
           </div>
@@ -258,7 +324,7 @@ export const ExamSubmissionsPage = () => {
 
           {!sessionDetailQuery.isLoading && !sessionDetailQuery.isError && sessionDetailQuery.data ? (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                 <div className="border border-gray-200 rounded-lg p-3">
                   <p className="text-xs text-gray-500">Status</p>
                   <p className="text-sm font-semibold text-gray-900">{statusLabel(sessionDetailQuery.data.session.status)}</p>
@@ -280,6 +346,17 @@ export const ExamSubmissionsPage = () => {
                   <p className="text-sm font-semibold text-gray-900">
                     {sessionDetailQuery.data.summary.objectiveCorrectCount}/
                     {sessionDetailQuery.data.summary.objectiveEvaluableCount}
+                  </p>
+                </div>
+                <div className="border border-gray-200 rounded-lg p-3">
+                  <p className="text-xs text-gray-500">Pelanggaran</p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {sessionDetailQuery.data.session.monitoring?.totalViolations || 0}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    tab: {sessionDetailQuery.data.session.monitoring?.tabSwitchCount || 0},{' '}
+                    fullscreen: {sessionDetailQuery.data.session.monitoring?.fullscreenExitCount || 0},{' '}
+                    app: {sessionDetailQuery.data.session.monitoring?.appSwitchCount || 0}
                   </p>
                 </div>
               </div>
@@ -313,6 +390,7 @@ export const ExamSubmissionsPage = () => {
               </div>
             </>
           ) : null}
+        </div>
         </div>
       ) : null}
     </div>

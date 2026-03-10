@@ -101,9 +101,19 @@ export interface LibraryLoanClassOption {
   } | null;
 }
 
+export interface LibraryLoanBookOption {
+  title: string;
+  availableQty: number;
+  totalQty: number;
+  publishYear?: number | null;
+  roomCount: number;
+  roomNames: string[];
+}
+
 export interface LibraryBookLoan {
   id: number;
   borrowDate: string;
+  borrowQty: number;
   borrowerName: string;
   borrowerStatus: LibraryBorrowerStatus;
   classId?: number | null;
@@ -211,6 +221,11 @@ export const inventoryService = {
     return response.data;
   },
 
+  listLibraryLoanBookOptions: async (params?: { q?: string }) => {
+    const response = await api.get('/inventory/library-loans/books', { params });
+    return response.data;
+  },
+
   listLibraryBookLoans: async (params?: { q?: string }) => {
     const response = await api.get('/inventory/library-loans', { params });
     return response.data;
@@ -228,6 +243,7 @@ export const inventoryService = {
 
   createLibraryBookLoan: async (data: {
     borrowDate: string;
+    borrowQty?: number;
     borrowerName: string;
     borrowerStatus: LibraryBorrowerStatus;
     classId?: number | null;
@@ -245,6 +261,7 @@ export const inventoryService = {
     id: number,
     data: Partial<{
       borrowDate: string;
+      borrowQty: number;
       borrowerName: string;
       borrowerStatus: LibraryBorrowerStatus;
       classId: number | null;

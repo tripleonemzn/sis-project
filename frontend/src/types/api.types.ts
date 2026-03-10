@@ -1,4 +1,4 @@
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   statusCode: number;
   data: T;
   message: string;
@@ -9,6 +9,6 @@ export interface ApiError {
   statusCode: number;
   message: string;
   success: boolean;
-  errors?: any[];
+  errors?: unknown[];
   stack?: string;
 }

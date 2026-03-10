@@ -79,6 +79,15 @@ export interface DailyAttendanceStudent {
   note: string | null;
 }
 
+export interface StudentAttendanceHistory {
+  id: number;
+  date: string;
+  status: AttendanceStatus | 'ALPHA';
+  notes?: string | null;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
+}
+
 export const attendanceService = {
   // Get subject attendance by date
   getSubjectAttendance: async (params: {
@@ -144,7 +153,11 @@ export const attendanceService = {
   },
 
   getStudentHistory: async (params: { month?: number; year?: number; startDate?: string; endDate?: string }) => {
-    const response = await api.get<{ success: boolean; data: any[]; message: string }>('/attendances/student-history', {
+    const response = await api.get<{
+      success: boolean;
+      data: StudentAttendanceHistory[];
+      message: string;
+    }>('/attendances/student-history', {
       params,
     });
     return response.data;

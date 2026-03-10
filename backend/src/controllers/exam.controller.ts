@@ -1,18 +1,68 @@
 import { Request, Response } from 'express';
+import { createHash } from 'crypto';
 import prisma from '../utils/prisma';
 import { asyncHandler, ApiError, ApiResponse } from '../utils/api';
 import { ExamType, Semester, GradeComponentType, GradeEntryMode, Prisma } from '@prisma/client';
 import { syncReportGrade } from './grade.controller';
 import { syncScoreEntriesFromStudentGrade, upsertScoreEntryFromExamSession } from '../services/scoreEntry.service';
 
-const SUPPORTED_PACKET_TYPES: readonly ExamType[] = [
-    ExamType.FORMATIF,
-    ExamType.SBTS,
-    ExamType.SAS,
-    ExamType.SAT,
-    ExamType.US_PRACTICE,
-    ExamType.US_THEORY,
-];
+function normalizeAliasCode(raw: unknown): string {
+    return String(raw || '')
+        .trim()
+        .toUpperCase()
+        .replace(/QUIZ/g, 'FORMATIF')
+        .replace(/[^A-Z0-9]+/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '');
+}
+
+function isFormativeAliasCode(raw: unknown): boolean {
+    const normalized = normalizeAliasCode(raw);
+    if (!normalized) return false;
+    return normalized === 'FORMATIF' || normalized === 'FORMATIVE' || normalized.startsWith('NF');
+}
+
+function isMidtermAliasCode(raw: unknown): boolean {
+    const normalized = normalizeAliasCode(raw);
+    if (!normalized) return false;
+    if (['MIDTERM', 'SBTS', 'PTS', 'UTS'].includes(normalized)) return true;
+    return normalized.includes('MIDTERM');
+}
+
+function isFinalEvenAliasCode(raw: unknown): boolean {
+    const normalized = normalizeAliasCode(raw);
+    if (!normalized) return false;
+    if (['SAT', 'PAT', 'PSAT', 'FINAL_EVEN'].includes(normalized)) return true;
+    return normalized.includes('EVEN');
+}
+
+function isFinalOddAliasCode(raw: unknown): boolean {
+    const normalized = normalizeAliasCode(raw);
+    if (!normalized) return false;
+    if (['SAS', 'PAS', 'PSAS', 'FINAL_ODD'].includes(normalized)) return true;
+    return normalized.includes('ODD');
+}
+
+function isFinalAliasCode(raw: unknown): boolean {
+    const normalized = normalizeAliasCode(raw);
+    if (!normalized) return false;
+    if (['FINAL', 'SAS', 'SAT', 'PAS', 'PAT', 'PSAS', 'PSAT', 'FINAL_ODD', 'FINAL_EVEN'].includes(normalized)) {
+        return true;
+    }
+    return normalized.includes('FINAL');
+}
+
+function inferExamTypeFromAlias(raw: unknown): ExamType | null {
+    const normalized = normalizeAliasCode(raw);
+    if (!normalized) return null;
+    if ((Object.values(ExamType) as string[]).includes(normalized)) return normalized as ExamType;
+    if (isFormativeAliasCode(normalized)) return ExamType.FORMATIF;
+    if (isMidtermAliasCode(normalized)) return ExamType.SBTS;
+    if (isFinalEvenAliasCode(normalized)) return ExamType.SAT;
+    if (isFinalOddAliasCode(normalized)) return ExamType.SAS;
+    if (isFinalAliasCode(normalized)) return ExamType.SAS;
+    return null;
+}
 
 function normalizeProgramCode(raw: unknown): string | null {
     const normalized = String(raw || '')
@@ -29,15 +79,644 @@ function normalizeProgramCode(raw: unknown): string | null {
     return normalized;
 }
 
+function isNonScheduledExamProgramCode(raw: unknown): boolean {
+    const normalized = normalizeAliasCode(raw);
+    if (!normalized) return false;
+    return ['UH', 'ULANGAN_HARIAN', 'FORMATIF', 'FORMATIVE'].includes(normalized);
+}
+
+function tryNormalizePacketType(rawType: unknown): ExamType | null {
+    return inferExamTypeFromAlias(rawType);
+}
+
 function normalizePacketType(rawType: unknown): ExamType {
-    const value = String(rawType || '').toUpperCase();
-    if (value === 'QUIZ') {
-        return ExamType.FORMATIF;
-    }
-    if (SUPPORTED_PACKET_TYPES.includes(value as ExamType)) {
-        return value as ExamType;
-    }
+    const resolved = tryNormalizePacketType(rawType);
+    if (resolved) return resolved;
     throw new ApiError(400, 'Tipe ujian tidak valid untuk packet ujian.');
+}
+
+async function resolveRestrictionTarget(params: {
+    academicYearId: number;
+    rawExamType?: unknown;
+    rawProgramCode?: unknown;
+}): Promise<{ programCode: string | null; baseType: ExamType }> {
+    const normalizedProgramCode = normalizeProgramCode(params.rawProgramCode);
+    const normalizedExamType = normalizeProgramCode(params.rawExamType);
+    if (!normalizedProgramCode && !normalizedExamType) {
+        throw new ApiError(400, 'Jenis ujian wajib diisi.');
+    }
+
+    if (normalizedProgramCode) {
+        const directProgram = await prisma.examProgramConfig.findFirst({
+            where: {
+                academicYearId: params.academicYearId,
+                isActive: true,
+                code: normalizedProgramCode,
+            },
+            orderBy: [{ displayOrder: 'asc' }, { id: 'asc' }],
+            select: {
+                code: true,
+                baseType: true,
+            },
+        });
+        if (directProgram) {
+            return { programCode: directProgram.code, baseType: directProgram.baseType };
+        }
+    }
+
+    if (normalizedExamType) {
+        const inferredType = tryNormalizePacketType(normalizedExamType);
+        const config = await prisma.examProgramConfig.findFirst({
+            where: {
+                academicYearId: params.academicYearId,
+                isActive: true,
+                OR: [
+                    { code: normalizedExamType },
+                    { baseTypeCode: normalizedExamType },
+                    ...(inferredType ? [{ baseType: inferredType }] : []),
+                ],
+            },
+            orderBy: [{ displayOrder: 'asc' }, { id: 'asc' }],
+            select: {
+                code: true,
+                baseType: true,
+            },
+        });
+        if (config) {
+            return { programCode: config.code, baseType: config.baseType };
+        }
+
+        if (inferredType) {
+            return { programCode: null, baseType: inferredType };
+        }
+    }
+
+    if (normalizedProgramCode) {
+        const inferredProgramType = tryNormalizePacketType(normalizedProgramCode);
+        if (inferredProgramType) {
+            return { programCode: null, baseType: inferredProgramType };
+        }
+    }
+
+    throw new ApiError(
+        400,
+        `Jenis ujian ${normalizedProgramCode || normalizedExamType || ''} tidak dikenali.`,
+    );
+}
+
+function buildProgramRestrictionKey(academicYearId: number, semester: Semester, programCode: string): string {
+    return `${academicYearId}:${semester}:${programCode}`;
+}
+
+function buildLegacyRestrictionKey(academicYearId: number, semester: Semester, examType: ExamType): string {
+    return `${academicYearId}:${semester}:${examType}`;
+}
+
+const AVAILABLE_EXAMS_CACHE_TTL_MS = 3000;
+const AVAILABLE_EXAMS_CACHE_MAX_ENTRIES = 2000;
+const availableExamsCache = new Map<number, { expiresAt: number; payload: unknown }>();
+const START_EXAM_SCHEDULE_CACHE_TTL_MS = 15_000;
+const START_EXAM_SCHEDULE_CACHE_MAX_ENTRIES = 500;
+type StartExamSchedulePayload = {
+    id: number;
+    startTime: Date;
+    endTime: Date;
+    examType: string | null;
+    packet: {
+        id: number;
+        title: string;
+        description: string | null;
+        type: ExamType;
+        duration: number;
+        publishedQuestionCount: number | null;
+        instructions: string | null;
+        semester: Semester;
+        kkm: number | null;
+        subjectId: number;
+        academicYearId: number;
+        programCode: string | null;
+        createdAt: Date;
+        updatedAt: Date;
+        questions: Record<string, unknown>[];
+        subject: {
+            id: number;
+            name: string;
+            code: string;
+        };
+    };
+};
+const startExamScheduleCache = new Map<number, { expiresAt: number; payload: StartExamSchedulePayload }>();
+const startExamScheduleInFlight = new Map<number, Promise<StartExamSchedulePayload | null>>();
+
+function getCachedAvailableExams(studentId: number): unknown | null {
+    const now = Date.now();
+    const cached = availableExamsCache.get(studentId);
+    if (!cached) return null;
+    if (cached.expiresAt <= now) {
+        availableExamsCache.delete(studentId);
+        return null;
+    }
+    return cached.payload;
+}
+
+function setCachedAvailableExams(studentId: number, payload: unknown) {
+    const now = Date.now();
+    availableExamsCache.set(studentId, {
+        payload,
+        expiresAt: now + AVAILABLE_EXAMS_CACHE_TTL_MS,
+    });
+
+    if (availableExamsCache.size <= AVAILABLE_EXAMS_CACHE_MAX_ENTRIES) return;
+
+    for (const [cacheStudentId, entry] of availableExamsCache.entries()) {
+        if (entry.expiresAt <= now) {
+            availableExamsCache.delete(cacheStudentId);
+        }
+    }
+
+    if (availableExamsCache.size <= AVAILABLE_EXAMS_CACHE_MAX_ENTRIES) return;
+    const oldestKey = availableExamsCache.keys().next().value;
+    if (oldestKey !== undefined) {
+        availableExamsCache.delete(oldestKey);
+    }
+}
+
+function getCachedStartExamSchedule(scheduleId: number): StartExamSchedulePayload | null {
+    const now = Date.now();
+    const cached = startExamScheduleCache.get(scheduleId);
+    if (!cached) return null;
+    if (cached.expiresAt <= now) {
+        startExamScheduleCache.delete(scheduleId);
+        return null;
+    }
+    return cached.payload;
+}
+
+function setCachedStartExamSchedule(scheduleId: number, payload: StartExamSchedulePayload) {
+    const now = Date.now();
+    startExamScheduleCache.set(scheduleId, {
+        payload,
+        expiresAt: now + START_EXAM_SCHEDULE_CACHE_TTL_MS,
+    });
+
+    if (startExamScheduleCache.size <= START_EXAM_SCHEDULE_CACHE_MAX_ENTRIES) return;
+
+    for (const [cacheScheduleId, entry] of startExamScheduleCache.entries()) {
+        if (entry.expiresAt <= now) {
+            startExamScheduleCache.delete(cacheScheduleId);
+        }
+    }
+
+    if (startExamScheduleCache.size <= START_EXAM_SCHEDULE_CACHE_MAX_ENTRIES) return;
+    const oldestKey = startExamScheduleCache.keys().next().value;
+    if (oldestKey !== undefined) {
+        startExamScheduleCache.delete(oldestKey);
+    }
+}
+
+function invalidateStartExamScheduleCache(scheduleId: number) {
+    if (!Number.isFinite(scheduleId) || scheduleId <= 0) return;
+    startExamScheduleCache.delete(scheduleId);
+    startExamScheduleInFlight.delete(scheduleId);
+}
+
+function invalidateStartExamScheduleCacheByPacket(packetId: number) {
+    if (!Number.isFinite(packetId) || packetId <= 0) return;
+    for (const [cacheScheduleId, entry] of startExamScheduleCache.entries()) {
+        if (entry.payload.packet.id === packetId) {
+            startExamScheduleCache.delete(cacheScheduleId);
+            startExamScheduleInFlight.delete(cacheScheduleId);
+        }
+    }
+}
+
+async function loadStartExamSchedule(scheduleId: number): Promise<StartExamSchedulePayload | null> {
+    const schedule = await prisma.examSchedule.findUnique({
+        where: { id: scheduleId },
+        select: {
+            id: true,
+            startTime: true,
+            endTime: true,
+            examType: true,
+            packet: {
+                select: {
+                    id: true,
+                    title: true,
+                    description: true,
+                    type: true,
+                    duration: true,
+                    publishedQuestionCount: true,
+                    instructions: true,
+                    semester: true,
+                    kkm: true,
+                    subjectId: true,
+                    academicYearId: true,
+                    programCode: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    questions: true,
+                    subject: {
+                        select: {
+                            id: true,
+                            name: true,
+                            code: true,
+                        },
+                    },
+                },
+            },
+        },
+    });
+
+    if (!schedule || !schedule.packet) return null;
+
+    return {
+        ...schedule,
+        packet: {
+            ...schedule.packet,
+            questions: sanitizePacketQuestionsForStudent(schedule.packet.questions),
+        },
+    };
+}
+
+async function getOrCreateStartExamSchedule(scheduleId: number): Promise<StartExamSchedulePayload | null> {
+    const cached = getCachedStartExamSchedule(scheduleId);
+    if (cached) return cached;
+
+    const inFlight = startExamScheduleInFlight.get(scheduleId);
+    if (inFlight) return inFlight;
+
+    const runner = loadStartExamSchedule(scheduleId)
+        .then((payload) => {
+            if (payload) {
+                setCachedStartExamSchedule(scheduleId, payload);
+            }
+            return payload;
+        })
+        .finally(() => {
+            startExamScheduleInFlight.delete(scheduleId);
+        });
+
+    startExamScheduleInFlight.set(scheduleId, runner);
+    return runner;
+}
+
+function stableSerializeJson(value: unknown): string {
+    const normalize = (input: unknown): unknown => {
+        if (Array.isArray(input)) return input.map((item) => normalize(item));
+        if (input && typeof input === 'object') {
+            const source = input as Record<string, unknown>;
+            return Object.keys(source)
+                .sort()
+                .reduce<Record<string, unknown>>((acc, key) => {
+                    acc[key] = normalize(source[key]);
+                    return acc;
+                }, {});
+        }
+        return input;
+    };
+
+    try {
+        return JSON.stringify(normalize(value));
+    } catch {
+        return '';
+    }
+}
+
+const studentExamSessionSelect = {
+    id: true,
+    studentId: true,
+    scheduleId: true,
+    startTime: true,
+    endTime: true,
+    submitTime: true,
+    score: true,
+    status: true,
+    answers: true,
+    createdAt: true,
+    updatedAt: true,
+} satisfies Prisma.StudentExamSessionSelect;
+
+type StudentExamSessionSummary = Prisma.StudentExamSessionGetPayload<{
+    select: typeof studentExamSessionSelect;
+}>;
+
+type SessionMonitoringSummary = {
+    totalViolations: number;
+    tabSwitchCount: number;
+    fullscreenExitCount: number;
+    appSwitchCount: number;
+    lastViolationType: string | null;
+    lastViolationAt: string | null;
+};
+
+type SessionQuestionSetMeta = {
+    ids: string[];
+    limit: number | null;
+    totalAvailable: number;
+    assignedAt: string | null;
+};
+
+async function findStudentExamSessionSummary(
+    scheduleId: number,
+    studentId: number,
+): Promise<StudentExamSessionSummary | null> {
+    return prisma.studentExamSession.findFirst({
+        where: { scheduleId, studentId },
+        select: studentExamSessionSelect,
+    });
+}
+
+async function createStudentExamSessionSafely(params: {
+    scheduleId: number;
+    studentId: number;
+    now: Date;
+}): Promise<StudentExamSessionSummary> {
+    try {
+        return await prisma.studentExamSession.create({
+            data: {
+                scheduleId: params.scheduleId,
+                studentId: params.studentId,
+                startTime: params.now,
+                status: 'IN_PROGRESS',
+            },
+            select: studentExamSessionSelect,
+        });
+    } catch (error) {
+        // Race-safe fallback: another concurrent request already created the session.
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+            const existing = await findStudentExamSessionSummary(params.scheduleId, params.studentId);
+            if (existing) return existing;
+        }
+        throw error;
+    }
+}
+
+function sanitizeMonitoringPayload(rawMonitoring: unknown): Record<string, unknown> | null {
+    if (!rawMonitoring || typeof rawMonitoring !== 'object') return null;
+    const source = rawMonitoring as Record<string, unknown>;
+
+    const totalViolations = Number(source.totalViolations || 0);
+    const tabSwitchCount = Number(source.tabSwitchCount || 0);
+    const fullscreenExitCount = Number(source.fullscreenExitCount || 0);
+    const appSwitchCount = Number(source.appSwitchCount || 0);
+    const currentQuestionIndex = Number(source.currentQuestionIndex ?? 0);
+    const currentQuestionNumber = Number(source.currentQuestionNumber ?? currentQuestionIndex + 1);
+
+    return {
+        totalViolations: Number.isFinite(totalViolations) ? Math.max(0, totalViolations) : 0,
+        tabSwitchCount: Number.isFinite(tabSwitchCount) ? Math.max(0, tabSwitchCount) : 0,
+        fullscreenExitCount: Number.isFinite(fullscreenExitCount) ? Math.max(0, fullscreenExitCount) : 0,
+        appSwitchCount: Number.isFinite(appSwitchCount) ? Math.max(0, appSwitchCount) : 0,
+        lastViolationType: source.lastViolationType ? String(source.lastViolationType) : null,
+        lastViolationAt: source.lastViolationAt ? String(source.lastViolationAt) : null,
+        currentQuestionIndex: Number.isFinite(currentQuestionIndex) ? Math.max(0, Math.floor(currentQuestionIndex)) : 0,
+        currentQuestionNumber: Number.isFinite(currentQuestionNumber) ? Math.max(1, Math.floor(currentQuestionNumber)) : 1,
+        currentQuestionId: source.currentQuestionId ? String(source.currentQuestionId) : null,
+    };
+}
+
+function extractMonitoringSummaryFromAnswers(rawAnswers: unknown): SessionMonitoringSummary {
+    const defaultSummary: SessionMonitoringSummary = {
+        totalViolations: 0,
+        tabSwitchCount: 0,
+        fullscreenExitCount: 0,
+        appSwitchCount: 0,
+        lastViolationType: null,
+        lastViolationAt: null,
+    };
+    if (!rawAnswers || typeof rawAnswers !== 'object' || Array.isArray(rawAnswers)) return defaultSummary;
+
+    const monitoring = sanitizeMonitoringPayload((rawAnswers as Record<string, unknown>).__monitoring);
+    if (!monitoring) return defaultSummary;
+
+    const totalViolations = Number(monitoring.totalViolations || 0);
+    const tabSwitchCount = Number(monitoring.tabSwitchCount || 0);
+    const fullscreenExitCount = Number(monitoring.fullscreenExitCount || 0);
+    const appSwitchCount = Number(monitoring.appSwitchCount || 0);
+
+    return {
+        totalViolations: Number.isFinite(totalViolations) ? Math.max(0, totalViolations) : 0,
+        tabSwitchCount: Number.isFinite(tabSwitchCount) ? Math.max(0, tabSwitchCount) : 0,
+        fullscreenExitCount: Number.isFinite(fullscreenExitCount) ? Math.max(0, fullscreenExitCount) : 0,
+        appSwitchCount: Number.isFinite(appSwitchCount) ? Math.max(0, appSwitchCount) : 0,
+        lastViolationType: monitoring.lastViolationType ? String(monitoring.lastViolationType) : null,
+        lastViolationAt: monitoring.lastViolationAt ? String(monitoring.lastViolationAt) : null,
+    };
+}
+
+function getSessionPriority(status: unknown): number {
+    const normalized = String(status || '').toUpperCase();
+    if (normalized === 'COMPLETED') return 5;
+    if (normalized === 'TIMEOUT') return 4;
+    if (normalized === 'IN_PROGRESS') return 3;
+    if (normalized === 'NOT_STARTED') return 2;
+    return 1;
+}
+
+function pickBestSession<T extends { status?: unknown; updatedAt?: unknown; submitTime?: unknown; startTime?: unknown }>(
+    sessions: T[] | null | undefined,
+): T | null {
+    if (!Array.isArray(sessions) || sessions.length === 0) return null;
+    const sorted = [...sessions].sort((a, b) => {
+        const rankDiff = getSessionPriority(b.status) - getSessionPriority(a.status);
+        if (rankDiff !== 0) return rankDiff;
+        const updatedDiff = new Date(String(b.updatedAt || 0)).getTime() - new Date(String(a.updatedAt || 0)).getTime();
+        if (updatedDiff !== 0) return updatedDiff;
+        const submitDiff = new Date(String(b.submitTime || 0)).getTime() - new Date(String(a.submitTime || 0)).getTime();
+        if (submitDiff !== 0) return submitDiff;
+        return new Date(String(b.startTime || 0)).getTime() - new Date(String(a.startTime || 0)).getTime();
+    });
+    return sorted[0] || null;
+}
+
+function sanitizeAnswersForStorage(rawAnswers: unknown): Record<string, unknown> {
+    if (!rawAnswers || typeof rawAnswers !== 'object') return {};
+    const source = rawAnswers as Record<string, unknown>;
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(source)) {
+        if (key === '__monitoring' || key === '__questionSet') continue;
+        sanitized[key] = value;
+    }
+
+    const monitoring = sanitizeMonitoringPayload(source.__monitoring);
+    if (monitoring) {
+        sanitized.__monitoring = monitoring;
+    }
+
+    const questionSet = sanitizeQuestionSetMeta(source.__questionSet);
+    if (questionSet) {
+        sanitized.__questionSet = questionSet;
+    }
+
+    return sanitized;
+}
+
+function sanitizeQuestionSetMeta(rawQuestionSet: unknown): SessionQuestionSetMeta | null {
+    if (!rawQuestionSet || typeof rawQuestionSet !== 'object' || Array.isArray(rawQuestionSet)) {
+        return null;
+    }
+    const source = rawQuestionSet as Record<string, unknown>;
+    const idsRaw = Array.isArray(source.ids) ? source.ids : [];
+    const ids = idsRaw
+        .map((id) => String(id || '').trim())
+        .filter(Boolean)
+        .filter((id, index, arr) => arr.indexOf(id) === index);
+    if (ids.length === 0) return null;
+    const limitRaw = Number(source.limit);
+    const totalRaw = Number(source.totalAvailable);
+    return {
+        ids,
+        limit: Number.isFinite(limitRaw) && limitRaw > 0 ? Math.trunc(limitRaw) : null,
+        totalAvailable: Number.isFinite(totalRaw) && totalRaw > 0 ? Math.trunc(totalRaw) : ids.length,
+        assignedAt: source.assignedAt ? String(source.assignedAt) : null,
+    };
+}
+
+function hasAnswerValue(value: unknown): boolean {
+    if (value === null || value === undefined) return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'string') return value.trim() !== '';
+    return true;
+}
+
+function createSeededRng(seedSource: string): () => number {
+    let seed = 2166136261;
+    for (let index = 0; index < seedSource.length; index += 1) {
+        seed ^= seedSource.charCodeAt(index);
+        seed = Math.imul(seed, 16777619);
+    }
+    return () => {
+        seed += 0x6d2b79f5;
+        let t = seed;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function pickRandomQuestionIds(questionIds: string[], pickCount: number, seedSource: string): string[] {
+    const count = Math.max(0, Math.min(questionIds.length, Math.trunc(pickCount || 0)));
+    if (count === 0) return [];
+    const copy = [...questionIds];
+    const rng = createSeededRng(seedSource);
+    for (let i = copy.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(rng() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy.slice(0, count);
+}
+
+function resolveQuestionIdsForSession(params: {
+    packetQuestions: Record<string, unknown>[];
+    sessionAnswers: Record<string, unknown>;
+    scheduleId: number;
+    studentId: number;
+    sessionId: number;
+    configuredLimit: number | null;
+}): string[] {
+    const questionIds = params.packetQuestions
+        .map((question) => String((question as Record<string, unknown>).id || '').trim())
+        .filter(Boolean);
+    if (questionIds.length === 0) return [];
+
+    const validIdSet = new Set(questionIds);
+    const existingMeta = sanitizeQuestionSetMeta((params.sessionAnswers as Record<string, unknown>).__questionSet);
+    const answeredQuestionIds = Object.entries(params.sessionAnswers)
+        .filter(([key, value]) => !key.startsWith('__') && validIdSet.has(key) && hasAnswerValue(value))
+        .map(([key]) => key);
+
+    const normalizedLimit =
+        Number.isFinite(Number(params.configuredLimit)) && Number(params.configuredLimit) > 0
+            ? Math.max(1, Math.trunc(Number(params.configuredLimit)))
+            : existingMeta?.limit || questionIds.length;
+    const effectiveLimit = Math.max(normalizedLimit, answeredQuestionIds.length);
+
+    if (effectiveLimit >= questionIds.length) {
+        return questionIds;
+    }
+
+    const selected = new Set<string>();
+    if (existingMeta?.ids?.length) {
+        existingMeta.ids.forEach((id) => {
+            if (validIdSet.has(id) && selected.size < effectiveLimit) selected.add(id);
+        });
+    }
+    answeredQuestionIds.forEach((id) => {
+        if (validIdSet.has(id)) selected.add(id);
+    });
+
+    if (selected.size < effectiveLimit) {
+        const remainingIds = questionIds.filter((id) => !selected.has(id));
+        const randomizedFill = pickRandomQuestionIds(
+            remainingIds,
+            effectiveLimit - selected.size,
+            `${params.scheduleId}:${params.studentId}:${params.sessionId}:fill`,
+        );
+        randomizedFill.forEach((id) => selected.add(id));
+    }
+
+    if (selected.size === 0) {
+        const randomized = pickRandomQuestionIds(
+            questionIds,
+            effectiveLimit,
+            `${params.scheduleId}:${params.studentId}:${params.sessionId}`,
+        );
+        randomized.forEach((id) => selected.add(id));
+    }
+
+    const selectedList = Array.from(selected);
+    return selectedList.slice(0, effectiveLimit);
+}
+
+function sanitizeQuestionForStudent(rawQuestion: unknown): Record<string, unknown> | null {
+    if (!rawQuestion || typeof rawQuestion !== 'object') return null;
+    const source = rawQuestion as Record<string, unknown>;
+    const cleaned: Record<string, unknown> = { ...source };
+
+    // Remove heavy authoring-only fields
+    delete cleaned.blueprint;
+    delete cleaned.questionCard;
+    delete cleaned.question_card;
+    delete cleaned.kisiKisi;
+    delete cleaned.kartuSoal;
+    delete cleaned.saveToBank;
+    delete cleaned.save_to_bank;
+
+    // Remove answer-key / rationale fields from student payload
+    delete cleaned.correct_answer;
+    delete cleaned.correctAnswer;
+    delete cleaned.answerKey;
+    delete cleaned.answer_key;
+    delete cleaned.answerRationale;
+    delete cleaned.scoringGuideline;
+    delete cleaned.distractorNotes;
+    delete cleaned.stimulus;
+    delete cleaned.explanation;
+
+    if (Array.isArray(source.options)) {
+        cleaned.options = source.options.map((option) => {
+            if (!option || typeof option !== 'object') return option;
+            const safeOption: Record<string, unknown> = { ...(option as Record<string, unknown>) };
+            delete safeOption.isCorrect;
+            delete safeOption.is_correct;
+            delete safeOption.correct;
+            delete safeOption.answer;
+            delete safeOption.answerKey;
+            delete safeOption.answer_key;
+            delete safeOption.explanation;
+            delete safeOption.rationale;
+            return safeOption;
+        });
+    }
+
+    return cleaned;
+}
+
+function sanitizePacketQuestionsForStudent(rawQuestions: unknown): Record<string, unknown>[] {
+    const list = Array.isArray(rawQuestions) ? rawQuestions : [];
+    return list
+        .map((question) => sanitizeQuestionForStudent(question))
+        .filter((item): item is Record<string, unknown> => Boolean(item));
 }
 
 function normalizePacketSemester(rawSemester: unknown): Semester {
@@ -59,6 +738,743 @@ function normalizeOptionalPacketSemester(rawSemester: unknown, fallback: Semeste
         return fallback;
     }
     return normalizePacketSemester(rawSemester);
+}
+
+function normalizeOptionalSessionLabel(rawSessionLabel: unknown): string | null {
+    if (rawSessionLabel === undefined || rawSessionLabel === null) {
+        return null;
+    }
+    const normalized = String(rawSessionLabel)
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (!normalized) return null;
+    if (normalized.length > 60) {
+        throw new ApiError(400, 'Label sesi maksimal 60 karakter.');
+    }
+    return normalized;
+}
+
+function normalizePublishedQuestionCount(rawValue: unknown): number | null {
+    if (rawValue === undefined || rawValue === null || String(rawValue).trim() === '') {
+        return null;
+    }
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed)) {
+        throw new ApiError(400, 'Jumlah soal acak per siswa tidak valid.');
+    }
+    const rounded = Math.trunc(parsed);
+    if (rounded <= 0) return null;
+    return Math.min(rounded, 500);
+}
+
+function normalizeSessionLabelKey(rawLabel: unknown): string | null {
+    const normalized = normalizeOptionalSessionLabel(rawLabel);
+    if (!normalized) return null;
+    return normalized.toLowerCase();
+}
+
+const AUTO_CURRICULUM_PACKET_DESCRIPTION = 'Packet dibuat otomatis karena jadwal dibuat dari menu kurikulum.';
+
+function toUtcDateKey(value: Date): string {
+    return value.toISOString().slice(0, 10);
+}
+
+function buildUtcDayRange(value: Date): { start: Date; end: Date } {
+    const start = new Date(value);
+    start.setUTCHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 1);
+    return { start, end };
+}
+
+function buildSessionPacketSignature(params: {
+    academicYearId: number;
+    subjectId: number;
+    programCode: string;
+    dateKey: string;
+}): string {
+    return `${params.academicYearId}:${params.subjectId}:${params.programCode}:${params.dateKey}`;
+}
+
+function resolveScheduleProgramCode(params: {
+    scheduleExamType?: string | null;
+    packetProgramCode?: string | null;
+    packetType?: ExamType | string | null;
+}): string | null {
+    return normalizeProgramCode(params.scheduleExamType || params.packetProgramCode || params.packetType || null);
+}
+
+async function findReusablePacketForSessionGroup(params: {
+    authorId: number;
+    subjectId: number;
+    academicYearId: number;
+    semester: Semester;
+    programCode: string;
+    startTime: Date;
+}): Promise<{
+    id: number;
+    subjectId: number;
+    academicYearId: number;
+    semester: Semester;
+    type: ExamType;
+    programCode: string | null;
+} | null> {
+    const normalizedProgramCode = normalizeProgramCode(params.programCode);
+    if (!normalizedProgramCode) return null;
+
+    const inferredPacketType = tryNormalizePacketType(normalizedProgramCode);
+    const dayRange = buildUtcDayRange(params.startTime);
+    const packetWhere: Prisma.ExamPacketWhereInput = {
+        authorId: params.authorId,
+        subjectId: params.subjectId,
+        academicYearId: params.academicYearId,
+        semester: params.semester,
+        OR: [
+            { programCode: normalizedProgramCode },
+            ...(inferredPacketType ? [{ type: inferredPacketType }] : []),
+        ],
+        schedules: {
+            some: {
+                academicYearId: params.academicYearId,
+                subjectId: params.subjectId,
+                startTime: {
+                    gte: dayRange.start,
+                    lt: dayRange.end,
+                },
+                OR: [{ sessionId: { not: null } }, { sessionLabel: { not: null } }],
+            },
+        },
+    };
+
+    return prisma.examPacket.findFirst({
+        where: packetWhere,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        select: {
+            id: true,
+            subjectId: true,
+            academicYearId: true,
+            semester: true,
+            type: true,
+            programCode: true,
+        },
+    });
+}
+
+async function consolidateSessionSiblingSchedulesForPacket(packetId: number): Promise<{
+    movedScheduleIds: number[];
+    mergedPacketIds: number[];
+    deletedPacketIds: number[];
+}> {
+    if (!Number.isFinite(packetId) || packetId <= 0) {
+        return { movedScheduleIds: [], mergedPacketIds: [], deletedPacketIds: [] };
+    }
+
+    const packet = await prisma.examPacket.findUnique({
+        where: { id: packetId },
+        select: {
+            id: true,
+            subjectId: true,
+            academicYearId: true,
+            programCode: true,
+            type: true,
+            schedules: {
+                select: {
+                    id: true,
+                    subjectId: true,
+                    academicYearId: true,
+                    examType: true,
+                    startTime: true,
+                    sessionId: true,
+                    sessionLabel: true,
+                },
+            },
+        },
+    });
+
+    if (!packet) {
+        return { movedScheduleIds: [], mergedPacketIds: [], deletedPacketIds: [] };
+    }
+
+    const sessionSchedules = packet.schedules.filter(
+        (schedule) => Boolean(schedule.sessionId) || Boolean(normalizeOptionalSessionLabel(schedule.sessionLabel)),
+    );
+    if (sessionSchedules.length === 0) {
+        return { movedScheduleIds: [], mergedPacketIds: [], deletedPacketIds: [] };
+    }
+
+    const signatures = new Set<string>();
+    let minDayStart: Date | null = null;
+    let maxDayEnd: Date | null = null;
+
+    sessionSchedules.forEach((schedule) => {
+        const academicYearId = Number(schedule.academicYearId || packet.academicYearId || 0);
+        const subjectId = Number(schedule.subjectId || packet.subjectId || 0);
+        const programCode =
+            resolveScheduleProgramCode({
+                scheduleExamType: schedule.examType,
+                packetProgramCode: packet.programCode,
+                packetType: packet.type,
+            }) || '';
+        if (!academicYearId || !subjectId || !programCode) return;
+
+        const dateKey = toUtcDateKey(schedule.startTime);
+        signatures.add(
+            buildSessionPacketSignature({
+                academicYearId,
+                subjectId,
+                programCode,
+                dateKey,
+            }),
+        );
+
+        const range = buildUtcDayRange(schedule.startTime);
+        if (!minDayStart || range.start < minDayStart) minDayStart = range.start;
+        if (!maxDayEnd || range.end > maxDayEnd) maxDayEnd = range.end;
+    });
+
+    if (signatures.size === 0 || !minDayStart || !maxDayEnd) {
+        return { movedScheduleIds: [], mergedPacketIds: [], deletedPacketIds: [] };
+    }
+
+    const candidateSchedules = await prisma.examSchedule.findMany({
+        where: {
+            packetId: { not: packet.id },
+            subjectId: packet.subjectId,
+            academicYearId: packet.academicYearId,
+            startTime: {
+                gte: minDayStart,
+                lt: maxDayEnd,
+            },
+            OR: [{ sessionId: { not: null } }, { sessionLabel: { not: null } }],
+        },
+        select: {
+            id: true,
+            packetId: true,
+            subjectId: true,
+            academicYearId: true,
+            examType: true,
+            startTime: true,
+            packet: {
+                select: {
+                    id: true,
+                    programCode: true,
+                    type: true,
+                },
+            },
+        },
+    });
+
+    const movedScheduleIds: number[] = [];
+    const mergedPacketIdSet = new Set<number>();
+
+    candidateSchedules.forEach((schedule) => {
+        const candidatePacketId = Number(schedule.packetId || 0);
+        if (!candidatePacketId) return;
+
+        const programCode =
+            resolveScheduleProgramCode({
+                scheduleExamType: schedule.examType,
+                packetProgramCode: schedule.packet?.programCode,
+                packetType: schedule.packet?.type,
+            }) || '';
+        if (!programCode) return;
+
+        const signature = buildSessionPacketSignature({
+            academicYearId: Number(schedule.academicYearId || packet.academicYearId || 0),
+            subjectId: Number(schedule.subjectId || packet.subjectId || 0),
+            programCode,
+            dateKey: toUtcDateKey(schedule.startTime),
+        });
+
+        if (!signatures.has(signature)) return;
+        movedScheduleIds.push(schedule.id);
+        mergedPacketIdSet.add(candidatePacketId);
+    });
+
+    const mergedPacketIds = Array.from(mergedPacketIdSet);
+    if (movedScheduleIds.length === 0 || mergedPacketIds.length === 0) {
+        return { movedScheduleIds: [], mergedPacketIds: [], deletedPacketIds: [] };
+    }
+
+    const deletedPacketIds = await prisma.$transaction(async (tx) => {
+        await tx.examSchedule.updateMany({
+            where: {
+                id: { in: movedScheduleIds },
+            },
+            data: {
+                packetId: packet.id,
+            },
+        });
+
+        const autoOrphanPackets = await tx.examPacket.findMany({
+            where: {
+                id: { in: mergedPacketIds },
+                description: AUTO_CURRICULUM_PACKET_DESCRIPTION,
+                schedules: { none: {} },
+            },
+            select: { id: true },
+        });
+        const autoOrphanIds = autoOrphanPackets.map((item) => item.id);
+        if (autoOrphanIds.length > 0) {
+            await tx.examPacket.deleteMany({
+                where: {
+                    id: { in: autoOrphanIds },
+                },
+            });
+        }
+
+        return autoOrphanIds;
+    });
+
+    return { movedScheduleIds, mergedPacketIds, deletedPacketIds };
+}
+
+async function resolveCanonicalProgramCode(params: {
+    academicYearId: number;
+    rawProgramCode?: unknown;
+    rawExamType?: unknown;
+}): Promise<string | null> {
+    const normalizedProgramCode = normalizeProgramCode(params.rawProgramCode);
+    if (normalizedProgramCode) return normalizedProgramCode;
+
+    const normalizedExamType = normalizeProgramCode(params.rawExamType);
+    if (!normalizedExamType) return null;
+
+    const inferredType = tryNormalizePacketType(normalizedExamType);
+    const config = await prisma.examProgramConfig.findFirst({
+        where: {
+            academicYearId: params.academicYearId,
+            OR: [
+                { code: normalizedExamType },
+                { baseTypeCode: normalizedExamType },
+                ...(inferredType ? [{ baseType: inferredType }] : []),
+            ],
+        },
+        orderBy: [{ isActive: 'desc' }, { displayOrder: 'asc' }, { id: 'asc' }],
+        select: { code: true },
+    });
+    return config?.code || normalizedExamType;
+}
+
+async function resolveProgramSessionReference(params: {
+    academicYearId: number;
+    rawProgramCode?: unknown;
+    rawExamType?: unknown;
+    sessionId?: unknown;
+    sessionLabel?: unknown;
+}): Promise<{ id: number; label: string } | null> {
+    const hasSessionIdPayload = params.sessionId !== undefined;
+    const hasSessionLabelPayload = params.sessionLabel !== undefined;
+    if (!hasSessionIdPayload && !hasSessionLabelPayload) {
+        return null;
+    }
+
+    const resolvedProgramCode = await resolveCanonicalProgramCode({
+        academicYearId: params.academicYearId,
+        rawProgramCode: params.rawProgramCode,
+        rawExamType: params.rawExamType,
+    });
+
+    if (!resolvedProgramCode) {
+        throw new ApiError(400, 'Program ujian wajib dipilih sebelum mengatur sesi.');
+    }
+
+    if (isNonScheduledExamProgramCode(resolvedProgramCode)) {
+        throw new ApiError(400, 'Program UH/Formatif tidak menggunakan sesi terjadwal.');
+    }
+
+    const parsedSessionId =
+        params.sessionId === null || params.sessionId === ''
+            ? null
+            : params.sessionId === undefined
+              ? undefined
+              : Number(params.sessionId);
+    if (typeof parsedSessionId === 'number' && (!Number.isFinite(parsedSessionId) || parsedSessionId <= 0)) {
+        throw new ApiError(400, 'sessionId tidak valid.');
+    }
+
+    if (typeof parsedSessionId === 'number') {
+        const selectedSession = await prisma.examProgramSession.findUnique({
+            where: { id: parsedSessionId },
+            select: { id: true, label: true, academicYearId: true, programCode: true, isActive: true },
+        });
+        if (!selectedSession || !selectedSession.isActive) {
+            throw new ApiError(404, 'Sesi tidak ditemukan atau tidak aktif.');
+        }
+        if (
+            selectedSession.academicYearId !== params.academicYearId ||
+            selectedSession.programCode !== resolvedProgramCode
+        ) {
+            throw new ApiError(400, 'Sesi tidak sesuai dengan tahun ajaran/program ujian yang dipilih.');
+        }
+        return { id: selectedSession.id, label: selectedSession.label };
+    }
+
+    const normalizedSessionLabel = normalizeOptionalSessionLabel(params.sessionLabel);
+    const normalizedLabelKey = normalizeSessionLabelKey(params.sessionLabel);
+    if (!normalizedSessionLabel || !normalizedLabelKey) {
+        return null;
+    }
+
+    const maxDisplayOrder = await prisma.examProgramSession.aggregate({
+        where: {
+            academicYearId: params.academicYearId,
+            programCode: resolvedProgramCode,
+        },
+        _max: { displayOrder: true },
+    });
+
+    const session = await prisma.examProgramSession.upsert({
+        where: {
+            academicYearId_programCode_normalizedLabel: {
+                academicYearId: params.academicYearId,
+                programCode: resolvedProgramCode,
+                normalizedLabel: normalizedLabelKey,
+            },
+        },
+        create: {
+            academicYearId: params.academicYearId,
+            programCode: resolvedProgramCode,
+            label: normalizedSessionLabel,
+            normalizedLabel: normalizedLabelKey,
+            displayOrder: (maxDisplayOrder._max.displayOrder ?? 0) + 1,
+        },
+        update: {
+            isActive: true,
+            label: normalizedSessionLabel,
+        },
+        select: {
+            id: true,
+            label: true,
+        },
+    });
+
+    return session;
+}
+
+async function backfillProgramSessionsFromExistingRows(params: {
+    academicYearId: number;
+    programCode: string;
+}): Promise<void> {
+    const [scheduleRows, sittingRows, existingRows] = await Promise.all([
+        prisma.examSchedule.findMany({
+            where: {
+                academicYearId: params.academicYearId,
+                OR: [
+                    { examType: params.programCode },
+                    { packet: { is: { programCode: params.programCode } } },
+                ],
+                sessionLabel: { not: null },
+            },
+            select: { sessionLabel: true },
+        }),
+        prisma.examSitting.findMany({
+            where: {
+                academicYearId: params.academicYearId,
+                examType: params.programCode,
+                sessionLabel: { not: null },
+            },
+            select: { sessionLabel: true },
+        }),
+        prisma.examProgramSession.findMany({
+            where: {
+                academicYearId: params.academicYearId,
+                programCode: params.programCode,
+            },
+            select: {
+                normalizedLabel: true,
+            },
+        }),
+    ]);
+
+    const existingLabelKeys = new Set(
+        existingRows.map((row) => String(row.normalizedLabel || '').trim()).filter(Boolean),
+    );
+    const mergedLabels = [...scheduleRows, ...sittingRows]
+        .map((row) => normalizeOptionalSessionLabel(row.sessionLabel))
+        .filter((value): value is string => Boolean(value));
+
+    const createPayload: Array<{
+        academicYearId: number;
+        programCode: string;
+        label: string;
+        normalizedLabel: string;
+        displayOrder: number;
+    }> = [];
+    let nextDisplayOrder = 1;
+    mergedLabels.forEach((label) => {
+        const normalizedLabel = normalizeSessionLabelKey(label);
+        if (!normalizedLabel) return;
+        if (existingLabelKeys.has(normalizedLabel)) return;
+        existingLabelKeys.add(normalizedLabel);
+        createPayload.push({
+            academicYearId: params.academicYearId,
+            programCode: params.programCode,
+            label,
+            normalizedLabel,
+            displayOrder: nextDisplayOrder++,
+        });
+    });
+
+    if (createPayload.length > 0) {
+        await prisma.examProgramSession.createMany({
+            data: createPayload,
+            skipDuplicates: true,
+        });
+    }
+
+    const allSessions = await prisma.examProgramSession.findMany({
+        where: {
+            academicYearId: params.academicYearId,
+            programCode: params.programCode,
+            isActive: true,
+        },
+        select: {
+            id: true,
+            label: true,
+        },
+    });
+
+    for (const session of allSessions) {
+        await Promise.all([
+            prisma.examSchedule.updateMany({
+                where: {
+                    academicYearId: params.academicYearId,
+                    OR: [{ examType: params.programCode }, { packet: { is: { programCode: params.programCode } } }],
+                    sessionId: null,
+                    sessionLabel: session.label,
+                },
+                data: {
+                    sessionId: session.id,
+                    sessionLabel: session.label,
+                },
+            }),
+            prisma.examSitting.updateMany({
+                where: {
+                    academicYearId: params.academicYearId,
+                    examType: params.programCode,
+                    sessionId: null,
+                    sessionLabel: session.label,
+                },
+                data: {
+                    sessionId: session.id,
+                    sessionLabel: session.label,
+                },
+            }),
+        ]);
+    }
+}
+
+function normalizeClassLevelForProgramScope(raw: unknown): string {
+    const value = String(raw || '')
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, '');
+    if (!value) return '';
+    if (value === '10' || value === 'X') return 'X';
+    if (value === '11' || value === 'XI') return 'XI';
+    if (value === '12' || value === 'XII') return 'XII';
+    return '';
+}
+
+async function resolveProgramScopeConfig(params: {
+    academicYearId: number;
+    programCode?: string | null;
+}): Promise<{
+    code: string;
+    targetClassLevels: string[];
+    allowedSubjectIds: number[];
+    allowedAuthorIds: number[];
+} | null> {
+    const normalizedProgramCode = normalizeProgramCode(params.programCode);
+    if (!normalizedProgramCode) return null;
+    return prisma.examProgramConfig.findFirst({
+        where: {
+            academicYearId: params.academicYearId,
+            isActive: true,
+            code: normalizedProgramCode,
+        },
+        select: {
+            code: true,
+            targetClassLevels: true,
+            allowedSubjectIds: true,
+            allowedAuthorIds: true,
+        },
+    });
+}
+
+async function assertPacketCreationScope(params: {
+    academicYearId: number;
+    programCode?: string | null;
+    subjectId: number;
+    authorId: number;
+}) {
+    const scopeConfig = await resolveProgramScopeConfig({
+        academicYearId: params.academicYearId,
+        programCode: params.programCode,
+    });
+    if (!scopeConfig) return;
+
+    if (
+        Array.isArray(scopeConfig.allowedSubjectIds) &&
+        scopeConfig.allowedSubjectIds.length > 0 &&
+        !scopeConfig.allowedSubjectIds.includes(params.subjectId)
+    ) {
+        throw new ApiError(
+            400,
+            `Mapel ini tidak diizinkan pada program ${scopeConfig.code}. Atur dulu daftar mapel di Program Ujian.`,
+        );
+    }
+
+    const targetLevels = new Set(
+        (scopeConfig.targetClassLevels || [])
+            .map((item) => normalizeClassLevelForProgramScope(item))
+            .filter((item): item is string => Boolean(item)),
+    );
+    if (targetLevels.size === 0) return;
+
+    const assignments = await prisma.teacherAssignment.findMany({
+        where: {
+            academicYearId: params.academicYearId,
+            teacherId: params.authorId,
+            subjectId: params.subjectId,
+        },
+        select: {
+            id: true,
+            class: {
+                select: {
+                    id: true,
+                    name: true,
+                    level: true,
+                },
+            },
+        },
+    });
+
+    const allowedAssignments = assignments.filter((assignment) =>
+        targetLevels.has(normalizeClassLevelForProgramScope(assignment.class?.level)),
+    );
+    if (allowedAssignments.length > 0) return;
+
+    throw new ApiError(
+        400,
+        `Program ${scopeConfig.code} hanya untuk tingkat ${Array.from(targetLevels).join('/')}.\n` +
+            'Anda belum memiliki assignment mapel ini pada tingkat tersebut.',
+    );
+}
+
+async function resolvePacketAssignmentScope(params: {
+    teacherAssignmentId?: unknown;
+    academicYearId: number;
+    authorId: number;
+    subjectId?: number;
+    programCode?: string | null;
+}): Promise<{ id: number; subjectId: number; kkm: number } | null> {
+    const normalizedAssignmentId = Number(params.teacherAssignmentId);
+    if (!Number.isFinite(normalizedAssignmentId) || normalizedAssignmentId <= 0) return null;
+
+    const assignment = await prisma.teacherAssignment.findFirst({
+        where: {
+            id: normalizedAssignmentId,
+            teacherId: params.authorId,
+            academicYearId: params.academicYearId,
+        },
+        select: {
+            id: true,
+            subjectId: true,
+            kkm: true,
+            class: {
+                select: {
+                    id: true,
+                    name: true,
+                    level: true,
+                },
+            },
+        },
+    });
+    if (!assignment) {
+        throw new ApiError(400, 'Assignment mapel-kelas tidak valid untuk guru aktif.');
+    }
+
+    if (
+        Number.isFinite(Number(params.subjectId)) &&
+        Number(params.subjectId) > 0 &&
+        Number(assignment.subjectId) !== Number(params.subjectId)
+    ) {
+        throw new ApiError(400, 'Mapel assignment tidak sesuai dengan mapel yang dipilih.');
+    }
+
+    const scopeConfig = await resolveProgramScopeConfig({
+        academicYearId: params.academicYearId,
+        programCode: params.programCode,
+    });
+    if (scopeConfig) {
+        if (
+            Array.isArray(scopeConfig.allowedSubjectIds) &&
+            scopeConfig.allowedSubjectIds.length > 0 &&
+            !scopeConfig.allowedSubjectIds.includes(Number(assignment.subjectId))
+        ) {
+            throw new ApiError(
+                400,
+                `Mapel assignment ini tidak diizinkan pada program ${scopeConfig.code}.`,
+            );
+        }
+
+        const targetLevels = new Set(
+            (scopeConfig.targetClassLevels || [])
+                .map((item) => normalizeClassLevelForProgramScope(item))
+                .filter((item): item is string => Boolean(item)),
+        );
+        if (targetLevels.size > 0) {
+            const assignmentLevel = normalizeClassLevelForProgramScope(assignment.class?.level);
+            if (!assignmentLevel || !targetLevels.has(assignmentLevel)) {
+                throw new ApiError(
+                    400,
+                    `Assignment ${assignment.class?.name || ''} tidak sesuai target tingkat program ${scopeConfig.code}.`,
+                );
+            }
+        }
+    }
+
+    return { id: assignment.id, subjectId: assignment.subjectId, kkm: assignment.kkm };
+}
+
+async function assertScheduleClassLevelScope(params: {
+    academicYearId: number;
+    programCode?: string | null;
+    classIds: number[];
+}) {
+    const scopeConfig = await resolveProgramScopeConfig({
+        academicYearId: params.academicYearId,
+        programCode: params.programCode,
+    });
+    if (!scopeConfig) return;
+
+    const targetLevels = new Set(
+        (scopeConfig.targetClassLevels || [])
+            .map((item) => normalizeClassLevelForProgramScope(item))
+            .filter((item): item is string => Boolean(item)),
+    );
+    if (targetLevels.size === 0) return;
+
+    const classes = await prisma.class.findMany({
+        where: { id: { in: params.classIds } },
+        select: {
+            id: true,
+            name: true,
+            level: true,
+        },
+    });
+
+    const invalid = classes.filter((item) => !targetLevels.has(normalizeClassLevelForProgramScope(item.level)));
+    if (invalid.length === 0) return;
+
+    throw new ApiError(
+        400,
+        `Program ${scopeConfig.code} hanya untuk tingkat ${Array.from(targetLevels).join('/')}.\nKelas tidak sesuai: ${invalid
+            .map((item) => item.name)
+            .join(', ')}.`,
+    );
 }
 
 function resolveScheduleDateTime(input: {
@@ -83,15 +1499,6 @@ function resolveScheduleDateTime(input: {
     throw new ApiError(400, `${input.fieldLabel} tidak valid.`);
 }
 
-function assertTypeSemesterCompatibility(type: ExamType, semester: Semester) {
-    if (type === ExamType.SAS && semester !== Semester.ODD) {
-        throw new ApiError(400, 'Ujian SAS hanya boleh dibuat untuk semester Ganjil (ODD).');
-    }
-    if (type === ExamType.SAT && semester !== Semester.EVEN) {
-        throw new ApiError(400, 'Ujian SAT hanya boleh dibuat untuk semester Genap (EVEN).');
-    }
-}
-
 function assertProgramFixedSemesterCompatibility(code: string, fixedSemester: Semester | null, semester: Semester) {
     if (!fixedSemester) return;
     if (fixedSemester === semester) return;
@@ -102,37 +1509,40 @@ function assertProgramFixedSemesterCompatibility(code: string, fixedSemester: Se
 }
 
 function defaultGradeComponentTypeByPacketType(type: ExamType): GradeComponentType {
-    if (type === ExamType.FORMATIF) return GradeComponentType.FORMATIVE;
-    if (type === ExamType.SBTS) return GradeComponentType.MIDTERM;
-    if (type === ExamType.SAS || type === ExamType.SAT) return GradeComponentType.FINAL;
-    if (type === ExamType.US_PRACTICE) return GradeComponentType.US_PRACTICE;
-    if (type === ExamType.US_THEORY) return GradeComponentType.US_THEORY;
-    return GradeComponentType.FORMATIVE;
+    const normalized = normalizeAliasCode(type);
+    if (isFormativeAliasCode(normalized)) return GradeComponentType.FORMATIVE;
+    if (isMidtermAliasCode(normalized)) return GradeComponentType.MIDTERM;
+    if (isFinalAliasCode(normalized)) return GradeComponentType.FINAL;
+    if (normalized === 'US_PRACTICE' || normalized === 'US_PRAKTEK') return GradeComponentType.US_PRACTICE;
+    if (normalized === 'US_THEORY' || normalized === 'US_TEORI') return GradeComponentType.US_THEORY;
+    return GradeComponentType.CUSTOM;
 }
 
 function defaultGradeComponentCodeByPacketType(type: ExamType): string {
-    if (type === ExamType.FORMATIF) return 'FORMATIVE';
-    if (type === ExamType.SBTS) return 'MIDTERM';
-    if (type === ExamType.SAS || type === ExamType.SAT) return 'FINAL';
-    if (type === ExamType.US_PRACTICE) return 'US_PRACTICE';
-    if (type === ExamType.US_THEORY) return 'US_THEORY';
-    return 'FORMATIVE';
+    const normalized = normalizeAliasCode(type);
+    if (isFormativeAliasCode(normalized)) return 'FORMATIVE';
+    if (isMidtermAliasCode(normalized)) return 'MIDTERM';
+    if (isFinalAliasCode(normalized)) return 'FINAL';
+    if (normalized === 'US_PRACTICE' || normalized === 'US_PRAKTEK') return 'US_PRACTICE';
+    if (normalized === 'US_THEORY' || normalized === 'US_TEORI') return 'US_THEORY';
+    return 'CUSTOM';
 }
 
 function defaultGradeEntryModeByCode(code: string): GradeEntryMode {
-    return code === 'FORMATIVE' ? GradeEntryMode.NF_SERIES : GradeEntryMode.SINGLE_SCORE;
+    return isFormativeAliasCode(code) ? GradeEntryMode.NF_SERIES : GradeEntryMode.SINGLE_SCORE;
 }
 
 function mapGradeComponentTypeFromCode(
     code: string,
     fallback: GradeComponentType = GradeComponentType.CUSTOM,
 ): GradeComponentType {
-    if (code === 'FORMATIVE') return GradeComponentType.FORMATIVE;
-    if (code === 'MIDTERM') return GradeComponentType.MIDTERM;
-    if (code === 'FINAL') return GradeComponentType.FINAL;
-    if (code === 'SKILL') return GradeComponentType.SKILL;
-    if (code === 'US_PRACTICE') return GradeComponentType.US_PRACTICE;
-    if (code === 'US_THEORY') return GradeComponentType.US_THEORY;
+    const normalized = normalizeAliasCode(code);
+    if (isFormativeAliasCode(normalized)) return GradeComponentType.FORMATIVE;
+    if (isMidtermAliasCode(normalized)) return GradeComponentType.MIDTERM;
+    if (isFinalAliasCode(normalized)) return GradeComponentType.FINAL;
+    if (normalized === 'SKILL') return GradeComponentType.SKILL;
+    if (normalized === 'US_PRACTICE' || normalized === 'US_PRAKTEK') return GradeComponentType.US_PRACTICE;
+    if (normalized === 'US_THEORY' || normalized === 'US_TEORI') return GradeComponentType.US_THEORY;
     return fallback;
 }
 
@@ -245,8 +1655,31 @@ async function resolvePacketProgram(params: {
         return { programCode: config.code, baseType: config.baseType };
     }
 
+    const normalizedLegacyCode = normalizeProgramCode(params.legacyType);
+    if (normalizedLegacyCode) {
+        const config = await prisma.examProgramConfig.findFirst({
+            where: {
+                academicYearId: params.academicYearId,
+                code: normalizedLegacyCode,
+            },
+            select: {
+                code: true,
+                baseType: true,
+                fixedSemester: true,
+                isActive: true,
+            },
+        });
+        if (config) {
+            const normalizedCurrentCode = normalizeProgramCode(params.currentProgramCode);
+            if (!config.isActive && config.code !== normalizedCurrentCode) {
+                throw new ApiError(400, `Program ujian ${config.code} sedang nonaktif.`);
+            }
+            assertProgramFixedSemesterCompatibility(config.code, config.fixedSemester, params.semester);
+            return { programCode: config.code, baseType: config.baseType };
+        }
+    }
+
     const legacyType = normalizePacketType(params.legacyType);
-    assertTypeSemesterCompatibility(legacyType, params.semester);
 
     const matchingPrograms = await prisma.examProgramConfig.findMany({
         where: {
@@ -272,7 +1705,7 @@ async function resolvePacketProgram(params: {
     }
 
     return {
-        programCode: legacyType,
+        programCode: normalizedLegacyCode || legacyType,
         baseType: legacyType,
     };
 }
@@ -465,6 +1898,174 @@ async function createQuestionBankEntry(data: Prisma.QuestionCreateInput) {
     }
 }
 
+function normalizeQuestionBankComparableText(value: unknown): string {
+    if (typeof value !== 'string') return '';
+    return value
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
+function normalizeQuestionBankOptionSignature(options: unknown): Array<{ text: string; isCorrect: boolean }> {
+    if (!Array.isArray(options)) return [];
+    return options
+        .map((option, index) => {
+            const source = asRecord(option);
+            if (!source) {
+                return {
+                    text: normalizeQuestionBankComparableText(option),
+                    isCorrect: false,
+                };
+            }
+
+            const rawText =
+                source.text ??
+                source.content ??
+                source.label ??
+                source.optionText ??
+                source.value ??
+                source.option ??
+                '';
+
+            return {
+                text: normalizeQuestionBankComparableText(rawText),
+                isCorrect: Boolean(source.isCorrect),
+                index,
+            };
+        })
+        .sort((a, b) => {
+            if (a.text !== b.text) return a.text.localeCompare(b.text, 'id');
+            if (a.isCorrect !== b.isCorrect) return Number(a.isCorrect) - Number(b.isCorrect);
+            return (a as any).index - (b as any).index;
+        })
+        .map(({ text, isCorrect }) => ({ text, isCorrect }));
+}
+
+function buildQuestionBankSignature(params: { type: string; content: string; options?: unknown }): string {
+    const payload = JSON.stringify({
+        type: String(params.type || '').trim().toUpperCase(),
+        content: normalizeQuestionBankComparableText(params.content),
+        options: normalizeQuestionBankOptionSignature(params.options),
+    });
+    return createHash('sha256').update(payload).digest('hex');
+}
+
+function deduplicateQuestionsForBank(questions: NormalizedExamQuestion[]) {
+    const seen = new Set<string>();
+    const unique: Array<{ question: NormalizedExamQuestion; signature: string }> = [];
+
+    questions.forEach((question) => {
+        const signature = buildQuestionBankSignature({
+            type: question.type,
+            content: question.content,
+            options: question.options,
+        });
+        if (seen.has(signature)) return;
+        seen.add(signature);
+        unique.push({ question, signature });
+    });
+
+    return unique;
+}
+
+async function saveQuestionsToBankWithDedup(params: {
+    bankTitle: string;
+    subjectId: number;
+    academicYearId: number;
+    semester: Semester;
+    authorId: number;
+    questions: NormalizedExamQuestion[];
+}) {
+    const dedupedPayload = deduplicateQuestionsForBank(params.questions);
+    const skippedInPayload = Math.max(0, params.questions.length - dedupedPayload.length);
+    if (dedupedPayload.length === 0) {
+        return { bankId: null as number | null, createdCount: 0, skippedInPayload, skippedExisting: 0 };
+    }
+
+    const sourceContents = Array.from(
+        new Set(
+            dedupedPayload
+                .map((item) => String(item.question.content || '').trim())
+                .filter((content) => content.length > 0),
+        ),
+    );
+
+    const existingCandidates =
+        sourceContents.length > 0
+            ? await prisma.question.findMany({
+                  where: {
+                      content: { in: sourceContents },
+                      bank: {
+                          subjectId: params.subjectId,
+                          academicYearId: params.academicYearId,
+                          semester: params.semester,
+                          authorId: params.authorId,
+                      },
+                  },
+                  select: {
+                      type: true,
+                      content: true,
+                      options: true,
+                  },
+              })
+            : [];
+
+    const existingSignatures = new Set(
+        existingCandidates.map((row) =>
+            buildQuestionBankSignature({
+                type: row.type,
+                content: row.content,
+                options: row.options ?? undefined,
+            }),
+        ),
+    );
+
+    const questionsToInsert = dedupedPayload.filter((item) => !existingSignatures.has(item.signature));
+    const skippedExisting = dedupedPayload.length - questionsToInsert.length;
+
+    if (questionsToInsert.length === 0) {
+        return { bankId: null as number | null, createdCount: 0, skippedInPayload, skippedExisting };
+    }
+
+    const bank = await prisma.questionBank.create({
+        data: {
+            title: params.bankTitle,
+            subjectId: params.subjectId,
+            academicYearId: params.academicYearId,
+            semester: params.semester,
+            classLevel: 'ALL',
+            authorId: params.authorId,
+        },
+    });
+
+    await Promise.all(
+        questionsToInsert.map(({ question, signature }) => {
+            const metadata = buildQuestionBankMetadata(question) || {};
+            const metadataWithSignature = { ...metadata, bankSignature: signature };
+            return createQuestionBankEntry({
+                bank: { connect: { id: bank.id } },
+                type: question.type as any,
+                content: question.content,
+                options: (question.options || []) as Prisma.InputJsonValue,
+                answerKey: question.answerKey || deriveAnswerKeyFromOptions(question.options),
+                points: question.score || 1,
+                mediaUrl: question.question_image_url || question.question_video_url,
+                mediaType: question.question_video_type || (question.question_image_url ? 'image' : null),
+                metadata: metadataWithSignature as Prisma.InputJsonValue,
+            });
+        }),
+    );
+
+    return {
+        bankId: bank.id,
+        createdCount: questionsToInsert.length,
+        skippedInPayload,
+        skippedExisting,
+    };
+}
+
 type QuestionOptionAnalysisRow = {
     optionId: string;
     label: string;
@@ -478,6 +2079,10 @@ type PacketQuestionAnalysisRow = {
     orderNumber: number;
     type: string;
     contentPreview: string;
+    contentHtml: string | null;
+    questionImageUrl: string | null;
+    questionVideoUrl: string | null;
+    questionVideoType: string | null;
     scoreWeight: number;
     answeredCount: number;
     unansweredCount: number;
@@ -536,6 +2141,7 @@ type PacketSubmissionSessionRow = {
     objectiveTotal: number;
     objectiveCorrect: number;
     objectiveIncorrect: number;
+    monitoring: SessionMonitoringSummary;
 };
 
 type PacketSubmissionSummary = {
@@ -544,6 +2150,10 @@ type PacketSubmissionSummary = {
     statusFilter: string | null;
     scheduleCount: number;
     sessionCount: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    pageSessionCount: number;
     participantCount: number;
     submittedCount: number;
     inProgressCount: number;
@@ -597,6 +2207,7 @@ type SessionDetailResult = {
         score: number | null;
         startTime: string;
         submitTime: string | null;
+        monitoring: SessionMonitoringSummary;
         schedule: {
             id: number;
             startTime: string;
@@ -608,8 +2219,9 @@ type SessionDetailResult = {
             name: string;
             nis: string | null;
             class: { id: number; name: string } | null;
-        };
     };
+};
+
     summary: {
         totalQuestions: number;
         answeredCount: number;
@@ -623,11 +2235,271 @@ type SessionDetailResult = {
     questions: SessionQuestionDetailRow[];
 };
 
+const PACKET_ITEM_ANALYSIS_CACHE_TTL_MS = 30000;
+const PACKET_ITEM_ANALYSIS_CACHE_MAX_ENTRIES = 400;
+const packetItemAnalysisCache = new Map<string, { expiresAt: number; payload: PacketItemAnalysisResult; etag: string }>();
+const packetItemAnalysisInFlight = new Map<string, Promise<PacketItemAnalysisResult>>();
+const PACKET_SUBMISSIONS_CACHE_TTL_MS = 10000;
+const PACKET_SUBMISSIONS_CACHE_MAX_ENTRIES = 500;
+const packetSubmissionsCache = new Map<string, { expiresAt: number; payload: PacketSubmissionsResult; etag: string }>();
+const packetSubmissionsInFlight = new Map<string, Promise<PacketSubmissionsResult>>();
+const SESSION_DETAIL_CACHE_TTL_MS = 5000;
+const SESSION_DETAIL_CACHE_MAX_ENTRIES = 1200;
+const sessionDetailCache = new Map<string, { expiresAt: number; payload: SessionDetailResult; etag: string }>();
+const sessionDetailInFlight = new Map<string, Promise<SessionDetailResult>>();
+
+function buildWeakEtag(payload: unknown): string {
+    const normalize = (value: unknown): unknown => {
+        if (Array.isArray(value)) return value.map((item) => normalize(item));
+        if (value && typeof value === 'object') {
+            const source = value as Record<string, unknown>;
+            return Object.keys(source)
+                .sort()
+                .reduce<Record<string, unknown>>((acc, key) => {
+                    if (key === 'generatedAt') return acc;
+                    acc[key] = normalize(source[key]);
+                    return acc;
+                }, {});
+        }
+        return value;
+    };
+    const serialized = stableSerializeJson(normalize(payload));
+    const hash = createHash('sha1').update(serialized).digest('hex');
+    return `W/"${hash}"`;
+}
+
+function normalizeIfNoneMatchHeader(value: unknown): string[] {
+    if (typeof value !== 'string') return [];
+    return value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+}
+
+function isEtagMatch(request: Request, etag: string): boolean {
+    const requestTags = normalizeIfNoneMatchHeader(request.headers['if-none-match']);
+    if (requestTags.length === 0) return false;
+    if (requestTags.includes('*')) return true;
+    return requestTags.some((candidate) => candidate === etag);
+}
+
+function buildPacketItemAnalysisCacheKey(
+    packetId: number,
+    classId: number | undefined,
+    includeContentHtml: boolean,
+): string {
+    return `${packetId}:${classId || 0}:${includeContentHtml ? 1 : 0}`;
+}
+
+function getCachedPacketItemAnalysis(cacheKey: string): { payload: PacketItemAnalysisResult; etag: string } | null {
+    const now = Date.now();
+    const cached = packetItemAnalysisCache.get(cacheKey);
+    if (!cached) return null;
+    if (cached.expiresAt <= now) {
+        packetItemAnalysisCache.delete(cacheKey);
+        return null;
+    }
+    return { payload: cached.payload, etag: cached.etag };
+}
+
+function setCachedPacketItemAnalysis(cacheKey: string, payload: PacketItemAnalysisResult) {
+    const now = Date.now();
+    packetItemAnalysisCache.set(cacheKey, {
+        payload,
+        etag: buildWeakEtag(payload),
+        expiresAt: now + PACKET_ITEM_ANALYSIS_CACHE_TTL_MS,
+    });
+
+    if (packetItemAnalysisCache.size <= PACKET_ITEM_ANALYSIS_CACHE_MAX_ENTRIES) return;
+
+    for (const [key, entry] of packetItemAnalysisCache.entries()) {
+        if (entry.expiresAt <= now) {
+            packetItemAnalysisCache.delete(key);
+        }
+    }
+
+    if (packetItemAnalysisCache.size <= PACKET_ITEM_ANALYSIS_CACHE_MAX_ENTRIES) return;
+    const oldestKey = packetItemAnalysisCache.keys().next().value;
+    if (oldestKey !== undefined) {
+        packetItemAnalysisCache.delete(oldestKey);
+    }
+}
+
+function invalidatePacketItemAnalysisCacheByPacket(packetId: number) {
+    const prefix = `${packetId}:`;
+    for (const cacheKey of packetItemAnalysisCache.keys()) {
+        if (cacheKey.startsWith(prefix)) {
+            packetItemAnalysisCache.delete(cacheKey);
+        }
+    }
+    for (const cacheKey of packetItemAnalysisInFlight.keys()) {
+        if (cacheKey.startsWith(prefix)) {
+            packetItemAnalysisInFlight.delete(cacheKey);
+        }
+    }
+}
+
+function buildPacketSubmissionsCacheKey(
+    packetId: number,
+    classId: number | undefined,
+    status: 'IN_PROGRESS' | 'COMPLETED' | 'TIMEOUT' | null | undefined,
+    page: number,
+    limit: number,
+): string {
+    return `${packetId}:${classId || 0}:${status || 'ALL'}:${page}:${limit}`;
+}
+
+function getCachedPacketSubmissions(cacheKey: string): { payload: PacketSubmissionsResult; etag: string } | null {
+    const now = Date.now();
+    const cached = packetSubmissionsCache.get(cacheKey);
+    if (!cached) return null;
+    if (cached.expiresAt <= now) {
+        packetSubmissionsCache.delete(cacheKey);
+        return null;
+    }
+    return { payload: cached.payload, etag: cached.etag };
+}
+
+function setCachedPacketSubmissions(cacheKey: string, payload: PacketSubmissionsResult) {
+    const now = Date.now();
+    packetSubmissionsCache.set(cacheKey, {
+        payload,
+        etag: buildWeakEtag(payload),
+        expiresAt: now + PACKET_SUBMISSIONS_CACHE_TTL_MS,
+    });
+
+    if (packetSubmissionsCache.size <= PACKET_SUBMISSIONS_CACHE_MAX_ENTRIES) return;
+
+    for (const [key, entry] of packetSubmissionsCache.entries()) {
+        if (entry.expiresAt <= now) {
+            packetSubmissionsCache.delete(key);
+        }
+    }
+
+    if (packetSubmissionsCache.size <= PACKET_SUBMISSIONS_CACHE_MAX_ENTRIES) return;
+    const oldestKey = packetSubmissionsCache.keys().next().value;
+    if (oldestKey !== undefined) {
+        packetSubmissionsCache.delete(oldestKey);
+    }
+}
+
+function invalidatePacketSubmissionsCacheByPacket(packetId: number) {
+    const prefix = `${packetId}:`;
+    for (const cacheKey of packetSubmissionsCache.keys()) {
+        if (cacheKey.startsWith(prefix)) {
+            packetSubmissionsCache.delete(cacheKey);
+        }
+    }
+    for (const cacheKey of packetSubmissionsInFlight.keys()) {
+        if (cacheKey.startsWith(prefix)) {
+            packetSubmissionsInFlight.delete(cacheKey);
+        }
+    }
+}
+
+function buildSessionDetailCacheKey(sessionId: number, user: { id: number; role: string }): string {
+    return `${sessionId}:${user.role}:${user.id}`;
+}
+
+function getCachedSessionDetail(cacheKey: string): { payload: SessionDetailResult; etag: string } | null {
+    const now = Date.now();
+    const cached = sessionDetailCache.get(cacheKey);
+    if (!cached) return null;
+    if (cached.expiresAt <= now) {
+        sessionDetailCache.delete(cacheKey);
+        return null;
+    }
+    return { payload: cached.payload, etag: cached.etag };
+}
+
+function setCachedSessionDetail(cacheKey: string, payload: SessionDetailResult) {
+    const now = Date.now();
+    sessionDetailCache.set(cacheKey, {
+        payload,
+        etag: buildWeakEtag(payload),
+        expiresAt: now + SESSION_DETAIL_CACHE_TTL_MS,
+    });
+
+    if (sessionDetailCache.size <= SESSION_DETAIL_CACHE_MAX_ENTRIES) return;
+
+    for (const [key, entry] of sessionDetailCache.entries()) {
+        if (entry.expiresAt <= now) {
+            sessionDetailCache.delete(key);
+        }
+    }
+
+    if (sessionDetailCache.size <= SESSION_DETAIL_CACHE_MAX_ENTRIES) return;
+    const oldestKey = sessionDetailCache.keys().next().value;
+    if (oldestKey !== undefined) {
+        sessionDetailCache.delete(oldestKey);
+    }
+}
+
+function invalidateSessionDetailCacheBySession(sessionId: number) {
+    const prefix = `${sessionId}:`;
+    for (const cacheKey of sessionDetailCache.keys()) {
+        if (cacheKey.startsWith(prefix)) {
+            sessionDetailCache.delete(cacheKey);
+        }
+    }
+    for (const cacheKey of sessionDetailInFlight.keys()) {
+        if (cacheKey.startsWith(prefix)) {
+            sessionDetailInFlight.delete(cacheKey);
+        }
+    }
+}
+
+function getOrCreatePacketItemAnalysisInFlight(
+    cacheKey: string,
+    factory: () => Promise<PacketItemAnalysisResult>,
+): Promise<PacketItemAnalysisResult> {
+    const existing = packetItemAnalysisInFlight.get(cacheKey);
+    if (existing) return existing;
+
+    const promise = factory().finally(() => {
+        packetItemAnalysisInFlight.delete(cacheKey);
+    });
+    packetItemAnalysisInFlight.set(cacheKey, promise);
+    return promise;
+}
+
+function getOrCreatePacketSubmissionsInFlight(
+    cacheKey: string,
+    factory: () => Promise<PacketSubmissionsResult>,
+): Promise<PacketSubmissionsResult> {
+    const existing = packetSubmissionsInFlight.get(cacheKey);
+    if (existing) return existing;
+
+    const promise = factory().finally(() => {
+        packetSubmissionsInFlight.delete(cacheKey);
+    });
+    packetSubmissionsInFlight.set(cacheKey, promise);
+    return promise;
+}
+
+function getOrCreateSessionDetailInFlight(
+    cacheKey: string,
+    factory: () => Promise<SessionDetailResult>,
+): Promise<SessionDetailResult> {
+    const existing = sessionDetailInFlight.get(cacheKey);
+    if (existing) return existing;
+
+    const promise = factory().finally(() => {
+        sessionDetailInFlight.delete(cacheKey);
+    });
+    sessionDetailInFlight.set(cacheKey, promise);
+    return promise;
+}
+
 type AnalysisQuestionAccumulator = {
     questionId: string;
     orderNumber: number;
     type: string;
     contentPreview: string;
+    contentHtml: string | null;
+    questionImageUrl: string | null;
+    questionVideoUrl: string | null;
+    questionVideoType: string | null;
     scoreWeight: number;
     optionRows: Array<{ optionId: string; label: string; isCorrect: boolean }>;
     optionCounts: Map<string, number>;
@@ -641,12 +2513,38 @@ type AnalysisQuestionAccumulator = {
 };
 
 function sanitizeQuestionContentPreview(value: unknown): string {
-    const plain = String(value || '')
+    const plain = decodeSimpleHtmlEntities(normalizeQuestionContentHtml(value))
         .replace(/<[^>]*>/g, ' ')
+        .replace(/\u00a0/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
     if (!plain) return '(tanpa teks soal)';
     return plain.length > 160 ? `${plain.slice(0, 157)}...` : plain;
+}
+
+function normalizeQuestionContentHtml(value: unknown): string {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    // Some old payloads store entities in double-encoded form (&amp;nbsp;).
+    return raw.replace(/&amp;(?=(?:[a-z]+|#\d+|#x[0-9a-f]+);)/gi, '&');
+}
+
+function decodeSimpleHtmlEntities(value: string): string {
+    return value
+        .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => {
+            const code = Number.parseInt(hex, 16);
+            return Number.isFinite(code) ? String.fromCodePoint(code) : _;
+        })
+        .replace(/&#([0-9]+);/g, (_, dec: string) => {
+            const code = Number.parseInt(dec, 10);
+            return Number.isFinite(code) ? String.fromCodePoint(code) : _;
+        })
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&amp;/gi, '&')
+        .replace(/&quot;/gi, '"')
+        .replace(/&apos;/gi, "'");
 }
 
 function normalizePacketQuestionsForAnalysis(raw: unknown): Array<Record<string, unknown>> {
@@ -803,6 +2701,25 @@ function parseStatusFilter(raw: unknown): 'IN_PROGRESS' | 'COMPLETED' | 'TIMEOUT
     throw new ApiError(400, 'Status tidak valid. Gunakan IN_PROGRESS, COMPLETED, atau TIMEOUT.');
 }
 
+function parsePaginationNumber(raw: unknown, fallback: number, options: { min?: number; max?: number } = {}): number {
+    if (raw === undefined || raw === null || raw === '') return fallback;
+    const value = Number.parseInt(String(raw), 10);
+    if (!Number.isFinite(value)) return fallback;
+    const min = options.min ?? 1;
+    const max = options.max ?? Number.MAX_SAFE_INTEGER;
+    return Math.max(min, Math.min(max, value));
+}
+
+function parseBooleanQueryParam(raw: unknown, fallback = false): boolean {
+    if (raw === undefined || raw === null || raw === '') return fallback;
+    if (typeof raw === 'boolean') return raw;
+    const value = String(raw).trim().toLowerCase();
+    if (!value) return fallback;
+    if (['1', 'true', 'yes', 'on'].includes(value)) return true;
+    if (['0', 'false', 'no', 'off'].includes(value)) return false;
+    return fallback;
+}
+
 async function assertPacketItemAnalysisAccess(
     user: { id: number; role: string },
     packet: { authorId: number; subjectId: number },
@@ -828,7 +2745,7 @@ async function assertPacketItemAnalysisAccess(
 
 async function buildPacketItemAnalysis(
     packetId: number,
-    options: { classId?: number; user: { id: number; role: string } },
+    options: { classId?: number; includeContentHtml?: boolean; user: { id: number; role: string } },
 ): Promise<PacketItemAnalysisResult> {
     const packet = await prisma.examPacket.findUnique({
         where: { id: packetId },
@@ -867,12 +2784,20 @@ async function buildPacketItemAnalysis(
             .filter((row): row is { optionId: string; label: string; isCorrect: boolean } => Boolean(row));
         const correctOptionIds = getCorrectOptionIds(question);
         const evaluable = type !== 'ESSAY' && correctOptionIds.length > 0;
+        const contentHtml = normalizeQuestionContentHtml(question.content || question.question_text);
+        const questionImageUrl = normalizeOptionalString(question.question_image_url, 2048) || null;
+        const questionVideoUrl = normalizeOptionalString(question.question_video_url, 2048) || null;
+        const questionVideoType = normalizeOptionalString(question.question_video_type, 20) || null;
 
         return {
             questionId,
             orderNumber: Number(question.order_number || index + 1),
             type,
             contentPreview: sanitizeQuestionContentPreview(question.content || question.question_text),
+            contentHtml: options.includeContentHtml ? contentHtml : null,
+            questionImageUrl,
+            questionVideoUrl,
+            questionVideoType,
             scoreWeight,
             optionRows,
             optionCounts: new Map(optionRows.map((row) => [row.optionId, 0])),
@@ -890,11 +2815,9 @@ async function buildPacketItemAnalysis(
         packetId: packet.id,
         ...(options.classId ? { classId: options.classId } : {}),
     };
-
-    const [schedules, sessions, inProgressCount] = await Promise.all([
-        prisma.examSchedule.findMany({
+    const [scheduleCount, sessions, inProgressCount] = await Promise.all([
+        prisma.examSchedule.count({
             where: scheduleWhere,
-            select: { id: true, classId: true },
         }),
         prisma.studentExamSession.findMany({
             where: {
@@ -905,8 +2828,6 @@ async function buildPacketItemAnalysis(
                 id: true,
                 answers: true,
                 score: true,
-                scheduleId: true,
-                status: true,
             },
         }),
         prisma.studentExamSession.count({
@@ -1014,6 +2935,10 @@ async function buildPacketItemAnalysis(
             orderNumber: item.orderNumber,
             type: item.type,
             contentPreview: item.contentPreview,
+            contentHtml: item.contentHtml,
+            questionImageUrl: item.questionImageUrl,
+            questionVideoUrl: item.questionVideoUrl,
+            questionVideoType: item.questionVideoType,
             scoreWeight: item.scoreWeight,
             answeredCount: item.answeredCount,
             unansweredCount: item.unansweredCount,
@@ -1049,7 +2974,7 @@ async function buildPacketItemAnalysis(
         summary: {
             generatedAt: new Date().toISOString(),
             classFilterId: options.classId || null,
-            scheduleCount: schedules.length,
+            scheduleCount,
             participantCount,
             inProgressCount,
             totalQuestions: questionAccumulators.length,
@@ -1068,6 +2993,8 @@ async function buildPacketSubmissions(
     options: {
         classId?: number;
         status?: 'IN_PROGRESS' | 'COMPLETED' | 'TIMEOUT' | null;
+        page: number;
+        limit: number;
         user: { id: number; role: string };
     },
 ): Promise<PacketSubmissionsResult> {
@@ -1090,20 +3017,35 @@ async function buildPacketSubmissions(
         packetId: packet.id,
         ...(options.classId ? { classId: options.classId } : {}),
     };
+    const sessionWhere: Prisma.StudentExamSessionWhereInput = {
+        schedule: scheduleWhere,
+        ...(options.status ? { status: options.status } : {}),
+    };
 
-    const [schedules, sessions] = await Promise.all([
-        prisma.examSchedule.findMany({
+    const [scheduleCount, sessionCount, participantGroups, statusGroups, scoreAggregate, sessions] = await Promise.all([
+        prisma.examSchedule.count({
             where: scheduleWhere,
-            select: {
-                id: true,
-                class: { select: { id: true, name: true } },
-            },
+        }),
+        prisma.studentExamSession.count({
+            where: sessionWhere,
+        }),
+        prisma.studentExamSession.groupBy({
+            by: ['studentId'],
+            where: sessionWhere,
+        }),
+        prisma.studentExamSession.groupBy({
+            by: ['status'],
+            where: sessionWhere,
+            _count: { _all: true },
+        }),
+        prisma.studentExamSession.aggregate({
+            where: sessionWhere,
+            _avg: { score: true },
+            _max: { score: true },
+            _min: { score: true },
         }),
         prisma.studentExamSession.findMany({
-            where: {
-                schedule: scheduleWhere,
-                ...(options.status ? { status: options.status } : {}),
-            },
+            where: sessionWhere,
             include: {
                 schedule: {
                     select: {
@@ -1120,6 +3062,8 @@ async function buildPacketSubmissions(
                 },
             },
             orderBy: [{ submitTime: 'desc' }, { startTime: 'desc' }],
+            skip: (options.page - 1) * options.limit,
+            take: options.limit,
         }),
     ]);
 
@@ -1155,6 +3099,7 @@ async function buildPacketSubmissions(
         const unansweredCount = Math.max(totalQuestions - answeredCount, 0);
         const completionRate = totalQuestions > 0 ? Number((answeredCount / totalQuestions).toFixed(4)) : 0;
 
+        const monitoring = extractMonitoringSummaryFromAnswers(session.answers);
         let score: number | null = typeof session.score === 'number' ? Number(session.score.toFixed(2)) : null;
         if (score === null && objectiveQuestionCount > 0 && (session.status === 'COMPLETED' || session.status === 'TIMEOUT')) {
             score = Number(((objectiveCorrect / objectiveQuestionCount) * 100).toFixed(2));
@@ -1186,21 +3131,21 @@ async function buildPacketSubmissions(
             objectiveTotal: objectiveQuestionCount,
             objectiveCorrect,
             objectiveIncorrect,
+            monitoring,
         };
     });
 
-    const participantCount = new Set(sessionRows.map((row) => row.student.id)).size;
-    const submittedCount = sessionRows.filter((row) => row.status === 'COMPLETED' || row.status === 'TIMEOUT').length;
-    const inProgressCount = sessionRows.filter((row) => row.status === 'IN_PROGRESS').length;
-    const scoreValues = sessionRows
-        .map((row) => row.score)
-        .filter((value): value is number => typeof value === 'number');
+    const participantCount = participantGroups.length;
+    const statusCountMap = new Map(statusGroups.map((group) => [String(group.status), group._count._all]));
+    const submittedCount = (statusCountMap.get('COMPLETED') || 0) + (statusCountMap.get('TIMEOUT') || 0);
+    const inProgressCount = statusCountMap.get('IN_PROGRESS') || 0;
     const averageScore =
-        scoreValues.length > 0
-            ? Number((scoreValues.reduce((acc, value) => acc + value, 0) / scoreValues.length).toFixed(2))
-            : null;
-    const highestScore = scoreValues.length > 0 ? Number(Math.max(...scoreValues).toFixed(2)) : null;
-    const lowestScore = scoreValues.length > 0 ? Number(Math.min(...scoreValues).toFixed(2)) : null;
+        typeof scoreAggregate._avg.score === 'number' ? Number(scoreAggregate._avg.score.toFixed(2)) : null;
+    const highestScore =
+        typeof scoreAggregate._max.score === 'number' ? Number(scoreAggregate._max.score.toFixed(2)) : null;
+    const lowestScore =
+        typeof scoreAggregate._min.score === 'number' ? Number(scoreAggregate._min.score.toFixed(2)) : null;
+    const totalPages = Math.max(1, Math.ceil(sessionCount / options.limit));
 
     return {
         packet: {
@@ -1216,8 +3161,12 @@ async function buildPacketSubmissions(
             generatedAt: new Date().toISOString(),
             classFilterId: options.classId || null,
             statusFilter: options.status || null,
-            scheduleCount: schedules.length,
-            sessionCount: sessionRows.length,
+            scheduleCount,
+            sessionCount,
+            page: options.page,
+            limit: options.limit,
+            totalPages,
+            pageSessionCount: sessionRows.length,
             participantCount,
             submittedCount,
             inProgressCount,
@@ -1351,6 +3300,7 @@ async function buildSessionDetail(
             score: typeof session.score === 'number' ? Number(session.score.toFixed(2)) : null,
             startTime: session.startTime.toISOString(),
             submitTime: session.submitTime ? session.submitTime.toISOString() : null,
+            monitoring: extractMonitoringSummaryFromAnswers(session.answers),
             schedule: {
                 id: session.schedule.id,
                 startTime: session.schedule.startTime.toISOString(),
@@ -1394,14 +3344,73 @@ async function buildSessionDetail(
 
 export const getPackets = asyncHandler(async (req: Request, res: Response) => {
     const { type, subjectId, academicYearId, semester, programCode } = req.query;
-    
-    const where: any = {};
-    
-    if (type) where.type = normalizePacketType(type);
-    if (subjectId) where.subjectId = parseInt(subjectId as string);
-    if (academicYearId) where.academicYearId = parseInt(academicYearId as string);
-    if (semester) where.semester = semester;
-    if (programCode) where.programCode = normalizeProgramCode(programCode);
+    const authUser = (req as any).user as { id?: number; role?: string } | undefined;
+    const authUserId = Number(authUser?.id || 0);
+    const authRole = String(authUser?.role || '')
+        .trim()
+        .toUpperCase();
+
+    const andFilters: Prisma.ExamPacketWhereInput[] = [];
+
+    if (type) {
+        const normalizedTypeCode = normalizeProgramCode(type);
+        const normalizedPacketType = tryNormalizePacketType(type);
+
+        if (normalizedPacketType && normalizedTypeCode) {
+            andFilters.push({
+                OR: [{ type: normalizedPacketType }, { programCode: normalizedTypeCode }],
+            });
+        } else if (normalizedPacketType) {
+            andFilters.push({ type: normalizedPacketType });
+        } else if (normalizedTypeCode) {
+            andFilters.push({ programCode: normalizedTypeCode });
+        } else {
+            throw new ApiError(400, 'Filter tipe/program ujian tidak valid.');
+        }
+    }
+
+    if (subjectId) andFilters.push({ subjectId: parseInt(subjectId as string) });
+    if (academicYearId) andFilters.push({ academicYearId: parseInt(academicYearId as string) });
+    if (semester) andFilters.push({ semester: normalizePacketSemester(semester) });
+    if (programCode) {
+        const normalizedProgramCode = normalizeProgramCode(programCode);
+        if (!normalizedProgramCode) {
+            throw new ApiError(400, 'Filter program ujian tidak valid.');
+        }
+        andFilters.push({ programCode: normalizedProgramCode });
+    }
+
+    if (authRole === 'TEACHER' && authUserId > 0) {
+        const assignmentWhere: Prisma.TeacherAssignmentWhereInput = {
+            teacherId: authUserId,
+        };
+        if (academicYearId) {
+            assignmentWhere.academicYearId = parseInt(academicYearId as string);
+        }
+
+        const assignments = await prisma.teacherAssignment.findMany({
+            where: assignmentWhere,
+            select: { subjectId: true },
+        });
+        const assignedSubjectIds = Array.from(
+            new Set(
+                assignments
+                    .map((item) => Number(item.subjectId))
+                    .filter((item) => Number.isFinite(item) && item > 0),
+            ),
+        );
+
+        andFilters.push({
+            OR: [
+                { authorId: authUserId },
+                ...(assignedSubjectIds.length > 0 ? [{ subjectId: { in: assignedSubjectIds } }] : []),
+            ],
+        });
+    } else if (authRole === 'EXAMINER' && authUserId > 0) {
+        andFilters.push({ authorId: authUserId });
+    }
+
+    const where: Prisma.ExamPacketWhereInput = andFilters.length > 0 ? { AND: andFilters } : {};
 
     const packets = await prisma.examPacket.findMany({
         where,
@@ -1433,6 +3442,7 @@ export const getPacketById = asyncHandler(async (req: Request, res: Response) =>
 export const createPacket = asyncHandler(async (req: Request, res: Response) => {
     const {
         title,
+        teacherAssignmentId,
         subjectId,
         academicYearId,
         type,
@@ -1444,6 +3454,7 @@ export const createPacket = asyncHandler(async (req: Request, res: Response) => 
         instructions,
         saveToBank,
         kkm,
+        publishedQuestionCount,
     } = req.body;
     const user = (req as any).user;
     const normalizedAcademicYearId = parseInt(academicYearId);
@@ -1455,11 +3466,38 @@ export const createPacket = asyncHandler(async (req: Request, res: Response) => 
         legacyType: type,
     });
     const normalizedQuestions = normalizeQuestionsPayload(questions);
+    const scopedAssignment = await resolvePacketAssignmentScope({
+        teacherAssignmentId,
+        academicYearId: normalizedAcademicYearId,
+        authorId: Number(user.id),
+        subjectId: Number(subjectId),
+        programCode: resolvedProgram.programCode,
+    });
+    const normalizedSubjectId = scopedAssignment?.subjectId ?? Number(subjectId);
+    if (!Number.isFinite(normalizedSubjectId) || normalizedSubjectId <= 0) {
+        throw new ApiError(400, 'subjectId wajib diisi.');
+    }
+    const requestedKkm = Number(kkm);
+    const assignmentKkm = Number(scopedAssignment?.kkm);
+    const normalizedKkm =
+        Number.isFinite(requestedKkm) && requestedKkm > 0
+            ? requestedKkm
+            : Number.isFinite(assignmentKkm) && assignmentKkm > 0
+              ? assignmentKkm
+              : 75;
+    const normalizedPublishedQuestionCount = normalizePublishedQuestionCount(publishedQuestionCount);
+
+    await assertPacketCreationScope({
+        academicYearId: normalizedAcademicYearId,
+        programCode: resolvedProgram.programCode,
+        subjectId: normalizedSubjectId,
+        authorId: Number(user.id),
+    });
 
     const packet = await prisma.examPacket.create({
         data: {
             title,
-            subjectId: parseInt(subjectId),
+            subjectId: normalizedSubjectId,
             academicYearId: normalizedAcademicYearId,
             type: resolvedProgram.baseType,
             programCode: resolvedProgram.programCode,
@@ -1467,7 +3505,8 @@ export const createPacket = asyncHandler(async (req: Request, res: Response) => 
             duration: parseInt(duration),
             description,
             instructions,
-            kkm: kkm ? parseFloat(kkm) : 75,
+            kkm: normalizedKkm,
+            publishedQuestionCount: normalizedPublishedQuestionCount,
             questions: normalizedQuestions || questions,
             authorId: user.id
         }
@@ -1476,34 +3515,19 @@ export const createPacket = asyncHandler(async (req: Request, res: Response) => 
     // Handle Save to Question Bank
     if (saveToBank && normalizedQuestions && normalizedQuestions.length > 0) {
         try {
-            // Create a new Question Bank for this exam
-            const bank = await prisma.questionBank.create({
-                data: {
-                    title: `Bank Soal: ${title}`,
-                    subjectId: parseInt(subjectId),
-                    academicYearId: normalizedAcademicYearId,
-                    semester: normalizedSemester,
-                    classLevel: 'ALL', // Default or derived if possible
-                    authorId: user.id
-                }
+            const saveResult = await saveQuestionsToBankWithDedup({
+                bankTitle: `Bank Soal: ${title}`,
+                subjectId: normalizedSubjectId,
+                academicYearId: normalizedAcademicYearId,
+                semester: normalizedSemester,
+                authorId: Number(user.id),
+                questions: normalizedQuestions,
             });
-
-            // Create Questions
-            const questionPromises = normalizedQuestions.map((q) =>
-                createQuestionBankEntry({
-                    bank: { connect: { id: bank.id } },
-                    type: q.type as any,
-                    content: q.content,
-                    options: (q.options || []) as Prisma.InputJsonValue,
-                    answerKey: q.answerKey || deriveAnswerKeyFromOptions(q.options),
-                    points: q.score || 1,
-                    mediaUrl: q.question_image_url || q.question_video_url,
-                    mediaType: q.question_video_type || (q.question_image_url ? 'image' : null),
-                    metadata: buildQuestionBankMetadata(q) as Prisma.InputJsonValue | undefined,
-                }),
-            );
-
-            await Promise.all(questionPromises);
+            if (saveResult.skippedInPayload > 0 || saveResult.skippedExisting > 0) {
+                console.info(
+                    `[QuestionBank] createPacket dedup => created=${saveResult.createdCount}, skippedInPayload=${saveResult.skippedInPayload}, skippedExisting=${saveResult.skippedExisting}`,
+                );
+            }
         } catch (error) {
             console.error('Failed to save questions to bank:', error);
             // Don't fail the request, just log error
@@ -1517,6 +3541,7 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
     const { id } = req.params;
     const {
         title,
+        teacherAssignmentId,
         subjectId,
         academicYearId,
         type,
@@ -1528,6 +3553,7 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
         instructions,
         saveToBank,
         kkm,
+        publishedQuestionCount,
     } = req.body;
 
     const packetId = parseInt(id);
@@ -1535,6 +3561,7 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
         where: { id: packetId },
         select: {
             id: true,
+            subjectId: true,
             academicYearId: true,
             semester: true,
             type: true,
@@ -1549,6 +3576,12 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
     const normalizedAcademicYearId = Number.isFinite(Number(academicYearId))
         ? parseInt(academicYearId)
         : existingPacket.academicYearId;
+    const normalizedSubjectId = Number.isFinite(Number(subjectId))
+        ? parseInt(subjectId)
+        : existingPacket.subjectId;
+    if (!Number.isFinite(normalizedSubjectId) || normalizedSubjectId <= 0) {
+        throw new ApiError(400, 'subjectId wajib diisi.');
+    }
     const normalizedSemester = normalizePacketSemester(semester || existingPacket.semester);
     const resolvedProgram = await resolvePacketProgram({
         academicYearId: normalizedAcademicYearId,
@@ -1557,13 +3590,35 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
         legacyType: type ?? existingPacket.type,
         currentProgramCode: existingPacket.programCode,
     });
+    const scopedAssignment = await resolvePacketAssignmentScope({
+        teacherAssignmentId,
+        academicYearId: normalizedAcademicYearId,
+        authorId: Number((req as any).user.id),
+        subjectId: normalizedSubjectId,
+        programCode: resolvedProgram.programCode,
+    });
+    const effectiveSubjectId = scopedAssignment?.subjectId ?? normalizedSubjectId;
+    if (!Number.isFinite(effectiveSubjectId) || effectiveSubjectId <= 0) {
+        throw new ApiError(400, 'subjectId wajib diisi.');
+    }
     const normalizedQuestions = normalizeQuestionsPayload(questions);
+    const normalizedPublishedQuestionCount =
+        publishedQuestionCount === undefined
+            ? undefined
+            : normalizePublishedQuestionCount(publishedQuestionCount);
+
+    await assertPacketCreationScope({
+        academicYearId: normalizedAcademicYearId,
+        programCode: resolvedProgram.programCode,
+        subjectId: effectiveSubjectId,
+        authorId: Number((req as any).user.id),
+    });
 
     const packet = await prisma.examPacket.update({
         where: { id: packetId },
         data: {
             title,
-            subjectId: parseInt(subjectId),
+            subjectId: effectiveSubjectId,
             academicYearId: normalizedAcademicYearId,
             type: resolvedProgram.baseType,
             programCode: resolvedProgram.programCode,
@@ -1572,54 +3627,55 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
             description,
             instructions,
             kkm: kkm ? parseFloat(kkm) : undefined,
+            publishedQuestionCount: normalizedPublishedQuestionCount,
             questions: normalizedQuestions || questions
         }
     });
 
+    const consolidation = await consolidateSessionSiblingSchedulesForPacket(packetId);
+    if (consolidation.mergedPacketIds.length > 0) {
+        consolidation.mergedPacketIds.forEach((mergedPacketId) => {
+            invalidateStartExamScheduleCacheByPacket(mergedPacketId);
+            invalidatePacketItemAnalysisCacheByPacket(mergedPacketId);
+            invalidatePacketSubmissionsCacheByPacket(mergedPacketId);
+        });
+        consolidation.movedScheduleIds.forEach((scheduleId) => {
+            invalidateStartExamScheduleCache(scheduleId);
+        });
+    }
+
     // Handle Save to Question Bank
     if (saveToBank && normalizedQuestions && normalizedQuestions.length > 0) {
         try {
-            // Check if a bank already exists for this packet title to avoid duplicates
-            // Ideally we might want to update it, but for simplicity let's create new or skip
-            // Let's create a new one with timestamp to be safe or append (Copy)
-            
-            const bank = await prisma.questionBank.create({
-                data: {
-                    title: `Bank Soal: ${title} (Copy)`,
-                    subjectId: parseInt(subjectId),
-                    academicYearId: normalizedAcademicYearId,
-                    semester: normalizedSemester,
-                    classLevel: 'ALL',
-                    authorId: (req as any).user.id
-                }
+            const saveResult = await saveQuestionsToBankWithDedup({
+                bankTitle: `Bank Soal: ${title} (Copy)`,
+                subjectId: effectiveSubjectId,
+                academicYearId: normalizedAcademicYearId,
+                semester: normalizedSemester,
+                authorId: Number((req as any).user.id),
+                questions: normalizedQuestions,
             });
-
-            const questionPromises = normalizedQuestions.map((q) =>
-                createQuestionBankEntry({
-                    bank: { connect: { id: bank.id } },
-                    type: q.type as any,
-                    content: q.content,
-                    options: (q.options || []) as Prisma.InputJsonValue,
-                    answerKey: q.answerKey || deriveAnswerKeyFromOptions(q.options),
-                    points: q.score || 1,
-                    mediaUrl: q.question_image_url || q.question_video_url,
-                    mediaType: q.question_video_type || (q.question_image_url ? 'image' : null),
-                    metadata: buildQuestionBankMetadata(q) as Prisma.InputJsonValue | undefined,
-                }),
-            );
-
-            await Promise.all(questionPromises);
+            if (saveResult.skippedInPayload > 0 || saveResult.skippedExisting > 0) {
+                console.info(
+                    `[QuestionBank] updatePacket dedup => created=${saveResult.createdCount}, skippedInPayload=${saveResult.skippedInPayload}, skippedExisting=${saveResult.skippedExisting}`,
+                );
+            }
         } catch (error) {
             console.error('Failed to save questions to bank during update:', error);
         }
     }
 
+    invalidateStartExamScheduleCacheByPacket(packetId);
+    invalidatePacketItemAnalysisCacheByPacket(packetId);
+    invalidatePacketSubmissionsCacheByPacket(packetId);
     res.json(new ApiResponse(200, packet, 'Exam packet updated successfully'));
 });
 
 export const deletePacket = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
-    await prisma.examPacket.delete({ where: { id: parseInt(id) } });
+    const packetId = parseInt(id, 10);
+    await prisma.examPacket.delete({ where: { id: packetId } });
+    invalidateStartExamScheduleCacheByPacket(packetId);
     res.json(new ApiResponse(200, null, 'Exam packet deleted successfully'));
 });
 
@@ -1636,7 +3692,34 @@ export const getPacketItemAnalysis = asyncHandler(async (req: Request, res: Resp
     }
 
     const user = (req as any).user as { id: number; role: string };
-    const analysis = await buildPacketItemAnalysis(packetId, { classId, user });
+    const includeContentHtml = parseBooleanQueryParam(req.query.includeContentHtml, false);
+    const cacheKey = buildPacketItemAnalysisCacheKey(packetId, classId, includeContentHtml);
+    const cachedAnalysis = getCachedPacketItemAnalysis(cacheKey);
+    if (cachedAnalysis) {
+        await assertPacketItemAnalysisAccess(user, {
+            authorId: cachedAnalysis.payload.packet.author.id,
+            subjectId: cachedAnalysis.payload.packet.subject.id,
+        });
+        res.setHeader('ETag', cachedAnalysis.etag);
+        if (isEtagMatch(req, cachedAnalysis.etag)) {
+            return res.status(304).end();
+        }
+        res.setHeader('Cache-Control', 'private, max-age=30');
+        return res.json(new ApiResponse(200, cachedAnalysis.payload, 'Analisis butir soal berhasil diambil.'));
+    }
+
+    const analysis = await getOrCreatePacketItemAnalysisInFlight(cacheKey, () =>
+        buildPacketItemAnalysis(packetId, { classId, includeContentHtml, user }),
+    );
+    setCachedPacketItemAnalysis(cacheKey, analysis);
+    const freshCached = getCachedPacketItemAnalysis(cacheKey);
+    if (freshCached) {
+        res.setHeader('ETag', freshCached.etag);
+        if (isEtagMatch(req, freshCached.etag)) {
+            return res.status(304).end();
+        }
+    }
+    res.setHeader('Cache-Control', 'private, max-age=30');
     res.json(new ApiResponse(200, analysis, 'Analisis butir soal berhasil diambil.'));
 });
 
@@ -1653,8 +3736,36 @@ export const getPacketSubmissions = asyncHandler(async (req: Request, res: Respo
     }
 
     const status = parseStatusFilter(req.query.status);
+    const page = parsePaginationNumber(req.query.page, 1, { min: 1, max: 10_000 });
+    const limit = parsePaginationNumber(req.query.limit, 50, { min: 1, max: 200 });
     const user = (req as any).user as { id: number; role: string };
-    const submissions = await buildPacketSubmissions(packetId, { classId, status, user });
+    const cacheKey = buildPacketSubmissionsCacheKey(packetId, classId, status, page, limit);
+    const cachedSubmissions = getCachedPacketSubmissions(cacheKey);
+    if (cachedSubmissions) {
+        await assertPacketItemAnalysisAccess(user, {
+            authorId: cachedSubmissions.payload.packet.author.id,
+            subjectId: cachedSubmissions.payload.packet.subject.id,
+        });
+        res.setHeader('ETag', cachedSubmissions.etag);
+        if (isEtagMatch(req, cachedSubmissions.etag)) {
+            return res.status(304).end();
+        }
+        res.setHeader('Cache-Control', 'private, max-age=10');
+        return res.json(new ApiResponse(200, cachedSubmissions.payload, 'Daftar submission ujian berhasil diambil.'));
+    }
+
+    const submissions = await getOrCreatePacketSubmissionsInFlight(cacheKey, () =>
+        buildPacketSubmissions(packetId, { classId, status, page, limit, user }),
+    );
+    setCachedPacketSubmissions(cacheKey, submissions);
+    const freshCached = getCachedPacketSubmissions(cacheKey);
+    if (freshCached) {
+        res.setHeader('ETag', freshCached.etag);
+        if (isEtagMatch(req, freshCached.etag)) {
+            return res.status(304).end();
+        }
+    }
+    res.setHeader('Cache-Control', 'private, max-age=10');
     res.json(new ApiResponse(200, submissions, 'Daftar submission ujian berhasil diambil.'));
 });
 
@@ -1665,7 +3776,29 @@ export const getSessionDetail = asyncHandler(async (req: Request, res: Response)
     }
 
     const user = (req as any).user as { id: number; role: string };
-    const detail = await buildSessionDetail(sessionId, { user });
+    const cacheKey = buildSessionDetailCacheKey(sessionId, user);
+    const cachedDetail = getCachedSessionDetail(cacheKey);
+    if (cachedDetail) {
+        res.setHeader('ETag', cachedDetail.etag);
+        if (isEtagMatch(req, cachedDetail.etag)) {
+            return res.status(304).end();
+        }
+        res.setHeader('Cache-Control', 'private, max-age=5');
+        return res.json(new ApiResponse(200, cachedDetail.payload, 'Detail jawaban sesi berhasil diambil.'));
+    }
+
+    const detail = await getOrCreateSessionDetailInFlight(cacheKey, () =>
+        buildSessionDetail(sessionId, { user }),
+    );
+    setCachedSessionDetail(cacheKey, detail);
+    const freshCached = getCachedSessionDetail(cacheKey);
+    if (freshCached) {
+        res.setHeader('ETag', freshCached.etag);
+        if (isEtagMatch(req, freshCached.etag)) {
+            return res.status(304).end();
+        }
+    }
+    res.setHeader('Cache-Control', 'private, max-age=5');
     res.json(new ApiResponse(200, detail, 'Detail jawaban sesi berhasil diambil.'));
 });
 
@@ -1682,7 +3815,7 @@ export const syncPacketItemAnalysis = asyncHandler(async (req: Request, res: Res
     }
 
     const user = (req as any).user as { id: number; role: string };
-    const analysis = await buildPacketItemAnalysis(packetId, { classId, user });
+    const analysis = await buildPacketItemAnalysis(packetId, { classId, includeContentHtml: false, user });
 
     const packet = await prisma.examPacket.findUnique({
         where: { id: packetId },
@@ -1733,6 +3866,7 @@ export const syncPacketItemAnalysis = asyncHandler(async (req: Request, res: Res
         },
     });
 
+    invalidatePacketItemAnalysisCacheByPacket(packetId);
     res.json(new ApiResponse(200, analysis, 'Analisis butir berhasil disimpan ke packet ujian.'));
 });
 
@@ -1873,8 +4007,142 @@ export const getQuestions = asyncHandler(async (req: Request, res: Response) => 
 // Schedule Management
 // ==========================================
 
+export const getProgramSessions = asyncHandler(async (req: Request, res: Response) => {
+    const { academicYearId, programCode, examType, includeInactive } = req.query;
+    const parsedAcademicYearId = Number(academicYearId);
+    if (!Number.isFinite(parsedAcademicYearId) || parsedAcademicYearId <= 0) {
+        throw new ApiError(400, 'academicYearId tidak valid.');
+    }
+
+    const resolvedProgramCode = await resolveCanonicalProgramCode({
+        academicYearId: parsedAcademicYearId,
+        rawProgramCode: programCode,
+        rawExamType: examType,
+    });
+    if (!resolvedProgramCode) {
+        throw new ApiError(400, 'programCode wajib diisi.');
+    }
+    if (isNonScheduledExamProgramCode(resolvedProgramCode)) {
+        throw new ApiError(400, 'Program UH/Formatif tidak menggunakan sesi terjadwal.');
+    }
+
+    await backfillProgramSessionsFromExistingRows({
+        academicYearId: parsedAcademicYearId,
+        programCode: resolvedProgramCode,
+    });
+
+    const includeInactiveFlag =
+        typeof includeInactive === 'string'
+            ? ['true', '1', 'yes', 'on'].includes(includeInactive.toLowerCase())
+            : Boolean(includeInactive);
+
+    const sessions = await prisma.examProgramSession.findMany({
+        where: {
+            academicYearId: parsedAcademicYearId,
+            programCode: resolvedProgramCode,
+            ...(includeInactiveFlag ? {} : { isActive: true }),
+        },
+        orderBy: [{ displayOrder: 'asc' }, { id: 'asc' }],
+        select: {
+            id: true,
+            label: true,
+            displayOrder: true,
+            isActive: true,
+            programCode: true,
+            academicYearId: true,
+        },
+    });
+
+    res.json(
+        new ApiResponse(200, {
+            academicYearId: parsedAcademicYearId,
+            programCode: resolvedProgramCode,
+            sessions,
+        }),
+    );
+});
+
+export const createProgramSession = asyncHandler(async (req: Request, res: Response) => {
+    const { academicYearId, programCode, examType, label, displayOrder } = req.body;
+    const parsedAcademicYearId = Number(academicYearId);
+    if (!Number.isFinite(parsedAcademicYearId) || parsedAcademicYearId <= 0) {
+        throw new ApiError(400, 'academicYearId tidak valid.');
+    }
+
+    const resolvedProgramCode = await resolveCanonicalProgramCode({
+        academicYearId: parsedAcademicYearId,
+        rawProgramCode: programCode,
+        rawExamType: examType,
+    });
+    if (!resolvedProgramCode) {
+        throw new ApiError(400, 'programCode wajib diisi.');
+    }
+    if (isNonScheduledExamProgramCode(resolvedProgramCode)) {
+        throw new ApiError(400, 'Program UH/Formatif tidak menggunakan sesi terjadwal.');
+    }
+
+    const normalizedLabel = normalizeOptionalSessionLabel(label);
+    const normalizedLabelKey = normalizeSessionLabelKey(label);
+    if (!normalizedLabel || !normalizedLabelKey) {
+        throw new ApiError(400, 'Label sesi wajib diisi.');
+    }
+
+    const requestedDisplayOrder =
+        displayOrder === undefined || displayOrder === null || String(displayOrder).trim() === ''
+            ? null
+            : Number(displayOrder);
+    if (
+        requestedDisplayOrder !== null &&
+        (!Number.isFinite(requestedDisplayOrder) || requestedDisplayOrder < 0)
+    ) {
+        throw new ApiError(400, 'displayOrder tidak valid.');
+    }
+
+    const maxDisplayOrder = await prisma.examProgramSession.aggregate({
+        where: {
+            academicYearId: parsedAcademicYearId,
+            programCode: resolvedProgramCode,
+        },
+        _max: { displayOrder: true },
+    });
+
+    const created = await prisma.examProgramSession.upsert({
+        where: {
+            academicYearId_programCode_normalizedLabel: {
+                academicYearId: parsedAcademicYearId,
+                programCode: resolvedProgramCode,
+                normalizedLabel: normalizedLabelKey,
+            },
+        },
+        create: {
+            academicYearId: parsedAcademicYearId,
+            programCode: resolvedProgramCode,
+            label: normalizedLabel,
+            normalizedLabel: normalizedLabelKey,
+            displayOrder: requestedDisplayOrder ?? (maxDisplayOrder._max.displayOrder ?? 0) + 1,
+            isActive: true,
+        },
+        update: {
+            label: normalizedLabel,
+            normalizedLabel: normalizedLabelKey,
+            displayOrder: requestedDisplayOrder ?? undefined,
+            isActive: true,
+        },
+        select: {
+            id: true,
+            academicYearId: true,
+            programCode: true,
+            label: true,
+            displayOrder: true,
+            isActive: true,
+        },
+    });
+
+    res.json(new ApiResponse(201, created, 'Sesi ujian berhasil disimpan.'));
+});
+
 export const getSchedules = asyncHandler(async (req: Request, res: Response) => {
-    const { classId, academicYearId, examType, programCode } = req.query;
+    const { classId, academicYearId, examType, programCode, packetId, sessionLabel, sessionId } = req.query;
     const where: Prisma.ExamScheduleWhereInput = {};
 
     if (classId) {
@@ -1883,29 +4151,85 @@ export const getSchedules = asyncHandler(async (req: Request, res: Response) => 
     if (academicYearId) {
         where.academicYearId = Number(academicYearId);
     }
+    const hasPacketId = packetId !== undefined && packetId !== null && String(packetId).trim() !== '';
+    if (hasPacketId) {
+        const parsedPacketId = Number(packetId);
+        if (!Number.isFinite(parsedPacketId) || parsedPacketId <= 0) {
+            throw new ApiError(400, 'packetId tidak valid.');
+        }
+        where.packetId = parsedPacketId;
+    }
 
     const normalizedProgramCode = normalizeProgramCode(programCode || examType);
-    if (normalizedProgramCode) {
+    if (normalizedProgramCode && !hasPacketId) {
         const orFilters: Prisma.ExamScheduleWhereInput[] = [
             { examType: normalizedProgramCode },
             { packet: { is: { programCode: normalizedProgramCode } } },
         ];
 
-        if (SUPPORTED_PACKET_TYPES.includes(normalizedProgramCode as ExamType)) {
-            orFilters.push({ packet: { is: { type: normalizedProgramCode as ExamType } } });
+        const normalizedPacketType = tryNormalizePacketType(normalizedProgramCode);
+        if (normalizedPacketType) {
+            orFilters.push({ packet: { is: { type: normalizedPacketType } } });
         }
 
         where.OR = orFilters;
+    }
+
+    const parsedSessionId =
+        sessionId === undefined || sessionId === null || String(sessionId).trim() === ''
+            ? null
+            : Number(sessionId);
+    if (parsedSessionId !== null) {
+        if (!Number.isFinite(parsedSessionId) || parsedSessionId <= 0) {
+            throw new ApiError(400, 'sessionId tidak valid.');
+        }
+        where.sessionId = parsedSessionId;
+    } else {
+        const normalizedSessionLabel = normalizeOptionalSessionLabel(sessionLabel);
+        if (normalizedSessionLabel) {
+            where.sessionLabel = normalizedSessionLabel;
+        }
     }
 
     const schedules = await prisma.examSchedule.findMany({
         where,
         include: {
             class: true,
-            packet: { include: { subject: true } },
-            academicYear: true,
-            subject: true,
+            packet: {
+                select: {
+                    id: true,
+                    title: true,
+                    type: true,
+                    programCode: true,
+                    duration: true,
+                    semester: true,
+                    subjectId: true,
+                    academicYearId: true,
+                    subject: {
+                        select: {
+                            id: true,
+                            name: true,
+                            code: true,
+                        },
+                    },
+                },
+            },
+            academicYear: {
+                select: {
+                    id: true,
+                    name: true,
+                    isActive: true,
+                },
+            },
+            subject: {
+                select: {
+                    id: true,
+                    name: true,
+                    code: true,
+                },
+            },
             proctor: { select: { id: true, name: true } },
+            programSession: { select: { id: true, label: true, displayOrder: true } },
         },
         orderBy: { startTime: 'desc' }
     });
@@ -1927,6 +4251,8 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
         semester,
         examType,
         programCode,
+        sessionId,
+        sessionLabel,
     } = req.body;
     const targetClassIds = classIds || (classId ? [classId] : []);
     
@@ -2000,12 +4326,163 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
         packet?.type ||
         null;
 
+    if (normalizedExamType && isNonScheduledExamProgramCode(normalizedExamType)) {
+        throw new ApiError(
+            400,
+            'Program Ulangan Harian (UH/Formatif) tidak dijadwalkan dari menu Wakasek Kurikulum.',
+        );
+    }
+
+    const normalizedClassIds: number[] = Array.from(
+        new Set<number>(
+            (Array.isArray(targetClassIds) ? targetClassIds : [])
+                .map((id: unknown) => Number(id))
+                .filter((id): id is number => Number.isFinite(id) && id > 0),
+        ),
+    );
+
+    if (normalizedClassIds.length === 0) {
+        throw new ApiError(400, 'Class ID tidak valid.');
+    }
+
+    // Ensure subject-class combination is valid based on active teacher assignment.
+    // This avoids ambiguous schedules when the same subject is taught by different teachers.
+    const assignmentRows = await prisma.teacherAssignment.findMany({
+        where: {
+            academicYearId: fallbackAcademicYearId,
+            subjectId: fallbackSubjectId,
+            classId: { in: normalizedClassIds },
+        },
+        select: {
+            classId: true,
+            teacherId: true,
+            kkm: true,
+        },
+    });
+    const assignmentClassIdSet = new Set(assignmentRows.map((row) => Number(row.classId)));
+    const missingClassIds = normalizedClassIds.filter((classIdItem) => !assignmentClassIdSet.has(classIdItem));
+    if (missingClassIds.length > 0) {
+        const missingClasses = await prisma.class.findMany({
+            where: { id: { in: missingClassIds } },
+            select: { name: true },
+        });
+        const missingClassNames = missingClasses.map((item) => item.name).join(', ') || missingClassIds.join(', ');
+        throw new ApiError(
+            400,
+            `Mapel ini belum punya assignment guru pada kelas: ${missingClassNames}. Atur assignment guru terlebih dahulu.`,
+        );
+    }
+
+    await assertScheduleClassLevelScope({
+        academicYearId: fallbackAcademicYearId,
+        programCode: normalizedExamType,
+        classIds: normalizedClassIds,
+    });
+
+    const resolvedProgramSession = await resolveProgramSessionReference({
+        academicYearId: fallbackAcademicYearId,
+        rawProgramCode: normalizedExamType,
+        rawExamType: normalizedExamType,
+        sessionId,
+        sessionLabel,
+    });
+
+    if (!packet) {
+        const assignmentTeacherIds = Array.from(
+            new Set(
+                assignmentRows
+                    .map((row) => Number(row.teacherId))
+                    .filter((teacherIdItem) => Number.isFinite(teacherIdItem) && teacherIdItem > 0),
+            ),
+        );
+
+        if (assignmentTeacherIds.length === 1) {
+            const assignmentKkmValues = assignmentRows
+                .map((row) => Number(row.kkm))
+                .filter((value): value is number => Number.isFinite(value) && value > 0);
+            let inferredPacketKkm = 75;
+            if (assignmentKkmValues.length > 0) {
+                const frequencies = new Map<number, number>();
+                assignmentKkmValues.forEach((value) => {
+                    frequencies.set(value, (frequencies.get(value) || 0) + 1);
+                });
+                const ranked = Array.from(frequencies.entries()).sort((left, right) => {
+                    if (right[1] !== left[1]) return right[1] - left[1];
+                    return right[0] - left[0];
+                });
+                inferredPacketKkm = ranked[0]?.[0] ?? 75;
+            }
+
+            const [subjectRow, resolvedProgram] = await Promise.all([
+                prisma.subject.findUnique({
+                    where: { id: fallbackSubjectId },
+                    select: { name: true },
+                }),
+                resolvePacketProgram({
+                    academicYearId: fallbackAcademicYearId,
+                    semester: normalizedSemester,
+                    programCode: normalizedExamType,
+                    legacyType: normalizedExamType,
+                }),
+            ]);
+
+            const reusablePacket = await findReusablePacketForSessionGroup({
+                authorId: assignmentTeacherIds[0],
+                subjectId: fallbackSubjectId,
+                academicYearId: fallbackAcademicYearId,
+                semester: normalizedSemester,
+                programCode: resolvedProgram.programCode,
+                startTime: normalizedStartTime,
+            });
+
+            if (reusablePacket) {
+                packet = reusablePacket;
+            } else {
+                const durationMinutes = Math.max(
+                    1,
+                    Math.round((normalizedEndTime.getTime() - normalizedStartTime.getTime()) / 60000),
+                );
+                const programLabel = resolvedProgram.programCode || resolvedProgram.baseType;
+                const subjectLabel = String(subjectRow?.name || 'Mata Pelajaran');
+                const dateLabel = normalizedStartTime.toISOString().slice(0, 10);
+                const autoTitle = `${programLabel} • ${subjectLabel} • ${dateLabel}`;
+
+                const createdPacket = await prisma.examPacket.create({
+                    data: {
+                        title: autoTitle,
+                        subjectId: fallbackSubjectId,
+                        academicYearId: fallbackAcademicYearId,
+                        semester: normalizedSemester,
+                        type: resolvedProgram.baseType,
+                        programCode: resolvedProgram.programCode,
+                        duration: durationMinutes,
+                        instructions: 'Draft otomatis dari jadwal kurikulum. Lengkapi butir soal sebelum ujian dimulai.',
+                        description: AUTO_CURRICULUM_PACKET_DESCRIPTION,
+                        questions: [],
+                        kkm: inferredPacketKkm,
+                        authorId: assignmentTeacherIds[0],
+                    },
+                    select: {
+                        id: true,
+                        subjectId: true,
+                        academicYearId: true,
+                        semester: true,
+                        type: true,
+                        programCode: true,
+                    },
+                });
+
+                packet = createdPacket;
+            }
+        }
+    }
+
     const createdSchedules = [];
 
-    for (const cId of targetClassIds) {
+    for (const cId of normalizedClassIds) {
         const schedule = await prisma.examSchedule.create({
             data: {
-                classId: Number(cId),
+                classId: cId,
                 packetId: packet?.id ?? null,
                 subjectId: fallbackSubjectId,
                 startTime: normalizedStartTime,
@@ -2015,9 +4492,29 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
                 semester: normalizedSemester,
                 examType: normalizedExamType,
                 room,
+                sessionId: resolvedProgramSession?.id ?? null,
+                sessionLabel: resolvedProgramSession?.label ?? null,
             }
         });
         createdSchedules.push(schedule);
+        invalidateStartExamScheduleCache(schedule.id);
+    }
+
+    if (packet?.id) {
+        const consolidation = await consolidateSessionSiblingSchedulesForPacket(packet.id);
+        if (consolidation.mergedPacketIds.length > 0) {
+            consolidation.mergedPacketIds.forEach((mergedPacketId) => {
+                invalidateStartExamScheduleCacheByPacket(mergedPacketId);
+                invalidatePacketItemAnalysisCacheByPacket(mergedPacketId);
+                invalidatePacketSubmissionsCacheByPacket(mergedPacketId);
+            });
+            consolidation.movedScheduleIds.forEach((scheduleId) => {
+                invalidateStartExamScheduleCache(scheduleId);
+            });
+        }
+
+        invalidatePacketItemAnalysisCacheByPacket(packet.id);
+        invalidatePacketSubmissionsCacheByPacket(packet.id);
     }
 
     res.json(new ApiResponse(201, createdSchedules, 'Exam schedules created successfully'));
@@ -2025,17 +4522,75 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
 
 export const updateSchedule = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { startTime, endTime, proctorId, room, isActive } = req.body;
+    const { startTime, endTime, proctorId, room, isActive, sessionId, sessionLabel } = req.body;
+    const scheduleId = parseInt(id, 10);
+    if (!Number.isFinite(scheduleId) || scheduleId <= 0) {
+        throw new ApiError(400, 'id jadwal tidak valid.');
+    }
+
+    const existingSchedule = await prisma.examSchedule.findUnique({
+        where: { id: scheduleId },
+        select: {
+            id: true,
+            academicYearId: true,
+            examType: true,
+            packet: {
+                select: {
+                    academicYearId: true,
+                    programCode: true,
+                    type: true,
+                },
+            },
+        },
+    });
+    if (!existingSchedule) {
+        throw new ApiError(404, 'Jadwal tidak ditemukan.');
+    }
+
+    const parsedProctorId =
+        proctorId === undefined
+            ? undefined
+            : proctorId === null || String(proctorId).trim() === ''
+              ? null
+              : Number(proctorId);
+    if (typeof parsedProctorId === 'number' && (!Number.isFinite(parsedProctorId) || parsedProctorId <= 0)) {
+        throw new ApiError(400, 'proctorId tidak valid.');
+    }
+
+    const hasSessionPayload = sessionId !== undefined || sessionLabel !== undefined;
+    const resolvedAcademicYearId =
+        existingSchedule.packet?.academicYearId || existingSchedule.academicYearId || null;
+    const resolvedProgramCode =
+        existingSchedule.packet?.programCode || existingSchedule.examType || existingSchedule.packet?.type || null;
+
+    const resolvedProgramSession =
+        hasSessionPayload && resolvedAcademicYearId
+            ? await resolveProgramSessionReference({
+                  academicYearId: resolvedAcademicYearId,
+                  rawProgramCode: resolvedProgramCode,
+                  rawExamType: resolvedProgramCode,
+                  sessionId,
+                  sessionLabel,
+              })
+            : null;
+
+    if (hasSessionPayload && !resolvedAcademicYearId) {
+        throw new ApiError(400, 'Tahun ajaran jadwal tidak valid untuk sinkronisasi sesi.');
+    }
+
     const schedule = await prisma.examSchedule.update({
-        where: { id: parseInt(id) },
+        where: { id: scheduleId },
         data: {
             startTime: startTime ? new Date(startTime) : undefined,
             endTime: endTime ? new Date(endTime) : undefined,
-            proctorId: proctorId ? parseInt(proctorId) : undefined,
+            proctorId: parsedProctorId,
             room,
-            isActive
+            isActive,
+            sessionId: hasSessionPayload ? resolvedProgramSession?.id ?? null : undefined,
+            sessionLabel: hasSessionPayload ? resolvedProgramSession?.label ?? null : undefined,
         }
     });
+    invalidateStartExamScheduleCache(scheduleId);
     res.json(new ApiResponse(200, schedule, 'Exam schedule updated successfully'));
 });
 
@@ -2090,6 +4645,12 @@ export const deleteSchedule = asyncHandler(async (req: Request, res: Response) =
             where: { id: scheduleId }
         });
     });
+    invalidateStartExamScheduleCache(scheduleId);
+
+    if (schedule.packetId) {
+        invalidatePacketItemAnalysisCacheByPacket(schedule.packetId);
+        invalidatePacketSubmissionsCacheByPacket(schedule.packetId);
+    }
 
     res.json(new ApiResponse(200, null, 'Exam schedule deleted successfully'));
 });
@@ -2100,6 +4661,12 @@ export const deleteSchedule = asyncHandler(async (req: Request, res: Response) =
 
 export const getAvailableExams = asyncHandler(async (req: Request, res: Response) => {
     const studentId = (req as any).user!.id;
+    const cachedPayload = getCachedAvailableExams(studentId);
+    if (cachedPayload) {
+        res.setHeader('Cache-Control', 'private, max-age=3');
+        return res.json(new ApiResponse(200, cachedPayload));
+    }
+
     const student = await prisma.user.findUnique({
         where: { id: studentId },
         select: { classId: true }
@@ -2119,116 +4686,369 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
             // You might want to filter by time, but user might want to see upcoming/past exams too
             // For "Available" we usually mean exams they can take or see results for
         },
-        include: {
+        select: {
+            id: true,
+            classId: true,
+            subjectId: true,
+            packetId: true,
+            startTime: true,
+            endTime: true,
+            sessionId: true,
+            sessionLabel: true,
+            isActive: true,
+            room: true,
+            examType: true,
+            academicYearId: true,
+            semester: true,
             packet: {
-                include: { subject: true }
+                select: {
+                    id: true,
+                    title: true,
+                    description: true,
+                    type: true,
+                    programCode: true,
+                    semester: true,
+                    duration: true,
+                    publishedQuestionCount: true,
+                    instructions: true,
+                    subjectId: true,
+                    academicYearId: true,
+                    subject: {
+                        select: {
+                            id: true,
+                            name: true,
+                            code: true,
+                        },
+                    },
+                },
             },
             sessions: {
-                where: { studentId }
+                where: { studentId },
+                select: {
+                    id: true,
+                    studentId: true,
+                    scheduleId: true,
+                    startTime: true,
+                    endTime: true,
+                    submitTime: true,
+                    status: true,
+                    score: true,
+                    updatedAt: true,
+                },
             }
         },
         orderBy: { startTime: 'asc' }
     });
 
+    const packetIds = Array.from(
+        new Set(
+            schedules
+                .map((schedule) => Number(schedule.packet?.id))
+                .filter((packetId) => Number.isFinite(packetId) && packetId > 0),
+        ),
+    );
+    const packetQuestionCounts = packetIds.length > 0
+        ? await prisma.$queryRaw<Array<{ id: number; question_count: number }>>(
+              Prisma.sql`
+                SELECT
+                    id,
+                    CASE
+                        WHEN jsonb_typeof(questions) = 'array' THEN jsonb_array_length(questions)
+                        ELSE 0
+                    END AS question_count
+                FROM exam_packets
+                WHERE id IN (${Prisma.join(packetIds)})
+              `,
+          )
+        : [];
+    const questionCountByPacketId = new Map<number, number>(
+        packetQuestionCounts.map((row) => [Number(row.id), Number(row.question_count) || 0]),
+    );
+
+    const scheduleTargets = schedules
+        .filter((schedule) => !!schedule.packet)
+        .map((schedule) => {
+            const packet = schedule.packet!;
+            const normalizedProgramCode = normalizeProgramCode(packet.programCode || schedule.examType || packet.type);
+            return {
+                academicYearId: packet.academicYearId,
+                semester: packet.semester,
+                examType: packet.type,
+                programCode: normalizedProgramCode,
+            };
+        });
+
+    const uniqueProgramTargets = Array.from(
+        new Map(
+            scheduleTargets
+                .filter((target) => !!target.programCode)
+                .map((target) => [
+                    buildProgramRestrictionKey(target.academicYearId, target.semester, target.programCode!),
+                    target,
+                ]),
+        ).values(),
+    );
+
+    const uniqueLegacyTargets = Array.from(
+        new Map(
+            scheduleTargets.map((target) => [
+                buildLegacyRestrictionKey(target.academicYearId, target.semester, target.examType),
+                target,
+            ]),
+        ).values(),
+    );
+
+    const [programRestrictions, legacyRestrictions] = await Promise.all([
+        uniqueProgramTargets.length
+            ? prisma.studentExamProgramRestriction.findMany({
+                  where: {
+                      studentId,
+                      OR: uniqueProgramTargets.map((target) => ({
+                          academicYearId: target.academicYearId,
+                          semester: target.semester,
+                          programCode: target.programCode!,
+                      })),
+                  },
+              })
+            : Promise.resolve([]),
+        uniqueLegacyTargets.length
+            ? prisma.studentExamRestriction.findMany({
+                  where: {
+                      studentId,
+                      OR: uniqueLegacyTargets.map((target) => ({
+                          academicYearId: target.academicYearId,
+                          semester: target.semester,
+                          examType: target.examType,
+                      })),
+                  },
+              })
+            : Promise.resolve([]),
+    ]);
+
+    const programRestrictionMap = new Map(
+        programRestrictions.map((item) => [
+            buildProgramRestrictionKey(item.academicYearId, item.semester, item.programCode),
+            item,
+        ]),
+    );
+    const legacyRestrictionMap = new Map(
+        legacyRestrictions.map((item) => [
+            buildLegacyRestrictionKey(item.academicYearId, item.semester, item.examType),
+            item,
+        ]),
+    );
+
     // Check restrictions
-    const examsWithStatus = await Promise.all(schedules.map(async (schedule) => {
+    const examsWithStatus = schedules.map((schedule) => {
         let isBlocked = false;
         let blockReason = '';
 
         if (schedule.packet) {
-            const restriction = await prisma.studentExamRestriction.findUnique({
-                where: {
-                    studentId_academicYearId_semester_examType: {
-                        studentId,
-                        academicYearId: schedule.packet.academicYearId,
-                        semester: schedule.packet.semester,
-                        examType: schedule.packet.type
-                    }
-                }
-            });
+            const packet = schedule.packet;
+            const normalizedProgramCode = normalizeProgramCode(packet.programCode || schedule.examType || packet.type);
 
-            if (restriction && restriction.isBlocked) {
+            const programRestriction =
+                normalizedProgramCode
+                    ? programRestrictionMap.get(
+                          buildProgramRestrictionKey(packet.academicYearId, packet.semester, normalizedProgramCode),
+                      )
+                    : null;
+
+            const legacyRestriction = legacyRestrictionMap.get(
+                buildLegacyRestrictionKey(packet.academicYearId, packet.semester, packet.type),
+            );
+
+            const effectiveRestriction = programRestriction ?? legacyRestriction ?? null;
+            if (effectiveRestriction?.isBlocked) {
                 isBlocked = true;
-                blockReason = restriction.reason || 'Anda tidak diizinkan mengikuti ujian ini.';
+                blockReason = effectiveRestriction.reason || 'Anda tidak diizinkan mengikuti ujian ini.';
             }
         }
 
-        const session = schedule.sessions[0];
-        const status = session ? session.status : (now > schedule.endTime ? 'MISSED' : (now < schedule.startTime ? 'UPCOMING' : 'OPEN'));
+        const session = pickBestSession(schedule.sessions);
+        const normalizedSessionStatus = String(session?.status || '').toUpperCase();
+        const status = session
+            ? ['COMPLETED', 'TIMEOUT', 'IN_PROGRESS', 'NOT_STARTED'].includes(normalizedSessionStatus)
+                ? normalizedSessionStatus
+                : now > schedule.endTime
+                    ? 'MISSED'
+                    : now < schedule.startTime
+                        ? 'UPCOMING'
+                        : 'OPEN'
+            : now > schedule.endTime
+                ? 'MISSED'
+                : now < schedule.startTime
+                    ? 'UPCOMING'
+                    : 'OPEN';
+
+        const packet = schedule.packet
+            ? {
+                  ...schedule.packet,
+                  questionPoolCount: questionCountByPacketId.get(schedule.packet.id) || 0,
+                  questionCount:
+                      Number(schedule.packet.publishedQuestionCount) > 0
+                          ? Math.min(
+                                Number(schedule.packet.publishedQuestionCount),
+                                questionCountByPacketId.get(schedule.packet.id) || 0,
+                            )
+                          : questionCountByPacketId.get(schedule.packet.id) || 0,
+              }
+            : null;
 
         return {
             ...schedule,
+            packet,
             status,
-            has_submitted: session?.status === 'COMPLETED',
+            has_submitted: normalizedSessionStatus === 'COMPLETED' || normalizedSessionStatus === 'TIMEOUT',
             isBlocked,
             blockReason
         };
-    }));
+    });
 
+    setCachedAvailableExams(studentId, examsWithStatus);
+    res.setHeader('Cache-Control', 'private, max-age=3');
     res.json(new ApiResponse(200, examsWithStatus));
 });
 
 export const startExam = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params; // scheduleId
     const studentId = (req as any).user!.id;
+    const scheduleId = parseInt(id, 10);
+    if (!Number.isFinite(scheduleId) || scheduleId <= 0) {
+        throw new ApiError(400, 'Schedule ID tidak valid.');
+    }
 
-    const schedule = await prisma.examSchedule.findUnique({
-        where: { id: parseInt(id) },
-        include: { 
-            packet: {
-                include: {
-                    subject: true
-                }
-            }
-        }
-    });
+    const schedule = await getOrCreateStartExamSchedule(scheduleId);
 
     if (!schedule || !schedule.packet) throw new ApiError(404, 'Exam not found');
 
-    // Check restriction
-    const restriction = await prisma.studentExamRestriction.findUnique({
-        where: {
-            studentId_academicYearId_semester_examType: {
-                studentId,
-                academicYearId: schedule.packet.academicYearId,
-                semester: schedule.packet.semester,
-                examType: schedule.packet.type
-            }
-        }
-    });
+    // Check restriction (program-specific first, then legacy base-type)
+    const normalizedProgramCode = normalizeProgramCode(schedule.packet.programCode || schedule.examType || schedule.packet.type);
+    const programRestriction = normalizedProgramCode
+        ? await prisma.studentExamProgramRestriction.findUnique({
+              where: {
+                  studentId_academicYearId_semester_programCode: {
+                      studentId,
+                      academicYearId: schedule.packet.academicYearId,
+                      semester: schedule.packet.semester,
+                      programCode: normalizedProgramCode,
+                  },
+              },
+          })
+        : null;
 
-    if (restriction && restriction.isBlocked) {
-        throw new ApiError(403, restriction.reason || 'Access denied by homeroom teacher');
+    const legacyRestriction =
+        programRestriction === null
+            ? await prisma.studentExamRestriction.findUnique({
+                  where: {
+                      studentId_academicYearId_semester_examType: {
+                          studentId,
+                          academicYearId: schedule.packet.academicYearId,
+                          semester: schedule.packet.semester,
+                          examType: schedule.packet.type,
+                      },
+                  },
+              })
+            : null;
+
+    const effectiveRestriction = programRestriction ?? legacyRestriction ?? null;
+    if (effectiveRestriction?.isBlocked) {
+        throw new ApiError(403, effectiveRestriction.reason || 'Access denied by homeroom teacher');
     }
 
     const now = new Date();
     if (now < schedule.startTime) throw new ApiError(400, 'Exam has not started yet');
     if (now > schedule.endTime) throw new ApiError(400, 'Exam has ended');
 
-    // Create or get session
-          let session = await prisma.studentExamSession.findFirst({
-            where: { scheduleId: schedule.id, studentId }
-          });
+    // Create or get session (race-safe for concurrent start requests).
+    let session = await findStudentExamSessionSummary(schedule.id, studentId);
 
-          if (session && (session.status === 'COMPLETED' || session.status === 'TIMEOUT')) {
+    if (session && (session.status === 'COMPLETED' || session.status === 'TIMEOUT')) {
+        throw new ApiError(400, 'Anda sudah mengerjakan ujian ini.');
+    }
+
+    if (!session) {
+        session = await createStudentExamSessionSafely({
+            scheduleId: schedule.id,
+            studentId,
+            now,
+        });
+        if (session.status === 'COMPLETED' || session.status === 'TIMEOUT') {
             throw new ApiError(400, 'Anda sudah mengerjakan ujian ini.');
-          }
+        }
+    }
 
-          if (!session) {
-        session = await prisma.studentExamSession.create({
+    const packetQuestions = Array.isArray(schedule.packet.questions)
+        ? (schedule.packet.questions as Record<string, unknown>[])
+        : [];
+    const configuredLimit =
+        Number.isFinite(Number(schedule.packet.publishedQuestionCount)) &&
+        Number(schedule.packet.publishedQuestionCount) > 0
+            ? Math.trunc(Number(schedule.packet.publishedQuestionCount))
+            : null;
+    const sanitizedSessionAnswers = sanitizeAnswersForStorage(session.answers);
+    const selectedQuestionIds = resolveQuestionIdsForSession({
+        packetQuestions,
+        sessionAnswers: sanitizedSessionAnswers,
+        scheduleId,
+        studentId,
+        sessionId: session.id,
+        configuredLimit,
+    });
+
+    const questionMap = new Map<string, Record<string, unknown>>();
+    packetQuestions.forEach((question) => {
+        const questionId = String((question as Record<string, unknown>).id || '').trim();
+        if (!questionId) return;
+        questionMap.set(questionId, question);
+    });
+    const selectedQuestions = selectedQuestionIds
+        .map((questionId) => questionMap.get(questionId))
+        .filter((question): question is Record<string, unknown> => Boolean(question));
+    const filteredQuestions = selectedQuestions.length > 0 ? selectedQuestions : packetQuestions;
+
+    const nextQuestionSetMeta = {
+        ids: selectedQuestionIds.length > 0
+            ? selectedQuestionIds
+            : packetQuestions
+                  .map((question) => String((question as Record<string, unknown>).id || '').trim())
+                  .filter(Boolean),
+        limit:
+            Number.isFinite(Number(configuredLimit)) && Number(configuredLimit) > 0
+                ? Number(configuredLimit)
+                : null,
+        totalAvailable: packetQuestions.length,
+        assignedAt: new Date().toISOString(),
+    };
+
+    const nextAnswersPayload = sanitizeAnswersForStorage({
+        ...sanitizedSessionAnswers,
+        __questionSet: nextQuestionSetMeta,
+    });
+    if (stableSerializeJson(nextAnswersPayload) !== stableSerializeJson(sanitizedSessionAnswers)) {
+        session = await prisma.studentExamSession.update({
+            where: { id: session.id },
             data: {
-                scheduleId: schedule.id,
-                studentId,
-                startTime: now,
-                status: 'IN_PROGRESS'
-            }
+                answers: nextAnswersPayload as Prisma.InputJsonValue,
+            },
+            select: studentExamSessionSelect,
         });
     }
+
+    availableExamsCache.delete(studentId);
 
     // Return packet with questions
     res.json(new ApiResponse(200, {
         session,
-        packet: schedule.packet
+        packet: {
+            ...schedule.packet,
+            totalQuestionPoolCount: packetQuestions.length,
+            publishedQuestionCount:
+                Number.isFinite(Number(configuredLimit)) && Number(configuredLimit) > 0
+                    ? Number(configuredLimit)
+                    : null,
+            questions: filteredQuestions,
+        },
     }));
 });
 
@@ -2263,36 +5083,107 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
     const { answers, finish, is_final_submit } = req.body;
     const user = (req as any).user;
     const studentId = user.id;
+    const scheduleId = parseInt(id);
 
     // Support both flags
     const isFinished = finish || is_final_submit;
 
     const session = await prisma.studentExamSession.findFirst({
-        where: { scheduleId: parseInt(id), studentId }
+        where: { scheduleId, studentId },
+        select: {
+            id: true,
+            studentId: true,
+            scheduleId: true,
+            status: true,
+            answers: true,
+        },
     });
 
     if (!session) throw new ApiError(404, 'Session not found');
 
+    const previousAnswers = sanitizeAnswersForStorage(session.answers);
+    const previousQuestionSet = sanitizeQuestionSetMeta(
+        (previousAnswers as Record<string, unknown>).__questionSet,
+    );
+    const normalizedIncomingAnswers = sanitizeAnswersForStorage({
+        ...(answers && typeof answers === 'object' ? (answers as Record<string, unknown>) : {}),
+        ...(previousQuestionSet ? { __questionSet: previousQuestionSet } : {}),
+    });
+
+    if (!isFinished) {
+        const unchangedPayload =
+            stableSerializeJson(normalizedIncomingAnswers) === stableSerializeJson(previousAnswers);
+        if (session.status === 'IN_PROGRESS' && unchangedPayload) {
+            return res.json(new ApiResponse(200, session, 'Answers already up-to-date'));
+        }
+    }
+
     // Calculate score if finishing
     let finalScore: number | undefined = undefined;
+    let finishedSchedule:
+        | {
+              packet: {
+                  id: number;
+                  subjectId: number;
+                  academicYearId: number;
+                  semester: Semester;
+                  type: ExamType;
+                  programCode: string | null;
+                  questions: unknown;
+              } | null;
+          }
+        | null = null;
     
     if (isFinished) {
         // Get Exam Packet Questions
-        const schedule = await prisma.examSchedule.findUnique({
-            where: { id: parseInt(id) },
-            include: { packet: true }
+        finishedSchedule = await prisma.examSchedule.findUnique({
+            where: { id: scheduleId },
+            select: {
+                packet: {
+                    select: {
+                        id: true,
+                        subjectId: true,
+                        academicYearId: true,
+                        semester: true,
+                        type: true,
+                        programCode: true,
+                        questions: true,
+                    },
+                },
+            },
         });
         
-        if (schedule && schedule.packet && schedule.packet.questions) {
-             const questions = schedule.packet.questions as any[];
-             finalScore = calculateScore(questions, answers);
+        if (finishedSchedule?.packet?.questions) {
+             const packetQuestions = Array.isArray(finishedSchedule.packet.questions)
+                 ? (finishedSchedule.packet.questions as any[])
+                 : [];
+             const sessionQuestionSet =
+                 sanitizeQuestionSetMeta(
+                     (normalizedIncomingAnswers as Record<string, unknown>).__questionSet,
+                 ) || previousQuestionSet;
+             let scoringQuestions = packetQuestions;
+             if (sessionQuestionSet?.ids?.length) {
+                 const packetMap = new Map<string, any>();
+                 packetQuestions.forEach((question: any) => {
+                     const questionId = String(question?.id || '').trim();
+                     if (!questionId) return;
+                     packetMap.set(questionId, question);
+                 });
+                 const selected = sessionQuestionSet.ids
+                     .map((questionId) => packetMap.get(questionId))
+                     .filter((question: any) => Boolean(question));
+                 if (selected.length > 0) {
+                     scoringQuestions = selected;
+                 }
+             }
+             finalScore = calculateScore(scoringQuestions, normalizedIncomingAnswers);
         }
     }
 
     const updatedSession = await prisma.studentExamSession.update({
         where: { id: session.id },
         data: {
-            answers,
+            answers: normalizedIncomingAnswers as Prisma.InputJsonValue,
             status: isFinished ? 'COMPLETED' : 'IN_PROGRESS',
             submitTime: isFinished ? new Date() : undefined,
             endTime: isFinished ? new Date() : undefined,
@@ -2300,16 +5191,17 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
         }
     });
 
+    if (isFinished && finishedSchedule?.packet?.id) {
+        invalidatePacketItemAnalysisCacheByPacket(finishedSchedule.packet.id);
+        invalidatePacketSubmissionsCacheByPacket(finishedSchedule.packet.id);
+    }
+    invalidateSessionDetailCacheBySession(session.id);
+
     // Auto-fill StudentGrade if finished and score calculated
     if (isFinished && finalScore !== undefined) {
         try {
-            const schedule = await prisma.examSchedule.findUnique({
-                where: { id: parseInt(id) },
-                include: { packet: true }
-            });
-
-            if (schedule && schedule.packet) {
-                const { subjectId, academicYearId, semester, type, programCode } = schedule.packet;
+            if (finishedSchedule?.packet) {
+                const { subjectId, academicYearId, semester, type, programCode } = finishedSchedule.packet;
                 const gradeComponentConfig = await resolveGradeComponentConfigForPacket({
                     academicYearId,
                     type,
@@ -2459,6 +5351,8 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
         }
     }
 
+    availableExamsCache.delete(studentId);
+
     res.json(new ApiResponse(200, updatedSession, 'Answers saved'));
 });
 
@@ -2467,18 +5361,32 @@ export const submitAnswers = asyncHandler(async (req: Request, res: Response) =>
 // ==========================================
 
 export const getExamRestrictions = asyncHandler(async (req: Request, res: Response) => {
-    const { classId, academicYearId, semester, examType, page = 1, limit = 10, search } = req.query;
+    const { classId, academicYearId, semester, examType, programCode, page = 1, limit = 10, search } = req.query;
     
-    if (!classId || !academicYearId || !semester || !examType) {
+    if (!classId || !academicYearId || !semester || (!examType && !programCode)) {
         throw new ApiError(400, 'Missing required query parameters');
     }
 
     const pageNum = Number(page);
     const limitNum = Number(limit);
     const skip = (pageNum - 1) * limitNum;
+    const parsedClassId = Number(classId);
+    const parsedAcademicYearId = Number(academicYearId);
+    if (!Number.isFinite(parsedClassId) || parsedClassId <= 0) {
+        throw new ApiError(400, 'classId tidak valid.');
+    }
+    if (!Number.isFinite(parsedAcademicYearId) || parsedAcademicYearId <= 0) {
+        throw new ApiError(400, 'academicYearId tidak valid.');
+    }
+    const parsedSemester = normalizePacketSemester(semester);
+    const restrictionTarget = await resolveRestrictionTarget({
+        academicYearId: parsedAcademicYearId,
+        rawExamType: examType,
+        rawProgramCode: programCode,
+    });
 
     const where: any = { 
-        classId: parseInt(classId as string), 
+        classId: parsedClassId, 
         role: 'STUDENT', 
         studentStatus: 'ACTIVE' 
     };
@@ -2505,19 +5413,34 @@ export const getExamRestrictions = asyncHandler(async (req: Request, res: Respon
         })
     ]);
 
-    // Get existing restrictions for these students
-    const restrictions = await prisma.studentExamRestriction.findMany({
-        where: {
-            academicYearId: parseInt(academicYearId as string),
-            semester: semester as Semester,
-            examType: examType as ExamType,
-            studentId: { in: students.map(s => s.id) }
-        }
-    });
+    const studentIds = students.map((s) => s.id);
+    const [programRestrictions, legacyRestrictions] = await Promise.all([
+        restrictionTarget.programCode
+            ? prisma.studentExamProgramRestriction.findMany({
+                  where: {
+                      academicYearId: parsedAcademicYearId,
+                      semester: parsedSemester,
+                      programCode: restrictionTarget.programCode,
+                      studentId: { in: studentIds },
+                  },
+              })
+            : Promise.resolve([]),
+        prisma.studentExamRestriction.findMany({
+            where: {
+                academicYearId: parsedAcademicYearId,
+                semester: parsedSemester,
+                examType: restrictionTarget.baseType,
+                studentId: { in: studentIds },
+            },
+        }),
+    ]);
+
+    const programRestrictionMap = new Map(programRestrictions.map((item) => [item.studentId, item]));
+    const legacyRestrictionMap = new Map(legacyRestrictions.map((item) => [item.studentId, item]));
 
     // Merge
     const result = students.map(student => {
-        const r = restrictions.find(res => res.studentId === student.id);
+        const r = programRestrictionMap.get(student.id) ?? legacyRestrictionMap.get(student.id) ?? null;
         return {
             student,
             isBlocked: r ? r.isBlocked : false,
@@ -2537,30 +5460,74 @@ export const getExamRestrictions = asyncHandler(async (req: Request, res: Respon
 });
 
 export const updateExamRestriction = asyncHandler(async (req: Request, res: Response) => {
-    const { studentId, academicYearId, semester, examType, isBlocked, reason } = req.body;
-
-    const restriction = await prisma.studentExamRestriction.upsert({
-        where: {
-            studentId_academicYearId_semester_examType: {
-                studentId,
-                academicYearId,
-                semester,
-                examType
-            }
-        },
-        update: {
-            isBlocked,
-            reason
-        },
-        create: {
-            studentId,
-            academicYearId,
-            semester,
-            examType,
-            isBlocked,
-            reason
-        }
+    const { studentId, academicYearId, semester, examType, programCode, isBlocked, reason } = req.body;
+    const parsedStudentId = Number(studentId);
+    const parsedAcademicYearId = Number(academicYearId);
+    if (!Number.isFinite(parsedStudentId) || parsedStudentId <= 0) {
+        throw new ApiError(400, 'studentId tidak valid.');
+    }
+    if (!Number.isFinite(parsedAcademicYearId) || parsedAcademicYearId <= 0) {
+        throw new ApiError(400, 'academicYearId tidak valid.');
+    }
+    const parsedSemester = normalizePacketSemester(semester);
+    const restrictionTarget = await resolveRestrictionTarget({
+        academicYearId: parsedAcademicYearId,
+        rawExamType: examType,
+        rawProgramCode: programCode,
     });
+    const normalizedReason = String(reason || '').trim();
+    const normalizedBlockState =
+        typeof isBlocked === 'string'
+            ? ['true', '1', 'yes', 'on'].includes(isBlocked.toLowerCase())
+            : Boolean(isBlocked);
+
+    const restriction = restrictionTarget.programCode
+        ? await prisma.studentExamProgramRestriction.upsert({
+              where: {
+                  studentId_academicYearId_semester_programCode: {
+                      studentId: parsedStudentId,
+                      academicYearId: parsedAcademicYearId,
+                      semester: parsedSemester,
+                      programCode: restrictionTarget.programCode,
+                  },
+              },
+              update: {
+                  isBlocked: normalizedBlockState,
+                  reason: normalizedBlockState ? normalizedReason : '',
+              },
+              create: {
+                  studentId: parsedStudentId,
+                  academicYearId: parsedAcademicYearId,
+                  semester: parsedSemester,
+                  programCode: restrictionTarget.programCode,
+                  isBlocked: normalizedBlockState,
+                  reason: normalizedBlockState ? normalizedReason : '',
+              },
+          })
+        : await prisma.studentExamRestriction.upsert({
+              where: {
+                  studentId_academicYearId_semester_examType: {
+                      studentId: parsedStudentId,
+                      academicYearId: parsedAcademicYearId,
+                      semester: parsedSemester,
+                      examType: restrictionTarget.baseType,
+                  },
+              },
+              update: {
+                  isBlocked: normalizedBlockState,
+                  reason: normalizedBlockState ? normalizedReason : '',
+              },
+              create: {
+                  studentId: parsedStudentId,
+                  academicYearId: parsedAcademicYearId,
+                  semester: parsedSemester,
+                  examType: restrictionTarget.baseType,
+                  isBlocked: normalizedBlockState,
+                  reason: normalizedBlockState ? normalizedReason : '',
+              },
+          });
+
+    availableExamsCache.delete(parsedStudentId);
 
     res.json(new ApiResponse(200, restriction, 'Status akses ujian berhasil diperbarui'));
 });

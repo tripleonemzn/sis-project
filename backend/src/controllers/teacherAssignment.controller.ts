@@ -353,7 +353,7 @@ export const deleteTeacherAssignment = asyncHandler(
     }
     if (dutyUser.role !== 'ADMIN') {
       const duties = (dutyUser.additionalDuties || []).map((d: any) => String(d).trim().toUpperCase());
-      const allowed = duties.includes('WAKASEK_KURIKULUM');
+      const allowed = duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
       if (!allowed) {
         throw new ApiError(403, 'Anda tidak memiliki hak akses untuk menghapus assignment guru');
       }

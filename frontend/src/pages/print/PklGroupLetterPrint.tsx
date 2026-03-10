@@ -1,16 +1,34 @@
 import React from 'react';
 import PrintLayout from './PrintLayout';
 
+type PklGroupPrintData = {
+  html: string;
+};
+
+type WindowWithPrintData = Window & {
+  printData?: PklGroupPrintData;
+};
+
 const PklGroupLetterPrint: React.FC = () => {
-  const [printData, setPrintData] = React.useState<any>(null);
+  const [printData, setPrintData] = React.useState<PklGroupPrintData | null>(null);
 
   React.useEffect(() => {
     // 1. Try to get from window property (passed by window.open)
-    const windowData = (window as any).printData;
+    const windowData = (window as WindowWithPrintData).printData;
     
     // 2. Try to get from localStorage (fallback)
     const savedData = localStorage.getItem('pkl_group_print_data');
-    const sessionData = savedData ? JSON.parse(savedData) : null;
+    let sessionData: PklGroupPrintData | null = null;
+    if (savedData) {
+      try {
+        const parsed = JSON.parse(savedData) as Partial<PklGroupPrintData>;
+        if (typeof parsed?.html === 'string') {
+          sessionData = { html: parsed.html };
+        }
+      } catch {
+        sessionData = null;
+      }
+    }
     
     const finalData = windowData || sessionData;
     if (finalData) {

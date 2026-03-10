@@ -31,17 +31,20 @@ export interface JobVacancy {
   updatedAt: string;
 }
 
+type PartnerPayload = Record<string, unknown>;
+type VacancyPayload = Record<string, unknown>;
+
 export const humasService = {
   // Partners
   getPartners: async (params?: { page?: number; limit?: number; search?: string; status?: string }) => {
     return await api.get('/humas/partners', { params });
   },
 
-  createPartner: async (data: any) => {
+  createPartner: async (data: PartnerPayload) => {
     return await api.post('/humas/partners', data);
   },
 
-  updatePartner: async (id: number, data: any) => {
+  updatePartner: async (id: number, data: PartnerPayload) => {
     return await api.put(`/humas/partners/${id}`, data);
   },
 
@@ -54,11 +57,11 @@ export const humasService = {
     return await api.get('/humas/vacancies', { params });
   },
 
-  createVacancy: async (data: any) => {
+  createVacancy: async (data: VacancyPayload) => {
     return await api.post('/humas/vacancies', data);
   },
 
-  updateVacancy: async (id: number, data: any) => {
+  updateVacancy: async (id: number, data: VacancyPayload) => {
     return await api.put(`/humas/vacancies/${id}`, data);
   },
 

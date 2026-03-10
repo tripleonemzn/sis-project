@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
-import { Redirect, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import {
   ActivityIndicator,
@@ -9,6 +9,7 @@ import {
   RefreshControl,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -22,10 +23,27 @@ import {
   type ServerInfoResponse,
   type ServerMonitoringResponse,
   type StorageOverviewResponse,
+  type WebmailResetHistoryItem,
+  type WebmailResetResponse,
 } from '../../../src/features/server/serverApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
-type TabKey = 'info' | 'storage' | 'monitoring';
+type TabKey = 'info' | 'storage' | 'monitoring' | 'webmail';
+
+const REFRESH_INTERVAL = {
+  info: 20000,
+  storage: 20000,
+  monitoring: 5000,
+  webmail: 15000,
+} as const;
+
+function resolveTabKey(value: string | string[] | undefined): TabKey {
+  const normalized = (Array.isArray(value) ? value[0] : value || '').trim().toLowerCase();
+  if (normalized === 'storage') return 'storage';
+  if (normalized === 'monitoring') return 'monitoring';
+  if (normalized === 'webmail') return 'webmail';
+  return 'info';
+}
 
 function formatBytes(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0 B';
@@ -120,38 +138,113 @@ function StatusPill(props: { tone: 'success' | 'warning' | 'danger'; label: stri
 
 export default function AdminServerAreaScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ tab?: string | string[] }>();
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 80 });
-  const [activeTab, setActiveTab] = useState<TabKey>('info');
+  const [activeTab, setActiveTab] = useState<TabKey>(() => resolveTabKey(params.tab));
+  const [mailboxIdentifier, setMailboxIdentifier] = useState('');
+  const [manualPassword, setManualPassword] = useState('');
+  const [resetReason, setResetReason] = useState('');
+  const [historySearch, setHistorySearch] = useState('');
+  const [webmailResetResult, setWebmailResetResult] = useState<WebmailResetResponse | null>(null);
+  const [webmailResetError, setWebmailResetError] = useState<string | null>(null);
+  const [isSubmittingWebmailReset, setIsSubmittingWebmailReset] = useState(false);
+
+  useEffect(() => {
+    setActiveTab(resolveTabKey(params.tab));
+  }, [params.tab]);
 
   const infoQuery = useQuery({
     queryKey: ['mobile-admin-server-info'],
     queryFn: () => serverApi.getInfo(),
     enabled: isAuthenticated && user?.role === 'ADMIN',
+    refetchInterval: activeTab === 'info' ? REFRESH_INTERVAL.info : false,
+    refetchIntervalInBackground: false,
   });
 
   const storageQuery = useQuery({
     queryKey: ['mobile-admin-server-storage'],
     queryFn: () => serverApi.getStorageOverview(),
     enabled: isAuthenticated && user?.role === 'ADMIN',
+    refetchInterval: activeTab === 'storage' ? REFRESH_INTERVAL.storage : false,
+    refetchIntervalInBackground: false,
   });
 
   const monitoringQuery = useQuery({
     queryKey: ['mobile-admin-server-monitoring'],
     queryFn: () => serverApi.getMonitoring(),
     enabled: isAuthenticated && user?.role === 'ADMIN',
+    refetchInterval: activeTab === 'monitoring' ? REFRESH_INTERVAL.monitoring : false,
+    refetchIntervalInBackground: false,
+  });
+
+  const webmailResetHistoryQuery = useQuery({
+    queryKey: ['mobile-admin-webmail-reset-history', historySearch],
+    queryFn: () =>
+      serverApi.getWebmailResetHistory({
+        limit: 20,
+        search: historySearch.trim() || undefined,
+      }),
+    enabled: isAuthenticated && user?.role === 'ADMIN' && activeTab === 'webmail',
+    refetchInterval: activeTab === 'webmail' ? REFRESH_INTERVAL.webmail : false,
+    refetchIntervalInBackground: false,
   });
 
   const isRefreshing =
     (infoQuery.isFetching && !infoQuery.isLoading) ||
     (storageQuery.isFetching && !storageQuery.isLoading) ||
-    (monitoringQuery.isFetching && !monitoringQuery.isLoading);
+    (monitoringQuery.isFetching && !monitoringQuery.isLoading) ||
+    (webmailResetHistoryQuery.isFetching && !webmailResetHistoryQuery.isLoading);
 
   const status = useMemo(() => {
     if (!storageQuery.data) return null;
     return pickOverallStatus(storageQuery.data, monitoringQuery.data);
   }, [storageQuery.data, monitoringQuery.data]);
+
+  const resolveApiErrorMessage = (error: unknown, fallback: string) => {
+    const messageFromResponse =
+      typeof error === 'object' && error && 'response' in error
+        ? (error as { response?: { data?: { message?: unknown } } }).response?.data?.message
+        : null;
+    if (typeof messageFromResponse === 'string' && messageFromResponse.trim().length > 0) {
+      return messageFromResponse.trim();
+    }
+    if (error instanceof Error && error.message.trim().length > 0) {
+      return error.message.trim();
+    }
+    return fallback;
+  };
+
+  const handleResetWebmailPassword = async () => {
+    const identifier = mailboxIdentifier.trim();
+    if (!identifier) {
+      setWebmailResetError('Identifier user wajib diisi (username, email, atau userId).');
+      setWebmailResetResult(null);
+      return;
+    }
+
+    setIsSubmittingWebmailReset(true);
+    setWebmailResetError(null);
+
+    try {
+      const payload: { identifier: string; password?: string; reason?: string } = { identifier };
+      const normalizedManualPassword = manualPassword.trim();
+      const normalizedReason = resetReason.trim();
+      if (normalizedManualPassword) payload.password = normalizedManualPassword;
+      if (normalizedReason) payload.reason = normalizedReason;
+
+      const result = await serverApi.resetWebmailMailboxPassword(payload);
+      setWebmailResetResult(result);
+      setManualPassword('');
+      await webmailResetHistoryQuery.refetch();
+    } catch (error) {
+      setWebmailResetResult(null);
+      setWebmailResetError(resolveApiErrorMessage(error, 'Gagal reset password webmail.'));
+    } finally {
+      setIsSubmittingWebmailReset(false);
+    }
+  };
 
   if (isLoading) return <AppLoadingScreen message="Memuat Area Server..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -221,6 +314,7 @@ export default function AdminServerAreaScreen() {
       { key: 'info', label: 'Info Server' },
       { key: 'storage', label: 'Storage' },
       { key: 'monitoring', label: 'Monitoring' },
+      { key: 'webmail', label: 'Webmail' },
     ];
     return (
       <View
@@ -263,7 +357,7 @@ export default function AdminServerAreaScreen() {
   };
 
   const renderInfoTab = (info: ServerInfoResponse | undefined) => {
-    const expoConfig = (Constants as any)?.expoConfig || {};
+    const expoConfig = (Constants as { expoConfig?: { version?: unknown } })?.expoConfig || {};
     const rawVersion = typeof expoConfig.version === 'string' ? expoConfig.version.trim() : null;
     const appVersion = rawVersion && rawVersion.length > 0 ? rawVersion : null;
     const updateChannel = Updates.channel || 'default';
@@ -879,8 +973,239 @@ export default function AdminServerAreaScreen() {
             </>
           ) : (
             <Text style={{ fontSize: 13, color: '#6b7280' }}>
-              Tidak dapat membaca statistik bandwidth saat ini.
+              Menunggu sampling bandwidth pertama atau interface belum terdeteksi.
             </Text>
+          )}
+        </View>
+      </View>
+    );
+  };
+
+  const renderHistoryItem = (item: WebmailResetHistoryItem) => (
+    <View
+      key={item.id}
+      style={{
+        borderTopWidth: 1,
+        borderTopColor: '#f1f5f9',
+        paddingVertical: 10,
+        gap: 2,
+      }}
+    >
+      <Text style={{ fontSize: 11, color: '#6b7280' }}>{formatDateTime(item.createdAt)}</Text>
+      <Text style={{ fontSize: 13, color: '#111827', fontWeight: '600' }}>
+        {item.targetUser.username || '-'} {item.targetUser.role ? `(${item.targetUser.role})` : ''}
+      </Text>
+      <Text style={{ fontSize: 12, color: '#374151' }}>
+        Mailbox: {item.mailboxIdentity || '-'} • Admin: {item.actor.username}
+      </Text>
+      <Text style={{ fontSize: 11, color: '#6b7280' }}>
+        Mode: {item.generatedBySystem ? 'Otomatis' : 'Manual'} • Panjang: {item.passwordLength || 0} karakter
+      </Text>
+      {item.reason ? <Text style={{ fontSize: 11, color: '#6b7280' }}>Catatan: {item.reason}</Text> : null}
+    </View>
+  );
+
+  const renderWebmailTab = () => {
+    const historyItems = webmailResetHistoryQuery.data?.logs || [];
+
+    return (
+      <View style={{ gap: 12 }}>
+        <View
+          style={{
+            borderRadius: 12,
+            backgroundColor: '#ffffff',
+            borderWidth: 1,
+            borderColor: '#e5e7eb',
+            padding: 14,
+            gap: 8,
+          }}
+        >
+          <Text style={{ fontSize: 14, color: '#111827', fontWeight: '700' }}>Reset Password Webmail</Text>
+          <Text style={{ fontSize: 12, color: '#6b7280' }}>
+            Reset cepat mailbox untuk Guru, Principal, Staff, dan Pembina Ekskul.
+          </Text>
+
+          <View>
+            <Text style={{ fontSize: 12, color: '#374151', marginBottom: 6 }}>Identifier User</Text>
+            <TextInput
+              value={mailboxIdentifier}
+              onChangeText={setMailboxIdentifier}
+              placeholder="KGB2G071 / kgb2g071@siskgb2.id / 926"
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={{
+                borderWidth: 1,
+                borderColor: '#d1d5db',
+                borderRadius: 10,
+                backgroundColor: '#fff',
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                fontSize: 13,
+                color: '#111827',
+              }}
+            />
+          </View>
+
+          <View>
+            <Text style={{ fontSize: 12, color: '#374151', marginBottom: 6 }}>
+              Password Manual (opsional)
+            </Text>
+            <TextInput
+              value={manualPassword}
+              onChangeText={setManualPassword}
+              placeholder="Kosongkan untuk auto-generate"
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={{
+                borderWidth: 1,
+                borderColor: '#d1d5db',
+                borderRadius: 10,
+                backgroundColor: '#fff',
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                fontSize: 13,
+                color: '#111827',
+              }}
+            />
+            <Text style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+              Minimal 10 karakter jika diisi manual.
+            </Text>
+          </View>
+
+          <View>
+            <Text style={{ fontSize: 12, color: '#374151', marginBottom: 6 }}>Catatan Reset (opsional)</Text>
+            <TextInput
+              value={resetReason}
+              onChangeText={setResetReason}
+              placeholder="Catatan audit reset password"
+              autoCapitalize="sentences"
+              autoCorrect={false}
+              style={{
+                borderWidth: 1,
+                borderColor: '#d1d5db',
+                borderRadius: 10,
+                backgroundColor: '#fff',
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                fontSize: 13,
+                color: '#111827',
+              }}
+            />
+          </View>
+
+          <Pressable
+            onPress={() => void handleResetWebmailPassword()}
+            disabled={isSubmittingWebmailReset}
+            style={{
+              marginTop: 2,
+              borderRadius: 10,
+              backgroundColor: '#2563eb',
+              paddingVertical: 11,
+              alignItems: 'center',
+              opacity: isSubmittingWebmailReset ? 0.7 : 1,
+            }}
+          >
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>
+              {isSubmittingWebmailReset ? 'Memproses...' : 'Reset Password Mailbox'}
+            </Text>
+          </Pressable>
+
+          {webmailResetError ? (
+            <View
+              style={{
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: '#fecaca',
+                backgroundColor: '#fef2f2',
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+              }}
+            >
+              <Text style={{ fontSize: 12, color: '#b91c1c' }}>{webmailResetError}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {webmailResetResult ? (
+          <View
+            style={{
+              borderRadius: 12,
+              backgroundColor: '#ecfdf5',
+              borderWidth: 1,
+              borderColor: '#a7f3d0',
+              padding: 14,
+              gap: 4,
+            }}
+          >
+            <Text style={{ fontSize: 12, color: '#047857', fontWeight: '700' }}>Reset Berhasil</Text>
+            <Text style={{ fontSize: 12, color: '#065f46' }}>
+              User: {webmailResetResult.user.username} ({webmailResetResult.user.name})
+            </Text>
+            <Text style={{ fontSize: 12, color: '#065f46' }}>
+              Mailbox: {webmailResetResult.mailboxIdentity}
+            </Text>
+            <Text style={{ fontSize: 12, color: '#065f46' }}>
+              Password baru: {webmailResetResult.password}
+            </Text>
+            <Text style={{ fontSize: 11, color: '#065f46' }}>
+              Mode: {webmailResetResult.generatedBySystem ? 'Otomatis' : 'Manual'} • {formatDateTime(webmailResetResult.resetAt)}
+            </Text>
+          </View>
+        ) : null}
+
+        <View
+          style={{
+            borderRadius: 12,
+            backgroundColor: '#ffffff',
+            borderWidth: 1,
+            borderColor: '#e5e7eb',
+            padding: 14,
+            gap: 8,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ fontSize: 14, color: '#111827', fontWeight: '700' }}>Riwayat Reset Password</Text>
+            <Pressable
+              onPress={() => webmailResetHistoryQuery.refetch()}
+              style={{
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                backgroundColor: '#fff',
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ fontSize: 12, color: '#1e293b', fontWeight: '600' }}>Muat Ulang</Text>
+            </Pressable>
+          </View>
+
+          <TextInput
+            value={historySearch}
+            onChangeText={setHistorySearch}
+            placeholder="Cari username / mailbox / admin"
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={{
+              borderWidth: 1,
+              borderColor: '#d1d5db',
+              borderRadius: 10,
+              backgroundColor: '#fff',
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              fontSize: 13,
+              color: '#111827',
+            }}
+          />
+
+          {webmailResetHistoryQuery.isLoading ? (
+            <Text style={{ fontSize: 12, color: '#6b7280' }}>Memuat riwayat reset...</Text>
+          ) : webmailResetHistoryQuery.isError ? (
+            <Text style={{ fontSize: 12, color: '#b91c1c' }}>Gagal memuat riwayat reset webmail.</Text>
+          ) : historyItems.length === 0 ? (
+            <Text style={{ fontSize: 12, color: '#6b7280' }}>Belum ada data riwayat reset.</Text>
+          ) : (
+            <View>{historyItems.map((item) => renderHistoryItem(item))}</View>
           )}
         </View>
       </View>
@@ -902,6 +1227,9 @@ export default function AdminServerAreaScreen() {
             infoQuery.refetch();
             storageQuery.refetch();
             monitoringQuery.refetch();
+            if (activeTab === 'webmail') {
+              webmailResetHistoryQuery.refetch();
+            }
           }}
         />
       }
@@ -912,6 +1240,7 @@ export default function AdminServerAreaScreen() {
       {activeTab === 'info' && renderInfoTab(info)}
       {activeTab === 'storage' && renderStorageTab(storage)}
       {activeTab === 'monitoring' && renderMonitoringTab(monitoring)}
+      {activeTab === 'webmail' && renderWebmailTab()}
     </ScrollView>
   );
 }

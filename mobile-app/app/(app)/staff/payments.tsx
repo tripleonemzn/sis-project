@@ -63,10 +63,28 @@ export default function StaffPaymentsScreen() {
       void paymentsQuery.refetch();
       notifySuccess('Realisasi anggaran berhasil dikonfirmasi.');
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal mengkonfirmasi realisasi.');
     },
   });
+
+  const budgets = useMemo(() => paymentsQuery.data?.budgets || [], [paymentsQuery.data?.budgets]);
+  const filteredBudgets = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return budgets.filter((item) => {
+      if (statusFilter !== 'ALL' && item.status !== statusFilter) return false;
+      if (!query) return true;
+      const haystacks = [
+        item.title || '',
+        item.description || '',
+        item.additionalDuty || '',
+        item.requester?.name || '',
+      ];
+      return haystacks.some((value) => value.toLowerCase().includes(query));
+    });
+  }, [budgets, search, statusFilter]);
+
+  const totalAmount = filteredBudgets.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
 
   if (isLoading) return <AppLoadingScreen message="Memuat pembayaran..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -91,24 +109,6 @@ export default function StaffPaymentsScreen() {
       </ScrollView>
     );
   }
-
-  const budgets = paymentsQuery.data?.budgets || [];
-  const filteredBudgets = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return budgets.filter((item) => {
-      if (statusFilter !== 'ALL' && item.status !== statusFilter) return false;
-      if (!query) return true;
-      const haystacks = [
-        item.title || '',
-        item.description || '',
-        item.additionalDuty || '',
-        item.requester?.name || '',
-      ];
-      return haystacks.some((value) => value.toLowerCase().includes(query));
-    });
-  }, [budgets, search, statusFilter]);
-
-  const totalAmount = filteredBudgets.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
 
   return (
     <ScrollView

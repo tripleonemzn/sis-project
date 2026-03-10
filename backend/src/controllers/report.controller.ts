@@ -3,7 +3,350 @@ import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { reportService } from '../services/report.service';
-import { Semester, ExamType } from '@prisma/client';
+import { Semester, ExamType, GradeComponentType } from '@prisma/client';
+
+const normalizeProgramCode = (raw: unknown): string =>
+  String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const isMidtermAliasCode = (raw: unknown): boolean => {
+  const normalized = normalizeProgramCode(raw);
+  if (!normalized) return false;
+  if (['SBTS', 'MIDTERM', 'PTS', 'UTS'].includes(normalized)) return true;
+  return normalized.includes('MIDTERM');
+};
+
+const isFinalAliasCode = (raw: unknown): boolean => {
+  const normalized = normalizeProgramCode(raw);
+  if (!normalized) return false;
+  if (['SAS', 'SAT', 'FINAL', 'PAS', 'PAT', 'PSAS', 'PSAT'].includes(normalized)) return true;
+  return normalized.includes('FINAL');
+};
+
+const isFinalEvenAliasCode = (raw: unknown): boolean => {
+  const normalized = normalizeProgramCode(raw);
+  if (!normalized) return false;
+  if (['SAT', 'PAT', 'PSAT', 'FINAL_EVEN'].includes(normalized)) return true;
+  return normalized.includes('FINAL_EVEN');
+};
+
+const isFinalOddAliasCode = (raw: unknown): boolean => {
+  const normalized = normalizeProgramCode(raw);
+  if (!normalized) return false;
+  if (['SAS', 'PAS', 'PSAS', 'FINAL_ODD'].includes(normalized)) return true;
+  return normalized.includes('FINAL_ODD');
+};
+
+const isFormativeAliasCode = (raw: unknown): boolean => {
+  const normalized = normalizeProgramCode(raw);
+  if (!normalized) return false;
+  return normalized === 'FORMATIF' || normalized === 'FORMATIVE' || normalized.startsWith('NF');
+};
+
+const inferReportTypeFromSlotCode = (
+  slotCode: string | null | undefined,
+  fixedSemester?: Semester | null,
+): ExamType | null => {
+  const normalized = normalizeProgramCode(slotCode);
+  if (!normalized || normalized === 'NONE') return null;
+  if (isMidtermAliasCode(normalized)) return ExamType.SBTS;
+  if (isFinalEvenAliasCode(normalized)) return ExamType.SAT;
+  if (isFinalOddAliasCode(normalized)) return ExamType.SAS;
+  if (isFinalAliasCode(normalized)) {
+    return fixedSemester === Semester.EVEN ? ExamType.SAT : ExamType.SAS;
+  }
+  return null;
+};
+
+const parseDirectReportType = (raw: unknown): ExamType | null => {
+  const normalized = normalizeProgramCode(raw);
+  if (!normalized) return null;
+  if (isFormativeAliasCode(normalized)) return ExamType.FORMATIF;
+  if (isMidtermAliasCode(normalized)) return ExamType.SBTS;
+  if (isFinalEvenAliasCode(normalized)) return ExamType.SAT;
+  if (isFinalOddAliasCode(normalized)) return ExamType.SAS;
+  return (Object.values(ExamType) as string[]).includes(normalized)
+    ? (normalized as ExamType)
+    : null;
+};
+
+const inferReportTypeFromProgram = (program: {
+  baseType?: ExamType | null;
+  baseTypeCode?: string | null;
+  gradeComponentType?: GradeComponentType | null;
+  gradeComponentTypeCode?: string | null;
+  gradeComponentCode?: string | null;
+  fixedSemester?: Semester | null;
+}): ExamType => {
+  if (program.baseType) return program.baseType;
+  const baseTypeFromCode = parseDirectReportType(program.baseTypeCode);
+  if (baseTypeFromCode) return baseTypeFromCode;
+  const componentType = normalizeProgramCode(
+    program.gradeComponentTypeCode || program.gradeComponentType,
+  );
+  if (isMidtermAliasCode(componentType)) return ExamType.SBTS;
+  if (isFinalEvenAliasCode(componentType)) return ExamType.SAT;
+  if (isFinalOddAliasCode(componentType)) return ExamType.SAS;
+  if (isFinalAliasCode(componentType)) {
+    return program.fixedSemester === Semester.EVEN ? ExamType.SAT : ExamType.SAS;
+  }
+  return ExamType.FORMATIF;
+};
+
+const resolveReportTypeByProgramSlot = async (params: {
+  academicYearId: number;
+  fixedSemester?: Semester | null;
+  gradeComponentCode?: string | null;
+}): Promise<ExamType | null> => {
+  const componentCode = normalizeProgramCode(params.gradeComponentCode);
+  if (!componentCode) return null;
+
+  const component = await prisma.examGradeComponent.findFirst({
+    where: {
+      academicYearId: params.academicYearId,
+      code: componentCode,
+      isActive: true,
+    },
+    select: {
+      reportSlot: true,
+      reportSlotCode: true,
+    },
+  });
+  if (!component) return null;
+
+  return inferReportTypeFromSlotCode(
+    normalizeProgramCode(component.reportSlotCode || component.reportSlot),
+    params.fixedSemester,
+  );
+};
+
+const resolveDefaultReportProgram = async (params: {
+  academicYearId: number;
+  semester?: Semester;
+}): Promise<{ code: string; baseType: ExamType } | null> => {
+  const programs = await prisma.examProgramConfig.findMany({
+    where: {
+      academicYearId: params.academicYearId,
+      isActive: true,
+    },
+    select: {
+      code: true,
+      baseType: true,
+      baseTypeCode: true,
+      fixedSemester: true,
+      displayOrder: true,
+      gradeComponentType: true,
+      gradeComponentTypeCode: true,
+      gradeComponentCode: true,
+    },
+    orderBy: [{ displayOrder: 'asc' }, { id: 'asc' }],
+  });
+
+  if (!programs.length) return null;
+
+  const componentCodes = Array.from(
+    new Set(
+      programs
+        .map((program) => normalizeProgramCode(program.gradeComponentCode))
+        .filter((code): code is string => Boolean(code)),
+    ),
+  );
+  const components = componentCodes.length
+    ? await prisma.examGradeComponent.findMany({
+        where: {
+          academicYearId: params.academicYearId,
+          code: { in: componentCodes },
+          isActive: true,
+        },
+        select: {
+          code: true,
+          reportSlot: true,
+          reportSlotCode: true,
+        },
+      })
+    : [];
+  const componentSlotByCode = new Map<string, string>();
+  components.forEach((component) => {
+    const normalizedCode = normalizeProgramCode(component.code);
+    if (!normalizedCode) return;
+    const slotCode = normalizeProgramCode(component.reportSlotCode || component.reportSlot);
+    if (!slotCode) return;
+    componentSlotByCode.set(normalizedCode, slotCode);
+  });
+
+  const bySemester = params.semester
+    ? programs.filter((program) => !program.fixedSemester || program.fixedSemester === params.semester)
+    : programs;
+  const scopedPrograms = bySemester.length ? bySemester : programs;
+  const reportCandidates = scopedPrograms.filter((program) => {
+    const directType = parseDirectReportType(program.baseType) || parseDirectReportType(program.baseTypeCode);
+    if (directType && directType !== ExamType.FORMATIF) return true;
+
+    const componentType = normalizeProgramCode(
+      program.gradeComponentTypeCode || program.gradeComponentType,
+    );
+    if (isMidtermAliasCode(componentType) || isFinalAliasCode(componentType)) return true;
+
+    const componentCode = normalizeProgramCode(program.gradeComponentCode);
+    const slotCode = componentCode ? componentSlotByCode.get(componentCode) : '';
+    if (slotCode && slotCode !== 'NONE') {
+      if (isMidtermAliasCode(slotCode) || isFinalAliasCode(slotCode)) return true;
+      return true;
+    }
+
+    return false;
+  });
+  const selectedPrograms = reportCandidates.length > 0 ? reportCandidates : scopedPrograms;
+
+  const first = selectedPrograms[0];
+  if (first) {
+    const inferredFromSlot = await resolveReportTypeByProgramSlot({
+      academicYearId: params.academicYearId,
+      fixedSemester: first.fixedSemester,
+      gradeComponentCode: first.gradeComponentCode,
+    });
+    if (inferredFromSlot) {
+      return {
+        code: first.code,
+        baseType: inferredFromSlot,
+      };
+    }
+  }
+  return first
+    ? {
+        code: first.code,
+        baseType: inferReportTypeFromProgram(first),
+      }
+    : null;
+};
+
+const resolveReportTypeContext = async (params: {
+  academicYearId: number;
+  semester?: Semester;
+  reportType?: string | null;
+  programCode?: string | null;
+  defaultType?: ExamType;
+}): Promise<{ reportType: ExamType; programCode: string | null }> => {
+  const defaultType = params.defaultType || null;
+  const normalizedProgramCode = normalizeProgramCode(params.programCode);
+  const normalizedReportType = normalizeProgramCode(params.reportType);
+  const directTypeFromProgramCode = parseDirectReportType(normalizedProgramCode);
+  const directTypeFromReportType = parseDirectReportType(normalizedReportType);
+  const directType = directTypeFromReportType || directTypeFromProgramCode;
+  const semesterScope = params.semester
+    ? [{ fixedSemester: null }, { fixedSemester: params.semester }]
+    : undefined;
+
+  if (!normalizedProgramCode && !normalizedReportType) {
+    const defaultProgram = await resolveDefaultReportProgram({
+      academicYearId: params.academicYearId,
+      semester: params.semester,
+    });
+    if (defaultProgram) {
+      return { reportType: defaultProgram.baseType, programCode: defaultProgram.code };
+    }
+    if (defaultType) {
+      return { reportType: defaultType, programCode: null };
+    }
+    throw new ApiError(
+      400,
+      'Program rapor aktif tidak ditemukan. Aktifkan Program Ujian komponen rapor terlebih dahulu.',
+    );
+  }
+
+  if (normalizedProgramCode) {
+    const program = await prisma.examProgramConfig.findFirst({
+      where: {
+        academicYearId: params.academicYearId,
+        code: normalizedProgramCode,
+      },
+      select: {
+        code: true,
+        baseType: true,
+        baseTypeCode: true,
+        gradeComponentType: true,
+        gradeComponentTypeCode: true,
+        gradeComponentCode: true,
+        fixedSemester: true,
+      },
+    });
+
+    if (program) {
+      const inferredFromSlot = await resolveReportTypeByProgramSlot({
+        academicYearId: params.academicYearId,
+        fixedSemester: program.fixedSemester,
+        gradeComponentCode: program.gradeComponentCode,
+      });
+      return {
+        reportType: inferredFromSlot || inferReportTypeFromProgram(program),
+        programCode: program.code,
+      };
+    }
+  }
+
+  const aliasCode = normalizedProgramCode || normalizedReportType;
+  const aliasDirectType = parseDirectReportType(aliasCode) || directType;
+  const programByAlias = await prisma.examProgramConfig.findFirst({
+    where: {
+      academicYearId: params.academicYearId,
+      isActive: true,
+      ...(semesterScope ? { OR: semesterScope } : {}),
+      AND: [
+        {
+          OR: [
+            ...(aliasCode
+              ? [
+                  { code: aliasCode },
+                  { baseTypeCode: aliasCode },
+                  { gradeComponentTypeCode: aliasCode },
+                ]
+              : []),
+            ...(aliasDirectType ? [{ baseType: aliasDirectType }] : []),
+          ],
+        },
+      ],
+    },
+    select: {
+      code: true,
+      baseType: true,
+      baseTypeCode: true,
+      gradeComponentType: true,
+      gradeComponentTypeCode: true,
+      gradeComponentCode: true,
+      fixedSemester: true,
+    },
+    orderBy: [{ displayOrder: 'asc' }, { id: 'asc' }],
+  });
+
+  if (programByAlias) {
+    const inferredFromSlot = await resolveReportTypeByProgramSlot({
+      academicYearId: params.academicYearId,
+      fixedSemester: programByAlias.fixedSemester,
+      gradeComponentCode: programByAlias.gradeComponentCode,
+    });
+    return {
+      reportType: inferredFromSlot || inferReportTypeFromProgram(programByAlias),
+      programCode: programByAlias.code,
+    };
+  }
+
+  if (directTypeFromReportType) {
+    return { reportType: directTypeFromReportType, programCode: null };
+  }
+  if (directTypeFromProgramCode && !normalizedReportType) {
+    return { reportType: directTypeFromProgramCode, programCode: null };
+  }
+
+  throw new ApiError(
+    400,
+    `Program/tipe rapor ${aliasCode || normalizedReportType || normalizedProgramCode} tidak dikenali.`,
+  );
+};
 
 const classReportQuerySchema = z.object({
   classId: z.coerce.number().int(),
@@ -530,13 +873,15 @@ export const getClassReportSummary = asyncHandler(async (req: Request, res: Resp
   );
 });
 
-export const getStudentSbtsReport = asyncHandler(async (req: Request, res: Response) => {
+export const getStudentReport = asyncHandler(async (req: Request, res: Response) => {
   const querySchema = z.object({
     studentId: z.coerce.number().int(),
     semester: z.nativeEnum(Semester),
+    type: z.string().optional(),
+    programCode: z.string().optional(),
   });
 
-  const { studentId, semester } = querySchema.parse(req.query);
+  const { studentId, semester, type, programCode } = querySchema.parse(req.query);
 
   const activeYear = await prisma.academicYear.findFirst({
     where: { isActive: true },
@@ -546,54 +891,49 @@ export const getStudentSbtsReport = asyncHandler(async (req: Request, res: Respo
     throw new ApiError(400, 'Tahun ajaran aktif tidak ditemukan');
   }
 
-  // Determine ExamType based on Semester
-  // Semester.ODD -> SAS
-  // Semester.EVEN -> SAT
-  // However, user might request SBTS explicitly or logic might differ.
-  // The route is getStudentSbtsReport, which implies SBTS.
-  // But user wants SAS/SAT logic too. 
-  // Let's assume this endpoint is used for "Rapor Tengah Semester" (SBTS) 
-  // AND we need new endpoints or modify this to handle SAS/SAT based on a type param?
-  // Or maybe the frontend calls this for SBTS only?
-  // Wait, the user instruction was "rubah tab leger di SAS dan SAT".
-  // The frontend likely calls a report endpoint. 
-  // If we look at `HomeroomReportSasPage`, it probably will call an endpoint to get report data.
-  // If `getStudentSbtsReport` is ONLY for SBTS, we should add `getStudentSasReport` or make it generic.
-  // Let's make it generic or add a type parameter.
+  const context = await resolveReportTypeContext({
+    academicYearId: activeYear.id,
+    semester,
+    reportType: type,
+    programCode,
+  });
 
-  // NOTE: Existing frontend calls this for SBTS.
-  // We should add a 'type' query param, default to SBTS if missing.
-  
-  const typeSchema = z.enum(['SBTS', 'SAS', 'SAT']).optional().default('SBTS');
-  const typeStr = req.query.type as string;
-  // If type is not provided in query, default to SBTS
-  // If type provided, parse it.
-  
-  let reportType: ExamType = ExamType.SBTS;
-  if (typeStr === 'SAS') reportType = ExamType.SAS;
-  else if (typeStr === 'SAT') reportType = ExamType.SAT;
-  
-  // Also validate against semester if strictness needed, but let service handle logic.
-
-  const reportData = await reportService.getStudentSbtsReport(
+  const reportData = await reportService.getStudentReport(
     studentId,
     activeYear.id,
     semester,
-    reportType
+    context.reportType,
+    context.programCode,
   );
 
   res.status(200).json(new ApiResponse(200, reportData, 'Data rapor berhasil diambil'));
 });
 
+export const getStudentSbtsReport = getStudentReport;
+
 export const getClassLedger = asyncHandler(async (req: Request, res: Response) => {
   const querySchema = z.object({
     classId: z.coerce.number().int(),
     semester: z.nativeEnum(Semester),
+    reportType: z.string().optional(),
+    programCode: z.string().optional(),
   });
-  const { classId, semester } = querySchema.parse(req.query);
+  const { classId, semester, reportType, programCode } = querySchema.parse(req.query);
   const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } });
   if (!activeYear) throw new ApiError(400, 'Tahun ajaran aktif tidak ditemukan');
-  const ledgerData = await reportService.getClassLedger(classId, activeYear.id, semester);
+  const context = await resolveReportTypeContext({
+    academicYearId: activeYear.id,
+    semester,
+    reportType,
+    programCode,
+  });
+  const ledgerData = await reportService.getClassLedger(
+    classId,
+    activeYear.id,
+    semester,
+    context.reportType,
+    context.programCode,
+  );
   
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.status(200).json(new ApiResponse(200, ledgerData, 'Data leger berhasil diambil'));
@@ -603,18 +943,29 @@ export const getClassExtracurricularReport = asyncHandler(async (req: Request, r
   const querySchema = z.object({
     classId: z.coerce.number().int(),
     semester: z.nativeEnum(Semester),
-    reportType: z.enum(['SBTS', 'SAS', 'SAT']).optional(),
+    reportType: z.string().optional(),
+    programCode: z.string().optional(),
   });
 
-  const { classId, semester, reportType } = querySchema.parse(req.query);
-  let type: ExamType = ExamType.SBTS;
-  if (reportType === 'SAS') type = ExamType.SAS;
-  else if (reportType === 'SAT') type = ExamType.SAT;
+  const { classId, semester, reportType, programCode } = querySchema.parse(req.query);
 
   const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } });
   if (!activeYear) throw new ApiError(400, 'Tahun ajaran aktif tidak ditemukan');
 
-  const reportData = await reportService.getClassExtracurricularReport(classId, activeYear.id, semester, type);
+  const context = await resolveReportTypeContext({
+    academicYearId: activeYear.id,
+    semester,
+    reportType,
+    programCode,
+  });
+
+  const reportData = await reportService.getClassExtracurricularReport(
+    classId,
+    activeYear.id,
+    semester,
+    context.reportType,
+    context.programCode,
+  );
 
   res.status(200).json(new ApiResponse(200, reportData, 'Data ekstrakurikuler berhasil diambil'));
 });
@@ -641,15 +992,35 @@ export const updateExtracurricularGrade = asyncHandler(async (req: Request, res:
     grade: z.string(),
     description: z.string(),
     semester: z.nativeEnum(Semester),
-    reportType: z.enum(['SBTS', 'SAS', 'SAT']),
+    reportType: z.string().optional(),
+    programCode: z.string().optional(),
+    academicYearId: z.number().int().optional(),
   });
-  const { enrollmentId, grade, description, semester, reportType } = bodySchema.parse(req.body);
-  
-  let type: ExamType = ExamType.SBTS;
-  if (reportType === 'SAS') type = ExamType.SAS;
-  else if (reportType === 'SAT') type = ExamType.SAT;
+  const { enrollmentId, grade, description, semester, reportType, programCode, academicYearId } = bodySchema.parse(req.body);
 
-  const result = await reportService.updateExtracurricularGrade(enrollmentId, grade, description, semester, type);
+  let targetAcademicYearId = academicYearId;
+  if (!targetAcademicYearId) {
+    const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } });
+    if (!activeYear) throw new ApiError(400, 'Tahun ajaran aktif tidak ditemukan');
+    targetAcademicYearId = activeYear.id;
+  }
+
+  const context = await resolveReportTypeContext({
+    academicYearId: targetAcademicYearId,
+    semester,
+    reportType,
+    programCode,
+  });
+
+  const result = await reportService.updateExtracurricularGrade(
+    enrollmentId,
+    grade,
+    description,
+    semester,
+    context.reportType,
+    targetAcademicYearId,
+    context.programCode,
+  );
   res.status(200).json(new ApiResponse(200, result, 'Nilai ekstrakurikuler berhasil disimpan'));
 });
 

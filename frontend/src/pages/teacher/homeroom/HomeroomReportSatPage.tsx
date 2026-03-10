@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, Printer, Search } from 'lucide-react';
 import { classService } from '../../../services/class.service';
@@ -7,21 +7,74 @@ import api from '../../../services/api';
 interface HomeroomReportSatPageProps {
   classId: number;
   semester: 'ODD' | 'EVEN' | '';
+  reportType?: string;
+  programCode?: string;
+  reportLabel?: string;
 }
 
-export const HomeroomReportSatPage = ({ classId, semester }: HomeroomReportSatPageProps) => {
+type StudentListItem = {
+  id: number;
+  name: string;
+  nis?: string | null;
+  nisn?: string | null;
+};
+
+type ReportRow = {
+  no?: string | number;
+  name?: string;
+  teacherName?: string;
+  kkm?: string | number;
+  isHeader?: boolean;
+  rowCount?: number;
+  skipNoColumn?: boolean;
+  col1?: { score?: string | number | null };
+  col2?: { predicate?: string | null; description?: string | null };
+  description?: string | null;
+};
+
+type StudentReportPayload = {
+  header: {
+    studentName?: string;
+    schoolName?: string;
+    academicYear?: string;
+    fase?: string;
+    class?: string;
+    semester?: string;
+    nisn?: string;
+    nis?: string;
+  };
+  body: {
+    meta?: { col1Label?: string; col2Label?: string };
+    groups: {
+      A: ReportRow[];
+      B: ReportRow[];
+      C: ReportRow[];
+    };
+  };
+  footer: {
+    signatures: {
+      parent: { title?: string; name?: string };
+      homeroom: { title?: string; name?: string };
+    };
+  };
+};
+
+export const HomeroomReportSatPage = ({
+  classId,
+  semester,
+  reportType,
+  programCode,
+  reportLabel,
+}: HomeroomReportSatPageProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [printPlace, setPrintPlace] = useState('Bekasi');
-  const [printDate, setPrintDate] = useState('');
+  const [printDate, setPrintDate] = useState(() =>
+    new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
+  );
   const [printSchoolAddress, setPrintSchoolAddress] = useState('Jl. Anggrek 1, Duren Jaya Bekasi Timur');
   const printIframeRef = useRef<HTMLIFrameElement>(null);
-
-  // Set default date to today formatted ID
-  useEffect(() => {
-    const today = new Date();
-    const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
-    setPrintDate(today.toLocaleDateString('id-ID', options));
-  }, []);
+  const resolvedReportType = String(reportType || '').toUpperCase();
+  const resolvedReportLabel = String(reportLabel || resolvedReportType || 'Rapor');
 
   const { data: classData, isLoading } = useQuery({
     queryKey: ['class-students', classId],
@@ -29,22 +82,23 @@ export const HomeroomReportSatPage = ({ classId, semester }: HomeroomReportSatPa
     enabled: !!classId && !!semester
   });
 
-  const students = classData?.students || [];
-  const filteredStudents = students.filter((s: any) => 
+  const students: StudentListItem[] = classData?.students || [];
+  const filteredStudents = students.filter((s) => 
     s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (s.nis && s.nis.includes(searchQuery))
   );
 
   const handlePrint = async (studentId: number) => {
     try {
-      const response = await api.get('/reports/student/sbts', {
+      const response = await api.get('/reports/student', {
         params: { 
           studentId, 
           semester,
-          type: 'SAT' // Explicitly request SAT logic
+          ...(programCode ? { programCode } : {}),
+          ...(!programCode && resolvedReportType ? { type: resolvedReportType } : {}),
         }
       });
-      const reportData = response.data.data;
+      const reportData = response.data.data as StudentReportPayload;
       printReport(reportData);
     } catch (error) {
       console.error('Failed to fetch report', error);
@@ -52,15 +106,18 @@ export const HomeroomReportSatPage = ({ classId, semester }: HomeroomReportSatPa
     }
   };
 
-  const printReport = (data: any) => {
+  const printReport = (data: StudentReportPayload) => {
     const iframe = printIframeRef.current;
     if (!iframe || !iframe.contentWindow) {
       console.error('Print iframe not found');
       return;
     }
     const printDoc = iframe.contentWindow.document;
+    const meta = data?.body?.meta || {};
+    const col1Label = String(meta.col1Label || 'Nilai Akhir');
+    const col2Label = String(meta.col2Label || 'Komponen 2');
 
-    const renderRows = (items: any[]) => {
+    const renderRows = (items: ReportRow[]) => {
       if (!items || items.length === 0) return '';
       return items.map((item) => {
         let noCell = '';
@@ -90,17 +147,17 @@ export const HomeroomReportSatPage = ({ classId, semester }: HomeroomReportSatPa
           </td>
           <td class="center align-middle">${item.kkm}</td>
           
-          <!-- Nilai Akhir (Formatif di SBTS, disini Nilai Akhir) -->
+          <!-- Kolom Nilai Dinamis -->
           <td class="center align-middle">${item.col1?.score ?? '-'}</td>
           
-          <!-- Capaian Kompetensi (SBTS di SBTS, disini Predikat/Deskripsi) -->
+          <!-- Kolom Capaian Dinamis -->
           <td class="center align-middle">${item.col2?.predicate ?? '-'}</td>
-          <td style="padding: 4px 8px; font-size: 11px;" class="align-middle">${item.description || '-'}</td>
+          <td style="padding: 4px 8px; font-size: 11px;" class="align-middle">${item.col2?.description || item.description || '-'}</td>
         </tr>
       `}).join('');
     };
 
-    const renderGroupSection = (groupTitle: string, items: any[]) => {
+    const renderGroupSection = (groupTitle: string, items: ReportRow[]) => {
       if (!items || items.length === 0) return '';
       return `
         <tr>
@@ -114,7 +171,7 @@ export const HomeroomReportSatPage = ({ classId, semester }: HomeroomReportSatPa
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Rapor SAT - ${data.header.studentName}</title>
+        <title>Rapor ${resolvedReportLabel} - ${data.header.studentName}</title>
         <style>
           @page { size: A4; margin: 1cm; }
           body { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; line-height: 1.3; }
@@ -141,7 +198,7 @@ export const HomeroomReportSatPage = ({ classId, semester }: HomeroomReportSatPa
       </head>
       <body>
         <div class="header">
-          <div class="header-title">LAPORAN HASIL BELAJAR (SAT)</div>
+          <div class="header-title">LAPORAN HASIL BELAJAR (${resolvedReportLabel.toUpperCase()})</div>
           <div class="header-school">${data.header.schoolName}</div>
           <div class="header-year">TAHUN AJARAN ${data.header.academicYear}</div>
         </div>
@@ -171,8 +228,8 @@ export const HomeroomReportSatPage = ({ classId, semester }: HomeroomReportSatPa
               <th rowspan="2" width="5%">No</th>
               <th rowspan="2" width="40%">MATA PELAJARAN</th>
               <th rowspan="2" width="8%">KKTP</th>
-              <th rowspan="2" width="10%">NILAI AKHIR</th>
-              <th colspan="2">CAPAIAN KOMPETENSI</th>
+              <th rowspan="2" width="10%">${col1Label.toUpperCase()}</th>
+              <th colspan="2">${col2Label.toUpperCase()}</th>
             </tr>
             <tr>
               <th width="10%">Predikat</th>
@@ -305,7 +362,7 @@ export const HomeroomReportSatPage = ({ classId, semester }: HomeroomReportSatPa
                   </td>
                 </tr>
               ) : (
-                filteredStudents.map((student: any, index: number) => (
+                filteredStudents.map((student, index: number) => (
                   <tr key={student.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm text-gray-500">{index + 1}</td>
                     <td className="px-6 py-4 text-sm text-gray-900">
@@ -319,7 +376,7 @@ export const HomeroomReportSatPage = ({ classId, semester }: HomeroomReportSatPa
                         className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
                       >
                         <Printer size={14} />
-                        Cetak Rapor SAT
+                        {`Cetak Rapor ${resolvedReportLabel}`}
                       </button>
                     </td>
                   </tr>
@@ -334,7 +391,7 @@ export const HomeroomReportSatPage = ({ classId, semester }: HomeroomReportSatPa
       <iframe 
         ref={printIframeRef}
         style={{ position: 'absolute', width: '0', height: '0', border: '0', visibility: 'hidden' }}
-        title="Print Rapor SAT"
+        title={`Print Rapor ${resolvedReportLabel}`}
       />
     </div>
   );

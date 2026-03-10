@@ -418,10 +418,11 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
 
   // Prevent non-admin from updating sensitive fields
   if (currentUser?.role !== Role.ADMIN) {
+    // Non-admin hanya boleh mengubah profil dirinya sendiri (termasuk password akun sendiri)
     delete body.username;
-    delete body.password;
-    // For students, nisn is username, so prevent updating it too
     delete body.nisn;
+    delete body.role;
+    delete body.verificationStatus;
   }
 
   const user = await prisma.user.findUnique({

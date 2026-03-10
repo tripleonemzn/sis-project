@@ -1,5 +1,5 @@
-import { HomeroomReportModuleScreen } from '../../../src/features/homeroomReports/HomeroomReportModuleScreen';
+import { Redirect } from 'expo-router';
 
 export default function TeacherHomeroomSbtsScreen() {
-  return <HomeroomReportModuleScreen mode="SBTS" />;
+  return <Redirect href="/teacher/homeroom-report?mode=MIDTERM" />;
 }

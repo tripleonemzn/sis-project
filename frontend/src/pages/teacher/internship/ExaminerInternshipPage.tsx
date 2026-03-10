@@ -15,9 +15,32 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
+interface Internship {
+  id: number;
+  student: {
+    name: string;
+    nis: string;
+  };
+  companyName: string;
+  defenseDate: string | null;
+  defenseRoom: string | null;
+  reportUrl: string | null;
+  status: string;
+  defenseScore: number | null;
+  defenseNotes: string | null;
+}
+
+interface ApiError {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+}
+
 const ExaminerInternshipPage = () => {
   const queryClient = useQueryClient();
-  const [selectedInternship, setSelectedInternship] = useState<any>(null);
+  const [selectedInternship, setSelectedInternship] = useState<Internship | null>(null);
   const [isGradeModalOpen, setIsGradeModalOpen] = useState(false);
   const [defenseScore, setDefenseScore] = useState('');
   const [defenseNotes, setDefenseNotes] = useState('');
@@ -28,7 +51,7 @@ const ExaminerInternshipPage = () => {
   });
 
   const gradeDefenseMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => 
+    mutationFn: ({ id, data }: { id: number; data: { score: number; notes: string } }) => 
       internshipService.gradeDefense(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['examiner-internships'] });
@@ -37,13 +60,16 @@ const ExaminerInternshipPage = () => {
       setDefenseScore('');
       setDefenseNotes('');
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menyimpan nilai');
+    onError: (error: unknown) => {
+      const err = error as ApiError;
+      toast.error(err.response?.data?.message || 'Gagal menyimpan nilai');
     }
   });
 
   const handleGrade = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedInternship) return;
+    
     gradeDefenseMutation.mutate({
       id: selectedInternship.id,
       data: {
@@ -53,9 +79,9 @@ const ExaminerInternshipPage = () => {
     });
   };
 
-  const openGradeModal = (internship: any) => {
+  const openGradeModal = (internship: Internship) => {
     setSelectedInternship(internship);
-    setDefenseScore(internship.defenseScore || '');
+    setDefenseScore(internship.defenseScore?.toString() || '');
     setDefenseNotes(internship.defenseNotes || '');
     setIsGradeModalOpen(true);
   };
@@ -106,7 +132,7 @@ const ExaminerInternshipPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {internships.map((internship: any) => (
+                {internships.map((internship: Internship) => (
                   <tr key={internship.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
@@ -200,7 +226,12 @@ const ExaminerInternshipPage = () => {
               <div className="bg-gray-50 p-4 rounded-lg space-y-2">
                 <p className="text-sm"><span className="font-medium">Siswa:</span> {selectedInternship.student.name}</p>
                 <p className="text-sm"><span className="font-medium">Tempat PKL:</span> {selectedInternship.companyName}</p>
-                <p className="text-sm"><span className="font-medium">Jadwal:</span> {new Date(selectedInternship.defenseDate).toLocaleString('id-ID')}</p>
+                <p className="text-sm">
+                  <span className="font-medium">Jadwal:</span>{' '}
+                  {selectedInternship.defenseDate
+                    ? new Date(selectedInternship.defenseDate).toLocaleString('id-ID')
+                    : '-'}
+                </p>
               </div>
 
               <form onSubmit={handleGrade} className="space-y-4">

@@ -8,7 +8,6 @@ import {
   Layers,
   BookOpen,
   Users,
-  History,
 } from 'lucide-react';
 import { AcademicCalendarPage } from '../../admin/academic/AcademicCalendarPage';
 import { SchedulePage } from '../../admin/academic/SchedulePage';
@@ -17,11 +16,15 @@ import { KkmPage } from '../../admin/academic/KkmPage';
 import { SubjectCategoryPage } from '../../admin/master/SubjectCategoryPage';
 import { SubjectPage } from '../../admin/master/SubjectPage';
 import { TeacherAssignmentPage } from '../../admin/users/TeacherAssignmentPage';
-import { AuditLogPage } from '../../admin/audit/AuditLogPage';
 
 export default function CurriculumManagementHubPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const active = searchParams.get('section') || 'kategori';
+  const validSections = useMemo(
+    () => ['kategori', 'mapel', 'kkm', 'assignment', 'kalender', 'jadwal', 'rekap'],
+    [],
+  );
+  const requestedSection = searchParams.get('section') || 'kategori';
+  const active = validSections.includes(requestedSection) ? requestedSection : 'kategori';
 
   const setActive = useCallback((next: string) => {
     const params = new URLSearchParams(searchParams);
@@ -38,7 +41,6 @@ export default function CurriculumManagementHubPage() {
       { id: 'kalender', label: 'Kalender Akademik', icon: CalendarRange },
       { id: 'jadwal', label: 'Jadwal Pelajaran', icon: Clock },
       { id: 'rekap', label: 'Rekap Jam Mengajar', icon: BarChart3 },
-      { id: 'audit', label: 'Riwayat Audit', icon: History },
     ],
     [],
   );
@@ -82,15 +84,13 @@ export default function CurriculumManagementHubPage() {
           ) : active === 'kkm' ? (
             <KkmPage />
           ) : active === 'assignment' ? (
-            <TeacherAssignmentPage />
+            <TeacherAssignmentPage scope="CURRICULUM" />
           ) : active === 'kalender' ? (
             <AcademicCalendarPage />
           ) : active === 'jadwal' ? (
-            <SchedulePage />
-          ) : active === 'audit' ? (
-            <AuditLogPage />
+            <SchedulePage scope="CURRICULUM" />
           ) : (
-            <TeachingLoadSummaryPage />
+            <TeachingLoadSummaryPage scope="CURRICULUM" />
           )}
         </div>
       </div>

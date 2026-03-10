@@ -20,5 +20,5 @@ export function sortTeacherAssignments<T extends AssignmentLike>(assignments: T[
 }
 
 export function formatAssignmentLabel(assignment: Pick<TeacherAssignment, 'class' | 'subject'>) {
-  return `${assignment.class.name} - ${assignment.subject.name}`;
+  return `${assignment.subject.name} - ${assignment.class.name}`;
 }

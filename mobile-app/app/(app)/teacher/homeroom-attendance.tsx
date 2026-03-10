@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
@@ -92,7 +92,7 @@ export default function TeacherHomeroomAttendanceScreen() {
   const [search, setSearch] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
-  const [draft, setDraft] = useState<Record<number, DraftRecord>>({});
+  const [draftOverrides, setDraftOverrides] = useState<Record<number, Partial<DraftRecord>>>({});
 
   const selectedDateIso = toIsoDateLocal(selectedDate);
 
@@ -123,80 +123,75 @@ export default function TeacherHomeroomAttendanceScreen() {
   });
 
   const classItems = classesQuery.data || [];
-  const selectedClass = classItems.find((item) => item.id === selectedClassId) || null;
+  const effectiveSelectedClassId = selectedClassId ?? classItems[0]?.id ?? null;
+  const selectedClass = classItems.find((item) => item.id === effectiveSelectedClassId) || null;
   const selectedAcademicYearId = selectedClass?.academicYear?.id || activeYearQuery.data?.id || null;
 
-  useEffect(() => {
-    if (selectedClassId || classItems.length === 0) return;
-    setSelectedClassId(classItems[0].id);
-  }, [selectedClassId, classItems]);
-
   const dailyQuery = useQuery({
-    queryKey: ['mobile-homeroom-daily', selectedClassId, selectedAcademicYearId, selectedDateIso],
+    queryKey: ['mobile-homeroom-daily', effectiveSelectedClassId, selectedAcademicYearId, selectedDateIso],
     enabled:
       isAuthenticated &&
       user?.role === 'TEACHER' &&
       tab === 'DAILY' &&
-      !!selectedClassId &&
+      !!effectiveSelectedClassId &&
       !!selectedAcademicYearId,
     queryFn: async () =>
       attendanceApi.getDailyAttendance({
         date: selectedDateIso,
-        classId: Number(selectedClassId),
+        classId: Number(effectiveSelectedClassId),
         academicYearId: Number(selectedAcademicYearId),
       }),
   });
 
   const recapQuery = useQuery({
-    queryKey: ['mobile-homeroom-recap', selectedClassId, selectedAcademicYearId, semester],
+    queryKey: ['mobile-homeroom-recap', effectiveSelectedClassId, selectedAcademicYearId, semester],
     enabled:
       isAuthenticated &&
       user?.role === 'TEACHER' &&
       tab === 'RECAP' &&
-      !!selectedClassId &&
+      !!effectiveSelectedClassId &&
       !!selectedAcademicYearId,
     queryFn: async () =>
       attendanceRecapApi.getDailyRecap({
-        classId: Number(selectedClassId),
+        classId: Number(effectiveSelectedClassId),
         academicYearId: Number(selectedAcademicYearId),
         semester,
       }),
   });
 
   const lateQuery = useQuery({
-    queryKey: ['mobile-homeroom-late', selectedClassId, selectedAcademicYearId],
+    queryKey: ['mobile-homeroom-late', effectiveSelectedClassId, selectedAcademicYearId],
     enabled:
       isAuthenticated &&
       user?.role === 'TEACHER' &&
       tab === 'LATE' &&
-      !!selectedClassId &&
+      !!effectiveSelectedClassId &&
       !!selectedAcademicYearId,
     queryFn: async () =>
       attendanceApi.getLateSummaryByClass({
-        classId: Number(selectedClassId),
+        classId: Number(effectiveSelectedClassId),
         academicYearId: Number(selectedAcademicYearId),
       }),
   });
 
-  useEffect(() => {
-    if (tab !== 'DAILY') return;
-    if (!dailyQuery.data || dailyQuery.data.length === 0) return;
+  const dailyRows = useMemo(() => dailyQuery.data || [], [dailyQuery.data]);
+  const draft = useMemo(() => {
     const nextDraft: Record<number, DraftRecord> = {};
-    for (const row of dailyQuery.data) {
+    for (const row of dailyRows) {
+      const override = draftOverrides[row.student.id];
       nextDraft[row.student.id] = {
-        status: row.status || 'PRESENT',
-        note: row.note || '',
+        status: override?.status || row.status || 'PRESENT',
+        note: override?.note ?? row.note ?? '',
       };
     }
-    setDraft(nextDraft);
-  }, [tab, dailyQuery.data, selectedDateIso]);
+    return nextDraft;
+  }, [dailyRows, draftOverrides]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedClassId || !selectedAcademicYearId) {
+      if (!effectiveSelectedClassId || !selectedAcademicYearId) {
         throw new Error('Kelas atau tahun ajaran belum dipilih.');
       }
-      const dailyRows = dailyQuery.data || [];
       const records = dailyRows.map((row) => {
         const rowDraft = draft[row.student.id];
         return {
@@ -207,7 +202,7 @@ export default function TeacherHomeroomAttendanceScreen() {
       });
       return attendanceApi.saveDailyAttendance({
         date: selectedDateIso,
-        classId: Number(selectedClassId),
+        classId: Number(effectiveSelectedClassId),
         academicYearId: Number(selectedAcademicYearId),
         records,
       });
@@ -220,14 +215,13 @@ export default function TeacherHomeroomAttendanceScreen() {
       ]);
       notifySuccess('Presensi wali kelas berhasil disimpan.');
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal menyimpan presensi.');
     },
   });
 
-  const dailyRows = dailyQuery.data || [];
-  const recapRows = recapQuery.data?.recap || [];
-  const lateRows = lateQuery.data?.recap || [];
+  const recapRows = useMemo(() => recapQuery.data?.recap || [], [recapQuery.data?.recap]);
+  const lateRows = useMemo(() => lateQuery.data?.recap || [], [lateQuery.data?.recap]);
 
   const filteredDailyRows = useMemo(
     () => dailyRows.filter((item) => matchesStudentQuery(item.student, search)),
@@ -278,24 +272,25 @@ export default function TeacherHomeroomAttendanceScreen() {
   }, [filteredLateRows]);
 
   const shiftDate = (offset: number) => {
+    setDraftOverrides({});
     setSelectedDate((prev) => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate() + offset));
   };
 
   const handleStatusChange = (studentId: number, status: TeacherAttendanceStatus) => {
-    setDraft((prev) => ({
+    setDraftOverrides((prev) => ({
       ...prev,
       [studentId]: {
         status,
-        note: prev[studentId]?.note || '',
+        note: prev[studentId]?.note,
       },
     }));
   };
 
   const handleNoteChange = (studentId: number, note: string) => {
-    setDraft((prev) => ({
+    setDraftOverrides((prev) => ({
       ...prev,
       [studentId]: {
-        status: prev[studentId]?.status || 'PRESENT',
+        status: prev[studentId]?.status,
         note,
       },
     }));
@@ -303,12 +298,12 @@ export default function TeacherHomeroomAttendanceScreen() {
 
   const markAllDailyStatus = (status: TeacherAttendanceStatus) => {
     if (!dailyRows.length) return;
-    setDraft((prev) => {
+    setDraftOverrides((prev) => {
       const next = { ...prev };
       for (const row of dailyRows) {
         next[row.student.id] = {
           status,
-          note: prev[row.student.id]?.note || '',
+          note: prev[row.student.id]?.note,
         };
       }
       return next;
@@ -382,11 +377,14 @@ export default function TeacherHomeroomAttendanceScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Pilih Kelas</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
               {classItems.map((classItem) => {
-                const selected = selectedClassId === classItem.id;
+                const selected = effectiveSelectedClassId === classItem.id;
                 return (
                   <View key={classItem.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
                     <Pressable
-                      onPress={() => setSelectedClassId(classItem.id)}
+                      onPress={() => {
+                        setSelectedClassId(classItem.id);
+                        setDraftOverrides({});
+                      }}
                       style={{
                         borderWidth: 1,
                         borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',

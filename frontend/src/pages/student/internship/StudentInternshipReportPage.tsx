@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { internshipService } from '../../../services/internship.service';
 import { 
@@ -18,9 +18,50 @@ import { toast } from 'react-hot-toast';
 import { uploadService } from '../../../services/upload.service';
 import { SchoolApprovalPrintDocument } from '../../../components/reports/SchoolApprovalPrintDocument';
 
-const PrintCoverTemplate = ({ internship, title, customCompanyName, customAcademicYear }: { internship: any, title: string, customCompanyName?: string, customAcademicYear?: string }) => {
+type InternshipOfficials = {
+  activeAcademicYear?: { name?: string | null } | null;
+  headOfMajor?: { name?: string | null; nuptk?: string | null } | null;
+  wakasekHumas?: { name?: string | null; nuptk?: string | null } | null;
+  principal?: { name?: string | null; nuptk?: string | null } | null;
+};
+
+type InternshipStudent = {
+  id?: number;
+  name?: string;
+  nis?: string;
+  nisn?: string | null;
+  studentClass?: { name?: string; major?: { name?: string } | null } | null;
+};
+
+type InternshipRecord = {
+  id: number;
+  companyName?: string;
+  companyAddress?: string | null;
+  mentorName?: string | null;
+  mentorPhone?: string | null;
+  reportUrl?: string | null;
+  academicYear?: { name?: string | null } | null;
+  student?: InternshipStudent | null;
+  examiner?: { name?: string | null; nuptk?: string | null } | null;
+  officials?: InternshipOfficials;
+  reportTitle?: string | null;
+  schoolApprovalDate?: string | null;
+  lastActiveTab?: string | null;
+};
+
+const PrintCoverTemplate = ({
+  internship,
+  title,
+  customCompanyName,
+  customAcademicYear,
+}: {
+  internship: InternshipRecord;
+  title: string;
+  customCompanyName?: string;
+  customAcademicYear?: string;
+}) => {
   // Modified to be always INDIVIDUAL (Ignore colleagues/grouping)
-  const students = [internship];
+  const students: InternshipStudent[] = internship.student ? [internship.student] : [];
 
   return (
     <div className="bg-white text-black" style={{ 
@@ -76,8 +117,7 @@ const PrintCoverTemplate = ({ internship, title, customCompanyName, customAcadem
              </tr>
            </thead>
            <tbody>
-              {students.map((item: any, index: number) => {
-                const student = item.student || item;
+              {students.map((student, index: number) => {
                 return (
                   <tr key={index}>
                     <td style={{ textAlign: 'center', padding: '5px' }}>{index + 1}.</td>
@@ -102,7 +142,17 @@ const PrintCoverTemplate = ({ internship, title, customCompanyName, customAcadem
 };
 
 // View Component for Screen Display Only (No Print Styles)
-const SchoolApprovalView = ({ internship, title, customDate, setCustomDate }: { internship: any, title: string, customDate: string, setCustomDate: (date: string) => void }) => {
+const SchoolApprovalView = ({
+  internship,
+  title,
+  customDate,
+  setCustomDate,
+}: {
+  internship: InternshipRecord;
+  title: string;
+  customDate: string;
+  setCustomDate: (date: string) => void;
+}) => {
   const { officials } = internship;
   const activeYearName = officials?.activeAcademicYear?.name || new Date().getFullYear().toString();
   
@@ -123,7 +173,10 @@ const SchoolApprovalView = ({ internship, title, customDate, setCustomDate }: { 
     return baseYear;
   };
 
-  const promotedYearName = getPromotedYear(internship.academicYear?.name, internship.student?.studentClass?.name);
+  const promotedYearName = getPromotedYear(
+    internship.academicYear?.name || '',
+    internship.student?.studentClass?.name || '',
+  );
 
   return (
     <div className="bg-white text-black p-8 mx-auto shadow-sm" style={{ 
@@ -195,7 +248,7 @@ const SchoolApprovalView = ({ internship, title, customDate, setCustomDate }: { 
 const StudentInternshipReportPage = () => {
   // State Management (Database synced)
   const [activeTab, setActiveTab] = useState('cover');
-  const [internship, setInternship] = useState<any>(null);
+  const [internship, setInternship] = useState<InternshipRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -224,16 +277,16 @@ const StudentInternshipReportPage = () => {
   };
 
   // Debounced save for approval date
-  useEffect(() => {
-    const timeoutId = setTimeout(async () => {
-      if (internship && approvalDate !== internship.schoolApprovalDate) {
-        try {
-           await internshipService.updateMyInternship({ schoolApprovalDate: approvalDate });
-           // Update local internship reference to avoid re-triggering if no change
-           setInternship((prev: any) => ({ ...prev, schoolApprovalDate: approvalDate }));
-        } catch (err) {
-          console.error('Failed to save approval date', err);
-        }
+	  useEffect(() => {
+	    const timeoutId = setTimeout(async () => {
+	      if (internship && approvalDate !== internship.schoolApprovalDate) {
+	        try {
+	           await internshipService.updateMyInternship({ schoolApprovalDate: approvalDate });
+	           // Update local internship reference to avoid re-triggering if no change
+	           setInternship((prev) => (prev ? { ...prev, schoolApprovalDate: approvalDate } : prev));
+	        } catch (err) {
+	          console.error('Failed to save approval date', err);
+	        }
       }
     }, 1000); // 1 second debounce
 
@@ -266,7 +319,7 @@ const StudentInternshipReportPage = () => {
   };
 
   // Fetch internship data
-  const fetchInternship = async () => {
+  const fetchInternship = useCallback(async () => {
     try {
       setLoading(true);
       const res = await internshipService.getMyInternship();
@@ -291,24 +344,24 @@ const StudentInternshipReportPage = () => {
         const className = data.student?.studentClass?.name || '';
         setAcademicYear(getReportAcademicYear(yearName, className));
       }
-    } catch (err: any) {
-      console.error('Error fetching internship:', err);
-      setError('Gagal memuat data PKL');
-    } finally {
-      setLoading(false);
-    }
-  };
+	    } catch (err: unknown) {
+	      console.error('Error fetching internship:', err);
+	      setError('Gagal memuat data PKL');
+		    } finally {
+	      setLoading(false);
+	    }
+	  }, []);
 
-  useEffect(() => {
-    fetchInternship();
-  }, []);
+	  useEffect(() => {
+	    fetchInternship();
+	  }, [fetchInternship]);
 
-  // Set iframe body when ref is available
-  useEffect(() => {
-    if (printFrameRef.current?.contentDocument?.body) {
-      setIframeBody(printFrameRef.current.contentDocument.body);
-    }
-  }, [printFrameRef.current]);
+	  // Set iframe body when ref is available
+	  useEffect(() => {
+	    if (printFrameRef.current?.contentDocument?.body) {
+	      setIframeBody(printFrameRef.current.contentDocument.body);
+	    }
+	  }, [printFrameRef]);
 
   const handlePrint = () => {
     if (!printFrameRef.current?.contentWindow) return;
@@ -338,11 +391,15 @@ const StudentInternshipReportPage = () => {
       await internshipService.uploadReport(internship.id, uploadRes.url);
       toast.success('Laporan PKL berhasil diupload!');
       fetchInternship();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Gagal mengupload laporan');
-    } finally {
-      setUploading(false);
-    }
+	    } catch (error: unknown) {
+	      const message =
+	        (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+	        (error instanceof Error ? error.message : '') ||
+	        'Gagal mengupload laporan';
+	      toast.error(message);
+	    } finally {
+	      setUploading(false);
+	    }
   };
 
   const handleSaveTitle = async () => {
@@ -356,10 +413,10 @@ const StudentInternshipReportPage = () => {
       setIsEditingTitle(false);
       // Update local internship state
       setInternship({ ...internship, reportTitle });
-    } catch (error: any) {
-      toast.error('Gagal menyimpan judul laporan');
-      console.error(error);
-    } finally {
+	    } catch (error: unknown) {
+	      toast.error('Gagal menyimpan judul laporan');
+	      console.error(error);
+	    } finally {
       setSavingTitle(false);
     }
   };
@@ -374,10 +431,10 @@ const StudentInternshipReportPage = () => {
       toast.success('Data cover berhasil disimpan');
       setIsEditingMeta(false);
       setInternship({ ...internship, companyName });
-    } catch (error: any) {
-      toast.error('Gagal menyimpan data');
-      console.error(error);
-    } finally {
+	    } catch (error: unknown) {
+	      toast.error('Gagal menyimpan data');
+	      console.error(error);
+	    } finally {
       setSavingMeta(false);
     }
   };
@@ -865,7 +922,7 @@ const StudentInternshipReportPage = () => {
       />
 
       {/* Portal Content for Print */}
-      {iframeBody && activeTab === 'school-approval' && createPortal(
+      {iframeBody && internship && activeTab === 'school-approval' && createPortal(
         <SchoolApprovalPrintDocument 
            internship={internship} 
            title={reportTitle} 

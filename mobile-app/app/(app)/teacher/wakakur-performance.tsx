@@ -210,9 +210,15 @@ export default function TeacherWakakurPerformanceScreen() {
     },
   });
 
-  const assignments = performanceQuery.data?.assignments || [];
-  const teachingLoad = performanceQuery.data?.teachingLoad || [];
-  const schedules = performanceQuery.data?.schedules || [];
+  const assignments = useMemo(
+    () => performanceQuery.data?.assignments || [],
+    [performanceQuery.data?.assignments],
+  );
+  const teachingLoad = useMemo(
+    () => performanceQuery.data?.teachingLoad || [],
+    [performanceQuery.data?.teachingLoad],
+  );
+  const schedules = useMemo(() => performanceQuery.data?.schedules || [], [performanceQuery.data?.schedules]);
   const classTotal = performanceQuery.data?.classTotal || 0;
   const assignmentTotal = performanceQuery.data?.assignmentTotal || assignments.length;
   const subjectTotal = performanceQuery.data?.subjectTotal || 0;

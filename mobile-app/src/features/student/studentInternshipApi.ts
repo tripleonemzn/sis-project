@@ -86,6 +86,12 @@ type InternshipMutationPayload = {
   reportTitle?: string;
 };
 
+type ReactNativeFilePart = {
+  uri: string;
+  name: string;
+  type: string;
+};
+
 export const studentInternshipApi = {
   async getMyInternship() {
     const response = await apiClient.get<ApiEnvelope<StudentInternshipOverviewPayload>>('/internships/my-internship');
@@ -151,11 +157,12 @@ export const studentInternshipApi = {
     mimeType?: string;
   }) {
     const formData = new FormData();
-    formData.append('file', {
+    const filePart: ReactNativeFilePart = {
       uri: file.uri,
       name: file.name || `internship-${Date.now()}.jpg`,
       type: file.mimeType || 'application/octet-stream',
-    } as any);
+    };
+    formData.append('file', filePart as unknown as Blob);
 
     const response = await apiClient.post<ApiEnvelope<{ url: string }>>('/uploads/internship', formData, {
       headers: {
@@ -174,4 +181,3 @@ export const studentInternshipApi = {
     return response.data?.data;
   },
 };
-

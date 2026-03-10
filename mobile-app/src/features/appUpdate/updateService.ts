@@ -32,12 +32,13 @@ export async function checkAppUpdate(): Promise<AppUpdateCheckResult> {
       available: result.isAvailable,
       channel,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Gagal memeriksa update.';
     return {
       supported: true,
       available: false,
       channel,
-      errorMessage: error?.message || 'Gagal memeriksa update.',
+      errorMessage,
     };
   }
 }

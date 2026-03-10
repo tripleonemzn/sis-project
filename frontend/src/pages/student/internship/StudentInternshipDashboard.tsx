@@ -4,11 +4,58 @@ import { useQuery } from '@tanstack/react-query';
 import { internshipService } from '../../../services/internship.service';
 import { uploadService } from '../../../services/upload.service';
 import { authService } from '../../../services/auth.service';
-import { Briefcase, Building2, User, AlertCircle, Upload, FileText, Clock, XCircle, Pencil, Save, X } from 'lucide-react';
+import type { User as AuthUser } from '../../../types/auth';
+import { Briefcase, Building2, User as UserIcon, AlertCircle, Upload, FileText, Clock, XCircle, Pencil, Save, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
+type InternshipStatus =
+  | 'PROPOSED'
+  | 'WAITING_ACCEPTANCE_LETTER'
+  | 'VERIFYING'
+  | 'APPROVED'
+  | 'ACTIVE'
+  | 'REPORT_SUBMITTED'
+  | 'DEFENSE_SCHEDULED'
+  | 'DEFENSE_COMPLETED'
+  | 'COMPLETED'
+  | 'REJECTED'
+  | 'CANCELED';
+
+type InternshipRecord = {
+  id: number;
+  status: InternshipStatus | string;
+  companyName: string;
+  companyAddress?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  mentorName?: string | null;
+  mentorPhone?: string | null;
+  approvalNotes?: string | null;
+  rejectionReason?: string | null;
+  companyLatitude?: number | null;
+  companyLongitude?: number | null;
+  acceptanceLetterUrl?: string | null;
+  defenseDate?: string | null;
+  defenseRoom?: string | null;
+  defenseScore?: number | null;
+  defenseNotes?: string | null;
+  examiner?: { name?: string | null } | null;
+  teacher?: { name?: string | null; phone?: string | null } | null;
+};
+
+type OutletContextShape = { user?: AuthUser | null };
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (typeof error === 'object' && error !== null) {
+    const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+    if (message) return message;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
 const StudentInternshipDashboard = () => {
-  const [internship, setInternship] = useState<any>(null);
+  const [internship, setInternship] = useState<InternshipRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -18,7 +65,7 @@ const StudentInternshipDashboard = () => {
     mentorPhone: ''
   });
 
-  const { user: contextUser } = useOutletContext<{ user: any }>() || {};
+  const { user: contextUser } = useOutletContext<OutletContextShape>() || {};
   const { data: authData } = useQuery({
     queryKey: ['me'],
     queryFn: authService.getMe,
@@ -50,11 +97,12 @@ const StudentInternshipDashboard = () => {
            setInternship(null);
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching internship:', error);
       // Only show error if it's not a 404 (Not Found is expected for new students)
-      if (error.response?.status !== 404) {
-        setError(error.message || 'Gagal memuat data PKL');
+      const statusCode = (error as { response?: { status?: number } }).response?.status;
+      if (statusCode !== 404) {
+        setError(getErrorMessage(error, 'Gagal memuat data PKL'));
       }
     } finally {
       if (!silent) {
@@ -108,13 +156,15 @@ const StudentInternshipDashboard = () => {
       await internshipService.applyInternship(payload);
       toast.success('Pengajuan PKL berhasil dikirim!');
       void fetchInternship();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Gagal mengajukan PKL');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Gagal mengajukan PKL'));
     }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !e.target.files[0]) return;
+    const currentInternship = internship;
+    if (!currentInternship) return;
     
     const file = e.target.files[0];
     if (file.size > 500 * 1024) {
@@ -128,43 +178,47 @@ const StudentInternshipDashboard = () => {
       const uploadRes = await uploadService.uploadInternshipFile(file);
       
       // 2. Update status
-      await internshipService.uploadAcceptanceLetter(internship.id, uploadRes.url);
+      await internshipService.uploadAcceptanceLetter(currentInternship.id, uploadRes.url);
       
       toast.success('Surat balasan berhasil diupload!');
       void fetchInternship();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Gagal mengupload file');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Gagal mengupload file'));
     } finally {
       setUploading(false);
     }
   };
 
   const handleReapply = () => {
+    const currentInternship = internship;
+    if (!currentInternship) return;
     setFormData({
-      companyName: internship.companyName,
-      companyAddress: internship.companyAddress || '',
-      startDate: internship.startDate ? new Date(internship.startDate).toISOString().split('T')[0] : '',
-      endDate: internship.endDate ? new Date(internship.endDate).toISOString().split('T')[0] : '',
+      companyName: currentInternship.companyName,
+      companyAddress: currentInternship.companyAddress || '',
+      startDate: currentInternship.startDate ? new Date(currentInternship.startDate).toISOString().split('T')[0] : '',
+      endDate: currentInternship.endDate ? new Date(currentInternship.endDate).toISOString().split('T')[0] : '',
     });
     setInternship(null);
   };
 
   const handleUpdateMentor = async () => {
+    const currentInternship = internship;
+    if (!currentInternship) return;
     try {
-      await internshipService.updateInternship(internship.id, {
+      await internshipService.updateInternship(currentInternship.id, {
         mentorName: mentorForm.mentorName,
         mentorPhone: mentorForm.mentorPhone
       });
       toast.success('Data pembimbing berhasil disimpan');
       setIsEditingMentor(false);
       void fetchInternship();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Gagal menyimpan data');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Gagal menyimpan data'));
     }
   };
 
   const getStatusBadge = (status: string) => {
-    const styles = {
+    const styles: Record<string, string> = {
       PROPOSED: 'bg-yellow-100 text-yellow-700',
       WAITING_ACCEPTANCE_LETTER: 'bg-blue-100 text-blue-700',
       VERIFYING: 'bg-purple-100 text-purple-700',
@@ -178,7 +232,7 @@ const StudentInternshipDashboard = () => {
       CANCELED: 'bg-red-100 text-red-700',
     };
     
-    const labels = {
+    const labels: Record<string, string> = {
       PROPOSED: 'Diajukan',
       WAITING_ACCEPTANCE_LETTER: 'Menunggu Surat Balasan',
       APPROVED: 'Disetujui',
@@ -192,8 +246,8 @@ const StudentInternshipDashboard = () => {
     };
 
     return (
-      <span className={`px-3 py-1 rounded-full text-xs font-medium ${(styles as any)[status] || 'bg-gray-100 text-gray-700'}`}>
-        {(labels as any)[status] || status}
+      <span className={`px-3 py-1 rounded-full text-xs font-medium ${styles[status] || 'bg-gray-100 text-gray-700'}`}>
+        {labels[status] || status}
       </span>
     );
   };
@@ -390,7 +444,7 @@ const StudentInternshipDashboard = () => {
                           <span>Ruang: {internship.defenseRoom || '-'}</span>
                        </div>
                        <div className="flex items-center gap-2 text-sm text-indigo-800">
-                          <User className="w-4 h-4" />
+                          <UserIcon className="w-4 h-4" />
                           <span>Penguji: {internship.examiner?.name || 'Belum ditentukan'}</span>
                        </div>
                     </div>
@@ -482,7 +536,7 @@ const StudentInternshipDashboard = () => {
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
              <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <User className="w-5 h-5 text-green-600" />
+                  <UserIcon className="w-5 h-5 text-green-600" />
                   Pembimbing
                 </h2>
                 {!isEditingMentor ? (

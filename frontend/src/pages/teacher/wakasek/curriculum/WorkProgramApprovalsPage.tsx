@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, XCircle, Loader2, Search } from 'lucide-react';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { workProgramService } from '../../../../services/workProgram.service';
 import { liveQueryOptions } from '../../../../lib/query/liveQuery';
 import toast from 'react-hot-toast';
@@ -28,8 +29,63 @@ const MONTH_NAMES = [
   'Desember',
 ];
 
+const DUTY_LABELS: Record<string, string> = {
+  KAPROG: 'Kepala Kompetensi Keahlian',
+  WAKASEK_KURIKULUM: 'Wakasek Kurikulum',
+  WAKASEK_SARPRAS: 'Wakasek Sarpras',
+  WAKASEK_KESISWAAN: 'Wakasek Kesiswaan',
+  WAKASEK_HUMAS: 'Wakasek Humas',
+  PEMBINA_EKSKUL: 'Pembina Ekstrakurikuler',
+  WALI_KELAS: 'Wali Kelas',
+  GURU_MAPEL: 'Guru Mapel',
+  GURU: 'Guru',
+  UMUM: 'Umum / Non Jabatan',
+};
+
+const toDutyLabel = (value?: string | null): string => {
+  const key = String(value || 'UMUM').trim().toUpperCase();
+  if (!key) return DUTY_LABELS.UMUM;
+  return DUTY_LABELS[key] || key.replace(/_/g, ' ');
+};
+
+const toDutyKey = (value?: string | null): string => {
+  const key = String(value || 'UMUM').trim().toUpperCase();
+  return key || 'UMUM';
+};
+
+type WorkProgramApprovalItem = {
+  id: number;
+  title: string;
+  description?: string | null;
+  additionalDuty?: string | null;
+  owner?: {
+    name?: string | null;
+  } | null;
+  academicYear?: {
+    name?: string | null;
+  } | null;
+  major?: {
+    id: number;
+    name?: string | null;
+    code?: string | null;
+  } | null;
+  semester?: 'ODD' | 'EVEN' | null;
+  month?: number | null;
+  startMonth?: number | null;
+  endMonth?: number | null;
+  startWeek?: number | null;
+  endWeek?: number | null;
+  feedback?: string | null;
+};
+
 export default function WorkProgramApprovalsPage() {
   const queryClient = useQueryClient();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const isPrincipalView = location.pathname.startsWith('/principal/');
+  const isReadOnly = ['1', 'true', 'yes'].includes(
+    String(searchParams.get('readonly') || '').trim().toLowerCase(),
+  );
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [feedback, setFeedback] = useState('');
@@ -41,18 +97,23 @@ export default function WorkProgramApprovalsPage() {
     isError,
     error,
   } = useQuery({
-    queryKey: ['work-programs', 'pending-approvals'],
-    queryFn: () => workProgramService.listPendingForApproval(),
+    queryKey: ['work-programs', 'pending-approvals', isReadOnly ? 'readonly' : 'approver'],
+    queryFn: () => workProgramService.listPendingForApproval({ includeReviewed: isReadOnly }),
     retry: false,
     ...liveQueryOptions,
   });
 
+  const allPrograms = useMemo<WorkProgramApprovalItem[]>(
+    () => (Array.isArray(data?.data) ? (data.data as WorkProgramApprovalItem[]) : []),
+    [data],
+  );
+
   const filteredPrograms = useMemo(
     () => {
-      const all = data?.data || [];
+      const all = allPrograms;
       if (!search.trim()) return all;
       const term = search.toLowerCase();
-      return all.filter((p: any) => {
+      return all.filter((p) => {
         return (
           p.title.toLowerCase().includes(term) ||
           (p.owner?.name && p.owner.name.toLowerCase().includes(term)) ||
@@ -62,62 +123,51 @@ export default function WorkProgramApprovalsPage() {
         );
       });
     },
-    [data, search],
+    [allPrograms, search],
   );
 
-  const groups = useMemo(
-    () => {
-      const map = new Map<
-        string,
-        {
-          key: string;
-          majorId: number | null;
-          name: string;
-          code: string | null;
-          count: number;
-        }
-      >();
+  const getGroupKey = (program: WorkProgramApprovalItem): string => {
+    if (isPrincipalView) {
+      return `DUTY:${toDutyKey(program.additionalDuty)}`;
+    }
+    const majorId = program.major?.id ?? null;
+    return `MAJOR:${majorId !== null ? String(majorId) : 'NO_MAJOR'}`;
+  };
 
-      for (const p of filteredPrograms as any[]) {
-        const majorId = p.major?.id ?? null;
-        const key = majorId !== null ? String(majorId) : 'NO_MAJOR';
-        const name = p.major?.name || 'Umum / Non Kompetensi';
-        const code = p.major?.code ?? null;
-
-        const existing = map.get(key);
-        if (existing) {
-          existing.count += 1;
-        } else {
-          map.set(key, {
-            key,
-            majorId,
-            name,
-            code,
-            count: 1,
-          });
-        }
+  const groups = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        key: string;
+        name: string;
+        code: string;
+        count: number;
       }
+    >();
 
-      return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-    },
-    [filteredPrograms],
-  );
+    for (const p of filteredPrograms) {
+      const key = getGroupKey(p);
+      const name = isPrincipalView ? toDutyLabel(p.additionalDuty) : p.major?.name || 'Umum / Non Kompetensi';
+      const code = isPrincipalView ? 'JABATAN' : p.major?.code || 'NON KOMPETENSI';
+      const existing = map.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        map.set(key, { key, name, code, count: 1 });
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [filteredPrograms, isPrincipalView]);
 
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
 
-  const visiblePrograms = useMemo(
-    () => {
-      if (!groups.length) return filteredPrograms as any[];
-      const activeKey = selectedGroupKey ?? groups[0].key;
-      const target = groups.find((g) => g.key === activeKey);
-      if (!target) return filteredPrograms as any[];
-      if (target.majorId === null) {
-        return (filteredPrograms as any[]).filter((p: any) => !p.major);
-      }
-      return (filteredPrograms as any[]).filter((p: any) => p.major?.id === target.majorId);
-    },
-    [filteredPrograms, groups, selectedGroupKey],
-  );
+  const visiblePrograms = useMemo(() => {
+    if (!groups.length) return filteredPrograms;
+    const hasSelected = selectedGroupKey && groups.some((g) => g.key === selectedGroupKey);
+    const activeKey = hasSelected ? selectedGroupKey : groups[0].key;
+    return filteredPrograms.filter((p) => getGroupKey(p) === activeKey);
+  }, [filteredPrograms, groups, selectedGroupKey]);
 
   const approvalMutation = useMutation({
     mutationFn: async (payload: { id: number; status: 'APPROVED' | 'REJECTED'; feedback?: string }) =>
@@ -156,7 +206,7 @@ export default function WorkProgramApprovalsPage() {
     },
   });
 
-  const selectedProgram = visiblePrograms.find((p: any) => p.id === selectedId) || null;
+  const selectedProgram = visiblePrograms.find((p) => p.id === selectedId) || null;
 
   return (
     <div className="space-y-6">
@@ -164,7 +214,11 @@ export default function WorkProgramApprovalsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Persetujuan Program Kerja</h1>
           <p className="text-gray-500 text-sm">
-            Kelola program kerja yang diajukan oleh guru dan KAKOM.
+            {isReadOnly
+              ? 'Mode monitor (read-only) untuk melihat progres program kerja pembina ekskul.'
+              : isPrincipalView
+              ? 'Kelola program kerja lintas jabatan pengaju secara dinamis.'
+              : 'Kelola program kerja yang diajukan oleh guru dan KAKOM.'}
           </p>
         </div>
       </div>
@@ -175,7 +229,11 @@ export default function WorkProgramApprovalsPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Cari judul program kerja atau nama guru..."
+              placeholder={
+                isPrincipalView
+                  ? 'Cari judul program kerja atau nama pengaju...'
+                  : 'Cari judul program kerja atau nama guru...'
+              }
               className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -204,14 +262,12 @@ export default function WorkProgramApprovalsPage() {
                   }`}
                 >
                   <div className="text-xs font-semibold text-gray-500">
-                    {group.code || 'NON KOMPETENSI'}
+                    {group.code || (isPrincipalView ? 'UMUM' : 'NON KOMPETENSI')}
                   </div>
                   <div className="text-sm font-semibold text-gray-900 mt-0.5">
                     {group.name}
                   </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {group.count} program menunggu persetujuan
-                  </div>
+                  <div className="text-xs text-gray-500 mt-1">{group.count} program menunggu persetujuan</div>
                 </button>
               );
             })}
@@ -226,17 +282,19 @@ export default function WorkProgramApprovalsPage() {
             <span className="font-semibold text-gray-800">{filteredPrograms.length}</span>{' '}
             program menunggu persetujuan
           </div>
-          {visiblePrograms.length > 0 && (
+          {!isReadOnly && visiblePrograms.length > 0 && (
             <button
               type="button"
               onClick={() => {
                 if (bulkApprovalMutation.isPending) return;
-                const ids = (visiblePrograms as any[])
+                const ids = visiblePrograms
                   .map((p) => Number(p.id))
                   .filter((id) => Number.isFinite(id));
                 if (!ids.length) return;
                 const confirmed = window.confirm(
-                  'Setujui semua program kerja yang ditampilkan pada kompetensi ini?',
+                  isPrincipalView
+                    ? 'Setujui semua program kerja pada jabatan ini?'
+                    : 'Setujui semua program kerja yang ditampilkan pada kompetensi ini?',
                 );
                 if (!confirmed) return;
                 bulkApprovalMutation.mutate(ids);
@@ -262,7 +320,7 @@ export default function WorkProgramApprovalsPage() {
                     Program Kerja
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Guru / KAKOM
+                    Pengaju / Jabatan
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Tahun Ajaran
@@ -307,7 +365,7 @@ export default function WorkProgramApprovalsPage() {
                   </tr>
                 )}
                 {!isLoading &&
-                  visiblePrograms.map((program: any) => (
+                  visiblePrograms.map((program) => (
                     <tr key={program.id}>
                       <td className="px-4 py-3 text-sm text-gray-900">
                         <div className="font-medium">{program.title}</div>
@@ -318,7 +376,8 @@ export default function WorkProgramApprovalsPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
-                        <div>{program.owner?.name || '-'}</div>
+                        <div className="font-medium text-gray-900">{program.owner?.name || '-'}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{toDutyLabel(program.additionalDuty)}</div>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {program.academicYear?.name || '-'}
@@ -358,17 +417,23 @@ export default function WorkProgramApprovalsPage() {
                         })()}
                       </td>
                       <td className="px-4 py-3 text-sm text-center">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedId(program.id);
-                            setFeedback(program.feedback || '');
-                            setAction('APPROVED');
-                          }}
-                          className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100"
-                        >
-                          Tinjau & Proses
-                        </button>
+                        {isReadOnly ? (
+                          <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                            Read Only
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedId(program.id);
+                              setFeedback(program.feedback || '');
+                              setAction('APPROVED');
+                            }}
+                            className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100"
+                          >
+                            Tinjau & Proses
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -378,7 +443,7 @@ export default function WorkProgramApprovalsPage() {
         </div>
       </div>
 
-      {selectedProgram && (
+      {!isReadOnly && selectedProgram && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
           onClick={() => {

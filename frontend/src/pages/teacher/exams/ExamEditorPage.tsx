@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useParams, useOutletContext } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-hot-toast';
@@ -10,11 +10,6 @@ import {
     Save, 
     ArrowLeft, 
     Plus, 
-    Check,
-    Clock,
-    Award,
-    BookOpen,
-    AlertCircle,
     LayoutGrid,
     Image as ImageIcon,
     X,
@@ -24,13 +19,16 @@ import {
 } from 'lucide-react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
-import { examService, normalizeExamProgramCode } from '../../../services/exam.service';
-import type { ExamProgram, ExamType, Question, QuestionBlueprint, QuestionCard } from '../../../services/exam.service';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
+import { examProgramCodeToSlug, examService, normalizeExamProgramCode } from '../../../services/exam.service';
+import type { ExamProgram, ExamType, Question, QuestionBlueprint, QuestionCard, ExamPacket } from '../../../services/exam.service';
 import { academicYearService } from '../../../services/academicYear.service';
 import { teacherAssignmentService } from '../../../services/teacherAssignment.service';
 import type { TeacherAssignment } from '../../../services/teacherAssignment.service';
 import api from '../../../services/api';
 import { QuestionBankModal } from '../../../components/teacher/exams/QuestionBankModal';
+import type { UserWrite } from '../../../types/auth';
 
 // Extended Question interface for UI state and Backend Payload compatibility
 interface ExtendedQuestion extends Question {
@@ -44,6 +42,25 @@ interface ExtendedQuestion extends Question {
         content: string;
         isCorrect: boolean;
         image_url?: string;
+    }[];
+}
+
+interface ImportedQuestion extends Question {
+    points?: number;
+    mediaUrl?: string | null;
+    media_url?: string | null;
+    mediaType?: string | null;
+    media_type?: string | null;
+    question_image_url?: string;
+    question_video_url?: string;
+    question_video_type?: 'upload' | 'youtube';
+    question_media_position?: 'top' | 'bottom' | 'left' | 'right';
+    options?: {
+        id: string;
+        content: string;
+        isCorrect: boolean;
+        image_url?: string;
+        imageUrl?: string;
     }[];
 }
 
@@ -89,7 +106,58 @@ function normalizeQuestionCard(raw: unknown): QuestionCard {
     };
 }
 
+function sanitizeQuestionHtml(value: string | undefined | null): string {
+    return String(value || '')
+        .replace(/<hr\b[^>]*>/gi, '')
+        .trim();
+}
+
+function normalizePositiveScore(value: unknown, fallback = 1): number {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+    return parsed;
+}
+
+function normalizeImportedBankScore(
+    pointsValue: unknown,
+    scoreValue: unknown,
+): { score: number; normalizedFromLegacy: boolean } {
+    // For bank questions, "points" is the source of truth.
+    const rawPoints = Number(pointsValue);
+    if (Number.isFinite(rawPoints) && rawPoints > 0) {
+        // Legacy bank data may still store percentage-like values (50-100).
+        if (rawPoints >= 50) {
+            return { score: 1, normalizedFromLegacy: true };
+        }
+        return { score: rawPoints, normalizedFromLegacy: false };
+    }
+
+    const rawScore = Number(scoreValue);
+    if (Number.isFinite(rawScore) && rawScore > 0) {
+        return { score: rawScore, normalizedFromLegacy: false };
+    }
+
+    return { score: 1, normalizedFromLegacy: false };
+}
+
+function isLikelyVideoUrl(url: string): boolean {
+    const normalized = String(url || '').trim().toLowerCase();
+    if (!normalized) return false;
+    if (
+        normalized.includes('youtube.com') ||
+        normalized.includes('youtu.be') ||
+        normalized.includes('vimeo.com')
+    ) {
+        return true;
+    }
+    return /\.(mp4|webm|ogg|mov|m4v|avi|mkv)(\?|#|$)/i.test(normalized);
+}
+
 // Quill modules configuration
+if (typeof window !== 'undefined') {
+  (window as Window & { katex?: typeof katex }).katex = katex;
+}
+
 const modules = {
   toolbar: [
     [{ 'header': [1, 2, 3, false] }],
@@ -98,7 +166,7 @@ const modules = {
     [{ 'script': 'sub'}, { 'script': 'super' }],
     [{ 'indent': '-1'}, { 'indent': '+1' }, { 'direction': 'rtl' }],
     [{ 'color': [] }, { 'background': [] }],
-    ['link'],
+    ['link', 'formula'],
     ['clean']
   ],
 };
@@ -108,9 +176,11 @@ interface PacketForm {
   description: string;
   type: ExamType;
   programCode: string;
+  teacherAssignmentId?: number | null;
   duration: number;
-  kkm: number;
-  subjectId: number;
+  publishedQuestionCount?: number | null;
+  kkm?: number;
+  subjectId?: number | null;
   academicYearId: number;
   semester: string;
   saveToBank: boolean;
@@ -118,19 +188,11 @@ interface PacketForm {
   questions: ExtendedQuestion[];
 }
 
-function inferFixedSemesterFromBaseType(type?: string | null): 'ODD' | 'EVEN' | null {
-  const normalized = String(type || '').toUpperCase();
-  if (normalized === 'SAS') return 'ODD';
-  if (normalized === 'SAT') return 'EVEN';
-  return null;
-}
-
-function assertTypeSemesterMatch(type: ExamType, semester: string) {
-  if (type === 'SAS' && semester !== 'ODD') {
-    throw new Error('SAS hanya boleh untuk semester Ganjil.');
-  }
-  if (type === 'SAT' && semester !== 'EVEN') {
-    throw new Error('SAT hanya boleh untuk semester Genap.');
+function assertFixedSemesterMatch(fixedSemester: 'ODD' | 'EVEN' | null | undefined, semester: string) {
+  if (fixedSemester && semester !== fixedSemester) {
+    throw new Error(
+      `Program ini hanya boleh semester ${fixedSemester === 'ODD' ? 'Ganjil' : 'Genap'}.`,
+    );
   }
 }
 
@@ -162,6 +224,30 @@ function getScoreSyncCopy(program?: ExamProgram | null): string {
   return `Nilai ujian otomatis tersinkron ke komponen ${componentLabel}.`;
 }
 
+function resolveProgramPacketType(program?: ExamProgram | null, fallback: ExamType = 'FORMATIF'): ExamType {
+  const baseType = normalizeExamProgramCode(program?.baseType || program?.baseTypeCode);
+  if (baseType) return baseType as ExamType;
+  const componentType = normalizeExamProgramCode(program?.gradeComponentTypeCode || program?.gradeComponentType);
+  if (componentType === 'FORMATIVE') return 'FORMATIF';
+  return fallback;
+}
+
+function normalizeClassLevelToken(raw?: string | null): string {
+    const value = String(raw || '').trim().toUpperCase();
+    if (!value) return '';
+    if (value.startsWith('XII')) return 'XII';
+    if (value.startsWith('XI')) return 'XI';
+    if (value.startsWith('X')) return 'X';
+    return value;
+}
+
+function buildAssignmentDisplayLabel(assignment: TeacherAssignment): string {
+    const subjectName = String(assignment.subject?.name || '-').trim();
+    const className = String(assignment.class?.name || '-').trim();
+    const teacherName = String(assignment.teacher?.name || '-').trim();
+    return `${subjectName} — ${className} — ${teacherName}`;
+}
+
 export const ExamEditorPage = () => {
     const { id } = useParams();
     const location = useLocation();
@@ -175,9 +261,11 @@ export const ExamEditorPage = () => {
     const draftLoadedRef = React.useRef(false);
     // Ref for autosave debounce
     const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const quillEditorRef = useRef<ReactQuill | null>(null);
 
     const [loading, setLoading] = useState(false);
     const [subjects, setSubjects] = useState<{id: number, name: string, kkm?: number}[]>([]);
+    const [assignmentOptions, setAssignmentOptions] = useState<TeacherAssignment[]>([]);
     const [activeAcademicYear, setActiveAcademicYear] = useState<{id: number, name: string} | null>(null);
     
     // 1. Get Current User via Query (Database Persistence)
@@ -202,7 +290,7 @@ export const ExamEditorPage = () => {
     });
 
     const updateProfileMutation = useMutation({
-      mutationFn: (data: any) => {
+      mutationFn: (data: Partial<UserWrite>) => {
         if (!userId) throw new Error('User ID not found');
         return userService.update(userId, data);
       },
@@ -216,44 +304,61 @@ export const ExamEditorPage = () => {
     const [questions, setQuestions] = useState<ExtendedQuestion[]>([]);
     const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
     const [isQuestionBankOpen, setIsQuestionBankOpen] = useState(false);
-
-    // UI State for Editor
-    const [section, setSection] = useState<'OBJECTIVE' | 'ESSAY'>('OBJECTIVE');
-    const [editorStage, setEditorStage] = useState<'INFO' | 'QUESTIONS'>('INFO');
-    
-    // Media Upload State
-    // Removed mediaTarget state as we use direct targetId passing
+    const [showQuestionSupportPanel, setShowQuestionSupportPanel] = useState(true);
 
     const routeState = (location.state as {
         type?: ExamType;
         programCode?: string;
         programLabel?: string;
         fixedSemester?: 'ODD' | 'EVEN' | null;
+        packetDraft?: {
+            title?: string;
+            teacherAssignmentId?: number;
+            subjectId?: number;
+            semester?: 'ODD' | 'EVEN';
+            duration?: number;
+            instructions?: string;
+        };
     } | null) || null;
     const presetType = routeState?.type;
-    const presetProgramCode = normalizeExamProgramCode(routeState?.programCode || routeState?.type || 'FORMATIF');
+    const presetProgramCode = normalizeExamProgramCode(routeState?.programCode || routeState?.type);
     const presetProgramLabel = routeState?.programLabel || '';
-    const presetFixedSemester = routeState?.fixedSemester || inferFixedSemesterFromBaseType(routeState?.type);
+    const presetFixedSemester = routeState?.fixedSemester || null;
+    const presetPacketDraft = routeState?.packetDraft || null;
+
+    // UI State for Editor
+    const [section, setSection] = useState<'OBJECTIVE' | 'ESSAY'>('OBJECTIVE');
+    const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
+    
+    // Media Upload State
+    // Removed mediaTarget state as we use direct targetId passing
 
     const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<PacketForm>({
         defaultValues: {
-            type: presetType || 'FORMATIF',
-            programCode: presetProgramCode,
-            duration: undefined,
-            kkm: 75,
+            title: presetPacketDraft?.title || '',
+            type: presetType || '',
+            programCode: presetProgramCode || '',
+            teacherAssignmentId: presetPacketDraft?.teacherAssignmentId,
+            duration: presetPacketDraft?.duration || undefined,
+            publishedQuestionCount: undefined,
+            kkm: undefined,
             saveToBank: true,
-            semester: presetFixedSemester || 'ODD',
+            semester: presetFixedSemester || presetPacketDraft?.semester || 'ODD',
+            subjectId: presetPacketDraft?.subjectId,
+            instructions: presetPacketDraft?.instructions || '',
             questions: []
         }
     });
 
     // Auto-Draft Logic using User Preferences (Database)
     const formValues = watch();
-    const watchedPacketType = (watch('type') || presetType || 'FORMATIF') as ExamType;
+    const watchedPacketType = (watch('type') || presetType || '') as ExamType;
     const selectedPacketSemester = watch('semester') || 'ODD';
     const selectedProgramCodeRaw = watch('programCode') || presetProgramCode;
     const selectedProgramCode = normalizeExamProgramCode(selectedProgramCodeRaw);
     const selectedAcademicYearId = Number(watch('academicYearId') || activeAcademicYear?.id || 0);
+    const selectedSubjectId = Number(watch('subjectId') || 0);
+    const selectedTeacherAssignmentId = Number(watch('teacherAssignmentId') || 0);
 
     const { data: examProgramsRes } = useQuery({
         queryKey: ['teacher-exam-programs-editor', selectedAcademicYearId],
@@ -280,10 +385,40 @@ export const ExamEditorPage = () => {
         );
     }, [selectedProgramCode, teacherPrograms]);
 
-    const resolvedPacketType = (selectedProgramMeta?.baseType || watchedPacketType || presetType || 'FORMATIF') as ExamType;
-    const resolvedFixedSemester =
-        selectedProgramMeta?.fixedSemester || presetFixedSemester || inferFixedSemesterFromBaseType(resolvedPacketType);
-    const isTypeLockedFromRoute = !isEditMode && Boolean(routeState?.programCode || routeState?.type);
+    useEffect(() => {
+        if (!selectedProgramCode) return;
+        sessionStorage.setItem('teacher:last_exam_program_slug', examProgramCodeToSlug(selectedProgramCode));
+    }, [selectedProgramCode]);
+    const allowedSubjectIdsByProgram = useMemo(() => {
+        const ids = Array.isArray(selectedProgramMeta?.allowedSubjectIds) ? selectedProgramMeta?.allowedSubjectIds : [];
+        return new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0));
+    }, [selectedProgramMeta?.allowedSubjectIds]);
+    const allowedClassLevelsByProgram = useMemo(() => {
+        const levels = Array.isArray(selectedProgramMeta?.targetClassLevels) ? selectedProgramMeta?.targetClassLevels : [];
+        return new Set(
+            levels
+                .map((level) => normalizeClassLevelToken(level))
+                .filter((level) => Boolean(level)),
+        );
+    }, [selectedProgramMeta?.targetClassLevels]);
+    const filteredAssignmentsByProgram = useMemo(() => {
+        if (!selectedProgramMeta) return assignmentOptions;
+        return assignmentOptions.filter((assignment) => {
+            const subjectAllowed =
+                allowedSubjectIdsByProgram.size === 0 ||
+                allowedSubjectIdsByProgram.has(Number(assignment.subject?.id));
+            const assignmentLevel = normalizeClassLevelToken(assignment.class?.level || assignment.class?.name);
+            const classLevelAllowed =
+                allowedClassLevelsByProgram.size === 0 ||
+                (assignmentLevel ? allowedClassLevelsByProgram.has(assignmentLevel) : true);
+            return subjectAllowed && classLevelAllowed;
+        });
+    }, [selectedProgramMeta, assignmentOptions, allowedSubjectIdsByProgram, allowedClassLevelsByProgram]);
+    const resolvedPacketType = resolveProgramPacketType(
+        selectedProgramMeta,
+        (watchedPacketType || presetType || 'FORMATIF') as ExamType,
+    );
+    const resolvedFixedSemester = selectedProgramMeta?.fixedSemester || presetFixedSemester || null;
     const isSemesterLockedFromProgram = !isEditMode && Boolean(resolvedFixedSemester);
     const scoreSyncCopy = getScoreSyncCopy(selectedProgramMeta);
     const examTypeDisplayLabel =
@@ -292,61 +427,132 @@ export const ExamEditorPage = () => {
         selectedProgramMeta?.shortLabel ||
         selectedProgramCode ||
         resolvedPacketType;
+
+    useEffect(() => {
+        if (filteredAssignmentsByProgram.length === 0) {
+            if (selectedTeacherAssignmentId > 0) {
+                setValue('teacherAssignmentId', null, { shouldDirty: true });
+            }
+            if (selectedSubjectId > 0) {
+                setValue('subjectId', null, { shouldDirty: true });
+            }
+            return;
+        }
+
+        const selectedAssignment = filteredAssignmentsByProgram.find(
+            (assignment) => assignment.id === selectedTeacherAssignmentId,
+        );
+        if (selectedAssignment) {
+            const assignmentSubjectId = Number(selectedAssignment.subject?.id || 0);
+            if (assignmentSubjectId > 0 && assignmentSubjectId !== selectedSubjectId) {
+                setValue('subjectId', assignmentSubjectId, { shouldDirty: true });
+            }
+            if (selectedSubjectId > 0) {
+                return;
+            }
+        }
+
+        const fallbackAssignment =
+            filteredAssignmentsByProgram.find((assignment) => assignment.subject?.id === selectedSubjectId) ||
+            filteredAssignmentsByProgram[0];
+        if (!fallbackAssignment) return;
+        setValue('teacherAssignmentId', fallbackAssignment.id, { shouldDirty: true });
+        setValue('subjectId', fallbackAssignment.subject.id, { shouldDirty: true });
+        const fallbackKkm = Number(fallbackAssignment.kkm);
+        if (Number.isFinite(fallbackKkm) && fallbackKkm > 0) {
+            setValue('kkm', fallbackKkm, { shouldDirty: true });
+        }
+    }, [
+        filteredAssignmentsByProgram,
+        selectedTeacherAssignmentId,
+        selectedSubjectId,
+        setValue,
+    ]);
+
+    useEffect(() => {
+        if (isEditMode) {
+            setIsInfoModalOpen(false);
+            return;
+        }
+        setIsInfoModalOpen(!presetPacketDraft);
+    }, [isEditMode, presetPacketDraft]);
     
     // Restore draft on mount (only for create mode)
     useEffect(() => {
-        if (!isEditMode && userData?.data?.preferences?.exam_draft && !draftLoadedRef.current) {
-            const draft = userData.data.preferences.exam_draft;
-            // No need to parse JSON as it's already an object in preferences
-            
-            if (draft) {
-                // Confirm restoration
-                if (window.confirm('Ditemukan draft ujian yang belum tersimpan. Apakah Anda ingin melanjutkannya?')) {
-                    try {
-                        const parsed = draft; // Already object
-                        if (parsed.form) {
-                            // Restore basic fields
-                            setValue('title', parsed.form.title);
-                            setValue('description', parsed.form.description);
-                            setValue('duration', parsed.form.duration);
-                            setValue('instructions', parsed.form.instructions);
-                            setValue('subjectId', parsed.form.subjectId);
-                            // Skip restoring academicYearId to ensure we use the active one
-                            // setValue('academicYearId', parsed.form.academicYearId);
-                            
-                            // Program dari route lebih prioritas daripada draft.
-                            if (presetFixedSemester === 'ODD' || presetFixedSemester === 'EVEN') {
-                                setValue('semester', presetFixedSemester);
-                            }
+        if (isEditMode || presetPacketDraft || draftLoadedRef.current) return;
 
-                            setValue('saveToBank', parsed.form.saveToBank);
-                            setValue(
-                                'programCode',
-                                normalizeExamProgramCode(presetProgramCode || parsed.form.programCode || parsed.form.type || 'FORMATIF'),
-                            );
-                            // Do NOT restore type, let context route handle it
-                        }
-                        if (parsed.questions && parsed.questions.length > 0) {
-                            setQuestions(parsed.questions);
-                            setActiveQuestionId(parsed.questions[0].id);
-                            draftLoadedRef.current = true;
-                            toast.success('Draft ujian sebelumnya berhasil dipulihkan', { icon: '📝' });
-                        }
-                    } catch (e) {
-                        console.error('Failed to parse draft', e);
-                    }
-                } else {
-                    // Clear draft if user declines
-                    if (userId) {
-                        const currentPrefs = userData?.data?.preferences || {};
-                        updateProfileMutation.mutate({
-                            preferences: { ...currentPrefs, exam_draft: null }
-                        });
-                    }
-                }
+        const isRecord = (value: unknown): value is Record<string, unknown> =>
+            typeof value === 'object' && value !== null;
+
+        const prefs = (userData?.data?.preferences ?? {}) as Record<string, unknown>;
+        const draftRaw = prefs['exam_draft'];
+        if (!draftRaw) return;
+
+        if (!window.confirm('Ditemukan draft ujian yang belum tersimpan. Apakah Anda ingin melanjutkannya?')) {
+            if (userId) {
+                updateProfileMutation.mutate({
+                    preferences: { ...prefs, exam_draft: null },
+                });
             }
+            return;
         }
-    }, [isEditMode, userData, presetFixedSemester, presetProgramCode, setValue, userId]);
+
+        let draft: { form?: Partial<PacketForm>; questions?: unknown } | null = null;
+        if (typeof draftRaw === 'string') {
+            try {
+                const parsed = JSON.parse(draftRaw) as unknown;
+                if (isRecord(parsed)) {
+                    draft = parsed as { form?: Partial<PacketForm>; questions?: unknown };
+                }
+            } catch (e) {
+                console.error('Failed to parse draft', e);
+            }
+        } else if (isRecord(draftRaw)) {
+            draft = draftRaw as { form?: Partial<PacketForm>; questions?: unknown };
+        }
+        if (!draft) return;
+
+        const form = draft.form;
+        if (form) {
+            if (typeof form.title === 'string') setValue('title', form.title);
+            if (typeof form.description === 'string') setValue('description', form.description);
+            if (typeof form.duration === 'number') setValue('duration', form.duration);
+            if (typeof form.publishedQuestionCount === 'number') {
+                setValue('publishedQuestionCount', form.publishedQuestionCount);
+            }
+            if (typeof form.instructions === 'string') setValue('instructions', form.instructions);
+            if (typeof form.subjectId === 'number') setValue('subjectId', form.subjectId);
+
+            if (presetFixedSemester === 'ODD' || presetFixedSemester === 'EVEN') {
+                setValue('semester', presetFixedSemester);
+            }
+
+            if (typeof form.saveToBank === 'boolean') setValue('saveToBank', form.saveToBank);
+
+            const programCodeSource =
+                typeof presetProgramCode === 'string' && presetProgramCode
+                    ? presetProgramCode
+                    : typeof form.programCode === 'string'
+                      ? form.programCode
+                      : typeof form.type === 'string'
+                        ? form.type
+                        : '';
+            setValue('programCode', normalizeExamProgramCode(programCodeSource));
+        }
+
+        if (Array.isArray(draft.questions) && draft.questions.length > 0) {
+            const restoredQuestions = (draft.questions as ExtendedQuestion[]).map((question) => ({
+                ...question,
+                content: sanitizeQuestionHtml(question.content),
+                blueprint: normalizeBlueprint(question.blueprint),
+                questionCard: normalizeQuestionCard(question.questionCard),
+            }));
+            setQuestions(restoredQuestions);
+            setActiveQuestionId(restoredQuestions[0].id);
+            draftLoadedRef.current = true;
+            toast.success('Draft ujian sebelumnya berhasil dipulihkan', { icon: '📝' });
+        }
+    }, [isEditMode, userData, presetFixedSemester, presetPacketDraft, presetProgramCode, setValue, updateProfileMutation, userId]);
 
     useEffect(() => {
         if (!isEditMode) {
@@ -357,15 +563,35 @@ export const ExamEditorPage = () => {
             if (presetFixedSemester === 'ODD' || presetFixedSemester === 'EVEN') {
                 setValue('semester', presetFixedSemester);
             }
+            if (presetPacketDraft) {
+                if (presetPacketDraft.title) setValue('title', presetPacketDraft.title);
+                if (presetPacketDraft.subjectId) setValue('subjectId', presetPacketDraft.subjectId);
+                if (presetPacketDraft.duration) setValue('duration', presetPacketDraft.duration);
+                if (presetPacketDraft.instructions) setValue('instructions', presetPacketDraft.instructions);
+                if (presetPacketDraft.semester === 'ODD' || presetPacketDraft.semester === 'EVEN') {
+                    setValue('semester', presetPacketDraft.semester);
+                }
+            }
         }
-    }, [isEditMode, presetType, presetProgramCode, presetFixedSemester, setValue]);
+    }, [isEditMode, presetType, presetProgramCode, presetFixedSemester, presetPacketDraft, setValue]);
 
     useEffect(() => {
+        if (!selectedProgramMeta && teacherPrograms.length > 0) {
+            const fallbackProgramCode = normalizeExamProgramCode(teacherPrograms[0].code);
+            if (fallbackProgramCode && selectedProgramCode !== fallbackProgramCode) {
+                setValue('programCode', fallbackProgramCode);
+                return;
+            }
+        }
+
         if (normalizeExamProgramCode(selectedProgramCodeRaw) !== selectedProgramCode) {
             setValue('programCode', selectedProgramCode);
         }
 
-        const syncedType = (selectedProgramMeta?.baseType || watchedPacketType || 'FORMATIF') as ExamType;
+        const syncedType = resolveProgramPacketType(
+            selectedProgramMeta,
+            (watchedPacketType || 'FORMATIF') as ExamType,
+        );
         if (syncedType !== watchedPacketType) {
             setValue('type', syncedType);
         }
@@ -378,15 +604,12 @@ export const ExamEditorPage = () => {
             return;
         }
 
-        if (syncedType === 'SAS' && selectedPacketSemester !== 'ODD') {
-            setValue('semester', 'ODD');
-        } else if (syncedType === 'SAT' && selectedPacketSemester !== 'EVEN') {
-            setValue('semester', 'EVEN');
-        }
     }, [
         selectedProgramCodeRaw,
         selectedProgramCode,
+        selectedProgramMeta,
         selectedProgramMeta?.baseType,
+        teacherPrograms,
         watchedPacketType,
         selectedPacketSemester,
         resolvedFixedSemester,
@@ -396,7 +619,9 @@ export const ExamEditorPage = () => {
     // Save draft on change (Debounced to Database)
     useEffect(() => {
         if (!isEditMode && !isSubmittingRef.current && userId) {
-            const hasContent = questions.length > 0 && (questions[0].content || questions.length > 1);
+            const hasContent =
+                questions.length > 1 ||
+                (questions.length === 1 && Boolean(normalizeEditorText(questions[0].content)));
             const hasTitle = formValues.title && formValues.title.trim() !== '';
             
             if (hasContent || hasTitle) {
@@ -426,7 +651,7 @@ export const ExamEditorPage = () => {
                 clearTimeout(saveTimeoutRef.current);
             }
         };
-    }, [questions, formValues, isEditMode, userId, userData]); // Added userData to deps for currentPrefs, but careful about loops. 
+    }, [questions, formValues, isEditMode, updateProfileMutation, userId, userData]); // Added userData to deps for currentPrefs, but careful about loops. 
     // Actually, depending on userData might cause loops if updateProfileMutation updates userData immediately.
     // Better to use a ref for currentPrefs or functional update if possible, but updateProfileMutation doesn't support functional update of remote state directly without context.
     // However, userData comes from useQuery. When mutation succeeds, we might invalidate.
@@ -458,18 +683,30 @@ export const ExamEditorPage = () => {
     // If it saves -> mutation success -> NO invalidation -> userData does NOT change -> Effect does NOT run again. Loop avoided.
     // Correct.
 
-
-    const selectedSubjectId = watch('subjectId');
-
-    // Effect to update KKM when subject changes
+    // Effect to update KKM when assignment changes
     useEffect(() => {
+        if (selectedTeacherAssignmentId > 0) {
+            const assignment = assignmentOptions.find((item) => item.id === selectedTeacherAssignmentId);
+            if (assignment) {
+                const assignmentKkm = Number(assignment.kkm);
+                if (Number.isFinite(assignmentKkm) && assignmentKkm > 0) {
+                    setValue('kkm', assignmentKkm);
+                }
+                if (Number(assignment.subject?.id) > 0 && Number(assignment.subject?.id) !== selectedSubjectId) {
+                    setValue('subjectId', Number(assignment.subject.id), { shouldDirty: true });
+                }
+            }
+            return;
+        }
+
         if (selectedSubjectId && subjects.length > 0) {
-            const subject = subjects.find(s => s.id == selectedSubjectId);
-            if (subject && subject.kkm) {
-                setValue('kkm', subject.kkm);
+            const subject = subjects.find((s) => s.id === selectedSubjectId);
+            const subjectKkm = Number(subject?.kkm);
+            if (Number.isFinite(subjectKkm) && subjectKkm > 0) {
+                setValue('kkm', subjectKkm);
             }
         }
-    }, [selectedSubjectId, subjects, setValue]);
+    }, [selectedTeacherAssignmentId, assignmentOptions, selectedSubjectId, subjects, setValue]);
 
     useEffect(() => {
         const init = async () => {
@@ -495,8 +732,136 @@ export const ExamEditorPage = () => {
                     setSection('OBJECTIVE');
                 }
             }
+            setShowQuestionSupportPanel(false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeQuestionId]);
+
+    useEffect(() => {
+        if (!activeQuestionId) return;
+
+        const tooltips: Array<[string, string]> = [
+            ['.ql-picker.ql-header', 'Gaya teks'],
+            ['button.ql-bold', 'Tebal'],
+            ['button.ql-italic', 'Miring'],
+            ['button.ql-underline', 'Garis bawah'],
+            ['button.ql-strike', 'Coret'],
+            ['button.ql-blockquote', 'Kutipan'],
+            ['button.ql-list[value="ordered"]', 'Daftar bernomor'],
+            ['button.ql-list[value="bullet"]', 'Daftar bullet'],
+            ['button.ql-script[value="sub"]', 'Subscript'],
+            ['button.ql-script[value="super"]', 'Superscript'],
+            ['button.ql-indent[value="-1"]', 'Kurangi indentasi'],
+            ['button.ql-indent[value="+1"]', 'Tambah indentasi'],
+            ['button.ql-direction', 'Arah teks kanan-ke-kiri'],
+            ['.ql-picker.ql-color', 'Warna teks'],
+            ['.ql-picker.ql-background', 'Warna latar teks'],
+            ['button.ql-link', 'Tautan'],
+            ['button.ql-formula', 'Rumus matematika'],
+            ['button.ql-clean', 'Hapus format'],
+        ];
+
+        const toolbarNodes = Array.from(
+            document.querySelectorAll<HTMLElement>('.question-editor-quill .ql-toolbar'),
+        );
+        toolbarNodes.forEach((toolbarNode) => {
+            tooltips.forEach(([selector, title]) => {
+                toolbarNode.querySelectorAll<HTMLElement>(selector).forEach((node) => {
+                    node.setAttribute('title', title);
+                    node.setAttribute('aria-label', title);
+                });
+            });
+        });
+    }, [activeQuestionId]);
+
+    useEffect(() => {
+        if (!activeQuestionId) return;
+
+        const quill = quillEditorRef.current?.getEditor();
+        if (!quill) return;
+
+        const editorRoot = quill.root as HTMLElement;
+        const handleFormulaDblClick = (event: MouseEvent) => {
+            const clickedNode = event.target as HTMLElement | null;
+            const formulaNode = clickedNode?.closest('.ql-formula') as HTMLElement | null;
+            if (!formulaNode) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            const currentLatex = formulaNode.getAttribute('data-value') || '';
+            const nextLatex = window.prompt('Edit rumus (LaTeX):', currentLatex);
+            if (nextLatex === null) return;
+
+            const normalizedLatex = nextLatex.trim();
+            if (!normalizedLatex) {
+                toast.error('Rumus tidak boleh kosong.');
+                return;
+            }
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const quillAny = quill as any;
+            const blot = quillAny?.constructor?.find(formulaNode);
+            if (!blot) return;
+
+            const index = quill.getIndex(blot);
+            quill.deleteText(index, 1, 'user');
+            quill.insertEmbed(index, 'formula', normalizedLatex, 'user');
+            quill.setSelection(index + 1, 0, 'silent');
+            toast.success('Rumus berhasil diperbarui');
+        };
+
+        editorRoot.addEventListener('dblclick', handleFormulaDblClick);
+        return () => {
+            editorRoot.removeEventListener('dblclick', handleFormulaDblClick);
+        };
+    }, [activeQuestionId]);
+
+    useEffect(() => {
+        if (!activeQuestionId) return;
+
+        const cleanupFns: Array<() => void> = [];
+        const editorNodes = Array.from(
+            document.querySelectorAll<HTMLElement>('.question-editor-quill'),
+        );
+
+        editorNodes.forEach((editorNode) => {
+            const toolbarNode = editorNode.querySelector<HTMLElement>('.ql-toolbar');
+            const containerNode = editorNode.querySelector<HTMLElement>('.ql-container');
+            const formulaButton = toolbarNode?.querySelector<HTMLElement>('button.ql-formula');
+            if (!toolbarNode || !containerNode || !formulaButton) return;
+
+            const repositionTooltip = () => {
+                window.requestAnimationFrame(() => {
+                    const tooltipNode = editorNode.querySelector<HTMLElement>('.ql-tooltip.ql-editing');
+                    if (!tooltipNode) return;
+
+                    const containerRect = containerNode.getBoundingClientRect();
+                    const buttonRect = formulaButton.getBoundingClientRect();
+                    const tooltipWidth = tooltipNode.offsetWidth || 260;
+
+                    const preferredLeft =
+                        buttonRect.left -
+                        containerRect.left +
+                        buttonRect.width / 2 -
+                        tooltipWidth / 2;
+
+                    const minLeft = 8;
+                    const maxLeft = Math.max(minLeft, containerRect.width - tooltipWidth - 8);
+                    const clampedLeft = Math.min(Math.max(preferredLeft, minLeft), maxLeft);
+
+                    tooltipNode.style.left = `${clampedLeft}px`;
+                    tooltipNode.style.right = 'auto';
+                });
+            };
+
+            formulaButton.addEventListener('click', repositionTooltip);
+            cleanupFns.push(() => formulaButton.removeEventListener('click', repositionTooltip));
+        });
+
+        return () => {
+            cleanupFns.forEach((cleanup) => cleanup());
+        };
     }, [activeQuestionId]);
 
     const fetchInitialData = async () => {
@@ -511,21 +876,28 @@ export const ExamEditorPage = () => {
                 // Set default academic year if creating new
                 if (!isEditMode) {
                     setValue('academicYearId', ayRes.data.id);
-                    setValue('programCode', normalizeExamProgramCode(presetProgramCode || presetType || 'FORMATIF'));
+                    setValue('programCode', normalizeExamProgramCode(presetProgramCode || presetType || '') || '');
                     // Also set semester from active AY if not locked by program
                     if (presetFixedSemester === 'ODD' || presetFixedSemester === 'EVEN') {
                         setValue('semester', presetFixedSemester);
+                    } else if (presetPacketDraft?.semester === 'ODD' || presetPacketDraft?.semester === 'EVEN') {
+                        setValue('semester', presetPacketDraft.semester);
                     } else {
                         setValue('semester', ayRes.data.semester || 'ODD');
                     }
                 }
             }
             
-            const assignments = assignRes.data?.assignments || [];
+            const assignments = (assignRes.data?.assignments || []) as TeacherAssignment[];
+            setAssignmentOptions(assignments);
             const uniqueSubjectsMap = new Map();
             assignments.forEach((a: TeacherAssignment) => {
                 if (!uniqueSubjectsMap.has(a.subject.id)) {
-                    uniqueSubjectsMap.set(a.subject.id, { ...a.subject, kkm: a.kkm || 75 });
+                    const assignmentKkm = Number(a.kkm);
+                    uniqueSubjectsMap.set(a.subject.id, {
+                        ...a.subject,
+                        kkm: Number.isFinite(assignmentKkm) && assignmentKkm > 0 ? assignmentKkm : undefined,
+                    });
                 }
             });
             setSubjects(Array.from(uniqueSubjectsMap.values()) as {id: number, name: string, kkm?: number}[]);
@@ -539,13 +911,14 @@ export const ExamEditorPage = () => {
         try {
             setLoading(true);
             const res = await examService.getPacketById(packetId);
-            const packet = res.data;
+            const packet = res.data as ExamPacket;
             
             setValue('title', packet.title);
             setValue('description', packet.description || '');
             setValue('type', packet.type);
             setValue('programCode', normalizeExamProgramCode(packet.programCode || packet.type));
             setValue('duration', packet.duration);
+            setValue('publishedQuestionCount', packet.publishedQuestionCount || undefined);
             setValue('kkm', packet.kkm);
             setValue('subjectId', Number(packet.subjectId));
             setValue('academicYearId', packet.academicYearId);
@@ -553,15 +926,17 @@ export const ExamEditorPage = () => {
             setValue('instructions', packet.instructions || '');
             
             if (packet.questions) {
-                const mappedQuestions: ExtendedQuestion[] = packet.questions.map((q: any) => {
-                    const blueprintSource = q?.blueprint ?? q?.metadata?.blueprint;
-                    const questionCardSource = q?.questionCard ?? q?.metadata?.questionCard;
+                const mappedQuestions: ExtendedQuestion[] = packet.questions.map((q) => {
+                    const source = q as unknown as ExtendedQuestion;
+                    const blueprintSource = source.blueprint ?? source.metadata?.blueprint;
+                    const questionCardSource = source.questionCard ?? source.metadata?.questionCard;
                     return {
-                        ...q,
+                        ...source,
+                        content: sanitizeQuestionHtml(source.content),
                         saveToBank: true,
-                        question_image_url: q.question_image_url,
-                        question_video_url: q.question_video_url,
-                        question_video_type: q.question_video_type,
+                        question_image_url: source.question_image_url,
+                        question_video_url: source.question_video_url,
+                        question_video_type: source.question_video_type,
                         blueprint: normalizeBlueprint(blueprintSource),
                         questionCard: normalizeQuestionCard(questionCardSource),
                     };
@@ -630,7 +1005,11 @@ export const ExamEditorPage = () => {
 
     const updateQuestion = (qId: string | null, updates: Partial<ExtendedQuestion>) => {
         if (!qId) return;
-        setQuestions(prev => prev.map(q => q.id === qId ? { ...q, ...updates } : q));
+        const normalizedUpdates: Partial<ExtendedQuestion> = { ...updates };
+        if (typeof normalizedUpdates.content === 'string') {
+            normalizedUpdates.content = sanitizeQuestionHtml(normalizedUpdates.content);
+        }
+        setQuestions(prev => prev.map(q => q.id === qId ? { ...q, ...normalizedUpdates } : q));
     };
 
     const updateQuestionBlueprintField = (qId: string, field: keyof QuestionBlueprint, value: string) => {
@@ -656,17 +1035,61 @@ export const ExamEditorPage = () => {
     };
 
     const handleImportQuestions = (importedQuestions: Question[]) => {
-        const newQuestions = importedQuestions.map(q => ({
-            ...q,
-            id: Math.random().toString(36).substr(2, 9), // Generate new ID to avoid conflict
-            saveToBank: false, // Don't save back to bank by default since it came from there
-            blueprint: normalizeBlueprint(q.blueprint ?? q.metadata?.blueprint),
-            questionCard: normalizeQuestionCard(q.questionCard ?? q.metadata?.questionCard),
-            options: q.options?.map(o => ({
-                ...o,
-                id: Math.random().toString(36).substr(2, 9)
-            }))
-        }));
+        let normalizedLegacyScoreCount = 0;
+        const newQuestions: ExtendedQuestion[] = importedQuestions.map((q) => {
+            const source = q as unknown as ImportedQuestion;
+            const sourceOptions = source.options;
+
+            let questionImageUrl = source.question_image_url || undefined;
+            let questionVideoUrl = source.question_video_url || undefined;
+            let questionVideoType: ExtendedQuestion['question_video_type'] =
+                source.question_video_type === 'youtube' ? 'youtube' : source.question_video_type === 'upload' ? 'upload' : undefined;
+
+            const fallbackMediaUrl = String(source.mediaUrl || source.media_url || '').trim();
+            const fallbackMediaType = String(source.mediaType || source.media_type || '').trim().toLowerCase();
+            if (!questionImageUrl && !questionVideoUrl && fallbackMediaUrl) {
+                const hasImageHint = fallbackMediaType.includes('image') || fallbackMediaType === 'img';
+                const hasVideoHint =
+                    fallbackMediaType.includes('video') ||
+                    fallbackMediaType.includes('youtube') ||
+                    fallbackMediaType.includes('vimeo');
+                const looksLikeVideo = isLikelyVideoUrl(fallbackMediaUrl);
+
+                if (hasImageHint || (!hasVideoHint && !looksLikeVideo)) {
+                    questionImageUrl = fallbackMediaUrl;
+                } else {
+                    questionVideoUrl = fallbackMediaUrl;
+                    questionVideoType =
+                        fallbackMediaType.includes('youtube') || fallbackMediaUrl.includes('youtu')
+                            ? 'youtube'
+                            : 'upload';
+                }
+            }
+            const normalizedScore = normalizeImportedBankScore(source.points, source.score);
+            if (normalizedScore.normalizedFromLegacy) {
+                normalizedLegacyScoreCount += 1;
+            }
+
+            return {
+                ...q,
+                id: Math.random().toString(36).substr(2, 9), // Generate new ID to avoid conflict
+                content: sanitizeQuestionHtml(q.content),
+                score: normalizedScore.score,
+                saveToBank: false, // Don't save back to bank by default since it came from there
+                question_image_url: questionImageUrl,
+                question_video_url: questionVideoUrl,
+                question_video_type: questionVideoType,
+                question_media_position: source.question_media_position || 'top',
+                blueprint: normalizeBlueprint(q.blueprint ?? q.metadata?.blueprint),
+                questionCard: normalizeQuestionCard(q.questionCard ?? q.metadata?.questionCard),
+                options: sourceOptions?.map((o) => ({
+                    id: Math.random().toString(36).substr(2, 9),
+                    content: sanitizeQuestionHtml(o.content),
+                    isCorrect: Boolean(o.isCorrect),
+                    image_url: o.image_url || o.imageUrl,
+                })),
+            };
+        });
 
         setQuestions(prev => {
             // Remove initial empty question if it's the only one and empty
@@ -680,6 +1103,12 @@ export const ExamEditorPage = () => {
             setActiveQuestionId(newQuestions[0].id);
         }
         toast.success(`${newQuestions.length} soal berhasil diimport`);
+        if (normalizedLegacyScoreCount > 0) {
+            toast(
+                `${normalizedLegacyScoreCount} soal dari bank memakai bobot legacy (>=50) dan dinormalisasi ke bobot 1.`,
+                { icon: '⚠️' },
+            );
+        }
     };
 
     const handleSectionChange = (newSection: 'OBJECTIVE' | 'ESSAY') => {
@@ -798,7 +1227,7 @@ export const ExamEditorPage = () => {
             }
         } catch (error: unknown) {
             console.error('Upload error:', error);
-            const err = error as any;
+            const err = error as { response?: { data?: { message?: string }, status?: number } };
             let msg = err.response?.data?.message || 'Gagal upload video';
             if (err.response?.status === 413) {
                 msg = 'Ukuran file terlalu besar (Maksimal 10MB)';
@@ -852,27 +1281,29 @@ export const ExamEditorPage = () => {
             toast.error('Tahun ajaran aktif tidak ditemukan');
             return;
         }
-        const normalizedProgramCode = normalizeExamProgramCode(data.programCode || selectedProgramCode || data.type || 'FORMATIF');
+        const normalizedProgramCode = normalizeExamProgramCode(data.programCode || selectedProgramCode || data.type);
         const effectiveProgram =
             selectedProgramMeta ||
             teacherPrograms.find(
                 (program) => normalizeExamProgramCode(program.code) === normalizedProgramCode,
             ) ||
             null;
-        const effectiveType = (effectiveProgram?.baseType || data.type || resolvedPacketType || 'FORMATIF') as ExamType;
-        const effectiveFixedSemester =
-            effectiveProgram?.fixedSemester ||
-            inferFixedSemesterFromBaseType(effectiveType);
+        if (!effectiveProgram) {
+            toast.error('Program ujian tidak ditemukan. Pilih program ujian aktif terlebih dahulu.');
+            return;
+        }
+        const normalizedTeacherAssignmentId = Number(data.teacherAssignmentId);
+        if (!Number.isFinite(normalizedTeacherAssignmentId) || normalizedTeacherAssignmentId <= 0) {
+            toast.error('Pilih assignment mapel-kelas terlebih dahulu.');
+            return;
+        }
+        const effectiveType = resolveProgramPacketType(
+            effectiveProgram,
+            (data.type || resolvedPacketType || 'FORMATIF') as ExamType,
+        );
+        const effectiveFixedSemester = effectiveProgram?.fixedSemester || null;
         try {
-            assertTypeSemesterMatch(effectiveType, data.semester);
-            if (
-                (effectiveFixedSemester === 'ODD' || effectiveFixedSemester === 'EVEN') &&
-                data.semester !== effectiveFixedSemester
-            ) {
-                throw new Error(
-                    `Program ini hanya boleh semester ${effectiveFixedSemester === 'ODD' ? 'Ganjil' : 'Genap'}.`,
-                );
-            }
+            assertFixedSemesterMatch(effectiveFixedSemester, data.semester);
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : 'Kombinasi tipe ujian dan semester tidak valid.';
             toast.error(message);
@@ -889,40 +1320,17 @@ export const ExamEditorPage = () => {
             return;
         }
 
-        // Validate Total Score & Auto-scale
-        const currentTotalScore = questions.reduce((acc, q) => acc + (q.score || 0), 0);
-        let finalQuestions = questions;
-
-        if (currentTotalScore > 0 && currentTotalScore !== 100) {
-            // Auto-scale to 100
-            finalQuestions = questions.map(q => ({
-                ...q,
-                score: parseFloat(((q.score / currentTotalScore) * 100).toFixed(2))
-            }));
-            toast.success(`Bobot otomatis dikonversi ke skala 100 (Total awal: ${currentTotalScore})`, { icon: '⚖️' });
-        }
+        const finalQuestions = [...questions];
 
         // Validate Questions
         for (let i = 0; i < finalQuestions.length; i++) {
             const q = finalQuestions[i];
             const hasMedia = q.question_image_url || q.question_video_url;
-            const hasContent = q.content && q.content.trim() !== '' && q.content !== '<p><br></p>';
+            const hasContent = normalizeEditorText(q.content);
 
             if (!hasContent && !hasMedia) {
                  toast.error(`Soal nomor ${i + 1} belum memiliki pertanyaan (Teks atau Media)`);
                  return;
-            }
-
-            const blueprint = normalizeBlueprint(q.blueprint);
-            if (!blueprint.learningObjective || !blueprint.indicator) {
-                toast.error(`Soal nomor ${i + 1} wajib mengisi kisi-kisi: tujuan pembelajaran dan indikator soal.`);
-                return;
-            }
-
-            const questionCard = normalizeQuestionCard(q.questionCard);
-            if (!questionCard.answerRationale) {
-                toast.error(`Soal nomor ${i + 1} wajib mengisi kartu soal: pembahasan/jawaban.`);
-                return;
             }
 
             if (q.type !== 'ESSAY') {
@@ -958,16 +1366,32 @@ export const ExamEditorPage = () => {
             ...data,
             type: effectiveType,
             programCode: normalizedProgramCode,
+            teacherAssignmentId: normalizedTeacherAssignmentId,
             duration: Number(data.duration),
+            publishedQuestionCount:
+                Number.isFinite(Number(data.publishedQuestionCount)) &&
+                Number(data.publishedQuestionCount) > 0
+                    ? Math.trunc(Number(data.publishedQuestionCount))
+                    : null,
+            kkm: Number.isFinite(Number(data.kkm)) && Number(data.kkm) > 0 ? Number(data.kkm) : undefined,
             academicYearId: Number(data.academicYearId),
             semester:
                 effectiveFixedSemester === 'ODD' || effectiveFixedSemester === 'EVEN'
                     ? effectiveFixedSemester
                     : data.semester,
-            questions: finalQuestions
+            questions: finalQuestions.map((question) => ({
+                ...question,
+                content: sanitizeQuestionHtml(question.content),
+            }))
         };
 
         try {
+            if (payload.publishedQuestionCount && payload.publishedQuestionCount > finalQuestions.length) {
+                toast.error(
+                    `Jumlah soal tayang (${payload.publishedQuestionCount}) tidak boleh melebihi total bank soal (${finalQuestions.length}).`,
+                );
+                return;
+            }
             setLoading(true);
             isSubmittingRef.current = true; // Block draft saving
             
@@ -1008,7 +1432,11 @@ export const ExamEditorPage = () => {
         ? normalizeQuestionCard(activeQuestion.questionCard)
         : createDefaultQuestionCard();
 
-
+    const normalizeEditorText = (value: string | undefined | null) =>
+        String(value || '')
+            .replace(/<[^>]*>/g, '')
+            .replace(/&nbsp;/g, ' ')
+            .trim();
 
     const renderMediaPreview = (q: ExtendedQuestion) => {
         if (!q.question_image_url && !q.question_video_url) return null;
@@ -1097,10 +1525,37 @@ export const ExamEditorPage = () => {
     };
 
     // Total Score Indicator
-    const totalScore = questions.reduce((acc, q) => acc + (q.score || 0), 0);
-    const isTotalScoreValid = totalScore === 100;
-    const completedQuestionCount = questions.filter((q) => q.content && q.content !== '<p><br></p>').length;
+    const totalScore = questions.reduce((acc, q) => acc + normalizePositiveScore(q.score, 0), 0);
+    const completedQuestionCount = questions.filter((q) => Boolean(normalizeEditorText(q.content))).length;
     const selectedSubjectName = subjects.find((subject) => subject.id == selectedSubjectId)?.name || '-';
+    const examTitle = (watch('title') || '').trim();
+    const currentDuration = Number(watch('duration') || 0);
+    const currentAcademicYearId = Number(watch('academicYearId') || activeAcademicYear?.id || 0);
+    const isPacketInfoComplete = Boolean(
+        examTitle &&
+            selectedSubjectId &&
+            currentDuration > 0 &&
+            selectedPacketSemester &&
+            currentAcademicYearId > 0 &&
+            selectedProgramCode,
+    );
+
+    const handleSaveInfoModal = () => {
+        if (!examTitle) {
+            toast.error('Judul ujian wajib diisi');
+            return;
+        }
+        if (!selectedSubjectId) {
+            toast.error('Mata pelajaran wajib dipilih');
+            return;
+        }
+        if (!currentDuration || currentDuration <= 0) {
+            toast.error('Durasi ujian wajib diisi');
+            return;
+        }
+        setIsInfoModalOpen(false);
+        toast.success('Informasi ujian disimpan');
+    };
 
     return (
         <div className="flex flex-col font-sans space-y-6 pb-20 w-full">
@@ -1116,26 +1571,19 @@ export const ExamEditorPage = () => {
                         </button>
                         <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block"></div>
                         
-                        <div className="flex-1 min-w-0 flex items-center gap-4">
-                            <label htmlFor="exam-title" className="text-sm font-normal text-gray-700 uppercase tracking-wider whitespace-nowrap">Judul Ujian</label>
-                            <input 
-                                id="exam-title"
-                                {...register('title', { required: 'Judul wajib diisi' })}
-                                className="w-full px-4 py-2 border-b border-gray-300 focus:border-blue-500 bg-transparent text-gray-600 italic placeholder-gray-400 focus:outline-none transition-colors"
-                                placeholder="Masukkan Judul Ujian"
-                            />
-                            {errors.title && <span className="text-xs text-red-500 block">{errors.title.message}</span>}
+                        <div className="flex-1 min-w-0">
+                            <p className="text-xs uppercase tracking-wider text-gray-500">Buat Ujian Baru</p>
+                            <p className="truncate text-base font-semibold text-slate-800">
+                                {examTitle || 'Judul belum diisi'}
+                            </p>
                         </div>
                     </div>
                     
                     <div className="flex items-center gap-3">
                         {/* Total Score Indicator */}
-                        <div className={`hidden md:flex flex-col items-end mr-2 px-3 py-1 bg-gray-50 rounded-lg border ${isTotalScoreValid ? 'border-gray-100' : 'border-red-200 bg-red-50'}`}>
+                        <div className="hidden md:flex flex-col items-end mr-2 px-3 py-1 bg-gray-50 rounded-lg border border-gray-100">
                             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Bobot</span>
-                            <span className={`text-sm font-bold ${isTotalScoreValid ? 'text-blue-600' : 'text-red-600'}`}>
-                                {totalScore}
-                                {!isTotalScoreValid && <span className="text-xs ml-1 text-red-400">/ 100</span>}
-                            </span>
+                            <span className="text-sm font-bold text-blue-600">{totalScore}</span>
                         </div>
 
                         <button 
@@ -1149,240 +1597,37 @@ export const ExamEditorPage = () => {
                     </div>
                 </div>
 
-                {/* STAGE BAR */}
-                <div className="px-6 py-3 bg-white border-t border-gray-100">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setEditorStage('INFO')}
-                            className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors ${
-                                editorStage === 'INFO'
-                                    ? 'border-blue-300 bg-blue-50 text-blue-700'
-                                    : 'border-gray-200 bg-white text-gray-600 hover:border-blue-200 hover:text-blue-700'
-                            }`}
-                        >
-                            1. Informasi Ujian
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setEditorStage('QUESTIONS')}
-                            className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors ${
-                                editorStage === 'QUESTIONS'
-                                    ? 'border-blue-300 bg-blue-50 text-blue-700'
-                                    : 'border-gray-200 bg-white text-gray-600 hover:border-blue-200 hover:text-blue-700'
-                            }`}
-                        >
-                            2. Butir Soal ({completedQuestionCount}/{questions.length})
-                        </button>
-                    </div>
-                </div>
-
-                {editorStage === 'INFO' ? (
-                <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 space-y-4">
-                    <div className="flex flex-wrap gap-4 items-start">
-                        {/* Subject */}
-                        <div className="flex-1 min-w-[200px]">
-                            <label htmlFor="exam-subject" className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                                <BookOpen className="w-4 h-4 text-blue-600" />
-                                MATA PELAJARAN
-                            </label>
-                            <div className="relative">
-                                <select 
-                                    id="exam-subject"
-                                    {...register('subjectId', { required: 'Mapel wajib dipilih' })}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 bg-white shadow-sm appearance-none font-medium text-gray-700 text-sm"
-                                >
-                                    <option value="">Pilih Mapel</option>
-                                    {subjects.map(s => (
-                                        <option key={s.id} value={s.id}>{s.name}</option>
-                                    ))}
-                                </select>
-                                <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-gray-500">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Academic Year */}
-                        <div className="w-40">
-                            <label htmlFor="exam-academic-year" className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                                <Clock className="w-4 h-4 text-purple-600" />
-                                TAHUN AJARAN
-                            </label>
-                            <div className="relative">
-                                <input 
-                                    id="exam-academic-year"
-                                    name="academicYearDisplay"
-                                    value={activeAcademicYear?.name || '-'}
-                                    readOnly
-                                    className="w-full px-3 py-2 border border-gray-200 bg-gray-100 rounded-lg shadow-sm font-medium text-gray-600 text-sm cursor-not-allowed"
-                                />
-                                <input 
-                                    type="hidden"
-                                    {...register('academicYearId', { required: 'Tahun Ajaran wajib terisi' })}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Semester */}
-                        <div className="w-32">
-                            <label htmlFor="exam-semester" className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                                <Clock className="w-4 h-4 text-purple-600" />
-                                SEMESTER
-                            </label>
-                            <div className="relative">
-                                <select 
-                                    id="exam-semester"
-                                    {...register('semester')}
-                                    className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 bg-white shadow-sm appearance-none font-medium text-gray-700 text-sm ${isSemesterLockedFromProgram ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
-                                    disabled={isSemesterLockedFromProgram}
-                                >
-                                    <option value="ODD">Ganjil</option>
-                                    <option value="EVEN">Genap</option>
-                                </select>
-                                <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-gray-500">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Exam Type */}
-                        <div className="w-36">
-                            <label htmlFor="exam-type" className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                                <BookOpen className="w-4 h-4 text-blue-600" />
-                                TIPE UJIAN
-                            </label>
-                            <input
-                                id="exam-type"
-                                value={examTypeDisplayLabel}
-                                readOnly
-                                className={`w-full px-3 py-2 border rounded-lg shadow-sm font-medium text-sm ${
-                                    isTypeLockedFromRoute
-                                        ? 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed'
-                                        : 'border-gray-300 bg-white text-gray-700'
-                                }`}
-                            />
-                            <input type="hidden" {...register('type')} />
-                            <input type="hidden" {...register('programCode')} />
-                        </div>
-
-                        {/* Instructions */}
-                        <div className="flex-[2] min-w-[250px]">
-                            <label htmlFor="exam-instructions" className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                                <AlertCircle className="w-4 h-4 text-purple-500" />
-                                INSTRUKSI UJIAN
-                            </label>
-                            <input 
-                                id="exam-instructions"
-                                {...register('instructions')}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 bg-white shadow-sm font-medium text-sm"
-                                placeholder="Instruksi / Catatan untuk siswa"
-                            />
-                        </div>
-
-                        {/* Duration */}
-                        <div className="w-24">
-                            <label htmlFor="exam-duration" className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                                <Clock className="w-4 h-4 text-orange-500" />
-                                Durasi
-                            </label>
-                            <input 
-                                id="exam-duration"
-                                type="number" 
-                                {...register('duration')}
-                                placeholder="Menit"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 bg-white shadow-sm font-medium text-sm text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder:text-gray-400"
-                            />
-                        </div>
-
-                        {/* KKM - Read Only, Hidden until Subject Selected */}
-                        {selectedSubjectId && (
-                            <div className="w-20">
-                                <label htmlFor="exam-kkm" className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                                    <Award className="w-4 h-4 text-green-500" />
-                                    KKM
-                                </label>
-                                <input 
-                                    id="exam-kkm"
-                                    type="number" 
-                                    {...register('kkm', { valueAsNumber: true })}
-                                    readOnly
-                                    className="w-full px-3 py-2 border border-gray-200 bg-gray-100 text-gray-600 font-bold rounded-lg shadow-sm cursor-not-allowed text-sm text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                />
-                            </div>
-                        )}
-
-                        {/* Save To Bank Global Checkbox */}
-                        <div className="flex items-center pt-8">
-                            <label htmlFor="exam-save-to-bank" className="flex items-center gap-3 cursor-pointer select-none px-4 py-2 bg-white rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 transition-all shadow-sm group">
-                                <div className="relative flex items-center justify-center w-5 h-5 border-2 border-gray-300 rounded group-hover:border-blue-500 transition-colors bg-white overflow-hidden">
-                                    <input 
-                                        id="exam-save-to-bank"
-                                        type="checkbox" 
-                                        {...register('saveToBank')}
-                                        className="peer appearance-none w-full h-full cursor-pointer absolute inset-0 z-10 opacity-0"
-                                    />
-                                    <div className="absolute inset-0 bg-blue-600 opacity-0 peer-checked:opacity-100 transition-opacity flex items-center justify-center">
-                                        <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
-                                    </div>
-                                </div>
-                                <span className="text-sm font-medium text-gray-600 group-hover:text-blue-700 transition-colors">Simpan Ke Bank Soal</span>
-                            </label>
-                        </div>
-                    </div>
-                    <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
-                        <p className="text-xs font-semibold text-blue-800">Sinkronisasi Nilai</p>
-                        <p className="text-xs text-blue-700">{scoreSyncCopy}</p>
-                    </div>
-                    <div className="flex justify-end">
-                        <button
-                            type="button"
-                            onClick={() => setEditorStage('QUESTIONS')}
-                            className="px-4 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-sm font-semibold hover:bg-blue-100 transition-colors"
-                        >
-                            Lanjut ke Butir Soal
-                        </button>
-                    </div>
-                </div>
-                ) : (
                 <div className="px-6 py-3 bg-slate-50 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3">
                     <div className="text-sm text-slate-700">
                         <span className="font-semibold">{selectedSubjectName}</span>
                         <span className="text-slate-500"> • {examTypeDisplayLabel}</span>
                         <span className="text-slate-500"> • {selectedPacketSemester === 'ODD' ? 'Ganjil' : 'Genap'}</span>
+                        <span className="text-slate-500"> • Soal terisi: {completedQuestionCount}/{questions.length}</span>
                     </div>
-                    <button
-                        type="button"
-                        onClick={() => setEditorStage('INFO')}
-                        className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-100 transition-colors"
-                    >
-                        Edit Informasi Ujian
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {!isPacketInfoComplete && (
+                            <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                                Lengkapi informasi ujian
+                            </span>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => setIsInfoModalOpen(true)}
+                            className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-100 transition-colors"
+                        >
+                            Informasi Ujian
+                        </button>
+                    </div>
                 </div>
-                )}
             </div>
 
             {/* MAIN CONTENT AREA - FULL WIDTH */}
             <div className="space-y-6">
-                {editorStage === 'INFO' ? (
-                    <div className="bg-white rounded-xl shadow-sm border border-blue-100 p-6 md:p-8">
-                        <div className="max-w-3xl">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Tahap 1 aktif</p>
-                            <h3 className="mt-2 text-lg font-semibold text-slate-900">Lengkapi informasi ujian terlebih dulu</h3>
-                            <p className="mt-2 text-sm text-slate-600">
-                                Setelah mapel, semester, tipe, dan instruksi sudah sesuai, lanjutkan ke tahap butir soal agar proses input lebih fokus.
-                            </p>
-                            <button
-                                type="button"
-                                onClick={() => setEditorStage('QUESTIONS')}
-                                className="mt-4 inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
-                            >
-                                Buka Tahap Butir Soal
-                            </button>
-                        </div>
+                {!isPacketInfoComplete && (
+                    <div className="bg-white rounded-xl border border-amber-200 px-4 py-3 text-sm text-amber-700">
+                        Lengkapi popup <span className="font-semibold">Informasi Ujian</span> sebelum final simpan paket.
                     </div>
-                ) : (
-                <>
+                )}
                 {/* QUESTION LIST BAR (Horizontal) */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
                     <div className="flex items-center justify-between mb-2">
@@ -1413,11 +1658,13 @@ export const ExamEditorPage = () => {
                     <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
                         {questions.map((q, idx) => {
                             const isActive = activeQuestionId === q.id;
-                            const hasContent = q.content && q.content !== '<p><br></p>';
+                            const hasContent = Boolean(normalizeEditorText(q.content));
                             return (
                                 <div key={q.id} className="relative group">
                                     <button
-                                        onClick={() => setActiveQuestionId(q.id)}
+                                        onClick={() => {
+                                            setActiveQuestionId(q.id);
+                                        }}
                                         className={`
                                             flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-xs font-medium transition-all relative
                                             ${isActive 
@@ -1445,7 +1692,7 @@ export const ExamEditorPage = () => {
                 </div>
 
                 {activeQuestion ? (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="exam-editor-modal bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                         {/* Question Type & Settings Toolbar */}
                         <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-wrap items-center justify-between gap-4">
                             <div className="flex items-center gap-4 flex-wrap">
@@ -1498,7 +1745,24 @@ export const ExamEditorPage = () => {
                                 </div>
                             </div>
 
-                            <div className="flex items-end self-end">
+                            <div className="flex items-end self-end gap-2">
+                                <label
+                                    htmlFor={`question-save-to-bank-${activeQuestion.id}`}
+                                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+                                >
+                                    <BookCopy className="h-4 w-4 text-slate-500" />
+                                    <input
+                                        id={`question-save-to-bank-${activeQuestion.id}`}
+                                        type="checkbox"
+                                        checked={activeQuestion.saveToBank ?? true}
+                                        onChange={(event) =>
+                                            updateQuestion(activeQuestion.id, { saveToBank: event.target.checked })
+                                        }
+                                        className="h-4 w-4"
+                                        style={{ accentColor: '#94a3b8' }}
+                                    />
+                                    Simpan ke Bank Soal
+                                </label>
                                 <button 
                                     onClick={() => handleDeleteQuestion(activeQuestion.id)}
                                     className="px-4 py-2 bg-white text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-red-200 hover:border-red-300 font-medium flex items-center gap-2 text-sm shadow-sm"
@@ -1508,247 +1772,255 @@ export const ExamEditorPage = () => {
                                     Hapus Soal
                                 </button>
                             </div>
-                            
-                            {/* Save To Bank Checkbox Removed - Replaced by Global Setting */}
                         </div>
 
-                        <div className="p-6 space-y-6">
-                            {/* Question Editor */}
-                            <div className="space-y-3">
-                                <label className="text-xs font-bold text-gray-400 uppercase tracking-wide flex items-center gap-2">
-                                    Pertanyaan No. {questions.findIndex(q => q.id === activeQuestionId) + 1}
-                                </label>
+                        <div className="p-6">
+                            <div className={`grid grid-cols-1 gap-6 ${showQuestionSupportPanel ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : ''}`}>
+                                <div className="space-y-6">
+                                    <div className="space-y-3">
+                                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                                            Pertanyaan No. {questions.findIndex(q => q.id === activeQuestionId) + 1}
+                                        </label>
+                                        <p className="text-[11px] text-slate-500">
+                                            Mendukung teks Arab, Jepang, Mandarin, aksara Jawa, dan aksara Sunda (gunakan keyboard bahasa di perangkat).
+                                        </p>
 
-                                {/* Media Preview (Top) */}
-                                {(!activeQuestion.question_media_position || activeQuestion.question_media_position === 'top') && renderMediaPreview(activeQuestion)}
+                                        {(!activeQuestion.question_media_position || activeQuestion.question_media_position === 'top') && renderMediaPreview(activeQuestion)}
 
-                                <div className="rounded-xl overflow-hidden border border-gray-200 focus-within:border-blue-500 transition-colors shadow-sm">
-                                    <ReactQuill
-                                        key={activeQuestion.id}
-                                        theme="snow"
-                                        value={activeQuestion.content}
-                                        onChange={(content) => updateQuestion(activeQuestion.id, { content })}
-                                        modules={modules}
-                                        className="bg-white min-h-[150px]"
-                                    />
-                                </div>
-
-                                {/* Media Preview (Bottom) */}
-                                {activeQuestion.question_media_position === 'bottom' && renderMediaPreview(activeQuestion)}
-
-                                {/* MEDIA CONTROLS BELOW QUESTION */}
-                                <div className="flex flex-wrap items-center gap-4">
-                                    <label htmlFor="upload-question-image" className="cursor-pointer flex items-center gap-2 px-4 py-2.5 bg-gray-50 text-gray-700 rounded-lg border border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-all text-sm font-bold shadow-sm">
-                                        <ImageIcon className="w-4 h-4" />
-                                        Upload Gambar
-                                        <input 
-                                            id="upload-question-image"
-                                            name="question_image"
-                                            type="file" 
-                                            accept="image/*" 
-                                            className="hidden" 
-                                            onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0], 'question')}
-                                        />
-                                    </label>
-                                    
-                                    <label htmlFor="upload-question-video" className="cursor-pointer flex items-center gap-2 px-4 py-2.5 bg-gray-50 text-gray-700 rounded-lg border border-gray-200 hover:bg-green-50 hover:text-green-600 hover:border-green-200 transition-all text-sm font-bold shadow-sm">
-                                        <FileVideo className="w-4 h-4" />
-                                        Upload Video
-                                        <input 
-                                            id="upload-question-video"
-                                            name="question_video"
-                                            type="file" 
-                                            accept="video/*" 
-                                            className="hidden" 
-                                            onChange={(e) => e.target.files?.[0] && handleVideoUpload(e.target.files[0])}
-                                        />
-                                    </label>
-
-                                    <div className="flex-1 min-w-[300px]">
-                                        <div className="relative">
-                                            <label htmlFor="youtube-url" className="sr-only">YouTube URL</label>
-                                            <input
-                                                id="youtube-url"
-                                                name="youtube_url"
-                                                type="text"
-                                                placeholder="Paste Link YouTube & Tekan Enter"
-                                                className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-0 focus:border-red-500 text-sm font-medium transition-colors"
-                                                onKeyDown={handleYouTubeKeyDown}
-                                            />
-                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-red-500">
-                                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
-                                        <div>
-                                            <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Kisi-kisi Soal</p>
-                                            <p className="text-xs text-slate-500">
-                                                Lengkapi tujuan pembelajaran dan indikator agar soal terpetakan.
-                                            </p>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                            <input
-                                                value={activeQuestionBlueprint.competency || ''}
-                                                onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'competency', e.target.value)}
-                                                placeholder="Kompetensi/Capaian"
-                                                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                            />
-                                            <input
-                                                value={activeQuestionBlueprint.cognitiveLevel || ''}
-                                                onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'cognitiveLevel', e.target.value)}
-                                                placeholder="Level kognitif (C1-C6)"
-                                                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                            />
-                                            <input
-                                                value={activeQuestionBlueprint.learningObjective || ''}
-                                                onChange={(e) =>
-                                                    updateQuestionBlueprintField(activeQuestion.id, 'learningObjective', e.target.value)
-                                                }
-                                                placeholder="Tujuan pembelajaran*"
-                                                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                            />
-                                            <input
-                                                value={activeQuestionBlueprint.indicator || ''}
-                                                onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'indicator', e.target.value)}
-                                                placeholder="Indikator soal*"
-                                                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                        <div className="rounded-xl overflow-hidden border border-gray-200 focus-within:border-blue-500 transition-colors shadow-sm">
+                                            <ReactQuill
+                                                ref={quillEditorRef}
+                                                key={activeQuestion.id}
+                                                theme="snow"
+                                                value={activeQuestion.content}
+                                                onChange={(content) => updateQuestion(activeQuestion.id, { content })}
+                                                modules={modules}
+                                                className="question-editor-quill bg-white min-h-[150px]"
                                             />
                                         </div>
-                                        <input
-                                            value={activeQuestionBlueprint.materialScope || ''}
-                                            onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'materialScope', e.target.value)}
-                                            placeholder="Ruang lingkup materi"
-                                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                        />
-                                    </div>
 
-                                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
-                                        <div>
-                                            <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Kartu Soal</p>
-                                            <p className="text-xs text-emerald-700/80">
-                                                Simpan stimulus dan pembahasan untuk review kualitas butir soal.
-                                            </p>
-                                        </div>
+                                        {activeQuestion.question_media_position === 'bottom' && renderMediaPreview(activeQuestion)}
 
-                                        <textarea
-                                            value={activeQuestionCard.stimulus || ''}
-                                            onChange={(e) => updateQuestionCardField(activeQuestion.id, 'stimulus', e.target.value)}
-                                            placeholder="Stimulus soal"
-                                            rows={2}
-                                            className="w-full rounded-md border border-emerald-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
-                                        />
-                                        <textarea
-                                            value={activeQuestionCard.answerRationale || ''}
-                                            onChange={(e) => updateQuestionCardField(activeQuestion.id, 'answerRationale', e.target.value)}
-                                            placeholder="Pembahasan / alasan jawaban benar*"
-                                            rows={2}
-                                            className="w-full rounded-md border border-emerald-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
-                                        />
-                                        <textarea
-                                            value={activeQuestionCard.scoringGuideline || ''}
-                                            onChange={(e) => updateQuestionCardField(activeQuestion.id, 'scoringGuideline', e.target.value)}
-                                            placeholder="Pedoman penskoran (terutama untuk esai)"
-                                            rows={2}
-                                            className="w-full rounded-md border border-emerald-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
-                                        />
-                                        <textarea
-                                            value={activeQuestionCard.distractorNotes || ''}
-                                            onChange={(e) => updateQuestionCardField(activeQuestion.id, 'distractorNotes', e.target.value)}
-                                            placeholder="Catatan distraktor / opsi pengecoh"
-                                            rows={2}
-                                            className="w-full rounded-md border border-emerald-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
-                                        />
-                                    </div>
-                                </div>
-
-                            </div>
-
-                            {/* Options Editor */}
-                            {activeQuestion.type !== 'ESSAY' && (
-                                <div className="mt-4 space-y-3">
-                                    {activeQuestion.options?.map((option, idx) => (
-                                        <div key={option.id} className="flex gap-2 items-start group">
-                                            {/* Correct Answer Toggle Badge */}
-                                            <button
-                                                onClick={() => {
-                                                    if (!activeQuestion.options) return;
-                                                    const newOptions = activeQuestion.options.map(o => {
-                                                        if (activeQuestion.type === 'MULTIPLE_CHOICE' || activeQuestion.type === 'TRUE_FALSE') {
-                                                            return { ...o, isCorrect: o.id === option.id };
-                                                        }
-                                                        if (o.id === option.id) return { ...o, isCorrect: !o.isCorrect };
-                                                        return o;
-                                                    });
-                                                    updateQuestion(activeQuestion.id, { options: newOptions });
-                                                }}
-                                                className={`
-                                                    mt-0.5 w-8 h-8 flex-shrink-0 rounded-md flex items-center justify-center border transition-all font-bold text-sm
-                                                    ${option.isCorrect 
-                                                        ? 'bg-green-500 border-green-500 text-white shadow-sm' 
-                                                        : 'bg-white border-gray-300 text-gray-400 hover:border-green-400 hover:text-green-500'}
-                                                `}
-                                                title={option.isCorrect ? "Jawaban Benar" : "Tandai sebagai jawaban benar"}
-                                            >
-                                                {String.fromCharCode(65 + idx)}
-                                            </button>
-                                            
-                                            {/* Option Content Input (Simple) */}
-                                            <div className="flex-1 relative group/input">
-                                                <label htmlFor={`option-content-${option.id}`} className="sr-only">Pilihan {String.fromCharCode(65 + idx)}</label>
-                                                <input
-                                                    id={`option-content-${option.id}`}
-                                                    name={`option_content_${option.id}`}
-                                                    type="text"
-                                                    value={option.content.replace(/<[^>]*>?/gm, '')} // Strip HTML for simple input view
-                                                    onChange={(e) => {
-                                                        if (!activeQuestion.options) return;
-                                                        const newOptions = activeQuestion.options.map(o => 
-                                                            o.id === option.id ? { ...o, content: e.target.value } : o
-                                                        );
-                                                        updateQuestion(activeQuestion.id, { options: newOptions });
-                                                    }}
-                                                    className={`
-                                                        w-full px-3 py-1.5 border rounded-md focus:outline-none focus:border-blue-500 text-gray-700 text-sm placeholder-gray-400 transition-all
-                                                        ${option.isCorrect ? 'border-green-300 bg-green-50/10' : 'border-gray-300 bg-white'}
-                                                    `}
-                                                    placeholder={`Pilihan ${String.fromCharCode(65 + idx)}`}
-                                                />
-                                                
-                                                {/* Image Preview inside option if exists */}
-                                                {option.image_url && (
-                                                    <div className="mt-2 relative group/img inline-block">
-                                                        <img src={option.image_url} alt="Option" className="h-20 w-auto rounded border border-gray-200" />
-                                                        <button 
-                                                            onClick={() => handleRemoveMedia('image', option.id)}
-                                                            className="absolute -top-1 -right-1 bg-white text-red-500 rounded-full p-0.5 opacity-0 group-hover/img:opacity-100 transition-opacity shadow-sm border border-gray-200"
-                                                        >
-                                                            <X className="w-3 h-3" />
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* Upload Image Button */}
-                                            <label htmlFor={`upload-option-image-${option.id}`} className="cursor-pointer mt-0.5 w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-400 transition-colors" title="Upload Gambar Opsi">
+                                        <div className="flex flex-wrap items-center gap-4">
+                                            <label htmlFor="upload-question-image" className="cursor-pointer flex items-center gap-2 px-4 py-2.5 bg-gray-50 text-gray-700 rounded-lg border border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-all text-sm font-normal shadow-sm">
                                                 <ImageIcon className="w-4 h-4" />
-                                                <input 
-                                                    id={`upload-option-image-${option.id}`}
-                                                    name={`option_image_${option.id}`}
-                                                    type="file" 
-                                                    accept="image/*" 
+                                                Upload Gambar
+                                                <input
+                                                    id="upload-question-image"
+                                                    name="question_image"
+                                                    type="file"
+                                                    accept="image/*"
                                                     className="hidden"
-                                                    onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0], option.id)}
+                                                    onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0], 'question')}
                                                 />
                                             </label>
+
+                                            <label htmlFor="upload-question-video" className="cursor-pointer flex items-center gap-2 px-4 py-2.5 bg-gray-50 text-gray-700 rounded-lg border border-gray-200 hover:bg-green-50 hover:text-green-600 hover:border-green-200 transition-all text-sm font-normal shadow-sm">
+                                                <FileVideo className="w-4 h-4" />
+                                                Upload Video
+                                                <input
+                                                    id="upload-question-video"
+                                                    name="question_video"
+                                                    type="file"
+                                                    accept="video/*"
+                                                    className="hidden"
+                                                    onChange={(e) => e.target.files?.[0] && handleVideoUpload(e.target.files[0])}
+                                                />
+                                            </label>
+
+                                            <div className="flex-1 min-w-[300px]">
+                                                <div className="relative">
+                                                    <label htmlFor="youtube-url" className="sr-only">YouTube URL</label>
+                                                    <input
+                                                        id="youtube-url"
+                                                        name="youtube_url"
+                                                        type="text"
+                                                        placeholder="Paste Link YouTube & Tekan Enter"
+                                                        className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-0 focus:border-red-500 text-sm font-medium transition-colors"
+                                                        onKeyDown={handleYouTubeKeyDown}
+                                                    />
+                                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-red-500">
+                                                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowQuestionSupportPanel((prev) => !prev)}
+                                                className={`px-3 py-2 rounded-lg border text-sm font-normal transition-colors ${
+                                                    showQuestionSupportPanel
+                                                        ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                                                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                                                }`}
+                                            >
+                                                Kisi-kisi & Kartu Soal
+                                            </button>
                                         </div>
-                                    ))}
+                                    </div>
+
+                                    {activeQuestion.type !== 'ESSAY' && (
+                                        <div className="mt-4 space-y-3">
+                                            {activeQuestion.options?.map((option, idx) => (
+                                                <div key={option.id} className="flex gap-2 items-start group">
+                                                    <button
+                                                        onClick={() => {
+                                                            if (!activeQuestion.options) return;
+                                                            const newOptions = activeQuestion.options.map(o => {
+                                                                if (activeQuestion.type === 'MULTIPLE_CHOICE' || activeQuestion.type === 'TRUE_FALSE') {
+                                                                    return { ...o, isCorrect: o.id === option.id };
+                                                                }
+                                                                if (o.id === option.id) return { ...o, isCorrect: !o.isCorrect };
+                                                                return o;
+                                                            });
+                                                            updateQuestion(activeQuestion.id, { options: newOptions });
+                                                        }}
+                                                        className={`
+                                                            mt-0.5 w-8 h-8 flex-shrink-0 rounded-md flex items-center justify-center border transition-all font-bold text-sm
+                                                            ${option.isCorrect
+                                                                ? 'bg-green-500 border-green-500 text-white shadow-sm'
+                                                                : 'bg-white border-gray-300 text-gray-400 hover:border-green-400 hover:text-green-500'}
+                                                        `}
+                                                        title={option.isCorrect ? "Jawaban Benar" : "Tandai sebagai jawaban benar"}
+                                                    >
+                                                        {String.fromCharCode(65 + idx)}
+                                                    </button>
+
+                                                    <div className="flex-1 relative group/input">
+                                                        <label htmlFor={`option-content-${option.id}`} className="sr-only">Pilihan {String.fromCharCode(65 + idx)}</label>
+                                                        <input
+                                                            id={`option-content-${option.id}`}
+                                                            name={`option_content_${option.id}`}
+                                                            type="text"
+                                                            value={option.content.replace(/<[^>]*>?/gm, '')}
+                                                            onChange={(e) => {
+                                                                if (!activeQuestion.options) return;
+                                                                const newOptions = activeQuestion.options.map(o =>
+                                                                    o.id === option.id ? { ...o, content: e.target.value } : o
+                                                                );
+                                                                updateQuestion(activeQuestion.id, { options: newOptions });
+                                                            }}
+                                                            className={`
+                                                                w-full px-3 py-1.5 border rounded-md focus:outline-none focus:border-blue-500 text-gray-700 text-sm placeholder-gray-400 transition-all
+                                                                ${option.isCorrect ? 'border-green-300 bg-green-50/10' : 'border-gray-300 bg-white'}
+                                                            `}
+                                                            placeholder={`Pilihan ${String.fromCharCode(65 + idx)}`}
+                                                        />
+
+                                                        {option.image_url && (
+                                                            <div className="mt-2 relative group/img inline-block">
+                                                                <img src={option.image_url} alt="Option" className="h-20 w-auto rounded border border-gray-200" />
+                                                                <button
+                                                                    onClick={() => handleRemoveMedia('image', option.id)}
+                                                                    className="absolute -top-1 -right-1 bg-white text-red-500 rounded-full p-0.5 opacity-0 group-hover/img:opacity-100 transition-opacity shadow-sm border border-gray-200"
+                                                                >
+                                                                    <X className="w-3 h-3" />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <label htmlFor={`upload-option-image-${option.id}`} className="cursor-pointer mt-0.5 w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-400 transition-colors" title="Upload Gambar Opsi">
+                                                        <ImageIcon className="w-4 h-4" />
+                                                        <input
+                                                            id={`upload-option-image-${option.id}`}
+                                                            name={`option_image_${option.id}`}
+                                                            type="file"
+                                                            accept="image/*"
+                                                            className="hidden"
+                                                            onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0], option.id)}
+                                                        />
+                                                    </label>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
-                            )}
+
+                                {showQuestionSupportPanel && (
+                                    <aside className="space-y-4 xl:w-[340px] xl:min-w-[340px]">
+                                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div>
+                                                    <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Kisi-kisi Soal</p>
+                                                    <p className="text-xs text-slate-500">Opsional. Isi jika diperlukan untuk pemetaan soal.</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 gap-2">
+                                                <input
+                                                    value={activeQuestionBlueprint.competency || ''}
+                                                    onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'competency', e.target.value)}
+                                                    placeholder="Kompetensi/Capaian"
+                                                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                                />
+                                                <input
+                                                    value={activeQuestionBlueprint.learningObjective || ''}
+                                                    onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'learningObjective', e.target.value)}
+                                                    placeholder="Tujuan pembelajaran"
+                                                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                                />
+                                                <input
+                                                    value={activeQuestionBlueprint.indicator || ''}
+                                                    onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'indicator', e.target.value)}
+                                                    placeholder="Indikator soal"
+                                                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                                />
+                                                <input
+                                                    value={activeQuestionBlueprint.materialScope || ''}
+                                                    onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'materialScope', e.target.value)}
+                                                    placeholder="Ruang lingkup materi"
+                                                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                                />
+                                                <input
+                                                    value={activeQuestionBlueprint.cognitiveLevel || ''}
+                                                    onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'cognitiveLevel', e.target.value)}
+                                                    placeholder="Level kognitif (C1-C6)"
+                                                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
+                                            <div>
+                                                <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Kartu Soal</p>
+                                                <p className="text-xs text-emerald-700/80">
+                                                    Opsional. Isi jika ingin menambah catatan analisis butir.
+                                                </p>
+                                            </div>
+
+                                            <textarea
+                                                value={activeQuestionCard.stimulus || ''}
+                                                onChange={(e) => updateQuestionCardField(activeQuestion.id, 'stimulus', e.target.value)}
+                                                placeholder="Stimulus soal"
+                                                rows={2}
+                                                className="w-full rounded-md border border-emerald-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                                            />
+                                            <textarea
+                                                value={activeQuestionCard.answerRationale || ''}
+                                                onChange={(e) => updateQuestionCardField(activeQuestion.id, 'answerRationale', e.target.value)}
+                                                placeholder="Pembahasan / alasan jawaban benar"
+                                                rows={2}
+                                                className="w-full rounded-md border border-emerald-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                                            />
+                                            <textarea
+                                                value={activeQuestionCard.scoringGuideline || ''}
+                                                onChange={(e) => updateQuestionCardField(activeQuestion.id, 'scoringGuideline', e.target.value)}
+                                                placeholder="Pedoman penskoran (terutama untuk esai)"
+                                                rows={2}
+                                                className="w-full rounded-md border border-emerald-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                                            />
+                                            <textarea
+                                                value={activeQuestionCard.distractorNotes || ''}
+                                                onChange={(e) => updateQuestionCardField(activeQuestion.id, 'distractorNotes', e.target.value)}
+                                                placeholder="Catatan distraktor / opsi pengecoh"
+                                                rows={2}
+                                                className="w-full rounded-md border border-emerald-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                                            />
+                                        </div>
+                                    </aside>
+                                )}
+                            </div>
                         </div>
                     </div>
                 ) : (
@@ -1759,9 +2031,216 @@ export const ExamEditorPage = () => {
                         </button>
                     </div>
                 )}
-                </>
-                )}
             </div>
+
+            {isInfoModalOpen && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                    onClick={() => setIsInfoModalOpen(false)}
+                >
+                    <div
+                        className="w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                            <div>
+                                <h3 className="text-lg font-semibold text-slate-900">Informasi Ujian</h3>
+                                <p className="text-sm text-slate-500">Isi judul dan parameter ujian sebelum lanjut edit butir.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsInfoModalOpen(false)}
+                                className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-100"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4 px-6 py-5">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="exam-title-modal" className="mb-1 block text-sm font-medium text-slate-700">
+                                        Judul Ujian
+                                    </label>
+                                    <input
+                                        id="exam-title-modal"
+                                        {...register('title', { required: 'Judul wajib diisi' })}
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                        placeholder="Masukkan judul ujian"
+                                    />
+                                    {errors.title && <span className="mt-1 block text-xs text-red-500">{errors.title.message}</span>}
+                                </div>
+
+                                <div>
+                                    <label htmlFor="exam-subject" className="mb-1 block text-sm font-medium text-slate-700">
+                                        Mapel & Kelas (Assignment)
+                                    </label>
+                                    <select
+                                        id="exam-subject"
+                                        value={selectedTeacherAssignmentId > 0 ? String(selectedTeacherAssignmentId) : ''}
+                                        onChange={(event) => {
+                                            const assignment = filteredAssignmentsByProgram.find(
+                                                (item) => item.id === Number(event.target.value),
+                                            );
+                                            setValue(
+                                                'teacherAssignmentId',
+                                                assignment ? Number(assignment.id) : null,
+                                                { shouldDirty: true },
+                                            );
+                                            setValue(
+                                                'subjectId',
+                                                assignment ? Number(assignment.subject.id) : null,
+                                                { shouldDirty: true },
+                                            );
+                                            if (assignment?.kkm) {
+                                                setValue('kkm', Number(assignment.kkm), { shouldDirty: true });
+                                            }
+                                        }}
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                    >
+                                        <option value="">Pilih assignment mapel-kelas</option>
+                                        {filteredAssignmentsByProgram.map((assignment) => (
+                                            <option key={assignment.id} value={assignment.id}>
+                                                {buildAssignmentDisplayLabel(assignment)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <input type="hidden" {...register('subjectId', { required: 'Mapel wajib dipilih' })} />
+                                    <input type="hidden" {...register('teacherAssignmentId')} />
+                                    {selectedProgramMeta && filteredAssignmentsByProgram.length === 0 ? (
+                                      <span className="mt-1 block text-xs text-amber-600">
+                                        Program ini belum memiliki assignment mapel-kelas yang diizinkan.
+                                      </span>
+                                    ) : null}
+                                </div>
+
+                                <div>
+                                    <label htmlFor="exam-academic-year" className="mb-1 block text-sm font-medium text-slate-700">
+                                        Tahun Ajaran
+                                    </label>
+                                    <input
+                                        id="exam-academic-year"
+                                        value={activeAcademicYear?.name || '-'}
+                                        readOnly
+                                        className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-600"
+                                    />
+                                    <input type="hidden" {...register('academicYearId', { required: 'Tahun ajaran wajib terisi' })} />
+                                </div>
+
+                                <div>
+                                    <label htmlFor="exam-semester" className="mb-1 block text-sm font-medium text-slate-700">
+                                        Semester
+                                    </label>
+                                    <select
+                                        id="exam-semester"
+                                        {...register('semester')}
+                                        disabled={isSemesterLockedFromProgram}
+                                        className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none ${
+                                            isSemesterLockedFromProgram ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
+                                        }`}
+                                    >
+                                        <option value="ODD">Ganjil</option>
+                                        <option value="EVEN">Genap</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label htmlFor="exam-type-modal" className="mb-1 block text-sm font-medium text-slate-700">
+                                        Tipe Ujian
+                                    </label>
+                                    <input
+                                        id="exam-type-modal"
+                                        value={examTypeDisplayLabel}
+                                        readOnly
+                                        className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-600"
+                                    />
+                                    <input type="hidden" {...register('type')} />
+                                    <input type="hidden" {...register('programCode')} />
+                                </div>
+
+                                <div>
+                                    <label htmlFor="exam-duration" className="mb-1 block text-sm font-medium text-slate-700">
+                                        Durasi (menit)
+                                    </label>
+                                    <input
+                                        id="exam-duration"
+                                        type="number"
+                                        {...register('duration')}
+                                        placeholder="Contoh: 90"
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label htmlFor="exam-published-count" className="mb-1 block text-sm font-medium text-slate-700">
+                                        Soal Ditampilkan ke Siswa
+                                    </label>
+                                    <input
+                                        id="exam-published-count"
+                                        type="number"
+                                        min={1}
+                                        {...register('publishedQuestionCount', { valueAsNumber: true })}
+                                        placeholder="Kosongkan = tampilkan semua soal"
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    />
+                                    <p className="mt-1 text-[11px] text-slate-500">
+                                        Soal akan diacak per siswa dari total bank soal yang Anda buat.
+                                    </p>
+                                </div>
+
+                                {selectedSubjectId && (
+                                    <div>
+                                        <label htmlFor="exam-kkm" className="mb-1 block text-sm font-medium text-slate-700">
+                                            KKM
+                                        </label>
+                                        <input
+                                            id="exam-kkm"
+                                            type="number"
+                                            {...register('kkm', { valueAsNumber: true })}
+                                            readOnly
+                                            className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-600"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            <div>
+                                <label htmlFor="exam-instructions" className="mb-1 block text-sm font-medium text-slate-700">
+                                    Instruksi Ujian
+                                </label>
+                                <input
+                                    id="exam-instructions"
+                                    {...register('instructions')}
+                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                    placeholder="Instruksi / catatan untuk siswa"
+                                />
+                            </div>
+
+                            <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+                                <p className="text-xs font-semibold text-blue-800">Sinkronisasi Nilai</p>
+                                <p className="text-xs text-blue-700">{scoreSyncCopy}</p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={() => setIsInfoModalOpen(false)}
+                                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                            >
+                                Tutup
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveInfoModal}
+                                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                            >
+                                Simpan Informasi
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Media Upload Modal - Only used for manual triggers if needed, but we used direct inputs now */}
             {/* Keeping it minimal or removing if unused. Based on new design, we use direct inputs/buttons. */}

@@ -121,7 +121,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return () => {
       cleanup();
     };
-  }, [user?.id, schedulePushSyncWithRetry]);
+  }, [user, schedulePushSyncWithRetry]);
 
   useEffect(() => {
     if (!user) return;
@@ -142,7 +142,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       appResumePushSyncCleanupRef.current = null;
       appStateSubscription.remove();
     };
-  }, [user?.id, schedulePushSyncWithRetry]);
+  }, [user, schedulePushSyncWithRetry]);
 
   useEffect(() => {
     if (!user) return;
@@ -154,7 +154,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return () => {
       clearInterval(syncIntervalId);
     };
-  }, [user?.id]);
+  }, [user]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -169,8 +169,19 @@ export function AuthProvider({ children }: PropsWithChildren) {
           setRestoreError(null);
           setUser(nextUser);
           await authEventLogger.log('LOGIN_SUCCESS', `Login sukses untuk user ${nextUser.username}`);
-        } catch (error: any) {
-          const msg = error?.response?.data?.message || error?.message || 'Login gagal';
+        } catch (error: unknown) {
+          const message =
+            typeof error === 'object' &&
+            error !== null &&
+            'response' in error &&
+            typeof (error as { response?: { data?: { message?: string } } }).response?.data
+              ?.message === 'string'
+              ? (error as { response?: { data?: { message?: string } } }).response?.data
+                  ?.message
+              : error instanceof Error
+                ? error.message
+                : 'Login gagal';
+          const msg = message || 'Login gagal';
           await authEventLogger.log('LOGIN_FAILED', msg);
           throw error;
         }

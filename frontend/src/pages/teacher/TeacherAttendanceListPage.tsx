@@ -9,7 +9,7 @@ import {
   Loader2,
   GraduationCap
 } from 'lucide-react';
-import { teacherAssignmentService } from '../../services/teacherAssignment.service';
+import { teacherAssignmentService, type TeacherAssignment } from '../../services/teacherAssignment.service';
 import { academicYearService, type AcademicYear } from '../../services/academicYear.service';
 
 export const TeacherAttendanceListPage = () => {
@@ -51,12 +51,12 @@ export const TeacherAttendanceListPage = () => {
     enabled: !!effectiveAcademicYearId,
   });
 
-  const assignments = useMemo(() => {
-    let data = assignmentsData?.data?.assignments || [];
+  const assignments = useMemo<TeacherAssignment[]>(() => {
+    let data: TeacherAssignment[] = assignmentsData?.data?.assignments || [];
     
     // Sort by Subject Name first, then Class Name
     if (Array.isArray(data)) {
-      data.sort((a: any, b: any) => {
+      data.sort((a, b) => {
         const subjectCompare = a.subject.name.localeCompare(b.subject.name);
         if (subjectCompare !== 0) return subjectCompare;
         return a.class.name.localeCompare(b.class.name);

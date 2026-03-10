@@ -11,7 +11,7 @@ import { mobileLiveQueryOptions } from '../../lib/query/liveQuery';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
 import { useAuth } from '../auth/AuthProvider';
 import { internshipDutyApi } from './internshipDutyApi';
-import { InternshipAttendanceRow, InternshipDutyRow, InternshipJournalRow } from './types';
+import { InternshipAttendanceRow, InternshipJournalRow } from './types';
 
 type ModuleMode = 'GUIDANCE' | 'DEFENSE';
 type JournalFilter = 'ALL' | 'PENDING' | 'VERIFIED' | 'REJECTED';
@@ -174,6 +174,14 @@ function moduleIcon(mode: ModuleMode): keyof typeof Feather.glyphMap {
   return mode === 'GUIDANCE' ? 'users' : 'clipboard';
 }
 
+const getActionErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'object' && error !== null) {
+    const err = error as { response?: { data?: { message?: string } }; message?: string };
+    return err.response?.data?.message || err.message || fallback;
+  }
+  return fallback;
+};
+
 export function TeacherInternshipDutyModuleScreen({
   mode,
   title,
@@ -225,6 +233,7 @@ export function TeacherInternshipDutyModuleScreen({
 
   useEffect(() => {
     if (!internshipsFiltered.length) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedInternshipId(null);
       return;
     }
@@ -257,8 +266,8 @@ export function TeacherInternshipDutyModuleScreen({
       void journalsQuery.refetch();
       Alert.alert('Berhasil', 'Status jurnal berhasil diperbarui.');
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || 'Tidak dapat memperbarui status jurnal.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Tidak dapat memperbarui status jurnal.'));
     },
   });
 
@@ -297,8 +306,8 @@ export function TeacherInternshipDutyModuleScreen({
       }
       Alert.alert('Berhasil', 'Nilai sidang berhasil disimpan.');
     },
-    onError: (error: any) => {
-      Alert.alert('Gagal', error?.response?.data?.message || error?.message || 'Tidak dapat menyimpan nilai sidang.');
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', getActionErrorMessage(error, 'Tidak dapat menyimpan nilai sidang.'));
     },
   });
 
@@ -307,6 +316,7 @@ export function TeacherInternshipDutyModuleScreen({
     [internshipsFiltered, selectedInternshipId],
   );
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (mode !== 'DEFENSE') return;
     setScorePresentation(
@@ -321,6 +331,7 @@ export function TeacherInternshipDutyModuleScreen({
     );
     setDefenseNotes(selectedInternship?.defenseNotes || '');
   }, [mode, selectedInternship?.defenseNotes, selectedInternship?.id, selectedInternship?.scorePresentation, selectedInternship?.scoreRelevance, selectedInternship?.scoreSystematics, selectedInternship?.scoreUnderstanding]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const journalsFiltered = useMemo(() => {
     const rows = journalsQuery.data || [];

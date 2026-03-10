@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { authService } from '../../services/auth.service';
@@ -71,6 +71,19 @@ interface Assignment {
   } | null;
 }
 
+type LearningOutletContext = {
+  user?: {
+    id?: number | string;
+    studentClass?: {
+      id?: number | string | null;
+    } | null;
+  } | null;
+};
+
+type AssignmentSubmissionLookup = NonNullable<Assignment['submission']> & {
+  assignment: { id: string };
+};
+
 export default function StudentLearningPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<'materials' | 'assignments'>(
@@ -98,7 +111,7 @@ export default function StudentLearningPage() {
     setSearchParams({ tab: activeTab });
   }, [activeTab, setSearchParams]);
 
-  const { user: contextUser } = useOutletContext<{ user: any }>() || {};
+  const { user: contextUser } = useOutletContext<LearningOutletContext>() || {};
   const { data: authData } = useQuery({
     queryKey: ['me'],
     queryFn: authService.getMe,
@@ -107,13 +120,7 @@ export default function StudentLearningPage() {
   });
   const user = contextUser || authData?.data;
 
-  useEffect(() => {
-    if (user) {
-      fetchData();
-    }
-  }, [user]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       if (!user) return;
       
@@ -139,12 +146,12 @@ export default function StudentLearningPage() {
       }
 
       if (assignmentsRes.data.success && submissionsRes.data.success) {
-        const fetchedAssignments = assignmentsRes.data.data.assignments || [];
-        const submissions = submissionsRes.data.data.submissions || [];
+        const fetchedAssignments: Assignment[] = assignmentsRes.data.data.assignments || [];
+        const submissions: AssignmentSubmissionLookup[] = submissionsRes.data.data.submissions || [];
 
         // Map submissions to assignments
-        const assignmentsWithStatus = fetchedAssignments.map((assignment: any) => {
-          const submission = submissions.find((s: any) => s.assignment.id === assignment.id);
+        const assignmentsWithStatus = fetchedAssignments.map((assignment) => {
+          const submission = submissions.find((s) => s.assignment.id === assignment.id);
           return { ...assignment, submission };
         });
 
@@ -152,9 +159,15 @@ export default function StudentLearningPage() {
       }
 
       // Extract unique subjects for filter
-      const allItems = [...(materialsRes.data.data.materials || []), ...(assignmentsRes.data.data.assignments || [])];
-      const uniqueSubjects = Array.from(new Set(allItems.map((item: any) => JSON.stringify({ id: item.subject.id, name: item.subject.name }))))
-        .map((s: any) => JSON.parse(s));
+      const allItems: Array<Material | Assignment> = [
+        ...(materialsRes.data.data.materials || []),
+        ...(assignmentsRes.data.data.assignments || []),
+      ];
+      const uniqueSubjects = Array.from(
+        new Map(
+          allItems.map((item) => [item.subject.id, { id: item.subject.id, name: item.subject.name }]),
+        ).values(),
+      );
       
       setSubjects(uniqueSubjects);
 
@@ -164,17 +177,15 @@ export default function StudentLearningPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
-    if (activeTab === 'materials') {
-      filterMaterials();
-    } else {
-      filterAssignments();
+    if (user) {
+      fetchData();
     }
-  }, [materials, assignments, searchQuery, selectedSubject, activeTab]);
+  }, [user, fetchData]);
 
-  const filterMaterials = () => {
+  const filterMaterials = useCallback(() => {
     let filtered = [...materials];
 
     if (selectedSubject) {
@@ -189,9 +200,9 @@ export default function StudentLearningPage() {
     }
 
     setFilteredMaterials(filtered);
-  };
+  }, [materials, searchQuery, selectedSubject]);
 
-  const filterAssignments = () => {
+  const filterAssignments = useCallback(() => {
     let filtered = [...assignments];
 
     if (selectedSubject) {
@@ -206,7 +217,15 @@ export default function StudentLearningPage() {
     }
 
     setFilteredAssignments(filtered);
-  };
+  }, [assignments, searchQuery, selectedSubject]);
+
+  useEffect(() => {
+    if (activeTab === 'materials') {
+      filterMaterials();
+    } else {
+      filterAssignments();
+    }
+  }, [activeTab, filterAssignments, filterMaterials]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -233,9 +252,17 @@ export default function StudentLearningPage() {
         setSubmissionContent('');
         fetchData(); // Refresh data
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Submit error:', error);
-      toast.error(error.response?.data?.message || 'Gagal mengumpulkan tugas');
+      const message =
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof (error as { response?: { data?: { message?: string } } }).response?.data?.message ===
+          'string'
+          ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+          : 'Gagal mengumpulkan tugas';
+      toast.error(message || 'Gagal mengumpulkan tugas');
     } finally {
       setSubmitting(false);
     }

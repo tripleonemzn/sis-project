@@ -3,12 +3,20 @@ import { ApiResponse, asyncHandler, ApiError } from '../utils/api';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { optimizeQuestionImageAtPath } from '../utils/questionImageOptimizer';
+import { optimizeQuestionVideoAtPath } from '../utils/questionVideoOptimizer';
 
 const ensureDir = (dir: string) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
 };
+
+const QUESTION_VIDEO_MAX_MB = (() => {
+  const raw = Number(process.env.QUESTION_VIDEO_MAX_MB || 12);
+  if (!Number.isFinite(raw) || raw <= 0) return 12;
+  return Math.floor(raw);
+})();
 
 const teacherDocumentStorage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -108,7 +116,7 @@ export const questionImageUpload = multer({
 
 export const questionVideoUpload = multer({
   storage: questionVideoStorage,
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+  limits: { fileSize: QUESTION_VIDEO_MAX_MB * 1024 * 1024 }, // default 12MB
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('video/')) {
       cb(null, true);
@@ -177,6 +185,12 @@ export const uploadQuestionImage = asyncHandler(async (req: Request, res: Respon
     throw new ApiError(400, 'Tidak ada file gambar yang diunggah');
   }
 
+  try {
+    await optimizeQuestionImageAtPath(req.file.path);
+  } catch (error) {
+    console.warn('[UPLOAD_QUESTION_IMAGE_OPTIMIZE_FAILED]', req.file.path, error);
+  }
+
   const fileUrl = `/api/uploads/questions/images/${req.file.filename}`;
 
   res.status(200).json(new ApiResponse(200, {
@@ -190,6 +204,12 @@ export const uploadQuestionImage = asyncHandler(async (req: Request, res: Respon
 export const uploadQuestionVideo = asyncHandler(async (req: Request, res: Response) => {
   if (!req.file) {
     throw new ApiError(400, 'Tidak ada file video yang diunggah');
+  }
+
+  try {
+    await optimizeQuestionVideoAtPath(req.file.path);
+  } catch (error) {
+    console.warn('[UPLOAD_QUESTION_VIDEO_OPTIMIZE_FAILED]', req.file.path, error);
   }
 
   const fileUrl = `/api/uploads/questions/videos/${req.file.filename}`;

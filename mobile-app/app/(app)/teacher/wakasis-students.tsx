@@ -215,12 +215,15 @@ export default function TeacherWakasisStudentsScreen() {
     },
   });
 
-  const students = baseDataQuery.data?.students || [];
-  const parents = baseDataQuery.data?.parents || [];
-  const tutors = baseDataQuery.data?.tutors || [];
-  const extracurriculars = baseDataQuery.data?.extracurriculars || [];
-  const assignments = baseDataQuery.data?.assignments || [];
-  const classes = baseDataQuery.data?.classes || [];
+  const students = useMemo(() => baseDataQuery.data?.students || [], [baseDataQuery.data?.students]);
+  const parents = useMemo(() => baseDataQuery.data?.parents || [], [baseDataQuery.data?.parents]);
+  const tutors = useMemo(() => baseDataQuery.data?.tutors || [], [baseDataQuery.data?.tutors]);
+  const extracurriculars = useMemo(
+    () => baseDataQuery.data?.extracurriculars || [],
+    [baseDataQuery.data?.extracurriculars],
+  );
+  const assignments = useMemo(() => baseDataQuery.data?.assignments || [], [baseDataQuery.data?.assignments]);
+  const classes = useMemo(() => baseDataQuery.data?.classes || [], [baseDataQuery.data?.classes]);
   const normalizedSearch = search.trim().toLowerCase();
 
   const assignmentsByTutor = useMemo(() => {

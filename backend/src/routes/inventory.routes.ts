@@ -17,6 +17,7 @@ import {
   updateInventory,
   deleteInventory,
   getLibraryLoanClassOptions,
+  getLibraryLoanBookOptions,
   getLibraryLoanSettings,
   getLibraryBookLoans,
   updateLibraryLoanSettings,
@@ -90,6 +91,7 @@ router.delete('/inventory/:id', ...itemWriteMiddleware, deleteInventory);
 
 // Library Book Loans
 router.get('/library-loans/classes', ...libraryLoanReadMiddleware, getLibraryLoanClassOptions);
+router.get('/library-loans/books', ...libraryLoanReadMiddleware, getLibraryLoanBookOptions);
 router.get('/library-loans/settings', ...libraryLoanReadMiddleware, getLibraryLoanSettings);
 router.get('/library-loans', ...libraryLoanReadMiddleware, getLibraryBookLoans);
 router.put('/library-loans/settings', ...libraryLoanWriteMiddleware, updateLibraryLoanSettings);

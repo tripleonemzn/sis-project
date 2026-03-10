@@ -15,6 +15,25 @@ const FALLBACK_EAS_PROJECT_ID = 'cc9265c5-45b0-4964-8ed2-3e7a996b8c5a';
 
 let notificationHandlerConfigured = false;
 
+type ExpoConstantsSnapshot = {
+  expoConfig?: {
+    version?: string;
+    extra?: {
+      eas?: {
+        projectId?: string;
+      };
+    };
+  };
+  easConfig?: {
+    projectId?: string;
+  };
+  deviceName?: string;
+};
+
+function getExpoConstantsSnapshot(): ExpoConstantsSnapshot {
+  return (Constants as unknown as ExpoConstantsSnapshot) || {};
+}
+
 async function ensureAndroidNotificationChannels() {
   if (Platform.OS !== 'android') return;
 
@@ -36,10 +55,9 @@ async function ensureAndroidNotificationChannels() {
 }
 
 function resolveExpoProjectId() {
+  const constants = getExpoConstantsSnapshot();
   const easProjectId =
-    (Constants as any)?.expoConfig?.extra?.eas?.projectId ||
-    (Constants as any)?.easConfig?.projectId ||
-    null;
+    constants.expoConfig?.extra?.eas?.projectId || constants.easConfig?.projectId || null;
   if (typeof easProjectId === 'string' && easProjectId.trim().length > 0) {
     return easProjectId.trim();
   }
@@ -53,12 +71,14 @@ function resolvePlatform() {
 }
 
 function resolveAppVersion() {
-  const version = (Constants as any)?.expoConfig?.version || null;
+  const constants = getExpoConstantsSnapshot();
+  const version = constants.expoConfig?.version || null;
   return typeof version === 'string' && version.trim().length > 0 ? version.trim() : null;
 }
 
 function resolveDeviceName() {
-  const deviceName = (Constants as any)?.deviceName || null;
+  const constants = getExpoConstantsSnapshot();
+  const deviceName = constants.deviceName || null;
   return typeof deviceName === 'string' && deviceName.trim().length > 0 ? deviceName.trim() : null;
 }
 

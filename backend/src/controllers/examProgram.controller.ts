@@ -21,6 +21,9 @@ type ExamProgramDefinition = {
   isActive: boolean;
   showOnTeacherMenu: boolean;
   showOnStudentMenu: boolean;
+  targetClassLevels: string[];
+  allowedSubjectIds: number[];
+  allowedAuthorIds: number[];
 };
 
 type NormalizedExamProgramPayload = {
@@ -42,6 +45,9 @@ type NormalizedExamProgramPayload = {
   isActive: boolean;
   showOnTeacherMenu: boolean;
   showOnStudentMenu: boolean;
+  targetClassLevels: string[];
+  allowedSubjectIds: number[];
+  allowedAuthorIds: number[];
 };
 
 type ExamProgramRow = {
@@ -63,6 +69,9 @@ type ExamProgramRow = {
   isActive: boolean;
   showOnTeacherMenu: boolean;
   showOnStudentMenu: boolean;
+  targetClassLevels: string[];
+  allowedSubjectIds: number[];
+  allowedAuthorIds: number[];
 };
 
 type ExamGradeComponentDefinition = {
@@ -112,6 +121,58 @@ type ExamGradeComponentRow = {
   isActive: boolean;
 };
 
+const GRADE_COMPONENT_SYNC_COOLDOWN_MS = 5 * 60 * 1000;
+const gradeComponentSyncTimestamps = new Map<number, number>();
+const EXAM_PROGRAMS_CACHE_TTL_MS = 15000;
+const examProgramsResponseCache = new Map<string, { expiresAt: number; payload: unknown }>();
+
+function buildExamProgramsCacheKey(params: {
+  academicYearId: number;
+  roleContext: 'teacher' | 'student' | 'all';
+  includeInactive: boolean;
+  authRole: string;
+  authUserId: number;
+}) {
+  return [
+    params.academicYearId,
+    params.roleContext,
+    params.includeInactive ? 'incl-inactive' : 'active-only',
+    params.authRole || 'UNKNOWN',
+    params.authUserId || 0,
+  ].join(':');
+}
+
+function getExamProgramsCache(key: string): unknown | null {
+  const now = Date.now();
+  const cached = examProgramsResponseCache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= now) {
+    examProgramsResponseCache.delete(key);
+    return null;
+  }
+  return cached.payload;
+}
+
+function setExamProgramsCache(key: string, payload: unknown) {
+  examProgramsResponseCache.set(key, {
+    payload,
+    expiresAt: Date.now() + EXAM_PROGRAMS_CACHE_TTL_MS,
+  });
+}
+
+function invalidateExamProgramsCache(academicYearId?: number) {
+  if (!academicYearId) {
+    examProgramsResponseCache.clear();
+    return;
+  }
+  const prefix = `${academicYearId}:`;
+  for (const key of examProgramsResponseCache.keys()) {
+    if (key.startsWith(prefix)) {
+      examProgramsResponseCache.delete(key);
+    }
+  }
+}
+
 const DEFAULT_EXAM_PROGRAMS: ExamProgramDefinition[] = [
   {
     code: 'FORMATIF',
@@ -132,6 +193,9 @@ const DEFAULT_EXAM_PROGRAMS: ExamProgramDefinition[] = [
     isActive: true,
     showOnTeacherMenu: true,
     showOnStudentMenu: true,
+    targetClassLevels: [],
+    allowedSubjectIds: [],
+    allowedAuthorIds: [],
   },
   {
     code: 'SBTS',
@@ -151,6 +215,9 @@ const DEFAULT_EXAM_PROGRAMS: ExamProgramDefinition[] = [
     isActive: true,
     showOnTeacherMenu: true,
     showOnStudentMenu: true,
+    targetClassLevels: [],
+    allowedSubjectIds: [],
+    allowedAuthorIds: [],
   },
   {
     code: 'SAS',
@@ -170,6 +237,9 @@ const DEFAULT_EXAM_PROGRAMS: ExamProgramDefinition[] = [
     isActive: true,
     showOnTeacherMenu: true,
     showOnStudentMenu: true,
+    targetClassLevels: [],
+    allowedSubjectIds: [],
+    allowedAuthorIds: [],
   },
   {
     code: 'SAT',
@@ -189,6 +259,9 @@ const DEFAULT_EXAM_PROGRAMS: ExamProgramDefinition[] = [
     isActive: true,
     showOnTeacherMenu: true,
     showOnStudentMenu: true,
+    targetClassLevels: [],
+    allowedSubjectIds: [],
+    allowedAuthorIds: [],
   },
 ];
 
@@ -279,77 +352,106 @@ const DEFAULT_GRADE_COMPONENTS: ExamGradeComponentDefinition[] = [
   },
 ];
 
-const VALID_BASE_TYPES = new Set<ExamType>([
-  ExamType.FORMATIF,
-  ExamType.SBTS,
-  ExamType.SAS,
-  ExamType.SAT,
-  ExamType.US_PRACTICE,
-  ExamType.US_THEORY,
-]);
+const VALID_BASE_TYPES = new Set<ExamType>(Object.values(ExamType));
 
-const VALID_GRADE_COMPONENT_TYPES = new Set<GradeComponentType>([
-  GradeComponentType.FORMATIVE,
-  GradeComponentType.MIDTERM,
-  GradeComponentType.FINAL,
-  GradeComponentType.SKILL,
-  GradeComponentType.US_PRACTICE,
-  GradeComponentType.US_THEORY,
-  GradeComponentType.CUSTOM,
-]);
+const VALID_GRADE_COMPONENT_TYPES = new Set<GradeComponentType>(Object.values(GradeComponentType));
 
-const VALID_GRADE_ENTRY_MODES = new Set<GradeEntryMode>([
-  GradeEntryMode.NF_SERIES,
-  GradeEntryMode.SINGLE_SCORE,
-]);
+const VALID_GRADE_ENTRY_MODES = new Set<GradeEntryMode>(Object.values(GradeEntryMode));
 
-const VALID_REPORT_COMPONENT_SLOTS = new Set<ReportComponentSlot>([
-  ReportComponentSlot.NONE,
-  ReportComponentSlot.FORMATIF,
-  ReportComponentSlot.SBTS,
-  ReportComponentSlot.SAS,
-  ReportComponentSlot.US_THEORY,
-  ReportComponentSlot.US_PRACTICE,
-]);
+const VALID_REPORT_COMPONENT_SLOTS = new Set<ReportComponentSlot>(Object.values(ReportComponentSlot));
+const VALID_TARGET_CLASS_LEVELS = new Set(['X', 'XI', 'XII']);
+
+function isFormativeAliasCode(raw: unknown): boolean {
+  const code = normalizeProgramCodeSeed(raw);
+  return code === 'FORMATIF' || code === 'FORMATIVE' || code.startsWith('NF');
+}
+
+function isMidtermAliasCode(raw: unknown): boolean {
+  const code = normalizeProgramCodeSeed(raw);
+  if (!code) return false;
+  if (['MIDTERM', 'SBTS', 'PTS', 'UTS'].includes(code)) return true;
+  return code.includes('MIDTERM');
+}
+
+function isFinalEvenAliasCode(raw: unknown): boolean {
+  const code = normalizeProgramCodeSeed(raw);
+  if (!code) return false;
+  if (['SAT', 'PAT', 'PSAT', 'FINAL_EVEN'].includes(code)) return true;
+  return code.includes('FINAL_EVEN');
+}
+
+function isFinalOddAliasCode(raw: unknown): boolean {
+  const code = normalizeProgramCodeSeed(raw);
+  if (!code) return false;
+  if (['SAS', 'PAS', 'PSAS', 'FINAL_ODD'].includes(code)) return true;
+  return code.includes('FINAL_ODD');
+}
+
+function isFinalAliasCode(raw: unknown): boolean {
+  const code = normalizeProgramCodeSeed(raw);
+  if (!code) return false;
+  if (['FINAL', 'SAS', 'SAT', 'PAS', 'PAT', 'PSAS', 'PSAT', 'FINAL_ODD', 'FINAL_EVEN'].includes(code)) return true;
+  return code.includes('FINAL');
+}
+
+function inferExamTypeFromAlias(raw: unknown): ExamType | null {
+  const code = normalizeProgramCodeSeed(raw);
+  if (!code) return null;
+  if ((Object.values(ExamType) as string[]).includes(code)) return code as ExamType;
+  if (isFormativeAliasCode(code)) return ExamType.FORMATIF;
+  if (isMidtermAliasCode(code)) return ExamType.SBTS;
+  if (isFinalEvenAliasCode(code)) return ExamType.SAT;
+  if (isFinalOddAliasCode(code)) return ExamType.SAS;
+  if (isFinalAliasCode(code)) return ExamType.SAS;
+  return null;
+}
 
 function defaultGradeComponentTypeByBaseType(baseType: ExamType): GradeComponentType {
-  if (baseType === ExamType.FORMATIF) return GradeComponentType.FORMATIVE;
-  if (baseType === ExamType.SBTS) return GradeComponentType.MIDTERM;
-  if (baseType === ExamType.SAS || baseType === ExamType.SAT) return GradeComponentType.FINAL;
-  if (baseType === ExamType.US_PRACTICE) return GradeComponentType.US_PRACTICE;
-  if (baseType === ExamType.US_THEORY) return GradeComponentType.US_THEORY;
-  return GradeComponentType.FORMATIVE;
+  const normalized = normalizeProgramCodeSeed(baseType);
+  if (isFormativeAliasCode(normalized)) return GradeComponentType.FORMATIVE;
+  if (isMidtermAliasCode(normalized)) return GradeComponentType.MIDTERM;
+  if (isFinalAliasCode(normalized)) return GradeComponentType.FINAL;
+  if (normalized === 'US_PRACTICE' || normalized === 'US_PRAKTEK') return GradeComponentType.US_PRACTICE;
+  if (normalized === 'US_THEORY' || normalized === 'US_TEORI') return GradeComponentType.US_THEORY;
+  return GradeComponentType.CUSTOM;
 }
 
 function defaultGradeComponentCodeByBaseType(baseType: ExamType): string {
-  if (baseType === ExamType.FORMATIF) return 'FORMATIVE';
-  if (baseType === ExamType.SBTS) return 'MIDTERM';
-  if (baseType === ExamType.SAS || baseType === ExamType.SAT) return 'FINAL';
-  if (baseType === ExamType.US_PRACTICE) return 'US_PRACTICE';
-  if (baseType === ExamType.US_THEORY) return 'US_THEORY';
-  return 'FORMATIVE';
+  const normalized = normalizeProgramCodeSeed(baseType);
+  if (isFormativeAliasCode(normalized)) return 'FORMATIVE';
+  if (isMidtermAliasCode(normalized)) return 'MIDTERM';
+  if (isFinalAliasCode(normalized)) return 'FINAL';
+  if (normalized === 'US_PRACTICE' || normalized === 'US_PRAKTEK') return 'US_PRACTICE';
+  if (normalized === 'US_THEORY' || normalized === 'US_TEORI') return 'US_THEORY';
+  return 'CUSTOM';
 }
 
-function mapExamTypeFromCode(code: string, fallback: ExamType = ExamType.FORMATIF): ExamType {
-  if (code === 'FORMATIF') return ExamType.FORMATIF;
-  if (code === 'SBTS') return ExamType.SBTS;
-  if (code === 'SAS') return ExamType.SAS;
-  if (code === 'SAT') return ExamType.SAT;
-  if (code === 'US_PRACTICE') return ExamType.US_PRACTICE;
-  if (code === 'US_THEORY') return ExamType.US_THEORY;
-  return fallback;
+function mapExamTypeFromCode(
+  code: string,
+  fallback: ExamType = ExamType.FORMATIF,
+  fixedSemester?: Semester | null,
+): ExamType {
+  const normalized = normalizeProgramCodeSeed(code);
+  if (!normalized) return fallback;
+  if (isFinalEvenAliasCode(normalized)) return ExamType.SAT;
+  if (isFinalOddAliasCode(normalized)) return ExamType.SAS;
+  if (normalized === 'FINAL' && fixedSemester === Semester.EVEN) return ExamType.SAT;
+  if (normalized === 'FINAL' && fixedSemester === Semester.ODD) return ExamType.SAS;
+  return inferExamTypeFromAlias(normalized) || fallback;
 }
 
 function mapReportSlotFromCode(
   code: string,
   fallback: ReportComponentSlot = ReportComponentSlot.NONE,
 ): ReportComponentSlot {
-  if (code === 'FORMATIF') return ReportComponentSlot.FORMATIF;
-  if (code === 'SBTS') return ReportComponentSlot.SBTS;
-  if (code === 'SAS') return ReportComponentSlot.SAS;
-  if (code === 'US_THEORY') return ReportComponentSlot.US_THEORY;
-  if (code === 'US_PRACTICE') return ReportComponentSlot.US_PRACTICE;
-  if (code === 'NONE') return ReportComponentSlot.NONE;
+  const normalized = normalizeProgramCodeSeed(code);
+  if (isFormativeAliasCode(normalized)) return ReportComponentSlot.FORMATIF;
+  if (isMidtermAliasCode(normalized)) return ReportComponentSlot.SBTS;
+  // Schema slot FINAL masih satu kanal (SAS), SAT/PAT ikut dipetakan ke kanal FINAL ini.
+  if (isFinalAliasCode(normalized)) return ReportComponentSlot.SAS;
+  if (normalized === 'US_THEORY' || normalized === 'US_TEORI') return ReportComponentSlot.US_THEORY;
+  if (normalized === 'US_PRACTICE' || normalized === 'US_PRAKTEK') return ReportComponentSlot.US_PRACTICE;
+  if (normalized === 'NONE') return ReportComponentSlot.NONE;
   return fallback;
 }
 
@@ -363,7 +465,7 @@ function mapGradeEntryModeFromCode(
 }
 
 function defaultGradeEntryModeByCode(code: string): GradeEntryMode {
-  return code === 'FORMATIVE' ? GradeEntryMode.NF_SERIES : GradeEntryMode.SINGLE_SCORE;
+  return isFormativeAliasCode(code) ? GradeEntryMode.NF_SERIES : GradeEntryMode.SINGLE_SCORE;
 }
 
 function normalizeGradeComponentCode(raw: unknown, fallback: string): string {
@@ -388,11 +490,12 @@ function normalizeGradeEntryMode(raw: unknown, fallback: GradeEntryMode): GradeE
 }
 
 function defaultReportSlotByCode(code: string): ReportComponentSlot {
-  if (code === 'FORMATIVE') return ReportComponentSlot.FORMATIF;
-  if (code === 'MIDTERM') return ReportComponentSlot.SBTS;
-  if (code === 'FINAL') return ReportComponentSlot.SAS;
-  if (code === 'US_THEORY') return ReportComponentSlot.US_THEORY;
-  if (code === 'US_PRACTICE') return ReportComponentSlot.US_PRACTICE;
+  const normalized = normalizeProgramCodeSeed(code);
+  if (isFormativeAliasCode(normalized)) return ReportComponentSlot.FORMATIF;
+  if (isMidtermAliasCode(normalized)) return ReportComponentSlot.SBTS;
+  if (isFinalAliasCode(normalized)) return ReportComponentSlot.SAS;
+  if (normalized === 'US_THEORY' || normalized === 'US_TEORI') return ReportComponentSlot.US_THEORY;
+  if (normalized === 'US_PRACTICE' || normalized === 'US_PRAKTEK') return ReportComponentSlot.US_PRACTICE;
   return ReportComponentSlot.NONE;
 }
 
@@ -413,12 +516,13 @@ function mapGradeComponentTypeFromCode(
   code: string,
   fallback: GradeComponentType = GradeComponentType.CUSTOM,
 ): GradeComponentType {
-  if (code === 'FORMATIVE') return GradeComponentType.FORMATIVE;
-  if (code === 'MIDTERM') return GradeComponentType.MIDTERM;
-  if (code === 'FINAL') return GradeComponentType.FINAL;
-  if (code === 'SKILL') return GradeComponentType.SKILL;
-  if (code === 'US_PRACTICE') return GradeComponentType.US_PRACTICE;
-  if (code === 'US_THEORY') return GradeComponentType.US_THEORY;
+  const normalized = normalizeProgramCodeSeed(code);
+  if (isFormativeAliasCode(normalized)) return GradeComponentType.FORMATIVE;
+  if (isMidtermAliasCode(normalized)) return GradeComponentType.MIDTERM;
+  if (isFinalAliasCode(normalized)) return GradeComponentType.FINAL;
+  if (normalized === 'SKILL') return GradeComponentType.SKILL;
+  if (normalized === 'US_PRACTICE' || normalized === 'US_PRAKTEK') return GradeComponentType.US_PRACTICE;
+  if (normalized === 'US_THEORY' || normalized === 'US_TEORI') return GradeComponentType.US_THEORY;
   return fallback;
 }
 
@@ -458,12 +562,8 @@ function normalizeBaseTypeCode(raw: unknown, fallback: string): string {
 }
 
 function normalizeBaseType(raw: unknown, fallback: ExamType): ExamType {
-  const value = String(raw || '')
-    .trim()
-    .toUpperCase();
-  if (!value) return fallback;
-  if (value === 'QUIZ') return ExamType.FORMATIF;
-  if (VALID_BASE_TYPES.has(value as ExamType)) return value as ExamType;
+  const inferred = inferExamTypeFromAlias(raw);
+  if (inferred && VALID_BASE_TYPES.has(inferred)) return inferred;
   return fallback;
 }
 
@@ -505,6 +605,42 @@ function normalizeSemesterValue(raw: unknown): Semester | null {
   throw new ApiError(400, 'Semester tetap tidak valid. Gunakan ODD/GANJIL atau EVEN/GENAP.');
 }
 
+function normalizeClassLevelToken(raw: unknown): string {
+  const value = String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+  if (!value) return '';
+  if (value === '10' || value === 'X') return 'X';
+  if (value === '11' || value === 'XI') return 'XI';
+  if (value === '12' || value === 'XII') return 'XII';
+  return '';
+}
+
+function normalizeClassLevels(raw: unknown, fallback: string[] = []): string[] {
+  const source = Array.isArray(raw) ? raw : fallback;
+  const deduped = new Set<string>();
+  source.forEach((item) => {
+    const normalized = normalizeClassLevelToken(item);
+    if (normalized && VALID_TARGET_CLASS_LEVELS.has(normalized)) {
+      deduped.add(normalized);
+    }
+  });
+  return Array.from(deduped);
+}
+
+function normalizeIdArray(raw: unknown, fallback: number[] = []): number[] {
+  const source = Array.isArray(raw) ? raw : fallback;
+  const deduped = new Set<number>();
+  source.forEach((item) => {
+    const parsed = Number(item);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      deduped.add(Math.round(parsed));
+    }
+  });
+  return Array.from(deduped);
+}
+
 function normalizeText(raw: unknown, fallback: string, maxLength: number): string {
   const value = typeof raw === 'string' ? raw.trim() : '';
   const finalValue = value || fallback;
@@ -530,11 +666,12 @@ function toNumber(raw: unknown, fallback: number): number {
 }
 
 function assertProgramSemesterCompatibility(baseType: ExamType, fixedSemester: Semester | null) {
-  if (baseType === ExamType.SAS && fixedSemester === Semester.EVEN) {
-    throw new ApiError(400, 'Program dengan base type SAS tidak boleh dikunci ke semester Genap.');
+  const normalized = normalizeProgramCodeSeed(baseType);
+  if (isFinalOddAliasCode(normalized) && fixedSemester === Semester.EVEN) {
+    throw new ApiError(400, 'Program final ganjil tidak boleh dikunci ke semester Genap.');
   }
-  if (baseType === ExamType.SAT && fixedSemester === Semester.ODD) {
-    throw new ApiError(400, 'Program dengan base type SAT tidak boleh dikunci ke semester Ganjil.');
+  if (isFinalEvenAliasCode(normalized) && fixedSemester === Semester.ODD) {
+    throw new ApiError(400, 'Program final genap tidak boleh dikunci ke semester Ganjil.');
   }
 }
 
@@ -808,14 +945,31 @@ async function syncMissingGradeComponentsFromPrograms(academicYearId: number) {
   }
 }
 
+async function syncMissingGradeComponentsFromProgramsWithCooldown(academicYearId: number) {
+  const now = Date.now();
+  const lastSyncedAt = gradeComponentSyncTimestamps.get(academicYearId) || 0;
+  if (now - lastSyncedAt < GRADE_COMPONENT_SYNC_COOLDOWN_MS) {
+    return;
+  }
+  await syncMissingGradeComponentsFromPrograms(academicYearId);
+  gradeComponentSyncTimestamps.set(academicYearId, now);
+}
+
 function rowToProgram(row: ExamProgramRow): ExamProgramDefinition {
   const defaultsByCode = getDefaultsByCode();
   const defaults = defaultsByCode.get(row.code);
+  const resolvedFixedSemester = row.fixedSemester ?? defaults?.fixedSemester ?? null;
   const baseTypeCode = normalizeBaseTypeCode(
     row.baseTypeCode,
     defaults?.baseTypeCode || row.baseType?.toString() || row.code,
   );
-  const baseType = row.baseType || mapExamTypeFromCode(baseTypeCode, defaults?.baseType || ExamType.FORMATIF);
+  const baseType =
+    row.baseType ||
+    mapExamTypeFromCode(
+      baseTypeCode,
+      defaults?.baseType || ExamType.FORMATIF,
+      resolvedFixedSemester,
+    );
   const gradeComponentCode =
     normalizeProgramCodeSeed(row.gradeComponentCode) ||
     defaults?.gradeComponentCode ||
@@ -850,11 +1004,14 @@ function rowToProgram(row: ExamProgramRow): ExamProgramDefinition {
     label: row.displayLabel || defaults?.label || row.code,
     shortLabel: row.shortLabel || defaults?.shortLabel || row.code,
     description: row.description || defaults?.description || '',
-    fixedSemester: row.fixedSemester ?? defaults?.fixedSemester ?? null,
+    fixedSemester: resolvedFixedSemester,
     order: Number.isFinite(row.displayOrder) ? row.displayOrder : defaults?.order || 0,
     isActive: row.isActive,
     showOnTeacherMenu: row.showOnTeacherMenu,
     showOnStudentMenu: row.showOnStudentMenu,
+    targetClassLevels: normalizeClassLevels(row.targetClassLevels, defaults?.targetClassLevels || []),
+    allowedSubjectIds: normalizeIdArray(row.allowedSubjectIds, defaults?.allowedSubjectIds || []),
+    allowedAuthorIds: normalizeIdArray(row.allowedAuthorIds, defaults?.allowedAuthorIds || []),
   };
 }
 
@@ -895,6 +1052,9 @@ async function fetchProgramRows(academicYearId: number) {
       isActive: true,
       showOnTeacherMenu: true,
       showOnStudentMenu: true,
+      targetClassLevels: true,
+      allowedSubjectIds: true,
+      allowedAuthorIds: true,
     },
     orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
   });
@@ -913,9 +1073,15 @@ function normalizeProgramPayload(rawPrograms: unknown[]): NormalizedExamProgramP
       item.baseTypeCode ?? item.baseType,
       defaults?.baseTypeCode || defaults?.baseType || ExamType.FORMATIF,
     );
+    const fixedSemesterFromPayload = normalizeSemesterValue(item.fixedSemester);
+    const fixedSemester = fixedSemesterFromPayload ?? defaults?.fixedSemester ?? null;
     const baseType = normalizeBaseType(
       item.baseType,
-      mapExamTypeFromCode(baseTypeCode, defaults?.baseType || ExamType.FORMATIF),
+      mapExamTypeFromCode(
+        baseTypeCode,
+        defaults?.baseType || ExamType.FORMATIF,
+        fixedSemester,
+      ),
     );
     const defaultGradeComponentType = defaults?.gradeComponentType || defaultGradeComponentTypeByBaseType(baseType);
     const gradeComponentTypeCode = normalizeGradeComponentTypeCode(
@@ -950,12 +1116,30 @@ function normalizeProgramPayload(rawPrograms: unknown[]): NormalizedExamProgramP
       defaults?.gradeComponentLabel || gradeComponentCode.replace(/_/g, ' '),
       80,
     );
-    const fixedSemesterFromPayload = normalizeSemesterValue(item.fixedSemester);
-    const fixedSemester = fixedSemesterFromPayload ?? defaults?.fixedSemester ?? null;
     assertProgramSemesterCompatibility(baseType, fixedSemester);
 
     const labelFallback = defaults?.label || code.replace(/_/g, ' ');
     const shortLabelFallback = defaults?.shortLabel || labelFallback.slice(0, 40);
+    const hasTargetClassLevels = Object.prototype.hasOwnProperty.call(item, 'targetClassLevels');
+    const hasAllowedSubjectIds = Object.prototype.hasOwnProperty.call(item, 'allowedSubjectIds');
+    const hasAllowedAuthorIds = Object.prototype.hasOwnProperty.call(item, 'allowedAuthorIds');
+
+    // For new/edited payload rows, missing restriction fields should stay permissive by default:
+    // - targetClassLevels: [] => all levels
+    // - allowedSubjectIds: [] => all subjects
+    // - allowedAuthorIds: [] => all assigned teachers
+    const targetClassLevels = normalizeClassLevels(
+      item.targetClassLevels,
+      hasTargetClassLevels ? [] : defaults?.targetClassLevels || [],
+    );
+    const allowedSubjectIds = normalizeIdArray(
+      item.allowedSubjectIds,
+      hasAllowedSubjectIds ? [] : defaults?.allowedSubjectIds || [],
+    );
+    const allowedAuthorIds = normalizeIdArray(
+      item.allowedAuthorIds,
+      hasAllowedAuthorIds ? [] : defaults?.allowedAuthorIds || [],
+    );
 
     return {
       id,
@@ -976,6 +1160,9 @@ function normalizeProgramPayload(rawPrograms: unknown[]): NormalizedExamProgramP
       isActive: toBoolean(item.isActive, defaults?.isActive ?? true),
       showOnTeacherMenu: toBoolean(item.showOnTeacherMenu, defaults?.showOnTeacherMenu ?? true),
       showOnStudentMenu: toBoolean(item.showOnStudentMenu, defaults?.showOnStudentMenu ?? true),
+      targetClassLevels,
+      allowedSubjectIds,
+      allowedAuthorIds,
     };
   });
 }
@@ -986,8 +1173,25 @@ export const getExamPrograms = asyncHandler(async (req: Request, res: Response) 
   const roleContext: 'teacher' | 'student' | 'all' =
     roleContextRaw === 'teacher' || roleContextRaw === 'student' ? roleContextRaw : 'all';
   const includeInactive = String(req.query.includeInactive || '').toLowerCase() === 'true';
+  const authUser = (req as any).user as { id: number; role: string } | undefined;
+  const authRole = String(authUser?.role || '').trim().toUpperCase();
+  const authUserId = Number(authUser?.id || 0);
+  const cacheKey = buildExamProgramsCacheKey({
+    academicYearId,
+    roleContext,
+    includeInactive,
+    authRole,
+    authUserId,
+  });
+  const cachedPayload = getExamProgramsCache(cacheKey);
+  if (cachedPayload) {
+    res.setHeader('Cache-Control', 'private, max-age=15');
+    return res.status(200).json(
+      new ApiResponse(200, cachedPayload, 'Konfigurasi program ujian berhasil dimuat.'),
+    );
+  }
 
-  await syncMissingGradeComponentsFromPrograms(academicYearId);
+  await syncMissingGradeComponentsFromProgramsWithCooldown(academicYearId);
   const rows = await fetchProgramRows(academicYearId);
   let programs = mapPrograms(rows);
 
@@ -1001,17 +1205,70 @@ export const getExamPrograms = asyncHandler(async (req: Request, res: Response) 
     programs = programs.filter((item) => item.showOnStudentMenu);
   }
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
+  if (roleContext === 'teacher' && authRole === 'TEACHER' && authUserId > 0) {
+    const assignments = await prisma.teacherAssignment.findMany({
+      where: {
+        teacherId: authUserId,
         academicYearId,
-        roleContext,
-        programs,
       },
-      'Konfigurasi program ujian berhasil dimuat.',
-    ),
-  );
+      select: {
+        subjectId: true,
+        class: {
+          select: {
+            level: true,
+          },
+        },
+      },
+    });
+
+    const teacherSubjectIds = new Set(assignments.map((item) => item.subjectId));
+    const teacherLevels = new Set(
+      assignments
+        .map((item) => normalizeClassLevelToken(item.class?.level))
+        .filter((item): item is string => Boolean(item)),
+    );
+
+    programs = programs.filter((item) => {
+      const allowedSubject =
+        item.allowedSubjectIds.length === 0 ||
+        item.allowedSubjectIds.some((subjectId) => teacherSubjectIds.has(subjectId));
+      if (!allowedSubject) return false;
+
+      const allowedLevel =
+        item.targetClassLevels.length === 0 ||
+        item.targetClassLevels.some((level) => teacherLevels.has(normalizeClassLevelToken(level)));
+      return allowedLevel;
+    });
+  }
+
+  if (roleContext === 'student' && authRole === 'STUDENT' && authUserId > 0) {
+    const student = await prisma.user.findUnique({
+      where: { id: authUserId },
+      select: {
+        studentClass: {
+          select: {
+            level: true,
+          },
+        },
+      },
+    });
+    const studentLevel = normalizeClassLevelToken(student?.studentClass?.level);
+    programs = programs.filter((item) => {
+      if (item.targetClassLevels.length === 0) return true;
+      if (!studentLevel) return false;
+      return item.targetClassLevels.some((level) => normalizeClassLevelToken(level) === studentLevel);
+    });
+  }
+
+  const payload = {
+    academicYearId,
+    roleContext,
+    programs,
+  };
+  setExamProgramsCache(cacheKey, payload);
+  res.setHeader('Cache-Control', 'private, max-age=15');
+
+  return res.status(200).json(new ApiResponse(200, payload, 'Konfigurasi program ujian berhasil dimuat.'));
 });
 
 export const upsertExamPrograms = asyncHandler(async (req: Request, res: Response) => {
@@ -1060,6 +1317,39 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
       400,
       `Komponen nilai belum terdaftar: ${missingCodes.join(', ')}. Tambahkan dulu di Master Komponen Nilai.`,
     );
+  }
+
+  const requestedSubjectIds = Array.from(
+    new Set(payloadRows.flatMap((row) => row.allowedSubjectIds || []).filter((id) => Number.isFinite(id) && id > 0)),
+  );
+  if (requestedSubjectIds.length > 0) {
+    const validSubjects = await prisma.subject.findMany({
+      where: { id: { in: requestedSubjectIds } },
+      select: { id: true },
+    });
+    const validSubjectIds = new Set(validSubjects.map((item) => item.id));
+    const missingSubjects = requestedSubjectIds.filter((id) => !validSubjectIds.has(id));
+    if (missingSubjects.length > 0) {
+      throw new ApiError(400, `Mapel tidak ditemukan: ${missingSubjects.join(', ')}`);
+    }
+  }
+
+  const requestedAuthorIds = Array.from(
+    new Set(payloadRows.flatMap((row) => row.allowedAuthorIds || []).filter((id) => Number.isFinite(id) && id > 0)),
+  );
+  if (requestedAuthorIds.length > 0) {
+    const validAuthors = await prisma.user.findMany({
+      where: {
+        id: { in: requestedAuthorIds },
+        role: 'TEACHER',
+      },
+      select: { id: true },
+    });
+    const validAuthorIds = new Set(validAuthors.map((item) => item.id));
+    const invalidAuthors = requestedAuthorIds.filter((id) => !validAuthorIds.has(id));
+    if (invalidAuthors.length > 0) {
+      throw new ApiError(400, `Pembuat soal tidak valid (harus akun guru): ${invalidAuthors.join(', ')}`);
+    }
   }
 
   const alignedPayloadRows = payloadRows.map((item) => {
@@ -1137,6 +1427,9 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
             isActive: item.isActive,
             showOnTeacherMenu: item.showOnTeacherMenu,
             showOnStudentMenu: item.showOnStudentMenu,
+            targetClassLevels: item.targetClassLevels,
+            allowedSubjectIds: item.allowedSubjectIds,
+            allowedAuthorIds: item.allowedAuthorIds,
           },
         });
 
@@ -1178,6 +1471,9 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
             isActive: item.isActive,
             showOnTeacherMenu: item.showOnTeacherMenu,
             showOnStudentMenu: item.showOnStudentMenu,
+            targetClassLevels: item.targetClassLevels,
+            allowedSubjectIds: item.allowedSubjectIds,
+            allowedAuthorIds: item.allowedAuthorIds,
           },
           select: {
             id: true,
@@ -1258,6 +1554,7 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
   });
 
   const rows = await fetchProgramRows(academicYearId);
+  invalidateExamProgramsCache(academicYearId);
 
   return res.status(200).json(
     new ApiResponse(
@@ -1487,6 +1784,7 @@ export const upsertExamGradeComponents = asyncHandler(async (req: Request, res: 
   });
 
   const rows = await fetchGradeComponentRows(academicYearId);
+  invalidateExamProgramsCache(academicYearId);
   return res.status(200).json(
     new ApiResponse(
       200,

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { classService } from '../../../services/class.service';
 import { majorService, type Major } from '../../../services/major.service';
@@ -82,9 +82,18 @@ export const ClassPage = () => {
   });
 
   // Helper to extract array from API response structure which might vary
-  const majors = majorsData?.data?.majors || majorsData?.majors || [];
-  const academicYears = academicYearsData?.data?.academicYears || academicYearsData?.academicYears || [];
-  const teachers = Array.isArray(teachersData) ? teachersData : (teachersData?.data || []);
+  const majors = useMemo<Major[]>(
+    () => majorsData?.data?.majors || majorsData?.majors || [],
+    [majorsData],
+  );
+  const academicYears = useMemo<AcademicYear[]>(
+    () => academicYearsData?.data?.academicYears || academicYearsData?.academicYears || [],
+    [academicYearsData],
+  );
+  const teachers = useMemo<User[]>(
+    () => (Array.isArray(teachersData) ? teachersData : (teachersData?.data || [])),
+    [teachersData],
+  );
 
   const { register, handleSubmit, reset, setValue, getValues, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),

@@ -128,11 +128,9 @@ function parseExamType(raw: string | string[] | undefined): ExamDisplayType | nu
   const value = String(Array.isArray(raw) ? raw[0] : raw || '')
     .trim()
     .toUpperCase();
+  if (!value) return null;
   if (value === 'QUIZ') return 'FORMATIF';
-  if (value === 'FORMATIF' || value === 'SBTS' || value === 'SAS' || value === 'SAT') {
-    return value;
-  }
-  return null;
+  return value;
 }
 
 function normalizeProgramCode(raw: string | string[] | undefined): string | null {
@@ -146,32 +144,43 @@ function normalizeProgramCode(raw: string | string[] | undefined): string | null
   return value || null;
 }
 
-function getLockedSemesterByExamType(type: ExamDisplayType): 'ODD' | 'EVEN' | null {
-  if (type === 'SAS') return 'ODD';
-  if (type === 'SAT') return 'EVEN';
-  return null;
-}
-
-function assertExamTypeSemester(type: ExamDisplayType, semester: 'ODD' | 'EVEN') {
-  if (type === 'SAS' && semester !== 'ODD') {
-    throw new Error('SAS hanya boleh di semester Ganjil.');
-  }
-  if (type === 'SAT' && semester !== 'EVEN') {
-    throw new Error('SAT hanya boleh di semester Genap.');
+function assertFixedSemesterMatch(fixedSemester: 'ODD' | 'EVEN' | null | undefined, semester: 'ODD' | 'EVEN') {
+  if (fixedSemester && semester !== fixedSemester) {
+    throw new Error(`Program ini hanya boleh semester ${fixedSemester === 'ODD' ? 'Ganjil' : 'Genap'}.`);
   }
 }
 
-function getScoreSyncHint(type: ExamDisplayType): string {
-  if (type === 'FORMATIF') {
-    return 'Nilai otomatis masuk ke slot NF berikutnya (NF1 sampai NF6). NF1-3 dipakai untuk rerata SBTS, NF1-6 dipakai untuk rerata SAS/SAT.';
+function getScoreSyncHint(program?: ExamProgramItem | null): string {
+  if (!program) {
+    return 'Nilai ujian otomatis tersinkron ke komponen nilai sesuai konfigurasi Program Ujian.';
   }
-  if (type === 'SBTS') {
-    return 'Nilai ujian otomatis tersinkron ke komponen Nilai SBTS.';
+
+  const componentLabel = String(
+    program.gradeComponentLabel || program.shortLabel || program.label || program.gradeComponentCode || program.code,
+  )
+    .trim()
+    .toUpperCase();
+  const entryModeCode = normalizeProgramCode(program.gradeEntryModeCode || program.gradeEntryMode);
+  const fixedSemester = program.fixedSemester;
+
+  if (entryModeCode === 'NF_SERIES') {
+    return `Nilai disimpan sebagai entri formatif dinamis pada komponen ${componentLabel}.`;
   }
-  if (type === 'SAS') {
-    return 'Khusus semester ganjil. Nilai ujian otomatis tersinkron ke komponen Nilai SAS.';
+  if (fixedSemester === 'ODD') {
+    return `Nilai ujian otomatis tersinkron ke komponen ${componentLabel}. Program ini khusus semester Ganjil.`;
   }
-  return 'Khusus semester genap. Nilai ujian otomatis tersinkron ke komponen Nilai SAT.';
+  if (fixedSemester === 'EVEN') {
+    return `Nilai ujian otomatis tersinkron ke komponen ${componentLabel}. Program ini khusus semester Genap.`;
+  }
+  return `Nilai ujian otomatis tersinkron ke komponen ${componentLabel}.`;
+}
+
+function resolveProgramExamType(program?: ExamProgramItem | null, fallback: ExamDisplayType = 'FORMATIF'): ExamDisplayType {
+  const baseType = parseExamType(program?.baseTypeCode || program?.baseType);
+  if (baseType) return baseType;
+  const componentType = normalizeProgramCode(program?.gradeComponentTypeCode || program?.gradeComponentType);
+  if (componentType === 'FORMATIVE') return 'FORMATIF';
+  return fallback;
 }
 
 function parseQuestions(raw: unknown): QuestionDraft[] {
@@ -274,7 +283,10 @@ export default function TeacherExamEditorScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const pageContentPadding = getStandardPagePadding(insets);
   const teacherAssignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
-  const assignments = teacherAssignmentsQuery.data?.assignments || [];
+  const assignments = useMemo(
+    () => teacherAssignmentsQuery.data?.assignments || [],
+    [teacherAssignmentsQuery.data?.assignments],
+  );
 
   const examProgramsQuery = useQuery({
     queryKey: ['mobile-teacher-exam-editor-programs', teacherAssignmentsQuery.data?.activeYear?.id],
@@ -299,7 +311,7 @@ export default function TeacherExamEditorScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [instructions, setInstructions] = useState('');
-  const [selectedProgramCode, setSelectedProgramCode] = useState<string>(forcedProgramCode || 'FORMATIF');
+  const [selectedProgramCode, setSelectedProgramCode] = useState<string>(forcedProgramCode || '');
   const [examType, setExamType] = useState<ExamDisplayType>('FORMATIF');
   const [semester, setSemester] = useState<'ODD' | 'EVEN'>('ODD');
   const [duration, setDuration] = useState('60');
@@ -314,11 +326,19 @@ export default function TeacherExamEditorScreen() {
       null,
     [availablePrograms, selectedProgramCode],
   );
-  const lockedSemester = (selectedProgram?.fixedSemester as 'ODD' | 'EVEN' | null) || getLockedSemesterByExamType(examType);
+  const allowedSubjectIdsByProgram = useMemo(() => {
+    const ids = Array.isArray(selectedProgram?.allowedSubjectIds) ? selectedProgram.allowedSubjectIds : [];
+    return new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0));
+  }, [selectedProgram]);
+  const filteredAssignments = useMemo(() => {
+    if (!selectedProgram || allowedSubjectIdsByProgram.size === 0) return assignments;
+    return assignments.filter((assignment) => allowedSubjectIdsByProgram.has(Number(assignment.subject?.id)));
+  }, [selectedProgram, allowedSubjectIdsByProgram, assignments]);
+  const lockedSemester = (selectedProgram?.fixedSemester as 'ODD' | 'EVEN' | null) || null;
   const isTypeLockedFromMenu = !isEditMode && !!forcedProgramCode;
   const scoreSyncHint = useMemo(
-    () => String(selectedProgram?.description || '').trim() || getScoreSyncHint(examType),
-    [selectedProgram?.description, examType],
+    () => String(selectedProgram?.description || '').trim() || getScoreSyncHint(selectedProgram),
+    [selectedProgram],
   );
   const completedQuestions = useMemo(
     () => questions.filter((question) => question.content.trim().length > 0).length,
@@ -326,19 +346,32 @@ export default function TeacherExamEditorScreen() {
   );
 
   useEffect(() => {
-    if (!selectedAssignmentId && assignments.length > 0) {
-      setSelectedAssignmentId(assignments[0].id);
+    if (filteredAssignments.length === 0) {
+      if (selectedAssignmentId !== null) {
+        const timerId = setTimeout(() => setSelectedAssignmentId(null), 0);
+        return () => clearTimeout(timerId);
+      }
+      return;
     }
-  }, [selectedAssignmentId, assignments]);
+    const stillValid = filteredAssignments.some((assignment) => assignment.id === selectedAssignmentId);
+    if (!stillValid) {
+      const timerId = setTimeout(() => setSelectedAssignmentId(filteredAssignments[0].id), 0);
+      return () => clearTimeout(timerId);
+    }
+  }, [selectedAssignmentId, filteredAssignments]);
 
   useEffect(() => {
     if (isEditMode) return;
     if (forcedProgramCode) {
-      setSelectedProgramCode(forcedProgramCode);
-      return;
+      const timerId = setTimeout(() => setSelectedProgramCode(forcedProgramCode), 0);
+      return () => clearTimeout(timerId);
     }
     if (!selectedProgramCode && availablePrograms.length > 0) {
-      setSelectedProgramCode(normalizeProgramCode(availablePrograms[0].code) || '');
+      const timerId = setTimeout(
+        () => setSelectedProgramCode(normalizeProgramCode(availablePrograms[0].code) || ''),
+        0,
+      );
+      return () => clearTimeout(timerId);
     }
   }, [isEditMode, forcedProgramCode, selectedProgramCode, availablePrograms]);
 
@@ -347,19 +380,22 @@ export default function TeacherExamEditorScreen() {
       if (!availablePrograms.length) return;
       const fallbackCode = normalizeProgramCode(availablePrograms[0].code);
       if (fallbackCode && fallbackCode !== selectedProgramCode) {
-        setSelectedProgramCode(fallbackCode);
+        const timerId = setTimeout(() => setSelectedProgramCode(fallbackCode), 0);
+        return () => clearTimeout(timerId);
       }
       return;
     }
-    const nextType = parseExamType(selectedProgram.baseType) || 'FORMATIF';
+    const nextType = resolveProgramExamType(selectedProgram, examType || 'FORMATIF');
     if (examType !== nextType) {
-      setExamType(nextType);
+      const timerId = setTimeout(() => setExamType(nextType), 0);
+      return () => clearTimeout(timerId);
     }
   }, [selectedProgram, availablePrograms, selectedProgramCode, examType]);
 
   useEffect(() => {
     if (lockedSemester && semester !== lockedSemester) {
-      setSemester(lockedSemester);
+      const timerId = setTimeout(() => setSemester(lockedSemester), 0);
+      return () => clearTimeout(timerId);
     }
   }, [lockedSemester, semester]);
 
@@ -374,32 +410,35 @@ export default function TeacherExamEditorScreen() {
     if (!isEditMode || !packetDetailQuery.data || hydratedPacket) return;
 
     const packet = packetDetailQuery.data;
-    setTitle(packet.title || '');
-    setDescription(packet.description || '');
-    setInstructions(packet.instructions || '');
-    setSelectedProgramCode(normalizeProgramCode(packet.programCode || packet.type) || 'FORMATIF');
-    setExamType((String(packet.type).toUpperCase() as ExamDisplayType) || 'FORMATIF');
-    setSemester((String(packet.semester).toUpperCase() as 'ODD' | 'EVEN') || 'ODD');
-    setDuration(String(packet.duration || 60));
-    setKkm('75');
-    setQuestions(parseQuestions(packet.questions));
+    const timerId = setTimeout(() => {
+      setTitle(packet.title || '');
+      setDescription(packet.description || '');
+      setInstructions(packet.instructions || '');
+      setSelectedProgramCode(normalizeProgramCode(packet.programCode || packet.type) || '');
+      setExamType((String(packet.type).toUpperCase() as ExamDisplayType) || 'FORMATIF');
+      setSemester((String(packet.semester).toUpperCase() as 'ODD' | 'EVEN') || 'ODD');
+      setDuration(String(packet.duration || 60));
+      setKkm('75');
+      setQuestions(parseQuestions(packet.questions));
 
-    if (assignments.length > 0) {
-      const matched = assignments.find(
-        (assignment) =>
-          assignment.subject.id === packet.subject.id &&
-          (!packet.academicYear?.id || assignment.academicYear.id === packet.academicYear.id),
-      );
-      if (matched) {
-        setSelectedAssignmentId(matched.id);
+      if (assignments.length > 0) {
+        const matched = assignments.find(
+          (assignment) =>
+            assignment.subject.id === packet.subject.id &&
+            (!packet.academicYear?.id || assignment.academicYear.id === packet.academicYear.id),
+        );
+        if (matched) {
+          setSelectedAssignmentId(matched.id);
+        }
       }
-    }
 
-    setHydratedPacket(true);
+      setHydratedPacket(true);
+    }, 0);
+    return () => clearTimeout(timerId);
   }, [isEditMode, packetDetailQuery.data, hydratedPacket, assignments]);
 
   const selectedAssignment =
-    assignments.find((assignment) => assignment.id === selectedAssignmentId) || null;
+    filteredAssignments.find((assignment) => assignment.id === selectedAssignmentId) || null;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -458,7 +497,7 @@ export default function TeacherExamEditorScreen() {
         title: title.trim(),
         subjectId: selectedAssignment.subject.id,
         academicYearId: selectedAssignment.academicYear.id,
-        type: examType,
+        type: resolveProgramExamType(selectedProgram, examType || 'FORMATIF'),
         programCode: normalizedProgramCode,
         semester,
         duration: durationValue,
@@ -468,7 +507,7 @@ export default function TeacherExamEditorScreen() {
         saveToBank,
         questions: cleanedQuestions,
       };
-      assertExamTypeSemester(payload.type, payload.semester);
+      assertFixedSemesterMatch(lockedSemester, payload.semester);
 
       if (isEditMode && packetId) {
         return examApi.updateTeacherPacket(packetId, payload);
@@ -487,8 +526,9 @@ export default function TeacherExamEditorScreen() {
         },
       ]);
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || error?.message || 'Gagal menyimpan packet ujian.';
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } }; message?: string };
+      const message = apiError?.response?.data?.message || apiError?.message || 'Gagal menyimpan packet ujian.';
       Alert.alert('Gagal', message);
     },
   });
@@ -642,7 +682,7 @@ export default function TeacherExamEditorScreen() {
       >
         <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Kelas & Mapel</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
-          {assignments.map((assignment) => {
+          {filteredAssignments.map((assignment) => {
             const selected = selectedAssignmentId === assignment.id;
             return (
               <View key={assignment.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
@@ -667,6 +707,11 @@ export default function TeacherExamEditorScreen() {
             );
           })}
         </View>
+        {filteredAssignments.length === 0 ? (
+          <Text style={{ color: '#b45309', fontSize: 11, marginTop: 4 }}>
+            Tidak ada mapel penugasan yang diizinkan untuk program ini.
+          </Text>
+        ) : null}
       </View>
 
       <TextInput

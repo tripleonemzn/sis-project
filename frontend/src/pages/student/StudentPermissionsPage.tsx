@@ -91,8 +91,16 @@ export const StudentPermissionsPage = () => {
       });
       toast.success('Pengajuan izin berhasil dikirim');
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal mengajukan izin');
+    onError: (error: unknown) => {
+      const message =
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof (error as { response?: { data?: { message?: string } } }).response?.data?.message ===
+          'string'
+          ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+          : 'Gagal mengajukan izin';
+      toast.error(message || 'Gagal mengajukan izin');
     }
   });
 

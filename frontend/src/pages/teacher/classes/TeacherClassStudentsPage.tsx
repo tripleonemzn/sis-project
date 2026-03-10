@@ -10,21 +10,33 @@ import {
 } from 'lucide-react';
 import { classService } from '../../../services/class.service';
 
+type ClassStudent = {
+  id: number;
+  full_name: string;
+  username: string;
+  nis?: string | null;
+  nisn?: string | null;
+  gender?: string | null;
+  is_active?: boolean;
+};
+
 export const TeacherClassStudentsPage = () => {
   const { classId } = useParams();
+  const normalizedClassId = Number(classId);
+  const hasValidClassId = Number.isInteger(normalizedClassId) && normalizedClassId > 0;
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
 
   const { data: classData, isLoading, error } = useQuery({
-    queryKey: ['class', classId],
-    queryFn: () => classService.getById(Number(classId)),
-    enabled: !!classId,
+    queryKey: ['class', normalizedClassId],
+    queryFn: () => classService.getById(normalizedClassId),
+    enabled: hasValidClassId,
   });
 
-  const students = classData?.data?.students || classData?.students || [];
+  const students: ClassStudent[] = classData?.data?.students || classData?.students || [];
   const className = classData?.data?.name || classData?.name || 'Detail Kelas';
   
-  const filteredStudents = students.filter((student: any) => 
+  const filteredStudents = students.filter((student) => 
     student.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (student.nis && student.nis.includes(searchQuery)) ||
     (student.nisn && student.nisn.includes(searchQuery))
@@ -108,7 +120,7 @@ export const TeacherClassStudentsPage = () => {
                   </td>
                 </tr>
               ) : (
-                filteredStudents.map((student: any, index: number) => (
+                filteredStudents.map((student, index: number) => (
                   <tr key={student.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {index + 1}

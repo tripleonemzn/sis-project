@@ -85,8 +85,38 @@ export interface TeacherAssignmentDetail extends TeacherAssignment {
   };
 }
 
+type AssignmentLabelSource = Pick<TeacherAssignment, 'subject' | 'class'>;
+
+const compareNaturalText = (left: unknown, right: unknown): number =>
+  String(left || '').localeCompare(String(right || ''), 'id', {
+    numeric: true,
+    sensitivity: 'base',
+  });
+
+export const compareTeacherAssignmentsBySubjectClass = <T extends AssignmentLabelSource>(
+  a: T,
+  b: T,
+): number => {
+  const subjectCompare = compareNaturalText(a.subject?.name, b.subject?.name);
+  if (subjectCompare !== 0) return subjectCompare;
+  return compareNaturalText(a.class?.name, b.class?.name);
+};
+
+export const sortTeacherAssignmentsBySubjectClass = <T extends AssignmentLabelSource>(assignments: T[]): T[] =>
+  [...assignments].sort(compareTeacherAssignmentsBySubjectClass);
+
+export const formatTeacherAssignmentLabel = (assignment: AssignmentLabelSource): string =>
+  `${assignment.subject?.name || '-'} - ${assignment.class?.name || '-'}`;
+
+const ensurePositiveAssignmentId = (id: number) => {
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error('Teacher assignment id tidak valid');
+  }
+};
+
 export const teacherAssignmentService = {
-  list: async (params: {
+  list: async (
+    params: {
     page?: number;
     limit?: number;
     search?: string;
@@ -95,11 +125,19 @@ export const teacherAssignmentService = {
     subjectId?: number;
     classId?: number;
     scope?: 'CURRICULUM';
-  }) => {
+  }): Promise<{ data: TeacherAssignmentResponse; [key: string]: unknown }> => {
     const response = await api.get<{ data: TeacherAssignmentResponse }>('/teacher-assignments', {
       params,
     });
-    return response.data;
+    const payload = response.data as { data: TeacherAssignmentResponse; [key: string]: unknown };
+    const assignments = Array.isArray(payload.data?.assignments) ? payload.data.assignments : [];
+    return {
+      ...payload,
+      data: {
+        ...payload.data,
+        assignments: sortTeacherAssignmentsBySubjectClass(assignments),
+      },
+    };
   },
 
   create: async (data: {
@@ -116,16 +154,19 @@ export const teacherAssignmentService = {
   },
 
   delete: async (id: number) => {
+    ensurePositiveAssignmentId(id);
     const response = await api.delete<{ data: null }>(`/teacher-assignments/${id}`);
     return response.data;
   },
 
   getById: async (id: number) => {
+    ensurePositiveAssignmentId(id);
     const response = await api.get<{ data: TeacherAssignment }>(`/teacher-assignments/${id}`);
     return response.data;
   },
 
   updateCompetencyThresholds: async (id: number, competencyThresholds: { A?: string; B?: string; C?: string; D?: string }) => {
+    ensurePositiveAssignmentId(id);
     const response = await api.put<{ data: TeacherAssignment }>(`/teacher-assignments/${id}/competency`, {
       competencyThresholds,
     });

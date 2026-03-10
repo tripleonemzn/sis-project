@@ -7,10 +7,12 @@ import {
   type BudgetRequest,
   type UpdateBudgetRequestStatusPayload,
 } from '../../services/budgetRequest.service';
+import { workProgramService, type WorkProgram } from '../../services/workProgram.service';
 import {
   Loader2,
   Search,
   Filter,
+  Calendar,
   CheckCircle2,
   XCircle,
   Users,
@@ -21,6 +23,9 @@ import {
   ClipboardList,
   ThumbsUp,
   ThumbsDown,
+  AlertTriangle,
+  Gauge,
+  Clock3,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -28,6 +33,7 @@ import { userService } from '../../services/user.service';
 import { teacherAssignmentService, type TeacherAssignment } from '../../services/teacherAssignment.service';
 import { AttendanceRecapPage } from '../admin/academic/AttendanceRecapPage';
 import { ReportCardsPage } from '../admin/academic/ReportCardsPage';
+import WorkProgramApprovalsPage from '../teacher/wakasek/curriculum/WorkProgramApprovalsPage';
 import { getMenuItems, type MenuItem } from '../../components/layout/Sidebar';
 
 type StatTone = 'blue' | 'orange' | 'red' | 'teal';
@@ -155,6 +161,103 @@ interface PrincipalOverviewData {
   behaviorSummary: PrincipalBehaviorSummary | null;
 }
 
+interface PrincipalProctorReportRow {
+  room: string | null;
+  startTime: string;
+  endTime: string;
+  sessionLabel: string | null;
+  examType: string | null;
+  classNames: string[];
+  expectedParticipants: number;
+  presentParticipants: number;
+  absentParticipants: number;
+  totalParticipants: number;
+  report: {
+    id: number;
+    signedAt: string;
+    notes: string | null;
+    incident: string | null;
+    proctor: {
+      id: number;
+      name: string;
+    } | null;
+  } | null;
+}
+
+interface PrincipalProctorReportSummary {
+  totalRooms: number;
+  totalExpected: number;
+  totalPresent: number;
+  totalAbsent: number;
+  reportedRooms: number;
+}
+
+interface PrincipalProctorReportsResponse {
+  rows: PrincipalProctorReportRow[];
+  summary: PrincipalProctorReportSummary;
+}
+
+type PrincipalOperationalRiskLevel = 'HIGH' | 'MEDIUM' | 'LOW';
+
+interface PrincipalOperationalRisk {
+  id: string;
+  level: PrincipalOperationalRiskLevel;
+  title: string;
+  detail: string;
+  actionPath?: string;
+  actionLabel?: string;
+}
+
+interface PrincipalOperationalMonitoringData {
+  activeAcademicYear: {
+    id: number;
+    name: string;
+  } | null;
+  pendingBudgetCount: number;
+  pendingBudgetAmount: number;
+  overdueBudgetCount: number;
+  pendingWorkProgramCount: number;
+  overdueWorkProgramCount: number;
+  unreportedRooms: number;
+  absentParticipants: number;
+  reportSummary: PrincipalProctorReportSummary;
+  risks: PrincipalOperationalRisk[];
+  pendingBudgets: BudgetRequest[];
+  pendingWorkPrograms: WorkProgram[];
+}
+
+type PrincipalQuickActionType = 'BUDGET' | 'WORK_PROGRAM' | 'EXAM_REPORT';
+type PrincipalQuickActionSeverity = 'HIGH' | 'MEDIUM' | 'LOW';
+
+interface PrincipalQuickActionItem {
+  key: string;
+  type: PrincipalQuickActionType;
+  severity: PrincipalQuickActionSeverity;
+  title: string;
+  detail: string;
+  ageDays: number;
+  actionPath: string;
+  actionLabel: string;
+  budgetId?: number;
+  workProgramId?: number;
+}
+
+type PrincipalOutletContext = {
+  user: Parameters<typeof getMenuItems>[0] | null;
+  activeYear: { id: number; name: string } | null;
+};
+
+type StudentWithClass = {
+  studentClass?: {
+    id?: number;
+    major?: {
+      id: number;
+      name: string;
+      code: string;
+    } | null;
+  } | null;
+};
+
 interface PrincipalStatCardProps {
   title: string;
   value: string;
@@ -178,36 +281,36 @@ const PrincipalStatCard = ({
     switch (color) {
       case 'blue':
         return {
-          bg: 'bg-gradient-to-br from-blue-700 via-blue-600 to-sky-500',
-          soft: 'bg-blue-400/40',
-          icon: 'text-blue-50',
-          textMain: 'text-white',
-          textSub: 'text-blue-100',
+          bg: 'bg-gradient-to-br from-blue-50 to-sky-100/85 border-blue-100',
+          soft: 'bg-blue-100',
+          icon: 'text-blue-700',
+          textMain: 'text-blue-900',
+          textSub: 'text-blue-700/80',
         };
       case 'orange':
         return {
-          bg: 'bg-gradient-to-br from-orange-600 via-orange-500 to-amber-400',
-          soft: 'bg-orange-400/35',
-          icon: 'text-orange-50',
-          textMain: 'text-white',
-          textSub: 'text-amber-100',
+          bg: 'bg-gradient-to-br from-orange-50 to-amber-100/85 border-orange-100',
+          soft: 'bg-orange-100',
+          icon: 'text-orange-700',
+          textMain: 'text-orange-900',
+          textSub: 'text-orange-700/80',
         };
       case 'red':
         return {
-          bg: 'bg-gradient-to-br from-rose-600 via-red-600 to-red-500',
-          soft: 'bg-red-400/35',
-          icon: 'text-red-50',
-          textMain: 'text-white',
-          textSub: 'text-rose-100',
+          bg: 'bg-gradient-to-br from-rose-50 to-red-100/85 border-rose-100',
+          soft: 'bg-rose-100',
+          icon: 'text-rose-700',
+          textMain: 'text-rose-900',
+          textSub: 'text-rose-700/80',
         };
       case 'teal':
       default:
         return {
-          bg: 'bg-gradient-to-br from-teal-600 via-emerald-500 to-teal-400',
-          soft: 'bg-teal-400/35',
-          icon: 'text-teal-50',
-          textMain: 'text-white',
-          textSub: 'text-teal-100',
+          bg: 'bg-gradient-to-br from-teal-50 to-emerald-100/85 border-teal-100',
+          soft: 'bg-teal-100',
+          icon: 'text-teal-700',
+          textMain: 'text-teal-900',
+          textSub: 'text-teal-700/80',
         };
     }
   };
@@ -217,7 +320,7 @@ const PrincipalStatCard = ({
   const content = (
     <div className="flex flex-col items-center justify-center">
       <div
-        className={`relative w-32 h-32 rounded-full ${bg} shadow-[0_6px_18px_rgba(15,23,42,0.25)] flex flex-col items-center justify-center transition-transform hover:scale-[1.03]`}
+        className={`relative w-32 h-32 rounded-full border ${bg} shadow-sm flex flex-col items-center justify-center transition-transform hover:scale-[1.03]`}
       >
         <div
           className={`absolute -top-1.5 -right-1.5 p-2 rounded-full ${soft} flex items-center justify-center`}
@@ -255,8 +358,12 @@ const PrincipalStatCard = ({
   return content;
 };
 
+function normalizeDuty(value?: string | null) {
+  return String(value || '').trim().toUpperCase();
+}
+
 const PrincipalHomePage = () => {
-  const { user: contextUser } = useOutletContext<{ user: any; activeYear: any }>() || {};
+  const { user: contextUser } = useOutletContext<PrincipalOutletContext>() || {};
   const [academicSemesterFilter, setAcademicSemesterFilter] = useState<'ALL' | 'ODD' | 'EVEN'>(
     'ALL',
   );
@@ -270,8 +377,8 @@ const PrincipalHomePage = () => {
     queryFn: async () => {
       let activeYear: { id: number; name: string } | null = null;
       try {
-        const res = await api.get('/academic-years/active');
-        activeYear = res.data?.data ?? null;
+        const res = await academicYearService.getActiveSafe();
+        activeYear = res?.data ?? null;
       } catch {
         activeYear = null;
       }
@@ -319,7 +426,10 @@ const PrincipalHomePage = () => {
       const studentsList = studentsRes.data || [];
       const teachersList = teachersRes.data || [];
 
-      const rawBudgets = (budgetsRes as any)?.data || budgetsRes || [];
+      const rawBudgets =
+        (budgetsRes as { data?: BudgetRequest[] } | null)?.data ||
+        (budgetsRes as BudgetRequest[] | null) ||
+        [];
       const budgets: BudgetRequest[] = rawBudgets || [];
 
       const pendingBudgets = budgets.filter((b) => b.status === 'PENDING');
@@ -328,10 +438,20 @@ const PrincipalHomePage = () => {
         0,
       );
 
-      let totalPresentToday = 0;
-      let totalAbsentToday = 0;
+      const totalPresentToday = 0;
+      const totalAbsentToday = 0;
 
-      const assignmentsPayload: any = teacherAssignmentsRes;
+      const assignmentsPayload = teacherAssignmentsRes as
+        | {
+            data?: {
+              assignments?: TeacherAssignment[];
+              data?: {
+                assignments?: TeacherAssignment[];
+              };
+            };
+            assignments?: TeacherAssignment[];
+          }
+        | null;
       const assignmentsList: TeacherAssignment[] =
         assignmentsPayload?.data?.assignments ||
         assignmentsPayload?.assignments ||
@@ -350,7 +470,7 @@ const PrincipalHomePage = () => {
       >();
 
       for (const student of studentsList) {
-        const studentClass = (student as any).studentClass;
+        const studentClass = (student as StudentWithClass).studentClass;
         const major = studentClass?.major;
         const classId = studentClass?.id;
         if (!major || !classId) continue;
@@ -643,6 +763,12 @@ const PrincipalHomePage = () => {
   }, [contextUser]);
 
   const getShortcutInfo = (item: { group: string; path: string; label: string }) => {
+    if (item.group === 'MONITORING') {
+      return {
+        subtitle: 'Pantau indikator risiko dan SLA persetujuan lintas role.',
+        tag: 'Monitoring operasional',
+      };
+    }
     if (item.group === 'AKADEMIK') {
       if (item.path === '/principal/academic/reports') {
         return {
@@ -778,19 +904,24 @@ const PrincipalHomePage = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-2 items-stretch">
         <div className="flex flex-col items-center justify-center">
-          <div className="relative w-32 h-32 rounded-full bg-gradient-to-br from-cyan-600 to-teal-500 shadow-[0_6px_18px_rgba(15,23,42,0.25)] flex flex-col items-center justify-center">
-            <div className="absolute -top-1.5 -right-1.5 p-2 rounded-full bg-cyan-400/40 flex items-center justify-center">
-              <School className="w-4 h-4 text-cyan-50" />
+          <Link
+            to="/principal/academic/reports"
+            className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+          >
+          <div className="relative w-32 h-32 rounded-full border border-cyan-100 bg-gradient-to-br from-cyan-50 to-teal-100/85 shadow-sm flex flex-col items-center justify-center">
+            <div className="absolute -top-1.5 -right-1.5 p-2 rounded-full bg-cyan-100 flex items-center justify-center">
+              <School className="w-4 h-4 text-cyan-700" />
             </div>
             <div className="flex flex-col items-center justify-center px-3 text-center">
-              <p className="text-[11px] font-medium text-cyan-100 mb-1 line-clamp-1">
+              <p className="text-[11px] font-medium text-cyan-700/80 mb-1 line-clamp-1">
                 Tahun Ajaran Aktif
               </p>
-              <p className="text-sm font-semibold text-white">
+              <p className="text-sm font-semibold text-cyan-900">
                 {yearLabel}
               </p>
             </div>
           </div>
+          </Link>
           <p className="mt-2 text-xs text-gray-500 text-center max-w-[11rem]">
             Periode berjalan untuk seluruh statistik di dashboard.
           </p>
@@ -852,6 +983,7 @@ const PrincipalHomePage = () => {
           icon={School}
           tone="teal"
           subtitle="Jumlah jurusan aktif"
+          to="/principal/students"
           loading={isLoading}
         />
 
@@ -865,6 +997,7 @@ const PrincipalHomePage = () => {
           icon={ClipboardList}
           tone="orange"
           subtitle="Jumlah rombel aktif"
+          to="/principal/students"
           loading={isLoading}
         />
 
@@ -1494,6 +1627,808 @@ const PrincipalHomePage = () => {
   );
 };
 
+const daysSince = (value?: string | null): number => {
+  if (!value) return 0;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 0;
+  const now = Date.now();
+  return Math.max(0, Math.floor((now - date.getTime()) / (24 * 60 * 60 * 1000)));
+};
+
+const PrincipalOperationalMonitoringPage = () => {
+  const queryClient = useQueryClient();
+  const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  const { data, isLoading, isError, refetch } = useQuery<PrincipalOperationalMonitoringData>({
+    queryKey: ['principal-operational-monitoring', reportDate],
+    queryFn: async () => {
+      let activeAcademicYear: { id: number; name: string } | null = null;
+      try {
+        const activeYearRes = await academicYearService.getActiveSafe();
+        activeAcademicYear = activeYearRes?.data || null;
+      } catch {
+        activeAcademicYear = null;
+      }
+
+      const [budgetsRes, pendingProgramsRes, reportsRes] = await Promise.all([
+        budgetRequestService.list({
+          academicYearId: activeAcademicYear?.id,
+          view: 'approver',
+        }),
+        workProgramService.listPendingForApproval().catch(() => ({ data: [] })),
+        api
+          .get('/proctoring/reports', {
+            params: {
+              academicYearId: activeAcademicYear?.id,
+              date: reportDate || undefined,
+            },
+          })
+          .then((response) => response.data?.data || null)
+          .catch(() => null),
+      ]);
+
+      const rawBudgets =
+        (budgetsRes as { data?: BudgetRequest[] } | null)?.data ||
+        (budgetsRes as BudgetRequest[] | null) ||
+        [];
+      const pendingBudgets = (rawBudgets || []).filter((item) => item.status === 'PENDING');
+      const pendingBudgetAmount = pendingBudgets.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
+      const overdueBudgetCount = pendingBudgets.filter((item) => daysSince(item.createdAt) > 2).length;
+
+      const rawPendingPrograms = Array.isArray((pendingProgramsRes as { data?: unknown[] } | null)?.data)
+        ? ((pendingProgramsRes as { data?: unknown[] }).data as unknown[])
+        : [];
+      const pendingWorkPrograms = rawPendingPrograms
+        .map((item) => item as WorkProgram)
+        .filter((item) => {
+          if (!item || item.approvalStatus !== 'PENDING') return false;
+          if (!activeAcademicYear?.id) return true;
+          return Number(item.academicYearId) === Number(activeAcademicYear.id);
+        });
+      const overdueWorkProgramCount = pendingWorkPrograms.filter((item) => daysSince(item.createdAt) > 5).length;
+
+      const reportSummary = (reportsRes?.summary || {
+        totalRooms: 0,
+        totalExpected: 0,
+        totalPresent: 0,
+        totalAbsent: 0,
+        reportedRooms: 0,
+      }) as PrincipalProctorReportSummary;
+
+      const unreportedRooms = Math.max(0, Number(reportSummary.totalRooms || 0) - Number(reportSummary.reportedRooms || 0));
+      const absentParticipants = Math.max(0, Number(reportSummary.totalAbsent || 0));
+
+      const risks: PrincipalOperationalRisk[] = [];
+      if (overdueBudgetCount > 0) {
+        risks.push({
+          id: 'budget-overdue',
+          level: 'HIGH',
+          title: `${overdueBudgetCount} pengajuan anggaran melewati SLA`,
+          detail: 'Ada pengajuan pending lebih dari 2 hari dan perlu keputusan Kepala Sekolah.',
+          actionPath: '/principal/finance/requests',
+          actionLabel: 'Tinjau Keuangan',
+        });
+      }
+      if (overdueWorkProgramCount > 0) {
+        risks.push({
+          id: 'workprogram-overdue',
+          level: 'MEDIUM',
+          title: `${overdueWorkProgramCount} program kerja menunggu persetujuan`,
+          detail: 'Ada program kerja pending lebih dari 5 hari pada approver principal.',
+        });
+      }
+      if (unreportedRooms > 0) {
+        risks.push({
+          id: 'proctor-unreported',
+          level: 'HIGH',
+          title: `${unreportedRooms} ruang ujian belum kirim berita acara`,
+          detail: `Monitoring tanggal ${reportDate}: berita acara belum masuk dari seluruh ruang aktif.`,
+          actionPath: '/principal/exams/reports',
+          actionLabel: 'Lihat Berita Acara',
+        });
+      }
+      if (absentParticipants > 0) {
+        risks.push({
+          id: 'exam-absent',
+          level: 'MEDIUM',
+          title: `${absentParticipants} siswa tidak hadir ujian`,
+          detail: 'Perlu validasi tindak lanjut ketidakhadiran pada sesi ujian berjalan.',
+          actionPath: '/principal/exams/reports',
+          actionLabel: 'Cek Detail Ujian',
+        });
+      }
+      if (risks.length === 0) {
+        risks.push({
+          id: 'healthy',
+          level: 'LOW',
+          title: 'Semua indikator operasional dalam batas aman',
+          detail: 'Belum ada backlog approval kritis atau risiko ujian pada filter saat ini.',
+        });
+      }
+
+      return {
+        activeAcademicYear,
+        pendingBudgetCount: pendingBudgets.length,
+        pendingBudgetAmount,
+        overdueBudgetCount,
+        pendingWorkProgramCount: pendingWorkPrograms.length,
+        overdueWorkProgramCount,
+        unreportedRooms,
+        absentParticipants,
+        reportSummary,
+        risks,
+        pendingBudgets: pendingBudgets.slice(0, 8),
+        pendingWorkPrograms: pendingWorkPrograms.slice(0, 8),
+      };
+    },
+    staleTime: 60 * 1000,
+  });
+
+  const getRiskTone = (level: PrincipalOperationalRiskLevel) => {
+    if (level === 'HIGH') {
+      return 'border-rose-200 bg-gradient-to-r from-rose-50 to-red-50 text-rose-900';
+    }
+    if (level === 'MEDIUM') {
+      return 'border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900';
+    }
+    return 'border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-900';
+  };
+
+  const quickActions = useMemo<PrincipalQuickActionItem[]>(() => {
+    if (!data) return [];
+
+    const budgetActions: PrincipalQuickActionItem[] = data.pendingBudgets
+      .map((budget) => {
+        const ageDays = daysSince(budget.createdAt);
+        const severity: PrincipalQuickActionSeverity = ageDays > 2 ? 'HIGH' : ageDays > 0 ? 'MEDIUM' : 'LOW';
+        return {
+          key: `budget-${budget.id}`,
+          type: 'BUDGET' as const,
+          severity,
+          title: `Persetujuan anggaran: ${budget.title}`,
+          detail: `${budget.requester?.name || '-'} • Rp ${Math.trunc(Number(budget.totalAmount || 0)).toLocaleString(
+            'id-ID',
+          )}`,
+          ageDays,
+          actionPath: '/principal/finance/requests',
+          actionLabel: 'Buka Keuangan',
+          budgetId: budget.id,
+        };
+      })
+      .sort((a, b) => b.ageDays - a.ageDays);
+
+    const workProgramActions: PrincipalQuickActionItem[] = data.pendingWorkPrograms
+      .map((program) => {
+        const ageDays = daysSince(program.createdAt);
+        const severity: PrincipalQuickActionSeverity = ageDays > 5 ? 'HIGH' : ageDays > 2 ? 'MEDIUM' : 'LOW';
+        return {
+          key: `workprogram-${program.id}`,
+          type: 'WORK_PROGRAM' as const,
+          severity,
+          title: `Persetujuan program kerja: ${program.title}`,
+          detail: `${String(program.additionalDuty || '-').replace(/_/g, ' ')} • ${
+            program.academicYear?.name || '-'
+          }`,
+          ageDays,
+          actionPath: '/principal/work-program-approvals',
+          actionLabel: 'Buka Program Kerja',
+          workProgramId: program.id,
+        };
+      })
+      .sort((a, b) => b.ageDays - a.ageDays);
+
+    const examActions: PrincipalQuickActionItem[] =
+      data.unreportedRooms > 0 || data.absentParticipants > 0
+        ? [
+            {
+              key: 'exam-followup',
+              type: 'EXAM_REPORT',
+              severity: data.unreportedRooms > 0 ? 'HIGH' : 'MEDIUM',
+              title: 'Tindak lanjut berita acara ujian',
+              detail: `${data.unreportedRooms} ruang belum melapor • ${data.absentParticipants} siswa tidak hadir`,
+              ageDays: 0,
+              actionPath: '/principal/exams/reports',
+              actionLabel: 'Buka Berita Acara',
+            },
+          ]
+        : [];
+
+    const all = [...budgetActions, ...workProgramActions, ...examActions];
+    const severityRank: Record<PrincipalQuickActionSeverity, number> = {
+      HIGH: 3,
+      MEDIUM: 2,
+      LOW: 1,
+    };
+    return all
+      .sort((a, b) => severityRank[b.severity] - severityRank[a.severity] || b.ageDays - a.ageDays)
+      .slice(0, 8);
+  }, [data]);
+
+  const quickBudgetMutation = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: 'APPROVED' | 'REJECTED' }) =>
+      budgetRequestService.updateStatus(id, {
+        status,
+        rejectionReason:
+          status === 'REJECTED' ? 'Ditolak melalui panel monitoring principal' : undefined,
+      }),
+    onSuccess: (_response, variables) => {
+      toast.success(
+        variables.status === 'APPROVED'
+          ? 'Pengajuan anggaran disetujui'
+          : 'Pengajuan anggaran ditolak',
+      );
+      queryClient.invalidateQueries({ queryKey: ['budget-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['principal-operational-monitoring'] });
+      refetch();
+    },
+    onError: () => {
+      toast.error('Gagal memproses pengajuan anggaran dari panel monitoring');
+    },
+  });
+
+  const quickWorkProgramMutation = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: 'APPROVED' | 'REJECTED' }) =>
+      workProgramService.updateApprovalStatus(id, {
+        status,
+        feedback:
+          status === 'REJECTED'
+            ? 'Ditolak melalui panel monitoring principal'
+            : 'Disetujui melalui panel monitoring principal',
+      }),
+    onSuccess: (_response, variables) => {
+      toast.success(
+        variables.status === 'APPROVED'
+          ? 'Program kerja disetujui'
+          : 'Program kerja ditolak',
+      );
+      queryClient.invalidateQueries({ queryKey: ['principal-operational-monitoring'] });
+      refetch();
+    },
+    onError: () => {
+      toast.error('Gagal memproses persetujuan program kerja dari panel monitoring');
+    },
+  });
+
+  const handleQuickApprove = (item: PrincipalQuickActionItem) => {
+    if (item.type === 'BUDGET' && item.budgetId) {
+      quickBudgetMutation.mutate({ id: item.budgetId, status: 'APPROVED' });
+      return;
+    }
+    if (item.type === 'WORK_PROGRAM' && item.workProgramId) {
+      quickWorkProgramMutation.mutate({ id: item.workProgramId, status: 'APPROVED' });
+    }
+  };
+
+  const handleQuickReject = (item: PrincipalQuickActionItem) => {
+    if (item.type === 'BUDGET' && item.budgetId) {
+      quickBudgetMutation.mutate({ id: item.budgetId, status: 'REJECTED' });
+      return;
+    }
+    if (item.type === 'WORK_PROGRAM' && item.workProgramId) {
+      quickWorkProgramMutation.mutate({ id: item.workProgramId, status: 'REJECTED' });
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Pusat Monitoring Operasional</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            SLA persetujuan, risiko ujian, dan backlog keputusan Kepala Sekolah dalam satu layar.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-gray-400" />
+          <input
+            type="date"
+            value={reportDate}
+            onChange={(event) => setReportDate(event.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+          />
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            Muat Ulang
+          </button>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="bg-white rounded-xl border border-gray-100 p-10 flex justify-center">
+          <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+        </div>
+      ) : isError || !data ? (
+        <div className="bg-white rounded-xl border border-rose-100 p-6 text-sm text-rose-700">
+          Gagal memuat monitoring operasional principal.
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Link
+              to="/principal/finance/requests"
+              className="rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-sky-100/85 p-4 shadow-sm hover:shadow-md transition-shadow"
+            >
+              <p className="text-xs font-medium text-blue-700/80">Pengajuan Anggaran Pending</p>
+              <p className="text-2xl font-bold text-blue-900 mt-1">{data.pendingBudgetCount}</p>
+              <p className="text-xs text-blue-700/80 mt-1">
+                Rp {Math.trunc(data.pendingBudgetAmount).toLocaleString('id-ID')}
+              </p>
+            </Link>
+            <div className="rounded-xl border border-amber-100 bg-gradient-to-br from-amber-50 to-orange-100/85 p-4 shadow-sm">
+              <p className="text-xs font-medium text-amber-700/80">Program Kerja Pending</p>
+              <p className="text-2xl font-bold text-amber-900 mt-1">{data.pendingWorkProgramCount}</p>
+              <p className="text-xs text-amber-700/80 mt-1">
+                {data.overdueWorkProgramCount} melewati SLA 5 hari
+              </p>
+            </div>
+            <Link
+              to="/principal/exams/reports"
+              className="rounded-xl border border-rose-100 bg-gradient-to-br from-rose-50 to-red-100/85 p-4 shadow-sm hover:shadow-md transition-shadow"
+            >
+              <p className="text-xs font-medium text-rose-700/80">Ruang Belum Melapor</p>
+              <p className="text-2xl font-bold text-rose-900 mt-1">{data.unreportedRooms}</p>
+              <p className="text-xs text-rose-700/80 mt-1">
+                dari {data.reportSummary.totalRooms} ruang aktif
+              </p>
+            </Link>
+            <Link
+              to="/principal/exams/reports"
+              className="rounded-xl border border-slate-100 bg-gradient-to-br from-slate-50 to-gray-100/90 p-4 shadow-sm hover:shadow-md transition-shadow"
+            >
+              <p className="text-xs font-medium text-slate-700">Siswa Tidak Hadir Ujian</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{data.absentParticipants}</p>
+              <p className="text-xs text-slate-600 mt-1">{data.reportSummary.totalPresent} hadir tercatat</p>
+            </Link>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 md:p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Gauge className="w-4 h-4 text-gray-500" />
+                <h3 className="text-sm font-semibold text-gray-900">Panel Prioritas Tindakan 1 Klik</h3>
+              </div>
+              <span className="text-xs text-gray-500">Eksekusi cepat keputusan principal</span>
+            </div>
+
+            {quickActions.length === 0 ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                Tidak ada antrian prioritas untuk ditindaklanjuti.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {quickActions.map((item) => {
+                  const severityClasses =
+                    item.severity === 'HIGH'
+                      ? 'border-rose-200 bg-rose-50'
+                      : item.severity === 'MEDIUM'
+                      ? 'border-amber-200 bg-amber-50'
+                      : 'border-slate-200 bg-slate-50';
+                  return (
+                    <div
+                      key={item.key}
+                      className={`rounded-lg border px-3 py-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between ${severityClasses}`}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-900">{item.title}</p>
+                        <p className="text-xs text-gray-600">{item.detail}</p>
+                        <p className="text-[11px] text-gray-500 mt-0.5">Umur antrian: {item.ageDays} hari</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          to={item.actionPath}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-gray-300 bg-white text-xs text-gray-700 hover:bg-gray-50"
+                        >
+                          {item.actionLabel}
+                        </Link>
+                        {item.type !== 'EXAM_REPORT' ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleQuickApprove(item)}
+                              disabled={quickBudgetMutation.isPending || quickWorkProgramMutation.isPending}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-emerald-600 text-white text-xs hover:bg-emerald-700 disabled:opacity-50"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Setujui
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleQuickReject(item)}
+                              disabled={quickBudgetMutation.isPending || quickWorkProgramMutation.isPending}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-rose-600 text-white text-xs hover:bg-rose-700 disabled:opacity-50"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                              Tolak
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 md:p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <Gauge className="w-4 h-4 text-gray-500" />
+              <h3 className="text-sm font-semibold text-gray-900">Risiko Harian & Prioritas Tindakan</h3>
+            </div>
+            <div className="space-y-2">
+              {data.risks.map((risk) => (
+                <div
+                  key={risk.id}
+                  className={`rounded-lg border px-3 py-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between ${getRiskTone(risk.level)}`}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">{risk.title}</p>
+                    <p className="text-xs opacity-90">{risk.detail}</p>
+                  </div>
+                  {risk.actionPath ? (
+                    <Link
+                      to={risk.actionPath}
+                      className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-md bg-white/70 hover:bg-white"
+                    >
+                      <AlertTriangle className="w-3 h-3" />
+                      {risk.actionLabel || 'Tindak Lanjut'}
+                    </Link>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900">Backlog Pengajuan Anggaran</h3>
+                <Link to="/principal/finance/requests" className="text-xs text-blue-600 hover:underline">
+                  Lihat Semua
+                </Link>
+              </div>
+              <div className="max-h-[360px] overflow-auto">
+                {data.pendingBudgets.length === 0 ? (
+                  <div className="px-4 py-8 text-sm text-gray-500 text-center">Tidak ada pengajuan pending.</div>
+                ) : (
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                      <tr>
+                        <th className="px-4 py-2 text-left">Judul</th>
+                        <th className="px-4 py-2 text-left">Nominal</th>
+                        <th className="px-4 py-2 text-left">Umur</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {data.pendingBudgets.map((budget) => (
+                        <tr key={budget.id}>
+                          <td className="px-4 py-2">
+                            <div className="font-medium text-gray-900">{budget.title}</div>
+                            <div className="text-xs text-gray-500">{budget.requester?.name || '-'}</div>
+                          </td>
+                          <td className="px-4 py-2 text-gray-700">
+                            Rp {Math.trunc(Number(budget.totalAmount || 0)).toLocaleString('id-ID')}
+                          </td>
+                          <td className="px-4 py-2 text-gray-700">{daysSince(budget.createdAt)} hari</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900">Backlog Program Kerja</h3>
+                <span className="text-xs text-gray-500">Approver principal</span>
+              </div>
+              <div className="max-h-[360px] overflow-auto">
+                {data.pendingWorkPrograms.length === 0 ? (
+                  <div className="px-4 py-8 text-sm text-gray-500 text-center">Tidak ada program kerja pending.</div>
+                ) : (
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                      <tr>
+                        <th className="px-4 py-2 text-left">Program</th>
+                        <th className="px-4 py-2 text-left">Duty</th>
+                        <th className="px-4 py-2 text-left">Umur</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {data.pendingWorkPrograms.map((program) => (
+                        <tr key={program.id}>
+                          <td className="px-4 py-2">
+                            <div className="font-medium text-gray-900">{program.title}</div>
+                            <div className="text-xs text-gray-500">{program.academicYear?.name || '-'}</div>
+                          </td>
+                          <td className="px-4 py-2 text-gray-700">{String(program.additionalDuty || '-').replace(/_/g, ' ')}</td>
+                          <td className="px-4 py-2 text-gray-700 inline-flex items-center gap-1">
+                            <Clock3 className="w-3 h-3 text-gray-400" />
+                            {daysSince(program.createdAt)} hari
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+const PrincipalStudentsPage = () => {
+  const [search, setSearch] = useState('');
+  const [classFilter, setClassFilter] = useState<string>('ALL');
+
+  const studentsQuery = useQuery({
+    queryKey: ['principal-students-page'],
+    queryFn: () => userService.getUsers({ role: 'STUDENT', limit: 10000 }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const students = useMemo(() => studentsQuery.data?.data || [], [studentsQuery.data?.data]);
+
+  const classOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    students.forEach((student) => {
+      if (student.studentClass?.id && student.studentClass?.name) {
+        map.set(String(student.studentClass.id), student.studentClass.name);
+      }
+    });
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [students]);
+
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredStudents = useMemo(() => {
+    return students.filter((student) => {
+      if (classFilter !== 'ALL' && String(student.studentClass?.id || '') !== classFilter) {
+        return false;
+      }
+
+      if (!normalizedSearch) return true;
+      const haystacks = [
+        student.name || '',
+        student.nis || '',
+        student.nisn || '',
+        student.studentClass?.name || '',
+        student.studentClass?.major?.name || '',
+      ];
+      return haystacks.some((item) => item.toLowerCase().includes(normalizedSearch));
+    });
+  }, [students, classFilter, normalizedSearch]);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Data Siswa</h2>
+        <p className="mt-1 text-sm text-gray-500">Daftar siswa aktif untuk monitoring Kepala Sekolah.</p>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="relative">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Cari nama, NIS, NISN, kelas"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60 w-72"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-400" />
+            <select
+              value={classFilter}
+              onChange={(e) => setClassFilter(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+            >
+              <option value="ALL">Semua Kelas</option>
+              {classOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => studentsQuery.refetch()}
+          className="px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
+        >
+          Muat Ulang
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        {studentsQuery.isLoading ? (
+          <div className="py-10 flex items-center justify-center">
+            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          </div>
+        ) : studentsQuery.isError ? (
+          <div className="py-10 text-center text-sm text-red-600">
+            Gagal memuat data siswa.
+          </div>
+        ) : filteredStudents.length === 0 ? (
+          <div className="py-10 text-center text-sm text-gray-500">Tidak ada data siswa yang cocok dengan filter.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NIS / NISN</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kelas</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredStudents.map((student) => (
+                  <tr key={student.id}>
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      <div className="font-medium">{student.name}</div>
+                      <div className="text-xs text-gray-500">@{student.username}</div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      <div>NIS: {student.nis || '-'}</div>
+                      <div>NISN: {student.nisn || '-'}</div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {student.studentClass?.name || '-'}
+                      {student.studentClass?.major?.code ? ` (${student.studentClass.major.code})` : ''}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {student.studentStatus || '-'} / {student.verificationStatus || '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const PrincipalTeachersPage = () => {
+  const [search, setSearch] = useState('');
+  const [dutyFilter, setDutyFilter] = useState<string>('ALL');
+
+  const teachersQuery = useQuery({
+    queryKey: ['principal-teachers-page'],
+    queryFn: () => userService.getUsers({ role: 'TEACHER', limit: 10000 }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const teachers = useMemo(() => teachersQuery.data?.data || [], [teachersQuery.data?.data]);
+
+  const dutyOptions = useMemo(() => {
+    const duties = new Set<string>();
+    teachers.forEach((teacher) => {
+      (teacher.additionalDuties || []).forEach((duty) => {
+        const normalized = normalizeDuty(duty);
+        if (normalized) duties.add(normalized);
+      });
+    });
+    return Array.from(duties.values()).sort((a, b) => a.localeCompare(b));
+  }, [teachers]);
+
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredTeachers = useMemo(() => {
+    return teachers.filter((teacher) => {
+      if (dutyFilter !== 'ALL') {
+        const hasDuty = (teacher.additionalDuties || []).some((duty) => normalizeDuty(duty) === dutyFilter);
+        if (!hasDuty) return false;
+      }
+
+      if (!normalizedSearch) return true;
+      const dutyText = (teacher.additionalDuties || []).join(' ');
+      const haystacks = [teacher.name || '', teacher.username || '', teacher.email || '', dutyText];
+      return haystacks.some((item) => item.toLowerCase().includes(normalizedSearch));
+    });
+  }, [teachers, dutyFilter, normalizedSearch]);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Data Guru</h2>
+        <p className="mt-1 text-sm text-gray-500">Daftar guru untuk monitoring SDM oleh Kepala Sekolah.</p>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="relative">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Cari nama, username, email, duty"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60 w-72"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-400" />
+            <select
+              value={dutyFilter}
+              onChange={(e) => setDutyFilter(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+            >
+              <option value="ALL">Semua Duty</option>
+              {dutyOptions.map((duty) => (
+                <option key={duty} value={duty}>
+                  {duty.replace(/_/g, ' ')}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => teachersQuery.refetch()}
+          className="px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
+        >
+          Muat Ulang
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        {teachersQuery.isLoading ? (
+          <div className="py-10 flex items-center justify-center">
+            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          </div>
+        ) : teachersQuery.isError ? (
+          <div className="py-10 text-center text-sm text-red-600">Gagal memuat data guru.</div>
+        ) : filteredTeachers.length === 0 ? (
+          <div className="py-10 text-center text-sm text-gray-500">Tidak ada data guru yang cocok dengan filter.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duty</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredTeachers.map((teacher) => (
+                  <tr key={teacher.id}>
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      <div className="font-medium">{teacher.name}</div>
+                      <div className="text-xs text-gray-500">{teacher.verificationStatus || '-'}</div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">@{teacher.username}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{teacher.email || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {(teacher.additionalDuties || []).length
+                        ? (teacher.additionalDuties || []).map((duty) => duty.replace(/_/g, ' ')).join(', ')
+                        : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const PrincipalFinancePage = () => {
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -1563,8 +2498,9 @@ const PrincipalFinancePage = () => {
       setSelectedForReject(null);
       setRejectionReason('');
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Gagal memperbarui status pengajuan');
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal memperbarui status pengajuan');
     },
   });
 
@@ -1621,7 +2557,9 @@ const PrincipalFinancePage = () => {
             <Filter className="w-4 h-4 text-gray-400" />
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
+              onChange={(e) =>
+                setStatusFilter(e.target.value as 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED')
+              }
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
             >
               <option value="ALL">Semua Status</option>
@@ -1934,16 +2872,216 @@ const PrincipalFinancePage = () => {
   );
 };
 
+const PrincipalExamReportsPage = () => {
+  const [examTypeFilter, setExamTypeFilter] = useState<string>('ALL');
+  const [selectedDate, setSelectedDate] = useState('');
+
+  const { data: activeYearData } = useQuery({
+    queryKey: ['principal-active-academic-year', 'exam-reports'],
+    queryFn: academicYearService.getActiveSafe,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const activeAcademicYearId = activeYearData?.data?.id;
+
+  const reportsQuery = useQuery({
+    queryKey: ['principal-exam-proctor-reports', activeAcademicYearId, examTypeFilter, selectedDate],
+    enabled: Boolean(activeAcademicYearId),
+    queryFn: async () => {
+      const response = await api.get('/proctoring/reports', {
+        params: {
+          academicYearId: activeAcademicYearId,
+          examType: examTypeFilter !== 'ALL' ? examTypeFilter : undefined,
+          date: selectedDate || undefined,
+        },
+      });
+      const payload = response?.data?.data || {};
+      return {
+        rows: Array.isArray(payload.rows) ? (payload.rows as PrincipalProctorReportRow[]) : [],
+        summary: (payload.summary || {
+          totalRooms: 0,
+          totalExpected: 0,
+          totalPresent: 0,
+          totalAbsent: 0,
+          reportedRooms: 0,
+        }) as PrincipalProctorReportSummary,
+      } as PrincipalProctorReportsResponse;
+    },
+  });
+
+  const rows = reportsQuery.data?.rows || [];
+  const summary = reportsQuery.data?.summary || {
+    totalRooms: 0,
+    totalExpected: 0,
+    totalPresent: 0,
+    totalAbsent: 0,
+    reportedRooms: 0,
+  };
+
+  const examTypeOptions = useMemo(() => {
+    const options = new Set<string>();
+    rows.forEach((row) => {
+      const examType = String(row.examType || '').trim().toUpperCase();
+      if (examType) options.add(examType);
+    });
+    return Array.from(options.values()).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Monitoring Berita Acara Ujian</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          Pantau berita acara pengawas ruang secara real-time sebagai bahan monitoring Kepala Sekolah.
+        </p>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-400" />
+            <select
+              value={examTypeFilter}
+              onChange={(e) => setExamTypeFilter(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+            >
+              <option value="ALL">Semua Jenis Ujian</option>
+              {examTypeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-gray-400" />
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+            />
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => reportsQuery.refetch()}
+          className="px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
+        >
+          Muat Ulang
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-sky-100/85 p-4">
+          <p className="text-xs text-blue-700/80 font-medium">Ruang Aktif</p>
+          <p className="text-2xl font-bold text-blue-900">{summary.totalRooms}</p>
+        </div>
+        <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-teal-100/85 p-4">
+          <p className="text-xs text-emerald-700/80 font-medium">Sudah Melapor</p>
+          <p className="text-2xl font-bold text-emerald-900">{summary.reportedRooms}</p>
+        </div>
+        <div className="rounded-xl border border-slate-100 bg-gradient-to-br from-slate-50 to-gray-100/90 p-4">
+          <p className="text-xs text-slate-600 font-medium">Peserta Hadir</p>
+          <p className="text-2xl font-bold text-slate-900">{summary.totalPresent}</p>
+        </div>
+        <div className="rounded-xl border border-rose-100 bg-gradient-to-br from-rose-50 to-red-100/85 p-4">
+          <p className="text-xs text-rose-700/80 font-medium">Peserta Tidak Hadir</p>
+          <p className="text-2xl font-bold text-rose-900">{summary.totalAbsent}</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        {reportsQuery.isLoading ? (
+          <div className="py-10 flex items-center justify-center">
+            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          </div>
+        ) : reportsQuery.isError ? (
+          <div className="py-10 text-center text-sm text-red-600">Gagal memuat berita acara pengawas.</div>
+        ) : rows.length === 0 ? (
+          <div className="py-10 text-center text-sm text-gray-500">
+            Belum ada berita acara pada filter saat ini.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waktu</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ruang</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kelas</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kehadiran</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pengawas</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catatan</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {rows.map((row, index) => (
+                  <tr key={`${row.room || '-'}-${row.startTime}-${index}`}>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      <div className="font-medium text-gray-900">
+                        {new Date(row.startTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                        {' - '}
+                        {new Date(row.endTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {new Date(row.startTime).toLocaleDateString('id-ID', {
+                          weekday: 'short',
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                        {row.sessionLabel ? ` • ${row.sessionLabel}` : ''}
+                        {row.examType ? ` • ${row.examType}` : ''}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{row.room || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {row.classNames.length > 0 ? row.classNames.join(', ') : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      <div className="font-medium">{row.presentParticipants}/{row.totalParticipants}</div>
+                      <div className="text-xs text-gray-500">Tidak hadir: {row.absentParticipants}</div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {row.report?.proctor?.name || <span className="text-amber-700">Belum submit</span>}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      <div className="max-w-md whitespace-pre-wrap">
+                        {row.report?.notes || row.report?.incident || '-'}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const PrincipalDashboard = () => {
   return (
     <Routes>
       <Route index element={<PrincipalHomePage />} />
       <Route path="dashboard" element={<PrincipalHomePage />} />
+      <Route path="overview" element={<PrincipalHomePage />} />
+      <Route path="monitoring" element={<Navigate to="monitoring/operations" replace />} />
+      <Route path="monitoring/operations" element={<PrincipalOperationalMonitoringPage />} />
       <Route path="academic" element={<Navigate to="academic/reports" replace />} />
       <Route path="academic/reports" element={<ReportCardsPage />} />
       <Route path="academic/attendance" element={<AttendanceRecapPage />} />
+      <Route path="exams" element={<Navigate to="exams/reports" replace />} />
+      <Route path="exams/reports" element={<PrincipalExamReportsPage />} />
+      <Route path="attendance" element={<AttendanceRecapPage />} />
+      <Route path="students" element={<PrincipalStudentsPage />} />
+      <Route path="teachers" element={<PrincipalTeachersPage />} />
       <Route path="finance" element={<PrincipalFinancePage />} />
       <Route path="finance/requests" element={<PrincipalFinancePage />} />
+      <Route path="work-program-approvals" element={<WorkProgramApprovalsPage />} />
+      <Route path="approvals" element={<PrincipalFinancePage />} />
       <Route path="*" element={<Navigate to="dashboard" replace />} />
     </Routes>
   );

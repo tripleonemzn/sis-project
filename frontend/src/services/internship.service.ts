@@ -5,11 +5,11 @@ export const internshipService = {
     return await api.get('/internships/my-internship');
   },
 
-  updateMyInternship: async (data: any) => {
+  updateMyInternship: async (data: Record<string, unknown>) => {
     return await api.put('/internships/my-internship', data);
   },
 
-  applyInternship: async (data: any) => {
+  applyInternship: async (data: Record<string, unknown>) => {
     return await api.post('/internships/apply', data);
   },
 
@@ -41,7 +41,7 @@ export const internshipService = {
     return await api.get(`/internships/${id}/detail`);
   },
 
-  gradeDefense: async (id: number, data: any) => {
+  gradeDefense: async (id: number, data: Record<string, unknown>) => {
     return await api.post(`/internships/${id}/grade-defense`, data);
   },
 
@@ -53,7 +53,7 @@ export const internshipService = {
     return await api.get(`/internships/${id}/journals`);
   },
 
-  createJournal: async (id: number, data: any) => {
+  createJournal: async (id: number, data: Record<string, unknown>) => {
     return await api.post(`/internships/${id}/journals`, data);
   },
 
@@ -65,23 +65,23 @@ export const internshipService = {
     return await api.get(`/internships/${id}/attendances`);
   },
 
-  createAttendance: async (id: number, data: any) => {
+  createAttendance: async (id: number, data: Record<string, unknown>) => {
     return await api.post(`/internships/${id}/attendances`, data);
   },
 
-  updateStatus: async (id: number, data: any) => {
+  updateStatus: async (id: number, data: Record<string, unknown>) => {
     return await api.patch(`/internships/${id}/status`, data);
   },
 
-  printGroupLetter: async (data: any) => {
+  printGroupLetter: async (data: Record<string, unknown>) => {
     return await api.post('/internships/print-group-letter', data);
   },
 
-  getPrintLetterHtml: async (id: number, config: any) => {
+  getPrintLetterHtml: async (id: number, config: Record<string, unknown>) => {
     return await api.post(`/internships/${id}/print-letter`, config);
   },
 
-  updateInternship: async (id: number, data: any) => {
+  updateInternship: async (id: number, data: Record<string, unknown>) => {
     return await api.put(`/internships/${id}`, data);
   },
 
@@ -97,11 +97,11 @@ export const internshipService = {
     return await api.get('/internships/components', { params: { isActive } });
   },
 
-  createAssessmentComponent: async (data: any) => {
+  createAssessmentComponent: async (data: Record<string, unknown>) => {
     return await api.post('/internships/components', data);
   },
 
-  updateAssessmentComponent: async (id: number, data: any) => {
+  updateAssessmentComponent: async (id: number, data: Record<string, unknown>) => {
     return await api.put(`/internships/components/${id}`, data);
   },
 

@@ -206,6 +206,8 @@ export type TeacherExamSchedule = {
   academicYearId?: number | null;
   examType?: string | null;
   semester?: 'ODD' | 'EVEN' | null;
+  sessionId?: number | null;
+  sessionLabel?: string | null;
   startTime: string;
   endTime: string;
   room?: string | null;
@@ -242,6 +244,70 @@ export type TeacherExamSchedule = {
     name: string;
     isActive?: boolean;
   } | null;
+};
+
+export type ExamSittingListItem = {
+  id: number;
+  roomName: string;
+  academicYearId: number;
+  examType: string;
+  semester?: 'ODD' | 'EVEN' | null;
+  sessionId?: number | null;
+  sessionLabel?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  proctorId?: number | null;
+  proctor?: {
+    id: number;
+    name: string;
+  } | null;
+  _count?: {
+    students: number;
+  };
+};
+
+export type ExamSittingStudent = {
+  id: number;
+  name: string;
+  username?: string | null;
+  studentClass?: {
+    name?: string | null;
+  } | null;
+  class?: {
+    name?: string | null;
+  } | null;
+  class_name?: string | null;
+};
+
+export type ExamSittingDetail = ExamSittingListItem & {
+  students?: ExamSittingStudent[];
+};
+
+export type ExamSittingAssignedStudentRow = {
+  studentId: number;
+};
+
+export type ExamSittingRoom = {
+  id: number;
+  name: string;
+  location?: string | null;
+  category?: {
+    id: number;
+    name: string;
+  } | null;
+};
+
+export type ExamSittingUpsertPayload = {
+  roomName: string;
+  academicYearId?: number;
+  examType: string;
+  programCode?: string;
+  semester?: 'ODD' | 'EVEN';
+  sessionId?: number | null;
+  sessionLabel?: string | null;
+  startTime?: string;
+  endTime?: string;
+  proctorId?: number | null;
 };
 
 export type PacketItemAnalysisOptionRow = {
@@ -323,6 +389,10 @@ export type PacketSubmissionsSummary = {
   statusFilter: string | null;
   scheduleCount: number;
   sessionCount: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  pageSessionCount: number;
   participantCount: number;
   submittedCount: number;
   inProgressCount: number;

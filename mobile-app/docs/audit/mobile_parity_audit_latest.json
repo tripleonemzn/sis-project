@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-02-25T01:14:25.046Z",
+  "generatedAt": "2026-03-09T08:44:02.708Z",
   "perRoleSummary": [
     {
       "role": "ADMIN",
-      "total": 31,
-      "nativeOnly": 31,
+      "total": 33,
+      "nativeOnly": 33,
       "nativeWithWebFallback": 0,
       "webBridgeRoute": 0,
       "webOnlyNoRoute": 0,
@@ -30,8 +30,8 @@
     },
     {
       "role": "EXTRACURRICULAR_TUTOR",
-      "total": 3,
-      "nativeOnly": 3,
+      "total": 6,
+      "nativeOnly": 6,
       "nativeWithWebFallback": 0,
       "webBridgeRoute": 0,
       "webOnlyNoRoute": 0,
@@ -48,8 +48,8 @@
     },
     {
       "role": "PRINCIPAL",
-      "total": 6,
-      "nativeOnly": 6,
+      "total": 7,
+      "nativeOnly": 7,
       "nativeWithWebFallback": 0,
       "webBridgeRoute": 0,
       "webOnlyNoRoute": 0,
@@ -57,8 +57,8 @@
     },
     {
       "role": "STAFF",
-      "total": 4,
-      "nativeOnly": 4,
+      "total": 5,
+      "nativeOnly": 5,
       "nativeWithWebFallback": 0,
       "webBridgeRoute": 0,
       "webOnlyNoRoute": 0,
@@ -66,8 +66,8 @@
     },
     {
       "role": "STUDENT",
-      "total": 18,
-      "nativeOnly": 18,
+      "total": 15,
+      "nativeOnly": 15,
       "nativeWithWebFallback": 0,
       "webBridgeRoute": 0,
       "webOnlyNoRoute": 0,
@@ -75,8 +75,8 @@
     },
     {
       "role": "TEACHER",
-      "total": 58,
-      "nativeOnly": 58,
+      "total": 54,
+      "nativeOnly": 54,
       "nativeWithWebFallback": 0,
       "webBridgeRoute": 0,
       "webOnlyNoRoute": 0,
@@ -101,6 +101,16 @@
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/home.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "admin-email",
+        "label": "Email",
+        "route": "/email",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/email.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
       },
@@ -385,6 +395,16 @@
         "openUrlHits": []
       },
       {
+        "key": "admin-webmail",
+        "label": "Webmail Admin",
+        "route": "/admin/server-area?tab=webmail",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/admin/server-area.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
         "key": "admin-school-profile",
         "label": "Profil Sekolah",
         "route": "/profile",
@@ -481,12 +501,42 @@
         "openUrlHits": []
       },
       {
+        "key": "tutor-email",
+        "label": "Email",
+        "route": "/email",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/email.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
         "key": "tutor-members",
         "label": "Anggota & Nilai",
         "route": "/tutor/members",
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/tutor/members.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "tutor-work-program",
+        "label": "Program Kerja",
+        "route": "/tutor/work-program",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/tutor/work-program.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "tutor-inventory",
+        "label": "Inventaris Ekskul",
+        "route": "/tutor/inventory",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/tutor/inventory.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
       },
@@ -555,6 +605,16 @@
         "openUrlHits": []
       },
       {
+        "key": "principal-email",
+        "label": "Email",
+        "route": "/email",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/email.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
         "key": "principal-reports",
         "label": "Rapor & Ranking",
         "route": "/principal/overview",
@@ -613,6 +673,16 @@
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/home.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "staff-email",
+        "label": "Email",
+        "route": "/email",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/email.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
       },
@@ -759,39 +829,9 @@
         "openUrlHits": []
       },
       {
-        "key": "student-exam-formatif",
-        "label": "Formatif (Quiz)",
-        "route": "/exams?programCode=FORMATIF",
-        "webPath": null,
-        "mode": "NATIVE_ONLY",
-        "routeFile": "app/(app)/exams.tsx",
-        "hasOpenUrlInRouteTree": false,
-        "openUrlHits": []
-      },
-      {
-        "key": "student-exam-sbts",
-        "label": "SBTS",
-        "route": "/exams?programCode=SBTS",
-        "webPath": null,
-        "mode": "NATIVE_ONLY",
-        "routeFile": "app/(app)/exams.tsx",
-        "hasOpenUrlInRouteTree": false,
-        "openUrlHits": []
-      },
-      {
-        "key": "student-exam-sas",
-        "label": "SAS",
-        "route": "/exams?programCode=SAS",
-        "webPath": null,
-        "mode": "NATIVE_ONLY",
-        "routeFile": "app/(app)/exams.tsx",
-        "hasOpenUrlInRouteTree": false,
-        "openUrlHits": []
-      },
-      {
-        "key": "student-exam-sat",
-        "label": "SAT",
-        "route": "/exams?programCode=SAT",
+        "key": "student-exam-programs",
+        "label": "Ujian Online",
+        "route": "/exams",
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/exams.tsx",
@@ -837,6 +877,16 @@
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/home.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-email",
+        "label": "Email",
+        "route": "/email",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/email.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
       },
@@ -971,39 +1021,9 @@
         "openUrlHits": []
       },
       {
-        "key": "teacher-exam-formatif",
-        "label": "Formatif (Quiz)",
-        "route": "/teacher/exams?programCode=FORMATIF",
-        "webPath": null,
-        "mode": "NATIVE_ONLY",
-        "routeFile": "app/(app)/teacher/exams.tsx",
-        "hasOpenUrlInRouteTree": false,
-        "openUrlHits": []
-      },
-      {
-        "key": "teacher-exam-sbts",
-        "label": "SBTS",
-        "route": "/teacher/exams?programCode=SBTS",
-        "webPath": null,
-        "mode": "NATIVE_ONLY",
-        "routeFile": "app/(app)/teacher/exams.tsx",
-        "hasOpenUrlInRouteTree": false,
-        "openUrlHits": []
-      },
-      {
-        "key": "teacher-exam-sas",
-        "label": "SAS",
-        "route": "/teacher/exams?programCode=SAS",
-        "webPath": null,
-        "mode": "NATIVE_ONLY",
-        "routeFile": "app/(app)/teacher/exams.tsx",
-        "hasOpenUrlInRouteTree": false,
-        "openUrlHits": []
-      },
-      {
-        "key": "teacher-exam-sat",
-        "label": "SAT",
-        "route": "/teacher/exams?programCode=SAT",
+        "key": "teacher-exam-programs",
+        "label": "Program Ujian",
+        "route": "/teacher/exams",
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/teacher/exams.tsx",
@@ -1051,32 +1071,12 @@
         "openUrlHits": []
       },
       {
-        "key": "teacher-homeroom-sbts",
-        "label": "Rapor SBTS",
-        "route": "/teacher/homeroom-sbts",
+        "key": "teacher-homeroom-report",
+        "label": "Rapor Wali Kelas",
+        "route": "/teacher/homeroom-report",
         "webPath": null,
         "mode": "NATIVE_ONLY",
-        "routeFile": "app/(app)/teacher/homeroom-sbts.tsx",
-        "hasOpenUrlInRouteTree": false,
-        "openUrlHits": []
-      },
-      {
-        "key": "teacher-homeroom-sas",
-        "label": "Rapor SAS",
-        "route": "/teacher/homeroom-sas",
-        "webPath": null,
-        "mode": "NATIVE_ONLY",
-        "routeFile": "app/(app)/teacher/homeroom-sas.tsx",
-        "hasOpenUrlInRouteTree": false,
-        "openUrlHits": []
-      },
-      {
-        "key": "teacher-homeroom-sat",
-        "label": "Rapor SAT",
-        "route": "/teacher/homeroom-sat",
-        "webPath": null,
-        "mode": "NATIVE_ONLY",
-        "routeFile": "app/(app)/teacher/homeroom-sat.tsx",
+        "routeFile": "app/(app)/teacher/homeroom-report.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
       },
@@ -1437,7 +1437,7 @@
   "globalOpenUrlUsages": [
     {
       "file": "app/(app)/web-module/[moduleKey].tsx",
-      "line": 48
+      "line": 44
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
@@ -55,22 +55,17 @@ export default function PrincipalAttendanceScreen() {
     },
   });
 
-  useEffect(() => {
-    const classes = classesQuery.data || [];
-    if (!classes.length) return;
-    if (!selectedClassId) {
-      setSelectedClassId(classes[0].id);
-    }
-  }, [classesQuery.data, selectedClassId]);
+  const classItems = classesQuery.data || [];
+  const effectiveSelectedClassId = selectedClassId ?? classItems[0]?.id ?? null;
 
   const recapQuery = useQuery({
-    queryKey: ['mobile-principal-attendance-recap', user?.id, selectedClassId, activeYearQuery.data?.id, semester],
-    enabled: isAuthenticated && user?.role === 'PRINCIPAL' && !!selectedClassId,
+    queryKey: ['mobile-principal-attendance-recap', user?.id, effectiveSelectedClassId, activeYearQuery.data?.id, semester],
+    enabled: isAuthenticated && user?.role === 'PRINCIPAL' && !!effectiveSelectedClassId,
     queryFn: async (): Promise<{ payload: AttendanceRecapPayload; fromCache: boolean; cachedAt: string | null }> => {
-      const cacheKey = `mobile_cache_principal_attendance_${user!.id}_${selectedClassId}_${activeYearQuery.data?.id || 0}_${semester}`;
+      const cacheKey = `mobile_cache_principal_attendance_${user!.id}_${effectiveSelectedClassId}_${activeYearQuery.data?.id || 0}_${semester}`;
       try {
         const payload = await attendanceRecapApi.getDailyRecap({
-          classId: Number(selectedClassId),
+          classId: Number(effectiveSelectedClassId),
           academicYearId: activeYearQuery.data?.id,
           semester,
         });
@@ -90,33 +85,8 @@ export default function PrincipalAttendanceScreen() {
     },
   });
 
-  if (isLoading) return <AppLoadingScreen message="Memuat rekap absensi..." />;
-  if (!isAuthenticated) return <Redirect href="/welcome" />;
-
-  if (user?.role !== 'PRINCIPAL') {
-    return (
-      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Rekap Absensi</Text>
-        <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
-        <Pressable
-          onPress={() => router.replace('/home')}
-          style={{
-            marginTop: 16,
-            backgroundColor: BRAND_COLORS.blue,
-            paddingVertical: 12,
-            borderRadius: 10,
-            alignItems: 'center',
-          }}
-        >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
-        </Pressable>
-      </ScrollView>
-    );
-  }
-
-  const classItems = classesQuery.data || [];
-  const selectedClass = classItems.find((item) => item.id === selectedClassId) || null;
-  const recapRows = recapQuery.data?.payload?.recap || [];
+  const selectedClass = classItems.find((item) => item.id === effectiveSelectedClassId) || null;
+  const recapRows = useMemo(() => recapQuery.data?.payload?.recap || [], [recapQuery.data?.payload?.recap]);
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -145,6 +115,30 @@ export default function PrincipalAttendanceScreen() {
       totalLate,
     };
   }, [filteredRows]);
+
+  if (isLoading) return <AppLoadingScreen message="Memuat rekap absensi..." />;
+  if (!isAuthenticated) return <Redirect href="/welcome" />;
+
+  if (user?.role !== 'PRINCIPAL') {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Rekap Absensi</Text>
+        <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
+        <Pressable
+          onPress={() => router.replace('/home')}
+          style={{
+            marginTop: 16,
+            backgroundColor: BRAND_COLORS.blue,
+            paddingVertical: 12,
+            borderRadius: 10,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+        </Pressable>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView
@@ -225,7 +219,7 @@ export default function PrincipalAttendanceScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Pilih Kelas</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
               {classItems.map((classItem) => {
-                const selected = selectedClassId === classItem.id;
+                const selected = effectiveSelectedClassId === classItem.id;
                 return (
                   <View key={classItem.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
                     <Pressable

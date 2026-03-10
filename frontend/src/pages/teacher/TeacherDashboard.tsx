@@ -1,15 +1,40 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useOutletContext } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import { teacherAssignmentService } from '../../services/teacherAssignment.service';
-import { scheduleService, type DayOfWeek } from '../../services/schedule.service';
+import { scheduleService, type DayOfWeek, type ScheduleEntry } from '../../services/schedule.service';
 import { scheduleTimeConfigService } from '../../services/scheduleTimeConfig.service';
 import { authService } from '../../services/auth.service';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 import { BookOpen, Users, Calendar, Loader2, Clock } from 'lucide-react';
+import type { User } from '../../types/auth';
+
+type TeacherDashboardOutletContext = {
+  user?: User | null;
+  activeYear?: { id?: number | null } | null;
+};
+
+type ScheduleEntryWithTime = ScheduleEntry & {
+  startTime?: string | null;
+  endTime?: string | null;
+};
+
+type ScheduleBlock = {
+  subject: ScheduleEntry['teacherAssignment']['subject'] | null;
+  class: ScheduleEntry['teacherAssignment']['class'] | null;
+  room: string;
+  dayOfWeek: DayOfWeek;
+  entries: ScheduleEntryWithTime[];
+  startHour: number;
+  endHour: number;
+};
+
+const isDefinedNumber = (value: number | null | undefined): value is number =>
+  typeof value === 'number';
 
 export const TeacherDashboard = () => {
-  const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<{ user: any, activeYear: any }>() || {};
+  const { user: contextUser, activeYear: contextActiveYear } =
+    useOutletContext<TeacherDashboardOutletContext>() || {};
   
   // Fallback to fetching user from API if not in context (Database Persistence)
   const { data: authData } = useQuery({
@@ -20,7 +45,7 @@ export const TeacherDashboard = () => {
   });
 
   const apiUser = authData?.data;
-  const user = contextUser || apiUser || {};
+  const user: Partial<User> = contextUser || apiUser || {};
   
   // Use hook for redundant reliable fetching
   const { data: fetchedActiveYear, isLoading: isLoadingYear, isError: isYearError, refetch: refetchYear, error: yearError } = useActiveAcademicYear();
@@ -36,17 +61,18 @@ export const TeacherDashboard = () => {
     contextActiveYear,
     activeAcademicYearId 
   });
-  const isExaminer = user.role === 'EXAMINER';
+  const userName = user.name || 'Guru';
+  const isExaminer = user?.role === 'EXAMINER';
 
   const { isLoading: isLoadingAssignments, refetch: refetchAssignments } = useQuery({
-    queryKey: ['teacher-assignments-dashboard', activeAcademicYearId, user.id],
+    queryKey: ['teacher-assignments-dashboard', activeAcademicYearId, user?.id],
     queryFn: () =>
       teacherAssignmentService.list({
         academicYearId: activeAcademicYearId!,
-        teacherId: Number(user.id),
+        teacherId: Number(user?.id),
         limit: 100, 
       }),
-    enabled: !!activeAcademicYearId && !!user.id && !isExaminer,
+    enabled: !!activeAcademicYearId && !!user?.id && !isExaminer,
   });
 
   useEffect(() => {
@@ -57,14 +83,14 @@ export const TeacherDashboard = () => {
   }, [activeAcademicYearId, refetchAssignments]);
 
   const { data: scheduleData, isLoading: isLoadingSchedule } = useQuery({
-    queryKey: ['teacher-schedule-dashboard', activeAcademicYearId, user.id],
+    queryKey: ['teacher-schedule-dashboard', activeAcademicYearId, user?.id],
     queryFn: () =>
       scheduleService.list({
         academicYearId: activeAcademicYearId!,
-        teacherId: Number(user.id),
+        teacherId: Number(user?.id),
         limit: 100,
       }),
-    enabled: !!activeAcademicYearId && !!user.id && !isExaminer,
+    enabled: !!activeAcademicYearId && !!user?.id && !isExaminer,
   });
 
   const { data: timeConfig } = useQuery({
@@ -73,9 +99,16 @@ export const TeacherDashboard = () => {
     enabled: !!activeAcademicYearId,
   });
 
-  const isNonTeaching = (day: DayOfWeek, period: number) => {
-    const cfg: any = timeConfig?.config;
-    const types = cfg?.periodTypes || {};
+  const periodTypes = timeConfig?.config?.periodTypes;
+  const periodNotes = timeConfig?.config?.periodNotes;
+
+  const scheduleEntries = useMemo(() => {
+    const entries = scheduleData?.data?.entries;
+    return Array.isArray(entries) ? (entries as ScheduleEntryWithTime[]) : [];
+  }, [scheduleData?.data?.entries]);
+
+  const isNonTeaching = useCallback((day: DayOfWeek, period: number) => {
+    const types = periodTypes || {};
     const typeRaw = types[day]?.[period];
     if (typeRaw) {
       const t = String(typeRaw).toUpperCase();
@@ -86,7 +119,7 @@ export const TeacherDashboard = () => {
         return false;
       }
     }
-    const note = cfg?.periodNotes?.[day]?.[period];
+    const note = periodNotes?.[day]?.[period];
     if (!note) {
       return false;
     }
@@ -101,9 +134,9 @@ export const TeacherDashboard = () => {
       return true;
     }
     return false;
-  };
+  }, [periodNotes, periodTypes]);
 
-  const getTeachingHour = (day: DayOfWeek, currentPeriod: number) => {
+  const getTeachingHour = useCallback((day: DayOfWeek, currentPeriod: number) => {
     let teachingCounter = 0;
     for (let p = 1; p <= currentPeriod; p += 1) {
       if (!isNonTeaching(day, p)) {
@@ -114,12 +147,10 @@ export const TeacherDashboard = () => {
       return null;
     }
     return teachingCounter > 0 ? teachingCounter : null;
-  };
+  }, [isNonTeaching]);
 
   const teachingEntries = useMemo(() => {
-    const entries = scheduleData?.data?.entries;
-    if (!Array.isArray(entries)) return [];
-    return entries.filter((entry: any) => {
+    return scheduleEntries.filter((entry) => {
       if (entry.teachingHour === null) {
         return false;
       }
@@ -128,7 +159,7 @@ export const TeacherDashboard = () => {
       }
       return !isNonTeaching(entry.dayOfWeek as DayOfWeek, entry.period);
     });
-  }, [scheduleData, timeConfig]);
+  }, [isNonTeaching, scheduleEntries]);
 
   const totalHours = useMemo(() => {
     return teachingEntries.length;
@@ -138,8 +169,8 @@ export const TeacherDashboard = () => {
     () =>
       new Set(
         teachingEntries
-          .map((e: any) => e.teacherAssignment?.class?.id)
-          .filter((id: any) => id != null),
+          .map((entry) => entry.teacherAssignment?.class?.id)
+          .filter(isDefinedNumber),
       ).size,
     [teachingEntries],
   );
@@ -148,15 +179,14 @@ export const TeacherDashboard = () => {
     () =>
       new Set(
         teachingEntries
-          .map((e: any) => e.teacherAssignment?.subject?.id)
-          .filter((id: any) => id != null),
+          .map((entry) => entry.teacherAssignment?.subject?.id)
+          .filter(isDefinedNumber),
       ).size,
     [teachingEntries],
   );
   
   const todayScheduleBlocks = useMemo(() => {
-    const entries = scheduleData?.data?.entries;
-    if (!Array.isArray(entries)) return [];
+    if (!scheduleEntries.length) return [];
 
     const now = new Date();
     const jsDay = now.getDay();
@@ -173,8 +203,8 @@ export const TeacherDashboard = () => {
     ];
     const currentDay = days[jsDay - 1];
 
-    const filtered = entries.filter(
-      (entry: any) =>
+    const filtered = scheduleEntries.filter(
+      (entry) =>
         entry.dayOfWeek === currentDay &&
         (entry.teachingHour === null
           ? false
@@ -183,13 +213,13 @@ export const TeacherDashboard = () => {
           : !isNonTeaching(entry.dayOfWeek as DayOfWeek, entry.period)),
     );
 
-    filtered.sort((a: any, b: any) => {
+    filtered.sort((a, b) => {
       const aHour = typeof a.teachingHour === 'number' ? a.teachingHour : a.period;
       const bHour = typeof b.teachingHour === 'number' ? b.teachingHour : b.period;
       return aHour - bHour;
     });
 
-    const blocks: any[] = [];
+    const blocks: ScheduleBlock[] = [];
 
     for (const entry of filtered) {
       const teachingHour =
@@ -229,7 +259,7 @@ export const TeacherDashboard = () => {
     }
 
     return blocks;
-  }, [scheduleData, timeConfig]);
+  }, [getTeachingHour, isNonTeaching, scheduleEntries]);
 
   if (isYearError) {
     return (
@@ -257,11 +287,11 @@ export const TeacherDashboard = () => {
     <div className="space-y-6">
 
       {/* Welcome Section */}
-      <div className="bg-white rounded-2xl px-6 py-4 shadow-sm border border-gray-100 mt-10 relative flex flex-col md:flex-row justify-between items-center gap-4">
+      <div className="bg-gradient-to-br from-sky-50 to-cyan-100/80 rounded-2xl px-6 py-4 shadow-sm border border-sky-100 mt-10 relative flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-6">
           <div className="-mt-16 relative">
             <div
-              className="w-36 h-36 rounded-full p-1 bg-white ring-1 ring-gray-200"
+              className="w-36 h-36 rounded-full p-1 bg-white/90 ring-1 ring-sky-200"
               style={{
                 boxShadow:
                   'inset 6px 6px 12px rgba(0,0,0,0.06), inset -6px -6px 12px rgba(255,255,255,0.9), 8px 8px 16px rgba(0,0,0,0.08), -3px -3px 8px rgba(255,255,255,0.7)',
@@ -274,22 +304,22 @@ export const TeacherDashboard = () => {
                       ? user.photo
                       : `/api/uploads/${user.photo}`
                   }
-                  alt={user.name}
+                  alt={userName}
                   className="w-full h-full rounded-full object-cover"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random`;
+                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=random`;
                   }}
                 />
               ) : (
-                <div className="w-full h-full rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-6xl">
-                  {user.name?.charAt(0)?.toUpperCase()}
+                <div className="w-full h-full rounded-full bg-sky-100 flex items-center justify-center text-sky-700 font-bold text-6xl">
+                  {userName.charAt(0).toUpperCase()}
                 </div>
               )}
             </div>
           </div>
           <div>
             <h1 className="text-2xl font-bold text-gray-900 mb-1">
-              Selamat Datang, {user.name}! 👋
+              Selamat Datang, {userName}! 👋
             </h1>
             <p className="text-gray-500 text-sm">
               Berikut adalah ringkasan kegiatan mengajar Anda | {isExaminer ? (user.institution || 'Instansi Luar') : user.username}
@@ -314,53 +344,68 @@ export const TeacherDashboard = () => {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+        <Link
+          to="/teacher/classes"
+          className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        >
+        <div className="p-6 rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-sky-100/80 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-blue-50 rounded-lg text-blue-600">
+            <div className="p-3 bg-blue-100 rounded-lg text-blue-700">
               <BookOpen size={24} />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">Mata Pelajaran</p>
+              <p className="text-sm text-blue-700/80 font-medium">Mata Pelajaran</p>
               {showLoadingStats ? (
                   <Loader2 className="w-6 h-6 animate-spin text-blue-600 mt-1" />
               ) : (
-                  <h3 className="text-2xl font-bold text-gray-900">{isDataMissing ? '-' : uniqueSubjects}</h3>
+                  <h3 className="text-2xl font-bold text-blue-900">{isDataMissing ? '-' : uniqueSubjects}</h3>
               )}
             </div>
           </div>
         </div>
+        </Link>
         
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+        <Link
+          to="/teacher/classes"
+          className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+        >
+        <div className="p-6 rounded-xl border border-teal-100 bg-gradient-to-br from-teal-50 to-emerald-100/80 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-emerald-50 rounded-lg text-emerald-600">
+            <div className="p-3 bg-teal-100 rounded-lg text-teal-700">
               <Users size={24} />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">Kelas Ajar</p>
+              <p className="text-sm text-teal-700/80 font-medium">Kelas Ajar</p>
               {showLoadingStats ? (
-                  <Loader2 className="w-6 h-6 animate-spin text-emerald-600 mt-1" />
+                  <Loader2 className="w-6 h-6 animate-spin text-teal-700 mt-1" />
               ) : (
-                  <h3 className="text-2xl font-bold text-gray-900">{isDataMissing ? '-' : uniqueClasses}</h3>
+                  <h3 className="text-2xl font-bold text-teal-900">{isDataMissing ? '-' : uniqueClasses}</h3>
               )}
             </div>
           </div>
         </div>
+        </Link>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+        <Link
+          to="/teacher/schedule"
+          className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+        >
+        <div className="p-6 rounded-xl border border-orange-100 bg-gradient-to-br from-orange-50 to-amber-100/80 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-purple-50 rounded-lg text-purple-600">
+            <div className="p-3 bg-orange-100 rounded-lg text-orange-700">
               <Calendar size={24} />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">Total Jam</p>
+              <p className="text-sm text-orange-700/80 font-medium">Total Jam</p>
               {showLoadingStats ? (
-                  <Loader2 className="w-6 h-6 animate-spin text-purple-600 mt-1" />
+                  <Loader2 className="w-6 h-6 animate-spin text-orange-700 mt-1" />
               ) : (
-                  <h3 className="text-2xl font-bold text-gray-900">{isDataMissing ? '-' : totalHours}</h3>
+                  <h3 className="text-2xl font-bold text-orange-900">{isDataMissing ? '-' : totalHours}</h3>
               )}
             </div>
           </div>
         </div>
+        </Link>
       </div>
 
       {/* Today's Schedule */}
@@ -378,8 +423,8 @@ export const TeacherDashboard = () => {
 
           <div className="space-y-4">
             {todayScheduleBlocks.length > 0 ? (
-              todayScheduleBlocks.map((block: any, index: number) => {
-                const cfg: any = timeConfig?.config;
+              todayScheduleBlocks.map((block, index: number) => {
+                const cfg = timeConfig?.config;
                 const entries = block.entries || [];
                 const first = entries[0];
                 const last = entries[entries.length - 1] || first;

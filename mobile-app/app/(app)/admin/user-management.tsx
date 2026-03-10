@@ -580,8 +580,14 @@ export default function AdminUserManagementScreen() {
     [filteredUsers],
   );
 
-  const classOptions = supportingDataQuery.data?.classes || [];
-  const majorOptions = supportingDataQuery.data?.majors || [];
+  const classOptions = useMemo(
+    () => supportingDataQuery.data?.classes || [],
+    [supportingDataQuery.data?.classes],
+  );
+  const majorOptions = useMemo(
+    () => supportingDataQuery.data?.majors || [],
+    [supportingDataQuery.data?.majors],
+  );
   const studentOptions = useMemo(
     () =>
       (supportingDataQuery.data?.students || []).filter(

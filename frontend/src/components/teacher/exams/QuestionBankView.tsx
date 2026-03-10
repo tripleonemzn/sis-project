@@ -5,6 +5,7 @@ import { examService } from '../../../services/exam.service';
 import type { Question } from '../../../services/exam.service';
 import { academicYearService } from '../../../services/academicYear.service';
 import { toast } from 'react-hot-toast';
+import { enhanceQuestionHtml } from '../../../utils/questionMedia';
 
 interface QuestionBankViewProps {
     subjects: { id: number; name: string }[];
@@ -210,7 +211,9 @@ export const QuestionBankView = ({ subjects }: QuestionBankViewProps) => {
                                         
                                         <div 
                                             className="text-sm text-gray-800 line-clamp-2 prose prose-sm max-w-none mb-2"
-                                            dangerouslySetInnerHTML={{ __html: q.content }}
+                                            dangerouslySetInnerHTML={{
+                                                __html: enhanceQuestionHtml(q.content, { useQuestionImageThumbnail: true }),
+                                            }}
                                         />
 
                                         {/* Options Preview (for MC) */}

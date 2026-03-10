@@ -3,9 +3,18 @@ import { apiClient } from '../../lib/api/client';
 export type GradeComponent = {
   id: number;
   subjectId: number;
+  code?: string | null;
   name: string;
   weight: number;
   type: 'FORMATIVE' | 'MIDTERM' | 'FINAL' | 'SKILL' | 'US_PRACTICE' | 'US_THEORY';
+  typeCode?: string | null;
+  entryMode?: 'NF_SERIES' | 'SINGLE_SCORE' | string | null;
+  entryModeCode?: string | null;
+  reportSlot?: 'NONE' | 'FORMATIF' | 'SBTS' | 'SAS' | 'US_THEORY' | 'US_PRACTICE' | string | null;
+  reportSlotCode?: string | null;
+  includeInFinalScore?: boolean;
+  displayOrder?: number;
+  academicYearId?: number | null;
   isActive: boolean;
 };
 
@@ -63,6 +72,7 @@ export type ReportGradeRow = {
   sbtsScore: number | null;
   sasScore: number | null;
   finalScore: number | null;
+  slotScores?: Record<string, number | null> | null;
   description?: string | null;
 };
 

@@ -6,7 +6,17 @@ interface RankingPrintDocumentProps {
   className: string;
   academicYear: string;
   semester: string;
-  rankings: any[];
+  rankings: {
+    rank: number;
+    totalScore: number;
+    averageScore: number;
+    student: {
+      id: number;
+      name: string;
+      nis?: string | null;
+      nisn?: string | null;
+    };
+  }[];
   principalName: string;
   homeroomTeacherName: string;
   titimangsa: Date;
@@ -103,7 +113,7 @@ export const RankingPrintDocument: React.FC<RankingPrintDocumentProps> = ({
         <tbody>
           {rankings.map((student, index) => {
             let rowClass = '';
-            let rankLabel = `Peringkat ${student.rank}`;
+            const rankLabel = `Peringkat ${student.rank}`;
             
             // Visuals for Top 3
             if (student.rank === 1) rowClass = 'bg-yellow-50 print:bg-gold';

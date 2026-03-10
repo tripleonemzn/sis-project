@@ -15,6 +15,12 @@ type UploadResponse = {
   mimetype: string;
 };
 
+type ReactNativeFilePart = {
+  uri: string;
+  name: string;
+  type: string;
+};
+
 export type UpdateSelfProfilePayload = {
   name?: string;
   gender?: 'MALE' | 'FEMALE' | null;
@@ -64,7 +70,12 @@ export const profileApi = {
   },
   async uploadProfilePhoto(file: { uri: string; name: string; type: string }) {
     const formData = new FormData();
-    formData.append('file', file as any);
+    const filePart: ReactNativeFilePart = {
+      uri: file.uri,
+      name: file.name,
+      type: file.type,
+    };
+    formData.append('file', filePart as unknown as Blob);
     const response = await apiClient.post<ApiEnvelope<UploadResponse>>('/upload/teacher/photo', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
@@ -74,7 +85,12 @@ export const profileApi = {
   },
   async uploadProfileDocument(file: { uri: string; name: string; type: string }) {
     const formData = new FormData();
-    formData.append('file', file as any);
+    const filePart: ReactNativeFilePart = {
+      uri: file.uri,
+      name: file.name,
+      type: file.type,
+    };
+    formData.append('file', filePart as unknown as Blob);
     const response = await apiClient.post<ApiEnvelope<UploadResponse>>('/upload/teacher/document', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',

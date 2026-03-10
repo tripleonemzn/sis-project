@@ -94,7 +94,7 @@ function AssignmentCard({
   item: AssignmentWithSubmission;
   onSubmit: (item: AssignmentWithSubmission) => void;
 }) {
-  const now = Date.now();
+  const now = new Date().getTime();
   const dueTs = new Date(item.dueDate).getTime();
   const isOverdue = Number.isFinite(dueTs) && dueTs < now;
 

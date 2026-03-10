@@ -3,10 +3,34 @@ import { internshipService } from '../../../services/internship.service';
 import { BookOpen, Plus, X, AlertCircle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
+type InternshipRecord = {
+  id: number;
+  status: string;
+};
+
+type InternshipJournalItem = {
+  id: number;
+  date: string;
+  activity: string;
+  description?: string | null;
+  imageUrl?: string | null;
+  feedback?: string | null;
+  status: string;
+};
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (typeof error === 'object' && error !== null) {
+    const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+    if (message) return message;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
 const StudentInternshipJournal = () => {
   // Use auth service or just fetch directly as token is handled by interceptor
-  const [internship, setInternship] = useState<any>(null);
-  const [journals, setJournals] = useState<any[]>([]);
+  const [internship, setInternship] = useState<InternshipRecord | null>(null);
+  const [journals, setJournals] = useState<InternshipJournalItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -36,10 +60,11 @@ const StudentInternshipJournal = () => {
       } else {
         setInternship(null);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching internship:', error);
-      if (error.response?.status !== 404) {
-        setError(error.message || 'Gagal memuat data PKL');
+      const statusCode = (error as { response?: { status?: number } }).response?.status;
+      if (statusCode !== 404) {
+        setError(getErrorMessage(error, 'Gagal memuat data PKL'));
       }
     } finally {
       setLoading(false);
@@ -65,8 +90,8 @@ const StudentInternshipJournal = () => {
          imageUrl: '',
       });
       fetchData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Gagal menambahkan jurnal');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Gagal menambahkan jurnal'));
     }
   };
 

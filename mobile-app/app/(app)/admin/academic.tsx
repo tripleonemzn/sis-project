@@ -705,7 +705,7 @@ export default function AdminAcademicScreen() {
       }),
   });
 
-  const effectiveOperationalAcademicYearId = useMemo(() => {
+  const effectiveOperationalAcademicYearId = (() => {
     const selected = Number(operationalAcademicYearId);
     if (Number.isFinite(selected) && selected > 0) {
       return selected;
@@ -714,7 +714,7 @@ export default function AdminAcademicScreen() {
       return academicQuery.data.activeYear.id;
     }
     return academicQuery.data?.years.items?.[0]?.id || null;
-  }, [operationalAcademicYearId, academicQuery.data?.activeYear?.id, academicQuery.data?.years.items]);
+  })();
 
   const operationalClassesQuery = useQuery({
     queryKey: ['mobile-admin-academic-operational-classes', effectiveOperationalAcademicYearId],
@@ -814,16 +814,23 @@ export default function AdminAcademicScreen() {
   });
 
   useEffect(() => {
-    setQuestionBankPage(1);
+    if (questionBankPage === 1) return;
+    const timerId = setTimeout(() => {
+      setQuestionBankPage(1);
+    }, 0);
+    return () => {
+      clearTimeout(timerId);
+    };
   }, [
     effectiveQuestionBankAcademicYearId,
     questionBankSubjectId,
     questionBankTypeFilter,
     questionBankSemesterFilter,
     questionBankSearch,
+    questionBankPage,
   ]);
 
-  const effectiveExamSessionAcademicYearId = useMemo(() => {
+  const effectiveExamSessionAcademicYearId = (() => {
     const selected = Number(examSessionAcademicYearId);
     if (Number.isFinite(selected) && selected > 0) {
       return selected;
@@ -832,7 +839,7 @@ export default function AdminAcademicScreen() {
       return academicQuery.data.activeYear.id;
     }
     return academicQuery.data?.years.items?.[0]?.id || null;
-  }, [examSessionAcademicYearId, academicQuery.data?.activeYear?.id, academicQuery.data?.years.items]);
+  })();
 
   const examSessionClassesQuery = useQuery({
     queryKey: ['mobile-admin-exam-session-classes', effectiveExamSessionAcademicYearId],
@@ -863,7 +870,7 @@ export default function AdminAcademicScreen() {
       }),
   });
 
-  const examSessionClasses = examSessionClassesQuery.data?.items || [];
+  const examSessionClasses = useMemo(() => examSessionClassesQuery.data?.items || [], [examSessionClassesQuery.data?.items]);
   const filteredExamSessionClassOptions = useMemo(() => {
     const q = examSessionClassSearch.trim().toLowerCase();
     if (!q) return examSessionClasses.slice(0, 200);
@@ -872,7 +879,7 @@ export default function AdminAcademicScreen() {
       .slice(0, 240);
   }, [examSessionClassSearch, examSessionClasses]);
 
-  const examSessionPackets = examSessionPacketsQuery.data || [];
+  const examSessionPackets = useMemo(() => examSessionPacketsQuery.data || [], [examSessionPacketsQuery.data]);
   const filteredExamSessionPacketOptions = useMemo(() => {
     let packets = [...examSessionPackets];
     if (examSessionTypeFilter !== 'ALL') {
@@ -914,7 +921,10 @@ export default function AdminAcademicScreen() {
   useEffect(() => {
     if (!examSessionPacketId) return;
     const exists = examSessionPackets.some((item) => item.id === Number(examSessionPacketId));
-    if (!exists) setExamSessionPacketId('');
+    if (!exists) {
+      const timerId = setTimeout(() => setExamSessionPacketId(''), 0);
+      return () => clearTimeout(timerId);
+    }
   }, [examSessionPacketId, examSessionPackets]);
 
   useEffect(() => {
@@ -922,11 +932,12 @@ export default function AdminAcademicScreen() {
     const validSet = new Set(examSessionClasses.map((item) => item.id));
     const next = examSessionSelectedClassIds.filter((id) => validSet.has(id));
     if (next.length !== examSessionSelectedClassIds.length) {
-      setExamSessionSelectedClassIds(next);
+      const timerId = setTimeout(() => setExamSessionSelectedClassIds(next), 0);
+      return () => clearTimeout(timerId);
     }
   }, [examSessionClasses, examSessionSelectedClassIds]);
 
-  const effectiveScheduleAcademicYearId = useMemo(() => {
+  const effectiveScheduleAcademicYearId = (() => {
     const selected = Number(scheduleAcademicYearId);
     if (Number.isFinite(selected) && selected > 0) {
       return selected;
@@ -935,7 +946,7 @@ export default function AdminAcademicScreen() {
       return academicQuery.data.activeYear.id;
     }
     return academicQuery.data?.years.items?.[0]?.id || null;
-  }, [scheduleAcademicYearId, academicQuery.data?.activeYear?.id, academicQuery.data?.years.items]);
+  })();
 
   const scheduleClassesQuery = useQuery({
     queryKey: ['mobile-admin-schedule-classes', effectiveScheduleAcademicYearId],
@@ -959,7 +970,7 @@ export default function AdminAcademicScreen() {
       }),
   });
 
-  const scheduleClasses = scheduleClassesQuery.data?.items || [];
+  const scheduleClasses = useMemo(() => scheduleClassesQuery.data?.items || [], [scheduleClassesQuery.data?.items]);
   const filteredScheduleClassOptions = useMemo(() => {
     const q = scheduleClassSearch.trim().toLowerCase();
     if (!q) return scheduleClasses.slice(0, 120);
@@ -991,8 +1002,11 @@ export default function AdminAcademicScreen() {
     queryFn: async () => adminApi.getScheduleTimeConfig(effectiveScheduleAcademicYearId as number),
   });
 
-  const scheduleEntries = scheduleEntriesQuery.data || [];
-  const scheduleAssignments = scheduleAssignmentsQuery.data?.items || [];
+  const scheduleEntries = useMemo(() => scheduleEntriesQuery.data || [], [scheduleEntriesQuery.data]);
+  const scheduleAssignments = useMemo(
+    () => scheduleAssignmentsQuery.data?.items || [],
+    [scheduleAssignmentsQuery.data?.items],
+  );
   const scheduleClassAssignments = useMemo(
     () => scheduleAssignments.filter((item) => item.class?.id === effectiveScheduleClassId),
     [scheduleAssignments, effectiveScheduleClassId],
@@ -1007,7 +1021,8 @@ export default function AdminAcademicScreen() {
 
   useEffect(() => {
     if (!effectiveScheduleClassId && scheduleClassId) {
-      setScheduleClassId('');
+      const timerId = setTimeout(() => setScheduleClassId(''), 0);
+      return () => clearTimeout(timerId);
     }
   }, [effectiveScheduleClassId, scheduleClassId]);
 
@@ -1015,7 +1030,8 @@ export default function AdminAcademicScreen() {
     if (!scheduleFormAssignmentId) return;
     const exists = scheduleClassAssignments.some((item) => item.id === Number(scheduleFormAssignmentId));
     if (!exists) {
-      setScheduleFormAssignmentId('');
+      const timerId = setTimeout(() => setScheduleFormAssignmentId(''), 0);
+      return () => clearTimeout(timerId);
     }
   }, [scheduleClassAssignments, scheduleFormAssignmentId]);
 
@@ -1027,10 +1043,12 @@ export default function AdminAcademicScreen() {
     if (!config) {
       const defaultTimes = buildScheduleDefaultPeriodTimes();
       const defaultNotes = buildScheduleDefaultPeriodNotes();
-      setSchedulePeriodTimes(defaultTimes);
-      setSchedulePeriodNotes(defaultNotes);
-      setSchedulePeriodTypes(buildScheduleDefaultPeriodTypes({ periodTimes: defaultTimes, periodNotes: defaultNotes }));
-      return;
+      const timerId = setTimeout(() => {
+        setSchedulePeriodTimes(defaultTimes);
+        setSchedulePeriodNotes(defaultNotes);
+        setSchedulePeriodTypes(buildScheduleDefaultPeriodTypes({ periodTimes: defaultTimes, periodNotes: defaultNotes }));
+      }, 0);
+      return () => clearTimeout(timerId);
     }
 
     const nextTimes = clonePeriodStringMap(config.periodTimes || {});
@@ -1048,9 +1066,12 @@ export default function AdminAcademicScreen() {
           periodNotes: finalNotes,
         });
 
-    setSchedulePeriodTimes(finalTimes);
-    setSchedulePeriodNotes(finalNotes);
-    setSchedulePeriodTypes(finalTypes);
+    const timerId = setTimeout(() => {
+      setSchedulePeriodTimes(finalTimes);
+      setSchedulePeriodNotes(finalNotes);
+      setSchedulePeriodTypes(finalTypes);
+    }, 0);
+    return () => clearTimeout(timerId);
   }, [effectiveScheduleAcademicYearId, scheduleConfigQuery.data, scheduleConfigQuery.isFetched]);
 
   const scheduleDays = useMemo(() => {
@@ -1068,7 +1089,8 @@ export default function AdminAcademicScreen() {
 
   useEffect(() => {
     if (!scheduleDays.includes(scheduleEditingDay)) {
-      setScheduleEditingDay(scheduleDays[0] || 'MONDAY');
+      const timerId = setTimeout(() => setScheduleEditingDay(scheduleDays[0] || 'MONDAY'), 0);
+      return () => clearTimeout(timerId);
     }
   }, [scheduleDays, scheduleEditingDay]);
 
@@ -1218,7 +1240,7 @@ export default function AdminAcademicScreen() {
     },
   });
 
-  const effectiveTeachingLoadAcademicYearId = useMemo(() => {
+  const effectiveTeachingLoadAcademicYearId = (() => {
     const selected = Number(teachingLoadAcademicYearId);
     if (Number.isFinite(selected) && selected > 0) {
       return selected;
@@ -1227,7 +1249,7 @@ export default function AdminAcademicScreen() {
       return academicQuery.data.activeYear.id;
     }
     return academicQuery.data?.years.items?.[0]?.id || null;
-  }, [teachingLoadAcademicYearId, academicQuery.data?.activeYear?.id, academicQuery.data?.years.items]);
+  })();
 
   const teachingLoadAssignmentsQuery = useQuery({
     queryKey: ['mobile-admin-teaching-load-assignments', effectiveTeachingLoadAcademicYearId],
@@ -1270,7 +1292,8 @@ export default function AdminAcademicScreen() {
 
   useEffect(() => {
     if (teachingLoadTeacherId && !effectiveTeachingLoadTeacherId) {
-      setTeachingLoadTeacherId('');
+      const timerId = setTimeout(() => setTeachingLoadTeacherId(''), 0);
+      return () => clearTimeout(timerId);
     }
   }, [effectiveTeachingLoadTeacherId, teachingLoadTeacherId]);
 
@@ -1288,7 +1311,7 @@ export default function AdminAcademicScreen() {
       }),
   });
 
-  const teachingLoadSummary = teachingLoadSummaryQuery.data || [];
+  const teachingLoadSummary = useMemo(() => teachingLoadSummaryQuery.data || [], [teachingLoadSummaryQuery.data]);
   const teachingLoadTotals = useMemo(() => {
     const totalTeachers = teachingLoadSummary.length;
     const totalSessions = teachingLoadSummary.reduce(
@@ -1508,7 +1531,7 @@ export default function AdminAcademicScreen() {
   };
 
   const handleDeleteAcademicYear = (year: { id: number; name: string }) => {
-    Alert.alert('Hapus Tahun Ajaran', `Hapus tahun ajaran \"${year.name}\"?`, [
+    Alert.alert('Hapus Tahun Ajaran', `Hapus tahun ajaran "${year.name}"?`, [
       { text: 'Batal', style: 'cancel' },
       {
         text: 'Hapus',
@@ -1582,7 +1605,7 @@ export default function AdminAcademicScreen() {
   };
 
   const handleDeleteAcademicEvent = (item: { id: number; title: string }) => {
-    Alert.alert('Hapus Event Kalender', `Hapus event \"${item.title}\"?`, [
+    Alert.alert('Hapus Event Kalender', `Hapus event "${item.title}"?`, [
       { text: 'Batal', style: 'cancel' },
       {
         text: 'Hapus',
@@ -1621,7 +1644,7 @@ export default function AdminAcademicScreen() {
     createAcademicEventMutation.mutate();
   };
 
-  const operationalClasses = operationalClassesQuery.data?.items || [];
+  const operationalClasses = useMemo(() => operationalClassesQuery.data?.items || [], [operationalClassesQuery.data?.items]);
   const filteredAttendanceClassOptions = useMemo(() => {
     const q = attendanceClassSearch.trim().toLowerCase();
     if (!q) return operationalClasses.slice(0, 80);
@@ -1640,7 +1663,7 @@ export default function AdminAcademicScreen() {
     operationalClasses.find((item) => String(item.id) === attendanceClassId) || null;
   const selectedReportClass =
     operationalClasses.find((item) => String(item.id) === reportClassId) || null;
-  const attendanceDailyRecap = dailyAttendanceRecapQuery.data?.recap || [];
+  const attendanceDailyRecap = useMemo(() => dailyAttendanceRecapQuery.data?.recap || [], [dailyAttendanceRecapQuery.data?.recap]);
   const attendanceDailyTotals = useMemo(() => {
     if (!attendanceDailyRecap.length) {
       return null;
@@ -1768,7 +1791,8 @@ export default function AdminAcademicScreen() {
 
   useEffect(() => {
     if (questionBankPage > questionBankTotalPages) {
-      setQuestionBankPage(questionBankTotalPages);
+      const timerId = setTimeout(() => setQuestionBankPage(questionBankTotalPages), 0);
+      return () => clearTimeout(timerId);
     }
   }, [questionBankPage, questionBankTotalPages]);
 
@@ -4669,7 +4693,7 @@ export default function AdminAcademicScreen() {
                       </Text>
                       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                         <Pressable
-                          onPress={() => confirmToggleExamSessionActive(item.id, !Boolean(item.isActive))}
+                          onPress={() => confirmToggleExamSessionActive(item.id, !item.isActive)}
                           disabled={updateExamSessionMutation.isPending}
                           style={{
                             borderWidth: 1,

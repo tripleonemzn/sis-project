@@ -111,6 +111,11 @@ function resolvePublicUrl(fileUrl?: string | null) {
   return fileUrl.startsWith('/') ? `${webBaseUrl}${fileUrl}` : `${webBaseUrl}/${fileUrl}`;
 }
 
+function resolveApiErrorMessage(error: unknown, fallback: string) {
+  const apiError = error as { response?: { data?: { message?: string } }; message?: string };
+  return apiError?.response?.data?.message || apiError?.message || fallback;
+}
+
 function SectionChip({
   active,
   label,
@@ -260,13 +265,16 @@ export function WorkProgramBudgetOwnerSection({
   const [itemUnitPrice, setItemUnitPrice] = useState('0');
 
   useEffect(() => {
-    setBudgetForm((prev) => {
-      if (prev.additionalDuty) return prev;
-      return {
-        ...prev,
-        additionalDuty: dutyOptions[0] || '',
-      };
-    });
+    const timerId = setTimeout(() => {
+      setBudgetForm((prev) => {
+        if (prev.additionalDuty) return prev;
+        return {
+          ...prev,
+          additionalDuty: dutyOptions[0] || '',
+        };
+      });
+    }, 0);
+    return () => clearTimeout(timerId);
   }, [dutyOptions]);
 
   const budgetsQuery = useQuery({
@@ -318,9 +326,8 @@ export function WorkProgramBudgetOwnerSection({
         additionalDuty: dutyOptions[0] || '',
       });
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || error?.message || 'Gagal membuat pengajuan anggaran.';
-      Alert.alert('Gagal', message);
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Gagal membuat pengajuan anggaran.'));
     },
   });
 
@@ -330,9 +337,8 @@ export function WorkProgramBudgetOwnerSection({
       await queryClient.invalidateQueries({ queryKey: ['mobile-work-program-owner-budget-requests'] });
       Alert.alert('Berhasil', 'Pengajuan anggaran berhasil dihapus.');
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || error?.message || 'Gagal menghapus pengajuan anggaran.';
-      Alert.alert('Gagal', message);
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Gagal menghapus pengajuan anggaran.'));
     },
   });
 
@@ -343,9 +349,8 @@ export function WorkProgramBudgetOwnerSection({
       await queryClient.invalidateQueries({ queryKey: ['mobile-work-program-owner-budget-requests'] });
       Alert.alert('Berhasil', 'LPJ berhasil diunggah.');
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || error?.message || 'Gagal mengunggah LPJ.';
-      Alert.alert('Gagal', message);
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Gagal mengunggah LPJ.'));
     },
   });
 
@@ -363,9 +368,8 @@ export function WorkProgramBudgetOwnerSection({
       if (invoice?.id) setSelectedInvoiceId(invoice.id);
       Alert.alert('Berhasil', 'Invoice LPJ berhasil dibuat.');
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || error?.message || 'Gagal membuat invoice LPJ.';
-      Alert.alert('Gagal', message);
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Gagal membuat invoice LPJ.'));
     },
   });
 
@@ -392,9 +396,8 @@ export function WorkProgramBudgetOwnerSection({
       setItemUnitPrice('0');
       Alert.alert('Berhasil', 'Item LPJ berhasil ditambahkan.');
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || error?.message || 'Gagal menambahkan item LPJ.';
-      Alert.alert('Gagal', message);
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Gagal menambahkan item LPJ.'));
     },
   });
 
@@ -404,9 +407,8 @@ export function WorkProgramBudgetOwnerSection({
       await queryClient.invalidateQueries({ queryKey: ['mobile-work-program-owner-budget-lpj', lpjBudgetId] });
       Alert.alert('Berhasil', 'Item LPJ berhasil dihapus.');
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || error?.message || 'Gagal menghapus item LPJ.';
-      Alert.alert('Gagal', message);
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Gagal menghapus item LPJ.'));
     },
   });
 
@@ -417,9 +419,8 @@ export function WorkProgramBudgetOwnerSection({
       await queryClient.invalidateQueries({ queryKey: ['mobile-work-program-owner-budget-lpj', lpjBudgetId] });
       Alert.alert('Berhasil', 'File invoice LPJ berhasil diunggah.');
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || error?.message || 'Gagal mengunggah file invoice LPJ.';
-      Alert.alert('Gagal', message);
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Gagal mengunggah file invoice LPJ.'));
     },
   });
 
@@ -430,9 +431,8 @@ export function WorkProgramBudgetOwnerSection({
       await queryClient.invalidateQueries({ queryKey: ['mobile-work-program-owner-budget-lpj', lpjBudgetId] });
       Alert.alert('Berhasil', 'File bukti LPJ berhasil diunggah.');
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || error?.message || 'Gagal mengunggah file bukti LPJ.';
-      Alert.alert('Gagal', message);
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Gagal mengunggah file bukti LPJ.'));
     },
   });
 
@@ -443,13 +443,12 @@ export function WorkProgramBudgetOwnerSection({
       await queryClient.invalidateQueries({ queryKey: ['mobile-work-program-owner-budget-requests'] });
       Alert.alert('Berhasil', 'Invoice LPJ berhasil diajukan ke Wakasek Sarpras.');
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || error?.message || 'Gagal mengajukan invoice LPJ.';
-      Alert.alert('Gagal', message);
+    onError: (error: unknown) => {
+      Alert.alert('Gagal', resolveApiErrorMessage(error, 'Gagal mengajukan invoice LPJ.'));
     },
   });
 
-  const budgets = budgetsQuery.data || [];
+  const budgets = useMemo(() => budgetsQuery.data || [], [budgetsQuery.data]);
 
   const dutyFilterOptions = useMemo(() => {
     const keys = new Set<string>(dutyOptions.filter((item) => String(item || '').trim().length > 0));
@@ -480,18 +479,19 @@ export function WorkProgramBudgetOwnerSection({
   const pendingCount = budgets.filter((budget) => budget.status === 'PENDING').length;
   const lpjReadyCount = budgets.filter((budget) => budget.status === 'APPROVED' && !!budget.realizationConfirmedAt).length;
 
-  const lpjInvoices = lpjQuery.data?.invoices || [];
+  const lpjInvoices = useMemo(() => lpjQuery.data?.invoices || [], [lpjQuery.data?.invoices]);
   const selectedInvoice =
     lpjInvoices.find((invoice) => invoice.id === selectedInvoiceId) ||
     (lpjInvoices.length > 0 ? lpjInvoices[lpjInvoices.length - 1] : null);
 
   useEffect(() => {
     if (!lpjInvoices.length) {
-      setSelectedInvoiceId(null);
-      return;
+      const timerId = setTimeout(() => setSelectedInvoiceId(null), 0);
+      return () => clearTimeout(timerId);
     }
     if (!selectedInvoiceId || !lpjInvoices.some((invoice) => invoice.id === selectedInvoiceId)) {
-      setSelectedInvoiceId(lpjInvoices[lpjInvoices.length - 1].id);
+      const timerId = setTimeout(() => setSelectedInvoiceId(lpjInvoices[lpjInvoices.length - 1].id), 0);
+      return () => clearTimeout(timerId);
     }
   }, [lpjInvoices, selectedInvoiceId]);
 

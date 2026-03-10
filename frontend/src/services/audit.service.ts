@@ -9,8 +9,8 @@ export type AuditLog = {
   entity: string;
   entityId?: number | null;
   reason?: string | null;
-  before?: any | null;
-  after?: any | null;
+  before?: unknown | null;
+  after?: unknown | null;
   createdAt: string;
   actor: {
     id: number;

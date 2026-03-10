@@ -14,6 +14,7 @@ export type AuthUser = {
   id: number;
   name: string;
   role: string;
+  isDemo?: boolean;
   username: string;
   gender?: 'MALE' | 'FEMALE' | null;
   birthPlace?: string | null;

@@ -38,10 +38,11 @@ import {
   Image as ImageIcon,
   Server,
   Mail,
+  Activity,
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { authService } from '../../services/auth.service';
 import { internshipService } from '../../services/internship.service';
@@ -64,11 +65,11 @@ interface SidebarProps {
     studentStatus?: 'ACTIVE' | 'GRADUATED' | 'MOVED' | 'DROPPED_OUT';
     teacherClasses?: { id: number; name: string }[];
     trainingClassesTeaching?: { id: number; name: string }[];
-    additionalDuties?: string[];
-    managedMajor?: { id: number; name: string; code: string };
-    managedMajors?: { id: number; name: string; code: string }[];
-    studentClass?: { id: number; name: string; presidentId?: number | null };
-    preferences?: any;
+    additionalDuties?: string[] | null;
+    managedMajor?: { id: number; name: string; code: string } | null;
+    managedMajors?: { id: number; name: string; code: string }[] | null;
+    studentClass?: { id: number; name: string; presidentId?: number | null } | null;
+    preferences?: Record<string, unknown> | null;
   };
   activeSemester?: 'ODD' | 'EVEN';
 }
@@ -80,12 +81,15 @@ export type MenuItem = {
   children?: MenuItem[];
 };
 
+const ROOT_MENU_PATHS = ['/admin', '/teacher', '/student', '/principal', '/staff', '/parent', '/tutor', '/examiner'] as const;
+
 function sortExamPrograms(programs: ExamProgram[]): ExamProgram[] {
   return [...programs]
     .filter((program) => Boolean(program?.isActive))
     .sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || String(a.label || '').localeCompare(String(b.label || '')));
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const getMenuItems = (
   user: SidebarProps['user'],
   hasPendingDefense: boolean = false,
@@ -265,7 +269,7 @@ export const getMenuItems = (
     otherDuties.forEach((rawDuty) => {
       const duty = rawDuty.trim().toUpperCase();
       let label = duty;
-      let icon = Briefcase;
+      const icon = Briefcase;
       let children: MenuItem[] = [];
 
       // Check if duty is secretary
@@ -459,7 +463,10 @@ export const getMenuItems = (
   if (role === 'EXTRACURRICULAR_TUTOR') {
     return [
       { label: 'Dashboard', path: '/tutor', icon: LayoutDashboard },
+      { label: 'Email', path: '/email', icon: Mail },
       { label: 'Anggota & Nilai', path: '/tutor/members', icon: Users },
+      { label: 'Program Kerja', path: '/tutor/work-programs', icon: ClipboardList },
+      { label: 'Inventaris Ekskul', path: '/tutor/inventory', icon: Database },
       {
         label: 'PENGATURAN',
         path: '/tutor/general',
@@ -524,7 +531,7 @@ export const getMenuItems = (
           { label: 'Materi & Tugas', path: '/student/learning', icon: ClipboardList },
           { label: 'Riwayat Kehadiran', path: '/student/attendance', icon: UserCheck },
           { label: 'Perizinan', path: '/student/permissions', icon: ClipboardList },
-          ...(user.studentClass?.presidentId === (user as any).id ? [{ label: 'Presensi Kelas', path: '/student/class-attendance', icon: ClipboardList }] : [])
+          ...(user.studentClass?.presidentId === user.id ? [{ label: 'Presensi Kelas', path: '/student/class-attendance', icon: ClipboardList }] : [])
         ]
       },
       ...(isPKLGrade ? [{
@@ -580,6 +587,16 @@ export const getMenuItems = (
   if (role === 'PRINCIPAL') {
     return [
       { label: 'Dashboard', path: '/principal', icon: LayoutDashboard },
+      { label: 'Email', path: '/email', icon: Mail },
+      {
+        label: 'MONITORING',
+        path: '/principal/monitoring',
+        icon: Activity,
+        children: [
+          { label: 'Operasional Harian', path: '/principal/monitoring/operations', icon: Activity },
+          { label: 'Persetujuan Program Kerja', path: '/principal/work-program-approvals', icon: ClipboardList },
+        ],
+      },
       {
         label: 'AKADEMIK',
         path: '/principal/academic',
@@ -588,6 +605,12 @@ export const getMenuItems = (
           { label: 'Rapor & Ranking', path: '/principal/academic/reports', icon: FileBarChart },
           { label: 'Rekap Absensi', path: '/principal/academic/attendance', icon: UserCheck },
         ],
+      },
+      {
+        label: 'UJIAN',
+        path: '/principal/exams',
+        icon: ClipboardList,
+        children: [{ label: 'Berita Acara Ujian', path: '/principal/exams/reports', icon: FileText }],
       },
       {
         label: 'KEUANGAN',
@@ -619,6 +642,7 @@ export const getMenuItems = (
   if (role === 'STAFF') {
     return [
       { label: 'Dashboard', path: '/staff', icon: LayoutDashboard },
+      { label: 'Email', path: '/email', icon: Mail },
       { label: 'Pembayaran (SPP)', path: '/staff/payments', icon: CreditCard },
       { label: 'Data Siswa', path: '/staff/students', icon: GraduationCap },
       { label: 'Administrasi', path: '/staff/admin', icon: ClipboardList },
@@ -683,7 +707,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
     [user, hasPendingDefense, pklEligibleGrades, examPrograms],
   );
   // Helper: check path active with relaxed query matching
-  const isChildPathActive = (itemPath: string) => {
+  const isChildPathActive = useCallback((itemPath: string) => {
     if (itemPath.includes('?')) {
       const [pathOnly, qs] = itemPath.split('?');
       const required = new URLSearchParams(qs);
@@ -702,7 +726,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
     }
     const cleanChildPath = itemPath.split('?')[0];
     return location.pathname.startsWith(cleanChildPath);
-  };
+  }, [location.pathname, location.search]);
   const activeParentPath = useMemo(() => {
     const activeParent = items.find((item) => {
       // Check if any child matches
@@ -718,11 +742,25 @@ export const Sidebar = ({ user }: SidebarProps) => {
       return false;
     });
     return activeParent ? activeParent.path : null;
-  }, [items, location.pathname]);
+  }, [items, location.pathname, isChildPathActive]);
 
-  const [openGroup, setOpenGroup] = useState<string | null>(() => {
-    return user.preferences?.sidebarOpenGroup || null;
-  });
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+
+  // Defensive reset: avoid stale/legacy sidebar group state blocking interactions after login.
+  useEffect(() => {
+    setOpenGroup(null);
+  }, [user.id, user.role]);
+
+  // Keep current route group expanded on first render / route changes,
+  // but allow user to switch groups manually afterwards.
+  useEffect(() => {
+    setOpenGroup((previous) => {
+      if (previous && items.some((item) => item.path === previous)) {
+        return previous;
+      }
+      return activeParentPath;
+    });
+  }, [activeParentPath, items]);
 
 
 
@@ -740,13 +778,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
   });
   */
 
-  useEffect(() => {
-    if (activeParentPath && activeParentPath !== openGroup) {
-      setOpenGroup(activeParentPath);
-    } else if (!activeParentPath && ['/teacher', '/admin', '/student', '/principal', '/staff', '/parent'].includes(location.pathname)) {
-      setOpenGroup(null);
-    }
-  }, [activeParentPath, location.pathname]);
+  const effectiveOpenGroup = useMemo(() => openGroup, [openGroup]);
 
   const toggleGroup = (path: string) => {
     const newState = openGroup === path ? null : path;
@@ -757,10 +789,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
   };
 
   const isPathActive = (itemPath: string) => {
-    // List of root paths that require exact match to avoid highlighting when on subpages
-    const rootPaths = ['/admin', '/teacher', '/student', '/principal', '/staff', '/parent'];
-    
-    if (rootPaths.includes(itemPath)) {
+    if (ROOT_MENU_PATHS.includes(itemPath as (typeof ROOT_MENU_PATHS)[number])) {
       return location.pathname === itemPath;
     }
     
@@ -791,7 +820,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
   };
 
   return (
-    <aside className="w-64 bg-white hidden md:flex flex-col h-full shadow-xl z-20">
+    <aside className="relative z-[80] w-64 shrink-0 bg-white hidden md:flex flex-col h-full shadow-xl pointer-events-auto">
       <div className="p-6 flex items-center gap-3 border-b border-gray-100">
         <img src="/logo_sis_kgb2.png" alt="Logo" className="w-9 h-9 object-contain" />
         <div className="min-w-0">
@@ -811,7 +840,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
             const hasChildren = item.children && item.children.length > 0;
             const isChildActive = hasChildren && item.children?.some((child) => isPathActive(child.path));
             const isActive = isPathActive(item.path) || isChildActive;
-            const isOpen = (openGroup ?? activeParentPath) === item.path;
+            const isOpen = effectiveOpenGroup === item.path;
 
             if (hasChildren) {
               return (

@@ -277,16 +277,25 @@ export default function AdminMasterDataScreen() {
     }
   };
 
-  const majors = masterDataQuery.data?.majors.items || [];
-  const subjects = masterDataQuery.data?.subjects.items || [];
-  const classes = masterDataQuery.data?.classes.items || [];
-  const categories = masterDataQuery.data?.categories || [];
+  const majors = useMemo(() => masterDataQuery.data?.majors.items || [], [masterDataQuery.data?.majors.items]);
+  const subjects = useMemo(() => masterDataQuery.data?.subjects.items || [], [masterDataQuery.data?.subjects.items]);
+  const classes = useMemo(() => masterDataQuery.data?.classes.items || [], [masterDataQuery.data?.classes.items]);
+  const categories = useMemo(() => masterDataQuery.data?.categories || [], [masterDataQuery.data?.categories]);
   const extracurricularsResult = masterDataQuery.data?.extracurriculars || null;
-  const extracurriculars = extracurricularsResult?.items || [];
-  const academicYears = masterDataQuery.data?.years.items || [];
-  const teachers = (masterDataQuery.data?.teachers || []).filter((item) => item.role === 'TEACHER');
+  const extracurriculars = useMemo(
+    () => extracurricularsResult?.items || [],
+    [extracurricularsResult?.items],
+  );
+  const academicYears = useMemo(() => masterDataQuery.data?.years.items || [], [masterDataQuery.data?.years.items]);
+  const teachers = useMemo(
+    () => (masterDataQuery.data?.teachers || []).filter((item) => item.role === 'TEACHER'),
+    [masterDataQuery.data?.teachers],
+  );
   const trainingClassesResult = masterDataQuery.data?.trainingClasses || null;
-  const trainingClasses = trainingClassesResult?.items || [];
+  const trainingClasses = useMemo(
+    () => trainingClassesResult?.items || [],
+    [trainingClassesResult?.items],
+  );
 
   const query = search.trim().toLowerCase();
   const filteredMajors = useMemo(() => {

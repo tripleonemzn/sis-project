@@ -49,6 +49,25 @@ type SubmissionMutationResponse = {
   data: TeacherAssignmentSubmission;
 };
 
+type ReactNativeUploadPart = {
+  uri: string;
+  name: string;
+  type: string;
+};
+
+function appendUploadFile(
+  formData: FormData,
+  file: { uri: string; name?: string; mimeType?: string },
+  fallbackName: string,
+) {
+  const uploadPart: ReactNativeUploadPart = {
+    uri: file.uri,
+    name: file.name || fallbackName,
+    type: file.mimeType || 'application/octet-stream',
+  };
+  formData.append('file', uploadPart as unknown as Blob);
+}
+
 export const teacherMaterialsApi = {
   async listMaterials() {
     const response = await apiClient.get<MaterialsResponse>('/materials', {
@@ -81,11 +100,7 @@ export const teacherMaterialsApi = {
     if (payload.youtubeUrl?.trim()) formData.append('youtubeUrl', payload.youtubeUrl.trim());
     formData.append('isPublished', String(payload.isPublished));
     if (payload.file?.uri) {
-      formData.append('file', {
-        uri: payload.file.uri,
-        name: payload.file.name || 'material-file',
-        type: payload.file.mimeType || 'application/octet-stream',
-      } as any);
+      appendUploadFile(formData, payload.file, 'material-file');
     }
 
     const response = await apiClient.post<MaterialMutationResponse>('/materials', formData, {
@@ -116,11 +131,7 @@ export const teacherMaterialsApi = {
     formData.append('maxScore', String(payload.maxScore));
     formData.append('isPublished', String(payload.isPublished));
     if (payload.file?.uri) {
-      formData.append('file', {
-        uri: payload.file.uri,
-        name: payload.file.name || 'assignment-file',
-        type: payload.file.mimeType || 'application/octet-stream',
-      } as any);
+      appendUploadFile(formData, payload.file, 'assignment-file');
     }
 
     const response = await apiClient.post<AssignmentMutationResponse>('/assignments', formData, {
@@ -152,11 +163,7 @@ export const teacherMaterialsApi = {
     formData.append('isPublished', String(payload.isPublished));
     if (payload.youtubeUrl !== undefined) formData.append('youtubeUrl', payload.youtubeUrl);
     if (payload.file?.uri) {
-      formData.append('file', {
-        uri: payload.file.uri,
-        name: payload.file.name || 'material-file',
-        type: payload.file.mimeType || 'application/octet-stream',
-      } as any);
+      appendUploadFile(formData, payload.file, 'material-file');
     }
 
     const response = await apiClient.put<MaterialMutationResponse>(`/materials/${payload.id}`, formData, {
@@ -192,11 +199,7 @@ export const teacherMaterialsApi = {
     formData.append('maxScore', String(payload.maxScore));
     formData.append('isPublished', String(payload.isPublished));
     if (payload.file?.uri) {
-      formData.append('file', {
-        uri: payload.file.uri,
-        name: payload.file.name || 'assignment-file',
-        type: payload.file.mimeType || 'application/octet-stream',
-      } as any);
+      appendUploadFile(formData, payload.file, 'assignment-file');
     }
 
     const response = await apiClient.put<AssignmentMutationResponse>(`/assignments/${payload.id}`, formData, {

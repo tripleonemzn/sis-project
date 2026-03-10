@@ -52,13 +52,12 @@ export default function ParentFinanceScreen() {
   const params = useLocalSearchParams<{ childId?: string }>();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
-  const [selectedChildId, setSelectedChildId] = useState<number | null>(null);
+  const [manualSelectedChildId, setManualSelectedChildId] = useState<number | null>(null);
   const [semester, setSemester] = useState<'ODD' | 'EVEN'>(defaultSemesterByDate());
   const [activeYearId, setActiveYearId] = useState<number | null>(null);
-  const [activeYearName, setActiveYearName] = useState<string | null>(null);
 
   const childrenQuery = useParentChildrenQuery({ enabled: isAuthenticated, user });
-  const children = childrenQuery.data?.children || [];
+  const children = useMemo(() => childrenQuery.data?.children ?? [], [childrenQuery.data?.children]);
 
   useEffect(() => {
     let isMounted = true;
@@ -67,11 +66,9 @@ export default function ParentFinanceScreen() {
         const activeYear = await academicYearApi.getActive();
         if (!isMounted) return;
         setActiveYearId(activeYear.id);
-        setActiveYearName(activeYear.name);
       } catch {
         if (!isMounted) return;
         setActiveYearId(null);
-        setActiveYearName(null);
       }
     })();
 
@@ -80,13 +77,16 @@ export default function ParentFinanceScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!children.length) return;
+  const selectedChildId = useMemo(() => {
+    if (!children.length) return null;
+    if (manualSelectedChildId && children.some((child) => child.id === manualSelectedChildId)) {
+      return manualSelectedChildId;
+    }
     const queryChildId = params.childId ? Number(params.childId) : null;
-    const defaultChildId =
-      queryChildId && children.some((child) => child.id === queryChildId) ? queryChildId : children[0].id;
-    setSelectedChildId((prev) => prev ?? defaultChildId);
-  }, [children, params.childId]);
+    const validQueryChildId =
+      queryChildId && children.some((child) => child.id === queryChildId) ? queryChildId : null;
+    return validQueryChildId ?? children[0].id;
+  }, [children, manualSelectedChildId, params.childId]);
 
   const reportCardQuery = useParentChildReportCardQuery({
     enabled: isAuthenticated,
@@ -102,6 +102,23 @@ export default function ParentFinanceScreen() {
     childId: selectedChildId,
     limit: 25,
   });
+
+  const selectedChild = children.find((child) => child.id === selectedChildId) || null;
+  const reportCard = reportCardQuery.data?.reportCard;
+  const attendanceSummary = reportCard?.attendanceSummary;
+  const subjectCount = reportCard?.reportGrades?.length || 0;
+  const highestScore = useMemo(() => {
+    const grades = reportCard?.reportGrades || [];
+    if (!grades.length) return null;
+    return grades.reduce((max, item) => (item.finalScore > max ? item.finalScore : max), grades[0].finalScore);
+  }, [reportCard]);
+
+  const selectedChildFinance = useMemo(() => {
+    const childrenOverview = financeQuery.data?.overview.children || [];
+    if (!childrenOverview.length) return null;
+    if (!selectedChildId) return childrenOverview[0];
+    return childrenOverview.find((item) => item.student.id === selectedChildId) || null;
+  }, [financeQuery.data?.overview.children, selectedChildId]);
 
   if (isLoading) return <AppLoadingScreen message="Memuat keuangan anak..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -126,23 +143,6 @@ export default function ParentFinanceScreen() {
       </ScrollView>
     );
   }
-
-  const selectedChild = children.find((child) => child.id === selectedChildId) || null;
-  const reportCard = reportCardQuery.data?.reportCard;
-  const attendanceSummary = reportCard?.attendanceSummary;
-  const subjectCount = reportCard?.reportGrades?.length || 0;
-  const highestScore = useMemo(() => {
-    const grades = reportCard?.reportGrades || [];
-    if (!grades.length) return null;
-    return grades.reduce((max, item) => (item.finalScore > max ? item.finalScore : max), grades[0].finalScore);
-  }, [reportCard]);
-
-  const selectedChildFinance = useMemo(() => {
-    const childrenOverview = financeQuery.data?.overview.children || [];
-    if (!childrenOverview.length) return null;
-    if (!selectedChildId) return childrenOverview[0];
-    return childrenOverview.find((item) => item.student.id === selectedChildId) || null;
-  }, [financeQuery.data?.overview.children, selectedChildId]);
 
   return (
     <ScrollView
@@ -179,7 +179,7 @@ export default function ParentFinanceScreen() {
                 return (
                   <View key={child.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
                     <Pressable
-                      onPress={() => setSelectedChildId(child.id)}
+                      onPress={() => setManualSelectedChildId(child.id)}
                       style={{
                         borderWidth: 1,
                         borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',

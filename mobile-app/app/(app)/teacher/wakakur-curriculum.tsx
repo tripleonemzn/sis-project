@@ -137,10 +137,13 @@ export default function TeacherWakakurCurriculumScreen() {
   });
 
   const normalizedSearch = search.trim().toLowerCase();
-  const categories = curriculumQuery.data?.categories || [];
-  const subjects = curriculumQuery.data?.subjects || [];
-  const assignments = curriculumQuery.data?.assignments || [];
-  const teachingLoad = curriculumQuery.data?.teachingLoad || [];
+  const categories = useMemo(() => curriculumQuery.data?.categories || [], [curriculumQuery.data?.categories]);
+  const subjects = useMemo(() => curriculumQuery.data?.subjects || [], [curriculumQuery.data?.subjects]);
+  const assignments = useMemo(() => curriculumQuery.data?.assignments || [], [curriculumQuery.data?.assignments]);
+  const teachingLoad = useMemo(
+    () => curriculumQuery.data?.teachingLoad || [],
+    [curriculumQuery.data?.teachingLoad],
+  );
 
   const filteredCategories = useMemo(() => {
     if (!normalizedSearch) return categories;

@@ -8,6 +8,7 @@ import {
   type AdditionalDuty,
   type WorkProgram,
   type WorkProgramItem,
+  type WorkProgramExecutionStatus,
 } from '../../services/workProgram.service';
 import { teacherAssignmentService } from '../../services/teacherAssignment.service';
 import {
@@ -18,7 +19,7 @@ import { budgetLpjService } from '../../services/budgetLpj.service';
 import { authService } from '../../services/auth.service';
 import { liveQueryOptions } from '../../lib/query/liveQuery';
 import { z } from 'zod';
-import { useForm, type Resolver } from 'react-hook-form';
+import { useForm, useWatch, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Loader2,
@@ -33,6 +34,9 @@ import {
   Save,
   AlertTriangle,
   UploadCloud,
+  ClipboardList,
+  Wrench,
+  FileText,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -43,6 +47,22 @@ const getErrorMessage = (error: unknown) => {
   }
   return 'Terjadi kesalahan';
 };
+
+const getExecutionStatusMeta = (status: WorkProgramExecutionStatus | null | undefined) => {
+  if (status === 'BELUM_TERLAKSANA') {
+    return {
+      label: 'Belum Terlaksana',
+      className: 'bg-amber-100 text-amber-800',
+    };
+  }
+  return {
+    label: 'Terlaksana',
+    className: 'bg-emerald-100 text-emerald-800',
+  };
+};
+
+const isTruthyQueryValue = (value: string | null) =>
+  ['1', 'true', 'yes'].includes(String(value || '').trim().toLowerCase());
 
 const itemSchema = z.object({
   description: z.string().min(1, 'Deskripsi kegiatan wajib diisi'),
@@ -77,7 +97,8 @@ const createProgramSchema = z.object({
 type CreateProgramFormValues = z.infer<typeof createProgramSchema>;
 
 const createBudgetRequestSchema = z.object({
-  description: z.string().min(1, 'Uraian/Kegiatan wajib diisi'),
+  toolName: z.string().optional(),
+  description: z.string().min(1, 'Uraian/Keterangan wajib diisi'),
   executionTime: z.string().optional(),
   brand: z.string().optional(),
   quantity: z.coerce.number().min(1, 'QTY minimal 1'),
@@ -153,7 +174,22 @@ export const WorkProgramPage = () => {
   const [activeTab, setActiveTab] = useState<'PROGRAM' | 'BUDGET'>(
     (searchParams.get('tab') as 'PROGRAM' | 'BUDGET') || 'PROGRAM'
   );
+  const [budgetSectionTab, setBudgetSectionTab] = useState<'REQUEST' | 'LPJ'>(
+    () => (searchParams.get('section') === 'LPJ' ? 'LPJ' : 'REQUEST'),
+  );
+  const isTutorRole = user?.role === 'EXTRACURRICULAR_TUTOR';
+  const isPembinaEkskulDuty = selectedDuty === 'PEMBINA_EKSKUL';
+  const isMonitoringReadOnly =
+    user?.role === 'TEACHER' &&
+    Array.isArray(user?.additionalDuties) &&
+    user.additionalDuties.includes('PEMBINA_OSIS') &&
+    searchParams.get('duty') === 'PEMBINA_EKSKUL' &&
+    isTruthyQueryValue(searchParams.get('readonly'));
+  const isReadOnlyMode = isMonitoringReadOnly;
   const [isWeekConfigOpen, setIsWeekConfigOpen] = useState(false);
+  const [lpjDraftByProgramId, setLpjDraftByProgramId] = useState<
+    Record<number, { executionStatus: WorkProgramExecutionStatus; nonExecutionReason: string }>
+  >({});
   const [weekConfig, setWeekConfig] = useState<WeekConfig[]>(() => {
     try {
       const saved = localStorage.getItem('workProgramWeekConfig');
@@ -187,11 +223,52 @@ export const WorkProgramPage = () => {
 
   const handleTabChange = (tab: 'PROGRAM' | 'BUDGET') => {
     setActiveTab(tab);
-    setSearchParams(prev => {
-      prev.set('tab', tab);
-      return prev;
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      params.set('tab', tab);
+      if (tab !== 'BUDGET') {
+        params.delete('section');
+      } else {
+        params.set('section', budgetSectionTab);
+      }
+      return params;
     }, { replace: true });
   };
+
+  const handleBudgetSectionChange = (section: 'REQUEST' | 'LPJ') => {
+    setActiveTab('BUDGET');
+    setBudgetSectionTab(section);
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      params.set('tab', 'BUDGET');
+      params.set('section', section);
+      return params;
+    }, { replace: true });
+  };
+
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab') === 'BUDGET' ? 'BUDGET' : 'PROGRAM';
+    if (requestedTab !== activeTab) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setActiveTab(requestedTab);
+    }
+  }, [searchParams, activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'BUDGET') return;
+    const requestedSection = searchParams.get('section') === 'LPJ' ? 'LPJ' : 'REQUEST';
+    if (requestedSection !== budgetSectionTab) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setBudgetSectionTab(requestedSection);
+    }
+  }, [searchParams, activeTab, budgetSectionTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'BUDGET' && budgetSectionTab !== 'REQUEST') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setBudgetSectionTab('REQUEST');
+    }
+  }, [activeTab, budgetSectionTab]);
 
   const handleSaveWeekConfig = (newConfig: WeekConfig[]) => {
     setWeekConfig(newConfig);
@@ -202,6 +279,29 @@ export const WorkProgramPage = () => {
   
   useEffect(() => {
     const dutyParam = searchParams.get('duty');
+    const tabParam = searchParams.get('tab');
+    const sectionParam = searchParams.get('section');
+    if (isTutorRole) {
+      const normalizedTab = tabParam === 'BUDGET' ? 'BUDGET' : 'PROGRAM';
+      const normalizedSection = sectionParam === 'LPJ' ? 'LPJ' : 'REQUEST';
+      if (dutyParam !== 'PEMBINA_EKSKUL' || selectedDuty !== 'PEMBINA_EKSKUL' || !tabParam) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setSelectedDuty('PEMBINA_EKSKUL');
+        setSearchParams((prev) => {
+          const params = new URLSearchParams(prev);
+          params.set('duty', 'PEMBINA_EKSKUL');
+          params.set('tab', normalizedTab);
+          if (normalizedTab === 'BUDGET') {
+            params.set('section', normalizedSection);
+          } else {
+            params.delete('section');
+          }
+          return params;
+        }, { replace: true });
+      }
+      return;
+    }
+
     const isKakomUser =
       Array.isArray(user?.additionalDuties) && user.additionalDuties.includes('KAPROG');
 
@@ -231,7 +331,7 @@ export const WorkProgramPage = () => {
         }, { replace: true });
       }
     }
-  }, [searchParams, selectedDuty, setSearchParams, user]);
+  }, [isTutorRole, searchParams, selectedDuty, setSearchParams, user]);
 
   const [editingItem, setEditingItem] = useState<WorkProgramItem | null>(null);
 
@@ -292,7 +392,7 @@ export const WorkProgramPage = () => {
   const fallbackMajorIdsFromAssignments = useMemo(() => {
     const assignments = teacherAssignmentsData?.data?.assignments || [];
     const set = new Set<number>();
-    assignments.forEach((a: any) => {
+    assignments.forEach((a) => {
       const id = a?.class?.major?.id;
       if (id) set.add(Number(id));
     });
@@ -305,7 +405,7 @@ export const WorkProgramPage = () => {
       if (managedArr.length === 0) {
         return [];
       }
-      const managedIds = new Set<number>(managedArr.map((m: any) => Number(m.id)));
+      const managedIds = new Set<number>(managedArr.map((m) => Number(m.id)));
       return majors.filter((m) => managedIds.has(Number(m.id)));
     }
 
@@ -323,7 +423,7 @@ export const WorkProgramPage = () => {
       username: user.username,
       additionalDuties: user.additionalDuties,
       managedMajors: user.managedMajors,
-      managedMajorIds: (user as any)?.managedMajorIds,
+      managedMajorIds: user?.managedMajorIds,
       selectedDuty,
       majorsCount: majors.length,
       allowedMajors: allowedMajors.map((m) => ({
@@ -338,6 +438,7 @@ export const WorkProgramPage = () => {
     const isKakomUser =
       Array.isArray(user?.additionalDuties) && user.additionalDuties.includes('KAPROG');
     if (!isKakomUser && selectedMajor && selectedDuty) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedMajor('');
     }
   }, [user, selectedDuty, selectedMajor]);
@@ -353,16 +454,16 @@ export const WorkProgramPage = () => {
       // Resolve effective major from selection or allowed list
       let major: Major | undefined;
       const managedArr = Array.isArray(user?.managedMajors) ? user.managedMajors : [];
-      const managedIdsArr = Array.isArray((user as any)?.managedMajorIds) ? (user as any).managedMajorIds : [];
-      const singleManagedId = (user as any)?.managedMajorId || (user as any)?.managedMajor?.id;
+      const managedIdsArr = Array.isArray(user?.managedMajorIds) ? user.managedMajorIds : [];
+      const singleManagedId = user?.managedMajorId || user?.managedMajor?.id;
       const allowedIds = new Set<number>([
-        ...managedArr.map((m: any) => Number(m.id)),
-        ...managedIdsArr.map((mid: any) => Number(mid)),
+        ...managedArr.map((m) => Number(m.id)),
+        ...managedIdsArr.map((mid) => Number(mid)),
         ...(singleManagedId ? [Number(singleManagedId)] : []),
       ]);
       const preferredManagedId =
-        (user as any)?.managedMajorId ||
-        (user as any)?.managedMajor?.id ||
+        user?.managedMajorId ||
+        user?.managedMajor?.id ||
         (Array.isArray(user?.managedMajors) && user.managedMajors.length === 1 ? Number(user.managedMajors[0]?.id) : undefined);
       if (preferredManagedId) {
         major = majors.find((m) => m.id === Number(preferredManagedId));
@@ -382,7 +483,7 @@ export const WorkProgramPage = () => {
     }
     
     return `Program Kerja ${dutyLabel}`;
-  }, [selectedDuty, selectedMajor, majors, user, allowedMajors, fallbackMajorIdsFromAssignments]);
+  }, [selectedDuty, selectedMajor, majors, user]);
 
   const activeYearId = useMemo(() => {
     if (!academicYears.length) {
@@ -403,8 +504,8 @@ export const WorkProgramPage = () => {
     const schedule = new Set<number>();
     
     if (program.startMonth && program.endMonth && program.startWeek && program.endWeek) {
-        let startIndex = program.startMonth >= 7 ? program.startMonth - 7 : program.startMonth + 5;
-        let endIndex = program.endMonth >= 7 ? program.endMonth - 7 : program.endMonth + 5;
+        const startIndex = program.startMonth >= 7 ? program.startMonth - 7 : program.startMonth + 5;
+        const endIndex = program.endMonth >= 7 ? program.endMonth - 7 : program.endMonth + 5;
         if (startIndex >= 0 && startIndex < 12 && endIndex >= 0 && endIndex < 12) {
             for (let mi = startIndex; mi <= endIndex; mi++) {
                 let globalOffset = 0;
@@ -476,7 +577,17 @@ export const WorkProgramPage = () => {
   };
 
   const { data, isLoading: isLoadingPrograms } = useQuery({
-    queryKey: ['work-programs', page, limit, debouncedSearch, activeYearId, selectedDuty, selectedMajor, selectedSemester],
+    queryKey: [
+      'work-programs',
+      page,
+      limit,
+      debouncedSearch,
+      activeYearId,
+      selectedDuty,
+      selectedMajor,
+      selectedSemester,
+      isReadOnlyMode ? 'readonly' : 'editable',
+    ],
     queryFn: () =>
       workProgramService.list({
         page,
@@ -486,6 +597,7 @@ export const WorkProgramPage = () => {
         additionalDuty: selectedDuty || null,
         majorId: selectedMajor ? parseInt(selectedMajor) : undefined,
         semester: selectedSemester || undefined,
+        readOnly: isReadOnlyMode,
     }),
     enabled: !!activeYearId,
     ...liveQueryOptions,
@@ -501,12 +613,63 @@ export const WorkProgramPage = () => {
     totalPages: 1,
   };
 
+  const getExecutionDraft = (program: WorkProgram) =>
+    lpjDraftByProgramId[program.id] || {
+      executionStatus:
+        program.executionStatus === 'BELUM_TERLAKSANA'
+          ? ('BELUM_TERLAKSANA' as WorkProgramExecutionStatus)
+          : ('TERLAKSANA' as WorkProgramExecutionStatus),
+      nonExecutionReason: program.nonExecutionReason || '',
+    };
+
+  const getProgramPeriodLabel = (program: WorkProgram) => {
+    const monthNameFromNumber = (monthNumber?: number | null) => {
+      if (!monthNumber) return '-';
+      const monthIndex = monthNumber >= 7 ? monthNumber - 7 : monthNumber + 5;
+      const month = weekConfig[monthIndex];
+      return month?.name || `Bulan ${monthNumber}`;
+    };
+
+    const startMonthLabel = monthNameFromNumber(program.startMonth ?? program.month);
+    const endMonthLabel = monthNameFromNumber(program.endMonth ?? program.month);
+    const startWeekLabel = program.startWeek ? `Minggu ${program.startWeek}` : '-';
+    const endWeekLabel = program.endWeek ? `Minggu ${program.endWeek}` : '-';
+
+    return `${startMonthLabel} (${startWeekLabel}) - ${endMonthLabel} (${endWeekLabel})`;
+  };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLpjDraftByProgramId((prev) => {
+      const next: Record<
+        number,
+        { executionStatus: WorkProgramExecutionStatus; nonExecutionReason: string }
+      > = {};
+      programs.forEach((program) => {
+        const existing = prev[program.id];
+        if (existing) {
+          next[program.id] = existing;
+          return;
+        }
+        next[program.id] = {
+          executionStatus:
+            program.executionStatus === 'BELUM_TERLAKSANA'
+              ? 'BELUM_TERLAKSANA'
+              : 'TERLAKSANA',
+          nonExecutionReason: program.nonExecutionReason || '',
+        };
+      });
+      return next;
+    });
+  }, [programs]);
+
   const selectedProgramId = selectedProgram?.id;
 
   useEffect(() => {
     if (!selectedProgramId) return;
     const updated = programs.find((program) => program.id === selectedProgramId);
     if (updated) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedProgram(updated);
     }
   }, [programs, selectedProgramId]);
@@ -604,9 +767,15 @@ export const WorkProgramPage = () => {
       try {
         const res = await workProgramService.create(payload);
         return res;
-      } catch (err: any) {
-        const msg = err?.response?.data?.message || '';
-        const status = err?.response?.status;
+      } catch (err: unknown) {
+        const errResponse = err as {
+          response?: {
+            status?: number;
+            data?: { message?: string };
+          };
+        };
+        const msg = errResponse.response?.data?.message || '';
+        const status = errResponse.response?.status;
         if (status === 403 && /jurusan/i.test(msg)) {
           const retryRes = await workProgramService.create({ ...payload, majorId: undefined });
           return retryRes;
@@ -637,22 +806,23 @@ export const WorkProgramPage = () => {
     const allowedIds = allowedMajors.map((m) => Number(m.id));
     if (currentId && allowedIds.includes(currentId)) return;
 
-    let defaultMajor =
+    const defaultMajor =
       allowedMajors.find(
         (m) =>
           typeof m.name === 'string' &&
           m.name.toLowerCase().includes('akuntansi'),
       ) ||
       allowedMajors.find(
-        (m: any) =>
-          typeof (m as any).code === 'string' &&
-          String((m as any).code).toUpperCase() === 'AK',
+        (m) =>
+          typeof m.code === 'string' &&
+          String(m.code).toUpperCase() === 'AK',
       ) ||
       allowedMajors[0];
 
     if (defaultMajor?.id) {
       const idStr = String(defaultMajor.id);
       if (selectedMajor !== idStr) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedMajor(idStr);
       }
     }
@@ -715,6 +885,58 @@ export const WorkProgramPage = () => {
     },
   });
 
+  const updateProgramExecutionMutation = useMutation({
+    mutationFn: ({
+      programId,
+      executionStatus,
+      nonExecutionReason,
+    }: {
+      programId: number;
+      executionStatus: WorkProgramExecutionStatus;
+      nonExecutionReason?: string | null;
+    }) =>
+      workProgramService.update(programId, {
+        executionStatus,
+        nonExecutionReason,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['work-programs'] });
+      toast.success('Status pelaksanaan program kerja berhasil disimpan');
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error) || 'Gagal menyimpan status pelaksanaan');
+    },
+  });
+
+  const handleExecutionDraftChange = (
+    programId: number,
+    value: Partial<{ executionStatus: WorkProgramExecutionStatus; nonExecutionReason: string }>,
+  ) => {
+    setLpjDraftByProgramId((prev) => ({
+      ...prev,
+      [programId]: {
+        executionStatus: value.executionStatus ?? prev[programId]?.executionStatus ?? 'TERLAKSANA',
+        nonExecutionReason:
+          value.nonExecutionReason ?? prev[programId]?.nonExecutionReason ?? '',
+      },
+    }));
+  };
+
+  const handleSaveExecutionStatus = (program: WorkProgram) => {
+    const draft = getExecutionDraft(program);
+    const trimmedReason = draft.nonExecutionReason.trim();
+    if (draft.executionStatus === 'BELUM_TERLAKSANA' && !trimmedReason) {
+      toast.error('Alasan wajib diisi untuk status belum terlaksana');
+      return;
+    }
+    updateProgramExecutionMutation.mutate({
+      programId: program.id,
+      executionStatus: draft.executionStatus,
+      nonExecutionReason:
+        draft.executionStatus === 'BELUM_TERLAKSANA' ? trimmedReason : null,
+    });
+  };
+
   const {
     data: budgetRequestsData,
     isLoading: isLoadingBudgets,
@@ -725,47 +947,88 @@ export const WorkProgramPage = () => {
         academicYearId: activeYearId ?? undefined,
         additionalDuty: selectedDuty || undefined,
     }),
-    enabled: !!activeYearId && activeTab === 'BUDGET',
+    enabled: !!activeYearId && activeTab === 'BUDGET' && budgetSectionTab === 'REQUEST',
     ...liveQueryOptions,
   });
 
-  const budgetRequests: BudgetRequest[] = budgetRequestsData?.data || budgetRequestsData || [];
+  const budgetRequests = useMemo<BudgetRequest[]>(() => {
+    if (Array.isArray(budgetRequestsData?.data)) {
+      return budgetRequestsData.data;
+    }
+    if (Array.isArray(budgetRequestsData)) {
+      return budgetRequestsData;
+    }
+    return [];
+  }, [budgetRequestsData]);
+  const displayedBudgetRequests = budgetRequests;
 
   const {
     register: registerNewBudget,
     handleSubmit: handleSubmitNewBudget,
     reset: resetNewBudgetForm,
-    watch: watchNewBudget,
+    control: newBudgetControl,
+    setValue: setNewBudgetValue,
     formState: { errors: newBudgetErrors },
   } = useForm<CreateBudgetRequestFormValues>({
     resolver: zodResolver(createBudgetRequestSchema) as Resolver<CreateBudgetRequestFormValues>,
     defaultValues: {
+      toolName: '',
       description: '',
+      executionTime: '',
+      brand: '',
       quantity: 1,
       unitPrice: 0,
     },
   });
 
-  const newBudgetQty = watchNewBudget('quantity') || 0;
-  const newBudgetPrice = watchNewBudget('unitPrice') || 0;
+  const [watchedNewBudgetQty, watchedNewBudgetPrice] = useWatch({
+    control: newBudgetControl,
+    name: ['quantity', 'unitPrice'],
+  });
+
+  useEffect(() => {
+    if (!isPembinaEkskulDuty) return;
+    setNewBudgetValue('quantity', 1);
+    setNewBudgetValue('unitPrice', 0);
+  }, [isPembinaEkskulDuty, setNewBudgetValue]);
+
+  const newBudgetQty = Number(watchedNewBudgetQty || 0);
+  const newBudgetPrice = isPembinaEkskulDuty ? 0 : Number(watchedNewBudgetPrice || 0);
   const newBudgetTotal = newBudgetQty * newBudgetPrice;
 
   const createBudgetRequestMutation = useMutation({
     mutationFn: (data: CreateBudgetRequestFormValues) => {
       if (!activeYearId) throw new Error('Tahun ajaran aktif tidak ditemukan');
       if (!selectedDuty) throw new Error('Tugas tambahan tidak ditemukan');
+      const isEkskulEquipmentRequest = selectedDuty === 'PEMBINA_EKSKUL';
+      const equipmentName = String(data.toolName || '').trim();
+      if (isEkskulEquipmentRequest && !equipmentName) {
+        throw new Error('Nama alat wajib diisi');
+      }
+
+      const quantity = isEkskulEquipmentRequest ? 1 : Math.max(1, Number(data.quantity || 1));
+      const unitPrice = isEkskulEquipmentRequest ? 0 : Number(data.unitPrice || 0);
+      const totalAmount = quantity * unitPrice;
+      const description = String(data.description || '').trim();
+      const title = isEkskulEquipmentRequest ? equipmentName : description;
+      const brand = String(data.brand || '').trim();
+      const executionTime = String(data.executionTime || '').trim();
 
       return budgetRequestService.create({
-        ...data,
-        title: data.description,
-        totalAmount: data.quantity * data.unitPrice,
+        title,
+        description,
+        executionTime: executionTime || undefined,
+        brand: brand || undefined,
+        quantity,
+        unitPrice,
+        totalAmount,
         academicYearId: activeYearId,
         additionalDuty: selectedDuty,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['budget-requests'] });
-      toast.success('Pengajuan anggaran berhasil dibuat');
+      toast.success(isPembinaEkskulDuty ? 'Pengajuan alat berhasil dibuat' : 'Pengajuan anggaran berhasil dibuat');
       setIsBudgetModalOpen(false);
       resetNewBudgetForm();
     },
@@ -785,18 +1048,6 @@ export const WorkProgramPage = () => {
     },
   });
 
-  const uploadLpjMutation = useMutation({
-    mutationFn: (params: { id: number; file: File }) =>
-      budgetRequestService.uploadLpj(params.id, params.file),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['budget-requests'] });
-      toast.success('LPJ berhasil diunggah');
-    },
-    onError: (error: unknown) => {
-      toast.error(getErrorMessage(error) || 'Gagal mengunggah LPJ');
-    },
-  });
-
   const uploadInvoiceFileMutation = useMutation({
     mutationFn: (payload: { invoiceId: number; file: File }) =>
       budgetLpjService.uploadInvoiceFile(payload.invoiceId, payload.file),
@@ -808,8 +1059,8 @@ export const WorkProgramPage = () => {
         });
       }
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Gagal mengunggah file invoice LPJ');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error) || 'Gagal mengunggah file invoice LPJ');
     },
   });
 
@@ -824,8 +1075,8 @@ export const WorkProgramPage = () => {
         });
       }
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Gagal mengunggah file bukti LPJ');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error) || 'Gagal mengunggah file bukti LPJ');
     },
   });
 
@@ -945,58 +1196,125 @@ export const WorkProgramPage = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{pageTitle}</h1>
           <p className="text-gray-500 text-sm">
-            Kelola program kerja dan anggaran untuk tugas tambahan Anda.
+            {isReadOnlyMode
+              ? 'Mode monitor read-only untuk memantau pengajuan pembina ekstrakurikuler.'
+              : 'Kelola program kerja dan anggaran untuk tugas tambahan Anda.'}
           </p>
         </div>
-        <div className="flex gap-2">
-          {activeTab === 'PROGRAM' && (
-            <button
-              onClick={() => setIsWeekConfigOpen(true)}
-              className="inline-flex items-center px-4 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50"
-            >
-              <Settings className="w-4 h-4 mr-2" />
-              Konfigurasi Kalender
-            </button>
-          )}
-          <button
-            onClick={() =>
-              activeTab === 'PROGRAM'
-                ? setIsCreateModalOpen(true)
-                : setIsBudgetModalOpen(true)
-            }
-            className="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            {activeTab === 'PROGRAM' ? 'Tambah Program' : 'Ajukan Anggaran'}
-          </button>
-        </div>
+        {!isReadOnlyMode && (
+          <div className="flex gap-2">
+            {activeTab === 'PROGRAM' && (
+              <button
+                onClick={() => setIsWeekConfigOpen(true)}
+                className="inline-flex items-center px-4 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50"
+              >
+                <Settings className="w-4 h-4 mr-2" />
+                Konfigurasi Kalender
+              </button>
+            )}
+            {!(activeTab === 'BUDGET' && budgetSectionTab === 'LPJ') && (
+              <button
+                onClick={() =>
+                  activeTab === 'PROGRAM'
+                    ? setIsCreateModalOpen(true)
+                    : setIsBudgetModalOpen(true)
+                }
+                className="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                {activeTab === 'PROGRAM'
+                  ? 'Tambah Program'
+                  : isPembinaEkskulDuty
+                    ? 'Ajukan Alat'
+                    : 'Ajukan Anggaran'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-        <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
-          <button
-            onClick={() => handleTabChange('PROGRAM')}
-            className={`
-              px-4 py-2 text-sm font-medium rounded-md transition-colors
-              ${activeTab === 'PROGRAM'
-                ? 'bg-blue-50 text-blue-700'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
-            `}
-          >
-            Program Kerja
-          </button>
-          <button
-            onClick={() => handleTabChange('BUDGET')}
-            className={`
-              px-4 py-2 text-sm font-medium rounded-md transition-colors
-              ${activeTab === 'BUDGET'
-                ? 'bg-blue-50 text-blue-700'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
-            `}
-          >
-            Pengajuan Anggaran
-          </button>
-        </div>
+        {isTutorRole ? (
+          <div className="border-b border-gray-200">
+            <div className="flex overflow-x-auto gap-4 pb-1">
+              <button
+                type="button"
+                onClick={() => handleTabChange('PROGRAM')}
+                className={`inline-flex items-center px-4 py-3 border-b-2 whitespace-nowrap text-sm transition-colors ${
+                  activeTab === 'PROGRAM'
+                    ? 'border-blue-600 text-blue-600 font-semibold'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <ClipboardList className="w-4 h-4 mr-2" />
+                Program Kerja
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBudgetSectionChange('REQUEST')}
+                className={`inline-flex items-center px-4 py-3 border-b-2 whitespace-nowrap text-sm transition-colors ${
+                  activeTab === 'BUDGET' && budgetSectionTab === 'REQUEST'
+                    ? 'border-blue-600 text-blue-600 font-semibold'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <Wrench className="w-4 h-4 mr-2" />
+                Pengajuan Alat
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBudgetSectionChange('LPJ')}
+                className={`inline-flex items-center px-4 py-3 border-b-2 whitespace-nowrap text-sm transition-colors ${
+                  activeTab === 'BUDGET' && budgetSectionTab === 'LPJ'
+                    ? 'border-blue-600 text-blue-600 font-semibold'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                LPJ Program Kerja
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200 w-fit">
+            <button
+              onClick={() => handleTabChange('PROGRAM')}
+              className={`
+                inline-flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors
+                ${activeTab === 'PROGRAM'
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
+              `}
+            >
+              <ClipboardList className="w-4 h-4 mr-2" />
+              Program Kerja
+            </button>
+            <button
+              onClick={() => handleBudgetSectionChange('REQUEST')}
+              className={`
+                inline-flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors
+                ${activeTab === 'BUDGET' && budgetSectionTab === 'REQUEST'
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
+              `}
+            >
+              <Wrench className="w-4 h-4 mr-2" />
+              {isPembinaEkskulDuty ? 'Pengajuan Alat' : 'Pengajuan Anggaran'}
+            </button>
+            <button
+              onClick={() => handleBudgetSectionChange('LPJ')}
+              className={`
+                inline-flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors
+                ${activeTab === 'BUDGET' && budgetSectionTab === 'LPJ'
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
+              `}
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              LPJ Program Kerja
+            </button>
+          </div>
+        )}
       </div>
 
       {activeTab === 'PROGRAM' && (
@@ -1007,24 +1325,28 @@ export const WorkProgramPage = () => {
             </div>
             <h3 className="text-lg font-medium text-gray-900">Belum Ada Program Kerja</h3>
             <p className="text-gray-500 text-center max-w-sm mt-1 mb-6">
-              Silakan konfigurasi jumlah minggu per bulan terlebih dahulu, lalu tambahkan program kerja baru.
+              {isReadOnlyMode
+                ? 'Belum ada data program kerja pembina ekstrakurikuler untuk dimonitor.'
+                : 'Silakan konfigurasi jumlah minggu per bulan terlebih dahulu, lalu tambahkan program kerja baru.'}
             </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setIsWeekConfigOpen(true)}
-                className="inline-flex items-center px-4 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50"
-              >
-                <Settings className="w-4 h-4 mr-2" />
-                Konfigurasi Kalender
-              </button>
-              <button
-                onClick={() => setIsCreateModalOpen(true)}
-                className="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Tambah Program
-              </button>
-            </div>
+            {!isReadOnlyMode && (
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setIsWeekConfigOpen(true)}
+                  className="inline-flex items-center px-4 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50"
+                >
+                  <Settings className="w-4 h-4 mr-2" />
+                  Konfigurasi Kalender
+                </button>
+                <button
+                  onClick={() => setIsCreateModalOpen(true)}
+                  className="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Tambah Program
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -1067,7 +1389,9 @@ export const WorkProgramPage = () => {
                       <select
                         className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm"
                         value={selectedSemester}
-                        onChange={(e) => setSelectedSemester(e.target.value as any)}
+                        onChange={(e) =>
+                          setSelectedSemester(e.target.value as 'ODD' | 'EVEN' | '')
+                        }
                       >
                         <option value="">Semua Semester</option>
                         <option value="ODD">Ganjil</option>
@@ -1093,7 +1417,6 @@ export const WorkProgramPage = () => {
                         </select>
                       </div>
                     )}
-                    {false && <div />}
                   </div>
                   <div className="flex items-center gap-2">
                     <label className="text-sm text-gray-600">Tampilkan:</label>
@@ -1246,6 +1569,18 @@ export const WorkProgramPage = () => {
                                   })}
                                   <td className="px-6 py-4 whitespace-nowrap border-l border-gray-300 text-center align-top">
                                     <div className="flex flex-col items-center w-full text-xs">
+                                      {(() => {
+                                        const executionMeta = getExecutionStatusMeta(
+                                          program.executionStatus,
+                                        );
+                                        return (
+                                          <span
+                                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full font-medium mb-1 ${executionMeta.className}`}
+                                          >
+                                            {executionMeta.label}
+                                          </span>
+                                        );
+                                      })()}
                                       <span
                                         className={`inline-flex items-center px-2.5 py-0.5 rounded-full font-medium ${
                                           program.approvalStatus === 'APPROVED'
@@ -1270,10 +1605,16 @@ export const WorkProgramPage = () => {
                                               const isWakasekKurikulum = duties.includes(
                                                 'WAKASEK_KURIKULUM',
                                               );
+                                              const isWakasekKesiswaan = duties.includes(
+                                                'WAKASEK_KESISWAAN',
+                                              );
                                               const isPrincipal =
                                                 program.assignedApprover?.role === 'PRINCIPAL';
                                               if (isWakasekKurikulum) {
                                                 return 'Menunggu Wakasek Kurikulum';
+                                              }
+                                              if (isWakasekKesiswaan) {
+                                                return 'Menunggu Wakasek Kesiswaan';
                                               }
                                               if (isPrincipal) {
                                                 return 'Menunggu Kepala Sekolah';
@@ -1287,24 +1628,32 @@ export const WorkProgramPage = () => {
                                           {program.feedback}
                                         </p>
                                       )}
+                                      {program.executionStatus === 'BELUM_TERLAKSANA' &&
+                                        program.nonExecutionReason && (
+                                          <p className="mt-1 text-[11px] text-amber-700 max-w-[220px] line-clamp-2">
+                                            Alasan: {program.nonExecutionReason}
+                                          </p>
+                                        )}
                                     </div>
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setConfirmModal({
-                                          isOpen: true,
-                                          title: 'Hapus Program Kerja?',
-                                          message:
-                                            'Program kerja ini beserta semua kegiatan dan anggarannya akan dihapus permanen!',
-                                          onConfirm: () => deleteProgramMutation.mutate(program.id),
-                                        });
-                                      }}
-                                      className="text-red-600 hover:text-red-900"
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
+                                    {!isReadOnlyMode && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setConfirmModal({
+                                            isOpen: true,
+                                            title: 'Hapus Program Kerja?',
+                                            message:
+                                              'Program kerja ini beserta semua kegiatan dan anggarannya akan dihapus permanen!',
+                                            onConfirm: () => deleteProgramMutation.mutate(program.id),
+                                          });
+                                        }}
+                                        className="text-red-600 hover:text-red-900"
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    )}
                                   </td>
                                 </tr>
                               );
@@ -1771,221 +2120,385 @@ export const WorkProgramPage = () => {
         </div>
       )}
 
-      {activeTab === 'BUDGET' && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    No
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Uraian/Kegiatan
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Waktu Pelaksanaan
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Brand
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    QTY
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Harga Satuan
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Jumlah
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Aksi
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {isLoadingBudgets ? (
+      {activeTab === 'BUDGET' && budgetSectionTab === 'LPJ' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">
+                Total Program Kerja
+              </p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{programs.length}</p>
+            </div>
+            <div className="bg-white border border-emerald-200 rounded-xl p-4">
+              <p className="text-[11px] uppercase tracking-wide text-emerald-700 font-semibold">
+                Terlaksana
+              </p>
+              <p className="text-2xl font-bold text-emerald-700 mt-1">
+                {
+                  programs.filter((program) => program.executionStatus !== 'BELUM_TERLAKSANA')
+                    .length
+                }
+              </p>
+            </div>
+            <div className="bg-white border border-amber-200 rounded-xl p-4">
+              <p className="text-[11px] uppercase tracking-wide text-amber-700 font-semibold">
+                Belum Terlaksana
+              </p>
+              <p className="text-2xl font-bold text-amber-700 mt-1">
+                {programs.filter((program) => program.executionStatus === 'BELUM_TERLAKSANA').length}
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
                   <tr>
-                    <td
-                      colSpan={9}
-                      className="px-6 py-4 text-center"
-                    >
-                      <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-600" />
-                    </td>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      No
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Program Kerja
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Periode
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status Pelaksanaan
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Alasan Tidak Terlaksana
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status Persetujuan
+                    </th>
+                    {!isReadOnlyMode && (
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Aksi
+                      </th>
+                    )}
                   </tr>
-                ) : budgetRequests.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={9}
-                      className="px-6 py-4 text-center text-gray-500 text-sm"
-                    >
-                      Belum ada pengajuan anggaran
-                    </td>
-                  </tr>
-                ) : (
-                  budgetRequests.map((budget, index) => (
-                    <tr key={budget.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {index + 1}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        {budget.description}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {budget.executionTime || '-'}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {budget.brand || '-'}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        {budget.quantity}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        Rp {budget.unitPrice.toLocaleString('id-ID')}
-                      </td>
-                      <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                        Rp {budget.totalAmount.toLocaleString('id-ID')}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex flex-col items-start gap-0.5">
-                          <span
-                            className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                              budget.status === 'APPROVED'
-                                ? 'bg-green-100 text-green-800'
-                                : budget.status === 'REJECTED'
-                                  ? 'bg-red-100 text-red-800'
-                                  : 'bg-yellow-100 text-yellow-800'
-                            }`}
-                          >
-                            {budget.status === 'APPROVED'
-                              ? 'Disetujui'
-                              : budget.status === 'REJECTED'
-                                ? 'Ditolak'
-                                : 'Menunggu'}
-                          </span>
-                          {budget.status === 'REJECTED' && budget.rejectionReason && (
-                            <p className="text-[11px] text-red-600 max-w-xs whitespace-pre-line">
-                              {budget.rejectionReason}
-                            </p>
-                          )}
-                          {budget.status === 'PENDING' && budget.approver && (
-                            <span className="text-[11px] text-gray-500">
-                              {(() => {
-                                const duties = budget.approver?.additionalDuties || [];
-                                const isSarpras =
-                                  duties.includes('WAKASEK_SARPRAS') ||
-                                  duties.includes('SEKRETARIS_SARPRAS');
-                                const isPrincipal = budget.approver?.role === 'PRINCIPAL';
-                                const isFinance =
-                                  budget.approver?.role === 'STAFF' ||
-                                  duties.includes('BENDAHARA');
-                                if (isSarpras) return 'Menunggu Wakasek Sarpras';
-                                if (isPrincipal) return 'Menunggu Kepala Sekolah';
-                                if (isFinance) return 'Menunggu Bendahara / Keuangan';
-                                return 'Menunggu persetujuan';
-                              })()}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center justify-end gap-2">
-                          {budget.realizationConfirmedAt && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setLpjModal({
-                                  isOpen: true,
-                                  budget,
-                                });
-                              }}
-                              className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-semibold hover:bg-indigo-100"
-                            >
-                              Kelola LPJ
-                            </button>
-                          )}
-                          {budget.realizationConfirmedAt && !budget.lpjSubmittedAt && (
-                            <label
-                              className={`inline-flex items-center px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 cursor-pointer ${
-                                uploadLpjMutation.isPending ? 'opacity-50 pointer-events-none' : ''
-                              }`}
-                            >
-                              <UploadCloud className="w-3 h-3 mr-1" />
-                              Upload LPJ
-                              <input
-                                type="file"
-                                accept="image/*,application/pdf"
-                                className="hidden"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-                                  if (file.size > 500 * 1024) {
-                                    toast.error('Ukuran file maksimal 500KB');
-                                    e.target.value = '';
-                                    return;
-                                  }
-                                  uploadLpjMutation.mutate({ id: budget.id, file });
-                                  e.target.value = '';
-                                }}
-                              />
-                            </label>
-                          )}
-                          {budget.lpjSubmittedAt && (
-                            <a
-                              href={budget.lpjFileUrl || '#'}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100"
-                            >
-                              Lihat LPJ
-                            </a>
-                          )}
-                          <button
-                            onClick={() => {
-                              setConfirmModal({
-                                isOpen: true,
-                                title: 'Hapus Pengajuan Anggaran?',
-                                message:
-                                  'Data pengajuan anggaran akan dihapus permanen!',
-                                onConfirm: () =>
-                                  deleteBudgetRequestMutation.mutate(budget.id),
-                              });
-                            }}
-                            className="text-red-600 hover:text-red-900"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {isLoadingPrograms ? (
+                    <tr>
+                      <td
+                        colSpan={isReadOnlyMode ? 6 : 7}
+                        className="px-6 py-4 text-center text-sm text-gray-500"
+                      >
+                        <Loader2 className="w-5 h-5 animate-spin mx-auto text-blue-600" />
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          {budgetRequests.length > 0 && (
-            <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex justify-end items-center">
-              <div className="flex flex-col items-end">
-                <span className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">
-                  Total Pengajuan Anggaran
-                </span>
-                <span className="text-xl font-bold text-blue-600">
-                  Rp{' '}
-                  {budgetRequests
-                    .reduce(
-                      (sum, item) => sum + item.totalAmount,
-                      0,
-                    )
-                    .toLocaleString('id-ID')}
-                </span>
-              </div>
+                  ) : programs.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={isReadOnlyMode ? 6 : 7}
+                        className="px-6 py-6 text-center text-gray-500 text-sm"
+                      >
+                        Belum ada program kerja untuk tahun ajaran aktif.
+                      </td>
+                    </tr>
+                  ) : (
+                    programs.map((program, index) => {
+                      const draft = getExecutionDraft(program);
+                      const executionMeta = getExecutionStatusMeta(draft.executionStatus);
+                      return (
+                        <tr key={program.id}>
+                          <td className="px-6 py-4 text-sm text-gray-500">{index + 1}</td>
+                          <td className="px-6 py-4 text-sm text-gray-900">
+                            <p className="font-semibold">{program.title}</p>
+                            {program.description && (
+                              <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
+                                {program.description}
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            {getProgramPeriodLabel(program)}
+                          </td>
+                          <td className="px-6 py-4 text-sm">
+                            <div className="space-y-2">
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${executionMeta.className}`}
+                              >
+                                {executionMeta.label}
+                              </span>
+                              {!isReadOnlyMode && (
+                                <select
+                                  value={draft.executionStatus}
+                                  onChange={(e) =>
+                                    handleExecutionDraftChange(program.id, {
+                                      executionStatus:
+                                        e.target.value as WorkProgramExecutionStatus,
+                                    })
+                                  }
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+                                >
+                                  <option value="TERLAKSANA">Terlaksana</option>
+                                  <option value="BELUM_TERLAKSANA">Belum Terlaksana</option>
+                                </select>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            {isReadOnlyMode ? (
+                              draft.executionStatus === 'BELUM_TERLAKSANA' ? (
+                                draft.nonExecutionReason || '-'
+                              ) : (
+                                '-'
+                              )
+                            ) : draft.executionStatus === 'BELUM_TERLAKSANA' ? (
+                              <textarea
+                                rows={2}
+                                value={draft.nonExecutionReason}
+                                onChange={(e) =>
+                                  handleExecutionDraftChange(program.id, {
+                                    nonExecutionReason: e.target.value,
+                                  })
+                                }
+                                placeholder="Tulis alasan program belum terlaksana..."
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/60 resize-none"
+                              />
+                            ) : (
+                              <span className="text-xs text-gray-400">-</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-sm">
+                            <span
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                                program.approvalStatus === 'APPROVED'
+                                  ? 'bg-green-100 text-green-800'
+                                  : program.approvalStatus === 'REJECTED'
+                                    ? 'bg-red-100 text-red-800'
+                                    : 'bg-yellow-100 text-yellow-800'
+                              }`}
+                            >
+                              {program.approvalStatus === 'APPROVED'
+                                ? 'Disetujui'
+                                : program.approvalStatus === 'REJECTED'
+                                  ? 'Ditolak'
+                                  : 'Menunggu'}
+                            </span>
+                          </td>
+                          {!isReadOnlyMode && (
+                            <td className="px-6 py-4 text-right">
+                              <button
+                                type="button"
+                                disabled={updateProgramExecutionMutation.isPending}
+                                onClick={() => handleSaveExecutionStatus(program)}
+                                className="inline-flex items-center px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50"
+                              >
+                                {updateProgramExecutionMutation.isPending && (
+                                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                )}
+                                Simpan
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
-          )}
+          </div>
         </div>
       )}
+
+      {activeTab === 'BUDGET' && budgetSectionTab === 'REQUEST' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      No
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      {isPembinaEkskulDuty ? 'Nama Alat' : 'Uraian/Kegiatan'}
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      {isPembinaEkskulDuty ? 'Keterangan' : 'Waktu Pelaksanaan'}
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      {isPembinaEkskulDuty ? 'Merk' : 'Brand'}
+                    </th>
+                    {!isPembinaEkskulDuty && (
+                      <>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          QTY
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Harga Satuan
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Jumlah
+                        </th>
+                      </>
+                    )}
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Aksi
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {isLoadingBudgets ? (
+                    <tr>
+                      <td
+                        colSpan={isPembinaEkskulDuty ? 6 : 9}
+                        className="px-6 py-4 text-center"
+                      >
+                        <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-600" />
+                      </td>
+                    </tr>
+                  ) : displayedBudgetRequests.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={isPembinaEkskulDuty ? 6 : 9}
+                        className="px-6 py-4 text-center text-gray-500 text-sm"
+                      >
+                        Belum ada pengajuan anggaran
+                      </td>
+                    </tr>
+                  ) : (
+                    displayedBudgetRequests.map((budget, index) => (
+                      <tr key={budget.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {index + 1}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900">
+                          {isPembinaEkskulDuty ? budget.title || budget.description : budget.description}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500">
+                          {isPembinaEkskulDuty ? budget.description || '-' : budget.executionTime || '-'}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500">
+                          {budget.brand || '-'}
+                        </td>
+                        {!isPembinaEkskulDuty && (
+                          <>
+                            <td className="px-6 py-4 text-sm text-gray-900">
+                              {budget.quantity}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-900">
+                              Rp {budget.unitPrice.toLocaleString('id-ID')}
+                            </td>
+                            <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                              Rp {budget.totalAmount.toLocaleString('id-ID')}
+                            </td>
+                          </>
+                        )}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex flex-col items-start gap-0.5">
+                            <span
+                              className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                budget.status === 'APPROVED'
+                                  ? 'bg-green-100 text-green-800'
+                                  : budget.status === 'REJECTED'
+                                    ? 'bg-red-100 text-red-800'
+                                    : 'bg-yellow-100 text-yellow-800'
+                              }`}
+                            >
+                              {budget.status === 'APPROVED'
+                                ? 'Disetujui'
+                                : budget.status === 'REJECTED'
+                                  ? 'Ditolak'
+                                  : 'Menunggu'}
+                            </span>
+                            {budget.status === 'REJECTED' && budget.rejectionReason && (
+                              <p className="text-[11px] text-red-600 max-w-xs whitespace-pre-line">
+                                {budget.rejectionReason}
+                              </p>
+                            )}
+                            {budget.status === 'PENDING' && budget.approver && (
+                              <span className="text-[11px] text-gray-500">
+                                {(() => {
+                                  const duties = budget.approver?.additionalDuties || [];
+                                  const isSarpras =
+                                    duties.includes('WAKASEK_SARPRAS') ||
+                                    duties.includes('SEKRETARIS_SARPRAS');
+                                  const isKesiswaan =
+                                    duties.includes('WAKASEK_KESISWAAN') ||
+                                    duties.includes('SEKRETARIS_KESISWAAN');
+                                  const isPrincipal = budget.approver?.role === 'PRINCIPAL';
+                                  const isFinance =
+                                    budget.approver?.role === 'STAFF' ||
+                                    duties.includes('BENDAHARA');
+                                  if (isKesiswaan) return 'Menunggu Wakasek Kesiswaan';
+                                  if (isSarpras) return 'Menunggu Wakasek Sarpras';
+                                  if (isPrincipal) return 'Menunggu Kepala Sekolah';
+                                  if (isFinance) return 'Menunggu Bendahara / Keuangan';
+                                  return 'Menunggu persetujuan';
+                                })()}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          {isReadOnlyMode ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                              Read Only
+                            </span>
+                          ) : (
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => {
+                                  setConfirmModal({
+                                    isOpen: true,
+                                    title: isPembinaEkskulDuty
+                                      ? 'Hapus Pengajuan Alat?'
+                                      : 'Hapus Pengajuan Anggaran?',
+                                    message: isPembinaEkskulDuty
+                                      ? 'Data pengajuan alat akan dihapus permanen!'
+                                      : 'Data pengajuan anggaran akan dihapus permanen!',
+                                    onConfirm: () =>
+                                      deleteBudgetRequestMutation.mutate(budget.id),
+                                  });
+                                }}
+                                className="text-red-600 hover:text-red-900"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {displayedBudgetRequests.length > 0 && (
+              <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex justify-end items-center">
+                <div className="flex flex-col items-end">
+                  <span className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">
+                    {isPembinaEkskulDuty ? 'Total Pengajuan Alat' : 'Total Pengajuan Anggaran'}
+                  </span>
+                  {isPembinaEkskulDuty ? (
+                    <span className="text-sm font-semibold text-gray-600">
+                      {displayedBudgetRequests.length} item
+                    </span>
+                  ) : (
+                    <span className="text-xl font-bold text-blue-600">
+                      Rp{' '}
+                      {displayedBudgetRequests
+                        .reduce(
+                          (sum, item) => sum + item.totalAmount,
+                          0,
+                        )
+                        .toLocaleString('id-ID')}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
       
 
@@ -2291,7 +2804,7 @@ export const WorkProgramPage = () => {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <h3 className="font-semibold text-gray-900">
-                Ajukan Anggaran
+                {isPembinaEkskulDuty ? 'Ajukan Alat Ekskul' : 'Ajukan Anggaran'}
               </h3>
               <button
                 onClick={() => {
@@ -2304,77 +2817,125 @@ export const WorkProgramPage = () => {
               </button>
             </div>
             <form onSubmit={handleSubmitNewBudget((data) => createBudgetRequestMutation.mutate(data))} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Uraian/Kegiatan
-                </label>
-                <textarea
-                  {...registerNewBudget('description')}
-                  rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60 resize-none"
-                  placeholder="Contoh: Pembelian Laptop untuk Lab"
-                />
-                {newBudgetErrors.description && (
-                  <p className="text-xs text-red-500 mt-1">{newBudgetErrors.description.message}</p>
-                )}
-              </div>
+              {isPembinaEkskulDuty ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Nama Alat
+                    </label>
+                    <input
+                      type="text"
+                      {...registerNewBudget('toolName')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+                      placeholder="Contoh: Bola futsal"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Merk
+                    </label>
+                    <input
+                      type="text"
+                      {...registerNewBudget('brand')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+                      placeholder="Contoh: Molten / Mikasa"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Keterangan
+                    </label>
+                    <textarea
+                      {...registerNewBudget('description')}
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60 resize-none"
+                      placeholder="Alasan pengajuan, spesifikasi singkat, atau kebutuhan kegiatan."
+                    />
+                    {newBudgetErrors.description && (
+                      <p className="text-xs text-red-500 mt-1">{newBudgetErrors.description.message}</p>
+                    )}
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <p className="text-xs text-gray-600">
+                      Pengajuan alat ekskul tidak membutuhkan input harga pada tahap ini.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Uraian/Kegiatan
+                    </label>
+                    <textarea
+                      {...registerNewBudget('description')}
+                      rows={2}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60 resize-none"
+                      placeholder="Contoh: Pembelian Laptop untuk Lab"
+                    />
+                    {newBudgetErrors.description && (
+                      <p className="text-xs text-red-500 mt-1">{newBudgetErrors.description.message}</p>
+                    )}
+                  </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                     Waktu Pelaksanaan
-                   </label>
-                   <input
-                     type="text"
-                     {...registerNewBudget('executionTime')}
-                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-                     placeholder="Contoh: Juli 2024"
-                   />
-                </div>
-                <div>
-                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                     Brand / Merk
-                   </label>
-                   <input
-                     type="text"
-                     {...registerNewBudget('brand')}
-                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-                     placeholder="Contoh: Asus/Lenovo"
-                   />
-                </div>
-              </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Waktu Pelaksanaan
+                      </label>
+                      <input
+                        type="text"
+                        {...registerNewBudget('executionTime')}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+                        placeholder="Contoh: Juli 2024"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Brand / Merk
+                      </label>
+                      <input
+                        type="text"
+                        {...registerNewBudget('brand')}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+                        placeholder="Contoh: Asus/Lenovo"
+                      />
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                     QTY
-                   </label>
-                   <input
-                     type="number"
-                     min="1"
-                     {...registerNewBudget('quantity', { valueAsNumber: true })}
-                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-                   />
-                </div>
-                <div className="col-span-2">
-                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                     Harga Satuan (Rp)
-                   </label>
-                   <input
-                     type="number"
-                     min="0"
-                     {...registerNewBudget('unitPrice', { valueAsNumber: true })}
-                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-                   />
-                </div>
-              </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        QTY
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        {...registerNewBudget('quantity', { valueAsNumber: true })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Harga Satuan (Rp)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        {...registerNewBudget('unitPrice', { valueAsNumber: true })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+                      />
+                    </div>
+                  </div>
 
-              <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 flex justify-between items-center">
-                <span className="text-sm font-medium text-gray-700">Total Jumlah</span>
-                <span className="text-lg font-bold text-blue-600">
-                  Rp {newBudgetTotal.toLocaleString('id-ID')}
-                </span>
-              </div>
+                  <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 flex justify-between items-center">
+                    <span className="text-sm font-medium text-gray-700">Total Jumlah</span>
+                    <span className="text-lg font-bold text-blue-600">
+                      Rp {newBudgetTotal.toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                </>
+              )}
 
               <div className="pt-2 flex gap-3">
                 <button
@@ -2395,7 +2956,7 @@ export const WorkProgramPage = () => {
                   {createBudgetRequestMutation.isPending && (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   )}
-                  Ajukan
+                  {isPembinaEkskulDuty ? 'Ajukan Alat' : 'Ajukan'}
                 </button>
               </div>
             </form>

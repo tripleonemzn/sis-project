@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { academicYearService, type AcademicYear } from '../../../services/academicYear.service';
 import { teacherAssignmentService, type TeacherAssignment } from '../../../services/teacherAssignment.service';
-import { scheduleTimeConfigService, type PeriodType } from '../../../services/scheduleTimeConfig.service';
+import {
+  scheduleTimeConfigService,
+  type PeriodType,
+  type ScheduleTimeConfigPayload,
+} from '../../../services/scheduleTimeConfig.service';
 import { scheduleService, type ScheduleEntry, type DayOfWeek } from '../../../services/schedule.service';
 import { inventoryService, type Room, type RoomCategory } from '../../../services/inventory.service';
 import { Calendar, Loader2, BookOpen, Users, Search, Trash2, X, Clock, Pencil } from 'lucide-react';
@@ -185,7 +189,13 @@ const INITIAL_MAX_PERIOD = Math.max(
   ),
 );
 
-export const SchedulePage = () => {
+type SchedulePageScope = 'DEFAULT' | 'CURRICULUM';
+
+type SchedulePageProps = {
+  scope?: SchedulePageScope;
+};
+
+export const SchedulePage = ({ scope = 'DEFAULT' }: SchedulePageProps) => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [selectedClassId, setSelectedClassId] = useState<number | ''>('');
@@ -297,6 +307,7 @@ export const SchedulePage = () => {
     return allRooms.filter((r) => targetCategoryIds.includes(r.categoryId));
   }, [allRooms, targetCategoryIds]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!scheduleConfig) {
       return;
@@ -316,7 +327,7 @@ export const SchedulePage = () => {
     const nextTypes: Record<string, Record<number, PeriodType>> = {};
     Object.keys(times).forEach((dayKey) => {
       const dayTimes = times[dayKey] || {};
-      const dayNotes = (notes as any)[dayKey] || {};
+      const dayNotes = notes[dayKey] || {};
       const dayTypes: Record<number, PeriodType> = {};
       Object.keys(dayTimes).forEach((periodKey) => {
         const period = Number(periodKey);
@@ -340,10 +351,11 @@ export const SchedulePage = () => {
     });
     setPeriodTypes(nextTypes);
   }, [scheduleConfig]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
 
   const saveConfigMutation = useMutation({
-    mutationFn: (data: { academicYearId: number, config: any }) =>
+    mutationFn: (data: { academicYearId: number; config: ScheduleTimeConfigPayload }) =>
       scheduleTimeConfigService.saveConfig(data.academicYearId, data.config),
     onSuccess: () => {
       toast.success('Pengaturan waktu berhasil disimpan ke database');
@@ -354,15 +366,18 @@ export const SchedulePage = () => {
     },
   });
 
+  const isCurriculumScope = scope === 'CURRICULUM';
+
   const {
     data: assignmentsData,
     isLoading: isLoadingAssignments,
   } = useQuery({
-    queryKey: ['teacher-assignments', 'for-schedule'],
+    queryKey: ['teacher-assignments', 'for-schedule', isCurriculumScope ? 'CURRICULUM' : 'DEFAULT'],
     queryFn: () =>
       teacherAssignmentService.list({
         page: 1,
         limit: 1000,
+        scope: isCurriculumScope ? 'CURRICULUM' : undefined,
       }),
   });
 
@@ -491,6 +506,7 @@ export const SchedulePage = () => {
     return result;
   }, [periodTimes, scheduleEntries]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!scheduleDays.includes(editingDay)) {
       if (scheduleDays.length > 0) {
@@ -498,6 +514,7 @@ export const SchedulePage = () => {
       }
     }
   }, [scheduleDays, editingDay]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const classAssignments = useMemo(
     () =>
@@ -977,7 +994,7 @@ export const SchedulePage = () => {
                             const dayTypes: Record<number, PeriodType> = {};
                             Object.keys(baseTimes).forEach((key) => {
                               const period = Number(key);
-                              const note = (baseNotes as any)[period];
+                              const note = baseNotes[period];
                               if (!note) {
                                 dayTypes[period] = 'TEACHING';
                               } else {

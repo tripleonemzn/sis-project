@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useOutletContext } from 'react-router-dom';
 import { userService } from '../../../services/user.service';
+import type { User } from '../../../types/auth';
+import type { Class } from '../../../services/class.service';
 import { 
   Search, 
   ChevronLeft, 
@@ -16,7 +18,7 @@ import { id as idLocale } from 'date-fns/locale';
 import { toast } from 'react-hot-toast';
 // import { useAuth } from '../../../hooks/useAuth';
 import { classService } from '../../../services/class.service';
-import { permissionService, PermissionStatus } from '../../../services/permission.service';
+import { permissionService, PermissionStatus, type StudentPermission } from '../../../services/permission.service';
 import { academicYearService } from '../../../services/academicYear.service';
 import { authService } from '../../../services/auth.service';
 import { examService } from '../../../services/exam.service';
@@ -42,8 +44,18 @@ interface ExamRestrictionsResponse {
   };
 }
 
+interface PermissionsQueryResponse {
+  permissions: StudentPermission[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
 export const HomeroomPermissionsPage = () => {
-  const { user: contextUser } = useOutletContext<{ user: any, activeYear: any }>() || {};
+  const { user: contextUser } = useOutletContext<{ user: User; activeYear: unknown }>() || {};
 
   // Get Current User via Query (Database Persistence)
   const { data: authData } = useQuery({
@@ -55,7 +67,8 @@ export const HomeroomPermissionsPage = () => {
   const user = contextUser || authData?.data;
   const userId = user?.id;
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'permissions' | 'exam_restrictions'>('permissions');
+  type ActiveTab = 'permissions' | 'exam_restrictions';
+  const [activeTabOverride, setActiveTabOverride] = useState<ActiveTab | null>(null);
 
   // Get Active Academic Year
   // const { data: fetchedActiveYear } = useActiveAcademicYear(); // Assuming useActiveAcademicYear is imported or needed
@@ -75,7 +88,7 @@ export const HomeroomPermissionsPage = () => {
   });
 
   const updateProfileMutation = useMutation({
-    mutationFn: (data: any) => {
+    mutationFn: (data: Partial<User>) => {
       if (!userId) throw new Error('User ID not found');
       return userService.update(userId, data);
     },
@@ -84,24 +97,23 @@ export const HomeroomPermissionsPage = () => {
     }
   });
 
-  useEffect(() => {
-    if (userData?.data?.preferences) {
-        // @ts-ignore
-        const savedTab = userData.data.preferences['homeroom-permissions-active-tab'];
-        if (savedTab) {
-            setActiveTab(savedTab as 'permissions' | 'exam_restrictions');
-        }
-    }
-  }, [userData]);
+  const savedActiveTab = useMemo<ActiveTab>(() => {
+    const prefs = userData?.data?.preferences as Record<string, unknown> | undefined;
+    const savedTab = String(prefs?.['homeroom-permissions-active-tab'] || '');
+    return savedTab === 'exam_restrictions' ? 'exam_restrictions' : 'permissions';
+  }, [userData?.data?.preferences]);
 
-  const handleTabChange = (tab: 'permissions' | 'exam_restrictions') => {
-    setActiveTab(tab);
+  const activeTab: ActiveTab = activeTabOverride || savedActiveTab;
+
+  const handleTabChange = (tab: ActiveTab) => {
+    setActiveTabOverride(tab);
+    setPage(1);
+    setSearch('');
     if (userId) {
-        // @ts-ignore
-        const currentPrefs = userData?.data?.preferences || {};
-        updateProfileMutation.mutate({
-            preferences: { ...currentPrefs, 'homeroom-permissions-active-tab': tab }
-        });
+      const currentPrefs = (userData?.data?.preferences || {}) as Record<string, unknown>;
+      updateProfileMutation.mutate({
+        preferences: { ...currentPrefs, 'homeroom-permissions-active-tab': tab }
+      });
     }
   };
   
@@ -111,14 +123,8 @@ export const HomeroomPermissionsPage = () => {
   const [search, setSearch] = useState('');
   
   // Filter States
-  const [selectedSemester, setSelectedSemester] = useState<'ODD' | 'EVEN' | ''>('');
-  const [selectedExamType, setSelectedExamType] = useState<'SBTS' | 'SAS' | 'SAT' | ''>('');
-
-  // Reset pagination on tab change
-  useEffect(() => {
-    setPage(1);
-    setSearch('');
-  }, [activeTab]);
+  const [selectedSemesterOverride, setSelectedSemesterOverride] = useState<'ODD' | 'EVEN' | ''>('');
+  const [selectedExamTypeOverride, setSelectedExamTypeOverride] = useState('');
   
   // Fetch Active Academic Year
   const { data: activeAcademicYear } = useQuery({
@@ -129,45 +135,81 @@ export const HomeroomPermissionsPage = () => {
     }
   });
 
+  const { data: examPrograms } = useQuery({
+    queryKey: ['exam-programs', 'student', activeAcademicYear?.id],
+    queryFn: async () => {
+      if (!activeAcademicYear?.id) return [];
+      const res = await examService.getPrograms({
+        academicYearId: activeAcademicYear.id,
+        roleContext: 'student',
+      });
+      return res?.data?.programs || [];
+    },
+    enabled: !!activeAcademicYear?.id && activeTab === 'exam_restrictions',
+    ...liveQueryOptions,
+  });
+
   // Fetch Homeroom Class
   const { data: homeroomClass } = useQuery({
     queryKey: ['homeroom-class', user?.id, activeAcademicYear?.id],
     queryFn: async () => {
       if (!user?.id || !activeAcademicYear?.id) return null;
       const response = await classService.list({ teacherId: user.id, limit: 100 });
-      const activeClass = response.data?.classes?.find((c: any) => c.academicYearId === activeAcademicYear.id);
+      const activeClass = response.data?.classes?.find((c: Class) => c.academicYearId === activeAcademicYear.id);
       return activeClass || null;
     },
     enabled: !!user?.id && !!activeAcademicYear?.id,
   });
 
-  // Auto-select semester only (No default Exam Type)
-  useEffect(() => {
-    if (activeAcademicYear?.name) {
-      const name = activeAcademicYear.name.toUpperCase();
-      if (name.includes('GANJIL')) {
-        setSelectedSemester('ODD');
-      } else if (name.includes('GENAP')) {
-        setSelectedSemester('EVEN');
-      }
-    }
-  }, [activeAcademicYear]);
+  const defaultSemester = useMemo<'ODD' | 'EVEN' | ''>(() => {
+    const name = String(activeAcademicYear?.name || '').toUpperCase();
+    if (name.includes('GANJIL')) return 'ODD';
+    if (name.includes('GENAP')) return 'EVEN';
+    return '';
+  }, [activeAcademicYear?.name]);
 
-  useEffect(() => {
-    if (selectedSemester === 'ODD' && selectedExamType === 'SAT') {
-      setSelectedExamType('');
+  const selectedSemester = selectedSemesterOverride || defaultSemester;
+
+  const examTypeOptions = useMemo(() => {
+    const programs = Array.isArray(examPrograms) ? examPrograms : [];
+    const dedupByCode = new Map<string, { value: string; label: string }>();
+
+    for (const program of programs) {
+      if (!program?.isActive) continue;
+      if (!program?.showOnStudentMenu) continue;
+
+      const fixedSemester = program.fixedSemester as 'ODD' | 'EVEN' | null;
+      if (selectedSemester && fixedSemester && fixedSemester !== selectedSemester) continue;
+
+      const value = String(program.code || '').trim().toUpperCase();
+      if (!value || dedupByCode.has(value)) continue;
+
+      const baseType = String(program.baseTypeCode || program.baseType || '').trim().toUpperCase();
+      const rawLabel = String(program.shortLabel || program.label || value).trim();
+      const label = baseType ? `${rawLabel} (${baseType})` : rawLabel;
+      dedupByCode.set(value, { value, label: label || value });
     }
-    if (selectedSemester === 'EVEN' && selectedExamType === 'SAS') {
-      setSelectedExamType('');
-    }
-  }, [selectedSemester]);
+
+    return Array.from(dedupByCode.values());
+  }, [examPrograms, selectedSemester]);
+
+  const selectedExamType = useMemo(() => {
+    if (!selectedExamTypeOverride) return '';
+    const stillAvailable = examTypeOptions.some((option) => option.value === selectedExamTypeOverride);
+    return stillAvailable ? selectedExamTypeOverride : '';
+  }, [examTypeOptions, selectedExamTypeOverride]);
   // Fetch Class Students (Independent of Exam Type) - REMOVED as we use server-side pagination in restrictions query
 
   // Permissions Query
-  const { data: permissionsResponse, isLoading: isLoadingPermissions } = useQuery({
+  const { data: permissionsResponse, isLoading: isLoadingPermissions } = useQuery<PermissionsQueryResponse>({
     queryKey: ['homeroom-permissions', homeroomClass?.id, activeAcademicYear?.id, page, limit, search],
     queryFn: async () => {
-      if (!homeroomClass || !activeAcademicYear) return { permissions: [], meta: {} };
+      if (!homeroomClass || !activeAcademicYear) {
+        return {
+          permissions: [],
+          meta: { total: 0, page: 1, limit: 10, totalPages: 0 },
+        };
+      }
       const res = await permissionService.getPermissions({
         classId: homeroomClass.id,
         academicYearId: activeAcademicYear.id,
@@ -175,7 +217,7 @@ export const HomeroomPermissionsPage = () => {
         limit,
         search
       });
-      return res.data;
+      return res.data as PermissionsQueryResponse;
     },
     enabled: !!homeroomClass && !!activeAcademicYear && activeTab === 'permissions',
     ...liveQueryOptions,
@@ -193,6 +235,7 @@ export const HomeroomPermissionsPage = () => {
         academicYearId: activeAcademicYear.id,
         semester: selectedSemester,
         examType: selectedExamType,
+        programCode: selectedExamType,
         page,
         limit,
         search
@@ -216,7 +259,7 @@ export const HomeroomPermissionsPage = () => {
   });
 
   const updateRestrictionMutation = useMutation({
-    mutationFn: (data: any) => examService.updateRestriction(data),
+    mutationFn: (data: { academicYearId: number; semester: string; examType: string; programCode?: string; studentId: number; isBlocked: boolean; reason?: string }) => examService.updateRestriction(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exam-restrictions'] });
       toast.success('Akses ujian berhasil diperbarui');
@@ -253,6 +296,7 @@ export const HomeroomPermissionsPage = () => {
         academicYearId: activeAcademicYear.id,
         semester: selectedSemester,
         examType: selectedExamType,
+        programCode: selectedExamType,
         isBlocked: true,
         reason
       });
@@ -263,6 +307,7 @@ export const HomeroomPermissionsPage = () => {
           academicYearId: activeAcademicYear.id,
           semester: selectedSemester,
           examType: selectedExamType,
+          programCode: selectedExamType,
           isBlocked: false,
           reason: ''
         });
@@ -335,7 +380,11 @@ export const HomeroomPermissionsPage = () => {
                 <span className="text-sm font-medium text-gray-700">Semester</span>
                 <select
                   value={selectedSemester}
-                  onChange={(e) => setSelectedSemester(e.target.value as any)}
+                  onChange={(e) => {
+                    setSelectedSemesterOverride(e.target.value as 'ODD' | 'EVEN' | '');
+                    setSelectedExamTypeOverride('');
+                    setPage(1);
+                  }}
                   className="pl-3 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white text-sm"
                 >
                   <option value="" disabled>Pilih Semester</option>
@@ -348,13 +397,18 @@ export const HomeroomPermissionsPage = () => {
                 <span className="text-sm font-medium text-gray-700">Jenis Ujian</span>
                 <select
                   value={selectedExamType}
-                  onChange={(e) => setSelectedExamType(e.target.value as any)}
+                  onChange={(e) => {
+                    setSelectedExamTypeOverride(e.target.value);
+                    setPage(1);
+                  }}
                   className="pl-3 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white text-sm"
                 >
                   <option value="" disabled>Pilih Jenis Ujian</option>
-                  <option value="SBTS">SBTS</option>
-                  {selectedSemester === 'ODD' && <option value="SAS">SAS</option>}
-                  {selectedSemester === 'EVEN' && <option value="SAT">SAT</option>}
+                  {examTypeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -440,7 +494,7 @@ export const HomeroomPermissionsPage = () => {
                       Memuat data...
                     </td>
                   </tr>
-                ) : permissions.map((item: any, index: number) => (
+                ) : permissions.map((item: StudentPermission, index: number) => (
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
                       {(page - 1) * limit + index + 1}
@@ -595,7 +649,7 @@ export const HomeroomPermissionsPage = () => {
                     </td>
                   </tr>
                 ) : (
-                  restrictionsPaginated.map((item: any, index: number) => (
+                  restrictionsPaginated.map((item: ExamRestriction, index: number) => (
                     <tr key={item.student.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
                         {(page - 1) * limit + index + 1}

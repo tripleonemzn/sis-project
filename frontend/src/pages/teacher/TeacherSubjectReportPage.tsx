@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { 
   Loader2, 
@@ -6,8 +6,13 @@ import {
   FileBarChart,
   AlertCircle
 } from 'lucide-react';
-import { academicYearService } from '../../services/academicYear.service';
-import { teacherAssignmentService } from '../../services/teacherAssignment.service';
+import { academicYearService, type AcademicYear } from '../../services/academicYear.service';
+import {
+  teacherAssignmentService,
+  type TeacherAssignment,
+  formatTeacherAssignmentLabel,
+  sortTeacherAssignmentsBySubjectClass,
+} from '../../services/teacherAssignment.service';
 import { gradeService } from '../../services/grade.service';
 import { toast } from 'react-hot-toast';
 
@@ -23,10 +28,116 @@ interface ReportGrade {
   formatifScore: number | null;
   sbtsScore: number | null;
   sasScore: number | null;
+  slotScores?: Record<string, number | null> | null;
   finalScore: number | null;
   predicate: string | null;
   description: string | null;
 }
+
+interface ReportGradeMeta {
+  primarySlots: {
+    formative: string;
+    midterm: string;
+    final: string;
+  };
+  includeSlots: string[];
+  slotLabels: Record<string, { label: string; componentType: string }>;
+}
+
+type AcademicYearOption = AcademicYear & {
+  is_active?: boolean;
+};
+
+type AcademicYearsResponseShape = {
+  data?: {
+    academicYears?: AcademicYearOption[];
+  };
+  academicYears?: AcademicYearOption[];
+};
+
+type TeacherAssignmentsResponseShape = {
+  data?: {
+    assignments?: TeacherAssignment[];
+  };
+  assignments?: TeacherAssignment[];
+};
+
+type ReportGradesPayloadShape = {
+  rows?: ReportGrade[];
+  meta?: ReportGradeMeta | null;
+};
+
+const extractReportGradesPayload = (response: unknown): { rows: ReportGrade[]; meta: ReportGradeMeta | null } => {
+  if (Array.isArray(response)) {
+    return { rows: response as ReportGrade[], meta: null };
+  }
+
+  if (!response || typeof response !== 'object') {
+    return { rows: [], meta: null };
+  }
+
+  const wrapper = response as {
+    data?: unknown;
+    rows?: unknown;
+    meta?: unknown;
+  };
+  const candidate = wrapper.data ?? response;
+
+  if (Array.isArray(candidate)) {
+    return { rows: candidate as ReportGrade[], meta: null };
+  }
+
+  if (!candidate || typeof candidate !== 'object') {
+    return { rows: [], meta: null };
+  }
+
+  const payload = candidate as ReportGradesPayloadShape;
+  return {
+    rows: Array.isArray(payload.rows) ? payload.rows : [],
+    meta: payload.meta || null,
+  };
+};
+
+const normalizeSlotCode = (raw: string | null | undefined): string =>
+  String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/QUIZ/g, 'FORMATIF')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const resolvePrimarySlots = (meta: ReportGradeMeta | null | undefined) => {
+  const includeSlots = Array.isArray(meta?.includeSlots)
+    ? meta.includeSlots.map((slot) => normalizeSlotCode(slot)).filter(Boolean)
+    : [];
+  const firstSlot = includeSlots[0] || 'FORMATIF';
+  const secondSlot = includeSlots[1] || firstSlot;
+  const lastSlot = includeSlots[includeSlots.length - 1] || secondSlot;
+
+  return {
+    formative: normalizeSlotCode(meta?.primarySlots?.formative) || firstSlot,
+    midterm: normalizeSlotCode(meta?.primarySlots?.midterm) || secondSlot,
+    final: normalizeSlotCode(meta?.primarySlots?.final) || lastSlot,
+  };
+};
+
+const readRowSlotScore = (
+  row: ReportGrade,
+  slotCode: string,
+  fallback: number | null | undefined,
+) => {
+  const normalized = normalizeSlotCode(slotCode);
+  if (
+    normalized &&
+    row.slotScores &&
+    typeof row.slotScores === 'object' &&
+    Object.prototype.hasOwnProperty.call(row.slotScores, normalized)
+  ) {
+    return row.slotScores[normalized] ?? null;
+  }
+  return fallback ?? null;
+};
 
 export const TeacherSubjectReportPage = () => {
   // Filter States
@@ -37,6 +148,7 @@ export const TeacherSubjectReportPage = () => {
 
   // Data States
   const [reportGrades, setReportGrades] = useState<ReportGrade[]>([]);
+  const [reportMeta, setReportMeta] = useState<ReportGradeMeta | null>(null);
   const [loading, setLoading] = useState(false);
 
   // Fetch Initial Data (Academic Years & Assignments)
@@ -51,60 +163,66 @@ export const TeacherSubjectReportPage = () => {
   });
 
   // Robust data extraction
-  const academicYears = (academicYearsData as any)?.data?.academicYears || (academicYearsData as any)?.academicYears || [];
-  
-  const assignmentsRaw = (assignmentsData as any)?.data?.assignments || (assignmentsData as any)?.assignments || [];
-  const assignments = Array.isArray(assignmentsRaw) 
-        ? assignmentsRaw.sort((a: any, b: any) => {
-            const subjectCompare = a.subject.name.localeCompare(b.subject.name);
-            if (subjectCompare !== 0) return subjectCompare;
-            return a.class.name.localeCompare(b.class.name);
-          }) 
-        : [];
+  const academicYearsPayload = academicYearsData as AcademicYearsResponseShape | undefined;
+  const academicYears = useMemo<AcademicYearOption[]>(
+    () => academicYearsPayload?.data?.academicYears || academicYearsPayload?.academicYears || [],
+    [academicYearsPayload],
+  );
+
+  const assignmentsPayload = assignmentsData as TeacherAssignmentsResponseShape | undefined;
+  const assignments = useMemo<TeacherAssignment[]>(
+    () => {
+      const rawAssignments =
+        assignmentsPayload?.data?.assignments || assignmentsPayload?.assignments || [];
+      return sortTeacherAssignmentsBySubjectClass(rawAssignments);
+    },
+    [assignmentsPayload],
+  );
 
   // Set default filters
   useEffect(() => {
     if (Array.isArray(academicYears) && academicYears.length > 0 && !selectedAcademicYear) {
       // Try both naming conventions or inspect one
-      const active = academicYears.find((ay: any) => ay.isActive || ay.is_active);
+      const active = academicYears.find((ay) => ay.isActive || ay.is_active);
       if (active) setSelectedAcademicYear(active.id.toString());
     }
-  }, [academicYears]);
+  }, [academicYears, selectedAcademicYear]);
 
-  // Fetch Report Grades when filters change
-  useEffect(() => {
-    if (selectedAcademicYear && selectedAssignment && selectedSemester) {
-      fetchReportGrades();
-    } else {
+  const fetchReportGrades = useCallback(async () => {
+    if (!selectedAcademicYear || !selectedAssignment || !selectedSemester) {
       setReportGrades([]);
+      return;
     }
-  }, [selectedAcademicYear, selectedAssignment, selectedSemester]);
 
-  const fetchReportGrades = async () => {
     try {
       setLoading(true);
-      const assignment = assignments.find((a: any) => a.id.toString() === selectedAssignment);
+      const assignment = assignments.find((item) => String(item.id) === selectedAssignment);
       
       if (!assignment) return;
 
       const response = await gradeService.getReportGrades({
         class_id: assignment.class.id,
         subject_id: assignment.subject.id,
-        academic_year_id: parseInt(selectedAcademicYear),
-        semester: selectedSemester
+        academic_year_id: parseInt(selectedAcademicYear, 10),
+        semester: selectedSemester,
+        include_meta: 1,
       });
 
-      // Response could be wrapped in ApiResponseHelper structure
-      const responseData = Array.isArray(response) ? response : (response as any).data;
-      const data = Array.isArray(responseData) ? responseData : [];
-      setReportGrades(data);
+      const payload = extractReportGradesPayload(response);
+      setReportGrades(payload.rows);
+      setReportMeta(payload.meta);
     } catch (error) {
       console.error('Error fetching report grades:', error);
       toast.error('Gagal memuat data nilai rapor');
     } finally {
       setLoading(false);
     }
-  };
+  }, [assignments, selectedAcademicYear, selectedAssignment, selectedSemester]);
+
+  // Fetch Report Grades when filters change
+  useEffect(() => {
+    void fetchReportGrades();
+  }, [fetchReportGrades]);
 
   // Filtered Display Data
   const filteredGrades = reportGrades.filter(grade => 
@@ -112,6 +230,18 @@ export const TeacherSubjectReportPage = () => {
     grade.student.nis?.includes(searchQuery) ||
     grade.student.nisn?.includes(searchQuery)
   );
+
+  const primarySlots = useMemo(() => resolvePrimarySlots(reportMeta), [reportMeta]);
+  const slotLabels = useMemo(() => {
+    const labels = reportMeta?.slotLabels || {};
+    const getLabel = (slotCode: string, fallback: string) =>
+      String(labels[slotCode]?.label || fallback).trim() || fallback;
+    return {
+      formative: getLabel(primarySlots.formative, 'Formatif'),
+      midterm: getLabel(primarySlots.midterm, 'Midterm'),
+      final: getLabel(primarySlots.final, 'Final'),
+    };
+  }, [reportMeta, primarySlots.formative, primarySlots.midterm, primarySlots.final]);
 
   return (
     <div className="space-y-6">
@@ -121,7 +251,7 @@ export const TeacherSubjectReportPage = () => {
             Rapor Mata Pelajaran
           </h1>
           <p className="text-gray-600">
-            Rekapitulasi nilai akhir siswa per mata pelajaran (Formatif, SBTS, SAS, Nilai Akhir)
+            Rekapitulasi nilai akhir siswa per mata pelajaran (dinamis sesuai Program Ujian aktif)
           </p>
         </div>
       </div>
@@ -142,7 +272,7 @@ export const TeacherSubjectReportPage = () => {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
               >
                 <option value="">Pilih Tahun Ajaran</option>
-                {Array.isArray(academicYears) && academicYears.map((ay: any) => (
+                {academicYears.map((ay) => (
                   <option key={ay.id} value={String(ay.id)}>
                     {ay.name} {ay.isActive || ay.is_active ? '(Aktif)' : ''}
                   </option>
@@ -161,7 +291,8 @@ export const TeacherSubjectReportPage = () => {
                 name="semester"
                 value={selectedSemester}
                 onChange={(e) => {
-                  setSelectedSemester(e.target.value as any);
+                  const semester = e.target.value as 'ODD' | 'EVEN' | '';
+                  setSelectedSemester(semester);
                   setSelectedAssignment('');
                 }}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
@@ -187,9 +318,9 @@ export const TeacherSubjectReportPage = () => {
                 disabled={!selectedSemester}
               >
                 <option value="">Pilih Kelas & Mapel</option>
-                {Array.isArray(assignments) && assignments.map((assignment: any) => (
+                {assignments.map((assignment) => (
                   <option key={assignment.id} value={String(assignment.id)}>
-                    {assignment.class.name} - {assignment.subject.name}
+                    {formatTeacherAssignmentLabel(assignment)}
                   </option>
                 ))}
               </select>
@@ -220,8 +351,8 @@ export const TeacherSubjectReportPage = () => {
             
             {/* Legend / Info */}
             <div className="flex items-center gap-4 text-sm text-gray-500">
-               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-200"></span> NF: Nilai Formatif</span>
-               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-200"></span> NS: Nilai SBTS</span>
+               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-200"></span> {slotLabels.formative}</span>
+               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-200"></span> {slotLabels.midterm}</span>
                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-200"></span> NA: Nilai Akhir</span>
             </div>
           </div>
@@ -233,9 +364,9 @@ export const TeacherSubjectReportPage = () => {
                   <th className="px-6 py-4 w-12 text-center">No</th>
                   <th className="px-6 py-4 w-32">NISN</th>
                   <th className="px-6 py-4 whitespace-nowrap w-auto">Nama Siswa</th>
-                  <th className="px-6 py-4 text-center w-24">Rata-rata Formatif</th>
-                  <th className="px-6 py-4 text-center w-24">Nilai SBTS</th>
-                  <th className="px-6 py-4 text-center w-24">Nilai SAS</th>
+                  <th className="px-6 py-4 text-center w-24">{slotLabels.formative}</th>
+                  <th className="px-6 py-4 text-center w-24">{slotLabels.midterm}</th>
+                  <th className="px-6 py-4 text-center w-24">{slotLabels.final}</th>
                   <th className="px-6 py-4 text-center w-24 bg-blue-50/50">Nilai Akhir</th>
                   <th className="px-6 py-4 text-center w-24">Predikat</th>
                   <th className="px-6 py-4 w-full">Capaian Kompetensi</th>
@@ -274,13 +405,19 @@ export const TeacherSubjectReportPage = () => {
                         {grade.student.name}
                       </td>
                       <td className="px-6 py-4 text-center text-gray-600">
-                        {grade.formatifScore !== null ? Math.round(grade.formatifScore) : '-'}
+                        {readRowSlotScore(grade, primarySlots.formative, grade.formatifScore) !== null
+                          ? Math.round(Number(readRowSlotScore(grade, primarySlots.formative, grade.formatifScore)))
+                          : '-'}
                       </td>
                       <td className="px-6 py-4 text-center text-gray-600">
-                        {grade.sbtsScore !== null ? Math.round(grade.sbtsScore) : '-'}
+                        {readRowSlotScore(grade, primarySlots.midterm, grade.sbtsScore) !== null
+                          ? Math.round(Number(readRowSlotScore(grade, primarySlots.midterm, grade.sbtsScore)))
+                          : '-'}
                       </td>
                       <td className="px-6 py-4 text-center text-gray-600">
-                        {grade.sasScore !== null ? Math.round(grade.sasScore) : '-'}
+                        {readRowSlotScore(grade, primarySlots.final, grade.sasScore) !== null
+                          ? Math.round(Number(readRowSlotScore(grade, primarySlots.final, grade.sasScore)))
+                          : '-'}
                       </td>
                       <td className="px-6 py-4 text-center font-bold text-blue-600 bg-blue-50/30">
                         {grade.finalScore !== null ? Math.round(grade.finalScore) : '-'}

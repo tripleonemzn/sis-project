@@ -20,31 +20,7 @@ export default function StaffStudentsScreen() {
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState<string>('ALL');
 
-  if (isLoading) return <AppLoadingScreen message="Memuat data siswa..." />;
-  if (!isAuthenticated) return <Redirect href="/welcome" />;
-
-  if (user?.role !== 'STAFF') {
-    return (
-      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Data Siswa</Text>
-        <QueryStateView type="error" message="Halaman ini khusus untuk role staff." />
-        <Pressable
-          onPress={() => router.replace('/home')}
-          style={{
-            marginTop: 16,
-            backgroundColor: BRAND_COLORS.blue,
-            paddingVertical: 12,
-            borderRadius: 10,
-            alignItems: 'center',
-          }}
-        >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
-        </Pressable>
-      </ScrollView>
-    );
-  }
-
-  const students = studentsQuery.data?.students || [];
+  const students = useMemo(() => studentsQuery.data?.students || [], [studentsQuery.data?.students]);
   const classOptions = useMemo(() => {
     const map = new Map<string, string>();
     for (const item of students) {
@@ -71,6 +47,30 @@ export default function StaffStudentsScreen() {
       return haystacks.some((value) => value.toLowerCase().includes(query));
     });
   }, [students, search, classFilter]);
+
+  if (isLoading) return <AppLoadingScreen message="Memuat data siswa..." />;
+  if (!isAuthenticated) return <Redirect href="/welcome" />;
+
+  if (user?.role !== 'STAFF') {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Data Siswa</Text>
+        <QueryStateView type="error" message="Halaman ini khusus untuk role staff." />
+        <Pressable
+          onPress={() => router.replace('/home')}
+          style={{
+            marginTop: 16,
+            backgroundColor: BRAND_COLORS.blue,
+            paddingVertical: 12,
+            borderRadius: 10,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+        </Pressable>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView

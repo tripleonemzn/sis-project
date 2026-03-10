@@ -1,6 +1,6 @@
-type RouterLike = {
-  push: (...args: any[]) => void;
-};
+import type { Router } from 'expo-router';
+
+type RouterLike = Pick<Router, 'push'>;
 
 type OpenWebModuleRouteParams = {
   moduleKey?: string | null;

@@ -16,6 +16,11 @@ const schema = z.object({
 });
 
 type FormValues = z.infer<typeof schema>;
+type SisWindowWithSlideshow = Window & {
+  __SIS_SLIDESHOW_SETTINGS__?: {
+    slideIntervalMs?: number;
+  };
+};
 
 const formatPhotoDescription = (raw?: string) => {
   if (!raw) return '';
@@ -25,6 +30,24 @@ const formatPhotoDescription = (raw?: string) => {
     return parts.slice(1).join(separator).trim();
   }
   return raw.trim();
+};
+
+const normalizeGalleryImageUrl = (rawUrl: string, assetBase: string) => {
+  const value = String(rawUrl || '').trim();
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+
+  const normalized = value.startsWith('/') ? value : `/${value}`;
+  if (normalized.startsWith('/api/')) return normalized;
+
+  // Legacy source compatibility: always route gallery photos through backend static handler.
+  if (normalized.startsWith('/foto_kegiatan/')) return `/api${normalized}`;
+  if (normalized.includes('/foto_kegiatan/')) {
+    return `/api${normalized.slice(normalized.indexOf('/foto_kegiatan/'))}`;
+  }
+
+  const base = assetBase.endsWith('/') ? assetBase.slice(0, -1) : assetBase;
+  return `${base}${normalized}`;
 };
 
 export const LoginPage = () => {
@@ -41,47 +64,41 @@ export const LoginPage = () => {
     if (port === '5173' || port === '4173') return `http://${host}:3000`;
     return '/api';
   }, []);
-  const staticSources = useMemo(
-    () => Array.from({ length: 20 }, (_, i) => `/foto_kegiatan/foto${i + 1}.jpeg`),
-    [],
-  );
-  const gallerySources = useMemo(
+  const normalizedGalleryItems = useMemo(
     () =>
-      gallery.map((item) => {
-        if (item.url.startsWith('http')) return item.url;
-        // Jika url mengarah ke foto_kegiatan (static asset frontend), jangan pakai assetBase (api)
-        if (item.url.includes('foto_kegiatan')) {
-          return item.url.startsWith('/') ? item.url : `/${item.url}`;
-        }
-        return `${assetBase}${item.url.startsWith('/') ? item.url : `/${item.url}`}`;
-      }),
+      gallery
+        .map((item) => ({
+          src: normalizeGalleryImageUrl(item.url, assetBase),
+          description: formatPhotoDescription(item.description || ''),
+        }))
+        .filter((item) => item.src.length > 0),
     [gallery, assetBase],
   );
-  const activeSources = useMemo(
-    () => (gallerySources.length > 0 ? gallerySources : staticSources),
-    [gallerySources, staticSources],
-  );
-  const activeDisplaySources = useMemo(
-    () => activeSources.filter((src) => !brokenSources.has(src)),
-    [activeSources, brokenSources],
-  );
-  const sourceDescriptionMap = useMemo(() => {
-    const map = new Map<string, string>();
-    gallerySources.forEach((src, idx) => {
-      map.set(src, gallery[idx]?.description || '');
+  const activeDisplayItems = useMemo(() => {
+    const seen = new Set<string>();
+    return normalizedGalleryItems.filter((item) => {
+      if (!item.src || brokenSources.has(item.src) || seen.has(item.src)) return false;
+      seen.add(item.src);
+      return true;
     });
-    return map;
-  }, [gallerySources, gallery]);
+  }, [normalizedGalleryItems, brokenSources]);
+  const activeDisplaySources = useMemo(
+    () => activeDisplayItems.map((item) => item.src),
+    [activeDisplayItems],
+  );
 
-  // Gunakan slide berbasis gradien vektor elegan (bisa diganti gambar)
+  // Fallback visual saat semua sumber gambar gagal
   const slides = useMemo(
     () => [
-      'bg-gradient-to-br from-blue-400/70 via-sky-300/60 to-cyan-400/70',
-      'bg-gradient-to-tr from-indigo-400/70 via-blue-300/60 to-sky-400/70',
-      'bg-gradient-to-bl from-cyan-400/70 via-sky-300/60 to-blue-400/70',
+      'linear-gradient(140deg, rgba(96,165,250,.9) 0%, rgba(56,189,248,.8) 42%, rgba(45,212,191,.9) 100%)',
+      'linear-gradient(128deg, rgba(99,102,241,.9) 0%, rgba(59,130,246,.8) 48%, rgba(56,189,248,.9) 100%)',
+      'linear-gradient(132deg, rgba(45,212,191,.9) 0%, rgba(56,189,248,.8) 52%, rgba(59,130,246,.9) 100%)',
     ],
     []
   );
+  const slideCount = activeDisplaySources.length > 0 ? activeDisplaySources.length : slides.length;
+  const displayedIndex = slideCount > 0 ? activeIndex % slideCount : 0;
+  const currentSlideDescription = activeDisplayItems[displayedIndex]?.description?.trim() || '';
 
   // Fetch gallery items from backend
   useEffect(() => {
@@ -92,32 +109,26 @@ export const LoginPage = () => {
   }, []);
 
   useEffect(() => {
-    setBrokenSources(new Set());
-  }, [activeSources]);
-
-  // Jaga agar index selalu valid saat sumber gambar berubah.
-  useEffect(() => {
-    const length = activeDisplaySources.length > 0 ? activeDisplaySources.length : slides.length;
-    setActiveIndex((prev) => (prev >= length ? 0 : prev));
-  }, [activeDisplaySources.length, slides.length]);
-
-  useEffect(() => {
-    const length = activeDisplaySources.length > 0 ? activeDisplaySources.length : slides.length;
-    if (length <= 1) return;
+    if (slideCount <= 1) return;
 
     const defaultMs = 3500;
     const intervalMs = (() => {
-      const raw = (window as any)?.__SIS_SLIDESHOW_SETTINGS__?.slideIntervalMs;
+      const raw = (window as SisWindowWithSlideshow)?.__SIS_SLIDESHOW_SETTINGS__?.slideIntervalMs;
       if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
       return defaultMs;
     })();
 
     const intervalId = window.setInterval(() => {
-      setActiveIndex((prev) => (prev >= length - 1 ? 0 : prev + 1));
+      setActiveIndex((prev) => (prev >= slideCount - 1 ? 0 : prev + 1));
     }, intervalMs);
 
     return () => clearInterval(intervalId);
-  }, [activeDisplaySources.length, slides.length]);
+  }, [slideCount]);
+
+  useEffect(() => {
+    if (activeDisplaySources.length === 0) return;
+    setActiveIndex((prev) => (prev < activeDisplaySources.length ? prev : 0));
+  }, [activeDisplaySources.length]);
   
   // Preload images agar tidak delay saat transisi
   useEffect(() => {
@@ -352,11 +363,11 @@ export const LoginPage = () => {
                       <img
                         key={`${src}-${idx}`}
                         src={src}
-                        alt={sourceDescriptionMap.get(src) || 'Foto kegiatan'}
+                        alt={activeDisplayItems[idx]?.description || 'Foto kegiatan'}
                         className="absolute inset-0 w-full h-full object-cover transition-opacity ease-in-out"
                         style={{ 
-                          opacity: idx === activeIndex ? 1 : 0,
-                          zIndex: idx === activeIndex ? 10 : 0,
+                          opacity: idx === displayedIndex ? 1 : 0,
+                          zIndex: idx === displayedIndex ? 10 : 0,
                           transitionDuration: '700ms'
                         }}
                         onError={() => {
@@ -372,10 +383,11 @@ export const LoginPage = () => {
                   : slides.map((cls, idx) => (
                       <div
                         key={idx}
-                        className={`absolute inset-0 transition-opacity ease-in-out ${cls}`}
+                        className="absolute inset-0 transition-opacity ease-in-out"
                         style={{ 
-                          opacity: idx === activeIndex ? 1 : 0,
-                          zIndex: idx === activeIndex ? 10 : 0,
+                          backgroundImage: cls,
+                          opacity: idx === displayedIndex ? 1 : 0,
+                          zIndex: idx === displayedIndex ? 10 : 0,
                           transitionDuration: '700ms'
                         }}
                       />
@@ -384,9 +396,7 @@ export const LoginPage = () => {
                 {activeDisplaySources.length > 0 && (
                   <div className="absolute bottom-0 inset-x-0 z-30 bg-gradient-to-t from-black/70 via-black/40 to-transparent px-6 py-4">
                     <p className="text-sm text-white/90 text-center">
-                      {formatPhotoDescription(
-                        sourceDescriptionMap.get(activeDisplaySources[activeIndex]) || '',
-                      ) || 'Kegiatan SMKS Karya Guna Bhakti 2'}
+                      {currentSlideDescription || 'Kegiatan SMKS Karya Guna Bhakti 2'}
                     </p>
                   </div>
                 )}

@@ -15,10 +15,11 @@ import {
   Clock,
   FileText
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { teacherAssignmentService } from '../../services/teacherAssignment.service';
 import { attendanceService, type AttendanceStatus } from '../../services/attendance.service';
 
-const STATUS_OPTIONS: { value: AttendanceStatus; label: string; icon: any; color: string; activeClass: string; inactiveClass: string }[] = [
+const STATUS_OPTIONS: { value: AttendanceStatus; label: string; icon: LucideIcon; color: string; activeClass: string; inactiveClass: string }[] = [
   { 
     value: 'PRESENT', 
     label: 'Hadir', 
@@ -66,15 +67,23 @@ export const TeacherAttendancePage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const normalizedAssignmentId = Number(assignmentId);
+  const hasValidAssignmentId = Number.isInteger(normalizedAssignmentId) && normalizedAssignmentId > 0;
   
   // Local state for attendance records before saving
   const [attendanceRecords, setAttendanceRecords] = useState<Record<number, { status: AttendanceStatus; note: string }>>({});
 
+  useEffect(() => {
+    if (assignmentId && !hasValidAssignmentId) {
+      navigate('/teacher/attendance', { replace: true });
+    }
+  }, [assignmentId, hasValidAssignmentId, navigate]);
+
   // 1. Fetch Assignment Details (including students)
   const { data: assignmentData, isLoading: isLoadingAssignment } = useQuery({
-    queryKey: ['teacher-assignment', assignmentId],
-    queryFn: () => teacherAssignmentService.getById(Number(assignmentId)),
-    enabled: !!assignmentId,
+    queryKey: ['teacher-assignment', normalizedAssignmentId],
+    queryFn: () => teacherAssignmentService.getById(normalizedAssignmentId),
+    enabled: hasValidAssignmentId,
   });
 
   const assignment = assignmentData?.data;
@@ -92,6 +101,7 @@ export const TeacherAttendancePage = () => {
   });
 
   // 3. Initialize/Update Local State when data changes
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!assignment?.class.students) return;
 
@@ -116,6 +126,7 @@ export const TeacherAttendancePage = () => {
 
     setAttendanceRecords(initialRecords);
   }, [assignment, attendanceData, selectedDate]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Mutation for saving
   const saveMutation = useMutation({
@@ -124,8 +135,9 @@ export const TeacherAttendancePage = () => {
       toast.success('Data presensi berhasil disimpan');
       queryClient.invalidateQueries({ queryKey: ['subject-attendance', assignmentId, selectedDate] });
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menyimpan presensi');
+    onError: (error: unknown) => {
+      const normalized = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(normalized.response?.data?.message || normalized.message || 'Gagal menyimpan presensi');
     },
   });
 

@@ -263,18 +263,8 @@ export const AdminSlideshowPage = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Deskripsi Slide</label>
-            <textarea
-              value={uploadDescription}
-              onChange={(e) => setUploadDescription(e.target.value)}
-              placeholder="Deskripsi foto slideshow..."
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-          <div className="space-y-2">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+          <div className="space-y-2 md:col-span-4">
             <label className="block text-sm font-medium text-gray-700">File Gambar</label>
             <input
               ref={fileInputRef}
@@ -283,6 +273,12 @@ export const AdminSlideshowPage = () => {
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0] || null;
+                if (file && file.size > 1 * 1024 * 1024) {
+                  toast.error('Ukuran file slideshow maksimal 1MB.');
+                  e.currentTarget.value = '';
+                  setUploadFile(null);
+                  return;
+                }
                 setUploadFile(file);
               }}
             />
@@ -295,7 +291,7 @@ export const AdminSlideshowPage = () => {
               {uploadFile ? 'Ganti Foto' : 'Pilih Foto'}
             </button>
             <div className="text-xs text-gray-500 min-h-4">
-              {uploadFile ? uploadFile.name : 'Format: JPG/JPEG/PNG/WEBP, max 5MB'}
+              {uploadFile ? uploadFile.name : 'Format: JPG/JPEG/PNG/WEBP, max 1MB'}
             </div>
             <button
               type="button"
@@ -312,6 +308,16 @@ export const AdminSlideshowPage = () => {
               )}
               Upload Slide
             </button>
+          </div>
+          <div className="md:col-span-8">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Deskripsi Slide</label>
+            <textarea
+              value={uploadDescription}
+              onChange={(e) => setUploadDescription(e.target.value)}
+              placeholder="Deskripsi foto slideshow..."
+              rows={4}
+              className="w-full min-h-[108px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
           </div>
         </div>
       </div>

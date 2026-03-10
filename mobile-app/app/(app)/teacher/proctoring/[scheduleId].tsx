@@ -108,7 +108,7 @@ export default function TeacherProctoringDetailScreen() {
       notifySuccess('Berita acara berhasil disimpan.');
       await detailQuery.refetch();
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifyApiError(error, 'Gagal menyimpan berita acara.');
     },
   });

@@ -4,6 +4,7 @@ import { useOutletContext } from 'react-router-dom';
 import { userService } from '../../../services/user.service';
 import { authService } from '../../../services/auth.service';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
+import type { User } from '../../../types/auth';
 import { 
   Calendar, 
   Clock, 
@@ -20,11 +21,23 @@ import {
   X,
   Edit2
 } from 'lucide-react';
-import { attendanceService, type SemesterFilter } from '../../../services/attendance.service';
+import {
+  attendanceService,
+  type AttendanceRecord,
+  type AttendanceStatus,
+  type DailyAttendanceRecapStudent,
+  type DailyAttendanceStudent,
+  type LateSummaryStudent,
+  type SemesterFilter,
+} from '../../../services/attendance.service';
 import { classService } from '../../../services/class.service';
 import { toast } from 'react-hot-toast';
 
-const STATUS_OPTIONS = [
+type DailyLogItem = DailyAttendanceStudent;
+type DailyRecapItem = DailyAttendanceRecapStudent;
+type LateSummaryItem = LateSummaryStudent;
+
+const STATUS_OPTIONS: Array<{ value: AttendanceStatus; label: string; color: string }> = [
   { value: 'PRESENT', label: 'Hadir', color: 'bg-green-100 text-green-700' },
   { value: 'SICK', label: 'Sakit', color: 'bg-blue-100 text-blue-700' },
   { value: 'PERMISSION', label: 'Izin', color: 'bg-yellow-100 text-yellow-700' },
@@ -43,11 +56,10 @@ export const HomeroomAttendancePage = () => {
 
   // Edit Mode State
   const [isEditing, setIsEditing] = useState(false);
-  const [attendanceRecords, setAttendanceRecords] = useState<Record<number, { status: string; note: string }>>({});
-
+  const [attendanceRecords, setAttendanceRecords] = useState<Record<number, { status: AttendanceStatus | ''; note: string }>>({});
 
   
-  const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<{ user: any, activeYear: any }>() || {};
+  const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<{ user: User, activeYear: { id: number; name: string } }>() || {};
 
   // 1. Get Current User via Query (Database Persistence)
   const { data: authData } = useQuery({
@@ -74,7 +86,7 @@ export const HomeroomAttendancePage = () => {
   });
 
   const updateProfileMutation = useMutation({
-    mutationFn: (data: any) => {
+    mutationFn: (data: Partial<User>) => {
       if (!userId) throw new Error('User ID not found');
       return userService.update(userId, data);
     },
@@ -85,9 +97,10 @@ export const HomeroomAttendancePage = () => {
 
   useEffect(() => {
     if (userData?.data?.preferences) {
-        // @ts-ignore
-        const savedTab = userData.data.preferences['homeroom-attendance-active-tab'];
+        const prefs = userData.data.preferences as Record<string, unknown>;
+        const savedTab = prefs['homeroom-attendance-active-tab'];
         if (savedTab) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setActiveTab(savedTab as 'daily_log' | 'recap' | 'late');
         }
     }
@@ -96,8 +109,7 @@ export const HomeroomAttendancePage = () => {
   const handleTabChange = (tab: 'daily_log' | 'recap' | 'late') => {
     setActiveTab(tab);
     if (userId) {
-        // @ts-ignore
-        const currentPrefs = userData?.data?.preferences || {};
+        const currentPrefs = (userData?.data?.preferences || {}) as Record<string, unknown>;
         updateProfileMutation.mutate({
             preferences: { ...currentPrefs, 'homeroom-attendance-active-tab': tab }
         });
@@ -124,7 +136,8 @@ export const HomeroomAttendancePage = () => {
       // Fetch all classes for this teacher
       const response = await classService.list({ teacherId: user.id, limit: 100 });
       // Filter by active academic year
-      const activeClass = response.data.classes.find((c: any) => c.academicYearId === activeAcademicYear.id);
+      const classes = (response.data?.classes || []) as Array<{ id: number; academicYearId: number }>;
+      const activeClass = classes.find((c) => c.academicYearId === activeAcademicYear.id);
       return activeClass || null;
     },
     enabled: !!user?.id && user?.role === 'TEACHER' && !!activeAcademicYear?.id,
@@ -144,6 +157,7 @@ export const HomeroomAttendancePage = () => {
 
   // Reset pagination when tab changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPage(1);
     setSearch('');
   }, [activeTab]);
@@ -187,19 +201,20 @@ export const HomeroomAttendancePage = () => {
   // Sync attendanceRecords when dailyLogData changes or editing starts
   useEffect(() => {
     if (dailyLogData?.data && !isEditing) {
-      const records: Record<number, { status: string; note: string }> = {};
-      dailyLogData.data.forEach((item: any) => {
+      const records: Record<number, { status: AttendanceStatus | ''; note: string }> = {};
+      dailyLogData.data.forEach((item: DailyLogItem) => {
         records[item.student.id] = {
           status: item.status || '', 
           note: item.note || ''
         };
       });
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAttendanceRecords(records);
     }
   }, [dailyLogData, isEditing]);
 
   const saveMutation = useMutation({
-    mutationFn: (records: any[]) => attendanceService.saveDailyAttendance({
+    mutationFn: (records: AttendanceRecord[]) => attendanceService.saveDailyAttendance({
       date: selectedDate,
       classId: homeroomClass!.id,
       academicYearId: homeroomClass!.academicYearId,
@@ -211,17 +226,18 @@ export const HomeroomAttendancePage = () => {
       queryClient.invalidateQueries({ queryKey: ['homeroom-daily-recap'] });
       setIsEditing(false);
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Gagal menyimpan presensi');
+    onError: (error: unknown) => {
+      const err = error as { response?: { data?: { message?: string } } };
+      toast.error(err.response?.data?.message || 'Gagal menyimpan presensi');
     }
   });
 
   const handleSave = () => {
     const recordsToSave = Object.entries(attendanceRecords)
-      .filter(([_, data]) => data.status) // Only save records with status
+      .filter(([, data]) => data.status) // Only save records with status
       .map(([studentId, data]) => ({
         studentId: Number(studentId),
-        status: data.status,
+        status: data.status as AttendanceStatus,
         note: data.note || null
       }));
 
@@ -233,7 +249,7 @@ export const HomeroomAttendancePage = () => {
     saveMutation.mutate(recordsToSave);
   };
 
-  const handleStatusChange = (studentId: number, status: string) => {
+  const handleStatusChange = (studentId: number, status: AttendanceStatus) => {
     setAttendanceRecords(prev => ({
       ...prev,
       [studentId]: { ...prev[studentId], status }
@@ -260,7 +276,7 @@ export const HomeroomAttendancePage = () => {
       late: 0
     };
 
-    dailyLogData.data.forEach((item: any) => {
+    dailyLogData.data.forEach((item: DailyLogItem) => {
       const status = item.status; 
       switch (status) {
         case 'PRESENT': stats.present++; break;
@@ -299,19 +315,19 @@ export const HomeroomAttendancePage = () => {
 
 
   // Pagination Logic
-  const getCurrentData = () => {
-    if (activeTab === 'daily_log') return dailyLogData?.data || [];
+  const getCurrentData = (): Array<DailyLogItem | DailyRecapItem | LateSummaryItem> => {
+    if (activeTab === 'daily_log') return (dailyLogData?.data || []) as DailyLogItem[];
     if (activeTab === 'recap') {
-      const recap = dailyRecapData?.data?.recap || [];
-      return recap.slice().sort((a: any, b: any) => a.student.name.localeCompare(b.student.name));
+      const recap = (dailyRecapData?.data?.recap || []) as DailyRecapItem[];
+      return recap.slice().sort((a, b) => a.student.name.localeCompare(b.student.name));
     }
-    if (activeTab === 'late') return lateSummaryData?.data?.recap || [];
+    if (activeTab === 'late') return (lateSummaryData?.data?.recap || []) as LateSummaryItem[];
     return [];
   };
 
   const currentData = getCurrentData();
   
-  const filteredData = currentData.filter((item: any) => {
+  const filteredData = currentData.filter((item) => {
     if (!search) return true;
     const term = search.toLowerCase();
     const student = item.student;
@@ -548,7 +564,7 @@ export const HomeroomAttendancePage = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {paginatedData.map((item: any, index: number) => (
+                  {(paginatedData as DailyLogItem[]).map((item, index: number) => (
                     <tr key={item.student.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
                         {(page - 1) * limit + index + 1}
@@ -668,7 +684,7 @@ export const HomeroomAttendancePage = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {paginatedData.map((student: any, index: number) => (
+                  {(paginatedData as DailyRecapItem[]).map((student, index: number) => (
                     <tr key={student.student.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
                         {(page - 1) * limit + index + 1}
@@ -763,7 +779,7 @@ export const HomeroomAttendancePage = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {paginatedData.map((student: any, index: number) => (
+                  {(paginatedData as LateSummaryItem[]).map((student, index: number) => (
                     <tr key={student.student.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
                         {(page - 1) * limit + index + 1}

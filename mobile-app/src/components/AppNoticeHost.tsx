@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BRAND_COLORS } from '../config/brand';
 import { AppNoticePayload, NoticeTone, subscribeAppNotice } from '../lib/ui/notice';
 
 type QueueItem = AppNoticePayload & { id: number };

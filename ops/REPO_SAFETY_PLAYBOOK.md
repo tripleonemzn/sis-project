@@ -12,8 +12,22 @@ Tujuan: menjaga deploy/release production tetap aman saat working tree sedang ra
 - OTA mobile bisa lewat wrapper aman:
   - `mobile-app/scripts/publish-ota-safe.sh`
   - npm scripts `update:pilot`, `update:staging`, `update:production`, `update:pilot-live` sudah mengarah ke wrapper ini.
+- Entry point rilis satu pintu:
+  - `scripts/release-manager.sh` untuk `check` dan `deploy` scope `web/mobile`.
 
 ## Perintah Utama
+- Cek bantuan release manager:
+  - `bash ./scripts/release-manager.sh --help`
+- Cek web + generate report:
+  - `bash ./scripts/release-manager.sh web check --report`
+- Deploy web normal:
+  - `bash ./scripts/release-manager.sh web deploy`
+- Deploy web darurat (dirty):
+  - `bash ./scripts/release-manager.sh web deploy --allow-dirty`
+- Cek mobile:
+  - `bash ./scripts/release-manager.sh mobile check`
+- Publish OTA mobile:
+  - `bash ./scripts/release-manager.sh mobile deploy --channel pilot`
 - Audit scope perubahan:
   - `bash ./scripts/scope-diff-report.sh`
 - Cek gate web:
@@ -28,14 +42,13 @@ Tujuan: menjaga deploy/release production tetap aman saat working tree sedang ra
   - `bash ./scripts/stage-scope.sh mobile --apply`
 
 ## Alur Rilis Aman (Web)
-1. Jalankan `bash ./scripts/repo-safety-gate.sh web`.
-2. Pastikan backend/frontend build lulus.
-3. Jalankan `bash ./update_all.sh`.
+1. Jalankan `bash ./scripts/release-manager.sh web check --report`.
+2. Jalankan `bash ./scripts/release-manager.sh web deploy`.
 
 ## Alur Rilis Aman (Mobile OTA)
-1. Jalankan `bash ./scripts/repo-safety-gate.sh mobile`.
+1. Jalankan `bash ./scripts/release-manager.sh mobile check`.
 2. Jalankan OTA:
-   - `cd mobile-app && npm run update:pilot`
+   - `bash ./scripts/release-manager.sh mobile deploy --channel pilot`
 3. Jika gate gagal karena scope campuran, isolasi dulu atau gunakan bypass darurat.
 
 ## Bypass Darurat

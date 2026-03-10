@@ -47,6 +47,15 @@ export default function ParentOverviewScreen() {
   const childrenQuery = useParentChildrenQuery({ enabled: isAuthenticated, user });
   const financeQuery = useParentFinanceOverviewQuery({ enabled: isAuthenticated, user, childId: null, limit: 20 });
 
+  const children = childrenQuery.data?.children || [];
+  const summary = financeQuery.data?.overview.summary;
+  const topPendingChildren = useMemo(() => {
+    const rows = financeQuery.data?.overview.children || [];
+    return [...rows]
+      .sort((a, b) => Number(b.summary.status.pendingAmount || 0) - Number(a.summary.status.pendingAmount || 0))
+      .slice(0, 5);
+  }, [financeQuery.data?.overview.children]);
+
   if (isLoading) return <AppLoadingScreen message="Memuat dashboard orang tua..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
@@ -58,16 +67,6 @@ export default function ParentOverviewScreen() {
       </ScrollView>
     );
   }
-
-  const children = childrenQuery.data?.children || [];
-  const summary = financeQuery.data?.overview.summary;
-
-  const topPendingChildren = useMemo(() => {
-    const rows = financeQuery.data?.overview.children || [];
-    return [...rows]
-      .sort((a, b) => Number(b.summary.status.pendingAmount || 0) - Number(a.summary.status.pendingAmount || 0))
-      .slice(0, 5);
-  }, [financeQuery.data?.overview.children]);
 
   return (
     <ScrollView
