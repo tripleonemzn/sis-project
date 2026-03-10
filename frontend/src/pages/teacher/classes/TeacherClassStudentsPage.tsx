@@ -12,12 +12,14 @@ import { classService } from '../../../services/class.service';
 
 type ClassStudent = {
   id: number;
-  full_name: string;
-  username: string;
+  full_name?: string | null;
+  name?: string | null;
+  username?: string | null;
   nis?: string | null;
   nisn?: string | null;
   gender?: string | null;
-  is_active?: boolean;
+  is_active?: boolean | null;
+  studentStatus?: string | null;
 };
 
 export const TeacherClassStudentsPage = () => {
@@ -33,13 +35,33 @@ export const TeacherClassStudentsPage = () => {
     enabled: hasValidClassId,
   });
 
-  const students: ClassStudent[] = classData?.data?.students || classData?.students || [];
+  const rawStudents: ClassStudent[] = classData?.data?.students || classData?.students || [];
+  const students: ClassStudent[] = rawStudents.map((student) => {
+    const normalizedName = String(student.full_name || student.name || '').trim();
+    const statusToken = String(student.studentStatus || '').toUpperCase();
+    const normalizedIsActive =
+      typeof student.is_active === 'boolean'
+        ? student.is_active
+        : statusToken
+          ? ['ACTIVE', 'AKTIF'].includes(statusToken)
+          : true;
+
+    return {
+      ...student,
+      full_name: normalizedName || '-',
+      username: String(student.username || '').trim() || '-',
+      is_active: normalizedIsActive,
+    };
+  });
   const className = classData?.data?.name || classData?.name || 'Detail Kelas';
   
-  const filteredStudents = students.filter((student) => 
-    student.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (student.nis && student.nis.includes(searchQuery)) ||
-    (student.nisn && student.nisn.includes(searchQuery))
+  const loweredQuery = searchQuery.toLowerCase();
+  const filteredStudents = students.filter((student) =>
+    String(student.full_name || '')
+      .toLowerCase()
+      .includes(loweredQuery) ||
+    String(student.nis || '').includes(searchQuery) ||
+    String(student.nisn || '').includes(searchQuery),
   );
 
   if (isLoading) {
@@ -140,7 +162,13 @@ export const TeacherClassStudentsPage = () => {
                       {student.nis || '-'} / {student.nisn || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {student.gender === 'L' ? 'Laki-laki' : 'Perempuan'}
+                      {String(student.gender || '').toUpperCase() === 'L' ||
+                      String(student.gender || '').toUpperCase() === 'MALE'
+                        ? 'Laki-laki'
+                        : String(student.gender || '').toUpperCase() === 'P' ||
+                            String(student.gender || '').toUpperCase() === 'FEMALE'
+                          ? 'Perempuan'
+                          : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
