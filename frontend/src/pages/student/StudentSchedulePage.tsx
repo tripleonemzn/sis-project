@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 import { authService } from '../../services/auth.service';
+import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 import { toast } from 'react-hot-toast';
 import { scheduleTimeConfigService } from '../../services/scheduleTimeConfig.service';
 import { 
@@ -31,6 +32,7 @@ interface ScheduleEntry {
 
 type StudentScheduleOutletContext = {
   user?: {
+    classId?: number | null;
     studentClass?: {
       id?: number | null;
       academicYearId?: number | null;
@@ -79,6 +81,7 @@ export default function StudentSchedulePage() {
   });
 
   const { user: contextUser } = useOutletContext<StudentScheduleOutletContext>() || {};
+  const { data: activeAcademicYear } = useActiveAcademicYear();
   const { data: authData } = useQuery({
     queryKey: ['me'],
     queryFn: authService.getMe,
@@ -93,17 +96,25 @@ export default function StudentSchedulePage() {
 
       setLoading(true);
 
-      if (!user.studentClass?.id) {
+      const classId = Number(user.classId || user.studentClass?.id || 0);
+      if (!Number.isFinite(classId) || classId <= 0) {
         toast.error('Anda belum terdaftar dalam kelas');
         setLoading(false);
         return;
       }
 
-      const academicYearId = user.studentClass.academicYearId || 1; // Fallback
+      const academicYearId = Number(
+        user.studentClass?.academicYearId || activeAcademicYear?.id || 0,
+      );
+      if (!Number.isFinite(academicYearId) || academicYearId <= 0) {
+        toast.error('Tahun ajaran aktif tidak ditemukan');
+        setLoading(false);
+        return;
+      }
 
       // Parallel fetch: schedule and time config
       const [scheduleRes, timeConfig] = await Promise.all([
-        api.get(`/schedules?classId=${user.studentClass.id}&academicYearId=${academicYearId}`),
+        api.get(`/schedules?classId=${classId}&academicYearId=${academicYearId}`),
         scheduleTimeConfigService.getConfig(academicYearId)
       ]);
       
@@ -121,7 +132,7 @@ export default function StudentSchedulePage() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [activeAcademicYear?.id, user]);
 
   useEffect(() => {
     fetchData();

@@ -172,6 +172,64 @@ function buildLegacyRestrictionKey(academicYearId: number, semester: Semester, e
     return `${academicYearId}:${semester}:${examType}`;
 }
 
+function resolveExamTypeCandidates(raw: unknown): string[] {
+    const normalized = normalizeAliasCode(raw);
+    if (!normalized) return [];
+
+    const candidates = new Set<string>([normalized]);
+
+    const isFinalFamily = [
+        'FINAL',
+        'SAS',
+        'SAT',
+        'PAS',
+        'PAT',
+        'SAS_SAT',
+        'SUMATIF_AKHIR_SEMESTER',
+        'SUMATIF_AKHIR_TAHUN',
+    ].includes(normalized);
+    if (isFinalFamily) {
+        candidates.add('FINAL');
+        candidates.add('SAS');
+        candidates.add('SAT');
+    }
+
+    const isMidtermFamily = ['MIDTERM', 'SBTS', 'SUMATIF_BERSAMA_TENGAH_SEMESTER'].includes(normalized);
+    if (isMidtermFamily) {
+        candidates.add('MIDTERM');
+        candidates.add('SBTS');
+    }
+
+    const isFormativeFamily = ['FORMATIF', 'FORMATIVE', 'UH', 'ULANGAN_HARIAN'].includes(normalized);
+    if (isFormativeFamily) {
+        candidates.add('FORMATIF');
+        candidates.add('UH');
+        candidates.add('ULANGAN_HARIAN');
+    }
+
+    return Array.from(candidates.values());
+}
+
+function hasExamTypeIntersection(left: unknown, right: unknown): boolean {
+    const leftCandidates = new Set(resolveExamTypeCandidates(left));
+    const rightCandidates = resolveExamTypeCandidates(right);
+    return rightCandidates.some((candidate) => leftCandidates.has(candidate));
+}
+
+function isSameSlotTime(
+    leftStart: Date | null | undefined,
+    leftEnd: Date | null | undefined,
+    rightStart: Date | null | undefined,
+    rightEnd: Date | null | undefined,
+): boolean {
+    if (!leftStart || !leftEnd || !rightStart || !rightEnd) return true;
+    const toleranceMs = 60_000; // toleransi 1 menit untuk antisipasi mismatch detik/milis
+    return (
+        Math.abs(leftStart.getTime() - rightStart.getTime()) <= toleranceMs &&
+        Math.abs(leftEnd.getTime() - rightEnd.getTime()) <= toleranceMs
+    );
+}
+
 const AVAILABLE_EXAMS_CACHE_TTL_MS = 3000;
 const AVAILABLE_EXAMS_CACHE_MAX_ENTRIES = 2000;
 const availableExamsCache = new Map<number, { expiresAt: number; payload: unknown }>();
@@ -4740,9 +4798,134 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
         orderBy: { startTime: 'asc' }
     });
 
-    const packetIds = Array.from(
+    const scheduleAcademicYearIds = Array.from(
         new Set(
             schedules
+                .map((schedule) => Number(schedule.academicYearId))
+                .filter((academicYearId) => Number.isFinite(academicYearId) && academicYearId > 0),
+        ),
+    );
+
+    const studentSittingAssignments =
+        scheduleAcademicYearIds.length > 0
+            ? await prisma.examSittingStudent.findMany({
+                  where: {
+                      studentId,
+                      sitting: {
+                          academicYearId: { in: scheduleAcademicYearIds },
+                      },
+                  },
+                  select: {
+                      sitting: {
+                          select: {
+                              academicYearId: true,
+                              examType: true,
+                              sessionId: true,
+                              sessionLabel: true,
+                              startTime: true,
+                              endTime: true,
+                          },
+                      },
+                  },
+              })
+            : [];
+
+    const filteredSchedules =
+        studentSittingAssignments.length > 0
+            ? schedules.filter((schedule) => {
+                  const scheduleProgramCode = normalizeProgramCode(
+                      schedule.packet?.programCode || schedule.examType || schedule.packet?.type,
+                  );
+                  const scheduleExamType = scheduleProgramCode || schedule.examType || schedule.packet?.type;
+                  const matchingSittings = studentSittingAssignments
+                      .map((row) => row.sitting)
+                      .filter((sitting) => {
+                          if (Number(sitting.academicYearId) !== Number(schedule.academicYearId)) return false;
+                          if (!hasExamTypeIntersection(scheduleExamType, sitting.examType)) return false;
+                          return isSameSlotTime(
+                              schedule.startTime,
+                              schedule.endTime,
+                              sitting.startTime,
+                              sitting.endTime,
+                          );
+                      });
+
+                  // Tidak ada mapping ruang/sesi untuk slot ini -> fallback tampilkan jadwal.
+                  if (matchingSittings.length === 0) return true;
+
+                  const scheduleSessionId = Number.isFinite(Number(schedule.sessionId))
+                      ? Number(schedule.sessionId)
+                      : null;
+                  const scheduleSessionLabelKey = normalizeSessionLabelKey(schedule.sessionLabel);
+
+                  return matchingSittings.some((sitting) => {
+                      const sittingSessionId = Number.isFinite(Number(sitting.sessionId))
+                          ? Number(sitting.sessionId)
+                          : null;
+
+                      if (scheduleSessionId && sittingSessionId) {
+                          return scheduleSessionId === sittingSessionId;
+                      }
+
+                      if (scheduleSessionId || sittingSessionId) {
+                          return false;
+                      }
+
+                      const sittingSessionLabelKey = normalizeSessionLabelKey(sitting.sessionLabel);
+                      if (scheduleSessionLabelKey || sittingSessionLabelKey) {
+                          return scheduleSessionLabelKey === sittingSessionLabelKey;
+                      }
+
+                      return true;
+                  });
+              })
+            : schedules;
+
+    const programTaggedTargets = Array.from(
+        new Map(
+            filteredSchedules
+                .map((schedule) => {
+                    const taggedProgramCode = normalizeProgramCode(schedule.packet?.programCode);
+                    if (!taggedProgramCode) return null;
+                    return {
+                        academicYearId: Number(schedule.academicYearId),
+                        programCode: taggedProgramCode,
+                    };
+                })
+                .filter((target): target is { academicYearId: number; programCode: string } => !!target)
+                .map((target) => [`${target.academicYearId}:${target.programCode}`, target]),
+        ).values(),
+    );
+
+    const activeProgramKeys = programTaggedTargets.length > 0
+        ? new Set(
+              (
+                  await prisma.examProgramConfig.findMany({
+                      where: {
+                          isActive: true,
+                          OR: programTaggedTargets.map((target) => ({
+                              academicYearId: target.academicYearId,
+                              code: target.programCode,
+                          })),
+                      },
+                      select: {
+                          academicYearId: true,
+                          code: true,
+                      },
+                  })
+              ).map((program) => `${Number(program.academicYearId)}:${String(program.code).trim().toUpperCase()}`),
+          )
+        : null;
+
+    const schedulesForStudent = filteredSchedules.filter((schedule) => {
+        const taggedProgramCode = normalizeProgramCode(schedule.packet?.programCode);
+        if (!taggedProgramCode || !activeProgramKeys) return true;
+        return activeProgramKeys.has(`${Number(schedule.academicYearId)}:${taggedProgramCode}`);
+    });
+
+    const packetIds = Array.from(
+        new Set(
+            schedulesForStudent
                 .map((schedule) => Number(schedule.packet?.id))
                 .filter((packetId) => Number.isFinite(packetId) && packetId > 0),
         ),
@@ -4765,7 +4948,7 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
         packetQuestionCounts.map((row) => [Number(row.id), Number(row.question_count) || 0]),
     );
 
-    const scheduleTargets = schedules
+    const scheduleTargets = schedulesForStudent
         .filter((schedule) => !!schedule.packet)
         .map((schedule) => {
             const packet = schedule.packet!;
@@ -4839,7 +5022,7 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
     );
 
     // Check restrictions
-    const examsWithStatus = schedules.map((schedule) => {
+    const examsWithStatus = schedulesForStudent.map((schedule) => {
         let isBlocked = false;
         let blockReason = '';
 

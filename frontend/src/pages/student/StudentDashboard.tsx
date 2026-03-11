@@ -4,19 +4,12 @@ import { Link, useOutletContext } from 'react-router-dom';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 import { attendanceService } from '../../services/attendance.service';
 import { scheduleService, type ScheduleEntry, type DayOfWeek } from '../../services/schedule.service';
+import { scheduleTimeConfigService } from '../../services/scheduleTimeConfig.service';
 import { examService } from '../../services/exam.service';
 import { authService } from '../../services/auth.service';
-import api from '../../services/api';
 import type { User } from '../../types/auth';
 import type { StudentAttendanceHistory } from '../../services/attendance.service';
 import { Loader2, Calendar, BookOpen, UserCheck, Clock, ClipboardList, DoorClosed } from 'lucide-react';
-
-interface MyExamSitting {
-  id: number;
-  roomName: string;
-  examType: string;
-  proctor?: { name: string };
-}
 
 interface AvailableExam {
   id: string;
@@ -25,6 +18,9 @@ interface AvailableExam {
   start_time: string;
   end_time: string;
   status: string;
+  examType: string;
+  room: string;
+  sessionLabel?: string | null;
 }
 
 type ActiveYearContext = {
@@ -40,6 +36,35 @@ type DashboardOutletContext = {
 };
 
 type ExamSubject = { name: string };
+
+type GroupedTodaySchedule = {
+  key: string;
+  startHour: number;
+  endHour: number;
+  subjectCode: string;
+  subjectName: string;
+  teacherName: string;
+  roomName: string;
+  timeRange: string;
+};
+
+const DEFAULT_PERIOD_TIMES: Record<string, Record<number, string>> = {
+  MONDAY: {
+    1: '07.00 - 07.40', 2: '07.40 - 08.20', 3: '08.20 - 09.00', 4: '09.00 - 09.40',
+    5: '09.40 - 10.20', 6: '10.20 - 11.00', 7: '11.00 - 11.40', 8: '11.40 - 12.20',
+    9: '12.20 - 13.00', 10: '13.00 - 13.40',
+  },
+  FRIDAY: {
+    1: '07.00 - 07.30', 2: '07.30 - 08.00', 3: '08.00 - 08.30', 4: '08.30 - 09.00',
+    5: '09.00 - 09.30', 6: '09.30 - 10.00', 7: '10.00 - 10.30', 8: '10.30 - 11.00',
+    9: '11.00 - 11.30', 10: '11.30 - 12.00',
+  },
+  DEFAULT: {
+    1: '07.00 - 07.40', 2: '07.40 - 08.20', 3: '08.20 - 09.00', 4: '09.00 - 09.40',
+    5: '09.40 - 10.20', 6: '10.20 - 11.00', 7: '11.00 - 11.40', 8: '11.40 - 12.20',
+    9: '12.20 - 13.00', 10: '13.00 - 13.40',
+  },
+};
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
@@ -63,6 +88,44 @@ function extractExamRows(payload: unknown): unknown[] {
   return Array.isArray(exams) ? exams : [];
 }
 
+function parseTimeRange(range: string): { start: string; end: string } | null {
+  const normalized = String(range || '').replace(/\s+/g, ' ').trim();
+  if (!normalized || !normalized.includes('-')) return null;
+  const [startRaw, endRaw] = normalized.split('-');
+  const start = String(startRaw || '').trim();
+  const end = String(endRaw || '').trim();
+  if (!start || !end) return null;
+  return { start, end };
+}
+
+function resolvePeriodTime(
+  periodTimes: Record<string, Record<number, string>>,
+  dayKey: DayOfWeek,
+  period: number,
+): string {
+  return (
+    periodTimes?.[dayKey]?.[period] ||
+    periodTimes?.DEFAULT?.[period] ||
+    DEFAULT_PERIOD_TIMES?.[dayKey]?.[period] ||
+    DEFAULT_PERIOD_TIMES.DEFAULT?.[period] ||
+    ''
+  );
+}
+
+function buildTimeRangeLabel(
+  periodTimes: Record<string, Record<number, string>>,
+  dayKey: DayOfWeek | null,
+  startPeriod: number,
+  endPeriod: number,
+): string {
+  if (!dayKey) return '-';
+  const startRange = parseTimeRange(resolvePeriodTime(periodTimes, dayKey, startPeriod));
+  const endRange = parseTimeRange(resolvePeriodTime(periodTimes, dayKey, endPeriod));
+  if (startRange?.start && endRange?.end) return `${startRange.start} - ${endRange.end}`;
+  if (startRange?.start && startRange?.end) return `${startRange.start} - ${startRange.end}`;
+  return '-';
+}
+
 export const StudentDashboard = () => {
   const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<DashboardOutletContext>() || {};
 
@@ -84,22 +147,13 @@ export const StudentDashboard = () => {
   const activeAcademicYearId = activeAcademicYear?.id ?? null;
 
   // --- Exam Data ---
-  const { data: mySittings } = useQuery({
-    queryKey: ['my-exam-sittings', activeAcademicYearId],
-    queryFn: async () => {
-       const res = await api.get('/exam-sittings/my-sitting');
-       return (res.data?.data || []) as MyExamSitting[];
-    },
-    enabled: !!user?.id,
-  });
-
   const { data: examSchedules } = useQuery({
     queryKey: ['available-exams', activeAcademicYearId],
     queryFn: examService.getAvailableExams,
     enabled: !!user?.id,
   });
 
-  const upcomingExams = useMemo(() => {
+  const activeExams = useMemo(() => {
     const rawExams = extractExamRows(examSchedules);
 
     const normalized: AvailableExam[] = rawExams.map((exam) => {
@@ -107,6 +161,15 @@ export const StudentDashboard = () => {
       const packet = asRecord(row?.packet);
       const subject = asRecord(row?.subject) || asRecord(packet?.subject);
       const subjectName = typeof subject?.name === 'string' && subject.name.trim() ? subject.name : '-';
+      const examType = String(
+        row?.programCode ||
+          row?.examType ||
+          packet?.programCode ||
+          packet?.type ||
+          '',
+      )
+        .trim()
+        .toUpperCase();
 
       return {
         id: String(row?.id ?? ''),
@@ -115,13 +178,30 @@ export const StudentDashboard = () => {
         start_time: String(row?.start_time || row?.startTime || ''),
         end_time: String(row?.end_time || row?.endTime || ''),
         status: String(row?.status || '').toUpperCase(),
+        examType,
+        room: String(row?.room || '').trim(),
+        sessionLabel: row?.sessionLabel ? String(row.sessionLabel) : null,
       };
     });
 
     return normalized
       .filter((exam) => ['UPCOMING', 'OPEN', 'ONGOING', 'IN_PROGRESS'].includes(exam.status))
-      .slice(0, 5);
+      .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
   }, [examSchedules]);
+
+  const upcomingExams = useMemo(() => activeExams.slice(0, 5), [activeExams]);
+
+  const examRooms = useMemo(() => {
+    const uniqueBySlot = new Map<string, AvailableExam>();
+    activeExams.forEach((exam) => {
+      if (!exam.room) return;
+      const slotKey = `${exam.room}__${exam.examType}__${exam.sessionLabel || ''}__${exam.start_time}`;
+      if (!uniqueBySlot.has(slotKey)) {
+        uniqueBySlot.set(slotKey, exam);
+      }
+    });
+    return Array.from(uniqueBySlot.values());
+  }, [activeExams]);
 
   const {
     data: attendanceHistoryData,
@@ -153,9 +233,21 @@ export const StudentDashboard = () => {
     enabled: !!activeAcademicYearId && !!classId,
   });
 
+  const { data: scheduleTimeConfig } = useQuery({
+    queryKey: ['schedule-time-config', activeAcademicYearId],
+    queryFn: () => scheduleTimeConfigService.getConfig(activeAcademicYearId || undefined),
+    enabled: !!activeAcademicYearId,
+    staleTime: 1000 * 60 * 5,
+  });
+
   const scheduleEntries: ScheduleEntry[] = useMemo(
     () => scheduleData?.data?.entries || [],
     [scheduleData],
+  );
+
+  const periodTimes = useMemo(
+    () => scheduleTimeConfig?.config?.periodTimes || DEFAULT_PERIOD_TIMES,
+    [scheduleTimeConfig],
   );
 
   const selfAttendance = useMemo(() => {
@@ -228,6 +320,60 @@ export const StudentDashboard = () => {
         return aHour - bHour;
       });
   }, [scheduleEntries, todayDayOfWeek]);
+
+  const groupedTodaySchedule = useMemo(() => {
+    if (!todaySchedule.length) return [] as GroupedTodaySchedule[];
+
+    const groups: Array<
+      Omit<GroupedTodaySchedule, 'timeRange'> & { startPeriod: number; endPeriod: number }
+    > = [];
+
+    todaySchedule.forEach((entry) => {
+      const effectiveHour =
+        typeof entry.teachingHour === 'number' && entry.teachingHour > 0
+          ? entry.teachingHour
+          : entry.period;
+      const subjectId = Number(entry.teacherAssignment?.subject?.id || 0);
+      const teacherId = Number(entry.teacherAssignment?.teacher?.id || 0);
+      const roomName = entry.room || '-';
+      const mergeKey = `${subjectId}-${teacherId}-${roomName}`;
+      const last = groups[groups.length - 1];
+
+      if (last && last.key === mergeKey && effectiveHour === last.endHour + 1) {
+        last.endHour = effectiveHour;
+        last.endPeriod = entry.period;
+        return;
+      }
+
+      groups.push({
+        key: mergeKey,
+        startHour: effectiveHour,
+        endHour: effectiveHour,
+        startPeriod: entry.period,
+        endPeriod: entry.period,
+        subjectCode: entry.teacherAssignment?.subject?.code || '-',
+        subjectName: entry.teacherAssignment?.subject?.name || '-',
+        teacherName: entry.teacherAssignment?.teacher?.name || '-',
+        roomName,
+      });
+    });
+
+    return groups.map((group) => ({
+      key: group.key,
+      startHour: group.startHour,
+      endHour: group.endHour,
+      subjectCode: group.subjectCode,
+      subjectName: group.subjectName,
+      teacherName: group.teacherName,
+      roomName: group.roomName,
+      timeRange: buildTimeRangeLabel(
+        periodTimes,
+        todayDayOfWeek,
+        group.startPeriod,
+        group.endPeriod,
+      ),
+    }));
+  }, [todaySchedule, todayDayOfWeek, periodTimes]);
 
   const attendancePercentage = selfAttendance?.percentage ?? null;
 
@@ -393,7 +539,7 @@ export const StudentDashboard = () => {
               <p className="text-sm text-gray-500 text-center py-4">Tidak ada jadwal ujian aktif saat ini.</p>
             ) : (
               upcomingExams.map((exam) => (
-                <div key={exam.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
+                <div key={exam.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
                   <div>
                     <div className="text-sm font-medium text-gray-900">{exam.title}</div>
                     <div className="text-xs text-gray-500">{exam.subject?.name || '-'}</div>
@@ -525,24 +671,28 @@ export const StudentDashboard = () => {
             </div>
           ) : (
             <div className="px-5 py-4 space-y-3">
-              {todaySchedule.map((entry) => (
+              {groupedTodaySchedule.map((entry) => (
                 <div
-                  key={entry.id}
+                  key={`${entry.key}-${entry.startHour}-${entry.endHour}`}
                   className="flex items-start gap-3 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2.5"
                 >
-                  <div className="w-14 text-xs font-semibold text-gray-500 pt-0.5">
-                    Jam {typeof entry.teachingHour === 'number' && entry.teachingHour > 0 ? entry.teachingHour : entry.period}
+                  <div className="w-28 text-xs font-semibold text-gray-500 pt-0.5">
+                    <div>
+                      Jam Ke {entry.startHour === entry.endHour ? entry.startHour : `${entry.startHour}-${entry.endHour}`}
+                    </div>
+                    <div className="text-[11px] font-normal text-gray-400 mt-0.5">
+                      {entry.timeRange}
+                    </div>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold text-gray-900">
-                      {entry.teacherAssignment?.subject?.code || '-'} •{' '}
-                      {entry.teacherAssignment?.subject?.name || '-'}
+                      {entry.subjectCode} • {entry.subjectName}
                     </div>
                     <div className="text-[11px] text-gray-500 mt-0.5">
-                      Guru {entry.teacherAssignment?.teacher?.name || '-'}
+                      Guru {entry.teacherName}
                     </div>
                     <div className="text-[11px] text-gray-500 mt-0.5">
-                      Ruang {entry.room || '-'}
+                      Ruang {entry.roomName}
                     </div>
                   </div>
                 </div>
@@ -566,15 +716,26 @@ export const StudentDashboard = () => {
             </Link>
           </div>
           <div className="px-5 py-4 space-y-3">
-            {mySittings?.length === 0 ? (
+            {examRooms.length === 0 ? (
                <p className="text-sm text-gray-500 text-center py-4">Belum ada pembagian ruang.</p>
             ) : (
-              mySittings?.map((sitting) => (
-                <div key={sitting.id} className="p-3 border rounded-lg bg-purple-50 border-purple-100">
-                  <div className="text-sm font-bold text-purple-900">{sitting.roomName}</div>
+              examRooms.map((roomExam) => (
+                <div
+                  key={`${roomExam.room}-${roomExam.examType}-${roomExam.start_time}`}
+                  className="p-3 border rounded-lg bg-purple-50 border-purple-100"
+                >
+                  <div className="text-sm font-bold text-purple-900">{roomExam.room}</div>
                   <div className="flex justify-between items-center mt-2">
-                     <span className="text-xs text-purple-700 bg-purple-100 px-2 py-0.5 rounded">{sitting.examType}</span>
-                     {sitting.proctor && <span className="text-xs text-gray-600">Pengawas: {sitting.proctor.name}</span>}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
+                        {roomExam.examType || '-'}
+                      </span>
+                      {roomExam.sessionLabel ? (
+                        <span className="text-xs text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded">
+                          {roomExam.sessionLabel}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               ))
