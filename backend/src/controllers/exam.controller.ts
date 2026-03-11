@@ -3468,7 +3468,17 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
         andFilters.push({ authorId: authUserId });
     }
 
-    const where: Prisma.ExamPacketWhereInput = andFilters.length > 0 ? { AND: andFilters } : {};
+    const orphanAutoPacketFilter: Prisma.ExamPacketWhereInput = {
+        NOT: {
+            AND: [
+                { description: AUTO_CURRICULUM_PACKET_DESCRIPTION },
+                { schedules: { none: {} } },
+            ],
+        },
+    };
+
+    const where: Prisma.ExamPacketWhereInput =
+        andFilters.length > 0 ? { AND: [...andFilters, orphanAutoPacketFilter] } : orphanAutoPacketFilter;
 
     const packets = await prisma.examPacket.findMany({
         where,
