@@ -19,7 +19,6 @@ type SectionConfig = {
   title: string;
   subtitle: string;
   icon: keyof typeof Feather.glyphMap;
-  isWebPlaceholder?: boolean;
 };
 
 const SECTION_CONFIG: Record<LearningResourceSection, SectionConfig> = {
@@ -32,31 +31,31 @@ const SECTION_CONFIG: Record<LearningResourceSection, SectionConfig> = {
     title: 'Perangkat Ajar ATP',
     subtitle: 'Kelola alur tujuan pembelajaran berdasarkan konteks pengajaran aktif.',
     icon: 'map',
-    isWebPlaceholder: true,
   },
   PROTA: {
     title: 'Program Tahunan',
     subtitle: 'Kelola perencanaan tahunan sesuai kelas, mata pelajaran, dan fase.',
     icon: 'calendar',
-    isWebPlaceholder: true,
   },
   PROMES: {
     title: 'Program Semester',
     subtitle: 'Kelola perencanaan semester untuk distribusi capaian pembelajaran.',
     icon: 'clock',
-    isWebPlaceholder: true,
   },
   MODULES: {
     title: 'Modul Ajar',
     subtitle: 'Kelola modul ajar dan bahan ajar untuk kebutuhan pembelajaran.',
     icon: 'file-text',
-    isWebPlaceholder: true,
   },
   KKTP: {
     title: 'KKTP',
     subtitle: 'Kelola kriteria ketercapaian tujuan pembelajaran pada konteks mengajar Anda.',
     icon: 'check-square',
-    isWebPlaceholder: true,
+  },
+  MATRIKS_SEBARAN: {
+    title: 'Matriks Sebaran',
+    subtitle: 'Kelola peta sebaran materi, asesmen, dan target pembelajaran lintas semester.',
+    icon: 'grid',
   },
 };
 
@@ -71,6 +70,7 @@ const SECTION_LINKS: Array<{
   { section: 'PROMES', route: '/teacher/learning-promes', label: 'Promes' },
   { section: 'MODULES', route: '/teacher/learning-modules', label: 'Modul' },
   { section: 'KKTP', route: '/teacher/learning-kktp', label: 'KKTP' },
+  { section: 'MATRIKS_SEBARAN', route: '/teacher/learning-matriks-sebaran', label: 'Matriks' },
 ];
 
 type CpAnalysisItemDraft = {
@@ -685,15 +685,15 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
           <SummaryCard
             title={isCpSection ? 'Status CP' : 'Status Modul'}
-            value={isCpSection ? (cpSummary.hasData ? 'Tersimpan' : 'Belum Ada') : 'Sama Web'}
-            subtitle={isCpSection ? `Baris analisis ${cpSummary.rows}` : 'Web saat ini masih tahap pengembangan'}
+            value={isCpSection ? (cpSummary.hasData ? 'Tersimpan' : 'Belum Ada') : 'Dinamis'}
+            subtitle={isCpSection ? `Baris analisis ${cpSummary.rows}` : 'Kelola dokumen via modul program terkait'}
           />
         </View>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
           <SummaryCard
             title="Update Terakhir"
-            value={isCpSection ? (cpSummary.updatedAt ? 'Ada Data' : '-') : 'Coming Soon'}
-            subtitle={isCpSection ? formatDateTime(cpSummary.updatedAt) : 'Rilis bersamaan dengan modul web'}
+            value={isCpSection ? (cpSummary.updatedAt ? 'Ada Data' : '-') : 'Aktif'}
+            subtitle={isCpSection ? formatDateTime(cpSummary.updatedAt) : 'Silakan lanjutkan melalui chip navigasi modul'}
           />
         </View>
       </View>
@@ -797,7 +797,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
             </Text>
           ) : (
             <Text style={{ color: '#64748b', marginTop: 2 }}>
-              Pada versi web modul ini masih placeholder/coming soon. Mobile mengikuti status parity yang sama.
+              Modul ini sudah tersedia dalam versi dinamis native. Gunakan chip navigasi untuk berpindah antar dokumen.
             </Text>
           )}
         </View>
@@ -1156,11 +1156,11 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
           }}
         >
           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
-            Status parity: {config.isWebPlaceholder ? 'Sama dengan web (placeholder)' : 'Siap'}
+            Status modul: Siap
           </Text>
           <Text style={{ color: '#64748b', marginTop: 4 }}>
-            Di web, modul {SECTION_LINKS.find((item) => item.section === section)?.label} belum final/masih coming soon.
-            Mobile mengikuti status saat ini tanpa fallback ke web bridge.
+            Modul {SECTION_LINKS.find((item) => item.section === section)?.label} berjalan native dan terhubung ke API
+            perangkat ajar dinamis yang sama dengan web.
           </Text>
         </View>
       )}

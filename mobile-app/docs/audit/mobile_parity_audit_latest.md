@@ -1,6 +1,6 @@
 # Mobile Parity Audit (All Roles)
 
-Generated: 2026-03-09T08:44:02.708Z
+Generated: 2026-03-15T22:22:29.900Z
 
 ## Ringkasan per Role
 
@@ -14,7 +14,7 @@ Generated: 2026-03-09T08:44:02.708Z
 | PRINCIPAL | 7 | 7 | 0 | 0 | 0 |
 | STAFF | 5 | 5 | 0 | 0 | 0 |
 | STUDENT | 15 | 15 | 0 | 0 | 0 |
-| TEACHER | 54 | 54 | 0 | 0 | 0 |
+| TEACHER | 59 | 49 | 6 | 4 | 4 |
 | UMUM | 2 | 2 | 0 | 0 | 0 |
 
 ## Detail Web Bridge per Role
@@ -44,7 +44,10 @@ Generated: 2026-03-09T08:44:02.708Z
 - Tidak ada menu web-bridge.
 
 ### TEACHER
-- Tidak ada menu web-bridge.
+- Dashboard BP/BK (`teacher-bk-dashboard`) -> route `/web-module/teacher-bk-dashboard`, webPath `/teacher/bk`
+- Kasus Perilaku (`teacher-bk-behaviors`) -> route `/web-module/teacher-bk-behaviors`, webPath `/teacher/bk/behaviors`
+- Perizinan Siswa (`teacher-bk-permissions`) -> route `/web-module/teacher-bk-permissions`, webPath `/teacher/bk/permissions`
+- Konseling & Tindak Lanjut (`teacher-bk-counselings`) -> route `/web-module/teacher-bk-counselings`, webPath `/teacher/bk/counselings`
 
 ### UMUM
 - Tidak ada menu web-bridge.

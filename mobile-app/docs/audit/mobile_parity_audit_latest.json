@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-09T08:44:02.708Z",
+  "generatedAt": "2026-03-15T22:22:29.900Z",
   "perRoleSummary": [
     {
       "role": "ADMIN",
@@ -75,12 +75,12 @@
     },
     {
       "role": "TEACHER",
-      "total": 54,
-      "nativeOnly": 54,
-      "nativeWithWebFallback": 0,
-      "webBridgeRoute": 0,
+      "total": 59,
+      "nativeOnly": 49,
+      "nativeWithWebFallback": 6,
+      "webBridgeRoute": 4,
       "webOnlyNoRoute": 0,
-      "hasOpenUrlInRouteTree": 0
+      "hasOpenUrlInRouteTree": 4
     },
     {
       "role": "UMUM",
@@ -964,8 +964,8 @@
         "key": "teacher-atp",
         "label": "Alur Tujuan Pembelajaran (ATP)",
         "route": "/teacher/learning-atp",
-        "webPath": null,
-        "mode": "NATIVE_ONLY",
+        "webPath": "/teacher/learning-resources/atp",
+        "mode": "NATIVE_WITH_WEB_FALLBACK",
         "routeFile": "app/(app)/teacher/learning-atp.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
@@ -974,8 +974,8 @@
         "key": "teacher-prota",
         "label": "Program Tahunan",
         "route": "/teacher/learning-prota",
-        "webPath": null,
-        "mode": "NATIVE_ONLY",
+        "webPath": "/teacher/learning-resources/prota",
+        "mode": "NATIVE_WITH_WEB_FALLBACK",
         "routeFile": "app/(app)/teacher/learning-prota.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
@@ -984,8 +984,8 @@
         "key": "teacher-promes",
         "label": "Program Semester",
         "route": "/teacher/learning-promes",
-        "webPath": null,
-        "mode": "NATIVE_ONLY",
+        "webPath": "/teacher/learning-resources/promes",
+        "mode": "NATIVE_WITH_WEB_FALLBACK",
         "routeFile": "app/(app)/teacher/learning-promes.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
@@ -994,8 +994,8 @@
         "key": "teacher-modules",
         "label": "Modul Ajar",
         "route": "/teacher/learning-modules",
-        "webPath": null,
-        "mode": "NATIVE_ONLY",
+        "webPath": "/teacher/learning-resources/modul-ajar",
+        "mode": "NATIVE_WITH_WEB_FALLBACK",
         "routeFile": "app/(app)/teacher/learning-modules.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
@@ -1004,9 +1004,19 @@
         "key": "teacher-kktp",
         "label": "Kriteria Ketercapaian Tujuan Pembelajaran (KKTP)",
         "route": "/teacher/learning-kktp",
-        "webPath": null,
-        "mode": "NATIVE_ONLY",
+        "webPath": "/teacher/learning-resources/kktp",
+        "mode": "NATIVE_WITH_WEB_FALLBACK",
         "routeFile": "app/(app)/teacher/learning-kktp.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "teacher-matriks-sebaran",
+        "label": "Matriks Sebaran",
+        "route": "/teacher/learning-matriks-sebaran",
+        "webPath": "/teacher/learning-resources/matriks-sebaran",
+        "mode": "NATIVE_WITH_WEB_FALLBACK",
+        "routeFile": "app/(app)/teacher/learning-matriks-sebaran.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
       },
@@ -1139,6 +1149,66 @@
         "routeFile": "app/(app)/teacher/work-program.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
+      },
+      {
+        "key": "teacher-bk-dashboard",
+        "label": "Dashboard BP/BK",
+        "route": "/web-module/teacher-bk-dashboard",
+        "webPath": "/teacher/bk",
+        "mode": "WEB_BRIDGE_ROUTE",
+        "routeFile": "app/(app)/web-module/[moduleKey].tsx",
+        "hasOpenUrlInRouteTree": true,
+        "openUrlHits": [
+          {
+            "file": "app/(app)/web-module/[moduleKey].tsx",
+            "line": 44
+          }
+        ]
+      },
+      {
+        "key": "teacher-bk-behaviors",
+        "label": "Kasus Perilaku",
+        "route": "/web-module/teacher-bk-behaviors",
+        "webPath": "/teacher/bk/behaviors",
+        "mode": "WEB_BRIDGE_ROUTE",
+        "routeFile": "app/(app)/web-module/[moduleKey].tsx",
+        "hasOpenUrlInRouteTree": true,
+        "openUrlHits": [
+          {
+            "file": "app/(app)/web-module/[moduleKey].tsx",
+            "line": 44
+          }
+        ]
+      },
+      {
+        "key": "teacher-bk-permissions",
+        "label": "Perizinan Siswa",
+        "route": "/web-module/teacher-bk-permissions",
+        "webPath": "/teacher/bk/permissions",
+        "mode": "WEB_BRIDGE_ROUTE",
+        "routeFile": "app/(app)/web-module/[moduleKey].tsx",
+        "hasOpenUrlInRouteTree": true,
+        "openUrlHits": [
+          {
+            "file": "app/(app)/web-module/[moduleKey].tsx",
+            "line": 44
+          }
+        ]
+      },
+      {
+        "key": "teacher-bk-counselings",
+        "label": "Konseling & Tindak Lanjut",
+        "route": "/web-module/teacher-bk-counselings",
+        "webPath": "/teacher/bk/counselings",
+        "mode": "WEB_BRIDGE_ROUTE",
+        "routeFile": "app/(app)/web-module/[moduleKey].tsx",
+        "hasOpenUrlInRouteTree": true,
+        "openUrlHits": [
+          {
+            "file": "app/(app)/web-module/[moduleKey].tsx",
+            "line": 44
+          }
+        ]
       },
       {
         "key": "teacher-kakom-classes",
