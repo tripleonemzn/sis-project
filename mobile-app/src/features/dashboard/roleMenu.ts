@@ -49,6 +49,7 @@ const STRICT_WEB_PARITY_KEYS = new Set<string>([
   'teacher-promes',
   'teacher-modules',
   'teacher-kktp',
+  'teacher-matriks-sebaran',
   'teacher-proctoring',
   'teacher-exam-programs',
   'teacher-exam-bank',
@@ -85,6 +86,10 @@ const STRICT_WEB_PARITY_KEYS = new Set<string>([
   'teacher-head-lab-schedule',
   'teacher-head-lab-incidents',
   'teacher-head-library-inventory',
+  'teacher-bk-dashboard',
+  'teacher-bk-behaviors',
+  'teacher-bk-permissions',
+  'teacher-bk-counselings',
   'principal-dashboard',
   'principal-reports',
   'principal-attendance',
@@ -204,26 +209,37 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       key: 'teacher-atp',
       label: 'Alur Tujuan Pembelajaran (ATP)',
       route: '/teacher/learning-atp',
+      webPath: '/teacher/learning-resources/atp',
     },
     {
       key: 'teacher-prota',
       label: 'Program Tahunan',
       route: '/teacher/learning-prota',
+      webPath: '/teacher/learning-resources/prota',
     },
     {
       key: 'teacher-promes',
       label: 'Program Semester',
       route: '/teacher/learning-promes',
+      webPath: '/teacher/learning-resources/promes',
     },
     {
       key: 'teacher-modules',
       label: 'Modul Ajar',
       route: '/teacher/learning-modules',
+      webPath: '/teacher/learning-resources/modul-ajar',
     },
     {
       key: 'teacher-kktp',
       label: 'Kriteria Ketercapaian Tujuan Pembelajaran (KKTP)',
       route: '/teacher/learning-kktp',
+      webPath: '/teacher/learning-resources/kktp',
+    },
+    {
+      key: 'teacher-matriks-sebaran',
+      label: 'Matriks Sebaran',
+      route: '/teacher/learning-matriks-sebaran',
+      webPath: '/teacher/learning-resources/matriks-sebaran',
     },
     {
       key: 'teacher-proctoring',
@@ -289,6 +305,30 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       key: 'teacher-work-program',
       label: 'Program Kerja',
       route: '/teacher/work-program',
+    },
+    {
+      key: 'teacher-bk-dashboard',
+      label: 'Dashboard BP/BK',
+      route: '/web-module/teacher-bk-dashboard',
+      webPath: '/teacher/bk',
+    },
+    {
+      key: 'teacher-bk-behaviors',
+      label: 'Kasus Perilaku',
+      route: '/web-module/teacher-bk-behaviors',
+      webPath: '/teacher/bk/behaviors',
+    },
+    {
+      key: 'teacher-bk-permissions',
+      label: 'Perizinan Siswa',
+      route: '/web-module/teacher-bk-permissions',
+      webPath: '/teacher/bk/permissions',
+    },
+    {
+      key: 'teacher-bk-counselings',
+      label: 'Konseling & Tindak Lanjut',
+      route: '/web-module/teacher-bk-counselings',
+      webPath: '/teacher/bk/counselings',
     },
     {
       key: 'teacher-kakom-classes',
@@ -691,6 +731,10 @@ function shouldShowMenuItem(user: AuthUser, item: RoleMenuItem) {
     if (item.key.startsWith('teacher-head-library-')) {
       return hasDuty(user, ['KEPALA_PERPUSTAKAAN']);
     }
+
+    if (item.key.startsWith('teacher-bk-')) {
+      return hasDuty(user, ['BP_BK']);
+    }
   }
 
   return true;
@@ -777,7 +821,15 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     {
       key: 'teaching-resources',
       label: 'PERANGKAT AJAR',
-      menuKeys: ['teacher-cp', 'teacher-atp', 'teacher-prota', 'teacher-promes', 'teacher-modules', 'teacher-kktp'],
+      menuKeys: [
+        'teacher-cp',
+        'teacher-atp',
+        'teacher-prota',
+        'teacher-promes',
+        'teacher-modules',
+        'teacher-kktp',
+        'teacher-matriks-sebaran',
+      ],
     },
     {
       key: 'exams',
@@ -813,6 +865,11 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
       key: 'work-program',
       label: 'PROGRAM KERJA',
       menuKeys: ['teacher-work-program'],
+    },
+    {
+      key: 'bpbk',
+      label: 'BP/BK',
+      menuKeys: ['teacher-bk-dashboard', 'teacher-bk-behaviors', 'teacher-bk-permissions', 'teacher-bk-counselings'],
     },
     {
       key: 'kakom',
@@ -1121,6 +1178,7 @@ function buildTeacherGroups(
       'teacher-promes',
       'teacher-modules',
       'teacher-kktp',
+      'teacher-matriks-sebaran',
     ]),
   );
   pushGroup(
@@ -1234,6 +1292,10 @@ function buildTeacherGroups(
       label = 'KEPALA PERPUSTAKAAN';
       addGenericWorkProgram();
       items.push(...pickMenus(byKey, ['teacher-head-library-inventory']));
+    } else if (duty === 'BP_BK') {
+      label = 'BP/BK';
+      addGenericWorkProgram();
+      items.push(...pickMenus(byKey, ['teacher-bk-dashboard', 'teacher-bk-behaviors', 'teacher-bk-permissions', 'teacher-bk-counselings']));
     } else {
       addGenericWorkProgram();
     }

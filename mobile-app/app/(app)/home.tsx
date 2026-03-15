@@ -33,6 +33,10 @@ import { principalApi } from '../../src/features/principal/principalApi';
 import { staffApi } from '../../src/features/staff/staffApi';
 import { examApi, ExamProgramItem } from '../../src/features/exams/examApi';
 import { useStudentExamsQuery } from '../../src/features/exams/useStudentExamsQuery';
+import {
+  teachingResourceProgramApi,
+  TeachingResourceProgramItem,
+} from '../../src/features/learningResources/teachingResourceProgramApi';
 import { useParentFinanceOverviewQuery } from '../../src/features/parent/useParentFinanceOverviewQuery';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { applyAppUpdate, checkAppUpdate } from '../../src/features/appUpdate/updateService';
@@ -68,6 +72,16 @@ type TeacherScheduleGroup = {
   periodEnd: number;
   subjectName: string;
   className: string;
+  roomLabel: string;
+  entries: ScheduleEntry[];
+};
+
+type StudentScheduleGroup = {
+  key: string;
+  periodStart: number;
+  periodEnd: number;
+  subjectName: string;
+  teacherName: string;
   roomLabel: string;
   entries: ScheduleEntry[];
 };
@@ -288,6 +302,54 @@ const TEACHER_HOMEROOM_REPORT_MENU_KEYS = new Set([
 const STUDENT_EXAM_MENU_KEYS = new Set([
   'student-exam-programs',
 ]);
+const TEACHER_LEARNING_RESOURCE_MENU_KEYS = new Set([
+  'teacher-cp',
+  'teacher-atp',
+  'teacher-prota',
+  'teacher-promes',
+  'teacher-modules',
+  'teacher-kktp',
+  'teacher-matriks-sebaran',
+]);
+
+const TEACHING_RESOURCE_NATIVE_ROUTES: Record<string, { key: string; route: string; webPath?: string }> = {
+  CP: { key: 'teacher-cp', route: '/teacher/learning-cp', webPath: '/teacher/learning-resources/cp' },
+  ATP: {
+    key: 'teacher-atp',
+    route: '/teacher/learning-atp',
+    webPath: '/teacher/learning-resources/atp',
+  },
+  PROTA: {
+    key: 'teacher-prota',
+    route: '/teacher/learning-prota',
+    webPath: '/teacher/learning-resources/prota',
+  },
+  PROMES: {
+    key: 'teacher-promes',
+    route: '/teacher/learning-promes',
+    webPath: '/teacher/learning-resources/promes',
+  },
+  MODUL_AJAR: {
+    key: 'teacher-modules',
+    route: '/teacher/learning-modules',
+    webPath: '/teacher/learning-resources/modul-ajar',
+  },
+  MODULES: {
+    key: 'teacher-modules',
+    route: '/teacher/learning-modules',
+    webPath: '/teacher/learning-resources/modul-ajar',
+  },
+  KKTP: {
+    key: 'teacher-kktp',
+    route: '/teacher/learning-kktp',
+    webPath: '/teacher/learning-resources/kktp',
+  },
+  MATRIKS_SEBARAN: {
+    key: 'teacher-matriks-sebaran',
+    route: '/teacher/learning-matriks-sebaran',
+    webPath: '/teacher/learning-resources/matriks-sebaran',
+  },
+};
 
 function normalizeProgramCode(raw?: string | null): string {
   return String(raw || '')
@@ -301,6 +363,19 @@ function normalizeProgramCode(raw?: string | null): string {
 
 function programCodeToSlug(raw?: string | null): string {
   return normalizeProgramCode(raw).toLowerCase().replace(/_/g, '-');
+}
+
+function normalizeTeachingResourceProgramCode(raw?: string | null): string {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function teachingResourceProgramCodeToSlug(raw?: string | null): string {
+  return normalizeTeachingResourceProgramCode(raw).toLowerCase().replace(/_/g, '-');
 }
 
 function buildDynamicExamMenuItems(
@@ -332,6 +407,35 @@ function buildDynamicHomeroomReportMenuItems(programs: ExamProgramItem[]): RoleM
       key: `teacher-homeroom-report-${slug}`,
       label: String(program.label || code).trim() || code,
       route: `/teacher/homeroom-report?programCode=${encodeURIComponent(code)}`,
+    };
+  });
+}
+
+function buildDynamicTeachingResourceMenuItems(programs: TeachingResourceProgramItem[]): RoleMenuItem[] {
+  const sorted = [...programs].sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || a.code.localeCompare(b.code));
+
+  return sorted.map((program) => {
+    const code = normalizeTeachingResourceProgramCode(program.code);
+    const label = String(program.label || code).trim() || code;
+    const slug = teachingResourceProgramCodeToSlug(code);
+    const native = TEACHING_RESOURCE_NATIVE_ROUTES[code];
+
+    if (native) {
+      return {
+        key: native.key,
+        label,
+        route: native.route,
+        webPath: native.webPath,
+      };
+    }
+
+    const webPath = `/teacher/learning-resources/${slug}`;
+    const route = `/teacher/learning-program/${encodeURIComponent(code)}?label=${encodeURIComponent(label)}&code=${encodeURIComponent(code)}`;
+    return {
+      key: `teacher-learning-resource-${slug}`,
+      label,
+      route,
+      webPath,
     };
   });
 }
@@ -404,6 +508,28 @@ function applyExamProgramsToMenuGroups(
       };
     }
     return group;
+  });
+}
+
+function applyTeachingResourceProgramsToMenuGroups(
+  groups: RoleMenuGroup[],
+  role: string,
+  programs: TeachingResourceProgramItem[],
+  programsResolved: boolean,
+): RoleMenuGroup[] {
+  if (role !== 'TEACHER') return groups;
+  if (!programsResolved) return groups;
+
+  const visiblePrograms = programs.filter((program) => program.isActive && program.showOnTeacherMenu);
+  const dynamicItems = buildDynamicTeachingResourceMenuItems(visiblePrograms);
+
+  return groups.map((group) => {
+    if (group.key !== 'teaching-resources') return group;
+
+    return {
+      ...group,
+      items: replaceStaticMenusWithDynamic(group.items, TEACHER_LEARNING_RESOURCE_MENU_KEYS, dynamicItems),
+    };
   });
 }
 
@@ -520,26 +646,56 @@ export default function HomeScreen() {
       }),
   });
 
+  const teachingResourceProgramsQuery = useQuery({
+    queryKey: ['mobile-home-teaching-resource-programs', profile.role, activeAcademicYearQuery.data?.id],
+    enabled: isAuthenticated && profile.role === 'TEACHER' && Boolean(activeAcademicYearQuery.data?.id),
+    staleTime: 5 * 60 * 1000,
+    queryFn: () =>
+      teachingResourceProgramApi.getTeachingResourcePrograms({
+        academicYearId: activeAcademicYearQuery.data?.id,
+        roleContext: 'teacher',
+      }),
+  });
+
   const hasPendingDefense = profile.role === 'TEACHER' && (teacherDefenseQuery.data?.length || 0) > 0;
   const menuGroups = useMemo(
-    () =>
-      applyExamProgramsToMenuGroups(
-        getGroupedRoleMenu(profile, { hasPendingDefense })
-          .map((group) => ({
-            ...group,
-            // Keep non-dashboard entries (e.g. Email) even when they are grouped under Dashboard.
-            items: group.items.filter((item) => {
-              const key = item.key.toLowerCase();
-              const label = item.label.toLowerCase();
-              return key !== 'dashboard' && !key.endsWith('-dashboard') && label !== 'dashboard';
-            }),
-          }))
-          .filter((group) => group.items.length > 0),
+    () => {
+      const baseGroups = getGroupedRoleMenu(profile, { hasPendingDefense })
+        .map((group) => ({
+          ...group,
+          // Keep non-dashboard entries (e.g. Email) even when they are grouped under Dashboard.
+          items: group.items.filter((item) => {
+            const key = item.key.toLowerCase();
+            const label = item.label.toLowerCase();
+            return key !== 'dashboard' && !key.endsWith('-dashboard') && label !== 'dashboard';
+          }),
+        }))
+        .filter((group) => group.items.length > 0);
+
+      const groupsWithExamPrograms = applyExamProgramsToMenuGroups(
+        baseGroups,
         profile.role,
         examProgramsQuery.data?.programs || [],
         examProgramsQuery.isSuccess,
-      ),
-    [profile, hasPendingDefense, examProgramsQuery.data?.programs, examProgramsQuery.isSuccess],
+      );
+
+      const groupsWithTeachingResourcePrograms = applyTeachingResourceProgramsToMenuGroups(
+        groupsWithExamPrograms,
+        profile.role,
+        teachingResourceProgramsQuery.data?.programs || [],
+        teachingResourceProgramsQuery.isSuccess,
+      );
+
+      return groupsWithTeachingResourcePrograms.filter((group) => group.items.length > 0);
+    },
+    [
+      profile,
+      hasPendingDefense,
+      examProgramsQuery.data?.programs,
+      examProgramsQuery.isSuccess,
+      teachingResourceProgramsQuery.data?.programs,
+      teachingResourceProgramsQuery.isSuccess,
+    ],
   );
   const adminStatsQuery = useQuery({
     queryKey: ['mobile-home-admin-stats', profile.id],
@@ -783,6 +939,13 @@ export default function HomeScreen() {
         icon: 'alert-circle',
         menuKey: 'parent-finance',
       },
+      {
+        label: 'Jatuh Tempo',
+        value: `${summary.overdueCount || 0} Tagihan`,
+        color: BRAND_COLORS.pink,
+        icon: 'clock',
+        menuKey: 'parent-finance',
+      },
     ];
   }, [parentOverviewQuery.data?.overview.summary]);
 
@@ -830,6 +993,59 @@ export default function HomeScreen() {
         return aHour - bHour;
       });
   }, [profile.role, studentScheduleQuery.data]);
+  const todayStudentScheduleGroups = useMemo(() => {
+    if (!todayStudentSchedules.length) return [] as StudentScheduleGroup[];
+
+    const groups: StudentScheduleGroup[] = [];
+    let currentGroupEntries: ScheduleEntry[] = [todayStudentSchedules[0]];
+    let currentStart = getTeachingHourValue(todayStudentSchedules[0]);
+    let currentEnd = getTeachingHourValue(todayStudentSchedules[0]);
+
+    for (let index = 1; index < todayStudentSchedules.length; index += 1) {
+      const entry = todayStudentSchedules[index];
+      const prev = currentGroupEntries[currentGroupEntries.length - 1];
+      const entryTeachingHour = getTeachingHourValue(entry);
+
+      const isSameSubject = entry.teacherAssignment.subject.id === prev.teacherAssignment.subject.id;
+      const isSameTeacher = entry.teacherAssignment.teacher.id === prev.teacherAssignment.teacher.id;
+      const isSameRoom = (entry.room || '') === (prev.room || '');
+      const isConsecutivePeriod = entryTeachingHour === currentEnd + 1;
+
+      if (isSameSubject && isSameTeacher && isSameRoom && isConsecutivePeriod) {
+        currentGroupEntries.push(entry);
+        currentEnd = entryTeachingHour;
+        continue;
+      }
+
+      const first = currentGroupEntries[0];
+      groups.push({
+        key: `${first.teacherAssignment.subject.id}-${first.teacherAssignment.teacher.id}-${first.room || '-'}-${currentStart}-${currentEnd}`,
+        periodStart: currentStart,
+        periodEnd: currentEnd,
+        subjectName: first.teacherAssignment.subject.name,
+        teacherName: first.teacherAssignment.teacher.name,
+        roomLabel: first.room || '-',
+        entries: currentGroupEntries,
+      });
+
+      currentGroupEntries = [entry];
+      currentStart = entryTeachingHour;
+      currentEnd = entryTeachingHour;
+    }
+
+    const first = currentGroupEntries[0];
+    groups.push({
+      key: `${first.teacherAssignment.subject.id}-${first.teacherAssignment.teacher.id}-${first.room || '-'}-${currentStart}-${currentEnd}`,
+      periodStart: currentStart,
+      periodEnd: currentEnd,
+      subjectName: first.teacherAssignment.subject.name,
+      teacherName: first.teacherAssignment.teacher.name,
+      roomLabel: first.room || '-',
+      entries: currentGroupEntries,
+    });
+
+    return groups;
+  }, [todayStudentSchedules]);
   const upcomingStudentExams = useMemo(() => {
     if (profile.role !== 'STUDENT') return [];
     const exams = studentExamsQuery.data?.exams || [];
@@ -1094,6 +1310,7 @@ export default function HomeScreen() {
         refetches.push(teacherAssignmentsQuery.refetch());
         refetches.push(teacherScheduleQuery.refetch());
         refetches.push(teacherDefenseQuery.refetch());
+        refetches.push(teachingResourceProgramsQuery.refetch());
       }
       if (profile.role === 'ADMIN') {
         refetches.push(adminStatsQuery.refetch());
@@ -1111,6 +1328,9 @@ export default function HomeScreen() {
         refetches.push(activeAcademicYearQuery.refetch());
         refetches.push(studentScheduleQuery.refetch());
         refetches.push(studentExamsQuery.refetch());
+      }
+      if (profile.role === 'TEACHER') {
+        refetches.push(examProgramsQuery.refetch());
       }
 
       await Promise.all(refetches);
@@ -1569,33 +1789,52 @@ export default function HomeScreen() {
                 </Text>
               ) : null}
               {!studentScheduleQuery.isLoading && !studentScheduleQuery.isError ? (
-                todayStudentSchedules.length > 0 ? (
+                todayStudentScheduleGroups.length > 0 ? (
                   <View>
-                    {todayStudentSchedules.map((entry) => {
-                      const teachingHour =
-                        typeof entry.teachingHour === 'number' && entry.teachingHour > 0 ? entry.teachingHour : entry.period;
-                      return (
+                    {todayStudentScheduleGroups.map((group) => (
+                      <View
+                        key={group.key}
+                        style={{
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: '#d6e2f7',
+                          backgroundColor: '#f8fbff',
+                          paddingHorizontal: 10,
+                          paddingVertical: 9,
+                          marginBottom: 8,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                        }}
+                      >
                         <View
-                          key={entry.id}
                           style={{
-                            borderRadius: 10,
-                            borderWidth: 1,
-                            borderColor: '#d6e2f7',
-                            backgroundColor: '#f8fbff',
-                            paddingHorizontal: 10,
-                            paddingVertical: 9,
-                            marginBottom: 8,
+                            minWidth: 84,
+                            paddingHorizontal: 8,
+                            height: 30,
+                            borderRadius: 8,
+                            backgroundColor: '#dbeafe',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginRight: 10,
                           }}
                         >
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
-                            {entry.teacherAssignment.subject.name}
-                          </Text>
-                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
-                            {`Jam ${teachingHour} • ${entry.teacherAssignment.teacher.name}${entry.room ? ` • ${entry.room}` : ''}`}
+                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>
+                            {group.periodStart === group.periodEnd
+                              ? `Jam ke ${group.periodStart}`
+                              : `Jam ke ${group.periodStart}-${group.periodEnd}`}
                           </Text>
                         </View>
-                      );
-                    })}
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
+                            {group.subjectName}
+                          </Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+                            {group.teacherName}
+                            {group.roomLabel !== '-' ? ` • ${group.roomLabel}` : ''}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
                   </View>
                 ) : (
                   <View
@@ -1644,8 +1883,11 @@ export default function HomeScreen() {
                         .trim()
                         .toUpperCase();
                       return (
-                        <View
+                        <Pressable
                           key={item.id}
+                          onPress={() => {
+                            router.push('/exams');
+                          }}
                           style={{
                             borderRadius: 10,
                             borderWidth: 1,
@@ -1690,7 +1932,7 @@ export default function HomeScreen() {
                               Diblokir: {item.blockReason || 'Akses ujian dibatasi wali kelas.'}
                             </Text>
                           ) : null}
-                        </View>
+                        </Pressable>
                       );
                     })}
                   </View>
