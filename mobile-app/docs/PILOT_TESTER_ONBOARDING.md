@@ -3,8 +3,9 @@
 ## Sebelum Mulai
 - Gunakan akun uji yang sudah disiapkan.
 - Pastikan internet aktif.
-- Install APK dari link resmi tim.
+- Install APK tester resmi dari profile `internal-live` agar channel perangkat = `pilot-live`.
 - Setelah APK terpasang sekali, update fitur berikutnya dikirim via OTA (tanpa install ulang).
+- Jika tim memberi tahu ada pergantian versi aplikasi (`appVersion`/runtime), install ulang APK tester terbaru sekali.
 
 ## Mekanisme Update OTA
 1. Buka aplikasi dengan internet aktif.
@@ -15,8 +16,8 @@
 6. Alternatif manual: dari halaman Home, lakukan pull-to-refresh (tarik layar ke bawah) untuk refresh data sekaligus cek update.
 
 ## Catatan Channel Tester
-- `pilot-live`: update sangat cepat/frekuen untuk uji fitur terbaru.
-- `pilot`: update lebih stabil setelah lolos cek cepat.
+- `pilot-live`: channel standar tester harian. Semua uji fitur terbaru sebaiknya memakai channel ini.
+- `pilot`: channel stabil cadangan. Hanya akan menerima OTA jika APK `internal` dengan runtime yang cocok memang sudah terpasang.
 - Jika tester perlu pindah channel, install APK dari profile yang sesuai.
 
 ## Skenario Uji Wajib

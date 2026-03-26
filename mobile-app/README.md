@@ -52,6 +52,7 @@ Aplikasi mobile terpisah untuk Android/iOS, dibuat tanpa mengganggu `frontend/` 
 3. Atau build manual:
    - `npm run build:android:internal`
    - `npm run build:android:internal:live` (khusus tester channel `pilot-live`)
+   - `npm run build:android:tester` (alias untuk tester `pilot-live`)
 4. Siapkan release note + checksum:
    - `npm run release:prepare -- /path/to/app.apk https://expo.dev/artifacts/...`
 5. Install cepat ke device QA via ADB:
@@ -64,17 +65,25 @@ Aplikasi mobile terpisah untuk Android/iOS, dibuat tanpa mengganggu `frontend/` 
 - Publish update code JS/UI/logic ke tester real-time (`pilot-live`):
   - `npm run update:pilot-live -- "Pesan update cepat"`
   - `npm run update:pilot-live:auto` (pesan otomatis timestamp + git ref)
+- Publish update tester dengan channel yang benar secara otomatis:
+  - `npm run check:ota:testers`
+  - `npm run update:testers -- "Pesan uji fitur"`
 - Publish update code JS/UI/logic ke tester stabil (`pilot`):
   - `npm run update:pilot -- "Pesan rilis update pilot"`
 - Publish ke staging:
   - `npm run update:staging -- "Pesan rilis update staging"`
 - Publish ke production:
   - `npm run update:production -- "Pesan rilis update production"`
+- Audit seluruh channel Android yang reachable untuk runtime saat ini:
+  - `npm run check:ota:all`
 - Catatan:
   - OTA hanya untuk perubahan JS/UI/logic.
   - Perubahan native dependency tetap butuh build APK/AAB baru.
   - Perangkat akan menerima update dari channel sesuai APK yang terpasang.
   - App akan cek update saat startup, saat app kembali aktif, dan periodik di background.
+  - Untuk ujicoba fitur harian, standarkan tester ke APK `internal-live` -> channel `pilot-live`.
+  - Jika `appVersion` berubah, tester perlu install APK tester terbaru sekali agar runtime baru bisa menerima OTA lagi.
+  - Jika sebuah channel tidak punya binary dengan runtime yang cocok, helper `update:testers` akan melewatinya dan menampilkan warning yang jelas.
 
 ## Pilot Docs
 - `docs/DAY10_QA_CHECKLIST.md`
