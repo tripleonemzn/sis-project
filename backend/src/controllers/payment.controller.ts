@@ -390,6 +390,8 @@ const generateInvoicesSchema = z.object({
   dueDate: z.coerce.date().optional(),
   title: z.string().trim().max(160).optional(),
   classId: z.coerce.number().int().positive().optional(),
+  majorId: z.coerce.number().int().positive().optional(),
+  gradeLevel: z.string().trim().min(1).max(20).optional(),
   studentIds: z.array(z.coerce.number().int().positive()).optional().default([]),
   replaceExisting: z.boolean().optional().default(false),
 });
@@ -1156,6 +1158,299 @@ function scoreTariffForStudent(
   return score;
 }
 
+type FinanceInvoiceTargetStudent = {
+  id: number;
+  name: string;
+  classId: number | null;
+  role: string;
+  studentClass: {
+    id: number;
+    name: string;
+    level: string;
+    majorId: number;
+    major: {
+      id: number;
+      name: string;
+      code: string;
+    } | null;
+  } | null;
+  parents: Array<{
+    id: number;
+    role: string;
+  }>;
+};
+
+type FinanceInvoiceGenerationPlanStatus =
+  | 'READY_CREATE'
+  | 'READY_UPDATE'
+  | 'SKIPPED_NO_TARIFF'
+  | 'SKIPPED_EXISTS'
+  | 'SKIPPED_LOCKED_PAID';
+
+type FinanceInvoiceGenerationPlanItem = {
+  componentId: number;
+  componentCode: string;
+  componentName: string;
+  amount: number;
+  notes: string | null;
+};
+
+type FinanceInvoiceGenerationPlanRow = {
+  student: FinanceInvoiceTargetStudent;
+  status: FinanceInvoiceGenerationPlanStatus;
+  invoiceId: number | null;
+  invoiceNo: string | null;
+  totalAmount: number;
+  items: FinanceInvoiceGenerationPlanItem[];
+};
+
+function normalizeFinanceComparableText(value?: string | null) {
+  return String(value || '').trim().toUpperCase();
+}
+
+async function resolveFinanceTargetAcademicYearId(academicYearId?: number) {
+  if (academicYearId) return academicYearId;
+
+  const activeYear = await prisma.academicYear.findFirst({
+    where: { isActive: true },
+    select: { id: true },
+  });
+
+  return activeYear?.id || null;
+}
+
+function summarizeFinanceInvoiceGenerationRows(rows: FinanceInvoiceGenerationPlanRow[]) {
+  return rows.reduce(
+    (acc, row) => {
+      if (row.status === 'READY_CREATE') {
+        acc.created += 1;
+        acc.totalProjectedAmount += row.totalAmount;
+      } else if (row.status === 'READY_UPDATE') {
+        acc.updated += 1;
+        acc.totalProjectedAmount += row.totalAmount;
+      } else if (row.status === 'SKIPPED_NO_TARIFF') {
+        acc.skippedNoTariff += 1;
+      } else if (row.status === 'SKIPPED_EXISTS') {
+        acc.skippedExisting += 1;
+      } else if (row.status === 'SKIPPED_LOCKED_PAID') {
+        acc.skippedLocked += 1;
+      }
+
+      return acc;
+    },
+    {
+      totalTargetStudents: rows.length,
+      created: 0,
+      updated: 0,
+      skippedNoTariff: 0,
+      skippedExisting: 0,
+      skippedLocked: 0,
+      totalProjectedAmount: 0,
+    },
+  );
+}
+
+function mapFinanceInvoiceGenerationRowDetail(row: FinanceInvoiceGenerationPlanRow) {
+  return {
+    studentId: row.student.id,
+    studentName: row.student.name,
+    className: row.student.studentClass?.name || 'Tanpa Kelas',
+    majorName: row.student.studentClass?.major?.name || null,
+    gradeLevel: row.student.studentClass?.level || null,
+    status: row.status,
+    invoiceId: row.invoiceId,
+    invoiceNo: row.invoiceNo,
+    totalAmount: row.totalAmount,
+    itemCount: row.items.length,
+    componentNames: row.items.map((item) => item.componentName),
+  };
+}
+
+async function buildFinanceInvoiceGenerationPlan(payload: z.infer<typeof generateInvoicesSchema>) {
+  const targetAcademicYearId = await resolveFinanceTargetAcademicYearId(payload.academicYearId);
+
+  if (!targetAcademicYearId) {
+    throw new ApiError(400, 'Tahun ajaran aktif tidak ditemukan');
+  }
+
+  const studentWhere: Record<string, unknown> = {
+    role: 'STUDENT',
+  };
+
+  if (payload.classId) {
+    studentWhere.classId = payload.classId;
+  }
+
+  if (payload.studentIds.length > 0) {
+    studentWhere.id = { in: payload.studentIds };
+  }
+
+  const rawStudents = await prisma.user.findMany({
+    where: studentWhere,
+    select: {
+      id: true,
+      name: true,
+      classId: true,
+      role: true,
+      studentClass: {
+        select: {
+          id: true,
+          name: true,
+          level: true,
+          majorId: true,
+          major: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+        },
+      },
+      parents: {
+        select: {
+          id: true,
+          role: true,
+        },
+      },
+    },
+    orderBy: [{ name: 'asc' }],
+  });
+
+  const normalizedGradeLevel = normalizeFinanceComparableText(payload.gradeLevel);
+  const students = rawStudents.filter((student) => {
+    if (payload.majorId && student.studentClass?.majorId !== payload.majorId) {
+      return false;
+    }
+    if (
+      normalizedGradeLevel &&
+      normalizeFinanceComparableText(student.studentClass?.level) !== normalizedGradeLevel
+    ) {
+      return false;
+    }
+    return true;
+  }) as FinanceInvoiceTargetStudent[];
+
+  if (students.length === 0) {
+    throw new ApiError(404, 'Siswa target tidak ditemukan untuk generate tagihan');
+  }
+
+  const today = new Date();
+
+  const tariffs = await prisma.financeTariffRule.findMany({
+    where: {
+      isActive: true,
+      component: {
+        isActive: true,
+      },
+      AND: [
+        { OR: [{ academicYearId: null }, { academicYearId: targetAcademicYearId }] },
+        { OR: [{ semester: null }, { semester: payload.semester }] },
+      ],
+    },
+    include: {
+      component: true,
+    },
+  });
+
+  const existingInvoices = await prisma.financeInvoice.findMany({
+    where: {
+      studentId: {
+        in: students.map((student) => student.id),
+      },
+      semester: payload.semester,
+      periodKey: payload.periodKey,
+    },
+    select: {
+      id: true,
+      studentId: true,
+      invoiceNo: true,
+      paidAmount: true,
+    },
+  });
+
+  const existingInvoiceMap = new Map(existingInvoices.map((invoice) => [invoice.studentId, invoice]));
+
+  const rows = students.map<FinanceInvoiceGenerationPlanRow>((student) => {
+    const scoredTariffs = tariffs
+      .filter((tariff) => isDateInsideRange(today, tariff.effectiveStart, tariff.effectiveEnd))
+      .map((tariff) => ({
+        tariff,
+        score: scoreTariffForStudent(tariff, student, targetAcademicYearId, payload.semester),
+      }))
+      .filter((item) => item.score >= 0)
+      .sort((a, b) => b.score - a.score);
+
+    const bestTariffByComponent = new Map<number, (typeof scoredTariffs)[number]>();
+    for (const item of scoredTariffs) {
+      const existing = bestTariffByComponent.get(item.tariff.componentId);
+      if (!existing || item.score > existing.score) {
+        bestTariffByComponent.set(item.tariff.componentId, item);
+      }
+    }
+
+    const selectedTariffs = Array.from(bestTariffByComponent.values()).map((item) => item.tariff);
+
+    if (selectedTariffs.length === 0) {
+      return {
+        student,
+        status: 'SKIPPED_NO_TARIFF',
+        invoiceId: null,
+        invoiceNo: null,
+        totalAmount: 0,
+        items: [],
+      };
+    }
+
+    const items = selectedTariffs.map<FinanceInvoiceGenerationPlanItem>((tariff) => ({
+      componentId: tariff.componentId,
+      componentCode: tariff.component.code,
+      componentName: tariff.component.name,
+      amount: Number(tariff.amount || 0),
+      notes: tariff.notes || null,
+    }));
+    const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
+    const existingInvoice = existingInvoiceMap.get(student.id);
+
+    if (existingInvoice && Number(existingInvoice.paidAmount || 0) > 0) {
+      return {
+        student,
+        status: 'SKIPPED_LOCKED_PAID',
+        invoiceId: existingInvoice.id,
+        invoiceNo: existingInvoice.invoiceNo,
+        totalAmount,
+        items,
+      };
+    }
+
+    if (existingInvoice && !payload.replaceExisting) {
+      return {
+        student,
+        status: 'SKIPPED_EXISTS',
+        invoiceId: existingInvoice.id,
+        invoiceNo: existingInvoice.invoiceNo,
+        totalAmount,
+        items,
+      };
+    }
+
+    return {
+      student,
+      status: existingInvoice ? 'READY_UPDATE' : 'READY_CREATE',
+      invoiceId: existingInvoice?.id || null,
+      invoiceNo: existingInvoice?.invoiceNo || null,
+      totalAmount,
+      items,
+    };
+  });
+
+  return {
+    academicYearId: targetAcademicYearId,
+    rows,
+    summary: summarizeFinanceInvoiceGenerationRows(rows),
+  };
+}
+
 export const listFinanceComponents = asyncHandler(async (req: Request, res: Response) => {
   await ensureFinanceActor((req as any).user || {}, { allowPrincipalReadOnly: true });
 
@@ -1363,86 +1658,7 @@ export const updateFinanceTariffRule = asyncHandler(async (req: Request, res: Re
 export const generateFinanceInvoices = asyncHandler(async (req: Request, res: Response) => {
   const actor = await ensureFinanceActor((req as any).user || {});
   const payload = generateInvoicesSchema.parse(req.body);
-
-  const targetAcademicYearId = payload.academicYearId
-    ? payload.academicYearId
-    : (
-        await prisma.academicYear.findFirst({
-          where: { isActive: true },
-          select: { id: true },
-        })
-      )?.id;
-
-  if (!targetAcademicYearId) {
-    throw new ApiError(400, 'Tahun ajaran aktif tidak ditemukan');
-  }
-
-  const studentWhere: Record<string, unknown> = {
-    role: 'STUDENT',
-  };
-
-  if (payload.classId) {
-    studentWhere.classId = payload.classId;
-  }
-
-  if (payload.studentIds.length > 0) {
-    studentWhere.id = { in: payload.studentIds };
-  }
-
-  const students = await prisma.user.findMany({
-    where: studentWhere,
-    select: {
-      id: true,
-      name: true,
-      classId: true,
-      role: true,
-      studentClass: {
-        select: {
-          id: true,
-          level: true,
-          majorId: true,
-        },
-      },
-      parents: {
-        select: {
-          id: true,
-          role: true,
-        },
-      },
-    },
-    orderBy: [{ name: 'asc' }],
-  });
-
-  if (students.length === 0) {
-    throw new ApiError(404, 'Siswa target tidak ditemukan untuk generate tagihan');
-  }
-
-  const today = new Date();
-
-  const tariffs = await prisma.financeTariffRule.findMany({
-    where: {
-      isActive: true,
-      component: {
-        isActive: true,
-      },
-      AND: [
-        { OR: [{ academicYearId: null }, { academicYearId: targetAcademicYearId }] },
-        { OR: [{ semester: null }, { semester: payload.semester }] },
-      ],
-    },
-    include: {
-      component: true,
-    },
-  });
-
-  const result = {
-    created: 0,
-    updated: 0,
-    skippedNoTariff: 0,
-    skippedExisting: 0,
-    skippedLocked: 0,
-    details: [] as Array<{ studentId: number; studentName: string; status: string; invoiceNo?: string }>,
-  };
+  const plan = await buildFinanceInvoiceGenerationPlan(payload);
   const queuedNotifications: Array<{
     userId: number;
     title: string;
@@ -1451,148 +1667,102 @@ export const generateFinanceInvoices = asyncHandler(async (req: Request, res: Re
     data: Prisma.InputJsonValue;
   }> = [];
 
-  for (const student of students) {
-    const scoredTariffs = tariffs
-      .filter((tariff) => isDateInsideRange(today, tariff.effectiveStart, tariff.effectiveEnd))
-      .map((tariff) => ({
-        tariff,
-        score: scoreTariffForStudent(tariff, student, targetAcademicYearId, payload.semester),
-      }))
-      .filter((item) => item.score >= 0)
-      .sort((a, b) => b.score - a.score);
-
-    const bestTariffByComponent = new Map<number, (typeof scoredTariffs)[number]>();
-    for (const item of scoredTariffs) {
-      const componentId = item.tariff.componentId;
-      const existing = bestTariffByComponent.get(componentId);
-      if (!existing || item.score > existing.score) {
-        bestTariffByComponent.set(componentId, item);
-      }
+  const details = [] as Array<
+    Omit<ReturnType<typeof mapFinanceInvoiceGenerationRowDetail>, 'status'> & {
+      status: 'CREATED' | 'UPDATED' | 'SKIPPED_NO_TARIFF' | 'SKIPPED_EXISTS' | 'SKIPPED_LOCKED_PAID';
     }
+  >;
 
-    const selectedTariffs = Array.from(bestTariffByComponent.values()).map((item) => item.tariff);
-
-    if (selectedTariffs.length === 0) {
-      result.skippedNoTariff += 1;
-      result.details.push({ studentId: student.id, studentName: student.name, status: 'SKIPPED_NO_TARIFF' });
+  for (const row of plan.rows) {
+    if (row.status === 'SKIPPED_NO_TARIFF') {
+      details.push({ ...mapFinanceInvoiceGenerationRowDetail(row), status: 'SKIPPED_NO_TARIFF' });
       continue;
     }
-
-    const totalAmount = selectedTariffs.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-
-    const existingInvoice = await prisma.financeInvoice.findUnique({
-      where: {
-        studentId_semester_periodKey: {
-          studentId: student.id,
-          semester: payload.semester,
-          periodKey: payload.periodKey,
-        },
-      },
-      select: {
-        id: true,
-        invoiceNo: true,
-        paidAmount: true,
-      },
-    });
-
-    if (existingInvoice && !payload.replaceExisting) {
-      result.skippedExisting += 1;
-      result.details.push({
-        studentId: student.id,
-        studentName: student.name,
-        status: 'SKIPPED_EXISTS',
-        invoiceNo: existingInvoice.invoiceNo,
-      });
+    if (row.status === 'SKIPPED_EXISTS') {
+      details.push({ ...mapFinanceInvoiceGenerationRowDetail(row), status: 'SKIPPED_EXISTS' });
       continue;
     }
-
-    if (existingInvoice && existingInvoice.paidAmount > 0) {
-      result.skippedLocked += 1;
-      result.details.push({
-        studentId: student.id,
-        studentName: student.name,
-        status: 'SKIPPED_LOCKED_PAID',
-        invoiceNo: existingInvoice.invoiceNo,
-      });
+    if (row.status === 'SKIPPED_LOCKED_PAID') {
+      details.push({ ...mapFinanceInvoiceGenerationRowDetail(row), status: 'SKIPPED_LOCKED_PAID' });
       continue;
     }
-
-    const invoiceNo = existingInvoice?.invoiceNo || makeFinanceInvoiceNo(payload.periodKey, student.id);
-
-    if (existingInvoice) {
+    if (row.status === 'READY_UPDATE' && (!row.invoiceId || !row.invoiceNo)) {
+      throw new ApiError(500, `Data invoice existing tidak lengkap untuk siswa ${row.student.name}`);
+    }
+    if (row.status === 'READY_UPDATE' && row.invoiceId && row.invoiceNo) {
       await prisma.$transaction(async (tx) => {
-        await tx.financeInvoiceItem.deleteMany({ where: { invoiceId: existingInvoice.id } });
+        await tx.financeInvoiceItem.deleteMany({ where: { invoiceId: row.invoiceId! } });
         await tx.financeInvoice.update({
-          where: { id: existingInvoice.id },
+          where: { id: row.invoiceId! },
           data: {
             title: payload.title || null,
             dueDate: payload.dueDate || null,
-            totalAmount,
+            totalAmount: row.totalAmount,
             paidAmount: 0,
-            balanceAmount: totalAmount,
+            balanceAmount: row.totalAmount,
             status: 'UNPAID',
             createdById: actor.id,
           },
         });
         await tx.financeInvoiceItem.createMany({
-          data: selectedTariffs.map((tariff) => ({
-            invoiceId: existingInvoice.id,
-            componentId: tariff.componentId,
-            componentCode: tariff.component.code,
-            componentName: tariff.component.name,
-            amount: tariff.amount,
-            notes: tariff.notes || null,
+          data: row.items.map((item) => ({
+            invoiceId: row.invoiceId!,
+            componentId: item.componentId,
+            componentCode: item.componentCode,
+            componentName: item.componentName,
+            amount: item.amount,
+            notes: item.notes,
           })),
         });
       });
 
-      result.updated += 1;
-      result.details.push({ studentId: student.id, studentName: student.name, status: 'UPDATED', invoiceNo });
       const recipients = [
-        { userId: student.id, role: student.role },
-        ...student.parents.map((parent) => ({ userId: parent.id, role: parent.role })),
+        { userId: row.student.id, role: row.student.role },
+        ...row.student.parents.map((parent) => ({ userId: parent.id, role: parent.role })),
       ];
       for (const recipient of recipients) {
         queuedNotifications.push({
           userId: recipient.userId,
           title: 'Tagihan Diperbarui',
-          message: `Tagihan ${invoiceNo} periode ${payload.periodKey} telah diperbarui. Total tagihan saat ini Rp${Math.round(totalAmount).toLocaleString('id-ID')}.`,
+          message: `Tagihan ${row.invoiceNo} periode ${payload.periodKey} telah diperbarui. Total tagihan saat ini Rp${Math.round(row.totalAmount).toLocaleString('id-ID')}.`,
           type: 'FINANCE_INVOICE_UPDATED',
           data: {
             module: 'FINANCE',
-            invoiceNo,
-            invoiceId: existingInvoice.id,
+            invoiceNo: row.invoiceNo,
+            invoiceId: row.invoiceId,
             periodKey: payload.periodKey,
             semester: payload.semester,
-            route: resolveFinanceRouteByRole(recipient.role, student.id),
-            studentId: student.id,
+            route: resolveFinanceRouteByRole(recipient.role, row.student.id),
+            studentId: row.student.id,
           },
         });
       }
+      details.push({ ...mapFinanceInvoiceGenerationRowDetail(row), status: 'UPDATED' });
       continue;
     }
 
+    const invoiceNo = makeFinanceInvoiceNo(payload.periodKey, row.student.id);
     const invoice = await prisma.financeInvoice.create({
       data: {
         invoiceNo,
-        studentId: student.id,
-        academicYearId: targetAcademicYearId,
+        studentId: row.student.id,
+        academicYearId: plan.academicYearId,
         semester: payload.semester,
         periodKey: payload.periodKey,
         title: payload.title || null,
         dueDate: payload.dueDate || null,
-        totalAmount,
+        totalAmount: row.totalAmount,
         paidAmount: 0,
-        balanceAmount: totalAmount,
+        balanceAmount: row.totalAmount,
         status: 'UNPAID',
         createdById: actor.id,
         items: {
-          create: selectedTariffs.map((tariff) => ({
-            componentId: tariff.componentId,
-            componentCode: tariff.component.code,
-            componentName: tariff.component.name,
-            amount: tariff.amount,
-            notes: tariff.notes || null,
+          create: row.items.map((item) => ({
+            componentId: item.componentId,
+            componentCode: item.componentCode,
+            componentName: item.componentName,
+            amount: item.amount,
+            notes: item.notes,
           })),
         },
       },
@@ -1602,22 +1772,15 @@ export const generateFinanceInvoices = asyncHandler(async (req: Request, res: Re
       },
     });
 
-    result.created += 1;
-    result.details.push({
-      studentId: student.id,
-      studentName: student.name,
-      status: 'CREATED',
-      invoiceNo: invoice.invoiceNo,
-    });
     const recipients = [
-      { userId: student.id, role: student.role },
-      ...student.parents.map((parent) => ({ userId: parent.id, role: parent.role })),
+      { userId: row.student.id, role: row.student.role },
+      ...row.student.parents.map((parent) => ({ userId: parent.id, role: parent.role })),
     ];
     for (const recipient of recipients) {
       queuedNotifications.push({
         userId: recipient.userId,
         title: 'Tagihan Baru',
-        message: `Tagihan ${invoice.invoiceNo} periode ${payload.periodKey} telah diterbitkan dengan total Rp${Math.round(totalAmount).toLocaleString('id-ID')}.`,
+        message: `Tagihan ${invoice.invoiceNo} periode ${payload.periodKey} telah diterbitkan dengan total Rp${Math.round(row.totalAmount).toLocaleString('id-ID')}.`,
         type: 'FINANCE_INVOICE_CREATED',
         data: {
           module: 'FINANCE',
@@ -1625,11 +1788,19 @@ export const generateFinanceInvoices = asyncHandler(async (req: Request, res: Re
           invoiceId: invoice.id,
           periodKey: payload.periodKey,
           semester: payload.semester,
-          route: resolveFinanceRouteByRole(recipient.role, student.id),
-          studentId: student.id,
+          route: resolveFinanceRouteByRole(recipient.role, row.student.id),
+          studentId: row.student.id,
         },
       });
     }
+    details.push({
+      ...mapFinanceInvoiceGenerationRowDetail({
+        ...row,
+        invoiceId: invoice.id,
+        invoiceNo: invoice.invoiceNo,
+      }),
+      status: 'CREATED',
+    });
   }
 
   if (queuedNotifications.length > 0) {
@@ -1640,20 +1811,45 @@ export const generateFinanceInvoices = asyncHandler(async (req: Request, res: Re
     new ApiResponse(
       200,
       {
-        academicYearId: targetAcademicYearId,
+        academicYearId: plan.academicYearId,
         semester: payload.semester,
         periodKey: payload.periodKey,
-        summary: {
-          totalTargetStudents: students.length,
-          created: result.created,
-          updated: result.updated,
-          skippedNoTariff: result.skippedNoTariff,
-          skippedExisting: result.skippedExisting,
-          skippedLocked: result.skippedLocked,
+        filters: {
+          classId: payload.classId || null,
+          majorId: payload.majorId || null,
+          gradeLevel: payload.gradeLevel?.trim() || null,
+          replaceExisting: payload.replaceExisting,
         },
-        details: result.details,
+        summary: plan.summary,
+        details,
       },
       'Generate tagihan siswa selesai',
+    ),
+  );
+});
+
+export const previewFinanceInvoices = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinanceActor((req as any).user || {});
+  const payload = generateInvoicesSchema.parse(req.body);
+  const plan = await buildFinanceInvoiceGenerationPlan(payload);
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        academicYearId: plan.academicYearId,
+        semester: payload.semester,
+        periodKey: payload.periodKey,
+        filters: {
+          classId: payload.classId || null,
+          majorId: payload.majorId || null,
+          gradeLevel: payload.gradeLevel?.trim() || null,
+          replaceExisting: payload.replaceExisting,
+        },
+        summary: plan.summary,
+        details: plan.rows.map((row) => mapFinanceInvoiceGenerationRowDetail(row)),
+      },
+      'Pratinjau generate tagihan siswa berhasil dibuat',
     ),
   );
 });

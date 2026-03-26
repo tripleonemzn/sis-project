@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import {
   Modal,
@@ -119,6 +119,47 @@ function describeTariffScope(tariff: StaffFinanceTariffRule) {
   return parts.join(' • ');
 }
 
+function getInvoicePreviewStatusMeta(status: string) {
+  if (status === 'READY_CREATE' || status === 'CREATED') {
+    return {
+      label: status === 'CREATED' ? 'Dibuat' : 'Siap dibuat',
+      bg: '#dcfce7',
+      border: '#86efac',
+      text: '#166534',
+    };
+  }
+  if (status === 'READY_UPDATE' || status === 'UPDATED') {
+    return {
+      label: status === 'UPDATED' ? 'Diperbarui' : 'Siap update',
+      bg: '#dbeafe',
+      border: '#93c5fd',
+      text: '#1d4ed8',
+    };
+  }
+  if (status === 'SKIPPED_EXISTS') {
+    return {
+      label: 'Sudah ada',
+      bg: '#fef3c7',
+      border: '#fcd34d',
+      text: '#92400e',
+    };
+  }
+  if (status === 'SKIPPED_LOCKED_PAID') {
+    return {
+      label: 'Terkunci',
+      bg: '#fee2e2',
+      border: '#fecaca',
+      text: '#991b1b',
+    };
+  }
+  return {
+    label: 'Tanpa tarif',
+    bg: '#f8fafc',
+    border: '#cbd5e1',
+    text: '#475569',
+  };
+}
+
 export default function StaffPaymentsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -149,10 +190,14 @@ export default function StaffPaymentsScreen() {
   const [editingTariffId, setEditingTariffId] = useState<number | null>(null);
 
   const [invoiceSemester, setInvoiceSemester] = useState<SemesterCode>('EVEN');
+  const [invoiceAcademicYearId, setInvoiceAcademicYearId] = useState<number | null>(null);
   const [invoicePeriodKey, setInvoicePeriodKey] = useState('');
   const [invoiceDueDate, setInvoiceDueDate] = useState('');
   const [invoiceTitle, setInvoiceTitle] = useState('');
   const [invoiceClassId, setInvoiceClassId] = useState<number | null>(null);
+  const [invoiceMajorId, setInvoiceMajorId] = useState<number | null>(null);
+  const [invoiceGradeLevel, setInvoiceGradeLevel] = useState('');
+  const [invoiceReplaceExisting, setInvoiceReplaceExisting] = useState(false);
 
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [invoiceStatus, setInvoiceStatus] = useState<'' | FinanceInvoiceStatus>('');
@@ -194,19 +239,32 @@ export default function StaffPaymentsScreen() {
   });
 
   const classes = useMemo(() => {
-    const map = new Map<number, string>();
+    const map = new Map<number, { id: number; name: string; level: string }>();
     (studentsQuery.data || []).forEach((student) => {
       if (student.studentClass?.id && student.studentClass?.name) {
-        map.set(student.studentClass.id, student.studentClass.name);
+        map.set(student.studentClass.id, {
+          id: student.studentClass.id,
+          name: student.studentClass.name,
+          level: student.studentClass.level || '',
+        });
       }
     });
-    return Array.from(map.entries())
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [studentsQuery.data]);
 
   const academicYears = academicYearsQuery.data?.items || [];
   const majors = majorsQuery.data?.items || [];
+  const gradeLevels = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          classes
+            .map((classItem) => classItem.level.trim())
+            .filter((value) => value.length > 0),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
+    [classes],
+  );
 
   const componentsQuery = useQuery({
     queryKey: ['mobile-staff-finance-components'],
@@ -245,6 +303,12 @@ export default function StaffPaymentsScreen() {
   const tariffs = tariffsQuery.data || [];
   const invoices = invoicesQuery.data?.invoices || [];
   const invoiceSummary = invoicesQuery.data?.summary;
+
+  useEffect(() => {
+    if (invoiceAcademicYearId == null && activeYearQuery.data?.id) {
+      setInvoiceAcademicYearId(activeYearQuery.data.id);
+    }
+  }, [activeYearQuery.data?.id, invoiceAcademicYearId]);
 
   const overdueCount = useMemo(() => {
     const today = Date.now();
@@ -378,20 +442,40 @@ export default function StaffPaymentsScreen() {
   const generateInvoiceMutation = useMutation({
     mutationFn: () =>
       staffFinanceApi.generateInvoices({
-        academicYearId: activeYearQuery.data?.id,
+        academicYearId: invoiceAcademicYearId || activeYearQuery.data?.id || undefined,
         semester: invoiceSemester,
         periodKey: invoicePeriodKey,
         dueDate: invoiceDueDate || undefined,
         title: invoiceTitle || undefined,
         classId: invoiceClassId || undefined,
+        majorId: invoiceMajorId || undefined,
+        gradeLevel: invoiceGradeLevel.trim() || undefined,
+        replaceExisting: invoiceReplaceExisting,
       }),
     onSuccess: (result) => {
       notifySuccess(
         `Generate selesai: ${result.summary.created} baru, ${result.summary.updated} diperbarui.`,
       );
+      previewInvoiceMutation.reset();
       invalidateFinanceQueries();
     },
     onError: (error: unknown) => notifyApiError(error, 'Gagal generate tagihan.'),
+  });
+
+  const previewInvoiceMutation = useMutation({
+    mutationFn: () =>
+      staffFinanceApi.previewInvoices({
+        academicYearId: invoiceAcademicYearId || activeYearQuery.data?.id || undefined,
+        semester: invoiceSemester,
+        periodKey: invoicePeriodKey,
+        dueDate: invoiceDueDate || undefined,
+        title: invoiceTitle || undefined,
+        classId: invoiceClassId || undefined,
+        majorId: invoiceMajorId || undefined,
+        gradeLevel: invoiceGradeLevel.trim() || undefined,
+        replaceExisting: invoiceReplaceExisting,
+      }),
+    onError: (error: unknown) => notifyApiError(error, 'Gagal membuat preview generate.'),
   });
 
   const dispatchReminderMutation = useMutation({
@@ -459,6 +543,14 @@ export default function StaffPaymentsScreen() {
     generateInvoiceMutation.mutate();
   };
 
+  const handlePreviewGenerate = () => {
+    if (!invoicePeriodKey.trim()) {
+      notifyApiError(null, 'Period key wajib diisi (contoh 2026-03).');
+      return;
+    }
+    previewInvoiceMutation.mutate();
+  };
+
   const handleManualReminder = (mode: FinanceReminderMode) => {
     const dueSoonDays = Number(reminderDueSoonDays || 0);
     if (!Number.isFinite(dueSoonDays) || dueSoonDays < 0 || dueSoonDays > 30) {
@@ -475,6 +567,20 @@ export default function StaffPaymentsScreen() {
     setPaymentReference('');
     setPaymentNote('');
   };
+
+  useEffect(() => {
+    previewInvoiceMutation.reset();
+  }, [
+    invoiceAcademicYearId,
+    invoiceSemester,
+    invoicePeriodKey,
+    invoiceDueDate,
+    invoiceTitle,
+    invoiceClassId,
+    invoiceMajorId,
+    invoiceGradeLevel,
+    invoiceReplaceExisting,
+  ]);
 
   if (isLoading) return <AppLoadingScreen message="Memuat modul keuangan staff..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -1430,6 +1536,33 @@ export default function StaffPaymentsScreen() {
         >
           <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Generate Tagihan</Text>
 
+          <Text style={{ color: '#475569', marginBottom: 4 }}>Tahun ajaran</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {academicYears.map((year) => {
+                const active = (invoiceAcademicYearId || activeYearQuery.data?.id || null) === year.id;
+                return (
+                  <Pressable
+                    key={year.id}
+                    onPress={() => setInvoiceAcademicYearId(year.id)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: active ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      {year.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
           <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
             <View style={{ flex: 1, paddingHorizontal: 4 }}>
               <Pressable
@@ -1527,22 +1660,233 @@ export default function StaffPaymentsScreen() {
             </View>
           </ScrollView>
 
+          <Text style={{ color: '#475569', marginBottom: 4 }}>Jurusan target (opsional)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => setInvoiceMajorId(null)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: invoiceMajorId === null ? '#1d4ed8' : '#dbeafe',
+                  backgroundColor: invoiceMajorId === null ? '#e9f1ff' : '#fff',
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                }}
+              >
+                <Text style={{ color: invoiceMajorId === null ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                  Semua jurusan
+                </Text>
+              </Pressable>
+              {majors.map((major) => {
+                const active = invoiceMajorId === major.id;
+                return (
+                  <Pressable
+                    key={major.id}
+                    onPress={() => setInvoiceMajorId(major.id)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: active ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      {major.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <Text style={{ color: '#475569', marginBottom: 4 }}>Tingkat target (opsional)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => setInvoiceGradeLevel('')}
+                style={{
+                  borderWidth: 1,
+                  borderColor: invoiceGradeLevel === '' ? '#1d4ed8' : '#dbeafe',
+                  backgroundColor: invoiceGradeLevel === '' ? '#e9f1ff' : '#fff',
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                }}
+              >
+                <Text style={{ color: invoiceGradeLevel === '' ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                  Semua tingkat
+                </Text>
+              </Pressable>
+              {gradeLevels.map((level) => {
+                const active = invoiceGradeLevel === level;
+                return (
+                  <Pressable
+                    key={level}
+                    onPress={() => setInvoiceGradeLevel(level)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: active ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      Tingkat {level}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
           <Pressable
-            onPress={handleGenerate}
-            disabled={generateInvoiceMutation.isPending}
+            onPress={() => setInvoiceReplaceExisting((value) => !value)}
             style={{
-              backgroundColor: '#4f46e5',
+              borderWidth: 1,
+              borderColor: invoiceReplaceExisting ? '#c7d2fe' : '#d1d5db',
+              backgroundColor: invoiceReplaceExisting ? '#eef2ff' : '#fff',
               borderRadius: 10,
-              paddingVertical: 11,
-              alignItems: 'center',
-              marginBottom: 12,
-              opacity: generateInvoiceMutation.isPending ? 0.6 : 1,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              marginBottom: 8,
             }}
           >
-            <Text style={{ color: '#fff', fontWeight: '700' }}>
-              {generateInvoiceMutation.isPending ? 'Memproses...' : 'Generate Tagihan'}
+            <Text style={{ color: invoiceReplaceExisting ? '#3730a3' : '#334155', fontWeight: '700' }}>
+              {invoiceReplaceExisting ? 'Aktif' : 'Nonaktif'}: replace invoice existing yang belum dibayar
             </Text>
           </Pressable>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 12 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={handlePreviewGenerate}
+                disabled={previewInvoiceMutation.isPending}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#c7d2fe',
+                  backgroundColor: '#eef2ff',
+                  borderRadius: 10,
+                  paddingVertical: 11,
+                  alignItems: 'center',
+                  opacity: previewInvoiceMutation.isPending ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ color: '#4338ca', fontWeight: '700' }}>
+                  {previewInvoiceMutation.isPending ? 'Membuat preview...' : 'Preview Target'}
+                </Text>
+              </Pressable>
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={handleGenerate}
+                disabled={generateInvoiceMutation.isPending}
+                style={{
+                  backgroundColor: '#4f46e5',
+                  borderRadius: 10,
+                  paddingVertical: 11,
+                  alignItems: 'center',
+                  opacity: generateInvoiceMutation.isPending ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700' }}>
+                  {generateInvoiceMutation.isPending ? 'Memproses...' : 'Generate Tagihan'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {previewInvoiceMutation.data ? (
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#c7d2fe',
+                backgroundColor: '#eef2ff',
+                borderRadius: 12,
+                padding: 12,
+                marginBottom: 12,
+              }}
+            >
+              <Text style={{ color: '#3730a3', fontWeight: '700', marginBottom: 4 }}>Preview Generate</Text>
+              <Text style={{ color: '#312e81', marginBottom: 10 }}>
+                {previewInvoiceMutation.data.summary.totalTargetStudents} siswa terjaring dengan proyeksi tagihan{' '}
+                {formatCurrency(previewInvoiceMutation.data.summary.totalProjectedAmount)}.
+              </Text>
+
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
+                {[
+                  { label: 'Siap dibuat', value: previewInvoiceMutation.data.summary.created, tone: '#166534', border: '#86efac', bg: '#dcfce7' },
+                  { label: 'Siap update', value: previewInvoiceMutation.data.summary.updated, tone: '#1d4ed8', border: '#93c5fd', bg: '#dbeafe' },
+                  { label: 'Sudah ada', value: previewInvoiceMutation.data.summary.skippedExisting, tone: '#92400e', border: '#fcd34d', bg: '#fef3c7' },
+                  { label: 'Terkunci', value: previewInvoiceMutation.data.summary.skippedLocked, tone: '#991b1b', border: '#fecaca', bg: '#fee2e2' },
+                  { label: 'Tanpa tarif', value: previewInvoiceMutation.data.summary.skippedNoTariff, tone: '#475569', border: '#cbd5e1', bg: '#f8fafc' },
+                ].map((item) => (
+                  <View key={item.label} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                    <View style={{ borderWidth: 1, borderColor: item.border, backgroundColor: item.bg, borderRadius: 10, padding: 10 }}>
+                      <Text style={{ color: item.tone, fontSize: 12 }}>{item.label}</Text>
+                      <Text style={{ color: item.tone, fontSize: 18, fontWeight: '700', marginTop: 4 }}>{item.value}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              {previewInvoiceMutation.data.details.map((detail) => {
+                const status = getInvoicePreviewStatusMeta(detail.status);
+                return (
+                  <View
+                    key={`${detail.studentId}-${detail.status}`}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#c7d2fe',
+                      backgroundColor: '#fff',
+                      borderRadius: 10,
+                      padding: 10,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                      <View style={{ flex: 1, paddingRight: 8 }}>
+                        <Text style={{ color: '#0f172a', fontWeight: '700' }}>{detail.studentName}</Text>
+                        <Text style={{ color: '#64748b', fontSize: 12 }}>
+                          {detail.className} • {detail.majorName ? `Jurusan ${detail.majorName}` : 'Semua jurusan'}
+                        </Text>
+                        <Text style={{ color: '#64748b', fontSize: 12 }}>
+                          {detail.gradeLevel ? `Tingkat ${detail.gradeLevel}` : 'Semua tingkat'}
+                        </Text>
+                        {detail.invoiceNo ? (
+                          <Text style={{ color: '#64748b', fontSize: 12 }}>{detail.invoiceNo}</Text>
+                        ) : null}
+                      </View>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: status.border,
+                          backgroundColor: status.bg,
+                          borderRadius: 999,
+                          paddingHorizontal: 8,
+                          paddingVertical: 2,
+                        }}
+                      >
+                        <Text style={{ color: status.text, fontWeight: '700', fontSize: 11 }}>{status.label}</Text>
+                      </View>
+                    </View>
+                    {detail.componentNames.length > 0 ? (
+                      <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
+                        {detail.componentNames.join(', ')}
+                      </Text>
+                    ) : null}
+                    <Text style={{ color: '#0f172a', fontWeight: '700' }}>
+                      {detail.totalAmount > 0 ? formatCurrency(detail.totalAmount) : '-'}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
 
           <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Daftar Tagihan</Text>
           <TextInput

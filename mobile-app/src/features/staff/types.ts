@@ -30,6 +30,7 @@ export type StaffStudent = {
   studentClass?: {
     id: number;
     name: string;
+    level?: string | null;
     major?: {
       id: number;
       name: string;

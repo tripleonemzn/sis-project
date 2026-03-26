@@ -94,6 +94,51 @@ export interface FinanceInvoice {
   }>;
 }
 
+export type FinanceInvoiceGenerationDetailStatus =
+  | 'READY_CREATE'
+  | 'READY_UPDATE'
+  | 'SKIPPED_NO_TARIFF'
+  | 'SKIPPED_EXISTS'
+  | 'SKIPPED_LOCKED_PAID'
+  | 'CREATED'
+  | 'UPDATED';
+
+export interface FinanceInvoiceGenerationDetail {
+  studentId: number;
+  studentName: string;
+  className: string;
+  majorName?: string | null;
+  gradeLevel?: string | null;
+  status: FinanceInvoiceGenerationDetailStatus;
+  invoiceId?: number | null;
+  invoiceNo?: string | null;
+  totalAmount: number;
+  itemCount: number;
+  componentNames: string[];
+}
+
+export interface FinanceInvoiceGenerationResult {
+  academicYearId: number;
+  semester: SemesterCode;
+  periodKey: string;
+  filters: {
+    classId: number | null;
+    majorId: number | null;
+    gradeLevel: string | null;
+    replaceExisting: boolean;
+  };
+  summary: {
+    totalTargetStudents: number;
+    created: number;
+    updated: number;
+    skippedNoTariff: number;
+    skippedExisting: number;
+    skippedLocked: number;
+    totalProjectedAmount: number;
+  };
+  details: FinanceInvoiceGenerationDetail[];
+}
+
 export interface FinanceReportSummary {
   totalInvoices: number;
   totalStudents: number;
@@ -354,19 +399,34 @@ export const staffFinanceService = {
     dueDate?: string;
     title?: string;
     classId?: number;
+    majorId?: number;
+    gradeLevel?: string;
     studentIds?: number[];
     replaceExisting?: boolean;
   }) {
-    const response = await api.post<ApiResponse<{
-      summary: {
-        totalTargetStudents: number;
-        created: number;
-        updated: number;
-        skippedNoTariff: number;
-        skippedExisting: number;
-        skippedLocked: number;
-      };
-    }>>('/payments/invoices/generate', payload);
+    const response = await api.post<ApiResponse<FinanceInvoiceGenerationResult>>(
+      '/payments/invoices/generate',
+      payload,
+    );
+    return response.data.data;
+  },
+
+  async previewInvoices(payload: {
+    academicYearId?: number;
+    semester: SemesterCode;
+    periodKey: string;
+    dueDate?: string;
+    title?: string;
+    classId?: number;
+    majorId?: number;
+    gradeLevel?: string;
+    studentIds?: number[];
+    replaceExisting?: boolean;
+  }) {
+    const response = await api.post<ApiResponse<FinanceInvoiceGenerationResult>>(
+      '/payments/invoices/preview',
+      payload,
+    );
     return response.data.data;
   },
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BellRing, Download, Loader2, Pencil, Plus, Power, ReceiptText, WalletCards, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -107,6 +107,37 @@ function describeTariffScope(tariff: FinanceTariffRule) {
   return parts.join(' • ');
 }
 
+function getInvoicePreviewStatusMeta(status: string) {
+  if (status === 'READY_CREATE' || status === 'CREATED') {
+    return {
+      label: status === 'CREATED' ? 'Dibuat' : 'Siap Dibuat',
+      className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    };
+  }
+  if (status === 'READY_UPDATE' || status === 'UPDATED') {
+    return {
+      label: status === 'UPDATED' ? 'Diperbarui' : 'Siap Diperbarui',
+      className: 'bg-blue-50 text-blue-700 border border-blue-200',
+    };
+  }
+  if (status === 'SKIPPED_EXISTS') {
+    return {
+      label: 'Sudah Ada',
+      className: 'bg-amber-50 text-amber-700 border border-amber-200',
+    };
+  }
+  if (status === 'SKIPPED_LOCKED_PAID') {
+    return {
+      label: 'Terkunci Pembayaran',
+      className: 'bg-rose-50 text-rose-700 border border-rose-200',
+    };
+  }
+  return {
+    label: 'Tanpa Tarif',
+    className: 'bg-slate-50 text-slate-700 border border-slate-200',
+  };
+}
+
 export const StaffFinancePage = () => {
   const queryClient = useQueryClient();
 
@@ -134,6 +165,9 @@ export const StaffFinancePage = () => {
   const [invoiceDueDate, setInvoiceDueDate] = useState('');
   const [invoiceTitle, setInvoiceTitle] = useState('');
   const [invoiceClassId, setInvoiceClassId] = useState<number | ''>('');
+  const [invoiceMajorId, setInvoiceMajorId] = useState<number | ''>('');
+  const [invoiceGradeLevel, setInvoiceGradeLevel] = useState('');
+  const [invoiceReplaceExisting, setInvoiceReplaceExisting] = useState(false);
 
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'' | FinanceInvoiceStatus>('');
@@ -223,6 +257,18 @@ export const StaffFinancePage = () => {
     });
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [students]);
+
+  const gradeLevels = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          classes
+            .map((classItem) => classItem.level.trim())
+            .filter((value) => value.length > 0),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
+    [classes],
+  );
 
   const activeYear = useMemo(() => years.find((year) => year.isActive), [years]);
 
@@ -403,17 +449,40 @@ export const StaffFinancePage = () => {
         dueDate: invoiceDueDate || undefined,
         title: invoiceTitle || undefined,
         classId: invoiceClassId === '' ? undefined : Number(invoiceClassId),
+        majorId: invoiceMajorId === '' ? undefined : Number(invoiceMajorId),
+        gradeLevel: invoiceGradeLevel.trim() || undefined,
+        replaceExisting: invoiceReplaceExisting,
       }),
     onSuccess: (data) => {
       toast.success(
         `Generate tagihan selesai: ${data.summary.created} baru, ${data.summary.updated} diperbarui`,
       );
+      previewInvoiceMutation.reset();
       queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
       toast.error(apiError?.response?.data?.message || 'Gagal generate tagihan');
+    },
+  });
+
+  const previewInvoiceMutation = useMutation({
+    mutationFn: () =>
+      staffFinanceService.previewInvoices({
+        academicYearId: invoiceYearId === '' ? undefined : Number(invoiceYearId),
+        semester: invoiceSemester,
+        periodKey: invoicePeriodKey,
+        dueDate: invoiceDueDate || undefined,
+        title: invoiceTitle || undefined,
+        classId: invoiceClassId === '' ? undefined : Number(invoiceClassId),
+        majorId: invoiceMajorId === '' ? undefined : Number(invoiceMajorId),
+        gradeLevel: invoiceGradeLevel.trim() || undefined,
+        replaceExisting: invoiceReplaceExisting,
+      }),
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal membuat preview generate tagihan');
     },
   });
 
@@ -529,6 +598,28 @@ export const StaffFinancePage = () => {
     }
     generateInvoiceMutation.mutate();
   };
+
+  const handlePreviewInvoices = () => {
+    if (!invoicePeriodKey.trim()) {
+      toast.error('Period key wajib diisi, contoh 2026-03');
+      return;
+    }
+    previewInvoiceMutation.mutate();
+  };
+
+  useEffect(() => {
+    previewInvoiceMutation.reset();
+  }, [
+    invoiceYearId,
+    invoiceSemester,
+    invoicePeriodKey,
+    invoiceDueDate,
+    invoiceTitle,
+    invoiceClassId,
+    invoiceMajorId,
+    invoiceGradeLevel,
+    invoiceReplaceExisting,
+  ]);
 
   const handleExportReport = async (
     format: 'csv' | 'xlsx',
@@ -1001,7 +1092,7 @@ export const StaffFinancePage = () => {
           <ReceiptText className="w-4 h-4 text-indigo-600" />
           <h3 className="text-sm font-semibold text-gray-900">Generate Tagihan Siswa</h3>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-3">
           <select
             value={invoiceYearId === '' ? String(activeYear?.id || '') : String(invoiceYearId)}
             onChange={(event) => setInvoiceYearId(event.target.value ? Number(event.target.value) : '')}
@@ -1046,6 +1137,54 @@ export const StaffFinancePage = () => {
               </option>
             ))}
           </select>
+          <select
+            value={invoiceMajorId === '' ? '' : String(invoiceMajorId)}
+            onChange={(event) => setInvoiceMajorId(event.target.value ? Number(event.target.value) : '')}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          >
+            <option value="">Semua jurusan</option>
+            {majors.map((major) => (
+              <option key={major.id} value={major.id}>
+                {major.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={invoiceGradeLevel}
+            onChange={(event) => setInvoiceGradeLevel(event.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          >
+            <option value="">Semua tingkat</option>
+            {gradeLevels.map((level) => (
+              <option key={level} value={level}>
+                Tingkat {level}
+              </option>
+            ))}
+          </select>
+          <input
+            value={invoiceTitle}
+            onChange={(event) => setInvoiceTitle(event.target.value)}
+            placeholder="Judul tagihan (opsional)"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+          <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={invoiceReplaceExisting}
+              onChange={(event) => setInvoiceReplaceExisting(event.target.checked)}
+              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            Replace invoice existing yang belum dibayar
+          </label>
+          <button
+            type="button"
+            onClick={handlePreviewInvoices}
+            disabled={previewInvoiceMutation.isPending}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-semibold px-4 py-2 hover:bg-indigo-100 disabled:opacity-50"
+          >
+            {previewInvoiceMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+            Preview Target
+          </button>
           <button
             type="button"
             onClick={handleGenerateInvoices}
@@ -1056,12 +1195,100 @@ export const StaffFinancePage = () => {
             Generate
           </button>
         </div>
-        <input
-          value={invoiceTitle}
-          onChange={(event) => setInvoiceTitle(event.target.value)}
-          placeholder="Judul tagihan (opsional)"
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
-        />
+        {previewInvoiceMutation.data ? (
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-indigo-700">Preview Generate</div>
+                <p className="mt-1 text-sm text-indigo-900">
+                  {previewInvoiceMutation.data.summary.totalTargetStudents} siswa terjaring dengan proyeksi tagihan{' '}
+                  {formatCurrency(previewInvoiceMutation.data.summary.totalProjectedAmount)}.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs min-w-[280px]">
+                <div className="rounded-lg bg-white border border-emerald-100 px-3 py-2">
+                  <div className="text-emerald-700">Siap dibuat</div>
+                  <div className="mt-1 text-base font-semibold text-emerald-900">
+                    {previewInvoiceMutation.data.summary.created}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-white border border-blue-100 px-3 py-2">
+                  <div className="text-blue-700">Siap diperbarui</div>
+                  <div className="mt-1 text-base font-semibold text-blue-900">
+                    {previewInvoiceMutation.data.summary.updated}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-white border border-amber-100 px-3 py-2">
+                  <div className="text-amber-700">Sudah ada</div>
+                  <div className="mt-1 text-base font-semibold text-amber-900">
+                    {previewInvoiceMutation.data.summary.skippedExisting}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-white border border-rose-100 px-3 py-2">
+                  <div className="text-rose-700">Terkunci</div>
+                  <div className="mt-1 text-base font-semibold text-rose-900">
+                    {previewInvoiceMutation.data.summary.skippedLocked}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-white border border-slate-200 px-3 py-2">
+                  <div className="text-slate-700">Tanpa tarif</div>
+                  <div className="mt-1 text-base font-semibold text-slate-900">
+                    {previewInvoiceMutation.data.summary.skippedNoTariff}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="border border-indigo-100 rounded-lg overflow-hidden max-h-80 overflow-y-auto bg-white">
+              <table className="min-w-full divide-y divide-indigo-100">
+                <thead className="bg-indigo-50/70">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-indigo-700 uppercase">Siswa</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-indigo-700 uppercase">Scope</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-indigo-700 uppercase">Status</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-indigo-700 uppercase">Nominal</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-indigo-50">
+                  {previewInvoiceMutation.data.details.map((detail) => {
+                    const status = getInvoicePreviewStatusMeta(detail.status);
+                    return (
+                      <tr key={`${detail.studentId}-${detail.status}`}>
+                        <td className="px-3 py-2 text-sm text-gray-900">
+                          <div className="font-medium">{detail.studentName}</div>
+                          {detail.invoiceNo ? (
+                            <div className="text-[11px] text-gray-500">{detail.invoiceNo}</div>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-gray-600">
+                          <div>{detail.className}</div>
+                          <div className="mt-1 text-[11px] text-gray-500">
+                            {(detail.majorName ? `Jurusan ${detail.majorName}` : 'Semua jurusan') +
+                              ' • ' +
+                              (detail.gradeLevel ? `Tingkat ${detail.gradeLevel}` : 'Semua tingkat')}
+                          </div>
+                          {detail.componentNames.length > 0 ? (
+                            <div className="mt-1 text-[11px] text-gray-500">
+                              {detail.componentNames.join(', ')}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-2 text-xs">
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-semibold ${status.className}`}>
+                            {status.label}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-sm text-right text-gray-800">
+                          {detail.totalAmount > 0 ? formatCurrency(detail.totalAmount) : '-'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">

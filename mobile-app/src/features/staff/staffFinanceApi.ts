@@ -82,6 +82,51 @@ export type StaffFinanceInvoice = {
   };
 };
 
+export type StaffFinanceInvoiceGenerationDetailStatus =
+  | 'READY_CREATE'
+  | 'READY_UPDATE'
+  | 'SKIPPED_NO_TARIFF'
+  | 'SKIPPED_EXISTS'
+  | 'SKIPPED_LOCKED_PAID'
+  | 'CREATED'
+  | 'UPDATED';
+
+export type StaffFinanceInvoiceGenerationDetail = {
+  studentId: number;
+  studentName: string;
+  className: string;
+  majorName?: string | null;
+  gradeLevel?: string | null;
+  status: StaffFinanceInvoiceGenerationDetailStatus;
+  invoiceId?: number | null;
+  invoiceNo?: string | null;
+  totalAmount: number;
+  itemCount: number;
+  componentNames: string[];
+};
+
+export type StaffFinanceInvoiceGenerationResult = {
+  academicYearId: number;
+  semester: SemesterCode;
+  periodKey: string;
+  filters: {
+    classId: number | null;
+    majorId: number | null;
+    gradeLevel: string | null;
+    replaceExisting: boolean;
+  };
+  summary: {
+    totalTargetStudents: number;
+    created: number;
+    updated: number;
+    skippedNoTariff: number;
+    skippedExisting: number;
+    skippedLocked: number;
+    totalProjectedAmount: number;
+  };
+  details: StaffFinanceInvoiceGenerationDetail[];
+};
+
 export type StaffFinanceInvoiceListResult = {
   invoices: StaffFinanceInvoice[];
   summary: {
@@ -267,19 +312,34 @@ export const staffFinanceApi = {
     dueDate?: string;
     title?: string;
     classId?: number;
+    majorId?: number;
+    gradeLevel?: string;
+    studentIds?: number[];
+    replaceExisting?: boolean;
   }) {
-    const response = await apiClient.post<
-      ApiResponse<{
-        summary: {
-          totalTargetStudents: number;
-          created: number;
-          updated: number;
-          skippedNoTariff: number;
-          skippedExisting: number;
-          skippedLocked: number;
-        };
-      }>
-    >('/payments/invoices/generate', payload);
+    const response = await apiClient.post<ApiResponse<StaffFinanceInvoiceGenerationResult>>(
+      '/payments/invoices/generate',
+      payload,
+    );
+    return response.data.data;
+  },
+
+  async previewInvoices(payload: {
+    academicYearId?: number;
+    semester: SemesterCode;
+    periodKey: string;
+    dueDate?: string;
+    title?: string;
+    classId?: number;
+    majorId?: number;
+    gradeLevel?: string;
+    studentIds?: number[];
+    replaceExisting?: boolean;
+  }) {
+    const response = await apiClient.post<ApiResponse<StaffFinanceInvoiceGenerationResult>>(
+      '/payments/invoices/preview',
+      payload,
+    );
     return response.data.data;
   },
 
