@@ -4,6 +4,10 @@ import { userService } from '../../services/user.service';
 import { authService } from '../../services/auth.service';
 import { majorService, type Major } from '../../services/major.service';
 import { uploadService } from '../../services/upload.service';
+import {
+  CANDIDATE_DOCUMENT_OPTIONS,
+  getCandidateDocumentCategoryLabel,
+} from '../public/candidateShared';
 import type { User, UserWrite } from '../../types/auth';
 import { Loader2, Save, Trash2, X } from 'lucide-react';
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -81,7 +85,7 @@ const getErrorMessage = (error: unknown) => {
 const userFormSchema = z.object({
   username: z.string().min(3, 'Username minimal 3 karakter'),
   name: z.string().min(1, 'Nama wajib diisi'),
-  role: z.enum(['ADMIN', 'TEACHER', 'STUDENT', 'PRINCIPAL', 'STAFF', 'PARENT', 'EXAMINER']),
+  role: z.enum(['ADMIN', 'TEACHER', 'STUDENT', 'PRINCIPAL', 'STAFF', 'PARENT', 'CALON_SISWA', 'UMUM', 'EXAMINER']),
   password: z.string().optional(),
   nip: z.string().optional().nullable(),
   nis: z.string().optional().nullable(),
@@ -142,7 +146,7 @@ const userFormSchema = z.object({
 type UserFormValues = z.infer<typeof userFormSchema>;
 type UserFormRole = UserFormValues['role'];
 
-const USER_FORM_ROLES: UserFormRole[] = ['ADMIN', 'TEACHER', 'STUDENT', 'PRINCIPAL', 'STAFF', 'PARENT', 'EXAMINER'];
+const USER_FORM_ROLES: UserFormRole[] = ['ADMIN', 'TEACHER', 'STUDENT', 'PRINCIPAL', 'STAFF', 'PARENT', 'CALON_SISWA', 'UMUM', 'EXAMINER'];
 
 function resolveUserFormRole(role?: User['role'] | null): UserFormRole {
   const normalized = String(role || '').toUpperCase();
@@ -181,11 +185,27 @@ const stripEmptyStrings = <T extends Record<string, unknown>>(obj: T) => {
   return out as T;
 };
 
+const getCandidateAcceptedFormats = (category: string) => {
+  return (
+    CANDIDATE_DOCUMENT_OPTIONS.find((item) => item.value === category)?.acceptedFormats.map((item) =>
+      item.toLowerCase(),
+    ) || ['pdf', 'jpg', 'jpeg', 'png']
+  );
+};
+
+const getFileExtension = (name: string) => {
+  const segments = String(name || '').toLowerCase().split('.');
+  return segments.length > 1 ? segments[segments.length - 1] : '';
+};
+
 export const UserProfilePage = () => {
   const [activeTab, setActiveTab] = useState<typeof tabs[number]['id']>('account');
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [candidateDocumentCategory, setCandidateDocumentCategory] = useState<string>(
+    CANDIDATE_DOCUMENT_OPTIONS[0]?.value || 'PPDB_AKTA_KELAHIRAN',
+  );
   
   // Crop state
   const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
@@ -207,6 +227,12 @@ export const UserProfilePage = () => {
 
   const user = userResponse?.data;
   const fixedRole = user?.role || 'STUDENT'; // Default fallback, but should wait for user data
+  const canUploadPhoto = ['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'STUDENT', 'PARENT', 'CALON_SISWA'].includes(
+    fixedRole,
+  );
+  const canUploadDocuments = ['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'CALON_SISWA'].includes(
+    fixedRole,
+  );
 
   const { data: studentsForParent } = useQuery<{ data: User[] }>({
     queryKey: ['students-for-parent'],
@@ -423,7 +449,7 @@ export const UserProfilePage = () => {
          }
        }
 
-       const finalPayload: Partial<UserWrite> = {
+      const finalPayload: Partial<UserWrite> = {
         ...basePayload,
         documents: documents?.map((d) => ({
           title: d.title,
@@ -431,6 +457,12 @@ export const UserProfilePage = () => {
           category: d.category,
         })),
       };
+
+      if (fixedRole === 'STUDENT') {
+        delete finalPayload.name;
+        delete finalPayload.nis;
+        delete finalPayload.nisn;
+      }
 
       // Only include additionalDuties if NOT a teacher (to prevent overwriting with empty/partial data)
       if (fixedRole !== 'TEACHER') {
@@ -456,6 +488,11 @@ export const UserProfilePage = () => {
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canUploadDocuments) {
+      toast.error('Role ini belum memiliki izin upload dokumen.');
+      return;
+    }
+
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -467,10 +504,26 @@ export const UserProfilePage = () => {
         e.target.value = '';
         return;
       }
+      if (fixedRole === 'CALON_SISWA') {
+        const acceptedFormats = getCandidateAcceptedFormats(candidateDocumentCategory);
+        const extension = getFileExtension(files[i].name);
+        if (!acceptedFormats.includes(extension)) {
+          toast.error(
+            `Format ${files[i].name} tidak sesuai untuk kategori ini. Gunakan ${acceptedFormats
+              .map((item) => item.toUpperCase())
+              .join(', ')}.`,
+          );
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          e.target.value = '';
+          return;
+        }
+      }
     }
 
     setIsUploading(true);
     try {
+      const uploadCategory =
+        fixedRole === 'CALON_SISWA' ? candidateDocumentCategory : 'Dokumen Pendukung';
       const newDocs: Array<{ title: string; fileUrl: string; category: string }> = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -478,7 +531,7 @@ export const UserProfilePage = () => {
         newDocs.push({
           title: file.name,
           fileUrl: result.url,
-          category: 'Dokumen Pendukung'
+          category: uploadCategory,
         });
       }
       
@@ -515,6 +568,11 @@ export const UserProfilePage = () => {
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canUploadPhoto) {
+      toast.error('Role ini belum memiliki izin upload foto.');
+      return;
+    }
+
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -736,9 +794,17 @@ export const UserProfilePage = () => {
                       id="user-name"
                       {...register('name')}
                       autoComplete="name"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={fixedRole === 'STUDENT'}
+                      className={
+                        fixedRole === 'STUDENT'
+                          ? 'w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed'
+                          : 'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                      }
                       placeholder={fixedRole === 'TEACHER' ? "Nama lengkap guru" : "Nama lengkap user"}
                     />
+                    {fixedRole === 'STUDENT' && (
+                      <p className="text-xs text-gray-500 mt-1">Nama siswa diatur oleh Administrator</p>
+                    )}
                     {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name.message}</p>}
                   </div>
                   <div>
@@ -765,6 +831,17 @@ export const UserProfilePage = () => {
               <input
                 id="nis"
                 {...register('nis')}
+                disabled
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
+              />
+            </div>
+            <div>
+              <label htmlFor="nisn" className="block text-sm font-medium text-gray-700 mb-1">
+                NISN
+              </label>
+              <input
+                id="nisn"
+                {...register('nisn')}
                 disabled
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
               />
@@ -866,13 +943,13 @@ export const UserProfilePage = () => {
                            <button
                               type="button"
                               onClick={() => photoInputRef.current?.click()}
-                              disabled={isUploadingPhoto}
-                              className="px-4 py-2 bg-blue-50 text-blue-700 rounded-lg border-0 hover:bg-blue-100 transition-colors text-sm font-medium"
+                              disabled={isUploadingPhoto || !canUploadPhoto}
+                              className="px-4 py-2 bg-blue-50 text-blue-700 rounded-lg border-0 hover:bg-blue-100 transition-colors text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
                            >
                               Choose file
                            </button>
                            <span className="text-sm text-gray-600">
-                             {isUploadingPhoto ? 'Uploading...' : 'No file chosen'}
+                             {isUploadingPhoto ? 'Uploading...' : canUploadPhoto ? 'No file chosen' : 'Upload tidak tersedia'}
                            </span>
                         </div>
                         <p className="text-xs text-gray-400 mt-1">Format: JPG/PNG, maks 500KB</p>
@@ -1336,8 +1413,48 @@ export const UserProfilePage = () => {
               {/* Upload File Tab */}
               {activeTab === 'documents' && (
                 <div className="space-y-4">
-                  <div className="flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
-                       onClick={() => fileInputRef.current?.click()}>
+                  {fixedRole === 'CALON_SISWA' && (
+                    <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-4">
+                      <p className="text-sm font-semibold text-blue-900">Kategori Dokumen PPDB</p>
+                      <p className="mt-1 text-xs text-blue-700">
+                        Pilih kategori sebelum upload supaya checklist PPDB mengenali dokumen dengan benar.
+                      </p>
+                      <div className="mt-3 grid gap-2 md:grid-cols-2">
+                        {CANDIDATE_DOCUMENT_OPTIONS.map((option) => {
+                          const active = candidateDocumentCategory === option.value;
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() => setCandidateDocumentCategory(option.value)}
+                              className={`rounded-xl border px-3 py-3 text-left transition ${
+                                active
+                                  ? 'border-blue-300 bg-white text-blue-900 shadow-sm'
+                                  : 'border-blue-100 bg-white/80 text-slate-700 hover:border-blue-200'
+                              }`}
+                            >
+                              <p className="text-sm font-semibold">{option.label}</p>
+                              <p className="mt-1 text-xs text-slate-500">{option.description}</p>
+                              <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">
+                                Format: {option.acceptedFormats.join(', ')}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div
+                    className={`flex justify-center rounded-lg border-2 border-dashed px-6 pt-5 pb-6 transition-colors ${
+                      canUploadDocuments
+                        ? 'cursor-pointer border-gray-300 hover:bg-gray-50'
+                        : 'cursor-not-allowed border-gray-200 bg-gray-50'
+                    }`}
+                    onClick={() => {
+                      if (canUploadDocuments) fileInputRef.current?.click();
+                    }}
+                  >
                     <div className="space-y-1 text-center">
                       <div className="mx-auto h-12 w-12 text-gray-400">
                         {isUploading ? <Loader2 className="animate-spin w-12 h-12" /> : <Save className="w-12 h-12" />}
@@ -1353,17 +1470,23 @@ export const UserProfilePage = () => {
                             className="sr-only" 
                             multiple 
                             onChange={handleFileUpload} 
-                            disabled={isUploading} 
+                            disabled={isUploading || !canUploadDocuments} 
                             onClick={(e) => e.stopPropagation()} // Prevent double trigger if input is clicked directly
                           />
                         </span>
-                        <p className="pl-1">or drag and drop</p>
+                        <p className="pl-1">{canUploadDocuments ? 'or drag and drop' : 'upload is disabled for this role'}</p>
                       </div>
                       <p className="text-xs text-gray-500">
                         PDF, PNG, JPG maksimal 2MB
                       </p>
                     </div>
                   </div>
+
+                  {!canUploadDocuments && (
+                    <p className="text-sm text-gray-500">
+                      Upload dokumen profil saat ini hanya tersedia untuk admin, guru, staff, examiner, dan calon siswa.
+                    </p>
+                  )}
 
                   <div className="grid grid-cols-1 gap-4">
                     {fields.map((field, index) => (
@@ -1374,7 +1497,11 @@ export const UserProfilePage = () => {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-900 truncate">{field.title}</p>
-                            <p className="text-xs text-gray-500 truncate">{field.category}</p>
+                            <p className="text-xs text-gray-500 truncate">
+                              {fixedRole === 'CALON_SISWA'
+                                ? getCandidateDocumentCategoryLabel(field.category)
+                                : field.category}
+                            </p>
                             <a 
                               href={field.fileUrl} 
                               target="_blank" 

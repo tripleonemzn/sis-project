@@ -1,6 +1,11 @@
 import api from './api';
 
 export type ExtracurricularPredicate = 'SB' | 'B' | 'C' | 'K';
+export type ExtracurricularGradeTemplate = Record<
+  ExtracurricularPredicate,
+  { label: string; description: string }
+>;
+export type ExtracurricularAttendanceStatus = 'PRESENT' | 'PERMIT' | 'SICK' | 'ABSENT';
 
 export const tutorService = {
   getAssignments: async (academicYearId?: number) => {
@@ -45,9 +50,42 @@ export const tutorService = {
     semester: 'ODD' | 'EVEN';
     reportType?: string;
     programCode?: string;
-    templates: Partial<Record<ExtracurricularPredicate, string>>;
+    templates: Partial<Record<ExtracurricularPredicate, { label?: string; description?: string }>>;
   }) => {
     const response = await api.put('/tutor/grade-templates', data);
+    return response.data;
+  },
+
+  getAttendanceOverview: async (params: {
+    ekskulId: number;
+    academicYearId: number;
+    weekKey?: string;
+  }) => {
+    const response = await api.get('/tutor/attendance', { params });
+    return response.data;
+  },
+
+  saveAttendanceConfig: async (data: {
+    ekskulId: number;
+    academicYearId: number;
+    sessionsPerWeek: number;
+  }) => {
+    const response = await api.put('/tutor/attendance/config', data);
+    return response.data;
+  },
+
+  saveAttendanceRecords: async (data: {
+    ekskulId: number;
+    academicYearId: number;
+    weekKey: string;
+    records: Array<{
+      enrollmentId: number;
+      sessionIndex: number;
+      status: ExtracurricularAttendanceStatus;
+      note?: string;
+    }>;
+  }) => {
+    const response = await api.put('/tutor/attendance/records', data);
     return response.data;
   },
 
@@ -71,5 +109,18 @@ export const tutorService = {
   }) => {
     const response = await api.post('/tutor/inventory-items', data);
     return response.data;
+  },
+
+  hasOsisAssignment: async (academicYearId?: number) => {
+    const response = await api.get('/tutor/assignments', {
+      params: academicYearId ? { academicYearId } : {},
+    });
+    const assignments = Array.isArray(response.data?.data) ? response.data.data : [];
+    return assignments.some((assignment: any) =>
+      String(assignment?.ekskul?.name || '')
+        .trim()
+        .toUpperCase()
+        .includes('OSIS'),
+    );
   },
 };

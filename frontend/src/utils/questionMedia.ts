@@ -1,8 +1,14 @@
+import katex from 'katex';
+
 type EnhanceHtmlOptions = {
   useQuestionImageThumbnail?: boolean;
 };
 
 const QUESTION_IMAGE_PATH_REGEX = /\/api\/uploads\/questions\/images\/([^/?#]+)/i;
+
+function isGifSource(url: string | null | undefined): boolean {
+  return /\.gif(?:[?#].*)?$/i.test(String(url || '').trim());
+}
 
 function splitUrlSuffix(url: string): { pathPart: string; suffix: string } {
   const match = String(url).match(/^([^?#]*)(.*)$/);
@@ -19,6 +25,9 @@ export function buildQuestionImageThumbnailUrl(url: string | null | undefined): 
 
   const { pathPart, suffix } = splitUrlSuffix(normalized);
   if (!QUESTION_IMAGE_PATH_REGEX.test(pathPart)) return normalized;
+
+  // Keep GIF source as-is so animated images stay animated on exam screen.
+  if (isGifSource(pathPart)) return normalized;
 
   const thumbPath = pathPart.replace(/(\.[a-z0-9]+)$/i, '.thumb.webp');
   if (thumbPath === pathPart) {
@@ -53,27 +62,87 @@ function maybeSwapImageSource(attrs: string): string {
   if (!match) return attrs;
 
   const originalSrc = String(match[2] || '');
+  if (isGifSource(originalSrc)) return attrs;
   const thumbnailSrc = buildQuestionImageThumbnailUrl(originalSrc);
   if (!thumbnailSrc || thumbnailSrc === originalSrc) return attrs;
 
   return attrs.replace(srcRegex, ` src="${thumbnailSrc}"`);
 }
 
+function normalizeOfficeHtml(html: string): string {
+  return String(html || '')
+    .replace(/<!--StartFragment-->|<!--EndFragment-->/gi, '')
+    .replace(/<\/?o:p\b[^>]*>/gi, '')
+    .replace(/\sclass=(['"])[^'"]*\bMso[a-zA-Z0-9_-]*[^'"]*\1/gi, '')
+    .replace(/\sstyle=(['"])(.*?)\1/gi, (_full, quote: string, styleValue: string) => {
+      const cleanedStyle = String(styleValue || '')
+        .replace(/(^|;)\s*mso-[^:;]+:[^;]+/gi, '')
+        .replace(/(^|;)\s*tab-stops:[^;]+/gi, '')
+        .replace(/(^|;)\s*layout-grid-mode:[^;]+/gi, '')
+        .replace(/;;+/g, ';')
+        .replace(/^;|;$/g, '')
+        .trim();
+      return cleanedStyle ? ` style=${quote}${cleanedStyle}${quote}` : '';
+    })
+    .replace(/<table\b[^>]*>/gi, '<div class="exam-office-table">')
+    .replace(/<\/table>/gi, '</div>')
+    .replace(/<tr\b[^>]*>/gi, '<div class="exam-office-row">')
+    .replace(/<\/tr>/gi, '</div>')
+    .replace(/<t[dh]\b[^>]*>/gi, '<span class="exam-office-cell">')
+    .replace(/<\/t[dh]>/gi, '</span> ')
+    .trim();
+}
+
+function renderFormulaEmbeds(html: string): string {
+  return String(html || '').replace(
+    /<span\b([^>]*class=(['"])[^'"]*\bql-formula\b[^'"]*\2[^>]*)data-value=(['"])(.*?)\3([^>]*)>(.*?)<\/span>/gi,
+    (_full, _beforeClassAttrs: string, _quote: string, _dataQuote: string, rawLatex: string) => {
+      const latex = String(rawLatex || '')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&amp;/gi, '&')
+        .trim();
+
+      if (!latex) return '';
+
+      try {
+        return katex.renderToString(latex, {
+          throwOnError: false,
+          strict: 'ignore',
+          output: 'htmlAndMathml',
+        });
+      } catch {
+        return `<code class="exam-formula-fallback">${latex}</code>`;
+      }
+    },
+  );
+}
+
 export function enhanceQuestionHtml(rawHtml: string | null | undefined, options: EnhanceHtmlOptions = {}): string {
-  const html = String(rawHtml || '');
-  if (!html || !/<img\b/i.test(html)) return html;
+  const normalizedHtml = renderFormulaEmbeds(normalizeOfficeHtml(String(rawHtml || '')));
+  if (!normalizedHtml) return normalizedHtml;
 
-  return html.replace(/<img\b([^>]*)>/gi, (_fullTag, rawAttrs: string) => {
+  if (!/<img\b/i.test(normalizedHtml)) return normalizedHtml;
+
+  return normalizedHtml.replace(/<img\b([^>]*)>/gi, (_fullTag, rawAttrs: string) => {
     let attrs = String(rawAttrs || '');
-    attrs = ensureAttr(attrs, 'loading', 'lazy');
-    attrs = ensureAttr(attrs, 'decoding', 'async');
-    attrs = appendInlineStyle(attrs);
-
-    if (options.useQuestionImageThumbnail) {
-      attrs = maybeSwapImageSource(attrs);
+    const srcMatch = attrs.match(/\ssrc\s*=\s*(['"])(.*?)\1/i);
+    const sourceUrl = srcMatch ? String(srcMatch[2] || '') : '';
+    const gifSource = isGifSource(sourceUrl);
+    if (gifSource) {
+      attrs = ensureAttr(attrs, 'loading', 'eager');
+      attrs = ensureAttr(attrs, 'decoding', 'sync');
+    } else {
+      attrs = ensureAttr(attrs, 'loading', 'lazy');
+      attrs = ensureAttr(attrs, 'decoding', 'async');
+      if (options.useQuestionImageThumbnail) {
+        attrs = maybeSwapImageSource(attrs);
+      }
     }
+    attrs = appendInlineStyle(attrs);
 
     return `<img${attrs}>`;
   });
 }
-

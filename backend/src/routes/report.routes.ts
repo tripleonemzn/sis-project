@@ -12,6 +12,8 @@ import {
   deleteAchievement,
   getClassRankings,
   getPrincipalAcademicOverview,
+  getFinalLedgerPreview,
+  exportFinalLedgerPreview,
 } from '../controllers/report.controller';
 
 const router = Router();
@@ -24,6 +26,26 @@ router.get(
   '/principal-overview',
   roleMiddleware(['PRINCIPAL']),
   getPrincipalAcademicOverview,
+);
+router.post(
+  '/final-ledger/preview',
+  roleMiddleware(['ADMIN', 'TEACHER', 'PRINCIPAL']),
+  getFinalLedgerPreview,
+);
+router.post(
+  '/final-ledger/export',
+  roleMiddleware(['ADMIN', 'TEACHER', 'PRINCIPAL']),
+  exportFinalLedgerPreview,
+);
+router.post(
+  '/consolidation/preview',
+  roleMiddleware(['ADMIN', 'TEACHER', 'PRINCIPAL']),
+  getFinalLedgerPreview,
+);
+router.post(
+  '/consolidation/export',
+  roleMiddleware(['ADMIN', 'TEACHER', 'PRINCIPAL']),
+  exportFinalLedgerPreview,
 );
 
 // Teacher (Homeroom) & Admin routes

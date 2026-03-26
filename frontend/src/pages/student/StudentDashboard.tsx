@@ -70,6 +70,15 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
 }
 
+function pickString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return '';
+}
+
 function extractExamRows(payload: unknown): unknown[] {
   if (Array.isArray(payload)) return payload;
   const record = asRecord(payload);
@@ -160,6 +169,9 @@ export const StudentDashboard = () => {
       const row = asRecord(exam);
       const packet = asRecord(row?.packet);
       const subject = asRecord(row?.subject) || asRecord(packet?.subject);
+      const sitting = asRecord(row?.sitting);
+      const examSitting = asRecord(row?.examSitting);
+      const programSession = asRecord(row?.programSession);
       const subjectName = typeof subject?.name === 'string' && subject.name.trim() ? subject.name : '-';
       const examType = String(
         row?.programCode ||
@@ -179,8 +191,13 @@ export const StudentDashboard = () => {
         end_time: String(row?.end_time || row?.endTime || ''),
         status: String(row?.status || '').toUpperCase(),
         examType,
-        room: String(row?.room || '').trim(),
-        sessionLabel: row?.sessionLabel ? String(row.sessionLabel) : null,
+        room: pickString(
+          row?.room,
+          row?.roomName,
+          sitting?.roomName,
+          examSitting?.roomName,
+        ),
+        sessionLabel: pickString(row?.sessionLabel, programSession?.label) || null,
       };
     });
 
@@ -194,8 +211,7 @@ export const StudentDashboard = () => {
   const examRooms = useMemo(() => {
     const uniqueBySlot = new Map<string, AvailableExam>();
     activeExams.forEach((exam) => {
-      if (!exam.room) return;
-      const slotKey = `${exam.room}__${exam.examType}__${exam.sessionLabel || ''}__${exam.start_time}`;
+      const slotKey = `${exam.room || '__UNASSIGNED__'}__${exam.examType}__${exam.sessionLabel || ''}__${exam.start_time}`;
       if (!uniqueBySlot.has(slotKey)) {
         uniqueBySlot.set(slotKey, exam);
       }
@@ -543,6 +559,9 @@ export const StudentDashboard = () => {
                   <div>
                     <div className="text-sm font-medium text-gray-900">{exam.title}</div>
                     <div className="text-xs text-gray-500">{exam.subject?.name || '-'}</div>
+                    <div className="text-xs text-gray-500">
+                      Ruang: {exam.room || 'Belum ditetapkan'}
+                    </div>
                   </div>
                   <div className="text-right">
                     <div className="text-xs font-medium text-gray-900">
@@ -724,7 +743,24 @@ export const StudentDashboard = () => {
                   key={`${roomExam.room}-${roomExam.examType}-${roomExam.start_time}`}
                   className="p-3 border rounded-lg bg-purple-50 border-purple-100"
                 >
-                  <div className="text-sm font-bold text-purple-900">{roomExam.room}</div>
+                  <div className="text-sm font-bold text-purple-900">
+                    {roomExam.room || 'Ruang belum ditetapkan'}
+                  </div>
+                  <div className="mt-1 text-xs text-purple-800/80">
+                    {roomExam.title} • {roomExam.subject?.name || '-'}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-purple-700/80">
+                    {(() => {
+                      try {
+                        const startDate = new Date(roomExam.start_time);
+                        const endDate = new Date(roomExam.end_time);
+                        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return '-';
+                        return `${startDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} • ${startDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} - ${endDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+                      } catch {
+                        return '-';
+                      }
+                    })()}
+                  </div>
                   <div className="flex justify-between items-center mt-2">
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-purple-700 bg-purple-100 px-2 py-0.5 rounded">

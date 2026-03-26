@@ -172,6 +172,36 @@ const resolveReadableComponentLabel = (component?: GradeComponent, fallback = 'K
 
 const normalizeSlotCode = (raw: unknown): string => String(raw || '').trim().toUpperCase();
 
+const isUsTheorySlot = (raw: unknown): boolean => {
+  const normalized = normalizeSlotCode(raw);
+  return normalized === 'US_THEORY' || normalized === 'US_TEORY';
+};
+
+const isUsPracticeSlot = (raw: unknown): boolean => {
+  const normalized = normalizeSlotCode(raw);
+  return normalized === 'US_PRACTICE' || normalized === 'US_PRAKTEK';
+};
+
+const isUsSlot = (raw: unknown): boolean => isUsTheorySlot(raw) || isUsPracticeSlot(raw);
+
+const parseNullableScore = (raw: string): number | null => {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return null;
+  if (parsed < 0 || parsed > 100) return null;
+  return parsed;
+};
+
+const computeUsFinalFromInputs = (theoryRaw: string, practiceRaw: string): number | null => {
+  const theory = parseNullableScore(theoryRaw);
+  const practice = parseNullableScore(practiceRaw);
+  if (theory !== null && practice !== null) {
+    return Number((((theory * 0.5) + (practice * 0.5)).toFixed(2)));
+  }
+  if (theory !== null) return theory;
+  if (practice !== null) return practice;
+  return null;
+};
+
 const resolvePrimarySlots = (components: GradeComponent[]) => {
   const availableSlots: string[] = [];
   let formativeByType: string | null = null;
@@ -259,6 +289,7 @@ export const TeacherGradesPage = () => {
   // Data states
   const [students, setStudents] = useState<Student[]>([]);
   const [grades, setGrades] = useState<StudentGrade[]>([]);
+  const [usGrades, setUsGrades] = useState<Record<number, { theory: string; practice: string }>>({});
   const [reportGradeMap, setReportGradeMap] = useState<Record<number, StudentReportGrade>>({});
   const [descriptions, setDescriptions] = useState<Record<number, string>>({});
   const [formativeNewScoreDraft, setFormativeNewScoreDraft] = useState<Record<number, string>>({});
@@ -282,6 +313,19 @@ export const TeacherGradesPage = () => {
   const filteredComponents = selectedAssignmentObj
     ? gradeComponents.filter(c => c.subjectId === selectedAssignmentObj.subject.id)
     : gradeComponents;
+  const usTheoryComponent =
+    filteredComponents.find((item) => isUsTheorySlot(resolveComponentReportSlotCode(item))) ||
+    filteredComponents.find((item) => String(item.type || '').toUpperCase() === 'US_THEORY') ||
+    null;
+  const usPracticeComponent =
+    filteredComponents.find((item) => isUsPracticeSlot(resolveComponentReportSlotCode(item))) ||
+    filteredComponents.find((item) => String(item.type || '').toUpperCase() === 'US_PRACTICE') ||
+    null;
+  const isUsCombinedMode = Boolean(
+    selectedComponentObj &&
+      isUsSlot(resolveComponentReportSlotCode(selectedComponentObj)) &&
+      (usTheoryComponent || usPracticeComponent),
+  );
   const primarySlots = resolvePrimarySlots(filteredComponents);
   const formativePrimarySlot = primarySlots.formative;
   const midtermPrimarySlot = primarySlots.midterm;
@@ -326,14 +370,18 @@ export const TeacherGradesPage = () => {
     filteredComponents.find((item) => resolveComponentReportSlotCode(item) === finalPrimarySlot),
     'Komponen 3',
   );
-  const selectedComponentFlowLabel = isFormatifComponent
+  const selectedComponentFlowLabel = isUsCombinedMode
+    ? 'Ujian Sekolah (Gabungan)'
+    : isFormatifComponent
     ? 'Formatif Bertahap'
     : isMidtermComponent
       ? 'Komponen Tengah Semester'
       : isFinalComponent
         ? 'Komponen Akhir Semester/Tahun'
         : 'Komponen Input Sederhana';
-  const selectedComponentFormulaHint = isFormatifComponent
+  const selectedComponentFormulaHint = isUsCombinedMode
+    ? `Input teori${usPracticeComponent ? ' dan praktik' : ''}, lalu sistem hitung Nilai US otomatis.`
+    : isFormatifComponent
     ? `Input bertahap, sistem hitung rata-rata ${resolveReadableComponentLabel(selectedComponentObj, 'komponen')} otomatis.`
     : isMidtermComponent
       ? `Nilai rapor dihitung dari rata-rata (${formativeComponentLabel} + ${resolveReadableComponentLabel(selectedComponentObj, 'komponen ini')}).`
@@ -345,6 +393,9 @@ export const TeacherGradesPage = () => {
 
   const getDescription = () => {
     const componentName = String(selectedComponentObj?.name || selectedComponentObj?.code || 'komponen ini').trim();
+    if (isUsCombinedMode) {
+      return `Komponen ${componentName} menggunakan input Nilai US gabungan (teori${usPracticeComponent ? ' + praktik' : ''}) dan final dihitung otomatis.`;
+    }
     if (isFormatifComponent) {
       return `Komponen ${componentName} diinput per butir, rata-rata dihitung otomatis oleh sistem.`;
     }
@@ -422,19 +473,25 @@ export const TeacherGradesPage = () => {
   }, [selectedAssignment]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (selectedAssignment && selectedAcademicYear) {
+    if (selectedAssignment && selectedAcademicYear && selectedSemester) {
       fetchGradeComponents();
       return;
     }
     setGradeComponents([]);
     setSelectedComponent('');
-  }, [selectedAssignment, selectedAcademicYear, assignments]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedAssignment, selectedAcademicYear, selectedSemester, assignments]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (selectedAssignment && selectedComponent && selectedAcademicYear && selectedSemester) {
+    if (
+      selectedAssignment &&
+      selectedComponent &&
+      selectedAcademicYear &&
+      selectedSemester &&
+      students.length > 0
+    ) {
       fetchExistingGrades();
     }
-  }, [selectedAssignment, selectedComponent, selectedAcademicYear, selectedSemester]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedAssignment, selectedComponent, selectedAcademicYear, selectedSemester, students]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-fill descriptions for missing entries (defensive fix)
   useEffect(() => {
@@ -569,11 +626,13 @@ export const TeacherGradesPage = () => {
   const fetchGradeComponents = async () => {
     try {
       const assignment = selectedAssignmentObj;
-      if (!assignment || !selectedAcademicYear) return;
+      if (!assignment || !selectedAcademicYear || !selectedSemester) return;
 
       const response = await gradeService.getComponents({
         subject_id: assignment.subject.id,
         academic_year_id: parseInt(selectedAcademicYear),
+        assignment_id: assignment.id,
+        semester: selectedSemester,
       });
       const payload = response as { data?: GradeComponent[] } | GradeComponent[];
       const components =
@@ -647,6 +706,11 @@ export const TeacherGradesPage = () => {
                 score: ''
             }));
             setGrades(initialGrades);
+            const initialUsGrades: Record<number, { theory: string; practice: string }> = {};
+            studentsData.forEach((student: User) => {
+              initialUsGrades[student.id] = { theory: '', practice: '' };
+            });
+            setUsGrades(initialUsGrades);
         }
       }
     } catch (error) {
@@ -659,6 +723,7 @@ export const TeacherGradesPage = () => {
     try {
       const assignment = selectedAssignmentObj;
       if (!assignment) return;
+      if (students.length === 0) return;
 
       const response = await gradeService.getGradesByClassSubject(
         assignment.class.id,
@@ -734,69 +799,101 @@ export const TeacherGradesPage = () => {
           setDescriptions({});
       }
 
-      // Update grades array
-      setGrades(prevGrades => prevGrades.map(grade => {
+      // Rebuild grade rows from student list to avoid refresh race condition.
+      const nextGrades = students.map((student) => {
         const existing = allGrades.find(
-            (g: ApiGradeRow) => (g.studentId === grade.student_id || g.student_id === grade.student_id) &&
-            String(Number(g.componentId || g.component_id || 0)) === selectedComponent
+          (g: ApiGradeRow) =>
+            (g.studentId === student.id || g.student_id === student.id) &&
+            String(Number(g.componentId || g.component_id || 0)) === selectedComponent,
         );
-        
-        // Find FORMATIVE data for NF values regardless of selected component
+
         const formatifData =
           allGrades.find(
             (g: ApiGradeRow) =>
-              (g.studentId === grade.student_id || g.student_id === grade.student_id) &&
+              (g.studentId === student.id || g.student_id === student.id) &&
               Number(g.componentId || g.component_id) === Number(primaryFormativeComponentId || -1),
           ) ||
           allGrades.find(
             (g: ApiGradeRow) =>
-              (g.studentId === grade.student_id || g.student_id === grade.student_id) &&
+              (g.studentId === student.id || g.student_id === student.id) &&
               (g.component?.type === 'FORMATIVE' || g.component?.type === 'FORMATIF'),
           );
 
+        const dynamicSeries = Array.isArray(formatifData?.formativeSeries)
+          ? formatifData.formativeSeries
+          : Array.isArray(existing?.formativeSeries)
+            ? existing.formativeSeries
+            : [];
+
+        let formativeSeriesInput = '';
+        if (dynamicSeries.length > 0) {
+          formativeSeriesInput = isLegacyZeroPaddedSeries(dynamicSeries) ? '' : dynamicSeries.join(', ');
+        } else {
+          const legacyValues = [
+            formatifData?.nf1,
+            formatifData?.nf2,
+            formatifData?.nf3,
+            formatifData?.nf4,
+            formatifData?.nf5,
+            formatifData?.nf6,
+            existing?.nf1,
+            existing?.nf2,
+            existing?.nf3,
+            existing?.nf4,
+            existing?.nf5,
+            existing?.nf6,
+          ];
+          const legacySeries = normalizeLegacySeriesValues(legacyValues);
+          if (!isLegacyZeroPaddedSeries(legacySeries) && legacySeries.length > 0) {
+            formativeSeriesInput = legacySeries.join(', ');
+          }
+        }
+
         return {
-            ...grade,
-            score:
-              existing?.score === null || existing?.score === undefined || existing?.score === ''
-                ? ''
-                : String(existing.score),
-            formativeSeriesInput: (() => {
-                const dynamicSeries = Array.isArray(formatifData?.formativeSeries)
-                  ? formatifData.formativeSeries
-                  : Array.isArray(existing?.formativeSeries)
-                    ? existing.formativeSeries
-                    : [];
-                if (dynamicSeries.length > 0) {
-                    if (isLegacyZeroPaddedSeries(dynamicSeries)) {
-                      return '';
-                    }
-                    return dynamicSeries.join(', ');
-                }
-                const legacyValues = [
-                  formatifData?.nf1,
-                  formatifData?.nf2,
-                  formatifData?.nf3,
-                  formatifData?.nf4,
-                  formatifData?.nf5,
-                  formatifData?.nf6,
-                  existing?.nf1,
-                  existing?.nf2,
-                  existing?.nf3,
-                  existing?.nf4,
-                  existing?.nf5,
-                  existing?.nf6,
-                ];
-                const legacySeries = normalizeLegacySeriesValues(legacyValues);
-                if (isLegacyZeroPaddedSeries(legacySeries)) {
-                  return '';
-                }
-                if (legacySeries.length > 0) {
-                  return legacySeries.join(', ');
-                }
-                return '';
-            })(),
+          student_id: student.id,
+          score:
+            existing?.score === null || existing?.score === undefined || existing?.score === ''
+              ? ''
+              : String(existing.score),
+          formativeSeriesInput,
         };
-      }));
+      });
+      setGrades(nextGrades);
+
+      const usTheoryComponentId = Number(usTheoryComponent?.id || 0);
+      const usPracticeComponentId = Number(usPracticeComponent?.id || 0);
+      const studentIds = students.map((student) => student.id);
+
+      const nextUsGrades: Record<number, { theory: string; practice: string }> = {};
+      studentIds.forEach((studentId) => {
+        const theoryRow =
+          usTheoryComponentId > 0
+            ? allGrades.find(
+                (row) =>
+                  Number(row.studentId || row.student_id || 0) === studentId &&
+                  Number(row.componentId || row.component_id || 0) === usTheoryComponentId,
+              )
+            : null;
+        const practiceRow =
+          usPracticeComponentId > 0
+            ? allGrades.find(
+                (row) =>
+                  Number(row.studentId || row.student_id || 0) === studentId &&
+                  Number(row.componentId || row.component_id || 0) === usPracticeComponentId,
+              )
+            : null;
+        nextUsGrades[studentId] = {
+          theory:
+            theoryRow?.score === null || theoryRow?.score === undefined || theoryRow?.score === ''
+              ? ''
+              : String(theoryRow.score),
+          practice:
+            practiceRow?.score === null || practiceRow?.score === undefined || practiceRow?.score === ''
+              ? ''
+              : String(practiceRow.score),
+        };
+      });
+      setUsGrades(nextUsGrades);
 
     } catch (error) {
       console.error('Fetch existing grades error:', error);
@@ -820,6 +917,20 @@ export const TeacherGradesPage = () => {
         return { ...grade, score: value };
       }
       return grade;
+    }));
+  };
+
+  const handleUsScoreChange = (studentId: number, field: 'theory' | 'practice', value: string) => {
+    if (value !== '' && (isNaN(Number(value)) || Number(value) < 0 || Number(value) > 100)) {
+      return;
+    }
+    setUsGrades((prev) => ({
+      ...prev,
+      [studentId]: {
+        theory: prev[studentId]?.theory || '',
+        practice: prev[studentId]?.practice || '',
+        [field]: value,
+      },
     }));
   };
 
@@ -1001,7 +1112,44 @@ export const TeacherGradesPage = () => {
 
     let gradesPayload: GradeBulkPayload[] = [];
 
-    if (isFormatifComponent) {
+    if (isUsCombinedMode) {
+        gradesPayload = students.flatMap((student) => {
+            const row = usGrades[student.id] || { theory: '', practice: '' };
+            const payloadRows: GradeBulkPayload[] = [];
+
+            if (usTheoryComponent?.id) {
+                const score = row.theory === '' ? null : Number(row.theory);
+                if (score !== null && (!Number.isFinite(score) || score < 0 || score > 100)) {
+                    throw new Error(`Nilai US Teori ${student.full_name} harus angka 0-100.`);
+                }
+                payloadRows.push({
+                    student_id: student.id,
+                    subject_id: assignment.subject.id,
+                    academic_year_id: parseInt(selectedAcademicYear),
+                    grade_component_id: Number(usTheoryComponent.id),
+                    semester: selectedSemester as 'ODD' | 'EVEN',
+                    score,
+                });
+            }
+
+            if (usPracticeComponent?.id) {
+                const score = row.practice === '' ? null : Number(row.practice);
+                if (score !== null && (!Number.isFinite(score) || score < 0 || score > 100)) {
+                    throw new Error(`Nilai US Praktik ${student.full_name} harus angka 0-100.`);
+                }
+                payloadRows.push({
+                    student_id: student.id,
+                    subject_id: assignment.subject.id,
+                    academic_year_id: parseInt(selectedAcademicYear),
+                    grade_component_id: Number(usPracticeComponent.id),
+                    semester: selectedSemester as 'ODD' | 'EVEN',
+                    score,
+                });
+            }
+
+            return payloadRows;
+        });
+    } else if (isFormatifComponent) {
         gradesPayload = grades.map(g => {
             const parsedSeries = parseFormativeSeriesInput(g.formativeSeriesInput || '');
             if (parsedSeries.invalid) {
@@ -1039,6 +1187,11 @@ export const TeacherGradesPage = () => {
             score: grade.score === '' ? null : parseFloat(grade.score),
             description: isFinalComponent ? (descriptions[grade.student_id] || '') : undefined
         }));
+    }
+
+    if (gradesPayload.length === 0) {
+      toast.error('Tidak ada data nilai untuk disimpan.');
+      return;
     }
 
     setSaving(true);
@@ -1218,7 +1371,21 @@ export const TeacherGradesPage = () => {
                               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NISN</th>
                               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Siswa</th>
                               
-                              {isFormatifComponent ? (
+                              {isUsCombinedMode ? (
+                                  <>
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Nilai US Teori
+                                      </th>
+                                      {usPracticeComponent ? (
+                                        <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                          Nilai US Praktik
+                                        </th>
+                                      ) : null}
+                                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-yellow-50">
+                                        Nilai US Final
+                                      </th>
+                                  </>
+                              ) : isFormatifComponent ? (
                                   <>
                                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entri Formatif (Dinamis)</th>
                                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">x̄ Referensi {midtermComponentLabel}</th>
@@ -1265,6 +1432,11 @@ export const TeacherGradesPage = () => {
                                     backendFinal !== null && backendFinal !== undefined
                                       ? backendFinal
                                       : parseFloat(grade.score || '0');
+                                  const usRow = usGrades[student.id] || { theory: '', practice: '' };
+                                  const usFinalPreview = computeUsFinalFromInputs(
+                                    usRow.theory,
+                                    usRow.practice,
+                                  );
                                   const formativeParsed = parseFormativeSeriesInput(grade.formativeSeriesInput || '');
                                   const hasDraftFormativeValues =
                                     !formativeParsed.invalid && formativeParsed.values.length > 0;
@@ -1298,7 +1470,9 @@ export const TeacherGradesPage = () => {
 	                                    return avg === null ? backendFinal : avg;
 	                                  })();
 	                                  const rowStatusScorePreview =
-	                                    isMidtermComponent
+	                                    isUsCombinedMode
+	                                      ? usFinalPreview ?? 0
+	                                      : isMidtermComponent
 	                                      ? previewSbtsFinal ?? 0
 	                                      : isFinalComponent
 	                                        ? previewSasFinal ?? 0
@@ -1310,7 +1484,35 @@ export const TeacherGradesPage = () => {
                                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{student.nisn}</td>
                                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.full_name}</td>
                                           
-	                                          {isFormatifComponent ? (
+	                                          {isUsCombinedMode ? (
+	                                              <>
+                                                  <td className="px-6 py-4 whitespace-nowrap text-center">
+                                                      <input
+                                                          type="number"
+                                                          min="0"
+                                                          max="100"
+                                                          className="w-20 px-2 py-1 border border-gray-300 rounded text-center focus:ring-blue-500 focus:border-blue-500"
+                                                          value={usRow.theory}
+                                                          onChange={(e) => handleUsScoreChange(student.id, 'theory', e.target.value)}
+                                                      />
+                                                  </td>
+                                                  {usPracticeComponent ? (
+                                                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max="100"
+                                                            className="w-20 px-2 py-1 border border-gray-300 rounded text-center focus:ring-blue-500 focus:border-blue-500"
+                                                            value={usRow.practice}
+                                                            onChange={(e) => handleUsScoreChange(student.id, 'practice', e.target.value)}
+                                                        />
+                                                    </td>
+                                                  ) : null}
+                                                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-bold bg-yellow-50">
+                                                    {usFinalPreview !== null ? usFinalPreview.toFixed(2) : '-'}
+                                                  </td>
+                                              </>
+                                          ) : isFormatifComponent ? (
 	                                              <>
 		                                                  <td className="px-6 py-4">
 		                                                      <div className="space-y-2 min-w-[280px]">
@@ -1438,9 +1640,7 @@ export const TeacherGradesPage = () => {
                                           )}
                                           
                                           <td className="px-6 py-4 whitespace-nowrap text-center">
-	                                              {getStatusBadge(
-	                                                  rowStatusScorePreview
-	                                              )}
+	                                              {getStatusBadge(rowStatusScorePreview)}
                                           </td>
                                       </tr>
                                   );

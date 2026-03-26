@@ -128,7 +128,7 @@ const examProgramsResponseCache = new Map<string, { expiresAt: number; payload: 
 
 function buildExamProgramsCacheKey(params: {
   academicYearId: number;
-  roleContext: 'teacher' | 'student' | 'all';
+  roleContext: 'teacher' | 'student' | 'candidate' | 'applicant' | 'all';
   includeInactive: boolean;
   authRole: string;
   authUserId: number;
@@ -263,6 +263,28 @@ const DEFAULT_EXAM_PROGRAMS: ExamProgramDefinition[] = [
     allowedSubjectIds: [],
     allowedAuthorIds: [],
   },
+  {
+    code: 'BKK_TEST',
+    baseType: ExamType.FORMATIF,
+    baseTypeCode: 'FORMATIF',
+    gradeComponentType: GradeComponentType.CUSTOM,
+    gradeComponentTypeCode: 'CUSTOM',
+    gradeComponentCode: 'BKK_TEST',
+    gradeComponentLabel: 'Tes BKK',
+    gradeEntryMode: GradeEntryMode.SINGLE_SCORE,
+    gradeEntryModeCode: 'SINGLE_SCORE',
+    label: 'Tes BKK',
+    shortLabel: 'BKK',
+    description: 'Tes online untuk proses rekrutmen BKK dan seleksi lowongan mitra industri.',
+    fixedSemester: null,
+    order: 50,
+    isActive: true,
+    showOnTeacherMenu: true,
+    showOnStudentMenu: false,
+    targetClassLevels: ['PELAMAR_BKK'],
+    allowedSubjectIds: [],
+    allowedAuthorIds: [],
+  },
 ];
 
 const DEFAULT_GRADE_COMPONENTS: ExamGradeComponentDefinition[] = [
@@ -360,6 +382,13 @@ const VALID_GRADE_ENTRY_MODES = new Set<GradeEntryMode>(Object.values(GradeEntry
 
 const VALID_REPORT_COMPONENT_SLOTS = new Set<ReportComponentSlot>(Object.values(ReportComponentSlot));
 const VALID_TARGET_CLASS_LEVELS = new Set(['X', 'XI', 'XII']);
+const PROGRAM_TARGET_CANDIDATE = 'CALON_SISWA';
+const PROGRAM_TARGET_BKK_APPLICANT = 'PELAMAR_BKK';
+const VALID_TARGET_SCOPE_TOKENS = new Set([
+  ...VALID_TARGET_CLASS_LEVELS,
+  PROGRAM_TARGET_CANDIDATE,
+  PROGRAM_TARGET_BKK_APPLICANT,
+]);
 
 function isFormativeAliasCode(raw: unknown): boolean {
   const code = normalizeProgramCodeSeed(raw);
@@ -617,12 +646,55 @@ function normalizeClassLevelToken(raw: unknown): string {
   return '';
 }
 
+function normalizeProgramTargetScopeToken(raw: unknown): string {
+  const value = String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '_');
+  if (!value) return '';
+
+  const normalizedClassLevel = normalizeClassLevelToken(value);
+  if (normalizedClassLevel) return normalizedClassLevel;
+  if (value === PROGRAM_TARGET_CANDIDATE || value === 'CALONSISWA' || value === 'CANDIDATE') {
+    return PROGRAM_TARGET_CANDIDATE;
+  }
+  if (
+    value === PROGRAM_TARGET_BKK_APPLICANT ||
+    value === 'BKK' ||
+    value === 'UMUM' ||
+    value === 'APPLICANT' ||
+    value === 'BKK_APPLICANT'
+  ) {
+    return PROGRAM_TARGET_BKK_APPLICANT;
+  }
+
+  return '';
+}
+
+function extractTargetClassLevels(raw: unknown): string[] {
+  const source = Array.isArray(raw) ? raw : [];
+  const levels = source
+    .map((item) => normalizeClassLevelToken(item))
+    .filter((item): item is string => Boolean(item));
+  return Array.from(new Set(levels));
+}
+
+function hasCandidateAudience(raw: unknown): boolean {
+  const source = Array.isArray(raw) ? raw : [];
+  return source.some((item) => normalizeProgramTargetScopeToken(item) === PROGRAM_TARGET_CANDIDATE);
+}
+
+function hasApplicantAudience(raw: unknown): boolean {
+  const source = Array.isArray(raw) ? raw : [];
+  return source.some((item) => normalizeProgramTargetScopeToken(item) === PROGRAM_TARGET_BKK_APPLICANT);
+}
+
 function normalizeClassLevels(raw: unknown, fallback: string[] = []): string[] {
   const source = Array.isArray(raw) ? raw : fallback;
   const deduped = new Set<string>();
   source.forEach((item) => {
-    const normalized = normalizeClassLevelToken(item);
-    if (normalized && VALID_TARGET_CLASS_LEVELS.has(normalized)) {
+    const normalized = normalizeProgramTargetScopeToken(item);
+    if (normalized && VALID_TARGET_SCOPE_TOKENS.has(normalized)) {
       deduped.add(normalized);
     }
   });
@@ -1170,8 +1242,13 @@ function normalizeProgramPayload(rawPrograms: unknown[]): NormalizedExamProgramP
 export const getExamPrograms = asyncHandler(async (req: Request, res: Response) => {
   const academicYearId = await resolveAcademicYearId(req.query.academicYearId);
   const roleContextRaw = String(req.query.roleContext || 'all').trim().toLowerCase();
-  const roleContext: 'teacher' | 'student' | 'all' =
-    roleContextRaw === 'teacher' || roleContextRaw === 'student' ? roleContextRaw : 'all';
+  const roleContext: 'teacher' | 'student' | 'candidate' | 'applicant' | 'all' =
+    roleContextRaw === 'teacher' ||
+    roleContextRaw === 'student' ||
+    roleContextRaw === 'candidate' ||
+    roleContextRaw === 'applicant'
+      ? roleContextRaw
+      : 'all';
   const includeInactive = String(req.query.includeInactive || '').toLowerCase() === 'true';
   const authUser = (req as any).user as { id: number; role: string } | undefined;
   const authRole = String(authUser?.role || '').trim().toUpperCase();
@@ -1203,6 +1280,10 @@ export const getExamPrograms = asyncHandler(async (req: Request, res: Response) 
     programs = programs.filter((item) => item.showOnTeacherMenu);
   } else if (roleContext === 'student') {
     programs = programs.filter((item) => item.showOnStudentMenu);
+  } else if (roleContext === 'candidate') {
+    programs = programs.filter((item) => hasCandidateAudience(item.targetClassLevels));
+  } else if (roleContext === 'applicant') {
+    programs = programs.filter((item) => hasApplicantAudience(item.targetClassLevels));
   }
 
   if (roleContext === 'teacher' && authRole === 'TEACHER' && authUserId > 0) {
@@ -1234,9 +1315,10 @@ export const getExamPrograms = asyncHandler(async (req: Request, res: Response) 
         item.allowedSubjectIds.some((subjectId) => teacherSubjectIds.has(subjectId));
       if (!allowedSubject) return false;
 
+      const classScopedLevels = extractTargetClassLevels(item.targetClassLevels);
       const allowedLevel =
-        item.targetClassLevels.length === 0 ||
-        item.targetClassLevels.some((level) => teacherLevels.has(normalizeClassLevelToken(level)));
+        classScopedLevels.length === 0 ||
+        classScopedLevels.some((level) => teacherLevels.has(level));
       return allowedLevel;
     });
   }
@@ -1254,9 +1336,10 @@ export const getExamPrograms = asyncHandler(async (req: Request, res: Response) 
     });
     const studentLevel = normalizeClassLevelToken(student?.studentClass?.level);
     programs = programs.filter((item) => {
-      if (item.targetClassLevels.length === 0) return true;
+      const classScopedLevels = extractTargetClassLevels(item.targetClassLevels);
+      if (classScopedLevels.length === 0) return true;
       if (!studentLevel) return false;
-      return item.targetClassLevels.some((level) => normalizeClassLevelToken(level) === studentLevel);
+      return classScopedLevels.some((level) => level === studentLevel);
     });
   }
 

@@ -40,6 +40,11 @@ const sarprasDecisionSchema = z.object({
   action: z.enum(['APPROVE', 'RETURN', 'SEND_TO_FINANCE']),
 });
 
+const financeDecisionSchema = z.object({
+  action: z.enum(['PROCESS', 'COMPLETE', 'RETURN']),
+  financeNote: z.string().optional(),
+});
+
 export const listFinanceLpjInvoices = asyncHandler(
   async (req: Request, res: Response) => {
     const authUser = (req as any).user;
@@ -67,13 +72,41 @@ export const listFinanceLpjInvoices = asyncHandler(
 
     const invoices = await prismaLpjInvoice.findMany({
       where: {
-        status: 'SENT_TO_FINANCE',
+        status: {
+          in: [
+            'SENT_TO_FINANCE',
+            'PROCESSING_FINANCE',
+            'COMPLETED',
+            'RETURNED_BY_FINANCE',
+          ],
+        },
       },
       select: {
         id: true,
         title: true,
         status: true,
+        invoiceFileUrl: true,
+        invoiceFileName: true,
+        proofFileUrl: true,
+        proofFileName: true,
+        auditReport: true,
         sentToFinanceAt: true,
+        financeProcessedAt: true,
+        financeCompletedAt: true,
+        financeReturnedAt: true,
+        financeNote: true,
+        items: {
+          select: {
+            id: true,
+            description: true,
+            brand: true,
+            quantity: true,
+            unitPrice: true,
+            amount: true,
+            isMatched: true,
+            auditNote: true,
+          },
+        },
         budgetRequest: {
           select: {
             id: true,
@@ -235,7 +268,11 @@ export const createLpjItem = asyncHandler(async (req: Request, res: Response) =>
     throw new ApiError(403, 'Hanya pengaju yang dapat mengubah LPJ');
   }
 
-  if (invoice.status !== 'DRAFT' && invoice.status !== 'RETURNED') {
+  if (
+    invoice.status !== 'DRAFT' &&
+    invoice.status !== 'RETURNED' &&
+    invoice.status !== 'RETURNED_BY_FINANCE'
+  ) {
     throw new ApiError(400, 'LPJ hanya dapat diubah saat status DRAFT atau DIKEMBALIKAN');
   }
 
@@ -286,7 +323,11 @@ export const updateLpjItem = asyncHandler(async (req: Request, res: Response) =>
     throw new ApiError(403, 'Hanya pengaju yang dapat mengubah LPJ');
   }
 
-  if (existing.invoice.status !== 'DRAFT' && existing.invoice.status !== 'RETURNED') {
+  if (
+    existing.invoice.status !== 'DRAFT' &&
+    existing.invoice.status !== 'RETURNED' &&
+    existing.invoice.status !== 'RETURNED_BY_FINANCE'
+  ) {
     throw new ApiError(400, 'LPJ hanya dapat diubah saat status DRAFT atau DIKEMBALIKAN');
   }
 
@@ -338,7 +379,11 @@ export const deleteLpjItem = asyncHandler(async (req: Request, res: Response) =>
     throw new ApiError(403, 'Hanya pengaju yang dapat mengubah LPJ');
   }
 
-  if (existing.invoice.status !== 'DRAFT' && existing.invoice.status !== 'RETURNED') {
+  if (
+    existing.invoice.status !== 'DRAFT' &&
+    existing.invoice.status !== 'RETURNED' &&
+    existing.invoice.status !== 'RETURNED_BY_FINANCE'
+  ) {
     throw new ApiError(400, 'LPJ hanya dapat diubah saat status DRAFT atau DIKEMBALIKAN');
   }
 
@@ -391,7 +436,11 @@ export const uploadLpjInvoiceFile = asyncHandler(async (req: Request, res: Respo
     );
   }
 
-  if (invoice.status !== 'DRAFT' && invoice.status !== 'RETURNED') {
+  if (
+    invoice.status !== 'DRAFT' &&
+    invoice.status !== 'RETURNED' &&
+    invoice.status !== 'RETURNED_BY_FINANCE'
+  ) {
     throw new ApiError(
       400,
       'Invoice LPJ hanya dapat diubah saat status DRAFT atau DIKEMBALIKAN',
@@ -455,7 +504,11 @@ export const uploadLpjProofFile = asyncHandler(async (req: Request, res: Respons
     );
   }
 
-  if (invoice.status !== 'DRAFT' && invoice.status !== 'RETURNED') {
+  if (
+    invoice.status !== 'DRAFT' &&
+    invoice.status !== 'RETURNED' &&
+    invoice.status !== 'RETURNED_BY_FINANCE'
+  ) {
     throw new ApiError(
       400,
       'Bukti LPJ hanya dapat diubah saat status DRAFT atau DIKEMBALIKAN',
@@ -505,7 +558,11 @@ export const submitLpjInvoiceToSarpras = asyncHandler(
       throw new ApiError(403, 'Hanya pengaju yang dapat mengajukan LPJ');
     }
 
-    if (invoice.status !== 'DRAFT' && invoice.status !== 'RETURNED') {
+    if (
+      invoice.status !== 'DRAFT' &&
+      invoice.status !== 'RETURNED' &&
+      invoice.status !== 'RETURNED_BY_FINANCE'
+    ) {
       throw new ApiError(400, 'LPJ hanya dapat diajukan dari status DRAFT atau DIKEMBALIKAN');
     }
 
@@ -518,6 +575,10 @@ export const submitLpjInvoiceToSarpras = asyncHandler(
       data: {
         status: 'SUBMITTED_TO_SARPRAS',
         submittedAt: new Date(),
+        financeReturnedAt: null,
+        financeProcessedAt: null,
+        financeCompletedAt: null,
+        financeNote: null,
       },
     });
 
@@ -741,6 +802,113 @@ export const sarprasDecisionOnLpjInvoice = asyncHandler(
             'LPJ telah diteruskan ke bagian keuangan untuk diproses',
           ),
         );
+      return;
+    }
+  },
+);
+
+export const financeDecisionOnLpjInvoice = asyncHandler(
+  async (req: Request, res: Response) => {
+    const authUser = (req as any).user;
+
+    if (!authUser) {
+      throw new ApiError(401, 'Tidak memiliki otorisasi');
+    }
+
+    const duties = ((authUser.additionalDuties || []) as string[]).map((d) =>
+      String(d).trim().toUpperCase(),
+    );
+
+    const isFinanceStaff =
+      (authUser.role === 'STAFF' && authUser.ptkType === 'STAFF_KEUANGAN') ||
+      duties.includes('BENDAHARA');
+
+    const isAdmin = authUser.role === 'ADMIN';
+
+    if (!isFinanceStaff && !isAdmin) {
+      throw new ApiError(403, 'Hanya Staff Keuangan/Bendahara yang dapat memproses LPJ ini');
+    }
+
+    const id = Number(req.params.id);
+    const body = financeDecisionSchema.parse(req.body);
+    const existing = await prismaLpjInvoice.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      throw new ApiError(404, 'LPJ invoice tidak ditemukan');
+    }
+
+    if (body.action === 'PROCESS') {
+      if (!['SENT_TO_FINANCE', 'RETURNED_BY_FINANCE'].includes(existing.status)) {
+        throw new ApiError(
+          400,
+          'LPJ hanya dapat diproses keuangan dari status diteruskan atau dikembalikan keuangan',
+        );
+      }
+
+      const updated = await prismaLpjInvoice.update({
+        where: { id },
+        data: {
+          status: 'PROCESSING_FINANCE',
+          financeProcessedAt: existing.financeProcessedAt || new Date(),
+          financeReturnedAt: null,
+          financeNote: body.financeNote?.trim() || null,
+        },
+      });
+
+      res.status(200).json(new ApiResponse(200, updated, 'LPJ sedang diproses bagian keuangan'));
+      return;
+    }
+
+    if (body.action === 'RETURN') {
+      if (!['SENT_TO_FINANCE', 'PROCESSING_FINANCE'].includes(existing.status)) {
+        throw new ApiError(
+          400,
+          'LPJ hanya dapat dikembalikan dari status diteruskan atau sedang diproses keuangan',
+        );
+      }
+
+      const note = body.financeNote?.trim();
+      if (!note) {
+        throw new ApiError(400, 'Catatan pengembalian dari keuangan wajib diisi');
+      }
+
+      const updated = await prismaLpjInvoice.update({
+        where: { id },
+        data: {
+          status: 'RETURNED_BY_FINANCE',
+          financeReturnedAt: new Date(),
+          financeNote: note,
+        },
+      });
+
+      res.status(200).json(new ApiResponse(200, updated, 'LPJ dikembalikan oleh bagian keuangan'));
+      return;
+    }
+
+    if (body.action === 'COMPLETE') {
+      if (!['SENT_TO_FINANCE', 'PROCESSING_FINANCE'].includes(existing.status)) {
+        throw new ApiError(
+          400,
+          'LPJ hanya dapat diselesaikan dari status diteruskan atau sedang diproses keuangan',
+        );
+      }
+
+      const updated = await prismaLpjInvoice.update({
+        where: { id },
+        data: {
+          status: 'COMPLETED',
+          financeProcessedAt: existing.financeProcessedAt || new Date(),
+          financeCompletedAt: new Date(),
+          financeReturnedAt: null,
+          financeNote: body.financeNote?.trim() || null,
+        },
+      });
+
+      res
+        .status(200)
+        .json(new ApiResponse(200, updated, 'LPJ pembelanjaan selesai diproses keuangan'));
       return;
     }
   },

@@ -76,10 +76,7 @@ function isExamEligibleRoomType(raw: unknown): boolean {
         normalized.includes('PRAKTIK') ||
         normalized.includes('PRAKTEK') ||
         normalized.includes('LAB') ||
-        normalized.includes('LABORATORIUM') ||
-        normalized.includes('OLAHRAGA') ||
-        normalized.includes('SPORT') ||
-        normalized.includes('LAPANGAN')
+        normalized.includes('LABORATORIUM')
     );
 }
 
@@ -344,7 +341,7 @@ async function resolveRoomNameFromSarpras(rawRoomName: unknown): Promise<string>
 
     const categoryName = String(room.category?.name || '').trim();
     if (!isExamEligibleRoomType(`${room.name} ${categoryName}`)) {
-        throw new ApiError(400, 'Ruang ujian hanya boleh dari kategori ruang kelas, praktik/lab, atau olahraga.');
+        throw new ApiError(400, 'Ruang ujian hanya boleh dari kategori ruang kelas atau praktik/lab.');
     }
 
     return room.name;

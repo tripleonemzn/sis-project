@@ -62,12 +62,68 @@ function resolveExamTypeLabel(type: string, labels: ExamLabelMap): string {
   return cleaned || normalized || '-';
 }
 
+function normalizeSubjectToken(value: string | null | undefined): string {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function isGenericSubject(name?: string | null, code?: string | null): boolean {
+  const normalizedName = normalizeSubjectToken(name);
+  const normalizedCode = normalizeSubjectToken(code);
+  if (!normalizedName && !normalizedCode) return true;
+  if (['TKAU', 'KONSENTRASI_KEAHLIAN', 'KONSENTRASI', 'KEJURUAN'].includes(normalizedCode)) return true;
+  if (normalizedName === 'KONSENTRASI' || normalizedName === 'KEJURUAN') return true;
+  if (normalizedName.includes('KONSENTRASI_KEAHLIAN')) return true;
+  return false;
+}
+
+function resolveSubjectLabel(item: StudentExamItem): { name: string; code: string } {
+  const scheduleSubject = item.subject || null;
+  const packetSubject = item.packet?.subject || null;
+  const usePacket = Boolean(
+    scheduleSubject &&
+      packetSubject &&
+      isGenericSubject(scheduleSubject.name, scheduleSubject.code) &&
+      !isGenericSubject(packetSubject.name, packetSubject.code),
+  );
+  const picked = usePacket ? packetSubject : scheduleSubject || packetSubject;
+  let fallbackName = '';
+  const title = String(item.packet?.title || '').trim();
+  if (title.includes('•')) {
+    const parts = title
+      .split('•')
+      .map((part) => String(part || '').trim())
+      .filter(Boolean);
+    if (parts.length >= 2) {
+      const candidate = parts[1];
+      if (candidate && !/\d{4}-\d{2}-\d{2}/.test(candidate)) {
+        fallbackName = candidate;
+      }
+    }
+  }
+  const pickedIsGeneric = isGenericSubject(picked?.name, picked?.code);
+  const useFallbackName = Boolean(fallbackName) && pickedIsGeneric;
+  return {
+    name: String((useFallbackName ? fallbackName : picked?.name) || fallbackName || 'Mata pelajaran'),
+    code: useFallbackName ? '' : String(picked?.code || '').trim(),
+  };
+}
+
 export default function StudentExamsScreen() {
   const params = useLocalSearchParams<{ programCode?: string | string[] }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
-  const examsQuery = useStudentExamsQuery({ enabled: isAuthenticated, user });
+  const canAccessExams = user?.role === 'STUDENT' || user?.role === 'CALON_SISWA' || user?.role === 'UMUM';
+  const isCandidateMode = user?.role === 'CALON_SISWA';
+  const isApplicantMode = user?.role === 'UMUM';
+  const applicantVerificationLocked =
+    isApplicantMode && String(user?.verificationStatus || 'PENDING').toUpperCase() !== 'VERIFIED';
+  const examsQuery = useStudentExamsQuery({ enabled: isAuthenticated && !applicantVerificationLocked, user });
   const pageContentPadding = getStandardPagePadding(insets);
   const lockedProgramCode = normalizeProgramCode(Array.isArray(params.programCode) ? params.programCode[0] : params.programCode);
   const [searchQuery, setSearchQuery] = useState('');
@@ -76,20 +132,20 @@ export default function StudentExamsScreen() {
 
   const examProgramsQuery = useQuery({
     queryKey: ['mobile-student-exam-programs'],
-    enabled: isAuthenticated && user?.role === 'STUDENT',
+    enabled: isAuthenticated && canAccessExams && !applicantVerificationLocked,
     staleTime: 5 * 60 * 1000,
     queryFn: () =>
       examApi.getExamPrograms({
-        roleContext: 'student',
+        roleContext: isCandidateMode ? 'candidate' : isApplicantMode ? 'applicant' : 'student',
       }),
   });
 
   const activePrograms = useMemo(
     () =>
       (examProgramsQuery.data?.programs || [])
-        .filter((program: ExamProgramItem) => program.isActive && program.showOnStudentMenu)
+        .filter((program: ExamProgramItem) => program.isActive && ((isCandidateMode || isApplicantMode) ? true : program.showOnStudentMenu))
         .sort((a, b) => a.order - b.order || a.code.localeCompare(b.code)),
-    [examProgramsQuery.data?.programs],
+    [examProgramsQuery.data?.programs, isApplicantMode, isCandidateMode],
   );
 
   const effectiveTypeFilter = useMemo(() => {
@@ -124,10 +180,19 @@ export default function StudentExamsScreen() {
       if (effectiveTypeFilter !== 'ALL' && type !== effectiveTypeFilter) return false;
       if (statusFilter !== 'ALL' && status !== statusFilter) return false;
       if (!q) return true;
+      const resolvedSubject = resolveSubjectLabel(item);
+      const subjectName = String(resolvedSubject.name || '').toLowerCase();
+      const subjectCode = String(resolvedSubject.code || '').toLowerCase();
+      const vacancyTitle = String(item.jobVacancy?.title || '').toLowerCase();
+      const vacancyCompany = String(
+        item.jobVacancy?.industryPartner?.name || item.jobVacancy?.companyName || '',
+      ).toLowerCase();
       return (
-        item.packet.title.toLowerCase().includes(q) ||
-        item.packet.subject.name.toLowerCase().includes(q) ||
-        item.packet.subject.code.toLowerCase().includes(q)
+        String(item.packet?.title || '').toLowerCase().includes(q) ||
+        subjectName.includes(q) ||
+        subjectCode.includes(q) ||
+        vacancyTitle.includes(q) ||
+        vacancyCompany.includes(q)
       );
     });
   }, [effectiveTypeFilter, examsQuery.data?.exams, searchQuery, statusFilter]);
@@ -135,11 +200,11 @@ export default function StudentExamsScreen() {
   if (isLoading) return <AppLoadingScreen message="Memuat ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
-  if (user?.role !== 'STUDENT') {
+  if (!canAccessExams) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
         <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Ujian</Text>
-        <QueryStateView type="error" message="Halaman ini khusus untuk role siswa." />
+        <QueryStateView type="error" message="Halaman ini hanya tersedia untuk peserta ujian yang aktif." />
       </ScrollView>
     );
   }
@@ -155,15 +220,39 @@ export default function StudentExamsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Ujian</Text>
-      <Text style={{ color: '#64748b', marginBottom: 12 }}>
-        Lihat jadwal ujian yang tersedia untuk kelas Anda.
+      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>
+        {isCandidateMode ? 'Tes Seleksi' : isApplicantMode ? 'Tes BKK' : 'Ujian'}
       </Text>
+      <Text style={{ color: '#64748b', marginBottom: 12 }}>
+        {isCandidateMode
+          ? 'Lihat jadwal tes yang tersedia untuk calon siswa.'
+          : isApplicantMode
+            ? 'Lihat jadwal tes rekrutmen yang terhubung dengan lamaran BKK Anda.'
+            : 'Lihat jadwal ujian yang tersedia untuk kelas Anda.'}
+      </Text>
+
+      {applicantVerificationLocked ? (
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#fde68a',
+            backgroundColor: '#fffbeb',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tes BKK menunggu verifikasi admin</Text>
+          <Text style={{ color: '#92400e' }}>
+            Akun pelamar Anda belum diverifikasi. Lengkapi profil pelamar lalu tunggu verifikasi admin sebelum mengikuti Tes BKK.
+          </Text>
+        </View>
+      ) : null}
 
       <TextInput
         value={searchQuery}
         onChangeText={setSearchQuery}
-        placeholder="Cari judul ujian / mapel..."
+        placeholder={isApplicantMode ? 'Cari judul tes / lowongan...' : 'Cari judul ujian / mapel...'}
         style={{
           borderWidth: 1,
           borderColor: '#cbd5e1',
@@ -261,12 +350,35 @@ export default function StudentExamsScreen() {
       {examsQuery.data?.fromCache ? <OfflineCacheNotice cachedAt={examsQuery.data.cachedAt} /> : null}
 
       {!examsQuery.isLoading && !examsQuery.isError ? (
-        filtered.length > 0 ? (
+        applicantVerificationLocked ? (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#fde68a',
+              borderStyle: 'dashed',
+              borderRadius: 10,
+              padding: 16,
+              backgroundColor: '#fff',
+            }}
+          >
+            <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tes BKK belum tersedia</Text>
+            <Text style={{ color: '#64748b' }}>
+              Tes BKK akan tampil di sini setelah akun pelamar diverifikasi dan lowongan Anda memiliki jadwal tes aktif.
+            </Text>
+          </View>
+        ) : filtered.length > 0 ? (
           <View>
             {filtered.map((item: StudentExamItem) => {
               const type = normalizeProgramCode(item.packet.programCode || item.packet.type);
               const status = normalizeStatus(item.status, item.has_submitted);
               const style = statusStyle(status);
+              const resolvedSubject = resolveSubjectLabel(item);
+              const subjectName = resolvedSubject.name;
+              const subjectCode = resolvedSubject.code;
+              const vacancyTitle = String(item.jobVacancy?.title || '').trim();
+              const vacancyCompany = String(
+                item.jobVacancy?.industryPartner?.name || item.jobVacancy?.companyName || '',
+              ).trim();
               return (
                 <View
                   key={item.id}
@@ -300,7 +412,9 @@ export default function StudentExamsScreen() {
                     </Text>
                   </View>
                   <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
-                    {item.packet.subject.name} ({item.packet.subject.code}) • {examTypeLabel(type)}
+                    {isApplicantMode
+                      ? `${vacancyTitle || subjectName}${vacancyCompany ? ` • ${vacancyCompany}` : ''} • ${examTypeLabel(type)}`
+                      : `${subjectName}${subjectCode ? ` (${subjectCode})` : ''} • ${examTypeLabel(type)}`}
                   </Text>
                   <Text style={{ color: '#334155', fontSize: 12, marginBottom: 4 }}>
                     Mulai: {formatDateTime(item.startTime)}
@@ -325,20 +439,28 @@ export default function StudentExamsScreen() {
                     </View>
                   ) : null}
                   <Pressable
-                    onPress={() => {
+                    onPress={async () => {
                       if (status === 'OPEN' && !item.isBlocked) {
                         router.push(`/exams/${item.id}/take` as never);
                         return;
                       }
                       Alert.alert(
-                        'Ujian Mobile',
+                        isApplicantMode ? 'Tes BKK' : 'Ujian Mobile',
                         status === 'COMPLETED'
-                          ? 'Ujian ini sudah selesai dikerjakan.'
+                          ? isApplicantMode
+                            ? 'Tes BKK ini sudah selesai dikerjakan.'
+                            : 'Ujian ini sudah selesai dikerjakan.'
                           : status === 'MISSED'
-                            ? 'Waktu ujian sudah berakhir.'
+                            ? isApplicantMode
+                              ? 'Waktu tes BKK sudah berakhir.'
+                              : 'Waktu ujian sudah berakhir.'
                             : status === 'UPCOMING'
-                              ? 'Ujian belum dimulai. Silakan tunggu jadwal mulai.'
-                              : 'Ujian tidak dapat dikerjakan dari mobile untuk status ini.',
+                              ? isApplicantMode
+                                ? 'Tes BKK belum dimulai. Silakan tunggu jadwal mulai.'
+                                : 'Ujian belum dimulai. Silakan tunggu jadwal mulai.'
+                              : isApplicantMode
+                                ? 'Tes BKK tidak dapat dikerjakan dari mobile untuk status ini.'
+                                : 'Ujian tidak dapat dikerjakan dari mobile untuk status ini.',
                       );
                     }}
                     style={{
@@ -349,7 +471,13 @@ export default function StudentExamsScreen() {
                     }}
                   >
                     <Text style={{ color: '#fff', fontWeight: '700' }}>
-                      {status === 'OPEN' && !item.isBlocked ? 'Mulai Ujian' : 'Detail Ujian'}
+                      {status === 'OPEN' && !item.isBlocked
+                        ? isApplicantMode
+                          ? 'Mulai Tes BKK'
+                          : 'Mulai Ujian'
+                        : isApplicantMode
+                          ? 'Detail Tes BKK'
+                          : 'Detail Ujian'}
                     </Text>
                   </Pressable>
                 </View>
@@ -367,8 +495,14 @@ export default function StudentExamsScreen() {
               backgroundColor: '#fff',
             }}
           >
-            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Tidak ada ujian</Text>
-            <Text style={{ color: '#64748b' }}>Belum ada ujian sesuai filter yang dipilih.</Text>
+            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>
+              {isApplicantMode ? 'Tidak ada tes BKK' : 'Tidak ada ujian'}
+            </Text>
+            <Text style={{ color: '#64748b' }}>
+              {isApplicantMode
+                ? 'Belum ada tes BKK sesuai filter yang dipilih.'
+                : 'Belum ada ujian sesuai filter yang dipilih.'}
+            </Text>
           </View>
         )
       ) : null}

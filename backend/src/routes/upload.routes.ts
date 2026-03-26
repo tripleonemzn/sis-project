@@ -21,11 +21,11 @@ const router = Router();
 // Protect all upload routes
 router.use(authMiddleware);
 
-// Upload dokumen guru
-router.post('/teacher/document', roleMiddleware(['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER']), teacherDocumentUpload.single('file'), uploadTeacherDocument);
+// Upload dokumen profil user
+router.post('/teacher/document', roleMiddleware(['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'CALON_SISWA']), teacherDocumentUpload.single('file'), uploadTeacherDocument);
 
 // Upload foto profil guru (dan user lain)
-router.post('/teacher/photo', roleMiddleware(['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'STUDENT', 'PARENT']), teacherPhotoUpload.single('file'), uploadTeacherPhoto);
+router.post('/teacher/photo', roleMiddleware(['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'STUDENT', 'PARENT', 'CALON_SISWA']), teacherPhotoUpload.single('file'), uploadTeacherPhoto);
 
 // Upload Media Soal (Guru & Admin)
 router.post('/question-image', roleMiddleware(['TEACHER', 'ADMIN']), questionImageUpload.single('image'), uploadQuestionImage);

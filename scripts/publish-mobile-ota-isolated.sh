@@ -34,6 +34,8 @@ fi
 
 cd "$WORKTREE_DIR/mobile-app"
 echo "Publishing OTA from isolated tree..."
+# Avoid inherited npm prefix (e.g. from `npm --prefix ... run ...`) that can break npx in isolated worktree.
+unset npm_config_prefix NPM_CONFIG_PREFIX
 bash ./scripts/publish-ota-safe.sh "$CHANNEL" "$@"
 
 echo "OTA publish completed from isolated tree."

@@ -23,6 +23,7 @@ import {
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
 import { BRAND_COLORS } from '../../src/config/brand';
+import { getStaffFinanceNotificationTarget } from '../../src/features/staff/staffRole';
 
 function formatDateTime(value: string) {
   const date = new Date(value);
@@ -38,16 +39,16 @@ function formatDateTime(value: string) {
 
 function NotificationCard({
   item,
-  onMarkRead,
+  onOpen,
   loading,
 }: {
   item: MobileNotificationItem;
-  onMarkRead: () => void;
+  onOpen: () => void;
   loading: boolean;
 }) {
   return (
     <Pressable
-      onPress={item.isRead ? undefined : onMarkRead}
+      onPress={onOpen}
       style={{
         borderWidth: 1,
         borderColor: item.isRead ? '#e2e8f0' : '#bfdbfe',
@@ -117,7 +118,7 @@ function NotificationCard({
 export default function NotificationsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const queryClient = useQueryClient();
   const pageContentPadding = getStandardPagePadding(insets);
 
@@ -167,6 +168,39 @@ export default function NotificationsScreen() {
     () => notificationsQuery.data?.unreadCount ?? notifications.filter((item) => !item.isRead).length,
     [notifications, notificationsQuery.data?.unreadCount],
   );
+
+  const resolveNotificationTarget = (item: MobileNotificationItem): string | null => {
+    const payload =
+      item.data && typeof item.data === 'object' ? (item.data as Record<string, unknown>) : null;
+    const routeValue = payload?.route;
+    const payloadRoute =
+      typeof routeValue === 'string' && routeValue.trim().startsWith('/')
+        ? routeValue.trim()
+        : null;
+    if (payloadRoute) return payloadRoute;
+
+    if (item.type.startsWith('FINANCE_')) {
+      if (user?.role === 'PARENT') return '/parent/finance';
+      if (user?.role === 'STUDENT') return '/student/finance';
+      if (user?.role === 'STAFF') return getStaffFinanceNotificationTarget(user);
+    }
+    return null;
+  };
+
+  const handleOpenNotification = async (item: MobileNotificationItem) => {
+    if (!item.isRead) {
+      try {
+        await markAsReadMutation.mutateAsync(item.id);
+      } catch {
+        return;
+      }
+    }
+
+    const target = resolveNotificationTarget(item);
+    if (target) {
+      router.push(target as never);
+    }
+  };
 
   if (isLoading) return <AppLoadingScreen message="Memuat notifikasi..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -301,9 +335,8 @@ export default function NotificationsScreen() {
                 key={item.id}
                 item={item}
                 loading={markAsReadMutation.isPending && markAsReadMutation.variables === item.id}
-                onMarkRead={() => {
-                  if (item.isRead) return;
-                  void markAsReadMutation.mutateAsync(item.id);
+                onOpen={() => {
+                  void handleOpenNotification(item);
                 }}
               />
             ))}

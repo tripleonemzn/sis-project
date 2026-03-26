@@ -160,6 +160,74 @@ const enrollSchema = z.object({
   academicYearId: z.coerce.number().int().optional(),
 });
 
+async function notifyHomeroomExtracurricularSelection(params: {
+  studentId: number;
+  academicYearId: number;
+  ekskulId: number;
+}) {
+  const student = await prisma.user.findUnique({
+    where: { id: params.studentId },
+    select: {
+      id: true,
+      name: true,
+      classId: true,
+      studentClass: {
+        select: {
+          id: true,
+          name: true,
+          teacherId: true,
+        },
+      },
+    },
+  });
+
+  if (!student?.studentClass?.teacherId) return;
+
+  const ekskul = await prisma.ekstrakurikuler.findUnique({
+    where: { id: params.ekskulId },
+    select: { id: true, name: true },
+  });
+
+  if (!ekskul) return;
+
+  const dayStart = new Date();
+  dayStart.setHours(0, 0, 0, 0);
+  const title = 'Pilihan Ekstrakurikuler Baru';
+  const message = `${student.name} memilih ekstrakurikuler ${ekskul.name}.`;
+
+  const existingToday = await prisma.notification.findFirst({
+    where: {
+      userId: student.studentClass.teacherId,
+      type: 'EXTRACURRICULAR_ENROLLMENT',
+      title,
+      message,
+      createdAt: { gte: dayStart },
+    },
+    select: { id: true },
+  });
+
+  if (existingToday) return;
+
+  await prisma.notification.create({
+    data: {
+      userId: student.studentClass.teacherId,
+      title,
+      message,
+      type: 'EXTRACURRICULAR_ENROLLMENT',
+      data: {
+        module: 'EXTRACURRICULAR',
+        studentId: student.id,
+        classId: student.studentClass.id,
+        className: student.studentClass.name,
+        academicYearId: params.academicYearId,
+        ekskulId: ekskul.id,
+        ekskulName: ekskul.name,
+        route: '/teacher/wali-kelas/students',
+      },
+    },
+  });
+}
+
 export const getMyExtracurricularEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
   const studentId = req.user!.id;
 
@@ -208,6 +276,12 @@ export const enrollExtracurricular = asyncHandler(async (req: AuthRequest, res: 
       academicYearId,
     },
     include: { ekskul: true },
+  });
+
+  await notifyHomeroomExtracurricularSelection({
+    studentId,
+    academicYearId,
+    ekskulId,
   });
 
   res.status(201).json(new ApiResponse(201, created, 'Pendaftaran ekstrakurikuler berhasil'));

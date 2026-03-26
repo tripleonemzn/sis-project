@@ -11,6 +11,7 @@ import {
   Layers,
   ClipboardList,
   History,
+  Briefcase,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import React from 'react';
@@ -23,6 +24,7 @@ import { trainingClassService } from '../../services/trainingClass.service';
 import { subjectService } from '../../services/subject.service';
 import { userService } from '../../services/user.service';
 import { teacherAssignmentService, type TeacherAssignment } from '../../services/teacherAssignment.service';
+import { humasService } from '../../services/humas.service';
 
 interface StatCardProps {
   title: string;
@@ -72,6 +74,15 @@ interface DashboardData {
   activeAcademicYear: ActiveAcademicYear | null;
   studentByMajor: StudentByMajorStat[];
   teacherAssignmentSummary: TeacherAssignmentSummary | null;
+  bkkOverview: {
+    totalApplicants: number;
+    verifiedApplicants: number;
+    pendingApplicants: number;
+    totalApplications: number;
+    inProgressApplications: number;
+    shortlistedApplications: number;
+    acceptedApplications: number;
+  };
 }
 
 function getArrayByKey<T>(res: unknown, key: string): T[] {
@@ -255,6 +266,8 @@ export const AdminDashboard = () => {
         studentsRes,
         teachersRes,
         teacherAssignmentsRes,
+        applicantUsersRes,
+        bkkApplicationsRes,
       ] = await Promise.all([
         majorService.list({ limit: 1000 }),
         classService.list({ limit: 1000 }),
@@ -264,6 +277,8 @@ export const AdminDashboard = () => {
         userService.getUsers({ role: 'STUDENT', limit: 1000 }),
         userService.getUsers({ role: 'TEACHER', limit: 1000 }),
         teacherAssignmentService.list({ limit: 1000 }),
+        userService.getUsers({ role: 'UMUM', limit: 1000 }),
+        humasService.getApplications({ page: 1, limit: 1 }),
       ]);
 
       const majorsList = getArrayByKey<Major>(majorsRes, 'majors');
@@ -274,6 +289,11 @@ export const AdminDashboard = () => {
       const studentsList = studentsRes.data || [];
       const teachersList = teachersRes.data || [];
       const teacherAssignmentsList = getArrayByKey<TeacherAssignment>(teacherAssignmentsRes, 'assignments');
+      const applicantUsersList = applicantUsersRes.data || [];
+      const bkkApplicationsPayload = bkkApplicationsRes.data?.data as
+        | { total?: number; summary?: Record<string, number> }
+        | undefined;
+      const bkkSummary = bkkApplicationsPayload?.summary || {};
 
       // Calculate Student by Major
       const studentByMajor: StudentByMajorStat[] = majorsList.map((major: Major) => {
@@ -308,6 +328,22 @@ export const AdminDashboard = () => {
           totalAssignments: teacherAssignmentsList.length,
           totalTeachersWithAssignments: new Set(teacherAssignmentsList.map((ta: TeacherAssignment) => ta.teacherId)).size,
         },
+        bkkOverview: {
+          totalApplicants: applicantUsersList.length,
+          verifiedApplicants: applicantUsersList.filter((user) => user.verificationStatus === 'VERIFIED').length,
+          pendingApplicants: applicantUsersList.filter((user) => user.verificationStatus === 'PENDING').length,
+          totalApplications: bkkApplicationsPayload?.total || 0,
+          inProgressApplications:
+            (bkkSummary.submitted || 0) +
+            (bkkSummary.reviewing || 0) +
+            (bkkSummary.shortlisted || 0) +
+            (bkkSummary.partnerInterview || 0) +
+            (bkkSummary.interview || 0),
+          shortlistedApplications: bkkSummary.shortlisted || 0,
+          acceptedApplications:
+            (bkkSummary.hired || 0) +
+            Math.max((bkkSummary.accepted || 0) - (bkkSummary.hired || 0), 0),
+        },
       };
     },
     enabled: !!user, // Only fetch stats if user is authenticated
@@ -329,6 +365,7 @@ export const AdminDashboard = () => {
   const activeYear = data?.activeAcademicYear;
   const studentByMajor = data?.studentByMajor || [];
   const teacherAssignmentSummary = data?.teacherAssignmentSummary || null;
+  const bkkOverview = data?.bkkOverview;
   const parsedYearName = activeYear ? parseAcademicYearName(activeYear.name) : null;
   const semesterLabel = activeYear ? getSemesterLabelFromName(activeYear.name) : 'Periode berjalan saat ini';
 
@@ -459,6 +496,24 @@ export const AdminDashboard = () => {
               color="red"
               trendLabel="Guru dan staff terdaftar"
               to="/admin/teachers"
+            />
+            <StatCard
+              title="Pelamar BKK"
+              value={(bkkOverview?.totalApplicants || 0).toLocaleString('id-ID')}
+              icon={Briefcase}
+              trend={0}
+              color="teal"
+              trendLabel={`${bkkOverview?.verifiedApplicants || 0} terverifikasi • ${bkkOverview?.pendingApplicants || 0} pending`}
+              to="/admin/bkk-users"
+            />
+            <StatCard
+              title="Lamaran BKK"
+              value={(bkkOverview?.totalApplications || 0).toLocaleString('id-ID')}
+              icon={ClipboardList}
+              trend={0}
+              color="blue"
+              trendLabel={`${bkkOverview?.acceptedApplications || 0} diterima • ${bkkOverview?.shortlistedApplications || 0} shortlist`}
+              to="/admin/bkk-applications"
             />
           </div>
 
@@ -676,6 +731,35 @@ export const AdminDashboard = () => {
                       </p>
                     </div>
                     <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-semibold text-emerald-600 bg-emerald-50 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                      Buka Menu
+                      <ArrowUpRight size={14} />
+                    </span>
+                  </div>
+                </Link>
+                <Link
+                  to="/admin/bkk-applications"
+                  className="group rounded-2xl border border-gray-100 bg-gray-50/60 p-4 flex flex-col justify-between hover:bg-white hover:border-cyan-200 hover:shadow-[0_10px_25px_-8px_rgba(8,145,178,0.35)] transition-all duration-200"
+                >
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold tracking-[0.12em] text-cyan-500 mb-1">BKK</p>
+                      <h4 className="text-sm font-semibold text-gray-800">Pelamar & Lamaran</h4>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Pantau akun pelamar BKK, status lamaran, dan proses rekrutmen dari admin.
+                      </p>
+                    </div>
+                    <div className="w-9 h-9 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center group-hover:bg-cyan-600 group-hover:text-white transition-colors">
+                      <Briefcase size={18} />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[11px] text-gray-500">LAMARAN AKTIF</p>
+                      <p className="text-lg font-bold text-gray-900">
+                        {(bkkOverview?.inProgressApplications || 0).toLocaleString('id-ID')}
+                      </p>
+                    </div>
+                    <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-semibold text-cyan-600 bg-cyan-50 group-hover:bg-cyan-600 group-hover:text-white transition-colors">
                       Buka Menu
                       <ArrowUpRight size={14} />
                     </span>

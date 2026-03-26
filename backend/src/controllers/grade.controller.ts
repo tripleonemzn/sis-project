@@ -132,6 +132,28 @@ function normalizeComponentCode(raw: unknown): string {
     .replace(/^_+|_+$/g, '')
 }
 
+function normalizeSemesterForComponentScope(raw: unknown): Semester | null {
+  const value = String(raw || '')
+    .trim()
+    .toUpperCase()
+  if (!value) return null
+  if (value === 'ODD' || value === 'GANJIL') return Semester.ODD
+  if (value === 'EVEN' || value === 'GENAP') return Semester.EVEN
+  return null
+}
+
+function normalizeClassLevelTokenForScope(raw: unknown): string {
+  const value = String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '')
+  if (!value) return ''
+  if (value === '10' || value === 'X') return 'X'
+  if (value === '11' || value === 'XI') return 'XI'
+  if (value === '12' || value === 'XII') return 'XII'
+  return ''
+}
+
 function isFormativeAliasCode(raw: unknown): boolean {
   const normalized = normalizeComponentCode(raw)
   if (!normalized) return false
@@ -208,6 +230,79 @@ function defaultIncludeInFinalBySlot(
 ): boolean {
   const normalized = normalizeReportSlotCode(slotCode || slot)
   return isFormativeAliasCode(normalized) || isMidtermAliasCode(normalized) || isFinalAliasCode(normalized)
+}
+
+function clampScore(value: number): number {
+  if (value < 0) return 0
+  if (value > 100) return 100
+  return value
+}
+
+function readUsSlotScore(
+  slotScores: Record<string, number | null>,
+  candidates: string[],
+): number | null {
+  for (const candidate of candidates) {
+    const slotCode = normalizeReportSlotCode(candidate)
+    const raw = slotScores[slotCode]
+    const parsed = Number(raw)
+    if (Number.isFinite(parsed)) {
+      return clampScore(parsed)
+    }
+  }
+  return null
+}
+
+function computeUsScoreFromSlotScores(slotScores: Record<string, number | null>): number | null {
+  const theoryScore = readUsSlotScore(slotScores, ['US_THEORY', 'US_TEORI'])
+  const practiceScore = readUsSlotScore(slotScores, ['US_PRACTICE', 'US_PRAKTEK'])
+
+  if (theoryScore !== null && practiceScore !== null) {
+    return Number((((theoryScore * 0.5) + (practiceScore * 0.5)).toFixed(2)))
+  }
+  if (theoryScore !== null) return theoryScore
+  if (practiceScore !== null) return practiceScore
+  return null
+}
+
+function hasUsSlotInScoreMap(rawSlotScores: unknown): boolean {
+  const slotScores = parseSlotScoreMap(rawSlotScores)
+  const usTheory = slotScores[normalizeReportSlotCode('US_THEORY')]
+  const usTeori = slotScores[normalizeReportSlotCode('US_TEORI')]
+  const usPractice = slotScores[normalizeReportSlotCode('US_PRACTICE')]
+  const usPraktek = slotScores[normalizeReportSlotCode('US_PRAKTEK')]
+
+  return (
+    usTheory !== null && usTheory !== undefined
+  ) || (
+    usTeori !== null && usTeori !== undefined
+  ) || (
+    usPractice !== null && usPractice !== undefined
+  ) || (
+    usPraktek !== null && usPraktek !== undefined
+  )
+}
+
+function resolveEffectiveReportFinalScore(
+  grade: { usScore?: number | null; finalScore?: number | null; slotScores?: unknown } | null | undefined,
+): number | null {
+  if (!grade) return null
+  const hasUsSlot = hasUsSlotInScoreMap(grade.slotScores)
+  const finalScore = Number(grade.finalScore)
+  const hasFinalScore = Number.isFinite(finalScore)
+
+  if (
+    grade.usScore !== null &&
+    grade.usScore !== undefined &&
+    Number.isFinite(Number(grade.usScore)) &&
+    (hasUsSlot || !hasFinalScore || finalScore <= 0)
+  ) {
+    return Number(grade.usScore)
+  }
+  if (grade.finalScore !== null && grade.finalScore !== undefined && hasFinalScore) {
+    return finalScore
+  }
+  return null
 }
 
 function defaultGradeEntryModeByCode(code: string): GradeEntryMode {
@@ -1110,13 +1205,64 @@ export const getGradeComponents = async (req: Request, res: Response) => {
   const t0 = Date.now()
   try {
     const { subject_id, academic_year_id, academicYearId } = req.query
-    const subjectId = Number(subject_id)
+    const authUser = (req as unknown as { user?: AuthUserLike }).user
+    const querySubjectId = Number(subject_id)
+    const parsedSubjectId = Number.isFinite(querySubjectId) && querySubjectId > 0 ? querySubjectId : null
+    const semesterScope = normalizeSemesterForComponentScope(req.query.semester)
+    const assignmentId = toPositiveInt(
+      (req.query as Record<string, unknown>).assignment_id ??
+        (req.query as Record<string, unknown>).assignmentId,
+    )
+
+    let subjectId = parsedSubjectId
+    let scopedAssignment:
+      | {
+          id: number
+          teacherId: number
+          academicYearId: number
+          subjectId: number
+          class: { level: string | null } | null
+        }
+      | null = null
+
     const where: any = { isActive: true }
-    const resolvedAcademicYearId = await resolveAcademicYearIdForGradeComponents(
+    let resolvedAcademicYearId = await resolveAcademicYearIdForGradeComponents(
       academic_year_id ?? academicYearId,
     )
 
-    if (Number.isFinite(subjectId) && subjectId > 0) {
+    if (assignmentId) {
+      scopedAssignment = await prisma.teacherAssignment.findUnique({
+        where: { id: assignmentId },
+        select: {
+          id: true,
+          teacherId: true,
+          academicYearId: true,
+          subjectId: true,
+          class: {
+            select: {
+              level: true,
+            },
+          },
+        },
+      })
+
+      if (!scopedAssignment) {
+        throw new ApiError(404, 'Assignment tidak ditemukan.')
+      }
+
+      if (isTeacherUser(authUser) && Number(scopedAssignment.teacherId) !== Number(authUser?.id || 0)) {
+        throw new ApiError(403, 'Anda tidak memiliki akses ke assignment ini.')
+      }
+
+      if (resolvedAcademicYearId && Number(resolvedAcademicYearId) !== Number(scopedAssignment.academicYearId)) {
+        throw new ApiError(400, 'assignment_id tidak sesuai dengan tahun ajaran terpilih.')
+      }
+
+      resolvedAcademicYearId = Number(scopedAssignment.academicYearId)
+      subjectId = Number(scopedAssignment.subjectId)
+    }
+
+    if (subjectId !== null && subjectId > 0) {
       where.subjectId = subjectId
       if (resolvedAcademicYearId) {
         await syncSubjectGradeComponentsFromExamMaster(subjectId, resolvedAcademicYearId)
@@ -1183,6 +1329,76 @@ export const getGradeComponents = async (req: Request, res: Response) => {
         : Promise.resolve([]),
     ])
 
+    let scopedProgramComponentCodes: Set<string> | null = null
+    if (resolvedAcademicYearId && subjectId !== null && subjectId > 0) {
+      const scopedSubjectId = subjectId
+      const programWhere: Prisma.ExamProgramConfigWhereInput = {
+        academicYearId: Number(resolvedAcademicYearId),
+        isActive: true,
+      }
+
+      if (isTeacherUser(authUser)) {
+        programWhere.showOnTeacherMenu = true
+      }
+
+      if (semesterScope) {
+        programWhere.OR = [{ fixedSemester: semesterScope }, { fixedSemester: null }]
+      }
+
+      const programRows = await prisma.examProgramConfig.findMany({
+        where: programWhere,
+        select: {
+          gradeComponentCode: true,
+          allowedSubjectIds: true,
+          targetClassLevels: true,
+          allowedAuthorIds: true,
+        },
+      })
+
+      const assignmentLevelToken = normalizeClassLevelTokenForScope(scopedAssignment?.class?.level)
+      const assignmentTeacherId = Number(scopedAssignment?.teacherId || authUser?.id || 0)
+
+      const scopedRows = programRows.filter((row) => {
+        const allowedBySubject =
+          !Array.isArray(row.allowedSubjectIds) ||
+          row.allowedSubjectIds.length === 0 ||
+          row.allowedSubjectIds.some((allowedSubjectId) => Number(allowedSubjectId) === scopedSubjectId)
+        if (!allowedBySubject) return false
+
+        if (scopedAssignment) {
+          const normalizedTargetLevels = (Array.isArray(row.targetClassLevels) ? row.targetClassLevels : [])
+            .map((item) => normalizeClassLevelTokenForScope(item))
+            .filter((item): item is string => Boolean(item))
+
+          if (normalizedTargetLevels.length > 0) {
+            if (!assignmentLevelToken) return false
+            if (!normalizedTargetLevels.includes(assignmentLevelToken)) return false
+          }
+        }
+
+        if (isTeacherUser(authUser)) {
+          const normalizedAllowedAuthors = (Array.isArray(row.allowedAuthorIds) ? row.allowedAuthorIds : [])
+            .map((authorId) => Number(authorId))
+            .filter((authorId) => Number.isFinite(authorId) && authorId > 0)
+          if (normalizedAllowedAuthors.length > 0 && !normalizedAllowedAuthors.includes(assignmentTeacherId)) {
+            return false
+          }
+        }
+
+        return true
+      })
+
+      const scopedCodes = scopedRows
+        .map((row) => normalizeComponentCode(row.gradeComponentCode))
+        .filter((code): code is string => Boolean(code))
+
+      if (scopedCodes.length > 0) {
+        scopedProgramComponentCodes = new Set(scopedCodes)
+      } else if (assignmentId || semesterScope) {
+        scopedProgramComponentCodes = new Set<string>()
+      }
+    }
+
     const masterMap = new Map(
       masterComponents.map((item) => [normalizeComponentCode(item.code), item]),
     )
@@ -1230,12 +1446,22 @@ export const getGradeComponents = async (req: Request, res: Response) => {
         return String(a.name || '').localeCompare(String(b.name || ''))
       })
 
+    const scopedComponents = scopedProgramComponentCodes
+      ? formattedComponents.filter((component) => {
+          const normalizedCode = normalizeComponentCode(
+            component.code || component.typeCode || defaultComponentCodeByType(component.type),
+          )
+          if (!normalizedCode) return false
+          return scopedProgramComponentCodes!.has(normalizedCode)
+        })
+      : formattedComponents
+
     const elapsed = Date.now() - t0
     console.log(`getGradeComponents executed in ${elapsed}ms`)
 
     return ApiResponseHelper.success(
       res,
-      formattedComponents,
+      scopedComponents,
       'Grade components retrieved successfully',
     )
   } catch (error) {
@@ -1350,46 +1576,8 @@ export const syncReportGrade = async (
 
     const predicate = calculatePredicate(finalScore, kkm);
 
-    // 4. US Score Logic (Copied from generateReportGrades)
-    let usScore: number | null = null;
-    const subject = await prisma.subject.findUnique({ 
-        where: { id: subjectId },
-        include: { category: true }
-    });
-    
-    if (subject) {
-        const sName = subject.name.toLowerCase();
-        const isTeoriKejuruan = sName.includes('teori kejuruan') || sName.includes('kompetensi keahlian') || subject.category?.code === 'KEJURUAN' || subject.category?.code === 'KOMPETENSI_KEAHLIAN';
-        
-        const isUSSubject = 
-            sName.includes('bahasa indonesia') ||
-            sName.includes('bahasa inggris') ||
-            sName.includes('agama') ||
-            sName.includes('pancasila') ||
-            sName.includes('matematika') ||
-            sName.includes('bahasa sunda') ||
-            isTeoriKejuruan;
-
-        if (isUSSubject) {
-            const theoryScore = Number(dynamicResult.slotScoresByCode.US_THEORY || 0);
-            const practiceScore = Number(dynamicResult.slotScoresByCode.US_PRACTICE || 0);
-            
-            if (
-                sName.includes('bahasa indonesia') ||
-                sName.includes('bahasa inggris') ||
-                sName.includes('agama') ||
-                isTeoriKejuruan
-            ) {
-                usScore = (theoryScore * 0.5) + (practiceScore * 0.5);
-            } else if (
-                sName.includes('pancasila') ||
-                sName.includes('matematika') ||
-                sName.includes('bahasa sunda')
-            ) {
-                usScore = theoryScore;
-            }
-        }
-    }
+    // 4. US Score Logic (dinamis dari slot score, tanpa hardcode nama mapel)
+    const usScore = computeUsScoreFromSlotScores(dynamicResult.slotScoresByCode);
 
     // 5. Upsert ReportGrade
     const existing = await prisma.reportGrade.findFirst({
@@ -2476,47 +2664,7 @@ export const generateReportGrades = async (req: Request, res: Response) => {
       // ==========================================
       // UJIAN SEKOLAH (US) CALCULATION LOGIC
       // ==========================================
-      let usScore: number | null = null
-      const sName = subject.name.toLowerCase()
-      const isTeoriKejuruan = sName.includes('teori kejuruan') || sName.includes('kompetensi keahlian') || subject.category?.code === 'KEJURUAN' || subject.category?.code === 'KOMPETENSI_KEAHLIAN'
-
-      // Check if subject is one of the "Ujian Sekolah" subjects
-      const isUSSubject = 
-        sName.includes('bahasa indonesia') ||
-        sName.includes('bahasa inggris') ||
-        sName.includes('agama') || // Pendidikan Agama...
-        sName.includes('pancasila') ||
-        sName.includes('matematika') ||
-        sName.includes('bahasa sunda') ||
-        isTeoriKejuruan
-
-      if (isUSSubject) {
-        const theoryScore = Number(dynamicResult.slotScoresByCode.US_THEORY || 0)
-        const practiceScore = Number(dynamicResult.slotScoresByCode.US_PRACTICE || 0)
-        
-        // Rule 3 & 4: 50% Theory + 50% Practice
-        // Subjects: B. Indo, B. Ing, PABP, Teori Kejuruan
-        if (
-          sName.includes('bahasa indonesia') ||
-          sName.includes('bahasa inggris') ||
-          sName.includes('agama') ||
-          isTeoriKejuruan
-        ) {
-          // If both exist, 50:50. If only one, maybe 100? 
-          // User implies both are needed. Let's assume 0 if missing, or strict 50/50.
-          // "penggabungan bobot 50%+50%"
-          usScore = (theoryScore * 0.5) + (practiceScore * 0.5)
-        }
-        // Rule 7: 100% Theory
-        // Subjects: Pancasila, Matematika, B. Sunda
-        else if (
-          sName.includes('pancasila') ||
-          sName.includes('matematika') ||
-          sName.includes('bahasa sunda')
-        ) {
-          usScore = theoryScore
-        }
-      }
+      const usScore = computeUsScoreFromSlotScores(dynamicResult.slotScoresByCode)
 
       // Check if report grade already exists
       const existingReportGrade = await prisma.reportGrade.findFirst({
@@ -2712,6 +2860,7 @@ export const getReportGrades = async (req: Request, res: Response) => {
 
     const result = reportGrades.map(grade => ({
       ...grade,
+      finalScore: resolveEffectiveReportFinalScore(grade),
       student: studentMap[grade.studentId]
     }))
 
@@ -3014,6 +3163,7 @@ export const updateReportGrade = async (req: Request, res: Response) => {
         slotScores:
           Object.keys(slotScorePayload).length > 0 ? slotScorePayload : Prisma.JsonNull,
         finalScore: finalScore,
+        usScore: computeUsScoreFromSlotScores(nextSlotScores),
         predicate,
         description: competency_desc !== undefined ? competency_desc : undefined
       },
@@ -3154,14 +3304,19 @@ export const getStudentReportCard = async (req: Request, res: Response) => {
       alpha
     }
 
+    const normalizedReportGrades = reportGrades.map((grade) => ({
+      ...grade,
+      finalScore: resolveEffectiveReportFinalScore(grade),
+    }))
+
     // Calculate average
-    const average = reportGrades.length > 0
-      ? reportGrades.reduce((sum: any, grade: any) => sum + grade.finalScore, 0) / reportGrades.length
+    const average = normalizedReportGrades.length > 0
+      ? normalizedReportGrades.reduce((sum: any, grade: any) => sum + Number(grade.finalScore || 0), 0) / normalizedReportGrades.length
       : 0
 
     return ApiResponseHelper.success(res, {
       student,
-      reportGrades,
+      reportGrades: normalizedReportGrades,
       reportNotes,
       attendanceSummary,
       average

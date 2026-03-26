@@ -66,7 +66,12 @@ export interface InputGradePayload {
 }
 
 export const gradeService = {
-  getComponents: async (params?: { subject_id?: number; academic_year_id?: number }) => {
+  getComponents: async (params?: {
+    subject_id?: number;
+    academic_year_id?: number;
+    assignment_id?: number;
+    semester?: 'ODD' | 'EVEN' | string;
+  }) => {
     const response = await api.get('/grades/components', { params });
     return response.data;
   },

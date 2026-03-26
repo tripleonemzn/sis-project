@@ -122,9 +122,10 @@ const TARGET_CLASS_LEVEL_OPTIONS = [
   { value: 'X', label: 'Kelas X' },
   { value: 'XI', label: 'Kelas XI' },
   { value: 'XII', label: 'Kelas XII' },
+  { value: 'CALON_SISWA', label: 'Calon Siswa' },
 ];
 
-function normalizeClassLevel(raw: unknown): string {
+function normalizeAcademicClassLevel(raw: unknown): string {
   const value = String(raw || '')
     .trim()
     .toUpperCase()
@@ -135,14 +136,34 @@ function normalizeClassLevel(raw: unknown): string {
   return '';
 }
 
+function normalizeTargetLevelToken(raw: unknown): string {
+  const value = String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '_');
+  if (!value) return '';
+  const normalizedClassLevel = normalizeAcademicClassLevel(value);
+  if (normalizedClassLevel) return normalizedClassLevel;
+  if (value === 'CALON_SISWA' || value === 'CALONSISWA' || value === 'CANDIDATE') return 'CALON_SISWA';
+  return '';
+}
+
 function normalizeClassLevels(raw: unknown): string[] {
   const source = Array.isArray(raw) ? raw : [];
   const deduped = new Set<string>();
   source.forEach((item) => {
-    const level = normalizeClassLevel(item);
+    const level = normalizeTargetLevelToken(item);
     if (level) deduped.add(level);
   });
   return Array.from(deduped);
+}
+
+function formatTargetScopeLabel(value: string): string {
+  if (value === 'X') return 'Kelas X';
+  if (value === 'XI') return 'Kelas XI';
+  if (value === 'XII') return 'Kelas XII';
+  if (value === 'CALON_SISWA') return 'Calon Siswa';
+  return value;
 }
 
 function normalizeNumericIds(raw: unknown): number[] {
@@ -521,8 +542,15 @@ export default function ExamProgramManagementPage() {
     () => normalizeClassLevels(programDraft.targetClassLevels),
     [programDraft.targetClassLevels],
   );
+  const selectedAcademicLevels = useMemo(
+    () =>
+      selectedTargetLevels
+        .map((level) => normalizeAcademicClassLevel(level))
+        .filter((level): level is string => Boolean(level)),
+    [selectedTargetLevels],
+  );
   const subjectOptions = useMemo(() => {
-    const levelSet = new Set(selectedTargetLevels);
+    const levelSet = new Set(selectedAcademicLevels);
     const relevantRows = subjectAssignmentRows.filter((row) =>
       levelSet.size === 0 ? true : levelSet.has(row.classLevel),
     );
@@ -552,7 +580,7 @@ export default function ExamProgramManagementPage() {
         teacherNames: Array.from(item.teacherNames).sort((a, b) => a.localeCompare(b)),
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [selectedTargetLevels, subjectAssignmentRows]);
+  }, [selectedAcademicLevels, subjectAssignmentRows]);
 
   const setActiveTab = useCallback(
     (next: 'PROGRAM' | 'COMPONENT') => {
@@ -696,7 +724,7 @@ export default function ExamProgramManagementPage() {
               subjectName: String(assignment?.subject?.name || '').trim(),
               subjectCode: String(assignment?.subject?.code || '').trim(),
               teacherName: String(assignment?.teacher?.name || '').trim(),
-              classLevel: normalizeClassLevel(assignment?.class?.level),
+              classLevel: normalizeAcademicClassLevel(assignment?.class?.level),
             } as SubjectAssignmentRow;
           })
           .filter((item): item is SubjectAssignmentRow => Boolean(item));
@@ -1462,7 +1490,9 @@ export default function ExamProgramManagementPage() {
                       <p className="text-gray-500">{row.gradeComponentCode || '-'}</p>
                       <p className="text-gray-500">
                         Tingkat:{' '}
-                        {row.targetClassLevels.length > 0 ? row.targetClassLevels.join(', ') : 'Semua tingkat'}
+                        {row.targetClassLevels.length > 0
+                          ? row.targetClassLevels.map((item) => formatTargetScopeLabel(item)).join(', ')
+                          : 'Semua tingkat'}
                       </p>
                       <p className="text-gray-500">
                         Mapel: {row.allowedSubjectIds.length > 0 ? `${row.allowedSubjectIds.length} dipilih` : 'Semua'}

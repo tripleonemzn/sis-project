@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Save, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { gradeService } from '../../../services/grade.service';
@@ -15,12 +15,40 @@ interface Student {
   nis: string;
 }
 
+type SemesterValue = 'ODD' | 'EVEN' | '';
+
+type StudentGradeApiRow = {
+  id?: number;
+  studentId?: number;
+  student_id?: number;
+  subjectId?: number;
+  subject_id?: number;
+  academicYearId?: number;
+  academic_year_id?: number;
+  componentId?: number;
+  component_id?: number;
+  semester?: string;
+  score?: number | null;
+};
+
+type AcademicYearListResponse = {
+  data?: {
+    academicYears?: AcademicYearLite[];
+  };
+  academicYears?: AcademicYearLite[];
+};
+
+type AcademicYearLite = {
+  id: number | string;
+  name: string;
+  isActive?: boolean;
+};
+
 export const UjianSekolahPage = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   
   // Data
-  type AcademicYearLite = { id: number | string; name: string; isActive?: boolean };
   const [academicYears, setAcademicYears] = useState<AcademicYearLite[]>([]);
   const [assignments, setAssignments] = useState<TeacherAssignment[]>([]);
   const [gradeComponents, setGradeComponents] = useState<GradeComponent[]>([]);
@@ -28,61 +56,152 @@ export const UjianSekolahPage = () => {
   
   // Selections
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
+  const [selectedSemester, setSelectedSemester] = useState<SemesterValue>('');
   const [selectedAssignment, setSelectedAssignment] = useState<string>('');
   const [selectedComponent, setSelectedComponent] = useState<string>('');
   
   // Grades State: { studentId: score }
   const [grades, setGrades] = useState<Record<number, string>>({});
 
+  const US_COMPONENT_TYPES = useMemo(() => new Set(['US_THEORY', 'US_PRACTICE']), []);
+
+  const extractAcademicYears = useCallback((payload: unknown): AcademicYearLite[] => {
+    if (Array.isArray(payload)) {
+      return payload as AcademicYearLite[];
+    }
+
+    const response = payload as AcademicYearListResponse;
+    if (Array.isArray(response?.data?.academicYears)) {
+      return response.data.academicYears;
+    }
+    if (Array.isArray(response?.academicYears)) {
+      return response.academicYears;
+    }
+    return [];
+  }, []);
+
+  const normalizeAssignments = useCallback((payload: unknown): TeacherAssignment[] => {
+    const rawAssignments = Array.isArray((payload as { assignments?: unknown })?.assignments)
+      ? ((payload as { assignments: TeacherAssignment[] }).assignments)
+      : (Array.isArray(payload) ? (payload as TeacherAssignment[]) : []);
+
+    return [...rawAssignments].sort((a, b) => {
+      const subjectCompare = String(a.subject?.name || '').localeCompare(String(b.subject?.name || ''), 'id', {
+        numeric: true,
+        sensitivity: 'base',
+      });
+      if (subjectCompare !== 0) return subjectCompare;
+      return String(a.class?.name || '').localeCompare(String(b.class?.name || ''), 'id', {
+        numeric: true,
+        sensitivity: 'base',
+      });
+    });
+  }, []);
+
+  const resolveDefaultSemester = useCallback((): SemesterValue => {
+    const month = new Date().getMonth() + 1;
+    return month >= 7 ? 'ODD' : 'EVEN';
+  }, []);
+
+  const fetchAssignmentsByAcademicYear = useCallback(
+    async (academicYearId: number | string) => {
+      if (!academicYearId) {
+        setAssignments([]);
+        setSelectedAssignment('');
+        setSelectedComponent('');
+        setStudents([]);
+        setGradeComponents([]);
+        setGrades({});
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const assignmentResponse = await teacherAssignmentService.list({
+          academicYearId: Number(academicYearId),
+          limit: 1000,
+        });
+        const assignmentPayload =
+          (assignmentResponse as { data?: unknown })?.data ?? assignmentResponse;
+        const assignmentsData = normalizeAssignments(assignmentPayload);
+
+        const uniqueSubjectIds = Array.from(
+          new Set(
+            assignmentsData
+              .map((assignment) => Number(assignment?.subjectId))
+              .filter((subjectId) => Number.isInteger(subjectId) && subjectId > 0),
+          ),
+        );
+
+        const componentResponses = await Promise.all(
+          uniqueSubjectIds.map((subjectId) =>
+            gradeService
+              .getComponents({
+                subject_id: subjectId,
+                academic_year_id: Number(academicYearId),
+              })
+              .catch(() => ({ data: [] })),
+          ),
+        );
+
+        const subjectIdsWithUsComponent = new Set<number>();
+        componentResponses.forEach((response, index) => {
+          const components = Array.isArray(response?.data) ? response.data : [];
+          const hasUsComponent = components.some(
+            (component: GradeComponent) =>
+              Boolean(component?.isActive) && US_COMPONENT_TYPES.has(String(component?.type || '').toUpperCase()),
+          );
+          if (hasUsComponent) {
+            subjectIdsWithUsComponent.add(uniqueSubjectIds[index]);
+          }
+        });
+
+        const filteredAssignments = assignmentsData.filter((assignment) =>
+          subjectIdsWithUsComponent.has(Number(assignment.subjectId)),
+        );
+
+        setAssignments(filteredAssignments);
+        setSelectedAssignment((previous) =>
+          filteredAssignments.some((assignment) => String(assignment.id) === previous) ? previous : '',
+        );
+        setSelectedComponent('');
+        setStudents([]);
+        setGradeComponents([]);
+        setGrades({});
+      } catch (error) {
+        console.error(error);
+        setAssignments([]);
+        setSelectedAssignment('');
+        toast.error('Gagal memuat assignment Nilai US');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [US_COMPONENT_TYPES, normalizeAssignments],
+  );
+
   const fetchInitialData = useCallback(async () => {
     try {
       setLoading(true);
-      const [ayRes, assignRes] = await Promise.all([
-        academicYearService.list(),
-        teacherAssignmentService.list({ limit: 1000 })
-      ]);
+      const ayRes = await academicYearService.list();
+      let academicYearsData = extractAcademicYears(ayRes);
 
-      const ayPayload = (ayRes as { data?: unknown })?.data ?? ayRes;
-      const academicYearsData = Array.isArray(ayPayload) ? (ayPayload as AcademicYearLite[]) : [];
+      if (academicYearsData.length === 0) {
+        const activeRes = await academicYearService.getActiveSafe().catch(() => null);
+        const activePayload = (activeRes as { data?: unknown })?.data ?? activeRes;
+        if (activePayload && typeof activePayload === 'object') {
+          const active = activePayload as AcademicYearLite;
+          if (active.id && active.name) {
+            academicYearsData = [{ ...active, isActive: true }];
+          }
+        }
+      }
       setAcademicYears(academicYearsData);
-      
-      const assignPayload = (assignRes as { data?: unknown })?.data ?? assignRes;
-      const assignmentsData = Array.isArray(
-        (assignPayload as { assignments?: unknown })?.assignments
-      )
-        ? ((assignPayload as { assignments: TeacherAssignment[] }).assignments)
-        : (Array.isArray(assignPayload) ? (assignPayload as TeacherAssignment[]) : []);
-
-      const xiiAssignments = assignmentsData.filter((a) => 
-        a.class && a.class.name && a.class.name.includes('XII')
-      );
-
-      const usSubjects = [
-        'bahasa indonesia',
-        'bahasa inggris',
-        'agama',
-        'teori kejuruan',
-        'kompetensi keahlian',
-        'pancasila',
-        'matematika',
-        'bahasa sunda'
-      ];
-
-      const filteredAssignments = xiiAssignments.filter((a) => {
-        const sName = (a.subject?.name || '').toLowerCase();
-        return usSubjects.some(us => sName.includes(us));
-      });
-      
-      filteredAssignments.sort((a, b) => {
-        const subjectCompare = (a.subject?.name || '').localeCompare(b.subject?.name || '');
-        if (subjectCompare !== 0) return subjectCompare;
-        return (a.class?.name || '').localeCompare(b.class?.name || '');
-      });
-
-      setAssignments(filteredAssignments);
 
       const activeAy = academicYearsData.find((ay) => ay.isActive);
-      if (activeAy) setSelectedAcademicYear(String(activeAy.id));
+      const fallbackAy = activeAy || academicYearsData[0];
+      if (fallbackAy) setSelectedAcademicYear(String(fallbackAy.id));
+      setSelectedSemester(resolveDefaultSemester());
 
     } catch (error) {
       console.error(error);
@@ -90,57 +209,19 @@ export const UjianSekolahPage = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [extractAcademicYears, resolveDefaultSemester]);
 
   useEffect(() => {
     fetchInitialData();
   }, [fetchInitialData]);
 
- 
-
- 
-
-  const getAvailableComponents = (assignment: TeacherAssignment, allComponents: GradeComponent[]) => {
-    const sName = (assignment.subject?.name || '').toLowerCase();
-    
-    // Default US components
-    let allowedTypes: string[] = [];
-    
-    // Group 1: 50/50 (Theory + Practice) - Teacher inputs BOTH
-    if (
-      sName.includes('bahasa indonesia') ||
-      sName.includes('bahasa inggris') ||
-      sName.includes('agama')
-    ) {
-      allowedTypes = ['US_THEORY', 'US_PRACTICE'];
-    }
-    // Group 2: Vocational (Theory by Teacher, Practice by External/UKK)
-    else if (
-      sName.includes('teori kejuruan') || 
-      sName.includes('kejuruan') || 
-      sName.includes('kompetensi keahlian')
-    ) {
-      // Only Theory is input by Teacher here. Practice is via UKK module.
-      allowedTypes = ['US_THEORY'];
-    }
-    // Group 3: 100% Theory
-    else if (
-      sName.includes('pancasila') ||
-      sName.includes('matematika') ||
-      sName.includes('bahasa sunda')
-    ) {
-      allowedTypes = ['US_THEORY'];
-    }
-    else {
-      // Fallback for future flexibility: Allow Theory
-      allowedTypes = ['US_THEORY']; 
-    }
-    
-    return allComponents.filter(c => allowedTypes.includes(c.type));
-  };
+  useEffect(() => {
+    if (!selectedAcademicYear) return;
+    fetchAssignmentsByAcademicYear(selectedAcademicYear);
+  }, [selectedAcademicYear, fetchAssignmentsByAcademicYear]);
 
   const fetchStudentsAndComponents = useCallback(async () => {
-    if (!selectedAssignment) return;
+    if (!selectedAssignment || !selectedSemester) return;
     
     try {
       setLoading(true);
@@ -157,24 +238,32 @@ export const UjianSekolahPage = () => {
       setStudents(Array.isArray(studentPayload) ? (studentPayload as Student[]) : []);
 
       // Fetch Grade Components for Subject
-      const compRes = await gradeService.getComponents({ 
+      const compRes = await gradeService.getComponents({
         subject_id: assignment.subjectId,
-        academic_year_id: Number(selectedAcademicYear)
+        academic_year_id: Number(selectedAcademicYear),
+        assignment_id: assignment.id,
+        semester: selectedSemester,
       });
-      
-      const allSubjectComponents = (Array.isArray(compRes?.data) ? compRes.data : []).filter((c: GradeComponent) => 
-        c.type === 'US_THEORY' || c.type === 'US_PRACTICE'
+      const allSubjectComponents = (Array.isArray(compRes?.data) ? compRes.data : []).filter(
+        (c: GradeComponent) => c.type === 'US_THEORY' || c.type === 'US_PRACTICE',
       );
-      
-      // Use getAvailableComponents to filter
-      const usComponents = getAvailableComponents(assignment, allSubjectComponents);
+      const usComponents = [...allSubjectComponents].sort((a, b) => {
+        const aOrder = Number(a.displayOrder ?? 999);
+        const bOrder = Number(b.displayOrder ?? 999);
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return String(a.name || '').localeCompare(String(b.name || ''));
+      });
       
       setGradeComponents(usComponents);
       if (usComponents.length > 0) {
-        setSelectedComponent(String(usComponents[0].id));
+        setSelectedComponent((previous) => {
+          const hasPrevious = usComponents.some((item) => String(item.id) === previous);
+          return hasPrevious ? previous : String(usComponents[0].id);
+        });
       } else {
         setSelectedComponent('');
         toast.error('Mata pelajaran ini belum memiliki komponen Ujian Sekolah yang sesuai');
+        setGrades({});
       }
 
     } catch (error) {
@@ -183,29 +272,50 @@ export const UjianSekolahPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [assignments, selectedAcademicYear, selectedAssignment]);
+  }, [assignments, selectedAcademicYear, selectedAssignment, selectedSemester]);
 
   const fetchExistingGrades = useCallback(async () => {
     try {
       const assignment = assignments.find(a => String(a.id) === selectedAssignment);
       if (!assignment) return;
 
-      const res = await gradeService.getGrades({
-        academicYearId: Number(selectedAcademicYear),
-        subjectId: assignment.subject.id,
-        classId: assignment.class.id,
-        type: selectedComponent
-      });
+      const res = await gradeService.getGradesByClassSubject(
+        assignment.class.id,
+        assignment.subject.id,
+        Number(selectedAcademicYear),
+        selectedSemester,
+      );
       
       const gradeMap: Record<number, string> = {};
       const gradesPayload = (res as { data?: unknown })?.data ?? res;
-      type GradeRow = { type?: string; studentId: number; score: number };
-      const gradesData = Array.isArray(gradesPayload) ? (gradesPayload as GradeRow[]) : [];
-      
-      gradesData.forEach((g) => {
-        if (g.type === selectedComponent) {
-          gradeMap[g.studentId] = String(g.score);
+      const rows = Array.isArray(gradesPayload) ? (gradesPayload as StudentGradeApiRow[]) : [];
+      const latestRowsByKey = new Map<string, StudentGradeApiRow>();
+
+      rows.forEach((row) => {
+        const studentId = Number(row.studentId ?? row.student_id ?? 0);
+        const subjectId = Number(row.subjectId ?? row.subject_id ?? 0);
+        const academicYearId = Number(row.academicYearId ?? row.academic_year_id ?? 0);
+        const componentId = Number(row.componentId ?? row.component_id ?? 0);
+        const semester = String(row.semester || '');
+        if (!studentId || !subjectId || !academicYearId || !componentId || !semester) return;
+        const key = `${studentId}:${subjectId}:${academicYearId}:${componentId}:${semester}`;
+        const currentId = Number(row.id || 0);
+        const previous = latestRowsByKey.get(key);
+        const previousId = Number(previous?.id || 0);
+        if (!previous || currentId >= previousId) {
+          latestRowsByKey.set(key, row);
         }
+      });
+
+      const dedupedRows = latestRowsByKey.size > 0 ? Array.from(latestRowsByKey.values()) : rows;
+
+      dedupedRows.forEach((row) => {
+        const rowComponentId = Number(row.componentId ?? row.component_id ?? 0);
+        const rowStudentId = Number(row.studentId ?? row.student_id ?? 0);
+        if (rowComponentId !== Number(selectedComponent) || !rowStudentId) return;
+        const score = Number(row.score);
+        if (!Number.isFinite(score)) return;
+        gradeMap[rowStudentId] = String(score);
       });
       
       setGrades(gradeMap);
@@ -213,19 +323,19 @@ export const UjianSekolahPage = () => {
       console.error(error);
       toast.error('Gagal memuat nilai siswa');
     }
-  }, [assignments, selectedAcademicYear, selectedComponent, selectedAssignment]);
+  }, [assignments, selectedAcademicYear, selectedComponent, selectedAssignment, selectedSemester]);
 
   useEffect(() => {
-    if (selectedAssignment) {
+    if (selectedAssignment && selectedSemester) {
       fetchStudentsAndComponents();
     }
-  }, [selectedAssignment, fetchStudentsAndComponents]);
+  }, [selectedAssignment, selectedSemester, fetchStudentsAndComponents]);
 
   useEffect(() => {
-    if (selectedAssignment && selectedComponent && selectedAcademicYear) {
+    if (selectedAssignment && selectedComponent && selectedAcademicYear && selectedSemester) {
       fetchExistingGrades();
     }
-  }, [selectedAssignment, selectedComponent, selectedAcademicYear, fetchExistingGrades]);
+  }, [selectedAssignment, selectedComponent, selectedAcademicYear, selectedSemester, fetchExistingGrades]);
   const handleScoreChange = (studentId: number, value: string) => {
     // Validate: 0-100
     const num = parseFloat(value);
@@ -241,20 +351,33 @@ export const UjianSekolahPage = () => {
       const assignment = assignments.find(a => String(a.id) === selectedAssignment);
       if (!assignment) return;
 
-      const gradesToSave = Object.entries(grades).map(([studentId, score]) => ({
-        studentId: Number(studentId),
-        type: selectedComponent,
-        score: parseFloat(score),
-      }));
+      const selectedComponentId = Number(selectedComponent);
+      if (!selectedComponentId || !selectedSemester) return;
 
-      await gradeService.saveGradesBulk({
-        academicYearId: Number(selectedAcademicYear),
-        subjectId: assignment.subject.id,
-        classId: assignment.class.id,
-        grades: gradesToSave
-      });
+      const gradesToSave = Object.entries(grades)
+        .map(([studentId, score]) => {
+          const parsedScore = Number(score);
+          if (!Number.isFinite(parsedScore)) return null;
+          return {
+            student_id: Number(studentId),
+            subject_id: assignment.subject.id,
+            academic_year_id: Number(selectedAcademicYear),
+            grade_component_id: selectedComponentId,
+            semester: selectedSemester,
+            score: parsedScore,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+      if (gradesToSave.length === 0) {
+        toast.error('Belum ada nilai valid untuk disimpan');
+        return;
+      }
+
+      await gradeService.bulkInputGrades({ grades: gradesToSave });
 
       toast.success('Nilai berhasil disimpan');
+      await fetchExistingGrades();
     } catch (error) {
       console.error(error);
       toast.error('Gagal menyimpan nilai');
@@ -278,14 +401,18 @@ export const UjianSekolahPage = () => {
     return false;
   };
 
+  const formSelectClassName =
+    'w-full h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100';
+  const formInputClassName =
+    'w-full h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100';
+
   return (
-    
-      <div className="p-6">
-        <div className="flex justify-between items-center mb-6">
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold text-gray-800">Input Nilai Ujian Sekolah</h1>
           <button
             onClick={handleSave}
-            disabled={saving || loading || !selectedComponent || isReadOnly()}
+            disabled={saving || loading || !selectedSemester || !selectedComponent || isReadOnly()}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -294,15 +421,15 @@ export const UjianSekolahPage = () => {
         </div>
         
         {isReadOnly() && (
-          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg mb-6 flex items-center">
+          <div className="flex items-center rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-yellow-800">
             <span className="text-sm">
               Nilai Praktik untuk mata pelajaran ini diinput oleh Penguji Eksternal (UKK). Anda hanya dapat melihat nilai.
             </span>
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="rounded-xl border border-gray-200 bg-white p-4 md:p-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
             <div>
               <label htmlFor="us-academic-year" className="block text-sm font-medium text-gray-700 mb-1">Tahun Ajaran</label>
               <select
@@ -310,11 +437,27 @@ export const UjianSekolahPage = () => {
                 name="academicYear"
                 value={selectedAcademicYear}
                 onChange={(e) => setSelectedAcademicYear(e.target.value)}
-                className="w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                className={formSelectClassName}
               >
+                <option value="">Pilih Tahun Ajaran</option>
                 {academicYears.map(ay => (
                   <option key={ay.id} value={ay.id}>{ay.name} ({ay.isActive ? 'Aktif' : 'Tidak Aktif'})</option>
                 ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="us-semester" className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
+              <select
+                id="us-semester"
+                name="semester"
+                value={selectedSemester}
+                onChange={(e) => setSelectedSemester(e.target.value as SemesterValue)}
+                className={formSelectClassName}
+              >
+                <option value="">Pilih Semester</option>
+                <option value="ODD">Semester Ganjil</option>
+                <option value="EVEN">Semester Genap</option>
               </select>
             </div>
 
@@ -325,7 +468,8 @@ export const UjianSekolahPage = () => {
                 name="assignment"
                 value={selectedAssignment}
                 onChange={(e) => setSelectedAssignment(e.target.value)}
-                className="w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                disabled={!selectedSemester}
+                className={formSelectClassName}
               >
                 <option value="">Pilih Kelas & Mata Pelajaran</option>
                 {assignments.map(a => (
@@ -343,8 +487,8 @@ export const UjianSekolahPage = () => {
                 name="component"
                 value={selectedComponent}
                 onChange={(e) => setSelectedComponent(e.target.value)}
-                disabled={!selectedAssignment || gradeComponents.length === 0}
-                className="w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                disabled={!selectedAssignment || !selectedSemester || gradeComponents.length === 0}
+                className={formSelectClassName}
               >
                 {gradeComponents.length === 0 ? (
                   <option value="">Tidak ada komponen US</option>
@@ -358,11 +502,16 @@ export const UjianSekolahPage = () => {
               </select>
             </div>
           </div>
+          {!loading && selectedAcademicYear && selectedSemester && assignments.length === 0 && (
+            <p className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
+              Anda belum memiliki assignment mapel dengan komponen Ujian Sekolah pada tahun ajaran ini.
+            </p>
+          )}
         </div>
 
         {selectedAssignment && selectedComponent && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+            <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 p-4">
               <h3 className="font-semibold text-gray-800">Daftar Siswa</h3>
               <div className="text-sm text-gray-500">
                 Total: {students.length} Siswa
@@ -402,7 +551,7 @@ export const UjianSekolahPage = () => {
                             value={grades[student.id] || ''}
                             onChange={(e) => handleScoreChange(student.id, e.target.value)}
                             disabled={isReadOnly()}
-                            className="w-full text-center border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+                            className={`${formInputClassName} text-center disabled:text-gray-500`}
                             placeholder="0"
                           />
                         </td>

@@ -95,7 +95,9 @@ export default function PublicRegistrationScreen() {
             <Text style={{ color: '#fff', fontWeight: '700' }}>Buka Profil</Text>
           </Pressable>
           <Pressable
-            onPress={() => router.push('/candidate/application' as never)}
+            onPress={() =>
+              router.push((user?.role === 'CALON_SISWA' ? '/candidate/application' : '/profile') as never)
+            }
             style={{
               backgroundColor: '#0f766e',
               borderRadius: 10,
@@ -103,7 +105,9 @@ export default function PublicRegistrationScreen() {
               paddingVertical: 8,
             }}
           >
-            <Text style={{ color: '#fff', fontWeight: '700' }}>Cek Status</Text>
+            <Text style={{ color: '#fff', fontWeight: '700' }}>
+              {user?.role === 'CALON_SISWA' ? 'Cek Status' : 'Lengkapi Profil'}
+            </Text>
           </Pressable>
         </View>
       </InfoCard>

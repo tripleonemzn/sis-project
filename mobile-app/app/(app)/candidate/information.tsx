@@ -39,7 +39,7 @@ export default function CandidateInformationScreen() {
 
   if (isLoading) return <AppLoadingScreen message="Memuat informasi PPDB..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
-  if (user?.role !== 'CALON_SISWA' && user?.role !== 'UMUM') return <Redirect href="/home" />;
+  if (user?.role !== 'CALON_SISWA') return <Redirect href="/home" />;
 
   return (
     <ScrollView
@@ -72,10 +72,10 @@ export default function CandidateInformationScreen() {
       </Text>
 
       <InfoCard title="Alur Pendaftaran">
-        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4 }}>1. Buat akun pendaftar.</Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4 }}>2. Lengkapi data profil dan dokumen.</Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4 }}>3. Tunggu verifikasi admin/operator.</Text>
-        <Text style={{ color: BRAND_COLORS.textMuted }}>4. Ikuti arahan lanjutan dari sekolah.</Text>
+        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4 }}>1. Buat akun calon siswa.</Text>
+        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4 }}>2. Lengkapi formulir PPDB dan data pendukung.</Text>
+        <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 4 }}>3. Unggah dokumen dari menu profil dan kirim pendaftaran.</Text>
+        <Text style={{ color: BRAND_COLORS.textMuted }}>4. Pantau review admin dan jadwal tes seleksi di aplikasi.</Text>
       </InfoCard>
 
       <InfoCard title="Dokumen Umum">

@@ -306,6 +306,7 @@ export default function LearningScreen() {
         value={search}
         onChangeText={setSearch}
         placeholder={activeTab === 'materials' ? 'Cari materi...' : 'Cari tugas...'}
+        placeholderTextColor="#94a3b8"
         style={{
           borderWidth: 1,
           borderColor: '#cbd5e1',
@@ -313,6 +314,7 @@ export default function LearningScreen() {
           borderRadius: 10,
           paddingHorizontal: 12,
           paddingVertical: 10,
+          color: '#0f172a',
           marginBottom: 12,
         }}
       />
@@ -398,6 +400,7 @@ export default function LearningScreen() {
             value={submissionContent}
             onChangeText={setSubmissionContent}
             placeholder="Isi jawaban / catatan tugas..."
+            placeholderTextColor="#94a3b8"
             multiline
             style={{
               borderWidth: 1,
@@ -408,9 +411,10 @@ export default function LearningScreen() {
               minHeight: 90,
               backgroundColor: '#fff',
               textAlignVertical: 'top',
-            marginBottom: 10,
-          }}
-        />
+              color: '#0f172a',
+              marginBottom: 10,
+            }}
+          />
           <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
             <View style={{ flex: 1, paddingHorizontal: 4 }}>
               <Pressable

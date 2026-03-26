@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
+import { useParams, useNavigate, useOutletContext, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { authService } from '../../services/auth.service'
@@ -11,7 +11,10 @@ import {
   ChevronRight,
   Send,
   Shield,
-  CheckCircle
+  CheckCircle,
+  RefreshCw,
+  Wifi,
+  WifiOff,
 } from 'lucide-react'
 import { QuestionMediaImage } from '../../components/common/QuestionMediaImage'
 import { enhanceQuestionHtml } from '../../utils/questionMedia'
@@ -51,6 +54,22 @@ type FullscreenDocument = Document & {
   webkitExitFullscreen?: () => Promise<void> | void
   mozCancelFullScreen?: () => Promise<void> | void
   msExitFullscreen?: () => Promise<void> | void
+}
+
+type BrowserNetworkInformation = {
+  effectiveType?: string
+  rtt?: number
+  downlink?: number
+  saveData?: boolean
+  addEventListener?: (type: 'change', listener: () => void) => void
+  removeEventListener?: (type: 'change', listener: () => void) => void
+}
+
+type NetworkQuality = 'stabil' | 'sedang' | 'lambat' | 'offline'
+
+type NetworkStatusBadge = {
+  quality: NetworkQuality
+  label: 'Stabil' | 'Sedang' | 'Lambat' | 'Offline'
 }
 
 type ExamQuestionOption = Record<string, unknown> & {
@@ -105,6 +124,13 @@ interface Exam {
   questions: Question[]
 }
 
+function hasAnsweredValue(value: StudentExamAnswerValue | undefined): boolean {
+  if (value === null || value === undefined) return false
+  if (Array.isArray(value)) return value.length > 0
+  if (typeof value === 'string') return value.trim().length > 0
+  return true
+}
+
 function isLikelyMobileDevice(): boolean {
   if (typeof navigator === 'undefined') return false
   const userAgent = navigator.userAgent || ''
@@ -133,9 +159,61 @@ const DEFAULT_PROGRESS_SYNC_DELAY_MS = 1400
 const FAST_PROGRESS_SYNC_DELAY_MS = 850
 const HEARTBEAT_PROGRESS_SYNC_INTERVAL_MS = 20000
 
+function getNavigatorConnection(): BrowserNetworkInformation | null {
+  if (typeof navigator === 'undefined') return null
+  const navWithConnection = navigator as Navigator & {
+    connection?: BrowserNetworkInformation
+    mozConnection?: BrowserNetworkInformation
+    webkitConnection?: BrowserNetworkInformation
+  }
+  return navWithConnection.connection || navWithConnection.mozConnection || navWithConnection.webkitConnection || null
+}
+
+function getNetworkStatusBadge(): NetworkStatusBadge {
+  if (typeof navigator === 'undefined') return { quality: 'sedang', label: 'Sedang' }
+  if (!navigator.onLine) return { quality: 'offline', label: 'Offline' }
+
+  const connection = getNavigatorConnection()
+  if (!connection) return { quality: 'sedang', label: 'Sedang' }
+
+  const effectiveType = String(connection.effectiveType || '').toLowerCase()
+  const rtt = Number(connection.rtt || 0)
+  const downlink = Number(connection.downlink || 0)
+  const saveData = Boolean(connection.saveData)
+
+  const verySlow =
+    saveData ||
+    effectiveType === 'slow-2g' ||
+    effectiveType === '2g' ||
+    (rtt > 0 && rtt >= 600) ||
+    (downlink > 0 && downlink < 1)
+  if (verySlow) return { quality: 'lambat', label: 'Lambat' }
+
+  const medium =
+    effectiveType === '3g' ||
+    (rtt > 0 && rtt >= 250) ||
+    (downlink > 0 && downlink < 5)
+  if (medium) return { quality: 'sedang', label: 'Sedang' }
+
+  return { quality: 'stabil', label: 'Stabil' }
+}
+
+function resolveExamTakeBaseRoute(pathname: string): '/student/exams' | '/candidate/exams' | '/public/exams' {
+  if (pathname.startsWith('/candidate')) return '/candidate/exams'
+  if (pathname.startsWith('/public')) return '/public/exams'
+  return '/student/exams'
+}
+
 export default function StudentExamTakePage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
+  const baseExamRoute = useMemo(() => resolveExamTakeBaseRoute(location.pathname), [location.pathname])
+  const examTakeLabel = useMemo(() => {
+    if (location.pathname.startsWith('/candidate')) return 'Tes Seleksi'
+    if (location.pathname.startsWith('/public')) return 'Tes BKK'
+    return 'Ujian'
+  }, [location.pathname])
   const requiresFullscreen = useMemo(
     () => supportsDocumentFullscreen() && !isLikelyMobileDevice(),
     [],
@@ -186,6 +264,7 @@ export default function StudentExamTakePage() {
   const lastViolationFingerprintRef = useRef<{ key: string; at: number } | null>(null)
   const lastWindowBlurAtRef = useRef(0)
   const blurViolationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const translationWarningShownRef = useRef(false)
   
   // Get current user
   const { user: contextUser } = useOutletContext<{ user: Record<string, unknown> }>() || {};
@@ -217,6 +296,79 @@ export default function StudentExamTakePage() {
 
   // Check fullscreen status
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [networkStatus, setNetworkStatus] = useState<NetworkStatusBadge>(() =>
+    getNetworkStatusBadge(),
+  )
+
+  useEffect(() => {
+    const html = document.documentElement
+    const body = document.body
+    const prevHtmlTranslate = html.getAttribute('translate')
+    const prevBodyTranslate = body.getAttribute('translate')
+    const prevHtmlClass = html.className
+    const prevBodyClass = body.className
+    const prevLang = html.getAttribute('lang')
+
+    html.setAttribute('translate', 'no')
+    html.setAttribute('lang', 'id')
+    body.setAttribute('translate', 'no')
+    if (!html.classList.contains('notranslate')) html.classList.add('notranslate')
+    if (!body.classList.contains('notranslate')) body.classList.add('notranslate')
+
+    return () => {
+      if (prevHtmlTranslate === null) html.removeAttribute('translate')
+      else html.setAttribute('translate', prevHtmlTranslate)
+      if (prevBodyTranslate === null) body.removeAttribute('translate')
+      else body.setAttribute('translate', prevBodyTranslate)
+      html.className = prevHtmlClass
+      body.className = prevBodyClass
+      if (prevLang === null) html.removeAttribute('lang')
+      else html.setAttribute('lang', prevLang)
+    }
+  }, [])
+
+  useEffect(() => {
+    const disableTranslateArtifacts = () => {
+      const html = document.documentElement
+      const body = document.body
+      const translatedClassPattern = /translated-ltr|translated-rtl|skiptranslate/i
+      const hasTranslatedClass =
+        translatedClassPattern.test(String(html.className || '')) ||
+        translatedClassPattern.test(String(body.className || ''))
+      const googleBanner = document.querySelector('iframe.goog-te-banner-frame, .goog-te-banner-frame')
+
+      if (!hasTranslatedClass && !googleBanner) return
+
+      html.classList.remove('translated-ltr', 'translated-rtl', 'skiptranslate')
+      body.classList.remove('translated-ltr', 'translated-rtl', 'skiptranslate')
+      body.style.top = '0px'
+      googleBanner?.remove()
+
+      if (!translationWarningShownRef.current) {
+        translationWarningShownRef.current = true
+        toast.error('Auto-translate dinonaktifkan agar soal tidak berubah saat ujian.')
+      }
+    }
+
+    disableTranslateArtifacts()
+    const observer = new MutationObserver(() => {
+      disableTranslateArtifacts()
+    })
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    })
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['class', 'style'],
+    })
+    const poller = window.setInterval(disableTranslateArtifacts, 2000)
+
+    return () => {
+      observer.disconnect()
+      window.clearInterval(poller)
+    }
+  }, [])
   
   useEffect(() => {
     const checkFullscreen = () => {
@@ -240,6 +392,28 @@ export default function StudentExamTakePage() {
       document.removeEventListener('mozfullscreenchange', checkFullscreen)
     }
   }, [])
+
+  useEffect(() => {
+    const updateNetworkStatus = () => {
+      setNetworkStatus(getNetworkStatusBadge())
+    }
+
+    updateNetworkStatus()
+
+    const connection = getNavigatorConnection()
+    window.addEventListener('online', updateNetworkStatus)
+    window.addEventListener('offline', updateNetworkStatus)
+    connection?.addEventListener?.('change', updateNetworkStatus)
+
+    const fallbackPoller = window.setInterval(updateNetworkStatus, 10000)
+
+    return () => {
+      window.removeEventListener('online', updateNetworkStatus)
+      window.removeEventListener('offline', updateNetworkStatus)
+      connection?.removeEventListener?.('change', updateNetworkStatus)
+      window.clearInterval(fallbackPoller)
+    }
+  }, [])
   
   const enterFullscreen = async () => {
     if (!requiresFullscreen) {
@@ -261,7 +435,7 @@ export default function StudentExamTakePage() {
       setIsFullscreen(true)
     } catch (err) {
       console.error('Fullscreen error:', err)
-      toast.error('Gagal masuk fullscreen. Coba tekan F11 pada keyboard!')
+      toast.error('Gagal masuk fullscreen otomatis. Izinkan fullscreen lalu coba lagi.')
     }
   }
 
@@ -295,6 +469,7 @@ export default function StudentExamTakePage() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasAutoSubmitted = useRef(false)
+  const suppressNextFullscreenViolationRef = useRef(false)
 
   const buildFormattedAnswers = useCallback(
     (answerSource: StudentExamAnswers) => {
@@ -410,8 +585,8 @@ export default function StudentExamTakePage() {
     
     hasAutoSubmitted.current = true
     
-    // Cleanup lockdown immediately
-    cleanupLockdown()
+    // Cleanup lockdown immediately (preserve fullscreen until submit flow completes)
+    cleanupLockdown({ preserveFullscreen: true })
     
     // Show notification
     toast.error(`Ujian otomatis disubmit: ${reason}`, { duration: 3000 })
@@ -426,22 +601,29 @@ export default function StudentExamTakePage() {
         {
           student_id: user?.id,
           answers: formattedAnswers,
-          is_final_submit: true
+          is_final_submit: true,
+          force_submit: true,
         }
       )
       
       // Navigate immediately regardless of response
+      await ensureExitFullscreen()
+      await new Promise((resolve) => setTimeout(resolve, 120))
+      await ensureExitFullscreen()
       try {
         sessionStorage.setItem('just_submitted_exam_id', String(id))
       } catch {
         // Ignore sessionStorage failures during forced navigation.
       }
-      const returnRoute = sessionStorage.getItem('last_exam_route') || '/student/exams'
+      const returnRoute = sessionStorage.getItem('last_exam_route') || baseExamRoute
       navigate(returnRoute, { replace: true })
     } catch (error: unknown) {
       console.error('Error auto-submitting:', error)
       // Still navigate even if submit fails
-      const returnRoute = sessionStorage.getItem('last_exam_route') || '/student/exams'
+      await ensureExitFullscreen()
+      await new Promise((resolve) => setTimeout(resolve, 120))
+      await ensureExitFullscreen()
+      const returnRoute = sessionStorage.getItem('last_exam_route') || baseExamRoute
       navigate(returnRoute, { replace: true })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -486,11 +668,12 @@ export default function StudentExamTakePage() {
         // Check if exam is already completed/submitted
 	        if (examData.session && (examData.session.status === 'COMPLETED' || examData.session.status === 'GRADED')) {
 	           try {
+               await ensureExitFullscreen()
 	             sessionStorage.setItem('just_submitted_exam_id', String(id))
 	           } catch {
 	             // Ignore sessionStorage failures during redirect.
 	           }
-	           const returnRoute = sessionStorage.getItem('last_exam_route') || '/student/exams'
+	           const returnRoute = sessionStorage.getItem('last_exam_route') || baseExamRoute
 	           navigate(returnRoute, { replace: true })
 	           return
         }
@@ -564,32 +747,19 @@ export default function StudentExamTakePage() {
         }
 
         if (questions && Array.isArray(questions)) {
-          // Helper for randomization
-          const shuffleArray = <T,>(array: T[]) => {
-            for (let i = array.length - 1; i > 0; i--) {
-              const j = Math.floor(Math.random() * (i + 1));
-              [array[i], array[j]] = [array[j], array[i]];
-            }
-            return array;
-          };
-
-          // 1. Process questions and randomize options
-          let processedQuestions = questions
+          packet.questions = questions
             .filter((q: Record<string, unknown>) => q)
             .map((q: Record<string, unknown>) => ({
               ...q,
               question_text: q.question_text || q.content,
               question_type: q.question_type || q.type,
-              options: Array.isArray(q.options) ? shuffleArray(q.options.map((opt: Record<string, unknown>) => ({
-                ...opt,
-                option_text: opt.option_text || opt.content
-              }))) : []
+              options: Array.isArray(q.options)
+                ? q.options.map((opt: Record<string, unknown>) => ({
+                    ...opt,
+                    option_text: opt.option_text || opt.content
+                  }))
+                : []
             }));
-
-          // 2. Randomize questions order
-          processedQuestions = shuffleArray(processedQuestions);
-
-          packet.questions = processedQuestions;
         } else {
           packet.questions = []
         }
@@ -623,11 +793,23 @@ export default function StudentExamTakePage() {
       console.error('❌ Error fetching exam:', apiError.response?.data || error)
       const errorMessage = apiError.response?.data?.message || 'Gagal memuat ujian'
       toast.error(errorMessage)
-      navigate('/student/exams')
+      navigate(baseExamRoute)
     } finally {
       setLoading(false)
     }
   }
+
+  const getActiveFullscreenElement = (): Element | null => {
+    return (
+      document.fullscreenElement ||
+      (document as FullscreenDocument).webkitFullscreenElement ||
+      (document as FullscreenDocument).mozFullScreenElement ||
+      (document as FullscreenDocument).msFullscreenElement ||
+      null
+    )
+  }
+
+  const isDocumentFullscreen = () => Boolean(getActiveFullscreenElement())
 
   const setupLockdown = () => {
     // Fullscreen already requested from button click
@@ -662,7 +844,7 @@ export default function StudentExamTakePage() {
     document.body.style.webkitUserSelect = 'none'
   }
 
-  const cleanupLockdown = () => {
+  const cleanupLockdown = (options?: { preserveFullscreen?: boolean }) => {
     document.removeEventListener('contextmenu', preventContextMenu)
     window.removeEventListener('keydown', preventKeyboardShortcuts, true)
     document.removeEventListener('fullscreenchange', handleFullscreenChange)
@@ -684,7 +866,9 @@ export default function StudentExamTakePage() {
     document.body.style.userSelect = ''
     document.body.style.webkitUserSelect = ''
     
-    exitFullscreen()
+    if (!options?.preserveFullscreen) {
+      void exitFullscreen()
+    }
   }
 
   const requestFullscreen = () => {
@@ -703,16 +887,61 @@ export default function StudentExamTakePage() {
     }
   }
 
-  const exitFullscreen = () => {
-    if (document.exitFullscreen) {
-      document.exitFullscreen().catch(() => {})
-    } else if ((document as FullscreenDocument).webkitExitFullscreen) {
-      (document as FullscreenDocument).webkitExitFullscreen?.()
-    } else if ((document as FullscreenDocument).mozCancelFullScreen) {
-      (document as FullscreenDocument).mozCancelFullScreen?.()
-    } else if ((document as FullscreenDocument).msExitFullscreen) {
-      (document as FullscreenDocument).msExitFullscreen?.()
+  const exitFullscreen = async () => {
+    try {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen()
+      } else if ((document as FullscreenDocument).webkitExitFullscreen) {
+        await Promise.resolve((document as FullscreenDocument).webkitExitFullscreen?.())
+      } else if ((document as FullscreenDocument).mozCancelFullScreen) {
+        await Promise.resolve((document as FullscreenDocument).mozCancelFullScreen?.())
+      } else if ((document as FullscreenDocument).msExitFullscreen) {
+        await Promise.resolve((document as FullscreenDocument).msExitFullscreen?.())
+      }
+    } catch {
+      // Ignore browser-specific fullscreen exit failures.
     }
+  }
+
+  const ensureExitFullscreen = async () => {
+    if (!requiresFullscreen || !isDocumentFullscreen()) {
+      setIsFullscreen(false)
+      return
+    }
+
+    await exitFullscreen()
+
+    await new Promise<void>((resolve) => {
+      let settled = false
+      const done = () => {
+        if (settled) return
+        settled = true
+        document.removeEventListener('fullscreenchange', handleChange)
+        document.removeEventListener('webkitfullscreenchange', handleChange)
+        document.removeEventListener('mozfullscreenchange', handleChange)
+        document.removeEventListener('MSFullscreenChange', handleChange)
+        clearTimeout(fallbackTimer)
+        resolve()
+      }
+
+      const handleChange = () => {
+        if (!isDocumentFullscreen()) {
+          done()
+        }
+      }
+
+      const fallbackTimer = setTimeout(done, 1200)
+      document.addEventListener('fullscreenchange', handleChange)
+      document.addEventListener('webkitfullscreenchange', handleChange)
+      document.addEventListener('mozfullscreenchange', handleChange)
+      document.addEventListener('MSFullscreenChange', handleChange)
+
+      if (!isDocumentFullscreen()) {
+        done()
+      }
+    })
+
+    setIsFullscreen(false)
   }
 
   const preventContextMenu = (e: MouseEvent) => {
@@ -721,6 +950,7 @@ export default function StudentExamTakePage() {
   }
 
   const preventKeyboardShortcuts = (e: KeyboardEvent) => {
+    const normalizedKey = String(e.key || '').toLowerCase()
     
     // Prevent F11, Esc, Ctrl+W, Ctrl+T, Alt+Tab, etc.
     const forbiddenKeys = [
@@ -729,21 +959,21 @@ export default function StudentExamTakePage() {
     ]
     
     const forbiddenCombos = [
-      e.ctrlKey && e.key === 'w', // Close tab
-      e.ctrlKey && e.key === 't', // New tab
-      e.ctrlKey && e.key === 'n', // New window
-      e.ctrlKey && e.shiftKey && e.key === 'n', // New incognito
-      e.ctrlKey && e.key === 'r', // Refresh
-      e.ctrlKey && e.shiftKey && e.key === 'i', // Dev tools
-      e.ctrlKey && e.shiftKey && e.key === 'j', // Dev tools
-      e.ctrlKey && e.shiftKey && e.key === 'c', // Inspect
-      e.ctrlKey && e.key === 'u', // View source
-      e.ctrlKey && e.key === 's', // Save
-      e.ctrlKey && e.key === 'p', // Print
-      e.altKey && e.key === 'Tab', // Switch app
-      e.altKey && e.key === 'F4', // Close window
-      e.metaKey && e.key === 'w', // Mac close
-      e.metaKey && e.key === 't', // Mac new tab
+      e.ctrlKey && normalizedKey === 'w', // Close tab
+      e.ctrlKey && normalizedKey === 't', // New tab
+      e.ctrlKey && normalizedKey === 'n', // New window
+      e.ctrlKey && e.shiftKey && normalizedKey === 'n', // New incognito
+      e.ctrlKey && normalizedKey === 'r', // Refresh
+      e.ctrlKey && e.shiftKey && normalizedKey === 'i', // Dev tools
+      e.ctrlKey && e.shiftKey && normalizedKey === 'j', // Dev tools
+      e.ctrlKey && e.shiftKey && normalizedKey === 'c', // Inspect
+      e.ctrlKey && normalizedKey === 'u', // View source
+      e.ctrlKey && normalizedKey === 's', // Save
+      e.ctrlKey && normalizedKey === 'p', // Print
+      e.altKey && normalizedKey === 'tab', // Switch app
+      e.altKey && normalizedKey === 'f4', // Close window
+      e.metaKey && normalizedKey === 'w', // Mac close
+      e.metaKey && normalizedKey === 't', // Mac new tab
     ]
 
     if (forbiddenKeys.includes(e.key) || forbiddenCombos.some(combo => combo)) {
@@ -762,14 +992,38 @@ export default function StudentExamTakePage() {
 
   const handleFullscreenChange = () => {
     if (!requiresFullscreen) return
-    const isCurrentlyFullscreen = !!(
-      document.fullscreenElement ||
-      (document as FullscreenDocument).webkitFullscreenElement ||
-      (document as FullscreenDocument).mozFullScreenElement ||
-      (document as FullscreenDocument).msFullscreenElement
-    )
+    const activeFullscreenElement = getActiveFullscreenElement()
+    const isCurrentlyFullscreen = Boolean(activeFullscreenElement)
+    setIsFullscreen(isCurrentlyFullscreen)
+
+    if (submitting || hasAutoSubmitted.current) {
+      return
+    }
+
+    if (activeFullscreenElement && activeFullscreenElement !== document.documentElement) {
+      suppressNextFullscreenViolationRef.current = true
+      recordViolation('Fullscreen video tidak diizinkan')
+      toast.error('Fullscreen video dinonaktifkan saat ujian.')
+      void exitFullscreen().finally(() => {
+        if (requiresFullscreen) {
+          setTimeout(() => {
+            requestFullscreen()
+          }, 100)
+        }
+      })
+      return
+    }
 
     if (!isCurrentlyFullscreen && (examStartTime || hasStartedRef.current)) {
+      if (suppressNextFullscreenViolationRef.current) {
+        suppressNextFullscreenViolationRef.current = false
+        if (requiresFullscreen) {
+          setTimeout(() => {
+            requestFullscreen()
+          }, 100)
+        }
+        return
+      }
       recordViolation('Keluar dari fullscreen')
       // Try to re-enter fullscreen
       setTimeout(() => {
@@ -800,9 +1054,11 @@ export default function StudentExamTakePage() {
     }
     // Delay short time: if tab becomes hidden immediately after blur,
     // visibilitychange handler will classify it as Alt+Tab/tab switch.
+    // Fallback di bawah menangani browser yang event visibilitychange-nya tidak konsisten.
     blurViolationTimeoutRef.current = setTimeout(() => {
-      if (!document.hidden) {
-        recordViolation('Berpindah aplikasi')
+      const stillNotFocused = typeof document.hasFocus === 'function' ? !document.hasFocus() : true
+      if (stillNotFocused) {
+        recordViolation(document.hidden ? 'Alt+Tab / berpindah aplikasi' : 'Berpindah aplikasi')
       }
       blurViolationTimeoutRef.current = null
     }, 180)
@@ -810,6 +1066,11 @@ export default function StudentExamTakePage() {
 
   const recordViolation = (type: string) => {
     const normalizedType = type.toLowerCase()
+    const isAppSwitchViolation =
+      normalizedType.includes('alt+tab') ||
+      normalizedType.includes('aplikasi') ||
+      normalizedType.includes('window blur')
+    const isTabSwitchViolation = !isAppSwitchViolation && normalizedType.includes('tab')
     const isFullscreenOrShortcut = normalizedType.includes('fullscreen') || normalizedType.includes('tombol terlarang')
 
     // Grace period: only for soft signals (tab/app) to avoid false positives right after exam starts
@@ -819,10 +1080,10 @@ export default function StudentExamTakePage() {
 
     const fingerprintKey = normalizedType.includes('fullscreen')
       ? 'fullscreen'
-      : normalizedType.includes('tab')
-        ? 'tab'
-        : normalizedType.includes('aplikasi')
-          ? 'app'
+      : isAppSwitchViolation
+        ? 'app'
+        : isTabSwitchViolation
+          ? 'tab'
           : normalizedType.includes('tombol terlarang')
             ? `shortcut:${normalizedType}`
             : normalizedType
@@ -844,12 +1105,12 @@ export default function StudentExamTakePage() {
         lastViolationType: type,
         lastViolationAt: new Date().toISOString(),
       }
-      if (normalizedType.includes('tab')) {
+      if (isAppSwitchViolation) {
+        nextStats.appSwitchCount += 1
+      } else if (isTabSwitchViolation) {
         nextStats.tabSwitchCount += 1
       } else if (normalizedType.includes('fullscreen')) {
         nextStats.fullscreenExitCount += 1
-      } else if (normalizedType.includes('aplikasi')) {
-        nextStats.appSwitchCount += 1
       }
       monitoringStatsRef.current = nextStats
       
@@ -979,6 +1240,12 @@ export default function StudentExamTakePage() {
   }
 
   const handleSubmitClick = () => {
+    if (answeredCount < totalQuestions) {
+      toast.error(
+        `Masih ada ${totalQuestions - answeredCount} soal belum dijawab. Jawab semua soal sebelum mengumpulkan ujian.`,
+      )
+      return
+    }
     setShowSubmitConfirm(true)
   }
 
@@ -990,6 +1257,12 @@ export default function StudentExamTakePage() {
   const submitExam = async () => {
     // Prevent double submit
     if (submitting || hasAutoSubmitted.current) return
+    if (answeredCount < totalQuestions) {
+      toast.error(
+        `Masih ada ${totalQuestions - answeredCount} soal belum dijawab. Jawab semua soal sebelum mengumpulkan ujian.`,
+      )
+      return
+    }
 
     // Set auto-submitted flag to prevent other submissions
     hasAutoSubmitted.current = true
@@ -1010,7 +1283,10 @@ export default function StudentExamTakePage() {
       )
 
       if (response.data.success) {
-        cleanupLockdown()
+        cleanupLockdown({ preserveFullscreen: true })
+        await ensureExitFullscreen()
+        await new Promise((resolve) => setTimeout(resolve, 120))
+        await ensureExitFullscreen()
         
         // Immediate navigation without toast as requested by user
         try {
@@ -1019,8 +1295,8 @@ export default function StudentExamTakePage() {
           // Ignore sessionStorage failures during submit navigation.
         }
         
-        const returnRoute = sessionStorage.getItem('last_exam_route') || '/student/exams'
-        navigate(returnRoute)
+        const returnRoute = sessionStorage.getItem('last_exam_route') || baseExamRoute
+        navigate(returnRoute, { replace: true })
       }
     } catch (error: unknown) {
       const apiError = error as { response?: { data?: { message?: string } } }
@@ -1067,17 +1343,17 @@ export default function StudentExamTakePage() {
               Mode Fullscreen Diperlukan
             </h1>
             <p className="text-gray-600">
-              Untuk menjaga integritas ujian, Anda harus masuk mode fullscreen
+              Untuk menjaga integritas {examTakeLabel.toLowerCase()}, Anda harus masuk mode fullscreen
             </p>
           </div>
 
           <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 text-left">
-            <h3 className="font-bold text-yellow-800 mb-2">Peraturan Ujian:</h3>
+            <h3 className="font-bold text-yellow-800 mb-2">Peraturan {examTakeLabel}:</h3>
             <ul className="text-sm text-yellow-700 space-y-1">
-              <li>✓ Ujian akan berjalan dalam mode fullscreen</li>
+              <li>✓ {examTakeLabel} akan berjalan dalam mode fullscreen</li>
               <li>✓ Jangan keluar dari fullscreen atau buka tab lain</li>
               <li>✓ Anda memiliki 3x kesempatan pelanggaran</li>
-              <li>✓ Pelanggaran ke-4 akan otomatis submit ujian</li>
+              <li>✓ Pelanggaran ke-4 akan otomatis submit {examTakeLabel.toLowerCase()}</li>
             </ul>
           </div>
 
@@ -1086,11 +1362,11 @@ export default function StudentExamTakePage() {
             className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 text-lg mb-4"
           >
             <Shield className="w-6 h-6" />
-            Masuk Fullscreen & Mulai Ujian
+            Masuk Fullscreen & Mulai {examTakeLabel}
           </button>
 
           <p className="text-sm text-gray-500">
-            Atau tekan <kbd className="px-2 py-1 bg-gray-200 rounded">F11</kbd> pada keyboard
+            Fullscreen akan aktif otomatis setelah tombol di atas ditekan.
           </p>
         </div>
       </div>
@@ -1100,7 +1376,7 @@ export default function StudentExamTakePage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white text-xl">Loading ujian...</div>
+        <div className="text-white text-xl">Loading {examTakeLabel.toLowerCase()}...</div>
       </div>
     )
   }
@@ -1108,7 +1384,7 @@ export default function StudentExamTakePage() {
   if (!exam) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white text-xl">Ujian tidak ditemukan</div>
+        <div className="text-white text-xl">{examTakeLabel} tidak ditemukan</div>
       </div>
     )
   }
@@ -1116,12 +1392,12 @@ export default function StudentExamTakePage() {
   if (!exam.questions || exam.questions.length === 0) {
     return (
       <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
-        <div className="text-white text-xl mb-4 text-center">Soal ujian tidak tersedia atau belum dibuat.</div>
+        <div className="text-white text-xl mb-4 text-center">Soal {examTakeLabel.toLowerCase()} tidak tersedia atau belum dibuat.</div>
         <button 
-          onClick={() => navigate('/student/exams')}
+          onClick={() => navigate(baseExamRoute)}
           className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold"
         >
-          Kembali ke Daftar Ujian
+          Kembali ke Daftar Tes
         </button>
       </div>
     )
@@ -1133,7 +1409,7 @@ export default function StudentExamTakePage() {
       <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center">
         <div className="text-white text-xl mb-4">Terjadi kesalahan memuat soal no {currentQuestionIndex + 1}</div>
          <button 
-          onClick={() => navigate('/student/exams')}
+          onClick={() => navigate(baseExamRoute)}
           className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold"
         >
           Kembali
@@ -1142,9 +1418,23 @@ export default function StudentExamTakePage() {
     )
   }
 
-  const answeredCount = Object.keys(answers).length
+  const answeredCount = exam.questions.reduce((count, question) => {
+    return count + (hasAnsweredValue(answers[question.id]) ? 1 : 0)
+  }, 0)
   const totalQuestions = exam.questions.length
   const effectiveViolations = Math.max(violations, monitoringStatsRef.current.totalViolations)
+  const networkBadgeStyle = (() => {
+    if (networkStatus.quality === 'offline') {
+      return 'bg-gray-100 text-gray-700 border-gray-200'
+    }
+    if (networkStatus.quality === 'lambat') {
+      return 'bg-red-50 text-red-700 border-red-100'
+    }
+    if (networkStatus.quality === 'sedang') {
+      return 'bg-yellow-50 text-yellow-700 border-yellow-100'
+    }
+    return 'bg-green-50 text-green-700 border-green-100'
+  })()
 
   const mediaSection = (
     <>
@@ -1167,7 +1457,7 @@ export default function StudentExamTakePage() {
                     src={currentQuestion.question_video_url || currentQuestion.video_url || ''}
                     className="w-full h-full"
                     loading="lazy"
-                    allowFullScreen
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope"
                     title="YouTube Video"
                 />
             </div>
@@ -1175,6 +1465,9 @@ export default function StudentExamTakePage() {
             <video 
               src={currentQuestion.question_video_url || currentQuestion.video_url || ''} 
               controls 
+              controlsList="nofullscreen noremoteplayback nodownload"
+              disablePictureInPicture
+              onDoubleClick={(event) => event.preventDefault()}
               preload="metadata"
               className="max-w-full max-h-[500px] mx-auto rounded-lg shadow-sm border border-gray-200"
             />
@@ -1185,36 +1478,61 @@ export default function StudentExamTakePage() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 notranslate" translate="no">
       {/* Top Bar - Fixed */}
       <div className="fixed top-0 left-0 right-0 bg-white shadow-lg z-50">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            {/* Exam Info */}
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">{exam.title}</h1>
-              <p className="text-sm text-gray-600">{exam.subject?.name || 'Mata Pelajaran'}</p>
+        <div className="max-w-7xl mx-auto px-4 lg:px-8 py-3">
+          <div className="flex flex-wrap items-center gap-3 md:gap-4">
+            {/* Left: SIS Branding */}
+            <div className="min-w-0 flex items-center gap-3 pl-10 lg:pl-14 pr-2 flex-shrink-0">
+              <img src="/logo_sis_kgb2.png" alt="Logo SIS" className="w-10 h-10 object-contain flex-shrink-0" />
+              <div className="leading-tight flex-shrink-0">
+                <div className="text-sm font-bold text-blue-700">Sistem Integrasi Sekolah</div>
+                <div className="text-xs text-gray-500">SMKS Karya Guna Bhakti 2</div>
+              </div>
+            </div>
+            <div className="hidden xl:block h-10 w-px bg-gray-200" />
+            {/* Center: Exam Info */}
+            <div className="min-w-[260px] flex-1 xl:max-w-[46%]">
+              <h1 className="text-lg font-bold text-gray-900 truncate">{exam.title}</h1>
+              <p className="text-sm text-gray-600 truncate">{exam.subject?.name || 'Mata Pelajaran'}</p>
               {exam.instructions && (
-                <div className="mt-1 text-xs text-orange-600 font-medium bg-orange-50 px-2 py-0.5 rounded border border-orange-100 inline-block">
+                <div className="mt-1 text-xs text-orange-600 font-medium bg-orange-50 px-2 py-0.5 rounded border border-orange-100 inline-block max-w-full truncate">
                   Note: {exam.instructions}
                 </div>
               )}
             </div>
 
-            {/* Timer */}
-            <div className={`flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg ${getTimeColor()}`}>
-              <Clock className="w-5 h-5" />
-              <span className="text-xl font-bold font-mono">{formatTime(timeRemaining)}</span>
+            {/* Right: Timer + Refresh + Network */}
+            <div className="hidden md:flex items-center gap-2 lg:gap-3 ml-auto pr-10 lg:pr-14 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                title="Refresh halaman ujian"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+              <div className={`hidden md:flex items-center gap-2 px-3 py-2 rounded-lg border ${networkBadgeStyle}`}>
+                {networkStatus.quality === 'offline' ? (
+                  <WifiOff className="w-4 h-4" />
+                ) : (
+                  <Wifi className="w-4 h-4" />
+                )}
+                <span className="text-xs font-semibold tracking-wide uppercase">{networkStatus.label}</span>
+              </div>
+              <div className={`hidden md:flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg ${getTimeColor()}`}>
+                <Clock className="w-5 h-5" />
+                <span className="text-xl font-bold font-mono">{formatTime(timeRemaining)}</span>
+              </div>
             </div>
-
-            {/* Violations */}
-            <div className="flex items-center gap-4">
+            {/* Right: Violations + Submit */}
+            <div className="flex items-center gap-2 lg:gap-3 flex-shrink-0">
               <div className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 rounded-lg border border-red-100">
                 <AlertTriangle className="w-4 h-4" />
                 <span className="font-bold">{effectiveViolations}/3</span>
                 <span className="text-xs">Pelanggaran</span>
               </div>
-              
               <button
                 onClick={handleSubmitClick}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2"
@@ -1222,6 +1540,12 @@ export default function StudentExamTakePage() {
                 <Send className="w-4 h-4" />
                 Kumpulkan
               </button>
+            </div>
+          </div>
+          <div className="md:hidden mt-3">
+            <div className={`inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg ${getTimeColor()}`}>
+              <Clock className="w-4 h-4" />
+              <span className="text-base font-bold font-mono">{formatTime(timeRemaining)}</span>
             </div>
           </div>
         </div>
@@ -1253,8 +1577,9 @@ export default function StudentExamTakePage() {
 
               {/* Question Text */}
               <div 
-                className="prose max-w-none text-lg text-gray-800 mb-8 [&_*]:max-w-full [&_*]:whitespace-normal [&_*]:break-words [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:ml-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:ml-2 [&_li]:my-1"
+                className="prose max-w-none text-lg text-gray-800 mb-8 notranslate [&_*]:max-w-full [&_*]:whitespace-normal [&_*]:break-words [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:ml-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:ml-2 [&_li]:my-1"
                 style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                translate="no"
                 dangerouslySetInnerHTML={{ __html: currentQuestionHtml }}
               />
 
@@ -1300,8 +1625,9 @@ export default function StudentExamTakePage() {
                       <div className="flex-1 min-w-0">
                         {/* Support both option_text (legacy) and content (new) */}
 	                        <div
-	                          className="font-medium text-gray-700 break-words [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:ml-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:ml-2 [&_li]:my-1"
+	                          className="font-medium text-gray-700 break-words notranslate [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:ml-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:ml-2 [&_li]:my-1"
 	                          style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                            translate="no"
 	                          dangerouslySetInnerHTML={{ __html: optionHtmlById.get(optionId) || '' }}
 	                        ></div>
 	                        {optionImageSrc && (
@@ -1369,7 +1695,7 @@ export default function StudentExamTakePage() {
               
               <div className="grid grid-cols-5 gap-2 mb-6">
                 {exam.questions.map((q, idx) => {
-                  const isAnswered = answers[q.id] !== undefined && answers[q.id] !== null && answers[q.id] !== ''
+                  const isAnswered = hasAnsweredValue(answers[q.id])
                   const isCurrent = idx === currentQuestionIndex
                   
                   return (
@@ -1459,9 +1785,10 @@ export default function StudentExamTakePage() {
               </button>
               <button
                 onClick={handleConfirmSubmit}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold"
+                disabled={answeredCount < totalQuestions}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Ya, Kumpulkan
+                {answeredCount < totalQuestions ? 'Jawab Semua Soal Dulu' : 'Ya, Kumpulkan'}
               </button>
             </div>
           </div>

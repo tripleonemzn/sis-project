@@ -118,7 +118,8 @@ export type StudentExamStartPayload = {
 
 export type StudentExamItem = {
   id: number;
-  classId: number;
+  classId: number | null;
+  jobVacancyId?: number | null;
   subjectId: number;
   packetId: number;
   startTime: string;
@@ -129,6 +130,22 @@ export type StudentExamItem = {
   has_submitted: boolean;
   isBlocked?: boolean;
   blockReason?: string;
+  subject?: {
+    id: number;
+    name: string;
+    code: string;
+  };
+  jobVacancy?: {
+    id: number;
+    title: string;
+    companyName?: string | null;
+    industryPartner?: {
+      id: number;
+      name: string;
+      city?: string | null;
+      sector?: string | null;
+    } | null;
+  } | null;
   packet: {
     id: number;
     title: string;
@@ -200,7 +217,7 @@ export type TeacherExamPacketMutationPayload = {
 
 export type TeacherExamSchedule = {
   id: number;
-  classId: number;
+  classId: number | null;
   subjectId?: number | null;
   packetId?: number | null;
   academicYearId?: number | null;

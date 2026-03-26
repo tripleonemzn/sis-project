@@ -153,6 +153,128 @@ function isLikelyVideoUrl(url: string): boolean {
     return /\.(mp4|webm|ogg|mov|m4v|avi|mkv)(\?|#|$)/i.test(normalized);
 }
 
+function normalizeOfficePasteText(value: string): string {
+    const normalized = String(value || '')
+        .replace(/\r\n?/g, '\n')
+        // Beberapa paste dari Word datang sebagai literal escaped text.
+        .replace(/\\r\\n|\\n\\r|\\n|\\r/g, '\n')
+        .replace(/\\t/g, ' ')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&amp;/gi, '&')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/\u00a0/g, ' ')
+        .replace(/\uFFFD/g, '')
+        // Object replacement char dari Word/OLE (muncul seperti kotak besar).
+        .replace(/\uFFFC/g, '')
+        // Hilangkan karakter placeholder kotak dari paste rumus Word.
+        .replace(/[\u2591-\u2593\u25A0-\u25A1\u25AA-\u25AB\u25AD-\u25AE\u25FB-\u25FE\u2B1B-\u2B1C]/g, '')
+        // Private-use chars dari Symbol/Equation Word yang sering tampil kotak di web.
+        .replace(/[\uE000-\uF8FF]/g, '')
+        // Delimiter khas Word Equation.
+        .replace(/〖/g, '(')
+        .replace(/〗/g, ')')
+        .replace(/¦/g, '|')
+        .replace(/\\\(/g, '(')
+        .replace(/\\\)/g, ')')
+        .replace(/\\\[/g, '[')
+        .replace(/\\\]/g, ']')
+        .replace(/\\_/g, '_')
+        .replace(/[□■▪▫◻◼◽◾⌷⌸⟦⟧⧼⧽]/g, '')
+        .replace(/[﹛﹜【】〔〕]/g, '')
+        .replace(/[∟⟂⟨⟩]/g, ' ')
+        .replace(/㠰/g, 'n')
+        .replace(/⎛|⎜|⎝/g, '(')
+        .replace(/⎞|⎟|⎠/g, ')')
+        .replace(/⎡|⎢|⎣/g, '[')
+        .replace(/⎤|⎥|⎦/g, ']')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/\u2061/g, '')
+        .replace(/\t{2,}/g, '\t')
+        .replace(/[ \t]*_[ \t]*\(([^)]+)\)/g, '_{$1}')
+        .replace(/[ \t]*\^[ \t]*\(([^)]+)\)/g, '^{$1}')
+        .replace(/^\s*\n/, '')
+        // Normalisasi notasi sigma/pi linear khas Word agar lebih terbaca.
+        .replace(/Σ_\(([^)]+)\)\^([^\s]+)/g, '∑_{$1}^{$2}')
+        .replace(/Π_\(([^)]+)\)\^([^\s]+)/g, '∏_{$1}^{$2}')
+        .replace(/∫_\(([^)]+)\)\^([^\s]+)/g, '∫_{$1}^{$2}')
+        // Normalisasi notasi kombinasi (n|k) dari Word Equation.
+        .replace(/\(([^()|]+)\|([^()|]+)\)/g, (_full, left: string, right: string) => {
+            const l = String(left || '').trim();
+            const r = String(right || '').trim();
+            if (!l || !r) return _full;
+            return `(${l} choose ${r})`;
+        })
+        .replace(/[ \t\f\v]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+
+    return normalized;
+}
+
+function extractPlainTextFromHtml(html: string): string {
+    if (typeof window === 'undefined') {
+        return normalizeOfficePasteText(String(html || '').replace(/<[^>]*>/g, ' '));
+    }
+
+    const parser = new window.DOMParser();
+    const doc = parser.parseFromString(String(html || ''), 'text/html');
+
+    doc.querySelectorAll('br').forEach((node) => node.replaceWith('\n'));
+    doc.querySelectorAll('p,div,li,tr,h1,h2,h3,h4,h5,h6').forEach((node) => node.append('\n'));
+
+    return normalizeOfficePasteText(doc.body.textContent || '');
+}
+
+function shouldNormalizeOfficePaste(html: string): boolean {
+    return /mso-|class=(['"])[^'"]*\bMso|xmlns:o|<o:p|<\/?(table|tr|td|th)\b|<math\b|<m:|<img\b|Equation\.DSMT|urn:schemas-microsoft-com|application\/vnd\.openxmlformats-officedocument|cambria\s+math|equationeditor|office:word|worddocument/i.test(
+        String(html || ''),
+    );
+}
+
+function shouldNormalizeOfficePlainText(text: string): boolean {
+    const raw = String(text || '');
+    if (!raw) return false;
+    return /[\uE000-\uF8FF\uFFFC\u2591-\u2593\u25A0-\u25A1\u25AA-\u25AB]|&nbsp;|\\n|〖|〗|¦|Σ_\(|Π_\(|∫_\(|\([^()|]+\|[^()|]+\)|\^\(|\bchoose\b/.test(
+        raw,
+    );
+}
+
+function clipboardHasRtfPayload(clipboard: DataTransfer | null): boolean {
+    if (!clipboard) return false;
+    const rawTypes =
+        typeof clipboard.types?.forEach === 'function'
+            ? Array.from(clipboard.types)
+            : [];
+    return rawTypes.some((type) => /rtf|richtext|msword|openxml/i.test(String(type || '')));
+}
+
+function resolveOfficeClipboardText(rawText: string, html: string): string {
+    const normalizedHtmlText = html ? extractPlainTextFromHtml(html) : '';
+    const normalizedRawText = normalizeOfficePasteText(rawText || '');
+    if (!normalizedHtmlText) return normalizedRawText;
+    if (!normalizedRawText) return normalizedHtmlText;
+
+    const rawHasPlaceholderGlyph = /[\uFFFD\uFFFC\uE000-\uF8FF\u2591-\u2593\u25A0-\u25A1\u25AA-\u25AB]/.test(
+        rawText || '',
+    );
+    if (rawHasPlaceholderGlyph) {
+        return normalizedHtmlText.length >= normalizedRawText.length ? normalizedHtmlText : normalizedRawText;
+    }
+
+    const mathLikePattern =
+        /(Σ|Π|∫|√|∞|≈|≠|≤|≥|choose|[A-Za-z0-9]+\s*\^\s*[A-Za-z0-9({[]|_\{|[+\-*/=<>])/;
+    const htmlLooksDegraded =
+        normalizedHtmlText.length < normalizedRawText.length * 0.65 ||
+        /(?:^|[\s(])(?:n|k|a|x)\s+n(?:[\s)}]|$)|\b[a-z]\s+\^\s+[a-z]\b/i.test(normalizedHtmlText);
+
+    if (mathLikePattern.test(normalizedRawText) && htmlLooksDegraded) {
+        return normalizedRawText;
+    }
+
+    return normalizedHtmlText;
+}
+
 // Quill modules configuration
 if (typeof window !== 'undefined') {
   (window as Window & { katex?: typeof katex }).katex = katex;
@@ -169,6 +291,28 @@ const modules = {
     ['link', 'formula'],
     ['clean']
   ],
+  keyboard: {
+    bindings: {
+      shiftEnter: {
+        key: 'Enter',
+        shiftKey: true,
+        handler(this: { quill: { insertText: (index: number, text: string, source: string) => void; setSelection: (index: number, length: number, source: string) => void } }, range: { index: number }) {
+          this.quill.insertText(range.index, '\n', 'user');
+          this.quill.setSelection(range.index + 1, 0, 'silent');
+          return false;
+        },
+      },
+      altEnter: {
+        key: 'Enter',
+        altKey: true,
+        handler(this: { quill: { insertText: (index: number, text: string, source: string) => void; setSelection: (index: number, length: number, source: string) => void } }, range: { index: number }) {
+          this.quill.insertText(range.index, '\n', 'user');
+          this.quill.setSelection(range.index + 1, 0, 'silent');
+          return false;
+        },
+      },
+    },
+  },
 };
 
 interface PacketForm {
@@ -820,6 +964,52 @@ export const ExamEditorPage = () => {
     useEffect(() => {
         if (!activeQuestionId) return;
 
+        const quill = quillEditorRef.current?.getEditor();
+        if (!quill) return;
+
+        const editorRoot = quill.root as HTMLElement;
+        const handleOfficePaste = (event: ClipboardEvent) => {
+            const clipboard = event.clipboardData;
+            if (!clipboard) return;
+
+            const html = clipboard.getData('text/html');
+            const rawText = clipboard.getData('text/plain') || '';
+            const hasRtfPayload = clipboardHasRtfPayload(clipboard);
+            const needsNormalization =
+                hasRtfPayload ||
+                (html && shouldNormalizeOfficePaste(html)) ||
+                shouldNormalizeOfficePlainText(rawText);
+            const shouldSanitizePaste = hasRtfPayload || Boolean(html) || shouldNormalizeOfficePlainText(rawText);
+            if (!shouldSanitizePaste) return;
+
+            const plainText = resolveOfficeClipboardText(rawText, html) || normalizeOfficePasteText(rawText || '');
+            if (!plainText) return;
+
+            event.preventDefault();
+
+            const selection = quill.getSelection(true);
+            const insertIndex = selection ? selection.index : quill.getLength();
+
+            if (selection?.length) {
+                quill.deleteText(selection.index, selection.length, 'user');
+            }
+
+            quill.insertText(insertIndex, plainText, 'user');
+            quill.setSelection(insertIndex + plainText.length, 0, 'silent');
+            if (needsNormalization) {
+                toast.success('Konten Word dipaste dengan normalisasi simbol rumus agar tetap terbaca.');
+            }
+        };
+
+        editorRoot.addEventListener('paste', handleOfficePaste as EventListener, true);
+        return () => {
+            editorRoot.removeEventListener('paste', handleOfficePaste as EventListener, true);
+        };
+    }, [activeQuestionId]);
+
+    useEffect(() => {
+        if (!activeQuestionId) return;
+
         const cleanupFns: Array<() => void> = [];
         const editorNodes = Array.from(
             document.querySelectorAll<HTMLElement>('.question-editor-quill'),
@@ -1438,6 +1628,18 @@ export const ExamEditorPage = () => {
             .replace(/&nbsp;/g, ' ')
             .trim();
 
+    const normalizeOptionEditorText = (value: string | undefined | null) =>
+        String(value || '')
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/p>\s*<p>/gi, '\n')
+            .replace(/<p>/gi, '')
+            .replace(/<\/p>/gi, '')
+            .replace(/<[^>]*>/g, '')
+            .replace(/&nbsp;/g, ' ');
+
+    const normalizeOptionStorageText = (value: string | undefined | null) =>
+        String(value || '').replace(/\r\n|\r|\n/g, '<br/>');
+
     const renderMediaPreview = (q: ExtendedQuestion) => {
         if (!q.question_image_url && !q.question_video_url) return null;
 
@@ -1888,20 +2090,57 @@ export const ExamEditorPage = () => {
 
                                                     <div className="flex-1 relative group/input">
                                                         <label htmlFor={`option-content-${option.id}`} className="sr-only">Pilihan {String.fromCharCode(65 + idx)}</label>
-                                                        <input
+                                                        <textarea
                                                             id={`option-content-${option.id}`}
                                                             name={`option_content_${option.id}`}
-                                                            type="text"
-                                                            value={option.content.replace(/<[^>]*>?/gm, '')}
+                                                            rows={2}
+                                                            value={normalizeOptionEditorText(option.content)}
+                                                            onPaste={(e) => {
+                                                                const html = e.clipboardData.getData('text/html');
+                                                                const rawText = e.clipboardData.getData('text/plain') || '';
+                                                                const hasRtfPayload = clipboardHasRtfPayload(e.clipboardData);
+                                                                const needsNormalization =
+                                                                    hasRtfPayload ||
+                                                                    (html && shouldNormalizeOfficePaste(html)) ||
+                                                                    shouldNormalizeOfficePlainText(rawText);
+                                                                const shouldSanitizePaste =
+                                                                    hasRtfPayload || Boolean(html) || shouldNormalizeOfficePlainText(rawText);
+                                                                if (!shouldSanitizePaste) return;
+
+                                                                const textarea = e.currentTarget;
+                                                                const plainText =
+                                                                    resolveOfficeClipboardText(rawText, html) ||
+                                                                    normalizeOfficePasteText(rawText || '');
+                                                                if (!plainText) return;
+
+                                                                e.preventDefault();
+
+                                                                const start = textarea.selectionStart ?? textarea.value.length;
+                                                                const end = textarea.selectionEnd ?? start;
+                                                                const nextValue = `${textarea.value.slice(0, start)}${plainText}${textarea.value.slice(end)}`;
+
+                                                                if (!activeQuestion.options) return;
+                                                                const newOptions = activeQuestion.options.map(o =>
+                                                                    o.id === option.id
+                                                                        ? { ...o, content: normalizeOptionStorageText(nextValue) }
+                                                                        : o
+                                                                );
+                                                                updateQuestion(activeQuestion.id, { options: newOptions });
+                                                                if (needsNormalization) {
+                                                                    toast.success('Konten Word pada opsi dipaste dengan normalisasi simbol.');
+                                                                }
+                                                            }}
                                                             onChange={(e) => {
                                                                 if (!activeQuestion.options) return;
                                                                 const newOptions = activeQuestion.options.map(o =>
-                                                                    o.id === option.id ? { ...o, content: e.target.value } : o
+                                                                    o.id === option.id
+                                                                        ? { ...o, content: normalizeOptionStorageText(e.target.value) }
+                                                                        : o
                                                                 );
                                                                 updateQuestion(activeQuestion.id, { options: newOptions });
                                                             }}
                                                             className={`
-                                                                w-full px-3 py-1.5 border rounded-md focus:outline-none focus:border-blue-500 text-gray-700 text-sm placeholder-gray-400 transition-all
+                                                                w-full px-3 py-2 border rounded-md focus:outline-none focus:border-blue-500 text-gray-700 text-sm placeholder-gray-400 transition-all resize-y min-h-[44px]
                                                                 ${option.isCorrect ? 'border-green-300 bg-green-50/10' : 'border-gray-300 bg-white'}
                                                             `}
                                                             placeholder={`Pilihan ${String.fromCharCode(65 + idx)}`}

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Redirect, useRouter } from 'expo-router';
+import { Redirect } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,7 +13,6 @@ import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
 
 export default function StudentExtracurricularScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -239,18 +238,6 @@ export default function StudentExtracurricularScreen() {
           </Text>
         </Pressable>
       ) : null}
-
-      <Pressable
-        onPress={() => router.replace('/home')}
-        style={{
-          backgroundColor: '#1e3a8a',
-          borderRadius: 10,
-          alignItems: 'center',
-          paddingVertical: 12,
-        }}
-      >
-        <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
-      </Pressable>
     </ScrollView>
   );
 }

@@ -1,6 +1,18 @@
 import { apiClient } from '../../lib/api/client';
 import { tokenStorage } from '../../lib/storage/tokenStorage';
-import { LoginPayload, LoginResponse, MeResponse, RegisterUmumPayload, RegisterUmumResponse } from './types';
+import {
+  LoginPayload,
+  LoginResponse,
+  MeResponse,
+  RegisterBkkPayload,
+  RegisterBkkResponse,
+  RegisterCalonSiswaPayload,
+  RegisterCalonSiswaResponse,
+  RegisterParentPayload,
+  RegisterParentResponse,
+  RegisterUmumPayload,
+  RegisterUmumResponse,
+} from './types';
 import { offlineCache } from '../../lib/storage/offlineCache';
 
 const ME_CACHE_TTL_MS = 60_000;
@@ -69,6 +81,18 @@ export const authService = {
   },
   async registerUmum(payload: RegisterUmumPayload) {
     const response = await apiClient.post<RegisterUmumResponse>('/auth/register-umum', payload);
+    return response.data;
+  },
+  async registerCalonSiswa(payload: RegisterCalonSiswaPayload) {
+    const response = await apiClient.post<RegisterCalonSiswaResponse>('/auth/register-calon-siswa', payload);
+    return response.data;
+  },
+  async registerParent(payload: RegisterParentPayload) {
+    const response = await apiClient.post<RegisterParentResponse>('/auth/register-parent', payload);
+    return response.data;
+  },
+  async registerBkk(payload: RegisterBkkPayload) {
+    const response = await apiClient.post<RegisterBkkResponse>('/auth/register-bkk', payload);
     return response.data;
   },
   async logout() {

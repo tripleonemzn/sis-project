@@ -1,8 +1,31 @@
 #!/bin/bash
 
 # Script untuk mengupdate seluruh layanan (Backend & Frontend)
+set -o pipefail
 
 ROOT_DIR="/var/www/sis-project"
+
+retry_command() {
+    local max_attempts="$1"
+    shift
+
+    local attempt=1
+    local delay=2
+    while true; do
+        if "$@"; then
+            return 0
+        fi
+
+        if [ "$attempt" -ge "$max_attempts" ]; then
+            return 1
+        fi
+
+        echo "   ⚠️  Percobaan $attempt gagal. Retry dalam ${delay} detik..."
+        sleep "$delay"
+        attempt=$((attempt + 1))
+        delay=$((delay * 2))
+    done
+}
 
 echo "=========================================="
 echo "🚀 MEMULAI PROSES UPDATE SISTEM"
@@ -23,8 +46,18 @@ fi
 echo ""
 echo "📦 [1/2] Updating Backend..."
 cd "$ROOT_DIR/backend" || exit
+echo "   -> Validating Prisma Schema..."
+if ! npx prisma validate; then
+    echo "   ❌ Prisma schema tidak valid. Deploy dihentikan."
+    exit 1
+fi
+
 echo "   -> Syncing Database Schema..."
-npx prisma db push
+if ! retry_command 3 npx prisma db push; then
+    echo "   ❌ Gagal sinkronisasi schema database setelah 3 percobaan. Deploy dihentikan."
+    exit 1
+fi
+
 echo "   -> Building TypeScript..."
 npm run build
 if [ $? -eq 0 ]; then

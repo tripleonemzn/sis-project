@@ -37,3 +37,14 @@ export type StaffStudent = {
     } | null;
   } | null;
 };
+
+export type StaffPersonnel = {
+  id: number;
+  username: string;
+  name: string;
+  nip?: string | null;
+  nuptk?: string | null;
+  ptkType?: string | null;
+  verificationStatus?: string | null;
+  additionalDuties?: string[] | null;
+};

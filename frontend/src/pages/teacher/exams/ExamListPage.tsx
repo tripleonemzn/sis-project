@@ -84,6 +84,22 @@ const fromSemesterFilter = (semester: SemesterFilter): 'ODD' | 'EVEN' | undefine
     return undefined;
 };
 
+const extractStructuredTitleSuffix = (rawTitle?: string | null): string => {
+    const title = String(rawTitle || '').trim();
+    if (!title.includes('•')) return '';
+    const segments = title
+        .split('•')
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+    if (segments.length < 3) return '';
+
+    const dateTokenIndex = segments.findIndex((segment) => /^\d{4}-\d{2}-\d{2}$/.test(segment));
+    if (dateTokenIndex >= 0) {
+        return segments.slice(dateTokenIndex).join(' • ');
+    }
+    return segments.slice(2).join(' • ');
+};
+
 const toDateTimeLocalValue = (value?: string | null): string => {
     if (!value) return '';
     const date = new Date(value);
@@ -442,6 +458,26 @@ export const ExamListPage = () => {
         [programLabelByCode, baseTypeFallbackLabel],
     );
 
+    const resolvePacketDisplayTitle = useCallback(
+        (packet: ExamPacket) => {
+            const programLabel = resolvePacketLabel(packet);
+            const subjectName = String(packet.subject?.name || '').trim();
+            const rawTitle = String(packet.title || '').trim();
+            const titleSuffix = extractStructuredTitleSuffix(rawTitle);
+
+            if (rawTitle.includes('•')) {
+                return [programLabel, subjectName || 'Mata Pelajaran', titleSuffix]
+                    .filter(Boolean)
+                    .join(' • ');
+            }
+            if (!rawTitle) {
+                return [programLabel, subjectName || 'Mata Pelajaran'].join(' • ');
+            }
+            return rawTitle;
+        },
+        [resolvePacketLabel],
+    );
+
     // Use Query for fetching packets
     const { data: packets = [], isLoading, refetch: refetchPackets } = useQuery({
         queryKey: ['exam-packets', { 
@@ -467,6 +503,22 @@ export const ExamListPage = () => {
         },
         enabled: !!activeAcademicYear && !isBankSoal && !!selectedProgram && !!selectedSemester
     });
+
+    const filteredPackets = useMemo(() => {
+        const keyword = search.toLowerCase().trim();
+        if (!keyword) return packets;
+        return packets.filter((packet: ExamPacket) => {
+            const haystack = [
+                resolvePacketDisplayTitle(packet),
+                packet.title,
+                packet.subject?.name,
+                resolvePacketLabel(packet),
+            ]
+                .map((item) => String(item || '').toLowerCase())
+                .join(' ');
+            return haystack.includes(keyword);
+        });
+    }, [packets, search, resolvePacketDisplayTitle, resolvePacketLabel]);
 
     // Handle delete with refetch
     const handleDelete = async (id: number) => {
@@ -777,7 +829,7 @@ export const ExamListPage = () => {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {packets.filter((p: ExamPacket) => p.title.toLowerCase().includes(search.toLowerCase())).map((packet: ExamPacket) => (
+                    {filteredPackets.map((packet: ExamPacket) => (
                         <div 
                             key={packet.id} 
                             className="group bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-4 hover:border-blue-300 hover:shadow-lg transition-all relative overflow-hidden"
@@ -795,7 +847,7 @@ export const ExamListPage = () => {
                                     </span>
                                 </div>
                                 <h3 className="text-sm font-bold text-gray-900 group-hover:text-blue-600 transition-colors mb-3 line-clamp-2 min-h-[40px]">
-                                    {packet.title}
+                                    {resolvePacketDisplayTitle(packet)}
                                 </h3>
                                 
                                 {/* Stats Row */}
@@ -887,7 +939,7 @@ export const ExamListPage = () => {
                                     Atur Jadwal Ujian
                                 </h3>
                                 <p className="text-sm text-slate-500">
-                                    {schedulePacket?.title || 'Packet ujian'}
+                                    {schedulePacket ? resolvePacketDisplayTitle(schedulePacket) : 'Packet ujian'}
                                 </p>
                             </div>
                             <button

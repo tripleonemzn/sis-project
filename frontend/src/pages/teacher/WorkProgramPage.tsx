@@ -15,7 +15,10 @@ import {
   budgetRequestService,
   type BudgetRequest,
 } from '../../services/budgetRequest.service';
-import { budgetLpjService } from '../../services/budgetLpj.service';
+import {
+  budgetLpjService,
+  type LpjInvoiceStatus,
+} from '../../services/budgetLpj.service';
 import { authService } from '../../services/auth.service';
 import { liveQueryOptions } from '../../lib/query/liveQuery';
 import { z } from 'zod';
@@ -59,6 +62,121 @@ const getExecutionStatusMeta = (status: WorkProgramExecutionStatus | null | unde
     label: 'Terlaksana',
     className: 'bg-emerald-100 text-emerald-800',
   };
+};
+
+const formatCurrency = (value: number) => `Rp ${Math.max(0, value).toLocaleString('id-ID')}`;
+
+const getLatestLpjInvoice = (budget: BudgetRequest) => {
+  const invoices = [...(budget.lpjInvoices || [])];
+  if (invoices.length === 0) {
+    return null;
+  }
+  invoices.sort((a, b) => {
+    const aTime = new Date(a.updatedAt || a.createdAt).getTime();
+    const bTime = new Date(b.updatedAt || b.createdAt).getTime();
+    return bTime - aTime;
+  });
+  return invoices[0];
+};
+
+const getLpjSummaryForBudget = (budget: BudgetRequest) => {
+  const latestInvoice = getLatestLpjInvoice(budget);
+  const realizedAmount = (latestInvoice?.items || []).reduce(
+    (sum, item) => sum + Number(item.amount || 0),
+    0,
+  );
+
+  return {
+    invoiceCount: budget.lpjInvoices?.length || 0,
+    latestInvoice,
+    realizedAmount,
+    remainingAmount: Math.max(Number(budget.totalAmount || 0) - realizedAmount, 0),
+  };
+};
+
+const getLpjStatusMeta = (budget: BudgetRequest): {
+  label: string;
+  className: string;
+  note: string;
+} => {
+  if (budget.status !== 'APPROVED') {
+    return {
+      label: budget.status === 'REJECTED' ? 'Pengajuan Ditolak' : 'Menunggu Persetujuan',
+      className:
+        budget.status === 'REJECTED'
+          ? 'bg-red-100 text-red-700 border-red-200'
+          : 'bg-amber-100 text-amber-700 border-amber-200',
+      note:
+        budget.status === 'REJECTED'
+          ? budget.rejectionReason || 'Ajukan ulang anggaran agar LPJ bisa dibuat.'
+          : 'LPJ baru dapat dibuat setelah anggaran disetujui.',
+    };
+  }
+
+  if (!budget.realizationConfirmedAt) {
+    return {
+      label: 'Menunggu Konfirmasi Realisasi',
+      className: 'bg-slate-100 text-slate-700 border-slate-200',
+      note: 'Keuangan perlu mengonfirmasi realisasi sebelum LPJ pembelanjaan disusun.',
+    };
+  }
+
+  const latestInvoice = getLatestLpjInvoice(budget);
+  if (!latestInvoice) {
+    return {
+      label: 'Siap Buat LPJ',
+      className: 'bg-blue-100 text-blue-700 border-blue-200',
+      note: 'Anggaran sudah direalisasikan. Guru dapat mulai menyusun invoice LPJ.',
+    };
+  }
+
+  const statusMap: Record<
+    LpjInvoiceStatus,
+    { label: string; className: string; note: string }
+  > = {
+    DRAFT: {
+      label: 'Draft LPJ',
+      className: 'bg-blue-100 text-blue-700 border-blue-200',
+      note: 'Invoice masih bisa dilengkapi sebelum dikirim ke Wakasek Sarpras.',
+    },
+    SUBMITTED_TO_SARPRAS: {
+      label: 'Review Sarpras',
+      className: 'bg-amber-100 text-amber-700 border-amber-200',
+      note: 'Invoice sedang direview oleh Wakasek Sarpras.',
+    },
+    RETURNED: {
+      label: 'Perlu Revisi',
+      className: 'bg-red-100 text-red-700 border-red-200',
+      note: 'Invoice dikembalikan Sarpras. Lengkapi item atau file pendukung.',
+    },
+    APPROVED_BY_SARPRAS: {
+      label: 'Disetujui Sarpras',
+      className: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      note: 'Invoice sudah lolos verifikasi Sarpras.',
+    },
+    SENT_TO_FINANCE: {
+      label: 'Dikirim ke Keuangan',
+      className: 'bg-cyan-100 text-cyan-700 border-cyan-200',
+      note: 'Invoice menunggu tindak lanjut dari staff keuangan.',
+    },
+    PROCESSING_FINANCE: {
+      label: 'Diproses Keuangan',
+      className: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+      note: 'Keuangan sedang memproses audit/realisasi akhir.',
+    },
+    COMPLETED: {
+      label: 'LPJ Selesai',
+      className: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      note: 'LPJ pembelanjaan selesai dan arsip siap dipantau.',
+    },
+    RETURNED_BY_FINANCE: {
+      label: 'Revisi dari Keuangan',
+      className: 'bg-red-100 text-red-700 border-red-200',
+      note: 'Invoice dikembalikan oleh keuangan untuk dilengkapi ulang.',
+    },
+  };
+
+  return statusMap[latestInvoice.status];
 };
 
 const isTruthyQueryValue = (value: string | null) =>
@@ -187,9 +305,6 @@ export const WorkProgramPage = () => {
     isTruthyQueryValue(searchParams.get('readonly'));
   const isReadOnlyMode = isMonitoringReadOnly;
   const [isWeekConfigOpen, setIsWeekConfigOpen] = useState(false);
-  const [lpjDraftByProgramId, setLpjDraftByProgramId] = useState<
-    Record<number, { executionStatus: WorkProgramExecutionStatus; nonExecutionReason: string }>
-  >({});
   const [weekConfig, setWeekConfig] = useState<WeekConfig[]>(() => {
     try {
       const saved = localStorage.getItem('workProgramWeekConfig');
@@ -613,56 +728,6 @@ export const WorkProgramPage = () => {
     totalPages: 1,
   };
 
-  const getExecutionDraft = (program: WorkProgram) =>
-    lpjDraftByProgramId[program.id] || {
-      executionStatus:
-        program.executionStatus === 'BELUM_TERLAKSANA'
-          ? ('BELUM_TERLAKSANA' as WorkProgramExecutionStatus)
-          : ('TERLAKSANA' as WorkProgramExecutionStatus),
-      nonExecutionReason: program.nonExecutionReason || '',
-    };
-
-  const getProgramPeriodLabel = (program: WorkProgram) => {
-    const monthNameFromNumber = (monthNumber?: number | null) => {
-      if (!monthNumber) return '-';
-      const monthIndex = monthNumber >= 7 ? monthNumber - 7 : monthNumber + 5;
-      const month = weekConfig[monthIndex];
-      return month?.name || `Bulan ${monthNumber}`;
-    };
-
-    const startMonthLabel = monthNameFromNumber(program.startMonth ?? program.month);
-    const endMonthLabel = monthNameFromNumber(program.endMonth ?? program.month);
-    const startWeekLabel = program.startWeek ? `Minggu ${program.startWeek}` : '-';
-    const endWeekLabel = program.endWeek ? `Minggu ${program.endWeek}` : '-';
-
-    return `${startMonthLabel} (${startWeekLabel}) - ${endMonthLabel} (${endWeekLabel})`;
-  };
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLpjDraftByProgramId((prev) => {
-      const next: Record<
-        number,
-        { executionStatus: WorkProgramExecutionStatus; nonExecutionReason: string }
-      > = {};
-      programs.forEach((program) => {
-        const existing = prev[program.id];
-        if (existing) {
-          next[program.id] = existing;
-          return;
-        }
-        next[program.id] = {
-          executionStatus:
-            program.executionStatus === 'BELUM_TERLAKSANA'
-              ? 'BELUM_TERLAKSANA'
-              : 'TERLAKSANA',
-          nonExecutionReason: program.nonExecutionReason || '',
-        };
-      });
-      return next;
-    });
-  }, [programs]);
-
   const selectedProgramId = selectedProgram?.id;
 
   useEffect(() => {
@@ -885,58 +950,6 @@ export const WorkProgramPage = () => {
     },
   });
 
-  const updateProgramExecutionMutation = useMutation({
-    mutationFn: ({
-      programId,
-      executionStatus,
-      nonExecutionReason,
-    }: {
-      programId: number;
-      executionStatus: WorkProgramExecutionStatus;
-      nonExecutionReason?: string | null;
-    }) =>
-      workProgramService.update(programId, {
-        executionStatus,
-        nonExecutionReason,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['work-programs'] });
-      toast.success('Status pelaksanaan program kerja berhasil disimpan');
-    },
-    onError: (error: unknown) => {
-      toast.error(getErrorMessage(error) || 'Gagal menyimpan status pelaksanaan');
-    },
-  });
-
-  const handleExecutionDraftChange = (
-    programId: number,
-    value: Partial<{ executionStatus: WorkProgramExecutionStatus; nonExecutionReason: string }>,
-  ) => {
-    setLpjDraftByProgramId((prev) => ({
-      ...prev,
-      [programId]: {
-        executionStatus: value.executionStatus ?? prev[programId]?.executionStatus ?? 'TERLAKSANA',
-        nonExecutionReason:
-          value.nonExecutionReason ?? prev[programId]?.nonExecutionReason ?? '',
-      },
-    }));
-  };
-
-  const handleSaveExecutionStatus = (program: WorkProgram) => {
-    const draft = getExecutionDraft(program);
-    const trimmedReason = draft.nonExecutionReason.trim();
-    if (draft.executionStatus === 'BELUM_TERLAKSANA' && !trimmedReason) {
-      toast.error('Alasan wajib diisi untuk status belum terlaksana');
-      return;
-    }
-    updateProgramExecutionMutation.mutate({
-      programId: program.id,
-      executionStatus: draft.executionStatus,
-      nonExecutionReason:
-        draft.executionStatus === 'BELUM_TERLAKSANA' ? trimmedReason : null,
-    });
-  };
-
   const {
     data: budgetRequestsData,
     isLoading: isLoadingBudgets,
@@ -947,7 +960,7 @@ export const WorkProgramPage = () => {
         academicYearId: activeYearId ?? undefined,
         additionalDuty: selectedDuty || undefined,
     }),
-    enabled: !!activeYearId && activeTab === 'BUDGET' && budgetSectionTab === 'REQUEST',
+    enabled: !!activeYearId && activeTab === 'BUDGET',
     ...liveQueryOptions,
   });
 
@@ -961,6 +974,30 @@ export const WorkProgramPage = () => {
     return [];
   }, [budgetRequestsData]);
   const displayedBudgetRequests = budgetRequests;
+  const lpjBudgets = useMemo(
+    () => displayedBudgetRequests.filter((budget) => budget.status !== 'REJECTED'),
+    [displayedBudgetRequests],
+  );
+  const lpjSummary = useMemo(() => {
+    const approvedBudgets = lpjBudgets.filter((budget) => budget.status === 'APPROVED');
+    const readyBudgets = approvedBudgets.filter(
+      (budget) => budget.realizationConfirmedAt && !getLatestLpjInvoice(budget),
+    );
+    const inProgressBudgets = approvedBudgets.filter((budget) => {
+      const latestInvoice = getLatestLpjInvoice(budget);
+      return latestInvoice && latestInvoice.status !== 'COMPLETED';
+    });
+    const completedBudgets = approvedBudgets.filter(
+      (budget) => getLatestLpjInvoice(budget)?.status === 'COMPLETED',
+    );
+
+    return {
+      approvedCount: approvedBudgets.length,
+      readyCount: readyBudgets.length,
+      inProgressCount: inProgressBudgets.length,
+      completedCount: completedBudgets.length,
+    };
+  }, [lpjBudgets]);
 
   const {
     register: registerNewBudget,
@@ -1112,6 +1149,7 @@ export const WorkProgramPage = () => {
       if (lpjBudgetId) {
         queryClient.invalidateQueries({ queryKey: ['budget-lpj', lpjBudgetId] });
       }
+      queryClient.invalidateQueries({ queryKey: ['budget-requests'] });
       setNewLpjInvoiceTitle('');
       toast.success('Invoice LPJ berhasil dibuat');
     },
@@ -1132,6 +1170,7 @@ export const WorkProgramPage = () => {
       if (lpjBudgetId) {
         queryClient.invalidateQueries({ queryKey: ['budget-lpj', lpjBudgetId] });
       }
+      queryClient.invalidateQueries({ queryKey: ['budget-requests'] });
       setNewLpjItemDescription('');
       setNewLpjItemBrand('');
       setNewLpjItemQty(1);
@@ -1149,6 +1188,7 @@ export const WorkProgramPage = () => {
       if (lpjBudgetId) {
         queryClient.invalidateQueries({ queryKey: ['budget-lpj', lpjBudgetId] });
       }
+      queryClient.invalidateQueries({ queryKey: ['budget-requests'] });
       toast.success('Item LPJ dihapus');
     },
     onError: (error: unknown) => {
@@ -1162,6 +1202,7 @@ export const WorkProgramPage = () => {
       if (lpjBudgetId) {
         queryClient.invalidateQueries({ queryKey: ['budget-lpj', lpjBudgetId] });
       }
+      queryClient.invalidateQueries({ queryKey: ['budget-requests'] });
       toast.success('Invoice LPJ diajukan ke Wakasek Sarpras');
     },
     onError: (error: unknown) => {
@@ -1271,7 +1312,7 @@ export const WorkProgramPage = () => {
                 }`}
               >
                 <FileText className="w-4 h-4 mr-2" />
-                LPJ Program Kerja
+                LPJ Anggaran
               </button>
             </div>
           </div>
@@ -1311,7 +1352,7 @@ export const WorkProgramPage = () => {
               `}
             >
               <FileText className="w-4 h-4 mr-2" />
-              LPJ Program Kerja
+              LPJ Anggaran
             </button>
           </div>
         )}
@@ -1786,7 +1827,9 @@ export const WorkProgramPage = () => {
                     <div className="space-y-4">
                       {lpjInvoices.map((invoice, index) => {
                         const canEditItems =
-                          invoice.status === 'DRAFT' || invoice.status === 'RETURNED';
+                          invoice.status === 'DRAFT' ||
+                          invoice.status === 'RETURNED' ||
+                          invoice.status === 'RETURNED_BY_FINANCE';
                         const isLast = index === lpjInvoices.length - 1;
                         return (
                           <div
@@ -1802,11 +1845,15 @@ export const WorkProgramPage = () => {
                                   Status:{' '}
                                   <span
                                     className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                                      invoice.status === 'APPROVED_BY_SARPRAS'
+                                      invoice.status === 'APPROVED_BY_SARPRAS' ||
+                                      invoice.status === 'COMPLETED'
                                         ? 'bg-green-100 text-green-800'
-                                        : invoice.status === 'SUBMITTED_TO_SARPRAS'
+                                        : invoice.status === 'SUBMITTED_TO_SARPRAS' ||
+                                          invoice.status === 'SENT_TO_FINANCE' ||
+                                          invoice.status === 'PROCESSING_FINANCE'
                                           ? 'bg-blue-100 text-blue-800'
-                                          : invoice.status === 'RETURNED'
+                                          : invoice.status === 'RETURNED' ||
+                                            invoice.status === 'RETURNED_BY_FINANCE'
                                             ? 'bg-red-100 text-red-800'
                                             : 'bg-yellow-100 text-yellow-800'
                                     }`}
@@ -1817,8 +1864,19 @@ export const WorkProgramPage = () => {
                                     {invoice.status === 'RETURNED' && 'Dikembalikan'}
                                     {invoice.status === 'APPROVED_BY_SARPRAS' && 'Disetujui Wakasek'}
                                     {invoice.status === 'SENT_TO_FINANCE' && 'Diteruskan ke Keuangan'}
+                                    {invoice.status === 'PROCESSING_FINANCE' &&
+                                      'Sedang diproses Keuangan'}
+                                    {invoice.status === 'COMPLETED' &&
+                                      'Selesai diproses Keuangan'}
+                                    {invoice.status === 'RETURNED_BY_FINANCE' &&
+                                      'Dikembalikan Keuangan'}
                                   </span>
                                 </p>
+                                {invoice.financeNote && (
+                                  <p className="text-[11px] text-red-600 mt-1">
+                                    Catatan keuangan: {invoice.financeNote}
+                                  </p>
+                                )}
                               </div>
                               <div className="flex flex-col items-end gap-1">
                                 <div className="flex flex-wrap items-center gap-2 justify-end">
@@ -2122,30 +2180,47 @@ export const WorkProgramPage = () => {
 
       {activeTab === 'BUDGET' && budgetSectionTab === 'LPJ' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="bg-white border border-gray-200 rounded-xl p-4">
-              <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">
-                Total Program Kerja
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="bg-white border border-blue-100 rounded-xl p-4">
+              <p className="text-[11px] uppercase tracking-wide text-blue-700 font-semibold">
+                Anggaran Disetujui
               </p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{programs.length}</p>
-            </div>
-            <div className="bg-white border border-emerald-200 rounded-xl p-4">
-              <p className="text-[11px] uppercase tracking-wide text-emerald-700 font-semibold">
-                Terlaksana
+              <p className="text-2xl font-bold text-blue-700 mt-1">
+                {lpjSummary.approvedCount}
               </p>
-              <p className="text-2xl font-bold text-emerald-700 mt-1">
-                {
-                  programs.filter((program) => program.executionStatus !== 'BELUM_TERLAKSANA')
-                    .length
-                }
+              <p className="text-xs text-gray-500 mt-1">
+                Data pengajuan yang sudah lolos proses persetujuan.
               </p>
             </div>
-            <div className="bg-white border border-amber-200 rounded-xl p-4">
+            <div className="bg-white border border-cyan-100 rounded-xl p-4">
+              <p className="text-[11px] uppercase tracking-wide text-cyan-700 font-semibold">
+                Siap Disusun LPJ
+              </p>
+              <p className="text-2xl font-bold text-cyan-700 mt-1">{lpjSummary.readyCount}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Sudah dikonfirmasi realisasinya, tinggal buat invoice LPJ.
+              </p>
+            </div>
+            <div className="bg-white border border-amber-100 rounded-xl p-4">
               <p className="text-[11px] uppercase tracking-wide text-amber-700 font-semibold">
-                Belum Terlaksana
+                Dalam Proses
               </p>
               <p className="text-2xl font-bold text-amber-700 mt-1">
-                {programs.filter((program) => program.executionStatus === 'BELUM_TERLAKSANA').length}
+                {lpjSummary.inProgressCount}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Sedang direview Sarpras atau diproses Keuangan.
+              </p>
+            </div>
+            <div className="bg-white border border-emerald-100 rounded-xl p-4">
+              <p className="text-[11px] uppercase tracking-wide text-emerald-700 font-semibold">
+                LPJ Selesai
+              </p>
+              <p className="text-2xl font-bold text-emerald-700 mt-1">
+                {lpjSummary.completedCount}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Dokumen pembelanjaan sudah selesai dan siap dipantau.
               </p>
             </div>
           </div>
@@ -2159,143 +2234,121 @@ export const WorkProgramPage = () => {
                       No
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Program Kerja
+                      Anggaran / Program
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Periode
+                      Nilai Disetujui
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status Pelaksanaan
+                      Realisasi
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Alasan Tidak Terlaksana
+                      Selisih
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status Persetujuan
+                      Status LPJ
                     </th>
-                    {!isReadOnlyMode && (
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Aksi
-                      </th>
-                    )}
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Aksi
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {isLoadingPrograms ? (
+                  {isLoadingBudgets ? (
                     <tr>
-                      <td
-                        colSpan={isReadOnlyMode ? 6 : 7}
-                        className="px-6 py-4 text-center text-sm text-gray-500"
-                      >
+                      <td colSpan={7} className="px-6 py-4 text-center text-sm text-gray-500">
                         <Loader2 className="w-5 h-5 animate-spin mx-auto text-blue-600" />
                       </td>
                     </tr>
-                  ) : programs.length === 0 ? (
+                  ) : lpjBudgets.length === 0 ? (
                     <tr>
-                      <td
-                        colSpan={isReadOnlyMode ? 6 : 7}
-                        className="px-6 py-6 text-center text-gray-500 text-sm"
-                      >
-                        Belum ada program kerja untuk tahun ajaran aktif.
+                      <td colSpan={7} className="px-6 py-6 text-center text-gray-500 text-sm">
+                        Belum ada data anggaran yang bisa disusun LPJ pada tahun ajaran aktif.
                       </td>
                     </tr>
                   ) : (
-                    programs.map((program, index) => {
-                      const draft = getExecutionDraft(program);
-                      const executionMeta = getExecutionStatusMeta(draft.executionStatus);
+                    lpjBudgets.map((budget, index) => {
+                      const lpjMeta = getLpjStatusMeta(budget);
+                      const lpjSummaryForBudget = getLpjSummaryForBudget(budget);
+                      const canOpenLpj =
+                        budget.status === 'APPROVED' && !!budget.realizationConfirmedAt;
+                      const title = isPembinaEkskulDuty
+                        ? budget.title || budget.description
+                        : budget.description;
+
                       return (
-                        <tr key={program.id}>
+                        <tr key={budget.id}>
                           <td className="px-6 py-4 text-sm text-gray-500">{index + 1}</td>
                           <td className="px-6 py-4 text-sm text-gray-900">
-                            <p className="font-semibold">{program.title}</p>
-                            {program.description && (
+                            <p className="font-semibold">{title}</p>
+                            {budget.executionTime && (
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                Pelaksanaan: {budget.executionTime}
+                              </p>
+                            )}
+                            {budget.workProgram?.title && (
                               <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
-                                {program.description}
+                                Program kerja: {budget.workProgram.title}
                               </p>
                             )}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-600">
-                            {getProgramPeriodLabel(program)}
-                          </td>
-                          <td className="px-6 py-4 text-sm">
-                            <div className="space-y-2">
-                              <span
-                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${executionMeta.className}`}
-                              >
-                                {executionMeta.label}
-                              </span>
-                              {!isReadOnlyMode && (
-                                <select
-                                  value={draft.executionStatus}
-                                  onChange={(e) =>
-                                    handleExecutionDraftChange(program.id, {
-                                      executionStatus:
-                                        e.target.value as WorkProgramExecutionStatus,
-                                    })
-                                  }
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-                                >
-                                  <option value="TERLAKSANA">Terlaksana</option>
-                                  <option value="BELUM_TERLAKSANA">Belum Terlaksana</option>
-                                </select>
-                              )}
-                            </div>
+                            <p className="font-semibold text-gray-900">
+                              {formatCurrency(Number(budget.totalAmount || 0))}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {isPembinaEkskulDuty
+                                ? 'Pengajuan alat ekskul'
+                                : `QTY ${budget.quantity} • ${formatCurrency(
+                                    Number(budget.unitPrice || 0),
+                                  )}`}
+                            </p>
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-600">
-                            {isReadOnlyMode ? (
-                              draft.executionStatus === 'BELUM_TERLAKSANA' ? (
-                                draft.nonExecutionReason || '-'
-                              ) : (
-                                '-'
-                              )
-                            ) : draft.executionStatus === 'BELUM_TERLAKSANA' ? (
-                              <textarea
-                                rows={2}
-                                value={draft.nonExecutionReason}
-                                onChange={(e) =>
-                                  handleExecutionDraftChange(program.id, {
-                                    nonExecutionReason: e.target.value,
-                                  })
-                                }
-                                placeholder="Tulis alasan program belum terlaksana..."
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/60 resize-none"
-                              />
-                            ) : (
-                              <span className="text-xs text-gray-400">-</span>
-                            )}
+                            <p className="font-semibold text-gray-900">
+                              {formatCurrency(lpjSummaryForBudget.realizedAmount)}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {lpjSummaryForBudget.invoiceCount > 0
+                                ? `${lpjSummaryForBudget.invoiceCount} invoice LPJ`
+                                : 'Belum ada invoice'}
+                            </p>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            <p className="font-semibold text-gray-900">
+                              {formatCurrency(lpjSummaryForBudget.remainingAmount)}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              Sisa dari nilai anggaran yang disetujui
+                            </p>
                           </td>
                           <td className="px-6 py-4 text-sm">
-                            <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                                program.approvalStatus === 'APPROVED'
-                                  ? 'bg-green-100 text-green-800'
-                                  : program.approvalStatus === 'REJECTED'
-                                    ? 'bg-red-100 text-red-800'
-                                    : 'bg-yellow-100 text-yellow-800'
-                              }`}
-                            >
-                              {program.approvalStatus === 'APPROVED'
-                                ? 'Disetujui'
-                                : program.approvalStatus === 'REJECTED'
-                                  ? 'Ditolak'
-                                  : 'Menunggu'}
-                            </span>
+                            <div className="space-y-1.5">
+                              <span
+                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${lpjMeta.className}`}
+                              >
+                                {lpjMeta.label}
+                              </span>
+                              <p className="text-xs text-gray-500 max-w-xs">{lpjMeta.note}</p>
+                            </div>
                           </td>
-                          {!isReadOnlyMode && (
-                            <td className="px-6 py-4 text-right">
+                          <td className="px-6 py-4 text-right">
+                            {isReadOnlyMode ? (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                                Read Only
+                              </span>
+                            ) : (
                               <button
                                 type="button"
-                                disabled={updateProgramExecutionMutation.isPending}
-                                onClick={() => handleSaveExecutionStatus(program)}
-                                className="inline-flex items-center px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50"
+                                disabled={!canOpenLpj}
+                                onClick={() => setLpjModal({ isOpen: true, budget })}
+                                className="inline-flex items-center px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                {updateProgramExecutionMutation.isPending && (
-                                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                                )}
-                                Simpan
+                                <FileText className="w-3.5 h-3.5 mr-1.5" />
+                                Kelola LPJ
                               </button>
-                            </td>
-                          )}
+                            )}
+                          </td>
                         </tr>
                       );
                     })
@@ -2303,6 +2356,23 @@ export const WorkProgramPage = () => {
                 </tbody>
               </table>
             </div>
+            {lpjBudgets.length > 0 && (
+              <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex justify-end">
+                <div className="text-right">
+                  <span className="text-xs text-gray-500 font-medium uppercase tracking-wider block mb-1">
+                    Total Realisasi LPJ
+                  </span>
+                  <span className="text-xl font-bold text-emerald-700">
+                    {formatCurrency(
+                      lpjBudgets.reduce((sum, budget) => {
+                        const summary = getLpjSummaryForBudget(budget);
+                        return sum + summary.realizedAmount;
+                      }, 0),
+                    )}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

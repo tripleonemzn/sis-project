@@ -755,7 +755,7 @@ const ServerAreaPage: React.FC = () => {
               />
             </div>
             <p className="mt-2 text-[11px] text-gray-500">
-              Aman jika load per core berada di bawah 0.8 secara konsisten.
+              Aman jika load per core berada di bawah 1.2 secara konsisten.
             </p>
           </div>
 

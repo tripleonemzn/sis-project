@@ -19,6 +19,7 @@ import { academicYearApi } from '../../../src/features/academicYear/academicYear
 import { AdminTeacherAssignment, AdminTeachingLoadTeacher, adminApi } from '../../../src/features/admin/adminApi';
 import { examApi } from '../../../src/features/exams/examApi';
 import { TeacherExamSchedule } from '../../../src/features/exams/types';
+import { teachingResourceProgramApi } from '../../../src/features/learningResources/teachingResourceProgramApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
 type PerformanceSection = 'RINGKASAN' | 'GURU' | 'UJIAN';
@@ -42,6 +43,14 @@ type ClassExamKpiRow = {
   noProctorCount: number;
   noRoomCount: number;
   noPacketCount: number;
+};
+
+type TeachingResourceSummary = {
+  total: number;
+  submitted: number;
+  approved: number;
+  rejected: number;
+  draft: number;
 };
 
 function hasCurriculumDuty(userDuties?: string[]) {
@@ -179,7 +188,7 @@ export default function TeacherWakakurPerformanceScreen() {
     enabled: isAuthenticated && !!isAllowed && !!activeYearQuery.data?.id,
     queryFn: async () => {
       const academicYearId = Number(activeYearQuery.data?.id);
-      const [assignmentsResult, teachingLoad, schedules, classesResult, subjectsResult] = await Promise.all([
+      const [assignmentsResult, teachingLoad, schedules, classesResult, subjectsResult, teachingResourceSummary] = await Promise.all([
         adminApi.listTeacherAssignments({
           academicYearId,
           page: 1,
@@ -196,7 +205,12 @@ export default function TeacherWakakurPerformanceScreen() {
           page: 1,
           limit: 400,
         }),
+        teachingResourceProgramApi.getEntriesSummary({ academicYearId }).catch(() => null),
       ]);
+
+      const byStatus = Array.isArray(teachingResourceSummary?.byStatus) ? teachingResourceSummary.byStatus : [];
+      const countStatus = (status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') =>
+        byStatus.find((item) => item.status === status)?.total || 0;
 
       return {
         assignments: assignmentsResult.items,
@@ -206,6 +220,13 @@ export default function TeacherWakakurPerformanceScreen() {
         classes: classesResult.items,
         classTotal: classesResult.pagination.total,
         subjectTotal: subjectsResult.pagination.total,
+        teachingResourceSummary: {
+          total: Number(teachingResourceSummary?.total || 0),
+          submitted: countStatus('SUBMITTED'),
+          approved: countStatus('APPROVED'),
+          rejected: countStatus('REJECTED'),
+          draft: countStatus('DRAFT'),
+        } as TeachingResourceSummary,
       };
     },
   });
@@ -222,6 +243,13 @@ export default function TeacherWakakurPerformanceScreen() {
   const classTotal = performanceQuery.data?.classTotal || 0;
   const assignmentTotal = performanceQuery.data?.assignmentTotal || assignments.length;
   const subjectTotal = performanceQuery.data?.subjectTotal || 0;
+  const teachingResourceSummary = performanceQuery.data?.teachingResourceSummary || {
+    total: 0,
+    submitted: 0,
+    approved: 0,
+    rejected: 0,
+    draft: 0,
+  };
   const normalizedSearch = search.trim().toLowerCase();
 
   const teacherRows = useMemo(() => {
@@ -552,6 +580,19 @@ export default function TeacherWakakurPerformanceScreen() {
                 />
               </View>
 
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                <SummaryCard
+                  title="Perangkat Ajar Pending"
+                  value={formatNumber(teachingResourceSummary.submitted)}
+                  subtitle={`${formatNumber(teachingResourceSummary.approved)} disetujui`}
+                />
+                <SummaryCard
+                  title="Perlu Revisi Perangkat"
+                  value={formatNumber(teachingResourceSummary.rejected)}
+                  subtitle={`${formatNumber(teachingResourceSummary.draft)} draft tersisa`}
+                />
+              </View>
+
               <View
                 style={{
                   backgroundColor: '#fff',
@@ -603,6 +644,9 @@ export default function TeacherWakakurPerformanceScreen() {
                 </Text>
                 <Text style={{ color: BRAND_COLORS.textMuted }}>
                   • Jadwal tanpa paket soal: {formatNumber(summary.scheduleNoPacketCount)}
+                </Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
+                  • Perangkat ajar menunggu review: {formatNumber(teachingResourceSummary.submitted)}
                 </Text>
               </View>
             </>

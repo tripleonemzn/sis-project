@@ -1,21 +1,21 @@
 # Mobile Parity Audit (All Roles)
 
-Generated: 2026-03-15T22:22:29.900Z
+Generated: 2026-03-26T12:18:37.357Z
 
 ## Ringkasan per Role
 
 | Role | Total | Native Only | Native + Web Fallback | Web Bridge Route | Route Tree Punya openURL |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | ADMIN | 33 | 33 | 0 | 0 | 0 |
-| CALON_SISWA | 2 | 2 | 0 | 0 | 0 |
+| CALON_SISWA | 4 | 4 | 0 | 0 | 1 |
 | EXAMINER | 4 | 4 | 0 | 0 | 0 |
 | EXTRACURRICULAR_TUTOR | 6 | 6 | 0 | 0 | 0 |
-| PARENT | 4 | 4 | 0 | 0 | 0 |
+| PARENT | 5 | 5 | 0 | 0 | 0 |
 | PRINCIPAL | 7 | 7 | 0 | 0 | 0 |
 | STAFF | 5 | 5 | 0 | 0 | 0 |
 | STUDENT | 15 | 15 | 0 | 0 | 0 |
 | TEACHER | 59 | 49 | 6 | 4 | 4 |
-| UMUM | 2 | 2 | 0 | 0 | 0 |
+| UMUM | 6 | 6 | 0 | 0 | 1 |
 
 ## Detail Web Bridge per Role
 
@@ -58,7 +58,8 @@ Generated: 2026-03-15T22:22:29.900Z
 - Tidak ada.
 
 ### CALON_SISWA
-- Tidak ada.
+- Status Pendaftaran (`candidate-application`)
+  - `app/(app)/candidate/application.tsx:422`
 
 ### EXAMINER
 - Tidak ada.
@@ -82,9 +83,12 @@ Generated: 2026-03-15T22:22:29.900Z
 - Tidak ada.
 
 ### UMUM
-- Tidak ada.
+- Lowongan BKK (`public-vacancies`)
+  - `app/(app)/public/vacancies.tsx:394`
 
 ## Semua Pemanggilan Linking.openURL (Global)
 
+- `app/(app)/candidate/application.tsx:422`
+- `app/(app)/public/vacancies.tsx:394`
 - `app/(app)/web-module/[moduleKey].tsx:44`
 

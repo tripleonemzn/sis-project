@@ -53,6 +53,8 @@ const getSidebarRoleCode = (roleSegment: string): User['role'] | null => {
     principal: 'PRINCIPAL',
     staff: 'STAFF',
     parent: 'PARENT',
+    candidate: 'CALON_SISWA',
+    public: 'UMUM',
   };
   return map[roleSegment] || null;
 };
@@ -95,15 +97,35 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
     const paths = pathname.split('/').filter(Boolean);
     if (paths.length === 0) return [];
 
-    const role = paths[0];
-    const segments = paths.slice(1);
-    const breadcrumbs: { label: string; path: string | null }[] = [];
-    const sidebarLookup = buildSidebarCrumbLookup(role, user);
+  const role = paths[0];
+  const segments = paths.slice(1);
+  const breadcrumbs: { label: string; path: string | null }[] = [];
+  const sidebarLookup = buildSidebarCrumbLookup(role, user);
+  const queryParams = new URLSearchParams(location.search);
 
-    if (segments.length === 0) {
-      if (role === 'email' || pathname === '/email') {
-        return [{ label: 'Email', path: '/email' }];
-      }
+  // Hard guard: BP/BK breadcrumbs must always follow active tab route
+  if (role === 'teacher' && segments[0] === 'bk') {
+    const sectionFromPath = String(segments[1] || '').toLowerCase();
+    const sectionFromQuery = String(queryParams.get('tab') || '').toLowerCase();
+    const bkSection = sectionFromPath || sectionFromQuery;
+    const bkLabelMap: Record<string, string> = {
+      behaviors: 'Kasus Perilaku',
+      permissions: 'Perizinan Siswa',
+      counselings: 'Konseling & Tindak Lanjut',
+    };
+
+    breadcrumbs.push({ label: 'BP/BK', path: null });
+    breadcrumbs.push({ label: 'Dashboard BP/BK', path: '/teacher/bk' });
+    if (bkLabelMap[bkSection]) {
+      breadcrumbs.push({ label: bkLabelMap[bkSection], path: null });
+    }
+    return breadcrumbs;
+  }
+
+  if (segments.length === 0) {
+    if (role === 'email' || pathname === '/email') {
+      return [{ label: 'Email', path: '/email' }];
+    }
       return [{ label: 'Dashboard', path: `/${role}` }];
     }
 
@@ -168,6 +190,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       teachers: { label: 'Kelola Guru', group: 'USER MANAGEMENT' },
       students: { label: 'Kelola Siswa', group: 'USER MANAGEMENT' },
       'user-verification': { label: 'Verifikasi Akun', group: 'USER MANAGEMENT' },
+      'candidate-admissions': { label: 'PPDB Calon Siswa', group: 'USER MANAGEMENT' },
       'teacher-assignments': { label: 'Assignment Guru', group: 'USER MANAGEMENT' },
       'import-export': { label: 'Export/Import', group: 'USER MANAGEMENT' },
 
@@ -182,6 +205,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       'exam-sessions': { label: 'Sesi Ujian', group: 'UJIAN & CBT' },
 
       settings: { label: 'Pengaturan', group: 'PENGATURAN' },
+      'settings/server-area': { label: 'Area Server', group: 'PENGATURAN' },
       'settings/slideshow': { label: 'Slideshow', group: 'PENGATURAN' },
       'settings/profile': { label: 'Profil Sekolah', group: 'PENGATURAN' },
       'settings/password': { label: 'Ubah Password', group: 'PENGATURAN' },
@@ -253,7 +277,16 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       }
 
       // Check for parent category (e.g. exams -> exams/create)
-      if (shouldAddParent && first !== fullKey && mapping[first] && mapping[first].group === config.group) {
+      const parentLabelMatchesGroup =
+        mapping[first] &&
+        String(mapping[first].label || '').toUpperCase() === String(config.group || '').toUpperCase();
+      if (
+        shouldAddParent &&
+        first !== fullKey &&
+        mapping[first] &&
+        mapping[first].group === config.group &&
+        !parentLabelMatchesGroup
+      ) {
           // Avoid duplicating if the config IS the first segment
           // Also skip parent for create/edit exam pages to avoid "Ujian > Buat Ujian" redundancy if type is missing
           const isExamAction = fullKey === 'exams/create' || fullKey === 'exams/edit';
@@ -270,6 +303,20 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       else if (second && mapping[second] === config) path = second;
 
       breadcrumbs.push({ label: config.label, path: `/${role}/${path}` });
+
+      if (fullKey === 'settings/server-area') {
+        const activeTab = String(queryParams.get('tab') || 'info').toLowerCase();
+        const serverTabLabels: Record<string, string> = {
+          info: 'Info Server',
+          storage: 'Manajemen Storage',
+          monitoring: 'Monitoring Server',
+          webmail: 'Webmail',
+        };
+
+        if (serverTabLabels[activeTab]) {
+          breadcrumbs.push({ label: serverTabLabels[activeTab], path: null });
+        }
+      }
     } else {
       const label =
         first.charAt(0).toUpperCase() + first.slice(1).replace(/-/g, ' ');
@@ -294,6 +341,10 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       materials: { label: 'Materi & Tugas', group: 'AKADEMIK' },
       grades: { label: 'Input Nilai', group: 'AKADEMIK' },
       'report-subjects': { label: 'Rapor Mapel', group: 'AKADEMIK' },
+      bk: { label: 'Dashboard BP/BK', group: 'BP/BK' },
+      'bk/behaviors': { label: 'Kasus Perilaku', group: 'BP/BK' },
+      'bk/permissions': { label: 'Perizinan Siswa', group: 'BP/BK' },
+      'bk/counselings': { label: 'Konseling & Tindak Lanjut', group: 'BP/BK' },
 
       // PKL
       internship: { label: 'PKL (PRAKERIN)', group: 'PKL (PRAKERIN)' },
@@ -306,8 +357,11 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       'learning-resources/atp': { label: 'Alur Tujuan Pembelajaran (ATP)', group: 'PERANGKAT AJAR' },
       'learning-resources/prota': { label: 'Program Tahunan', group: 'PERANGKAT AJAR' },
       'learning-resources/promes': { label: 'Program Semester', group: 'PERANGKAT AJAR' },
+      'learning-resources/alokasi-waktu': { label: 'Alokasi Waktu', group: 'PERANGKAT AJAR' },
       'learning-resources/modules': { label: 'Modul Ajar', group: 'PERANGKAT AJAR' },
+      'learning-resources/modul-ajar': { label: 'Modul Ajar', group: 'PERANGKAT AJAR' },
       'learning-resources/kktp': { label: 'Kriteria Ketercapaian Tujuan Pembelajaran (KKTP)', group: 'PERANGKAT AJAR' },
+      'learning-resources/matriks-sebaran': { label: 'Matriks Sebaran', group: 'PERANGKAT AJAR' },
 
       // UJIAN
       'exams': { label: 'UJIAN', group: 'UJIAN' },
@@ -342,13 +396,16 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
 
       // WAKASEK KURIKULUM
       'wakasek/curriculum': { label: 'Kelola Kurikulum', group: 'WAKASEK KURIKULUM' },
+      'wakasek/teaching-resource-programs': { label: 'Program Perangkat Ajar', group: 'WAKASEK KURIKULUM' },
+      'wakasek/final-ledger': { label: 'Leger Nilai Akhir', group: 'WAKASEK KURIKULUM' },
+      'wakasek/consolidation': { label: 'Leger Nilai Akhir', group: 'WAKASEK KURIKULUM' },
       'wakasek/exams': { label: 'Kelola Ujian', group: 'WAKASEK KURIKULUM' },
       'wakasek/students': { label: 'Kelola Kesiswaan', group: 'WAKASEK KESISWAAN' },
       'wakasek/exam-schedules': { label: 'Kelola Jadwal Ujian', group: 'WAKASEK KURIKULUM' },
       'wakasek/exam-rooms': { label: 'Kelola Ruang Ujian', group: 'WAKASEK KURIKULUM' },
       'wakasek/proctor-schedule': { label: 'Kelola Jadwal Mengawas', group: 'WAKASEK KURIKULUM' },
       'wakasek/performance': { label: 'Monitoring Kinerja', group: 'WAKASEK KURIKULUM' },
-      'wakasek/approvals': { label: 'Persetujuan', group: 'WAKASEK KURIKULUM' },
+      'wakasek/work-program-approvals': { label: 'Persetujuan Program Kerja', group: 'WAKASEK KURIKULUM' },
       'wakasek/reports': { label: 'Laporan Akademik', group: 'WAKASEK KURIKULUM' },
       
       // WAKASEK KESISWAAN
@@ -358,6 +415,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
 
       // WAKASEK SARPRAS
       'sarpras/inventory': { label: 'Aset Sekolah', group: 'WAKASEK SARPRAS' },
+      'assigned-inventory': { label: 'Inventaris Tugas', group: 'TUGAS INVENTARIS' },
       'sarpras/budgets': { label: 'Persetujuan Anggaran', group: 'WAKASEK SARPRAS' },
       'sarpras/reports': { label: 'Laporan', group: 'WAKASEK SARPRAS' },
 
@@ -380,6 +438,11 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       'head-program/partners': { label: 'Mitra Industri & BKK', group: 'TUGAS TAMBAHAN' },
 
       // UMUM
+      public: { label: 'Dashboard BKK', group: 'UMUM' },
+      'public/dashboard': { label: 'Dashboard BKK', group: 'UMUM' },
+      'public/vacancies': { label: 'Lowongan BKK', group: 'UMUM' },
+      'public/applications': { label: 'Lamaran Saya', group: 'UMUM' },
+      'public/profile': { label: 'Profil Pelamar', group: 'UMUM' },
       'work-programs': { label: 'Program Kerja', group: 'UMUM' },
       communication: { label: 'Komunikasi', group: 'UMUM' },
       profile: { label: 'Profil', group: 'PENGATURAN' },
@@ -393,19 +456,21 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
     const second = segments.length > 1 ? `${first}/${segments[1]}` : null;
     const sidebarMatchKey = [fullKey, second, first].find((key) => key && sidebarLookup[key]) || null;
     const sidebarConfig = sidebarMatchKey ? sidebarLookup[sidebarMatchKey] : null;
+    const mappedConfigKey =
+      (mapping[fullKey] && fullKey) ||
+      ((second && mapping[second]) ? second : null) ||
+      (mapping[first] ? first : null);
+    const mappedConfig = mappedConfigKey ? mapping[mappedConfigKey] : null;
     let config =
+      mappedConfig ||
       (sidebarConfig
         ? {
             label: sidebarConfig.label,
             group: sidebarConfig.group || undefined,
           }
-        : null) ||
-      mapping[fullKey] ||
-      (second && mapping[second]) ||
-      mapping[first];
+        : null);
 
     // Dynamic Group Override for Work Programs & Duties
-    const queryParams = new URLSearchParams(location.search);
     const dutyParam = queryParams.get('duty');
     
     // Check if current route is under a duty context or generic duty group
@@ -434,7 +499,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
         if (dutyCode) isDutyContext = true;
     }
 
-    if (isDutyContext && dutyCode) {
+    if (isDutyContext && dutyCode && config) {
         const resolvedName = getDutyName(dutyCode);
         
         if (resolvedName !== 'UNKNOWN') {
@@ -691,9 +756,8 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
 
       // Determine the path for the config
       let path = first;
-      if (sidebarMatchKey) path = sidebarMatchKey;
-      else if (mapping[fullKey]) path = fullKey;
-      else if (second && mapping[second] === config) path = second;
+      if (mappedConfigKey) path = mappedConfigKey;
+      else if (sidebarMatchKey) path = sidebarMatchKey;
 
       breadcrumbs.push({ label: config.label, path: `/${role}/${path}` });
     } else {
@@ -901,13 +965,55 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
     const sidebarMatchKey = [fullKey, first].find((key) => key && sidebarLookup[key]) || null;
     const sidebarConfig = sidebarMatchKey ? sidebarLookup[sidebarMatchKey] : null;
     const queryParams = new URLSearchParams(location.search);
+    const scope = String(queryParams.get('scope') || '').toLowerCase();
+    const dutyQuery = String(queryParams.get('duty') || '').toUpperCase();
+    const isPembinaOsisRoute =
+      fullKey.startsWith('osis/') ||
+      scope === 'osis' ||
+      dutyQuery === 'PEMBINA_OSIS' ||
+      (sidebarConfig?.group === 'PEMBINA OSIS' &&
+        ['members', 'work-programs', 'inventory'].includes(first));
+
+    if (isPembinaOsisRoute) {
+      breadcrumbs.push({ label: 'PEMBINA OSIS', path: '/tutor/osis/election' });
+
+      if (fullKey === 'osis/election') {
+        breadcrumbs.push({ label: 'Pemilihan OSIS', path: null });
+        return breadcrumbs;
+      }
+
+      if (fullKey === 'osis/vote') {
+        breadcrumbs.push({ label: 'Pemungutan Suara', path: null });
+        return breadcrumbs;
+      }
+
+      if (first === 'members') {
+        breadcrumbs.push({ label: 'Anggota & Nilai', path: null });
+        return breadcrumbs;
+      }
+
+      if (first === 'inventory') {
+        breadcrumbs.push({ label: 'Kelola Inventaris', path: null });
+        return breadcrumbs;
+      }
+
+      if (first === 'work-programs') {
+        breadcrumbs.push({ label: 'Program Kerja', path: null });
+        return breadcrumbs;
+      }
+    }
 
     if (first === 'work-programs') {
       const baseLabel = sidebarConfig?.label || 'Program Kerja';
-      breadcrumbs.push({
-        label: baseLabel,
-        path: `/${role}/work-programs?duty=PEMBINA_EKSKUL`,
-      });
+      const workProgramPath = sidebarConfig?.group === 'PEMBINA OSIS'
+        ? `/${role}/work-programs`
+        : `/${role}/work-programs?duty=PEMBINA_EKSKUL`;
+
+      if (sidebarConfig?.group && sidebarConfig.group !== 'PEMBINA OSIS') {
+        breadcrumbs.push({ label: sidebarConfig.group, path: null });
+      }
+
+      breadcrumbs.push({ label: baseLabel, path: workProgramPath });
 
       const activeTab = String(queryParams.get('tab') || 'PROGRAM').toUpperCase();
       if (activeTab === 'BUDGET') {
@@ -934,6 +1040,9 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
 
   if (role === 'principal') {
     const mapping: Record<string, { label: string; group?: string }> = {
+      'monitoring/operations': { label: 'Operasional Harian', group: 'MONITORING' },
+      'monitoring/bpbk': { label: 'Ringkasan BP/BK', group: 'MONITORING' },
+      'work-program-approvals': { label: 'Persetujuan Program Kerja', group: 'MONITORING' },
       'academic/reports': { label: 'Rapor & Ranking' },
       'academic/attendance': { label: 'Rekap Absensi' },
       'finance/requests': { label: 'Pengajuan Anggaran' },
@@ -956,6 +1065,9 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       mapping[first];
 
     if (config) {
+      if (config.group) {
+        breadcrumbs.push({ label: config.group, path: null });
+      }
       breadcrumbs.push({ label: config.label, path: `/${role}/${sidebarMatchKey || first}` });
     } else {
       const label = first.charAt(0).toUpperCase() + first.slice(1).replace(/-/g, ' ');
@@ -966,27 +1078,49 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
 
   if (role === 'staff') {
     const mapping: Record<string, { label: string; group?: string }> = {
-      'payments': { label: 'Pembayaran (SPP)' },
-      'students': { label: 'Data Siswa' },
-      'admin': { label: 'Administrasi' },
+      dashboard: { label: 'Dashboard' },
+      finance: { label: 'Pembayaran Siswa', group: 'KEUANGAN' },
+      'finance/students': { label: 'Data Siswa', group: 'KEUANGAN' },
+      'finance/operations': { label: 'Realisasi Anggaran', group: 'KEUANGAN' },
+      administration: { label: 'Administrasi', group: 'ADMINISTRASI' },
+      'administration/students': { label: 'Administrasi Siswa', group: 'ADMINISTRASI' },
+      'administration/teachers': { label: 'Administrasi Guru', group: 'ADMINISTRASI' },
+      'administration/permissions': { label: 'Perizinan Siswa', group: 'ADMINISTRASI' },
+      'head-tu': { label: 'Operasional TU', group: 'MONITORING TU' },
+      'head-tu/administration': { label: 'Operasional TU', group: 'MONITORING TU' },
+      'head-tu/finance': { label: 'Monitoring Keuangan', group: 'MONITORING TU' },
+      'head-tu/students': { label: 'Data Siswa', group: 'LAYANAN TU' },
+      'head-tu/teachers': { label: 'Data Guru & Staff', group: 'LAYANAN TU' },
+      'head-tu/permissions': { label: 'Perizinan Siswa', group: 'LAYANAN TU' },
+      'head-tu/letters': { label: 'Surat-Menyurat', group: 'LAYANAN TU' },
+      'head-tu/exam-cards': { label: 'Kartu Ujian', group: 'LAYANAN TU' },
+      payments: { label: 'Pembayaran Siswa', group: 'KEUANGAN' },
+      students: { label: 'Data Siswa', group: 'KEUANGAN' },
+      admin: { label: 'Realisasi Anggaran', group: 'KEUANGAN' },
     };
     
     const fullKey = segments.join('/');
     const first = segments[0];
-    const sidebarMatchKey = [fullKey, first].find((key) => key && sidebarLookup[key]) || null;
+    const second = segments[1];
+    const sidebarMatchKey = [fullKey, second ? `${first}/${second}` : null, first].find((key) => key && sidebarLookup[key]) || null;
     const sidebarConfig = sidebarMatchKey ? sidebarLookup[sidebarMatchKey] : null;
     const config =
+      mapping[fullKey] ||
+      mapping[first] ||
       (sidebarConfig
         ? {
             label: sidebarConfig.label,
             group: sidebarConfig.group || undefined,
           }
-        : null) ||
-      mapping[fullKey] ||
-      mapping[first];
+        : null);
 
     if (config) {
-      breadcrumbs.push({ label: config.label, path: `/${role}/${sidebarMatchKey || first}` });
+      if (config.group) {
+        breadcrumbs.push({ label: config.group, path: null });
+      }
+      const resolvedPath =
+        mapping[fullKey] ? fullKey : mapping[first] ? first : sidebarMatchKey || first;
+      breadcrumbs.push({ label: config.label, path: `/${role}/${resolvedPath}` });
     } else {
       const label = first.charAt(0).toUpperCase() + first.slice(1).replace(/-/g, ' ');
       breadcrumbs.push({ label, path: `/${role}/${first}` });
@@ -1268,7 +1402,7 @@ export const DashboardLayout = () => {
         )}
 
         {/* Content */}
-        <main className={`flex-1 overflow-x-hidden w-full max-w-[100vw] ${isFullscreen ? 'p-0' : 'p-4 md:p-6'}`}>
+        <main className={`${isFullscreen ? '' : 'dashboard-main'} flex-1 overflow-x-hidden w-full max-w-[100vw] ${isFullscreen ? 'p-0' : 'p-4 md:p-6'}`}>
           <Outlet context={{ user: displayUser, activeYear }} />
         </main>
       </div>

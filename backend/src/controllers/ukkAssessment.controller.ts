@@ -3,6 +3,7 @@ import { Semester, GradeComponentType } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { ApiResponseHelper } from '../utils/ApiResponse';
 import { ApiError } from '../utils/api';
+import { syncReportGrade } from './grade.controller';
 
 export const upsertUKKAssessment = async (req: Request, res: Response) => {
   try {
@@ -98,6 +99,17 @@ export const upsertUKKAssessment = async (req: Request, res: Response) => {
           });
         }
         console.log(`Synced UKK Score to StudentGrade (Component: ${usPracticeComponent.name})`);
+
+        try {
+          await syncReportGrade(
+            Number(studentId),
+            Number(subjectId),
+            Number(academicYearId),
+            Semester.EVEN,
+          );
+        } catch (reportSyncError) {
+          console.error('Failed to sync report grade after UKK score update:', reportSyncError);
+        }
       }
     } catch (syncError) {
       console.error('Failed to sync UKK score to StudentGrade:', syncError);

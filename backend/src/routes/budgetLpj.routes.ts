@@ -13,6 +13,7 @@ import {
   uploadLpjInvoiceFile,
   uploadLpjProofFile,
   sarprasDecisionOnLpjInvoice,
+  financeDecisionOnLpjInvoice,
 } from '../controllers/budgetLpj.controller';
 import { budgetLpjUpload } from '../utils/upload';
 
@@ -40,5 +41,6 @@ router.post(
   uploadLpjProofFile,
 );
 router.post('/invoices/:id/sarpras-decision', sarprasDecisionOnLpjInvoice);
+router.post('/invoices/:id/finance-decision', financeDecisionOnLpjInvoice);
 
 export default router;

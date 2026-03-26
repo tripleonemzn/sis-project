@@ -31,12 +31,14 @@ import { academicYearApi } from '../../src/features/academicYear/academicYearApi
 import { adminApi } from '../../src/features/admin/adminApi';
 import { principalApi } from '../../src/features/principal/principalApi';
 import { staffApi } from '../../src/features/staff/staffApi';
+import { permissionApi } from '../../src/features/permissions/permissionApi';
 import { examApi, ExamProgramItem } from '../../src/features/exams/examApi';
 import { useStudentExamsQuery } from '../../src/features/exams/useStudentExamsQuery';
 import {
   teachingResourceProgramApi,
   TeachingResourceProgramItem,
 } from '../../src/features/learningResources/teachingResourceProgramApi';
+import { studentInternshipApi } from '../../src/features/student/studentInternshipApi';
 import { useParentFinanceOverviewQuery } from '../../src/features/parent/useParentFinanceOverviewQuery';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { applyAppUpdate, checkAppUpdate } from '../../src/features/appUpdate/updateService';
@@ -46,6 +48,12 @@ import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifyInfo, notifySuccess } from '../../src/lib/ui/feedback';
 import type { AuthUser } from '../../src/features/auth/types';
 import { useUnreadNotificationsQuery } from '../../src/features/notifications/useUnreadNotificationsQuery';
+import {
+  getStaffHomeSubtitle,
+  getStaffPreferredMenuKeys,
+  getStaffSectionTitle,
+  resolveStaffDivision,
+} from '../../src/features/staff/staffRole';
 
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
 type DashboardStatItem = { label: string; value: string; color: string; icon?: FeatherIconName; menuKey?: string };
@@ -62,6 +70,34 @@ type MenuIconTone = {
   fg: string;
 };
 type StudentExamStatus = 'OPEN' | 'UPCOMING' | 'MISSED' | 'COMPLETED';
+type StaffHomeStats =
+  | {
+      kind: 'FINANCE';
+      students: number;
+      budgets: number;
+      pending: number;
+      approved: number;
+      rejected: number;
+      totalAmount: number;
+    }
+  | {
+      kind: 'ADMINISTRATION';
+      students: number;
+      teachers: number;
+      pendingPermissions: number;
+      approvedPermissions: number;
+      rejectedPermissions: number;
+    }
+  | {
+      kind: 'HEAD_TU';
+      students: number;
+      teachers: number;
+      staffs: number;
+      pendingPermissions: number;
+      pendingBudgets: number;
+      administrationStaff: number;
+      financeStaff: number;
+    };
 
 const getTeachingHourValue = (entry: ScheduleEntry) =>
   typeof entry.teachingHour === 'number' ? entry.teachingHour : entry.period;
@@ -147,6 +183,58 @@ function formatExamDateTime(value?: string | null) {
   });
 }
 
+function normalizeExamSubjectToken(value?: string | null) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function isGenericExamSubject(
+  subject?: { name?: string | null; code?: string | null } | null,
+): boolean {
+  const normalizedName = normalizeExamSubjectToken(subject?.name);
+  const normalizedCode = normalizeExamSubjectToken(subject?.code);
+  if (!normalizedName && !normalizedCode) return true;
+  if (['TKAU', 'KONSENTRASI_KEAHLIAN', 'KONSENTRASI', 'KEJURUAN'].includes(normalizedCode)) return true;
+  if (normalizedName === 'KONSENTRASI' || normalizedName === 'KEJURUAN') return true;
+  if (normalizedName.includes('KONSENTRASI_KEAHLIAN')) return true;
+  return false;
+}
+
+function resolveExamSubjectName(item: {
+  subject?: { name?: string | null; code?: string | null } | null;
+  packet?: { title?: string | null; subject?: { name?: string | null; code?: string | null } | null } | null;
+}) {
+  const scheduleSubject = item.subject || null;
+  const packetSubject = item.packet?.subject || null;
+  const usePacket = Boolean(
+    scheduleSubject &&
+      packetSubject &&
+      isGenericExamSubject(scheduleSubject) &&
+      !isGenericExamSubject(packetSubject),
+  );
+  const picked = usePacket ? packetSubject : scheduleSubject || packetSubject;
+  let fallbackName = '';
+  const title = String(item.packet?.title || '').trim();
+  if (title.includes('•')) {
+    const parts = title
+      .split('•')
+      .map((part) => String(part || '').trim())
+      .filter(Boolean);
+    if (parts.length >= 2) {
+      const candidate = parts[1];
+      if (candidate && !/\d{4}-\d{2}-\d{2}/.test(candidate)) {
+        fallbackName = candidate;
+      }
+    }
+  }
+  const useFallbackName = Boolean(fallbackName) && isGenericExamSubject(picked);
+  return String((useFallbackName ? fallbackName : picked?.name) || fallbackName || '-');
+}
+
 function resolveMediaUrl(path?: string | null) {
   if (!path) return null;
   if (/^https?:\/\//i.test(path)) return path;
@@ -185,6 +273,8 @@ const getMenuIcon = (menu: RoleMenuItem): FeatherIconName => {
   if (menu.key.includes('grades') || menu.key.includes('report')) return 'bar-chart-2';
   if (menu.key.includes('attendance')) return 'check-square';
   if (menu.key.includes('exams') || menu.key.includes('exam')) return 'file-text';
+  if (menu.key.includes('vacanc')) return 'briefcase';
+  if (menu.key.includes('application')) return 'clipboard';
   if (menu.key.includes('assessment')) return 'clipboard';
   if (menu.key.includes('user')) return 'users';
   if (menu.key.includes('students')) return 'users';
@@ -211,6 +301,7 @@ const getGroupIcon = (group: RoleMenuGroup): FeatherIconName => {
   if (key.includes('homeroom')) return 'user-check';
   if (key.includes('internship') || key.includes('kakom')) return 'briefcase';
   if (key.includes('work-program')) return 'briefcase';
+  if (key.includes('career') || key.includes('public')) return 'briefcase';
   if (key.includes('sarpras')) return 'archive';
   if (key.includes('humas')) return 'globe';
   if (key.includes('extracurricular')) return 'award';
@@ -285,13 +376,19 @@ const ROLE_PRIMARY_ACTION_KEYS: Record<string, string[]> = {
   TEACHER: ['teaching-schedule'],
   ADMIN: ['admin-user-student', 'admin-schedule', 'admin-teacher-assignment'],
   PRINCIPAL: ['principal-attendance', 'principal-finance-requests', 'principal-reports'],
-  STAFF: ['staff-payments', 'staff-students', 'staff-admin'],
   PARENT: ['child-progress', 'parent-finance', 'child-attendance'],
   EXAMINER: ['assessment', 'examiner-schemes'],
   EXTRACURRICULAR_TUTOR: ['tutor-members'],
   CALON_SISWA: ['candidate-application'],
-  UMUM: ['public-information'],
+  UMUM: ['public-vacancies'],
 };
+
+function getRolePrimaryActionKeys(user: AuthUser) {
+  if (user.role === 'STAFF') {
+    return getStaffPreferredMenuKeys(user);
+  }
+  return ROLE_PRIMARY_ACTION_KEYS[user.role] || [];
+}
 
 const TEACHER_EXAM_MENU_KEYS = new Set([
   'teacher-exam-programs',
@@ -587,15 +684,19 @@ export default function HomeScreen() {
   }, []);
 
   const profile = profileQuery.data?.profile ?? user ?? FALLBACK_PROFILE;
+  const staffDivision = useMemo(
+    () => (profile.role === 'STAFF' ? resolveStaffDivision(profile) : 'GENERAL'),
+    [profile],
+  );
   const homeContentPadding = getStandardPagePadding(insets, { horizontal: 18, bottom: 148 });
   const teacherAssignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user: profile });
   const activeAcademicYearQuery = useQuery({
     queryKey: ['mobile-home-active-academic-year', profile.id],
     enabled: isAuthenticated,
-    staleTime: 1000 * 60 * 10,
+    staleTime: 1000 * 60,
     queryFn: async () => {
       try {
-        return await academicYearApi.getActive();
+        return await academicYearApi.getActive({ force: true, allowStaleOnError: true });
       } catch {
         return null;
       }
@@ -631,6 +732,12 @@ export default function HomeScreen() {
     enabled: isAuthenticated && profile.role === 'STUDENT',
     user: profile,
   });
+  const studentInternshipOverviewQuery = useQuery({
+    queryKey: ['mobile-home-student-internship-overview', profile.id],
+    enabled: isAuthenticated && profile.role === 'STUDENT',
+    staleTime: 5 * 60 * 1000,
+    queryFn: () => studentInternshipApi.getMyInternship(),
+  });
 
   const examProgramsQuery = useQuery({
     queryKey: ['mobile-home-exam-programs', profile.role, activeAcademicYearQuery.data?.id],
@@ -658,9 +765,26 @@ export default function HomeScreen() {
   });
 
   const hasPendingDefense = profile.role === 'TEACHER' && (teacherDefenseQuery.data?.length || 0) > 0;
+  const pklEligibleGrades = useMemo(() => {
+    const raw = String(activeAcademicYearQuery.data?.pklEligibleGrades || '').trim();
+    if (!raw) return undefined;
+    const grades = raw
+      .split(',')
+      .map((grade) => String(grade || '').trim().toUpperCase())
+      .filter((grade) => grade === 'X' || grade === 'XI' || grade === 'XII');
+    return grades.length > 0 ? grades : undefined;
+  }, [activeAcademicYearQuery.data?.pklEligibleGrades]);
+
   const menuGroups = useMemo(
     () => {
-      const baseGroups = getGroupedRoleMenu(profile, { hasPendingDefense })
+      const baseGroups = getGroupedRoleMenu(profile, {
+        hasPendingDefense,
+        pklEligibleGrades,
+        pklVisibilityOverride:
+          profile.role === 'STUDENT'
+            ? Boolean(studentInternshipOverviewQuery.data?.isEligible)
+            : undefined,
+      })
         .map((group) => ({
           ...group,
           // Keep non-dashboard entries (e.g. Email) even when they are grouped under Dashboard.
@@ -691,6 +815,8 @@ export default function HomeScreen() {
     [
       profile,
       hasPendingDefense,
+      pklEligibleGrades,
+      studentInternshipOverviewQuery.data?.isEligible,
       examProgramsQuery.data?.programs,
       examProgramsQuery.isSuccess,
       teachingResourceProgramsQuery.data?.programs,
@@ -751,9 +877,47 @@ export default function HomeScreen() {
   });
 
   const staffStatsQuery = useQuery({
-    queryKey: ['mobile-home-staff-stats', profile.id],
+    queryKey: ['mobile-home-staff-stats', profile.id, staffDivision],
     enabled: profile.role === 'STAFF',
-    queryFn: async () => {
+    queryFn: async (): Promise<StaffHomeStats> => {
+      if (staffDivision === 'ADMINISTRATION') {
+        const [students, teachers, permissions] = await Promise.all([
+          staffApi.listStudents(),
+          staffApi.listTeachers(),
+          permissionApi.list({ limit: 200 }),
+        ]);
+
+        return {
+          kind: 'ADMINISTRATION',
+          students: students.length,
+          teachers: teachers.length,
+          pendingPermissions: permissions.filter((item) => item.status === 'PENDING').length,
+          approvedPermissions: permissions.filter((item) => item.status === 'APPROVED').length,
+          rejectedPermissions: permissions.filter((item) => item.status === 'REJECTED').length,
+        };
+      }
+
+      if (staffDivision === 'HEAD_TU') {
+        const [students, teachers, staffs, permissions, budgets] = await Promise.all([
+          staffApi.listStudents(),
+          staffApi.listTeachers(),
+          staffApi.listStaffs(),
+          permissionApi.list({ limit: 200 }),
+          staffApi.listBudgetRequests(),
+        ]);
+
+        return {
+          kind: 'HEAD_TU',
+          students: students.length,
+          teachers: teachers.length,
+          staffs: staffs.length,
+          pendingPermissions: permissions.filter((item) => item.status === 'PENDING').length,
+          pendingBudgets: budgets.filter((item) => item.status === 'PENDING').length,
+          administrationStaff: staffs.filter((item) => resolveStaffDivision(item) === 'ADMINISTRATION').length,
+          financeStaff: staffs.filter((item) => resolveStaffDivision(item) === 'FINANCE').length,
+        };
+      }
+
       const [students, budgets] = await Promise.all([staffApi.listStudents(), staffApi.listBudgetRequests()]);
       const pending = budgets.filter((item) => item.status === 'PENDING').length;
       const approved = budgets.filter((item) => item.status === 'APPROVED').length;
@@ -761,6 +925,7 @@ export default function HomeScreen() {
       const totalAmount = budgets.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
 
       return {
+        kind: 'FINANCE',
         students: students.length,
         budgets: budgets.length,
         pending,
@@ -785,7 +950,7 @@ export default function HomeScreen() {
   }, [allMenuItems]);
 
   const roleQuickMenus = useMemo(() => {
-    const preferredKeys = ROLE_PRIMARY_ACTION_KEYS[profile.role] || [];
+    const preferredKeys = getRolePrimaryActionKeys(profile);
     const menuByKey = new Map(allMenuItems.map((item) => [item.key, item]));
     const result: RoleMenuItem[] = [];
     const picked = new Set<string>();
@@ -807,7 +972,7 @@ export default function HomeScreen() {
     }
 
     return result;
-  }, [allMenuItems, profile.role]);
+  }, [allMenuItems, profile]);
 
   const teacherStats = useMemo(() => {
     const assignments = teacherAssignmentsQuery.data?.assignments || [];
@@ -897,6 +1062,87 @@ export default function HomeScreen() {
   const staffStatCards: DashboardStatItem[] = useMemo(() => {
     const stats = staffStatsQuery.data;
     if (!stats) return [];
+    if (stats.kind === 'ADMINISTRATION') {
+      return [
+        { label: 'Data Siswa', value: String(stats.students), color: BRAND_COLORS.blue, icon: 'users', menuKey: 'staff-students' },
+        {
+          label: 'Data Guru',
+          value: String(stats.teachers),
+          color: BRAND_COLORS.navy,
+          icon: 'user-check',
+          menuKey: 'staff-administration-teachers',
+        },
+        {
+          label: 'Izin Pending',
+          value: String(stats.pendingPermissions),
+          color: BRAND_COLORS.gold,
+          icon: 'clock',
+          menuKey: 'staff-administration-permissions',
+        },
+        {
+          label: 'Izin Disetujui',
+          value: String(stats.approvedPermissions),
+          color: BRAND_COLORS.teal,
+          icon: 'check-circle',
+          menuKey: 'staff-administration-permissions',
+        },
+        {
+          label: 'Izin Ditolak',
+          value: String(stats.rejectedPermissions),
+          color: BRAND_COLORS.pink,
+          icon: 'x-circle',
+          menuKey: 'staff-administration-permissions',
+        },
+      ];
+    }
+
+    if (stats.kind === 'HEAD_TU') {
+      return [
+        {
+          label: 'Data Siswa',
+          value: String(stats.students),
+          color: BRAND_COLORS.blue,
+          icon: 'users',
+          menuKey: 'staff-head-tu-students',
+        },
+        {
+          label: 'Guru',
+          value: String(stats.teachers),
+          color: BRAND_COLORS.navy,
+          icon: 'user-check',
+          menuKey: 'staff-head-tu-teachers',
+        },
+        {
+          label: 'Staff TU',
+          value: String(stats.staffs),
+          color: BRAND_COLORS.sky,
+          icon: 'briefcase',
+          menuKey: 'staff-head-tu-teachers',
+        },
+        {
+          label: 'Izin Pending',
+          value: String(stats.pendingPermissions),
+          color: BRAND_COLORS.gold,
+          icon: 'clock',
+          menuKey: 'staff-head-tu-permissions',
+        },
+        {
+          label: 'Pengajuan',
+          value: String(stats.pendingBudgets),
+          color: BRAND_COLORS.teal,
+          icon: 'file-text',
+          menuKey: 'staff-head-tu-finance',
+        },
+        {
+          label: 'Admin/Keu',
+          value: `${stats.administrationStaff}/${stats.financeStaff}`,
+          color: BRAND_COLORS.pink,
+          icon: 'layers',
+          menuKey: 'staff-head-tu-dashboard',
+        },
+      ];
+    }
+
     return [
       { label: 'Total Siswa', value: String(stats.students), color: BRAND_COLORS.blue, icon: 'users', menuKey: 'staff-students' },
       { label: 'Pengajuan', value: String(stats.budgets), color: BRAND_COLORS.navy, icon: 'file-text', menuKey: 'staff-payments' },
@@ -1104,7 +1350,7 @@ export default function HomeScreen() {
       case 'PRINCIPAL':
         return 'Ringkasan akademik, keuangan, dan SDM pada periode aktif.';
       case 'STAFF':
-        return 'Kelola layanan administrasi, pembayaran, dan data siswa.';
+        return getStaffHomeSubtitle(profile);
       case 'PARENT':
         return 'Pantau progres belajar, kehadiran, dan keuangan anak.';
       case 'STUDENT':
@@ -1118,7 +1364,7 @@ export default function HomeScreen() {
       default:
         return 'Pilih modul yang ingin Anda akses hari ini.';
     }
-  }, [profile.role]);
+  }, [profile]);
   const todayLabel = useMemo(
     () =>
       new Date().toLocaleDateString('id-ID', {
@@ -1716,7 +1962,9 @@ export default function HomeScreen() {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Statistik Staff</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+              {getStaffSectionTitle(profile)}
+            </Text>
             {staffStatsQuery.isLoading ? (
               <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Memuat statistik staff...</Text>
             ) : null}
@@ -1922,7 +2170,7 @@ export default function HomeScreen() {
                             </Text>
                           </View>
                           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
-                            {`${item.packet?.subject?.name || '-'} • ${examType}`}
+                            {`${resolveExamSubjectName(item)} • ${examType}`}
                           </Text>
                           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 1 }}>
                             Mulai: {formatExamDateTime(item.startTime)}

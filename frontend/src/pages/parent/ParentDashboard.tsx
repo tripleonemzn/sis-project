@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { Link, Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -12,10 +12,12 @@ import {
   Users,
   Wallet,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { authService } from '../../services/auth.service';
 import { userService } from '../../services/user.service';
 import { academicYearService } from '../../services/academicYear.service';
 import api from '../../services/api';
+import { normalizeNisnInput } from '../../utils/nisn';
 
 type SemesterCode = 'ODD' | 'EVEN';
 type ParentPaymentStatus = 'PENDING' | 'PAID' | 'PARTIAL' | 'CANCELLED';
@@ -40,6 +42,13 @@ interface ParentChild {
   } | null;
 }
 
+interface ParentChildLookupResult {
+  student: ParentChild;
+  alreadyLinkedToCurrentParent: boolean;
+  linkedParentCount: number;
+  oneTimeWarning: string;
+}
+
 interface ParentPayment {
   id: number;
   amount: number;
@@ -54,6 +63,8 @@ interface ParentChildFinanceOverview {
   summary: {
     totalRecords: number;
     totalAmount: number;
+    overdueCount: number;
+    overdueAmount: number;
     status: {
       pendingCount: number;
       pendingAmount: number;
@@ -71,6 +82,26 @@ interface ParentChildFinanceOverview {
       oneTimeAmount: number;
     };
   };
+  invoices: Array<{
+    id: number;
+    invoiceNo: string;
+    title?: string | null;
+    periodKey: string;
+    semester: SemesterCode;
+    dueDate?: string | null;
+    status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
+    totalAmount: number;
+    paidAmount: number;
+    balanceAmount: number;
+    isOverdue: boolean;
+    daysPastDue: number;
+    items: Array<{
+      componentCode?: string | null;
+      componentName: string;
+      amount: number;
+      periodicity?: 'MONTHLY' | 'ONE_TIME' | 'PERIODIC' | null;
+    }>;
+  }>;
   payments: ParentPayment[];
 }
 
@@ -88,6 +119,8 @@ interface ParentFinanceOverview {
     pendingAmount: number;
     partialAmount: number;
     cancelledAmount: number;
+    overdueCount: number;
+    overdueAmount: number;
     monthlyAmount: number;
     oneTimeAmount: number;
   };
@@ -145,6 +178,20 @@ const PAYMENT_STATUS_COLOR: Record<ParentPaymentStatus, string> = {
   CANCELLED: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
+const INVOICE_STATUS_LABELS: Record<'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED', string> = {
+  UNPAID: 'Belum Lunas',
+  PARTIAL: 'Parsial',
+  PAID: 'Lunas',
+  CANCELLED: 'Dibatalkan',
+};
+
+const INVOICE_STATUS_COLOR: Record<'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED', string> = {
+  UNPAID: 'bg-amber-50 text-amber-700 border-amber-200',
+  PARTIAL: 'bg-blue-50 text-blue-700 border-blue-200',
+  PAID: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  CANCELLED: 'bg-rose-50 text-rose-700 border-rose-200',
+};
+
 const ATTENDANCE_STATUS_LABELS: Record<ParentAttendanceStatus, string> = {
   PRESENT: 'Hadir',
   SICK: 'Sakit',
@@ -186,11 +233,17 @@ function defaultSemesterByDate(): SemesterCode {
   return month >= 7 ? 'ODD' : 'EVEN';
 }
 
-function normalizeChildIds(me: ParentMePayload | undefined): number[] {
-  const rawChildren = Array.isArray(me?.children) ? me.children : [];
-  return rawChildren
-    .map((child) => Number(child?.id || 0))
-    .filter((id: number) => Number.isInteger(id) && id > 0);
+function getErrorMessage(error: unknown, fallback: string) {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    typeof (error as { response?: { data?: { message?: string } } }).response?.data?.message === 'string'
+  ) {
+    return (error as { response?: { data?: { message?: string } } }).response?.data?.message || fallback;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
 }
 
 function useParentChildrenData() {
@@ -202,25 +255,14 @@ function useParentChildrenData() {
 
   const me = meQuery.data?.data as ParentMePayload | undefined;
   const isParent = me?.role === 'PARENT';
-  const childIds = useMemo(() => normalizeChildIds(me), [me]);
 
   const childrenQuery = useQuery({
-    queryKey: ['parent-children-web', childIds.join(',')],
+    queryKey: ['parent-children-web'],
     enabled: isParent,
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
-      if (!childIds.length) return [] as ParentChild[];
-      const rows = await Promise.all(
-        childIds.map(async (id: number) => {
-          try {
-            const response = await userService.getById(id);
-            return (response?.data || null) as ParentChild | null;
-          } catch {
-            return null;
-          }
-        }),
-      );
-      return rows.filter(Boolean) as ParentChild[];
+      const response = await userService.getMyChildren();
+      return (response.data || []) as ParentChild[];
     },
   });
 
@@ -315,7 +357,9 @@ const ParentOverviewPage = () => {
               ? '-'
               : formatCurrency(Number(summary?.pendingAmount || 0) + Number(summary?.partialAmount || 0))}
           </p>
-          <p className="mt-1 text-xs text-orange-800/70">Pending + parsial</p>
+          <p className="mt-1 text-xs text-orange-800/70">
+            {loading ? 'Pending + parsial' : `${summary?.overdueCount || 0} tagihan lewat jatuh tempo`}
+          </p>
         </div>
         </Link>
       </div>
@@ -382,13 +426,20 @@ const ParentOverviewPage = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Link
           to="/parent/children"
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50"
         >
           <Users className="w-4 h-4" />
           Data Anak
+        </Link>
+        <Link
+          to="/parent/children?mode=link"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50"
+        >
+          <UserCheck className="w-4 h-4" />
+          Hubungkan Anak
         </Link>
         <Link
           to="/parent/finance"
@@ -411,7 +462,14 @@ const ParentOverviewPage = () => {
 
 const ParentChildrenPage = () => {
   const { isParent, childrenQuery, children } = useParentChildrenData();
+  const [searchParams] = useSearchParams();
   const [search, setSearch] = useState('');
+  const [linkForm, setLinkForm] = useState({ nisn: '', birthDate: '' });
+  const [lookupResult, setLookupResult] = useState<ParentChildLookupResult | null>(null);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [isLinking, setIsLinking] = useState(false);
+  const [unlinkingChildId, setUnlinkingChildId] = useState<number | null>(null);
+  const isLinkMode = searchParams.get('mode') === 'link';
 
   const filteredChildren = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -437,32 +495,235 @@ const ParentChildrenPage = () => {
     );
   }
 
+  const handleLookupChild = async () => {
+    const nisn = linkForm.nisn.trim();
+
+    if (!/^\d{10}$/.test(nisn)) {
+      toast.error('NISN harus terdiri dari 10 digit angka');
+      return;
+    }
+
+    try {
+      setIsLookingUp(true);
+      const response = await userService.lookupMyChild(nisn);
+      setLookupResult(response.data as ParentChildLookupResult);
+      toast.success(response.message || 'Data siswa ditemukan');
+    } catch (error) {
+      setLookupResult(null);
+      toast.error(getErrorMessage(error, 'Data siswa tidak ditemukan.'));
+    } finally {
+      setIsLookingUp(false);
+    }
+  };
+
+  const handleLinkChild = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const nisn = linkForm.nisn.trim();
+    const birthDate = linkForm.birthDate.trim();
+
+    if (!/^\d{10}$/.test(nisn)) {
+      toast.error('NISN harus terdiri dari 10 digit angka');
+      return;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
+      toast.error('Tanggal lahir wajib menggunakan format YYYY-MM-DD');
+      return;
+    }
+
+    if (lookupResult?.alreadyLinkedToCurrentParent) {
+      toast.error('NISN ini sudah terhubung ke akun orang tua Anda');
+      return;
+    }
+
+    try {
+      setIsLinking(true);
+      const response = await userService.linkMyChild({ nisn, birthDate });
+      authService.clearMeCache();
+      toast.success(response.message || 'Data anak berhasil dihubungkan');
+      setLinkForm({ nisn: '', birthDate: '' });
+      setLookupResult(null);
+      await childrenQuery.refetch();
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Gagal menghubungkan data anak.'));
+    } finally {
+      setIsLinking(false);
+    }
+  };
+
+  const handleUnlinkChild = async (child: ParentChild) => {
+    const confirmed = window.confirm(`Lepas hubungan ${child.name} dari akun orang tua ini?`);
+    if (!confirmed) return;
+
+    try {
+      setUnlinkingChildId(child.id);
+      const response = await userService.unlinkMyChild(child.id);
+      authService.clearMeCache();
+      toast.success(response.message || 'Data anak berhasil dilepas');
+      await childrenQuery.refetch();
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Gagal melepas hubungan data anak.'));
+    } finally {
+      setUnlinkingChildId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Data Anak"
-        subtitle="Daftar anak yang terhubung dengan akun orang tua."
+        subtitle={
+          isLinkMode
+            ? 'Cari siswa dengan NISN, cek datanya, lalu hubungkan ke akun orang tua ini.'
+            : 'Daftar anak yang terhubung dengan akun orang tua.'
+        }
       />
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
-        <div className="relative w-full md:w-80">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Cari nama, username, NIS, NISN"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-          />
+      <div className="space-y-4">
+        <div className="max-w-3xl bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+          <div className="relative w-full md:w-80">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Cari nama, username, NIS, NISN"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => childrenQuery.refetch()}
+            className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Muat Ulang
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => childrenQuery.refetch()}
-          className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
+
+        <div
+          className={`bg-white rounded-xl shadow-sm border p-4 transition ${
+            isLinkMode ? 'border-blue-200 ring-2 ring-blue-500/15' : 'border-gray-100'
+          }`}
         >
-          <RefreshCw className="w-4 h-4" />
-          Muat Ulang
-        </button>
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Hubungkan Anak</h3>
+              <p className="mt-1 text-xs text-gray-500">
+                Cari siswa dengan NISN, lalu verifikasi tanggal lahir sebelum data anak dikaitkan ke akun ini.
+              </p>
+            </div>
+            {isLinkMode ? (
+              <span className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+                Mode Hubungkan
+              </span>
+            ) : null}
+          </div>
+
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+            Setiap NISN cukup dikaitkan satu kali ke akun ini. Jika Anda memiliki lebih dari satu anak di sekolah,
+            ulangi proses dengan NISN yang berbeda untuk masing-masing anak.
+          </div>
+
+          <form className="grid grid-cols-1 sm:grid-cols-2 gap-3" onSubmit={handleLinkChild}>
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">NISN</label>
+              <input
+                type="text"
+                value={linkForm.nisn}
+                onChange={(event) => {
+                  const nextNisn = normalizeNisnInput(event.target.value);
+                  setLinkForm((prev) => ({ ...prev, nisn: nextNisn }));
+                  setLookupResult((prev) => (prev?.student.nisn === nextNisn ? prev : null));
+                }}
+                placeholder="10 digit NISN"
+                inputMode="numeric"
+                maxLength={10}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Tanggal Lahir</label>
+              <input
+                type="date"
+                value={linkForm.birthDate}
+                onChange={(event) => setLinkForm((prev) => ({ ...prev, birthDate: event.target.value }))}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+              />
+            </div>
+            <div className="sm:col-span-2 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <p className="text-xs text-gray-500">
+                Jika data siswa belum memiliki tanggal lahir di sistem, hubungan perlu dibantu admin sekolah.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleLookupChild}
+                  disabled={isLookingUp}
+                  className="inline-flex items-center justify-center rounded-lg border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isLookingUp ? 'Mencari...' : 'Cari NISN'}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isLinking || lookupResult?.alreadyLinkedToCurrentParent}
+                  className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isLinking ? 'Menghubungkan...' : 'Hubungkan Anak'}
+                </button>
+              </div>
+            </div>
+          </form>
+
+          {lookupResult ? (
+            <div
+              className={`mt-4 rounded-xl border px-4 py-3 ${
+                lookupResult.alreadyLinkedToCurrentParent
+                  ? 'border-amber-200 bg-amber-50'
+                  : 'border-emerald-200 bg-emerald-50'
+              }`}
+            >
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Hasil Pencarian NISN</p>
+                  <h4 className="mt-1 text-base font-semibold text-gray-900">{lookupResult.student.name}</h4>
+                  <p className="mt-1 text-sm text-gray-600">
+                    @{lookupResult.student.username} • {lookupResult.student.studentClass?.name || 'Belum ada kelas'}
+                    {lookupResult.student.studentClass?.major?.code
+                      ? ` (${lookupResult.student.studentClass.major.code})`
+                      : ''}
+                  </p>
+                </div>
+                <span
+                  className={`inline-flex w-fit items-center rounded-full px-3 py-1 text-xs font-semibold ${
+                    lookupResult.alreadyLinkedToCurrentParent
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-emerald-100 text-emerald-800'
+                  }`}
+                >
+                  {lookupResult.alreadyLinkedToCurrentParent ? 'Sudah Terkait' : 'Siap Diverifikasi'}
+                </span>
+              </div>
+
+              <div className="mt-3 grid gap-2 text-sm text-gray-700 sm:grid-cols-2">
+                <div>NISN: {lookupResult.student.nisn || '-'}</div>
+                <div>NIS: {lookupResult.student.nis || '-'}</div>
+                <div>
+                  Status: {lookupResult.student.studentStatus || '-'} / {lookupResult.student.verificationStatus || '-'}
+                </div>
+                <div>Sudah terhubung ke {lookupResult.linkedParentCount} akun orang tua</div>
+              </div>
+
+              <p className="mt-3 text-xs leading-5 text-gray-600">{lookupResult.oneTimeWarning}</p>
+              {lookupResult.alreadyLinkedToCurrentParent ? (
+                <p className="mt-2 text-xs font-medium text-amber-700">
+                  NISN ini sudah pernah dikaitkan ke akun Anda. Untuk anak lain, gunakan NISN yang berbeda.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -473,7 +734,11 @@ const ParentChildrenPage = () => {
         ) : childrenQuery.isError ? (
           <div className="py-10 text-center text-sm text-red-600">Gagal memuat data anak.</div>
         ) : filteredChildren.length === 0 ? (
-          <div className="py-10 text-center text-sm text-gray-500">Tidak ada data anak yang cocok dengan filter.</div>
+          <div className="py-10 text-center text-sm text-gray-500">
+            {children.length === 0 && !search.trim()
+              ? 'Belum ada data anak yang terhubung. Gunakan form di atas untuk menghubungkan anak pertama.'
+              : 'Tidak ada data anak yang cocok dengan filter.'}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -519,6 +784,14 @@ const ParentChildrenPage = () => {
                         >
                           Keuangan
                         </Link>
+                        <button
+                          type="button"
+                          onClick={() => handleUnlinkChild(child)}
+                          disabled={unlinkingChildId === child.id}
+                          className="px-2.5 py-1.5 rounded-lg border border-rose-200 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          {unlinkingChildId === child.id ? 'Memproses...' : 'Lepas'}
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -671,7 +944,7 @@ const ParentFinancePage = () => {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
           <p className="text-xs uppercase tracking-wider text-gray-500">Total Nominal</p>
           <p className="mt-2 text-xl font-bold text-gray-900">
@@ -694,6 +967,15 @@ const ParentFinancePage = () => {
           </p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <p className="text-xs uppercase tracking-wider text-gray-500">Lewat Jatuh Tempo</p>
+          <p className="mt-2 text-xl font-bold text-rose-700">
+            {selectedChildFinance?.summary.overdueCount || 0} tagihan
+          </p>
+          <p className="mt-1 text-xs text-rose-600">
+            {formatCurrency(selectedChildFinance?.summary.overdueAmount || 0)}
+          </p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
           <p className="text-xs uppercase tracking-wider text-gray-500">Rata-rata Nilai</p>
           <p className="mt-2 text-xl font-bold text-blue-700">
             {reportCardQuery.isLoading ? '-' : (reportCardQuery.data?.average || 0).toFixed(1)}
@@ -707,7 +989,7 @@ const ParentFinancePage = () => {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900">Riwayat Pembayaran</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Tagihan & Riwayat Pembayaran</h3>
             <button
               type="button"
               onClick={() => financeQuery.refetch()}
@@ -723,34 +1005,122 @@ const ParentFinancePage = () => {
             </div>
           ) : financeQuery.isError ? (
             <div className="py-10 text-center text-sm text-red-600">Gagal memuat data pembayaran.</div>
-          ) : !selectedChildFinance || selectedChildFinance.payments.length === 0 ? (
-            <div className="py-10 text-center text-sm text-gray-500">Belum ada histori pembayaran untuk anak ini.</div>
+          ) : !selectedChildFinance ? (
+            <div className="py-10 text-center text-sm text-gray-500">Data keuangan anak belum tersedia.</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jenis</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Nominal</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {selectedChildFinance.payments.map((payment) => (
-                    <tr key={payment.id}>
-                      <td className="px-6 py-4 text-sm text-gray-700">{formatDate(payment.createdAt)}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{payment.type === 'MONTHLY' ? 'Bulanan' : 'Sekali Bayar'}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900 text-right font-medium">{formatCurrency(payment.amount)}</td>
-                      <td className="px-6 py-4 text-sm">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${PAYMENT_STATUS_COLOR[payment.status]}`}>
-                          {PAYMENT_STATUS_LABELS[payment.status]}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="divide-y divide-gray-100">
+              <div>
+                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/60">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-600">Tagihan Siswa</h4>
+                </div>
+                {!selectedChildFinance.invoices.length ? (
+                  <div className="py-8 text-center text-sm text-gray-500">Belum ada tagihan untuk anak ini.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Invoice
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Jatuh Tempo
+                          </th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Sisa
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Status
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {selectedChildFinance.invoices.map((invoice) => (
+                          <tr key={invoice.id}>
+                            <td className="px-6 py-4 text-sm text-gray-700">
+                              <div className="font-medium text-gray-900">{invoice.invoiceNo}</div>
+                              <div className="text-xs text-gray-500">
+                                {invoice.title ||
+                                  `${invoice.periodKey} • ${invoice.semester === 'ODD' ? 'Ganjil' : 'Genap'}`}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-700">
+                              {formatDate(invoice.dueDate || '')}
+                              {invoice.isOverdue ? (
+                                <div className="text-xs text-rose-600">
+                                  Terlambat {invoice.daysPastDue} hari
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-900 text-right font-medium">
+                              {formatCurrency(invoice.balanceAmount)}
+                            </td>
+                            <td className="px-6 py-4 text-sm">
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${INVOICE_STATUS_COLOR[invoice.status]}`}
+                              >
+                                {INVOICE_STATUS_LABELS[invoice.status]}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/60">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-600">Riwayat Pembayaran</h4>
+                </div>
+                {!selectedChildFinance.payments.length ? (
+                  <div className="py-8 text-center text-sm text-gray-500">
+                    Belum ada histori pembayaran untuk anak ini.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Tanggal
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Jenis
+                          </th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Nominal
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Status
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {selectedChildFinance.payments.map((payment) => (
+                          <tr key={payment.id}>
+                            <td className="px-6 py-4 text-sm text-gray-700">{formatDate(payment.createdAt)}</td>
+                            <td className="px-6 py-4 text-sm text-gray-700">
+                              {payment.type === 'MONTHLY' ? 'Bulanan' : 'Sekali Bayar'}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-900 text-right font-medium">
+                              {formatCurrency(payment.amount)}
+                            </td>
+                            <td className="px-6 py-4 text-sm">
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${PAYMENT_STATUS_COLOR[payment.status]}`}
+                              >
+                                {PAYMENT_STATUS_LABELS[payment.status]}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

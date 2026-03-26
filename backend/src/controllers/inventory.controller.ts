@@ -50,9 +50,274 @@ const createRoomSchema = z.object({
   location: z.string().optional(),
   condition: z.string().optional(),
   description: z.string().optional(),
+  managerUserId: z.number().int().nullable().optional(),
 });
 
 const updateRoomSchema = createRoomSchema.partial();
+
+const INVENTORY_PRIVILEGED_DUTIES = [
+  'WAKASEK_SARPRAS',
+  'SEKRETARIS_SARPRAS',
+  'KEPALA_LAB',
+  'KEPALA_PERPUSTAKAAN',
+] as const;
+
+type InventoryAuthUser = {
+  id: number;
+  role: string;
+  name: string;
+  ptkType?: string | null;
+  additionalDuties?: string[] | null;
+};
+
+const getInventoryAuthUser = async (
+  req: Request | AuthRequest,
+): Promise<InventoryAuthUser | null> => {
+  const authId = Number((req as AuthRequest).user?.id || 0);
+  if (!Number.isFinite(authId) || authId <= 0) return null;
+  return prisma.user.findUnique({
+    where: { id: authId },
+    select: {
+      id: true,
+      role: true,
+      name: true,
+      ptkType: true,
+      additionalDuties: true,
+    },
+  });
+};
+
+const hasPrivilegedInventoryAccess = (user: InventoryAuthUser | null) => {
+  if (!user) return false;
+  if (user.role === 'ADMIN') return true;
+  if (user.role !== 'TEACHER') return false;
+  const duties = Array.isArray(user.additionalDuties) ? user.additionalDuties : [];
+  return duties.some((duty) =>
+    INVENTORY_PRIVILEGED_DUTIES.includes(
+      String(duty).toUpperCase() as (typeof INVENTORY_PRIVILEGED_DUTIES)[number],
+    ),
+  );
+};
+
+const assertAssignableManager = async (managerUserId?: number | null) => {
+  if (!managerUserId) return null;
+  const manager = await prisma.user.findUnique({
+    where: { id: managerUserId },
+    select: {
+      id: true,
+      role: true,
+      name: true,
+      ptkType: true,
+      additionalDuties: true,
+    },
+  });
+  if (!manager || !['ADMIN', 'TEACHER', 'STAFF', 'PRINCIPAL', 'EXTRACURRICULAR_TUTOR'].includes(manager.role)) {
+    throw new ApiError(400, 'Penanggung jawab ruangan tidak valid');
+  }
+  return manager;
+};
+
+export const getAssignableInventoryManagers = asyncHandler(async (_req: Request, res: Response) => {
+  const activeAcademicYear = await prisma.academicYear.findFirst({
+    where: { isActive: true },
+    select: { id: true },
+  });
+
+  const users = await prisma.user.findMany({
+    where: {
+      verificationStatus: 'VERIFIED',
+      role: {
+        in: ['TEACHER', 'STAFF', 'PRINCIPAL', 'EXTRACURRICULAR_TUTOR'],
+      },
+    },
+    orderBy: [
+      { role: 'asc' },
+      { name: 'asc' },
+    ],
+    select: {
+      id: true,
+      name: true,
+      role: true,
+      ptkType: true,
+      additionalDuties: true,
+      ekskulTutorAssignments: {
+        where: {
+          isActive: true,
+          ...(activeAcademicYear?.id ? { academicYearId: activeAcademicYear.id } : {}),
+        },
+        select: {
+          ekskul: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const data = users.map((user) => {
+    const extracurricularNames = user.ekskulTutorAssignments
+      .map((assignment) => assignment.ekskul?.name?.trim())
+      .filter((value): value is string => Boolean(value));
+
+    let displayLabel = user.ptkType || user.role;
+    if (user.role === 'EXTRACURRICULAR_TUTOR') {
+      displayLabel =
+        extracurricularNames.length > 0
+          ? `Pembina Ekskul - ${extracurricularNames.join(', ')}`
+          : 'Pembina Ekskul';
+    }
+
+    return {
+      id: user.id,
+      name: user.name,
+      role: user.role,
+      ptkType: user.ptkType,
+      additionalDuties: user.additionalDuties,
+      extracurricularNames,
+      displayLabel,
+    };
+  });
+
+  res.status(200).json(new ApiResponse(200, data, 'Daftar penanggung jawab inventaris berhasil diambil'));
+});
+
+export const getAssignedInventoryRooms = asyncHandler(async (req: Request, res: Response) => {
+  const authUser = await getInventoryAuthUser(req as AuthRequest);
+  if (!authUser) throw new ApiError(401, 'Pengguna tidak ditemukan');
+
+  await syncDefaultInventoryRoomManagers();
+
+  const rooms = await prisma.room.findMany({
+    where: {
+      managerUserId: authUser.id,
+    },
+    orderBy: { name: 'asc' },
+    include: {
+      category: true,
+      managerUser: {
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          ptkType: true,
+          additionalDuties: true,
+        },
+      },
+      _count: {
+        select: { items: true },
+      },
+    },
+  });
+
+  res.status(200).json(new ApiResponse(200, rooms, 'Data inventaris tugas berhasil diambil'));
+});
+
+const syncDefaultInventoryRoomManagers = async () => {
+  const [headLabUser, headLibraryUser] = await Promise.all([
+    prisma.user.findFirst({
+      where: {
+        role: 'TEACHER',
+        additionalDuties: {
+          has: 'KEPALA_LAB',
+        },
+      },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+    }),
+    prisma.user.findFirst({
+      where: {
+        role: 'TEACHER',
+        additionalDuties: {
+          has: 'KEPALA_PERPUSTAKAAN',
+        },
+      },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+    }),
+  ]);
+
+  const updates: Prisma.PrismaPromise<Prisma.BatchPayload>[] = [];
+
+  if (headLabUser?.id) {
+    updates.push(
+      prisma.room.updateMany({
+        where: {
+          managerUserId: null,
+          OR: [
+            {
+              category: {
+                inventoryTemplateKey: 'LAB',
+              },
+            },
+            {
+              name: {
+                contains: 'LAB',
+                mode: 'insensitive',
+              },
+            },
+          ],
+        },
+        data: {
+          managerUserId: headLabUser.id,
+        },
+      }),
+    );
+  }
+
+  if (headLibraryUser?.id) {
+    updates.push(
+      prisma.room.updateMany({
+        where: {
+          managerUserId: null,
+          OR: [
+            {
+              category: {
+                inventoryTemplateKey: 'LIBRARY',
+              },
+            },
+            {
+              category: {
+                name: {
+                  contains: 'PERPUSTAKAAN',
+                  mode: 'insensitive',
+                },
+              },
+            },
+            {
+              name: {
+                contains: 'PERPUSTAKAAN',
+                mode: 'insensitive',
+              },
+            },
+          ],
+        },
+        data: {
+          managerUserId: headLibraryUser.id,
+        },
+      }),
+    );
+  }
+
+  if (updates.length > 0) {
+    await prisma.$transaction(updates);
+  }
+};
+
+const assertRoomInventoryAccess = async (
+  roomId: number,
+  authUser: InventoryAuthUser | null,
+) => {
+  const room = await prisma.room.findUnique({
+    where: { id: roomId },
+    select: { id: true, managerUserId: true },
+  });
+  if (!room) throw new ApiError(404, 'Ruangan tidak ditemukan');
+  if (hasPrivilegedInventoryAccess(authUser)) return room;
+  if (authUser?.id && room.managerUserId === authUser.id) return room;
+  throw new ApiError(403, 'Anda tidak memiliki akses ke inventaris ruangan ini');
+};
 
 const createLibraryBookLoanSchema = z.object({
   borrowDate: z.string().min(1),
@@ -626,11 +891,18 @@ export const deleteRoomCategory = asyncHandler(async (req: Request, res: Respons
 
 // Room Controllers
 export const getRooms = asyncHandler(async (req: Request, res: Response) => {
-  const { categoryId } = req.query;
+  const { categoryId, assignedOnly } = req.query;
+  const authUser = await getInventoryAuthUser(req as AuthRequest);
+
+  await syncDefaultInventoryRoomManagers();
 
   const where: any = {};
   if (categoryId) {
     where.categoryId = Number(categoryId);
+  }
+  if (String(assignedOnly || '').toLowerCase() === 'true') {
+    if (!authUser) throw new ApiError(401, 'Pengguna tidak ditemukan');
+    where.managerUserId = authUser.id;
   }
 
   const rooms = await prisma.room.findMany({
@@ -638,6 +910,15 @@ export const getRooms = asyncHandler(async (req: Request, res: Response) => {
     orderBy: { name: 'asc' },
     include: {
       category: true,
+      managerUser: {
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          ptkType: true,
+          additionalDuties: true,
+        },
+      },
       _count: {
         select: { items: true }
       }
@@ -649,12 +930,23 @@ export const getRooms = asyncHandler(async (req: Request, res: Response) => {
 
 export const getRoomById = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const authUser = await getInventoryAuthUser(req as AuthRequest);
+  await assertRoomInventoryAccess(Number(id), authUser);
 
   const room = await prisma.room.findUnique({
     where: { id: Number(id) },
     include: {
       items: true,
       category: true,
+      managerUser: {
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          ptkType: true,
+          additionalDuties: true,
+        },
+      },
     }
   });
 
@@ -667,9 +959,22 @@ export const getRoomById = asyncHandler(async (req: Request, res: Response) => {
 
 export const createRoom = asyncHandler(async (req: Request, res: Response) => {
   const body = createRoomSchema.parse(req.body);
+  await assertAssignableManager(body.managerUserId);
 
   const room = await prisma.room.create({
-    data: body
+    data: body,
+    include: {
+      category: true,
+      managerUser: {
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          ptkType: true,
+          additionalDuties: true,
+        },
+      },
+    },
   });
 
   res.status(201).json(new ApiResponse(201, room, 'Ruangan berhasil dibuat'));
@@ -678,10 +983,23 @@ export const createRoom = asyncHandler(async (req: Request, res: Response) => {
 export const updateRoom = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const body = updateRoomSchema.parse(req.body);
+  await assertAssignableManager(body.managerUserId);
 
   const room = await prisma.room.update({
     where: { id: Number(id) },
-    data: body
+    data: body,
+    include: {
+      category: true,
+      managerUser: {
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          ptkType: true,
+          additionalDuties: true,
+        },
+      },
+    },
   });
 
   res.status(200).json(new ApiResponse(200, room, 'Ruangan berhasil diperbarui'));
@@ -714,6 +1032,8 @@ export const deleteRoom = asyncHandler(async (req: Request, res: Response) => {
 // Inventory Controllers
 export const getInventoryByRoom = asyncHandler(async (req: Request, res: Response) => {
   const { roomId } = req.params;
+  const authUser = await getInventoryAuthUser(req as AuthRequest);
+  await assertRoomInventoryAccess(Number(roomId), authUser);
 
   const items = await prisma.inventoryItem.findMany({
     where: { roomId: Number(roomId) },
@@ -725,6 +1045,8 @@ export const getInventoryByRoom = asyncHandler(async (req: Request, res: Respons
 
 export const createInventory = asyncHandler(async (req: Request, res: Response) => {
   const body = createInventorySchema.parse(req.body);
+  const authUser = await getInventoryAuthUser(req as AuthRequest);
+  await assertRoomInventoryAccess(body.roomId, authUser);
 
   // Verify room exists
   const room = await prisma.room.findUnique({
@@ -757,6 +1079,22 @@ export const createInventory = asyncHandler(async (req: Request, res: Response) 
 export const updateInventory = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const body = updateInventorySchema.parse(req.body);
+  const authUser = await getInventoryAuthUser(req as AuthRequest);
+  const currentItem = await prisma.inventoryItem.findUnique({
+    where: { id: Number(id) },
+    select: {
+      id: true,
+      roomId: true,
+      quantity: true,
+      goodQty: true,
+      minorDamageQty: true,
+      majorDamageQty: true,
+    },
+  });
+  if (!currentItem) {
+    throw new ApiError(404, 'Item inventaris tidak ditemukan');
+  }
+  await assertRoomInventoryAccess(currentItem.roomId, authUser);
 
   // Recalculate quantity if breakdown fields are present
   // Note: For update, we need to be careful. If only one field is updated, we might need current values.
@@ -772,16 +1110,13 @@ export const updateInventory = asyncHandler(async (req: Request, res: Response) 
   // Let's rely on the frontend sending consistent data or simple logic here.
   
   if (body.goodQty !== undefined || body.minorDamageQty !== undefined || body.majorDamageQty !== undefined) {
-    const currentItem = await prisma.inventoryItem.findUnique({ where: { id: Number(id) } });
-    if (currentItem) {
-      const g = body.goodQty ?? currentItem.goodQty;
-      const m = body.minorDamageQty ?? currentItem.minorDamageQty;
-      const d = body.majorDamageQty ?? currentItem.majorDamageQty;
-      dataToUpdate.quantity = g + m + d;
-      dataToUpdate.goodQty = g;
-      dataToUpdate.minorDamageQty = m;
-      dataToUpdate.majorDamageQty = d;
-    }
+    const g = body.goodQty ?? currentItem.goodQty;
+    const m = body.minorDamageQty ?? currentItem.minorDamageQty;
+    const d = body.majorDamageQty ?? currentItem.majorDamageQty;
+    dataToUpdate.quantity = g + m + d;
+    dataToUpdate.goodQty = g;
+    dataToUpdate.minorDamageQty = m;
+    dataToUpdate.majorDamageQty = d;
   }
 
   const item = await prisma.inventoryItem.update({
@@ -794,6 +1129,15 @@ export const updateInventory = asyncHandler(async (req: Request, res: Response) 
 
 export const deleteInventory = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const authUser = await getInventoryAuthUser(req as AuthRequest);
+  const currentItem = await prisma.inventoryItem.findUnique({
+    where: { id: Number(id) },
+    select: { id: true, roomId: true },
+  });
+  if (!currentItem) {
+    throw new ApiError(404, 'Item inventaris tidak ditemukan');
+  }
+  await assertRoomInventoryAccess(currentItem.roomId, authUser);
 
   await prisma.inventoryItem.delete({
     where: { id: Number(id) }

@@ -6,6 +6,9 @@ export interface JwtPayload {
   id: number;
   role: string;
   isDemo?: boolean;
+  tokenType?: string;
+  scheduleId?: number;
+  source?: string;
 }
 
 export const generateToken = (payload: JwtPayload): string => {
@@ -35,6 +38,17 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
     const decoded = verifyToken(token);
     req.user = decoded;
 
+    // Scope limiter for exam-browser temporary token
+    if (req.user.tokenType === 'exam-browser-session') {
+      const normalizedPath = String(req.originalUrl || req.url || '')
+        .split('?')[0]
+        .trim();
+      const isAllowedExamRoute = /^\/api\/exams\/\d+\/(start|answers)$/.test(normalizedPath);
+      if (!isAllowedExamRoute) {
+        throw new ApiError(403, 'Token exam browser hanya berlaku untuk endpoint ujian.');
+      }
+    }
+
     // Demo Account Read-Only Check
     if (req.user.isDemo) {
       const method = req.method.toUpperCase();
@@ -55,6 +69,9 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
 
     next();
   } catch (error) {
+    if (error instanceof ApiError) {
+      return next(error);
+    }
     next(new ApiError(401, 'Token tidak valid'));
   }
 };

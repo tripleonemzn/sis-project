@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Navigate, Route, Routes, useLocation, Link, useOutletContext } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, Link, useNavigate, useOutletContext } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { createPortal } from 'react-dom';
 import { academicYearService, type AcademicYear } from '../../services/academicYear.service';
 import {
   budgetRequestService,
@@ -8,6 +9,13 @@ import {
   type UpdateBudgetRequestStatusPayload,
 } from '../../services/budgetRequest.service';
 import { workProgramService, type WorkProgram } from '../../services/workProgram.service';
+import {
+  teachingResourceProgramService,
+  type TeachingResourceEntry,
+  type TeachingResourceEntryStatus,
+} from '../../services/teachingResourceProgram.service';
+import { officeService } from '../../services/office.service';
+import { permissionService } from '../../services/permission.service';
 import {
   Loader2,
   Search,
@@ -23,18 +31,23 @@ import {
   ClipboardList,
   ThumbsUp,
   ThumbsDown,
+  X,
   AlertTriangle,
   Gauge,
   Clock3,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
+import InventoryHubPage from '../teacher/wakasek/sarpras/InventoryHubPage';
+import { InventoryDetailPage } from '../teacher/wakasek/sarpras/InventoryDetailPage';
 import { userService } from '../../services/user.service';
 import { teacherAssignmentService, type TeacherAssignment } from '../../services/teacherAssignment.service';
 import { AttendanceRecapPage } from '../admin/academic/AttendanceRecapPage';
 import { ReportCardsPage } from '../admin/academic/ReportCardsPage';
 import WorkProgramApprovalsPage from '../teacher/wakasek/curriculum/WorkProgramApprovalsPage';
+import { OsisElectionMonitoringPage } from '../common/OsisElectionMonitoringPage';
 import { getMenuItems, type MenuItem } from '../../components/layout/Sidebar';
+import type { User } from '../../types/auth';
 
 type StatTone = 'blue' | 'orange' | 'red' | 'teal';
 
@@ -172,6 +185,14 @@ interface PrincipalProctorReportRow {
   presentParticipants: number;
   absentParticipants: number;
   totalParticipants: number;
+  absentStudents?: Array<{
+    id: number;
+    name: string;
+    nis?: string | null;
+    className?: string | null;
+    absentReason?: string | null;
+    permissionStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | null;
+  }>;
   report: {
     id: number;
     signedAt: string;
@@ -221,13 +242,110 @@ interface PrincipalOperationalMonitoringData {
   unreportedRooms: number;
   absentParticipants: number;
   reportSummary: PrincipalProctorReportSummary;
+  bpbkSummary: {
+    totalCases: number;
+    negativeCases: number;
+    highRiskStudents: number;
+    openCounselings: number;
+    inProgressCounselings: number;
+    closedCounselings: number;
+    summonPendingCounselings: number;
+    overdueCounselings: number;
+  };
+  bpbkHighRiskStudents: Array<{
+    studentId: number;
+    studentName: string;
+    nis: string | null;
+    nisn: string | null;
+    className: string | null;
+    negativeCaseCount: number;
+    totalNegativePoint: number;
+  }>;
+  bpbkOverdueCounselings: Array<{
+    id: number;
+    sessionDate: string;
+    status: 'OPEN' | 'IN_PROGRESS' | 'CLOSED';
+    issueSummary: string;
+    summonParent: boolean;
+    summonDate: string | null;
+    student: {
+      id: number;
+      name: string;
+      nis: string | null;
+      nisn: string | null;
+      className: string | null;
+    };
+    counselor?: {
+      id: number;
+      name: string;
+      username: string;
+    } | null;
+  }>;
+  teachingResourceSummary: {
+    total: number;
+    submitted: number;
+    approved: number;
+    rejected: number;
+    draft: number;
+    latest: TeachingResourceEntry[];
+  };
+  officeSummary: {
+    totalLetters: number;
+    monthlyLetters: number;
+    byType: Array<{ type: string; _count: { _all: number } }>;
+    latest: Array<{
+      id: number;
+      type: string;
+      letterNumber: string;
+      recipientName: string;
+      purpose?: string | null;
+      printedAt?: string | null;
+      createdAt: string;
+    }>;
+  };
+  administrationSummary: {
+    totalStudents: number;
+    totalTeachers: number;
+    administrationStaffCount: number;
+    financeStaffCount: number;
+    pendingPermissions: number;
+    incompleteStudents: number;
+    incompleteTeachers: number;
+    studentCompletenessRate: number;
+    teacherCompletenessRate: number;
+  };
+  administrationIncompleteStudents: Array<{
+    id: number;
+    name: string;
+    nis: string | null;
+    className: string | null;
+    missing: string[];
+  }>;
+  administrationIncompleteTeachers: Array<{
+    id: number;
+    name: string;
+    username: string;
+    ptkType: string | null;
+    missing: string[];
+  }>;
+  administrationPendingPermissions: Array<{
+    id: number;
+    studentName: string;
+    className: string | null;
+    type: string;
+    status: string;
+    startDate: string;
+    endDate: string;
+    reason: string | null;
+  }>;
   risks: PrincipalOperationalRisk[];
   pendingBudgets: BudgetRequest[];
   pendingWorkPrograms: WorkProgram[];
 }
 
-type PrincipalQuickActionType = 'BUDGET' | 'WORK_PROGRAM' | 'EXAM_REPORT';
+type PrincipalQuickActionType = 'BUDGET' | 'WORK_PROGRAM' | 'EXAM_REPORT' | 'BP_BK' | 'TEACHING_RESOURCE';
 type PrincipalQuickActionSeverity = 'HIGH' | 'MEDIUM' | 'LOW';
+type PrincipalQuickActionFilter = 'ALL' | PrincipalQuickActionType;
 
 interface PrincipalQuickActionItem {
   key: string;
@@ -248,8 +366,17 @@ type PrincipalOutletContext = {
 };
 
 type StudentWithClass = {
+  id: number;
+  name: string;
+  nis?: string | null;
+  nisn?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  motherName?: string | null;
+  verificationStatus?: string | null;
   studentClass?: {
     id?: number;
+    name?: string | null;
     major?: {
       id: number;
       name: string;
@@ -360,6 +487,49 @@ const PrincipalStatCard = ({
 
 function normalizeDuty(value?: string | null) {
   return String(value || '').trim().toUpperCase();
+}
+
+function isFilled(value: string | number | null | undefined) {
+  return String(value ?? '').trim().length > 0;
+}
+
+function buildStudentAdministrationSummary(student: StudentWithClass) {
+  const missing = [
+    !isFilled(student.nis) ? 'NIS' : null,
+    !isFilled(student.nisn) ? 'NISN' : null,
+    !isFilled(student.studentClass?.name) ? 'Kelas' : null,
+    !isFilled(student.address) ? 'Alamat' : null,
+    !isFilled(student.phone) ? 'Telepon' : null,
+    !isFilled(student.motherName) ? 'Nama ibu' : null,
+  ].filter(Boolean) as string[];
+  return {
+    missing,
+    isComplete: missing.length === 0,
+  };
+}
+
+function buildTeacherAdministrationSummary(
+  teacher: Partial<User> & {
+    nip?: string | null;
+    nuptk?: string | null;
+    ptkType?: string | null;
+    employeeStatus?: string | null;
+    institution?: string | null;
+    phone?: string | null;
+  },
+) {
+  const missing = [
+    !isFilled(teacher.nip) ? 'NIP' : null,
+    !isFilled(teacher.nuptk) ? 'NUPTK' : null,
+    !isFilled(teacher.ptkType) ? 'Jenis PTK' : null,
+    !isFilled(teacher.employeeStatus) ? 'Status pegawai' : null,
+    !isFilled(teacher.institution) ? 'Instansi' : null,
+    !isFilled(teacher.phone) ? 'Telepon' : null,
+  ].filter(Boolean) as string[];
+  return {
+    missing,
+    isComplete: missing.length === 0,
+  };
 }
 
 const PrincipalHomePage = () => {
@@ -1635,9 +1805,19 @@ const daysSince = (value?: string | null): number => {
   return Math.max(0, Math.floor((now - date.getTime()) / (24 * 60 * 60 * 1000)));
 };
 
+const countTeachingResourceStatus = (
+  rows: Array<{ status: TeachingResourceEntryStatus; total: number }> | undefined,
+  status: TeachingResourceEntryStatus,
+): number => {
+  if (!Array.isArray(rows)) return 0;
+  return rows.find((item) => item.status === status)?.total || 0;
+};
+
 const PrincipalOperationalMonitoringPage = () => {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [quickActionFilter, setQuickActionFilter] = useState<PrincipalQuickActionFilter>('ALL');
 
   const { data, isLoading, isError, refetch } = useQuery<PrincipalOperationalMonitoringData>({
     queryKey: ['principal-operational-monitoring', reportDate],
@@ -1650,7 +1830,18 @@ const PrincipalOperationalMonitoringPage = () => {
         activeAcademicYear = null;
       }
 
-      const [budgetsRes, pendingProgramsRes, reportsRes] = await Promise.all([
+      const [
+        budgetsRes,
+        pendingProgramsRes,
+        reportsRes,
+        bpbkSummaryRes,
+        teachingSummaryRes,
+        officeSummaryRes,
+        studentsRes,
+        teachersRes,
+        staffsRes,
+        permissionsRes,
+      ] = await Promise.all([
         budgetRequestService.list({
           academicYearId: activeAcademicYear?.id,
           view: 'approver',
@@ -1665,6 +1856,33 @@ const PrincipalOperationalMonitoringPage = () => {
           })
           .then((response) => response.data?.data || null)
           .catch(() => null),
+        api
+          .get('/bpbk/principal-summary', {
+            params: {
+              academicYearId: activeAcademicYear?.id,
+            },
+          })
+          .then((response) => response.data?.data || null)
+          .catch(() => null),
+        teachingResourceProgramService
+          .getEntriesSummary({
+            academicYearId: activeAcademicYear?.id,
+          })
+          .catch(() => null),
+        officeService
+          .getSummary({
+            academicYearId: activeAcademicYear?.id,
+          })
+          .catch(() => null),
+        userService.getUsers({ role: 'STUDENT', limit: 10000 }).catch(() => ({ data: [] })),
+        userService.getUsers({ role: 'TEACHER', limit: 10000 }).catch(() => ({ data: [] })),
+        userService.getUsers({ role: 'STAFF', limit: 10000 }).catch(() => ({ data: [] })),
+        permissionService
+          .getPermissions({
+            academicYearId: activeAcademicYear?.id,
+            limit: 200,
+          })
+          .catch(() => ({ data: { permissions: [] } })),
       ]);
 
       const rawBudgets =
@@ -1695,6 +1913,111 @@ const PrincipalOperationalMonitoringPage = () => {
         reportedRooms: 0,
       }) as PrincipalProctorReportSummary;
 
+      const bpbkSummary = (bpbkSummaryRes?.summary || {
+        totalCases: 0,
+        negativeCases: 0,
+        highRiskStudents: 0,
+        openCounselings: 0,
+        inProgressCounselings: 0,
+        closedCounselings: 0,
+        summonPendingCounselings: 0,
+        overdueCounselings: 0,
+      }) as PrincipalOperationalMonitoringData['bpbkSummary'];
+      const bpbkHighRiskStudents = Array.isArray(bpbkSummaryRes?.highRiskStudents)
+        ? (bpbkSummaryRes.highRiskStudents as PrincipalOperationalMonitoringData['bpbkHighRiskStudents'])
+        : [];
+      const bpbkOverdueCounselings = Array.isArray(bpbkSummaryRes?.overdueCounselings)
+        ? (bpbkSummaryRes.overdueCounselings as PrincipalOperationalMonitoringData['bpbkOverdueCounselings'])
+        : [];
+      const teachingSummary: PrincipalOperationalMonitoringData['teachingResourceSummary'] = {
+        total: Number(teachingSummaryRes?.data?.total || 0),
+        submitted: countTeachingResourceStatus(teachingSummaryRes?.data?.byStatus, 'SUBMITTED'),
+        approved: countTeachingResourceStatus(teachingSummaryRes?.data?.byStatus, 'APPROVED'),
+        rejected: countTeachingResourceStatus(teachingSummaryRes?.data?.byStatus, 'REJECTED'),
+        draft: countTeachingResourceStatus(teachingSummaryRes?.data?.byStatus, 'DRAFT'),
+        latest: Array.isArray(teachingSummaryRes?.data?.latest)
+          ? (teachingSummaryRes?.data?.latest as TeachingResourceEntry[])
+          : [],
+      };
+      const officeSummary: PrincipalOperationalMonitoringData['officeSummary'] = {
+        totalLetters: Number(officeSummaryRes?.totalLetters || 0),
+        monthlyLetters: Number(officeSummaryRes?.monthlyLetters || 0),
+        byType: Array.isArray(officeSummaryRes?.byType) ? officeSummaryRes.byType : [],
+        latest: Array.isArray(officeSummaryRes?.latest) ? officeSummaryRes.latest : [],
+      };
+      const students = Array.isArray(studentsRes?.data) ? (studentsRes.data as StudentWithClass[]) : [];
+      const teachers = Array.isArray(teachersRes?.data) ? (teachersRes.data as User[]) : [];
+      const staffs = Array.isArray(staffsRes?.data) ? (staffsRes.data as User[]) : [];
+      const permissions = Array.isArray(permissionsRes?.data?.permissions) ? permissionsRes.data.permissions : [];
+      const personnel = [...teachers, ...staffs];
+      const incompleteStudents = students.filter(
+        (student) => !buildStudentAdministrationSummary(student).isComplete,
+      ).length;
+      const incompleteTeachers = personnel.filter(
+        (teacher) => !buildTeacherAdministrationSummary(teacher).isComplete,
+      ).length;
+      const administrationSummary: PrincipalOperationalMonitoringData['administrationSummary'] = {
+        totalStudents: students.length,
+        totalTeachers: personnel.length,
+        administrationStaffCount: staffs.filter((staff) => staff.ptkType === 'STAFF_ADMINISTRASI').length,
+        financeStaffCount: staffs.filter((staff) => staff.ptkType === 'STAFF_KEUANGAN').length,
+        pendingPermissions: permissions.filter((permission) => permission.status === 'PENDING').length,
+        incompleteStudents,
+        incompleteTeachers,
+        studentCompletenessRate:
+          students.length === 0 ? 100 : Math.round(((students.length - incompleteStudents) / students.length) * 100),
+        teacherCompletenessRate:
+          personnel.length === 0 ? 100 : Math.round(((personnel.length - incompleteTeachers) / personnel.length) * 100),
+      };
+      const administrationIncompleteStudents: PrincipalOperationalMonitoringData['administrationIncompleteStudents'] = students
+        .map((student) => {
+          const summary = buildStudentAdministrationSummary(student);
+          return {
+            id: student.id,
+            name: student.name || '-',
+            nis: student.nis || null,
+            className: student.studentClass?.name || null,
+            missing: summary.missing,
+            isComplete: summary.isComplete,
+          };
+        })
+        .filter((student) => !student.isComplete)
+        .sort((a, b) => b.missing.length - a.missing.length || a.name.localeCompare(b.name))
+        .slice(0, 6)
+        .map(({ isComplete: _isComplete, ...row }) => row);
+      const administrationIncompleteTeachers: PrincipalOperationalMonitoringData['administrationIncompleteTeachers'] = personnel
+        .map((teacher) => {
+          const summary = buildTeacherAdministrationSummary(teacher);
+          return {
+            id: teacher.id,
+            name: teacher.name || '-',
+            username: teacher.username || '-',
+            ptkType: teacher.ptkType || null,
+            missing: summary.missing,
+            isComplete: summary.isComplete,
+          };
+        })
+        .filter((teacher) => !teacher.isComplete)
+        .sort((a, b) => b.missing.length - a.missing.length || a.name.localeCompare(b.name))
+        .slice(0, 6)
+        .map(({ isComplete: _isComplete, ...row }) => row);
+      const administrationPendingPermissions: PrincipalOperationalMonitoringData['administrationPendingPermissions'] = permissions
+        .filter((permission) => permission.status === 'PENDING')
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 6)
+        .map((permission) => ({
+          id: permission.id,
+          studentName: permission.student?.name || 'Siswa',
+          className: permissionsRes?.data?.permissions
+            ? null
+            : null,
+          type: permission.type,
+          status: permission.status,
+          startDate: permission.startDate,
+          endDate: permission.endDate,
+          reason: permission.reason || null,
+        }));
+
       const unreportedRooms = Math.max(0, Number(reportSummary.totalRooms || 0) - Number(reportSummary.reportedRooms || 0));
       const absentParticipants = Math.max(0, Number(reportSummary.totalAbsent || 0));
 
@@ -1715,6 +2038,8 @@ const PrincipalOperationalMonitoringPage = () => {
           level: 'MEDIUM',
           title: `${overdueWorkProgramCount} program kerja menunggu persetujuan`,
           detail: 'Ada program kerja pending lebih dari 5 hari pada approver principal.',
+          actionPath: '/principal/work-program-approvals',
+          actionLabel: 'Tinjau Program Kerja',
         });
       }
       if (unreportedRooms > 0) {
@@ -1737,6 +2062,59 @@ const PrincipalOperationalMonitoringPage = () => {
           actionLabel: 'Cek Detail Ujian',
         });
       }
+      if (bpbkSummary.overdueCounselings > 0) {
+        risks.push({
+          id: 'bpbk-overdue',
+          level: 'HIGH',
+          title: `${bpbkSummary.overdueCounselings} tindak lanjut BP/BK melewati 7 hari`,
+          detail: 'Ada konseling aktif yang belum ditutup dan perlu keputusan/monitoring principal.',
+          actionPath: '/principal/monitoring/bpbk',
+          actionLabel: 'Buka Ringkasan BP/BK',
+        });
+      }
+      if (bpbkSummary.highRiskStudents > 0) {
+        risks.push({
+          id: 'bpbk-high-risk',
+          level: 'MEDIUM',
+          title: `${bpbkSummary.highRiskStudents} siswa masuk kategori risiko tinggi`,
+          detail: 'Perlu pemantauan lintas BP/BK, wali kelas, dan wakasis.',
+          actionPath: '/principal/monitoring/bpbk',
+          actionLabel: 'Tinjau Risiko Siswa',
+        });
+      }
+      if (teachingSummary.submitted > 0) {
+        risks.push({
+          id: 'teaching-resource-pending',
+          level: 'MEDIUM',
+          title: `${teachingSummary.submitted} perangkat ajar menunggu review`,
+          detail: 'Dokumen perangkat ajar perlu ditinjau oleh kurikulum/principal.',
+          actionPath: '/principal/monitoring/operations#teaching-resource',
+          actionLabel: 'Lihat Ringkasan',
+        });
+      }
+      if (administrationSummary.pendingPermissions > 0) {
+        risks.push({
+          id: 'administration-permissions-pending',
+          level: administrationSummary.pendingPermissions >= 10 ? 'HIGH' : 'MEDIUM',
+          title: `${administrationSummary.pendingPermissions} perizinan administrasi menunggu tindak lanjut`,
+          detail: 'Perlu sinkronisasi staff administrasi, wali kelas, dan pimpinan agar layanan berjalan cepat.',
+          actionPath: '/principal/monitoring/operations#administration-tu',
+          actionLabel: 'Buka Monitoring TU',
+        });
+      }
+      if (administrationSummary.incompleteStudents > 0 || administrationSummary.incompleteTeachers > 0) {
+        risks.push({
+          id: 'administration-incomplete-data',
+          level:
+            administrationSummary.incompleteStudents + administrationSummary.incompleteTeachers >= 25
+              ? 'HIGH'
+              : 'MEDIUM',
+          title: `${administrationSummary.incompleteStudents + administrationSummary.incompleteTeachers} data administrasi belum lengkap`,
+          detail: `${administrationSummary.incompleteStudents} siswa dan ${administrationSummary.incompleteTeachers} guru/staff perlu dilengkapi.`,
+          actionPath: '/principal/monitoring/operations#administration-tu',
+          actionLabel: 'Cek Kelengkapan',
+        });
+      }
       if (risks.length === 0) {
         risks.push({
           id: 'healthy',
@@ -1756,6 +2134,15 @@ const PrincipalOperationalMonitoringPage = () => {
         unreportedRooms,
         absentParticipants,
         reportSummary,
+        bpbkSummary,
+        bpbkHighRiskStudents,
+        bpbkOverdueCounselings,
+        teachingResourceSummary: teachingSummary,
+        officeSummary,
+        administrationSummary,
+        administrationIncompleteStudents,
+        administrationIncompleteTeachers,
+        administrationPendingPermissions,
         risks,
         pendingBudgets: pendingBudgets.slice(0, 8),
         pendingWorkPrograms: pendingWorkPrograms.slice(0, 8),
@@ -1810,7 +2197,7 @@ const PrincipalOperationalMonitoringPage = () => {
             program.academicYear?.name || '-'
           }`,
           ageDays,
-          actionPath: '/principal/work-program-approvals',
+          actionPath: `/principal/work-program-approvals?focusProgramId=${program.id}`,
           actionLabel: 'Buka Program Kerja',
           workProgramId: program.id,
         };
@@ -1833,7 +2220,39 @@ const PrincipalOperationalMonitoringPage = () => {
           ]
         : [];
 
-    const all = [...budgetActions, ...workProgramActions, ...examActions];
+    const bpbkActions: PrincipalQuickActionItem[] =
+      data.bpbkSummary.overdueCounselings > 0 || data.bpbkSummary.highRiskStudents > 0
+        ? [
+            {
+              key: 'bpbk-followup',
+              type: 'BP_BK',
+              severity: data.bpbkSummary.overdueCounselings > 0 ? 'HIGH' : 'MEDIUM',
+              title: 'Tindak lanjut kasus BP/BK',
+              detail: `${data.bpbkSummary.highRiskStudents} siswa risiko tinggi • ${data.bpbkSummary.overdueCounselings} overdue`,
+              ageDays: 0,
+              actionPath: '/principal/monitoring/bpbk',
+              actionLabel: 'Buka Ringkasan BP/BK',
+            },
+          ]
+        : [];
+
+    const teachingResourceActions: PrincipalQuickActionItem[] =
+      data.teachingResourceSummary.submitted > 0
+        ? [
+            {
+              key: 'teaching-resource-followup',
+              type: 'TEACHING_RESOURCE',
+              severity: data.teachingResourceSummary.submitted >= 10 ? 'HIGH' : 'MEDIUM',
+              title: 'Review perangkat ajar pending',
+              detail: `${data.teachingResourceSummary.submitted} menunggu review • ${data.teachingResourceSummary.approved} disetujui`,
+              ageDays: 0,
+              actionPath: '/principal/monitoring/operations#teaching-resource',
+              actionLabel: 'Lihat Ringkasan',
+            },
+          ]
+        : [];
+
+    const all = [...budgetActions, ...workProgramActions, ...examActions, ...bpbkActions, ...teachingResourceActions];
     const severityRank: Record<PrincipalQuickActionSeverity, number> = {
       HIGH: 3,
       MEDIUM: 2,
@@ -1843,6 +2262,23 @@ const PrincipalOperationalMonitoringPage = () => {
       .sort((a, b) => severityRank[b.severity] - severityRank[a.severity] || b.ageDays - a.ageDays)
       .slice(0, 8);
   }, [data]);
+
+  const quickActionStats = useMemo(
+    () => ({
+      ALL: quickActions.length,
+      BUDGET: quickActions.filter((item) => item.type === 'BUDGET').length,
+      WORK_PROGRAM: quickActions.filter((item) => item.type === 'WORK_PROGRAM').length,
+      EXAM_REPORT: quickActions.filter((item) => item.type === 'EXAM_REPORT').length,
+      BP_BK: quickActions.filter((item) => item.type === 'BP_BK').length,
+      TEACHING_RESOURCE: quickActions.filter((item) => item.type === 'TEACHING_RESOURCE').length,
+    }),
+    [quickActions],
+  );
+
+  const filteredQuickActions = useMemo(() => {
+    if (quickActionFilter === 'ALL') return quickActions;
+    return quickActions.filter((item) => item.type === quickActionFilter);
+  }, [quickActions, quickActionFilter]);
 
   const quickBudgetMutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: 'APPROVED' | 'REJECTED' }) =>
@@ -1909,6 +2345,14 @@ const PrincipalOperationalMonitoringPage = () => {
     }
   };
 
+  const handleOpenQuickAction = (item: PrincipalQuickActionItem) => {
+    if (item.type === 'WORK_PROGRAM' && item.workProgramId) {
+      navigate(`/principal/work-program-approvals?focusProgramId=${item.workProgramId}`);
+      return;
+    }
+    navigate(item.actionPath);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -1946,7 +2390,7 @@ const PrincipalOperationalMonitoringPage = () => {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-4">
             <Link
               to="/principal/finance/requests"
               className="rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-sky-100/85 p-4 shadow-sm hover:shadow-md transition-shadow"
@@ -1957,13 +2401,16 @@ const PrincipalOperationalMonitoringPage = () => {
                 Rp {Math.trunc(data.pendingBudgetAmount).toLocaleString('id-ID')}
               </p>
             </Link>
-            <div className="rounded-xl border border-amber-100 bg-gradient-to-br from-amber-50 to-orange-100/85 p-4 shadow-sm">
+            <Link
+              to="/principal/work-program-approvals"
+              className="rounded-xl border border-amber-100 bg-gradient-to-br from-amber-50 to-orange-100/85 p-4 shadow-sm hover:shadow-md transition-shadow"
+            >
               <p className="text-xs font-medium text-amber-700/80">Program Kerja Pending</p>
               <p className="text-2xl font-bold text-amber-900 mt-1">{data.pendingWorkProgramCount}</p>
               <p className="text-xs text-amber-700/80 mt-1">
                 {data.overdueWorkProgramCount} melewati SLA 5 hari
               </p>
-            </div>
+            </Link>
             <Link
               to="/principal/exams/reports"
               className="rounded-xl border border-rose-100 bg-gradient-to-br from-rose-50 to-red-100/85 p-4 shadow-sm hover:shadow-md transition-shadow"
@@ -1982,6 +2429,50 @@ const PrincipalOperationalMonitoringPage = () => {
               <p className="text-2xl font-bold text-slate-900 mt-1">{data.absentParticipants}</p>
               <p className="text-xs text-slate-600 mt-1">{data.reportSummary.totalPresent} hadir tercatat</p>
             </Link>
+            <Link
+              to="/principal/monitoring/bpbk"
+              className="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50 to-indigo-100/85 p-4 shadow-sm hover:shadow-md transition-shadow"
+            >
+              <p className="text-xs font-medium text-violet-700/80">Kasus BP/BK Risiko Tinggi</p>
+              <p className="text-2xl font-bold text-violet-900 mt-1">{data.bpbkSummary.highRiskStudents}</p>
+              <p className="text-xs text-violet-700/80 mt-1">
+                {data.bpbkSummary.overdueCounselings} overdue • {data.bpbkSummary.openCounselings} kasus aktif
+              </p>
+            </Link>
+            <Link
+              id="teaching-resource"
+              to="/principal/monitoring/operations#teaching-resource"
+              className="rounded-xl border border-cyan-100 bg-gradient-to-br from-cyan-50 to-sky-100/85 p-4 shadow-sm hover:shadow-md transition-shadow"
+            >
+              <p className="text-xs font-medium text-cyan-700/80">Perangkat Ajar Pending Review</p>
+              <p className="text-2xl font-bold text-cyan-900 mt-1">{data.teachingResourceSummary.submitted}</p>
+              <p className="text-xs text-cyan-700/80 mt-1">
+                {data.teachingResourceSummary.approved} disetujui • {data.teachingResourceSummary.rejected} revisi
+              </p>
+            </Link>
+            <Link
+              id="office-tu"
+              to="/principal/monitoring/operations#office-tu"
+              className="rounded-xl border border-slate-100 bg-gradient-to-br from-slate-50 to-gray-100/90 p-4 shadow-sm hover:shadow-md transition-shadow"
+            >
+              <p className="text-xs font-medium text-slate-700">Surat TU Bulan Ini</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{data.officeSummary.monthlyLetters}</p>
+              <p className="text-xs text-slate-600 mt-1">{data.officeSummary.totalLetters} arsip surat tercatat</p>
+            </Link>
+            <Link
+              id="administration-tu-card"
+              to="/principal/monitoring/operations#administration-tu"
+              className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-teal-100/85 p-4 shadow-sm hover:shadow-md transition-shadow"
+            >
+              <p className="text-xs font-medium text-emerald-700/80">Administrasi Belum Lengkap</p>
+              <p className="text-2xl font-bold text-emerald-900 mt-1">
+                {data.administrationSummary.incompleteStudents + data.administrationSummary.incompleteTeachers}
+              </p>
+              <p className="text-xs text-emerald-700/80 mt-1">
+                {data.administrationSummary.pendingPermissions} izin pending •{' '}
+                {data.administrationSummary.administrationStaffCount + data.administrationSummary.financeStaffCount} staff TU
+              </p>
+            </Link>
           </div>
 
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 md:p-5 space-y-3">
@@ -1993,13 +2484,45 @@ const PrincipalOperationalMonitoringPage = () => {
               <span className="text-xs text-gray-500">Eksekusi cepat keputusan principal</span>
             </div>
 
-            {quickActions.length === 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+                {([
+                  { key: 'ALL' as const, label: 'Semua' },
+                  { key: 'BUDGET' as const, label: 'Anggaran' },
+                  { key: 'WORK_PROGRAM' as const, label: 'Program Kerja' },
+                  { key: 'EXAM_REPORT' as const, label: 'Ujian' },
+                  { key: 'BP_BK' as const, label: 'BP/BK' },
+                  { key: 'TEACHING_RESOURCE' as const, label: 'Perangkat Ajar' },
+                ] as const).map((filterItem) => {
+                const active = quickActionFilter === filterItem.key;
+                const count = quickActionStats[filterItem.key];
+                return (
+                  <button
+                    key={filterItem.key}
+                    type="button"
+                    onClick={() => setQuickActionFilter(filterItem.key)}
+                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                      active
+                        ? 'border-blue-200 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Filter className="h-3 w-3" />
+                    <span>{filterItem.label}</span>
+                    <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {filteredQuickActions.length === 0 ? (
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                Tidak ada antrian prioritas untuk ditindaklanjuti.
+                {quickActions.length === 0
+                  ? 'Tidak ada antrian prioritas untuk ditindaklanjuti.'
+                  : 'Tidak ada antrian pada kategori filter yang dipilih.'}
               </div>
             ) : (
               <div className="space-y-2">
-                {quickActions.map((item) => {
+                {filteredQuickActions.map((item) => {
                   const severityClasses =
                     item.severity === 'HIGH'
                       ? 'border-rose-200 bg-rose-50'
@@ -2017,13 +2540,14 @@ const PrincipalOperationalMonitoringPage = () => {
                         <p className="text-[11px] text-gray-500 mt-0.5">Umur antrian: {item.ageDays} hari</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Link
-                          to={item.actionPath}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenQuickAction(item)}
                           className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-gray-300 bg-white text-xs text-gray-700 hover:bg-gray-50"
                         >
                           {item.actionLabel}
-                        </Link>
-                        {item.type !== 'EXAM_REPORT' ? (
+                        </button>
+                        {item.type === 'BUDGET' || item.type === 'WORK_PROGRAM' ? (
                           <>
                             <button
                               type="button"
@@ -2124,7 +2648,9 @@ const PrincipalOperationalMonitoringPage = () => {
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-gray-900">Backlog Program Kerja</h3>
-                <span className="text-xs text-gray-500">Approver principal</span>
+                <Link to="/principal/work-program-approvals" className="text-xs text-blue-600 hover:underline">
+                  Lihat Semua
+                </Link>
               </div>
               <div className="max-h-[360px] overflow-auto">
                 {data.pendingWorkPrograms.length === 0 ? (
@@ -2155,6 +2681,172 @@ const PrincipalOperationalMonitoringPage = () => {
                     </tbody>
                   </table>
                 )}
+              </div>
+            </div>
+          </div>
+
+          <div id="office-tu" className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900">Ringkasan Surat Tata Usaha</h3>
+              <span className="text-xs text-gray-500">
+                {data.officeSummary.byType.length} tipe • {data.officeSummary.totalLetters} total arsip
+              </span>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 p-4">
+              <div className="rounded-lg border border-slate-100 bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-wider text-slate-600">Surat Bulan Ini</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">{data.officeSummary.monthlyLetters}</p>
+                <p className="mt-1 text-xs text-slate-600">Aktivitas surat yang diterbitkan TU bulan berjalan.</p>
+              </div>
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+                <p className="text-xs uppercase tracking-wider text-blue-600">Jenis Surat Aktif</p>
+                <div className="mt-2 space-y-2 text-sm text-blue-900">
+                  {data.officeSummary.byType.length === 0 ? (
+                    <p className="text-blue-700/80">Belum ada surat tercatat.</p>
+                  ) : (
+                    data.officeSummary.byType.map((row) => (
+                      <div key={row.type} className="flex items-center justify-between">
+                        <span>{row.type.replace(/_/g, ' ')}</span>
+                        <span className="font-semibold">{row._count._all}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4">
+                <p className="text-xs uppercase tracking-wider text-emerald-600">Surat Terbaru</p>
+                <div className="mt-2 space-y-2 text-sm text-emerald-900">
+                  {data.officeSummary.latest.length === 0 ? (
+                    <p className="text-emerald-700/80">Belum ada surat terbaru.</p>
+                  ) : (
+                    data.officeSummary.latest.slice(0, 4).map((letter) => (
+                      <div key={letter.id} className="rounded-md border border-emerald-100 bg-white/70 px-3 py-2">
+                        <p className="font-semibold">{letter.letterNumber}</p>
+                        <p className="text-xs text-emerald-800">{letter.recipientName}</p>
+                        <p className="text-[11px] text-emerald-700/80">{letter.purpose || letter.type.replace(/_/g, ' ')}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="administration-tu" className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Monitoring Administrasi TU</h3>
+                <p className="text-xs text-gray-500">
+                  Pantau kelengkapan data siswa, guru/staff, dan antrian perizinan administratif.
+                </p>
+              </div>
+              <span className="text-xs text-gray-500">
+                {data.administrationSummary.administrationStaffCount} staff administrasi •{' '}
+                {data.administrationSummary.financeStaffCount} staff keuangan
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 p-4 border-b border-gray-100">
+              <div className="rounded-lg border border-amber-100 bg-amber-50 p-4">
+                <p className="text-xs uppercase tracking-wider text-amber-700">Siswa Belum Lengkap</p>
+                <p className="mt-2 text-2xl font-bold text-amber-900">{data.administrationSummary.incompleteStudents}</p>
+                <p className="mt-1 text-xs text-amber-700/80">
+                  Kelengkapan siswa {data.administrationSummary.studentCompletenessRate}%
+                </p>
+              </div>
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+                <p className="text-xs uppercase tracking-wider text-blue-700">Guru/Staff Belum Lengkap</p>
+                <p className="mt-2 text-2xl font-bold text-blue-900">{data.administrationSummary.incompleteTeachers}</p>
+                <p className="mt-1 text-xs text-blue-700/80">
+                  Kelengkapan guru/staff {data.administrationSummary.teacherCompletenessRate}%
+                </p>
+              </div>
+              <div className="rounded-lg border border-rose-100 bg-rose-50 p-4">
+                <p className="text-xs uppercase tracking-wider text-rose-700">Perizinan Pending</p>
+                <p className="mt-2 text-2xl font-bold text-rose-900">{data.administrationSummary.pendingPermissions}</p>
+                <p className="mt-1 text-xs text-rose-700/80">Perlu sinkronisasi dengan wali kelas dan TU</p>
+              </div>
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4">
+                <p className="text-xs uppercase tracking-wider text-emerald-700">Total SDM TU</p>
+                <p className="mt-2 text-2xl font-bold text-emerald-900">
+                  {data.administrationSummary.administrationStaffCount + data.administrationSummary.financeStaffCount}
+                </p>
+                <p className="mt-1 text-xs text-emerald-700/80">
+                  Admin {data.administrationSummary.administrationStaffCount} • Keuangan {data.administrationSummary.financeStaffCount}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 p-4">
+              <div className="rounded-lg border border-amber-100 bg-white overflow-hidden">
+                <div className="px-4 py-3 border-b border-amber-100 bg-amber-50/70">
+                  <h4 className="text-sm font-semibold text-amber-900">Siswa Prioritas Dilengkapi</h4>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {data.administrationIncompleteStudents.length === 0 ? (
+                    <div className="px-4 py-6 text-sm text-gray-500 text-center">Semua data siswa sudah lengkap.</div>
+                  ) : (
+                    data.administrationIncompleteStudents.map((row) => (
+                      <div key={row.id} className="px-4 py-3">
+                        <p className="text-sm font-semibold text-gray-900">{row.name}</p>
+                        <p className="text-xs text-gray-500">
+                          {row.nis || '-'} • {row.className || 'Tanpa kelas'}
+                        </p>
+                        <p className="mt-1 text-xs text-amber-700">
+                          Kurang: {row.missing.join(', ')}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-blue-100 bg-white overflow-hidden">
+                <div className="px-4 py-3 border-b border-blue-100 bg-blue-50/70">
+                  <h4 className="text-sm font-semibold text-blue-900">Guru/Staff Prioritas Dilengkapi</h4>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {data.administrationIncompleteTeachers.length === 0 ? (
+                    <div className="px-4 py-6 text-sm text-gray-500 text-center">Semua data guru/staff sudah lengkap.</div>
+                  ) : (
+                    data.administrationIncompleteTeachers.map((row) => (
+                      <div key={row.id} className="px-4 py-3">
+                        <p className="text-sm font-semibold text-gray-900">{row.name}</p>
+                        <p className="text-xs text-gray-500">
+                          {row.username} • {String(row.ptkType || 'PTK').replace(/_/g, ' ')}
+                        </p>
+                        <p className="mt-1 text-xs text-blue-700">
+                          Kurang: {row.missing.join(', ')}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-rose-100 bg-white overflow-hidden">
+                <div className="px-4 py-3 border-b border-rose-100 bg-rose-50/70">
+                  <h4 className="text-sm font-semibold text-rose-900">Perizinan Menunggu Tindak Lanjut</h4>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {data.administrationPendingPermissions.length === 0 ? (
+                    <div className="px-4 py-6 text-sm text-gray-500 text-center">Tidak ada perizinan yang pending.</div>
+                  ) : (
+                    data.administrationPendingPermissions.map((row) => (
+                      <div key={row.id} className="px-4 py-3">
+                        <p className="text-sm font-semibold text-gray-900">{row.studentName}</p>
+                        <p className="text-xs text-gray-500">
+                          {row.type === 'SICK' ? 'Sakit' : row.type === 'PERMISSION' ? 'Izin' : 'Lainnya'} •{' '}
+                          {new Date(row.startDate).toLocaleDateString('id-ID')} -{' '}
+                          {new Date(row.endDate).toLocaleDateString('id-ID')}
+                        </p>
+                        <p className="mt-1 text-xs text-rose-700">
+                          {row.reason || 'Belum ada alasan terisi.'}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -2298,6 +2990,7 @@ const PrincipalStudentsPage = () => {
           </div>
         )}
       </div>
+
     </div>
   );
 };
@@ -2425,6 +3118,7 @@ const PrincipalTeachersPage = () => {
           </div>
         )}
       </div>
+
     </div>
   );
 };
@@ -2875,6 +3569,7 @@ const PrincipalFinancePage = () => {
 const PrincipalExamReportsPage = () => {
   const [examTypeFilter, setExamTypeFilter] = useState<string>('ALL');
   const [selectedDate, setSelectedDate] = useState('');
+  const [absentModalRow, setAbsentModalRow] = useState<PrincipalProctorReportRow | null>(null);
 
   const { data: activeYearData } = useQuery({
     queryKey: ['principal-active-academic-year', 'exam-reports'],
@@ -3041,7 +3736,19 @@ const PrincipalExamReportsPage = () => {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700">
                       <div className="font-medium">{row.presentParticipants}/{row.totalParticipants}</div>
-                      <div className="text-xs text-gray-500">Tidak hadir: {row.absentParticipants}</div>
+                      {row.absentParticipants > 0 && Array.isArray(row.absentStudents) && row.absentStudents.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setAbsentModalRow(row)}
+                          className="text-xs text-rose-700 hover:text-rose-800 hover:underline focus:outline-none focus:ring-2 focus:ring-rose-300/60 rounded-sm mt-1"
+                        >
+                          Tidak hadir: <span className="font-semibold">{row.absentParticipants}</span>
+                        </button>
+                      ) : (
+                        <div className="text-xs text-gray-500 mt-1">
+                          Tidak hadir: <span className="font-semibold">{row.absentParticipants}</span>
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700">
                       {row.report?.proctor?.name || <span className="text-amber-700">Belum submit</span>}
@@ -3058,6 +3765,319 @@ const PrincipalExamReportsPage = () => {
           </div>
         )}
       </div>
+
+      {absentModalRow &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 p-4"
+            onClick={() => setAbsentModalRow(null)}
+          >
+            <div
+              className="w-full max-w-4xl max-h-[85vh] overflow-hidden rounded-xl bg-white shadow-2xl border border-gray-200"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Daftar Siswa Tidak Hadir</h3>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {absentModalRow.room || 'Belum ditentukan'} •{' '}
+                    {new Date(absentModalRow.startTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} -{' '}
+                    {new Date(absentModalRow.endTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
+                    {absentModalRow.sessionLabel ? ` • ${absentModalRow.sessionLabel}` : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAbsentModalRow(null)}
+                  className="inline-flex items-center justify-center rounded-md border border-gray-200 p-2 text-gray-600 hover:bg-gray-50"
+                  aria-label="Tutup popup siswa tidak hadir"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-5 overflow-y-auto max-h-[calc(85vh-78px)]">
+                {!Array.isArray(absentModalRow.absentStudents) || absentModalRow.absentStudents.length === 0 ? (
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+                    Tidak ada data siswa tidak hadir.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border border-gray-200 rounded-lg overflow-hidden">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 w-14">No</th>
+                          <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Nama Siswa</th>
+                          <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 w-40">Kelas</th>
+                          <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Keterangan Tidak Hadir</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {absentModalRow.absentStudents.map((student, index) => (
+                          <tr key={`principal-absent-student-${student.id}-${index}`} className="align-top">
+                            <td className="px-3 py-2 text-sm text-gray-700">{index + 1}</td>
+                            <td className="px-3 py-2">
+                              <div className="text-sm font-medium text-gray-900">{student.name}</div>
+                              {student.nis ? <div className="text-xs text-gray-500">NIS: {student.nis}</div> : null}
+                            </td>
+                            <td className="px-3 py-2 text-sm text-gray-700">{student.className || '-'}</td>
+                            <td className="px-3 py-2 text-sm text-gray-700">{student.absentReason || 'Tanpa keterangan.'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+};
+
+const PrincipalBpBkMonitoringPage = () => {
+  const [search, setSearch] = useState('');
+  const [overdueStatus, setOverdueStatus] = useState<'ALL' | 'OPEN' | 'IN_PROGRESS'>('ALL');
+
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['principal-bpbk-monitoring'],
+    queryFn: async () => {
+      let activeAcademicYear: { id: number; name: string } | null = null;
+      try {
+        const activeYearRes = await academicYearService.getActiveSafe();
+        activeAcademicYear = activeYearRes?.data || null;
+      } catch {
+        activeAcademicYear = null;
+      }
+
+      const summaryRes = await api
+        .get('/bpbk/principal-summary', {
+          params: {
+            academicYearId: activeAcademicYear?.id,
+          },
+        })
+        .then((response) => response.data?.data || null)
+        .catch(() => null);
+
+      return {
+        academicYear: activeAcademicYear || summaryRes?.academicYear || null,
+        summary: (summaryRes?.summary || {
+          totalCases: 0,
+          negativeCases: 0,
+          highRiskStudents: 0,
+          openCounselings: 0,
+          inProgressCounselings: 0,
+          closedCounselings: 0,
+          summonPendingCounselings: 0,
+          overdueCounselings: 0,
+        }) as PrincipalOperationalMonitoringData['bpbkSummary'],
+        highRiskStudents: Array.isArray(summaryRes?.highRiskStudents)
+          ? (summaryRes.highRiskStudents as PrincipalOperationalMonitoringData['bpbkHighRiskStudents'])
+          : [],
+        overdueCounselings: Array.isArray(summaryRes?.overdueCounselings)
+          ? (summaryRes.overdueCounselings as PrincipalOperationalMonitoringData['bpbkOverdueCounselings'])
+          : [],
+      };
+    },
+    staleTime: 60 * 1000,
+  });
+
+  const normalizedSearch = search.trim().toLowerCase();
+
+  const highRiskStudents = useMemo(() => {
+    const rows = data?.highRiskStudents || [];
+    if (!normalizedSearch) return rows;
+    return rows.filter((row) => {
+      const haystacks = [row.studentName, row.nis || '', row.nisn || '', row.className || ''];
+      return haystacks.some((item) => item.toLowerCase().includes(normalizedSearch));
+    });
+  }, [data?.highRiskStudents, normalizedSearch]);
+
+  const overdueCounselings = useMemo(() => {
+    const rows = data?.overdueCounselings || [];
+    const filteredByStatus =
+      overdueStatus === 'ALL' ? rows : rows.filter((row) => row.status === overdueStatus);
+
+    if (!normalizedSearch) return filteredByStatus;
+    return filteredByStatus.filter((row) => {
+      const haystacks = [row.student.name, row.student.nis || '', row.student.nisn || '', row.issueSummary || ''];
+      return haystacks.some((item) => item.toLowerCase().includes(normalizedSearch));
+    });
+  }, [data?.overdueCounselings, overdueStatus, normalizedSearch]);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Ringkasan BP/BK</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          Monitoring risiko perilaku siswa dan tindak lanjut konseling lintas kelas.
+        </p>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="relative">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Cari siswa, NIS/NISN, atau ringkasan kasus..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60 w-72"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-400" />
+            <select
+              value={overdueStatus}
+              onChange={(event) => setOverdueStatus(event.target.value as 'ALL' | 'OPEN' | 'IN_PROGRESS')}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+            >
+              <option value="ALL">Semua Status Konseling</option>
+              <option value="OPEN">OPEN</option>
+              <option value="IN_PROGRESS">IN PROGRESS</option>
+            </select>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
+        >
+          Muat Ulang
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="bg-white rounded-xl border border-gray-100 p-10 flex justify-center">
+          <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+        </div>
+      ) : isError || !data ? (
+        <div className="bg-white rounded-xl border border-rose-100 p-6 text-sm text-rose-700">
+          Gagal memuat ringkasan BP/BK.
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50 to-indigo-100/85 p-4">
+              <p className="text-xs font-medium text-violet-700/80">Siswa Risiko Tinggi</p>
+              <p className="text-2xl font-bold text-violet-900 mt-1">{data.summary.highRiskStudents}</p>
+              <p className="text-xs text-violet-700/80 mt-1">
+                Threshold poin negatif {'>='} 20 atau kasus {'>='} 3
+              </p>
+            </div>
+            <div className="rounded-xl border border-rose-100 bg-gradient-to-br from-rose-50 to-red-100/85 p-4">
+              <p className="text-xs font-medium text-rose-700/80">Konseling Overdue</p>
+              <p className="text-2xl font-bold text-rose-900 mt-1">{data.summary.overdueCounselings}</p>
+              <p className="text-xs text-rose-700/80 mt-1">OPEN/IN_PROGRESS lebih dari 7 hari</p>
+            </div>
+            <div className="rounded-xl border border-amber-100 bg-gradient-to-br from-amber-50 to-orange-100/85 p-4">
+              <p className="text-xs font-medium text-amber-700/80">Kasus Negatif</p>
+              <p className="text-2xl font-bold text-amber-900 mt-1">{data.summary.negativeCases}</p>
+              <p className="text-xs text-amber-700/80 mt-1">Total catatan perilaku negatif aktif</p>
+            </div>
+            <div className="rounded-xl border border-sky-100 bg-gradient-to-br from-sky-50 to-blue-100/85 p-4">
+              <p className="text-xs font-medium text-sky-700/80">Kasus Konseling Aktif</p>
+              <p className="text-2xl font-bold text-sky-900 mt-1">
+                {data.summary.openCounselings + data.summary.inProgressCounselings}
+              </p>
+              <p className="text-xs text-sky-700/80 mt-1">
+                OPEN {data.summary.openCounselings} • IN_PROGRESS {data.summary.inProgressCounselings}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-violet-600" />
+                <h3 className="text-sm font-semibold text-gray-900">Daftar Siswa Risiko Tinggi</h3>
+              </div>
+              <div className="max-h-[380px] overflow-auto">
+                {highRiskStudents.length === 0 ? (
+                  <div className="px-4 py-8 text-sm text-gray-500 text-center">Tidak ada siswa risiko tinggi.</div>
+                ) : (
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                      <tr>
+                        <th className="px-4 py-2 text-left">Siswa</th>
+                        <th className="px-4 py-2 text-left">Kelas</th>
+                        <th className="px-4 py-2 text-right">Kasus</th>
+                        <th className="px-4 py-2 text-right">Poin</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {highRiskStudents.map((row) => (
+                        <tr key={`risk-${row.studentId}`}>
+                          <td className="px-4 py-2">
+                            <div className="font-medium text-gray-900">{row.studentName}</div>
+                            <div className="text-xs text-gray-500">{row.nis || row.nisn || '-'}</div>
+                          </td>
+                          <td className="px-4 py-2 text-gray-700">{row.className || '-'}</td>
+                          <td className="px-4 py-2 text-right text-gray-700">{row.negativeCaseCount}</td>
+                          <td className="px-4 py-2 text-right font-semibold text-rose-700">{row.totalNegativePoint}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+                <Clock3 className="w-4 h-4 text-rose-600" />
+                <h3 className="text-sm font-semibold text-gray-900">Tindak Lanjut Konseling Overdue</h3>
+              </div>
+              <div className="max-h-[380px] overflow-auto">
+                {overdueCounselings.length === 0 ? (
+                  <div className="px-4 py-8 text-sm text-gray-500 text-center">
+                    Tidak ada konseling overdue untuk filter saat ini.
+                  </div>
+                ) : (
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                      <tr>
+                        <th className="px-4 py-2 text-left">Siswa</th>
+                        <th className="px-4 py-2 text-left">Status</th>
+                        <th className="px-4 py-2 text-left">Tgl Sesi</th>
+                        <th className="px-4 py-2 text-left">Konselor</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {overdueCounselings.map((row) => (
+                        <tr key={`overdue-${row.id}`}>
+                          <td className="px-4 py-2">
+                            <div className="font-medium text-gray-900">{row.student.name}</div>
+                            <div className="text-xs text-gray-500 line-clamp-1">{row.issueSummary}</div>
+                          </td>
+                          <td className="px-4 py-2">
+                            <span
+                              className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                row.status === 'OPEN'
+                                  ? 'bg-rose-50 text-rose-700'
+                                  : 'bg-amber-50 text-amber-700'
+                              }`}
+                            >
+                              {row.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 text-gray-700">
+                            {row.sessionDate ? new Date(row.sessionDate).toLocaleDateString('id-ID') : '-'}
+                          </td>
+                          <td className="px-4 py-2 text-gray-700">{row.counselor?.name || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };
@@ -3070,6 +4090,8 @@ export const PrincipalDashboard = () => {
       <Route path="overview" element={<PrincipalHomePage />} />
       <Route path="monitoring" element={<Navigate to="monitoring/operations" replace />} />
       <Route path="monitoring/operations" element={<PrincipalOperationalMonitoringPage />} />
+      <Route path="monitoring/bpbk" element={<PrincipalBpBkMonitoringPage />} />
+      <Route path="monitoring/osis" element={<OsisElectionMonitoringPage />} />
       <Route path="academic" element={<Navigate to="academic/reports" replace />} />
       <Route path="academic/reports" element={<ReportCardsPage />} />
       <Route path="academic/attendance" element={<AttendanceRecapPage />} />
@@ -3081,7 +4103,10 @@ export const PrincipalDashboard = () => {
       <Route path="finance" element={<PrincipalFinancePage />} />
       <Route path="finance/requests" element={<PrincipalFinancePage />} />
       <Route path="work-program-approvals" element={<WorkProgramApprovalsPage />} />
+      <Route path="work-programs" element={<Navigate to="work-program-approvals" replace />} />
       <Route path="approvals" element={<PrincipalFinancePage />} />
+      <Route path="assigned-inventory" element={<InventoryHubPage />} />
+      <Route path="assigned-inventory/:roomId" element={<InventoryDetailPage />} />
       <Route path="*" element={<Navigate to="dashboard" replace />} />
     </Routes>
   );

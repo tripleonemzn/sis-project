@@ -30,6 +30,8 @@ const ROLE_OPTIONS: { value: 'ALL' | User['role']; label: string }[] = [
   { value: 'TEACHER', label: 'Guru' },
   { value: 'STUDENT', label: 'Siswa' },
   { value: 'PARENT', label: 'Orang Tua' },
+  { value: 'CALON_SISWA', label: 'Calon Siswa' },
+  { value: 'UMUM', label: 'Pelamar BKK' },
   { value: 'STAFF', label: 'Staff' },
   { value: 'PRINCIPAL', label: 'Kepala Sekolah' },
   { value: 'ADMIN', label: 'Admin' },
@@ -262,6 +264,10 @@ export const UserVerificationPage = () => {
                               ? 'bg-green-50 text-green-700 border-green-100'
                               : user.role === 'PARENT'
                                 ? 'bg-amber-50 text-amber-700 border-amber-100'
+                                : user.role === 'CALON_SISWA'
+                                  ? 'bg-sky-50 text-sky-700 border-sky-100'
+                                  : user.role === 'UMUM'
+                                    ? 'bg-orange-50 text-orange-700 border-orange-100'
                                 : user.role === 'STAFF'
                                   ? 'bg-purple-50 text-purple-700 border-purple-100'
                                   : user.role === 'PRINCIPAL'

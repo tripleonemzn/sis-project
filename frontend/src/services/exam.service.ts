@@ -145,10 +145,23 @@ export interface ExamSchedule {
     id: number;
     packetId: number;
     packet?: ExamPacket;
-    classId: number;
-    class?: { id: number; name: string };
+    classId: number | null;
+    class?: { id: number; name: string } | null;
+    jobVacancyId?: number | null;
+    jobVacancy?: {
+        id: number;
+        title: string;
+        companyName?: string | null;
+        industryPartner?: {
+            id: number;
+            name: string;
+            city?: string | null;
+            sector?: string | null;
+        } | null;
+    } | null;
     startTime: string;
     endTime: string;
+    room?: string | null;
     sessionId?: number | null;
     sessionLabel?: string | null;
     programSession?: {
@@ -180,6 +193,24 @@ export interface ExamRestriction {
     };
     isBlocked: boolean;
     reason: string | null;
+    manualBlocked: boolean;
+    autoBlocked: boolean;
+    flags: {
+        belowKkm: boolean;
+        financeOutstanding: boolean;
+        financeOverdue: boolean;
+    };
+    details: {
+        belowKkmSubjects: Array<{
+            subjectId: number;
+            subjectName: string;
+            score: number;
+            kkm: number;
+        }>;
+        outstandingAmount: number;
+        outstandingInvoices: number;
+        overdueInvoices: number;
+    };
 }
 
 export interface PacketItemAnalysisOptionRow {
@@ -411,7 +442,7 @@ export const examService = {
     },
     getPrograms: async (params?: {
         academicYearId?: number;
-        roleContext?: 'teacher' | 'student' | 'all';
+        roleContext?: 'teacher' | 'student' | 'candidate' | 'applicant' | 'all';
         includeInactive?: boolean;
     }) => {
         const response = await api.get('/exams/programs', { params });
@@ -421,7 +452,7 @@ export const examService = {
             message: string;
             data: {
                 academicYearId: number;
-                roleContext: 'teacher' | 'student' | 'all';
+                roleContext: 'teacher' | 'student' | 'candidate' | 'applicant' | 'all';
                 programs: ExamProgram[];
             };
         };
@@ -540,6 +571,20 @@ export const examService = {
         const response = await api.get(`/exams/sessions/${id}/detail`);
         return response.data as { statusCode: number; success: boolean; message: string; data: SessionDetailResponse };
     },
+    updateSessionScore: async (id: number, score: number) => {
+        const response = await api.patch(`/exams/sessions/${id}/score`, { score });
+        return response.data as {
+            statusCode: number;
+            success: boolean;
+            message: string;
+            data: {
+                sessionId: number;
+                score: number | null;
+                status: string;
+                updatedAt: string;
+            };
+        };
+    },
     createPacket: async (data: Record<string, unknown>) => {
         const response = await api.post('/exams/packets', data);
         return response.data;
@@ -552,18 +597,20 @@ export const examService = {
         const response = await api.delete(`/exams/packets/${id}`);
         return response.data;
     },
-    getSchedules: async (params?: { packetId?: number; classId?: number }) => {
+    getSchedules: async (params?: { packetId?: number; classId?: number; vacancyId?: number }) => {
         const response = await api.get('/exams/schedules', { params });
         return response.data;
     },
     createSchedule: async (data: {
         packetId: number;
         classIds: number[];
+        jobVacancyId?: number;
         startTime: string;
         endTime: string;
         proctorId?: number;
         room?: string;
         sessionId?: number | null;
+        sessionLabel?: string | null;
     }) => {
         const response = await api.post('/exams/schedules', data);
         return response.data;
@@ -577,6 +624,7 @@ export const examService = {
             room?: string | null;
             isActive?: boolean;
             sessionId?: number | null;
+            sessionLabel?: string | null;
         },
     ) => {
         const response = await api.patch(`/exams/schedules/${id}`, data);
@@ -588,6 +636,10 @@ export const examService = {
     },
     getAvailableExams: async () => {
         const response = await api.get('/exams/available');
+        return response.data;
+    },
+    createExamBrowserLaunchToken: async (scheduleId: number) => {
+        const response = await api.post(`/exams/${scheduleId}/launch-token`);
         return response.data;
     },
     getRestrictions: async (params: { classId: number; academicYearId: number; semester: string; examType?: string; programCode?: string; page?: number; limit?: number; search?: string }) => {

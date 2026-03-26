@@ -9,9 +9,10 @@ Usage:
   bash ./scripts/release-manager.sh <scope> <action> [options]
 
 Scopes:
-  web       Backend + Frontend
-  mobile    Mobile OTA
-  all       Safety gate all stacks (check only)
+  web         Backend + Frontend
+  mobile      Mobile OTA
+  exambrowser Build aplikasi exam-browser terpisah
+  all         Safety gate all stacks (check only)
 
 Actions:
   check     Run safety gate only
@@ -21,6 +22,7 @@ Options:
   --report                 Generate scope report before action
   --allow-dirty            Bypass dirty-tree gate (darurat)
   --channel <name>         Mobile OTA channel: pilot|staging|production|pilot-live (default: pilot)
+  --profile <name>         Exam-browser EAS profile (default: internal-live)
   -h, --help               Show this help
 
 Examples:
@@ -29,6 +31,7 @@ Examples:
   bash ./scripts/release-manager.sh web deploy --allow-dirty
   bash ./scripts/release-manager.sh mobile check
   bash ./scripts/release-manager.sh mobile deploy --channel pilot
+  bash ./scripts/release-manager.sh exambrowser deploy --profile internal-live
 EOF
 }
 
@@ -44,6 +47,7 @@ shift 2
 ALLOW_DIRTY=0
 WITH_REPORT=0
 CHANNEL="pilot"
+PROFILE="internal-live"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -61,6 +65,14 @@ while [ "$#" -gt 0 ]; do
       CHANNEL="$2"
       shift
       ;;
+    --profile)
+      if [ "$#" -lt 2 ]; then
+        echo "ERROR: --profile membutuhkan nilai."
+        exit 1
+      fi
+      PROFILE="$2"
+      shift
+      ;;
     -h|--help)
       print_usage
       exit 0
@@ -75,7 +87,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$SCOPE" in
-  web|mobile|all)
+  web|mobile|exambrowser|all)
     ;;
   *)
     echo "ERROR: scope tidak valid: $SCOPE"
@@ -121,6 +133,9 @@ echo "Allow dirty : $ALLOW_DIRTY"
 if [ "$SCOPE" = "mobile" ]; then
   echo "Channel     : $CHANNEL"
 fi
+if [ "$SCOPE" = "exambrowser" ]; then
+  echo "Profile     : $PROFILE"
+fi
 echo
 
 if [ "$ACTION" = "check" ]; then
@@ -156,6 +171,26 @@ if [ "$SCOPE" = "mobile" ]; then
     bash "$ROOT_DIR/scripts/publish-mobile-ota-isolated.sh" "$CHANNEL"
   fi
   echo "✅ Mobile OTA deploy selesai."
+  exit 0
+fi
+
+if [ "$SCOPE" = "exambrowser" ]; then
+  case "$PROFILE" in
+    internal|internal-live)
+      ;;
+    *)
+      echo "ERROR: profile exam-browser tidak valid: $PROFILE"
+      echo "Gunakan: internal | internal-live"
+      exit 1
+      ;;
+  esac
+
+  if [ "$ALLOW_DIRTY" -eq 1 ]; then
+    ALLOW_DIRTY_EXAMBROWSER=1 bash "$ROOT_DIR/scripts/publish-exam-browser-build-isolated.sh" "$PROFILE"
+  else
+    bash "$ROOT_DIR/scripts/publish-exam-browser-build-isolated.sh" "$PROFILE"
+  fi
+  echo "✅ Exam-browser build selesai."
   exit 0
 fi
 

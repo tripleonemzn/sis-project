@@ -5,7 +5,10 @@ export type LpjInvoiceStatus =
   | 'SUBMITTED_TO_SARPRAS'
   | 'RETURNED'
   | 'APPROVED_BY_SARPRAS'
-  | 'SENT_TO_FINANCE';
+  | 'SENT_TO_FINANCE'
+  | 'PROCESSING_FINANCE'
+  | 'COMPLETED'
+  | 'RETURNED_BY_FINANCE';
 
 export interface BudgetLpjItem {
   id: number;
@@ -40,6 +43,10 @@ export interface BudgetLpjInvoice {
   returnedAt?: string | null;
   approvedBySarprasAt?: string | null;
   sentToFinanceAt?: string | null;
+  financeProcessedAt?: string | null;
+  financeCompletedAt?: string | null;
+  financeReturnedAt?: string | null;
+  financeNote?: string | null;
   createdById: number;
   createdAt: string;
   updatedAt: string;
@@ -157,6 +164,17 @@ export const budgetLpjService = {
   ) => {
     const response = await api.post(
       `/budget-lpj/invoices/${invoiceId}/sarpras-decision`,
+      payload,
+    );
+    return response.data;
+  },
+
+  financeDecision: async (
+    invoiceId: number,
+    payload: { action: 'PROCESS' | 'COMPLETE' | 'RETURN'; financeNote?: string },
+  ) => {
+    const response = await api.post(
+      `/budget-lpj/invoices/${invoiceId}/finance-decision`,
       payload,
     );
     return response.data;

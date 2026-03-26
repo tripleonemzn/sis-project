@@ -25,8 +25,7 @@ export function useParentChildrenQuery({ enabled, user }: Params) {
     queryFn: async (): Promise<ParentChildrenQueryData> => {
       const cacheKey = `mobile_cache_parent_children_${user!.id}`;
       try {
-        const childIds = (user?.children || []).map((child) => child.id).filter(Boolean);
-        const children = await parentApi.getChildrenByIds(childIds);
+        const children = await parentApi.getMyChildren();
         const payload = { children };
         const cache = await offlineCache.set(cacheKey, payload);
         await offlineCache.prunePrefix(

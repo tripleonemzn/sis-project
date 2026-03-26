@@ -604,7 +604,7 @@ export const getMonitoringMetrics = asyncHandler(async (req: AuthRequest, res: R
   await computeBandwidthSample();
   const bandwidthSample = readCachedBandwidthSample();
 
-  const cpuStatus = loadPerCore >= 1.2 ? 'DANGER' : loadPerCore >= 0.8 ? 'WARNING' : 'OK';
+  const cpuStatus = loadPerCore >= 2 ? 'DANGER' : loadPerCore >= 1.2 ? 'WARNING' : 'OK';
   const memoryStatus =
     memorySnapshot.usedPercent >= 90 ? 'DANGER' : memorySnapshot.usedPercent >= 75 ? 'WARNING' : 'OK';
   const storageStatus = rootUsage ? rootUsage.status : 'OK';

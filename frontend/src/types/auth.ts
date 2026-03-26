@@ -1,8 +1,20 @@
+export type UserRole =
+  | 'ADMIN'
+  | 'TEACHER'
+  | 'STUDENT'
+  | 'PRINCIPAL'
+  | 'STAFF'
+  | 'PARENT'
+  | 'CALON_SISWA'
+  | 'UMUM'
+  | 'EXAMINER'
+  | 'EXTRACURRICULAR_TUTOR';
+
 export interface User {
   id: number;
   username: string;
   name: string;
-  role: 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PRINCIPAL' | 'STAFF' | 'PARENT' | 'EXAMINER' | 'EXTRACURRICULAR_TUTOR';
+  role: UserRole;
   isDemo?: boolean;
   studentStatus?: 'ACTIVE' | 'GRADUATED' | 'MOVED' | 'DROPPED_OUT';
   verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED';
@@ -109,8 +121,33 @@ export interface User {
     id: number;
     name: string;
   }[];
+  managedInventoryRooms?: {
+    id: number;
+    name: string;
+    managerUserId?: number | null;
+  }[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ParentLinkedChild {
+  id: number;
+  name: string;
+  username: string;
+  nis?: string | null;
+  nisn?: string | null;
+  birthDate?: string | null;
+  studentStatus?: 'ACTIVE' | 'GRADUATED' | 'MOVED' | 'DROPPED_OUT' | null;
+  verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
+  studentClass?: {
+    id: number;
+    name: string;
+    major?: {
+      id: number;
+      name: string;
+      code?: string | null;
+    } | null;
+  } | null;
 }
 
 export interface UserDocumentInput {
@@ -136,4 +173,43 @@ export interface AuthResponse {
   };
   message: string;
   success: boolean;
+}
+
+export interface RegisterCalonSiswaPayload {
+  name: string;
+  nisn: string;
+  phone: string;
+  email?: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface RegisterParentPayload {
+  name: string;
+  username: string;
+  phone: string;
+  email?: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface RegisterBkkPayload {
+  name: string;
+  username: string;
+  phone: string;
+  email?: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface ParentChildLinkPayload {
+  nisn: string;
+  birthDate: string;
+}
+
+export interface ParentChildLookupResult {
+  student: ParentLinkedChild;
+  alreadyLinkedToCurrentParent: boolean;
+  linkedParentCount: number;
+  oneTimeWarning: string;
 }

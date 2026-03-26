@@ -47,10 +47,24 @@ type ReactNativeFilePart = {
 };
 
 export const permissionApi = {
-  async list() {
+  async list(params?: {
+    page?: number;
+    limit?: number;
+    academicYearId?: number;
+    classId?: number;
+    type?: PermissionType;
+    status?: PermissionStatus;
+    search?: string;
+  }) {
     const response = await apiClient.get<PermissionsResponse>('/permissions', {
       params: {
-        limit: 50,
+        page: params?.page ?? 1,
+        limit: params?.limit ?? 50,
+        academicYearId: params?.academicYearId,
+        classId: params?.classId,
+        type: params?.type,
+        status: params?.status,
+        search: params?.search,
       },
     });
     return response.data.data.permissions || [];

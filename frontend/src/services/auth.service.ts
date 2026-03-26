@@ -1,5 +1,11 @@
 import api from './api';
-import type { AuthResponse, User } from '../types/auth';
+import type {
+  AuthResponse,
+  RegisterBkkPayload,
+  RegisterCalonSiswaPayload,
+  RegisterParentPayload,
+  User,
+} from '../types/auth';
 import type { ApiResponse } from '../types/api.types';
 
 const ME_CACHE_TTL_MS = 60_000;
@@ -47,6 +53,21 @@ export const authService = {
     const response = await api.post<AuthResponse>('/auth/login', { username, password });
     meCache = null;
     meInFlight = null;
+    return response.data;
+  },
+
+  registerCalonSiswa: async (payload: RegisterCalonSiswaPayload): Promise<ApiResponse<User>> => {
+    const response = await api.post<ApiResponse<User>>('/auth/register-calon-siswa', payload);
+    return response.data;
+  },
+
+  registerParent: async (payload: RegisterParentPayload): Promise<ApiResponse<User>> => {
+    const response = await api.post<ApiResponse<User>>('/auth/register-parent', payload);
+    return response.data;
+  },
+
+  registerBkk: async (payload: RegisterBkkPayload): Promise<ApiResponse<User>> => {
+    const response = await api.post<ApiResponse<User>>('/auth/register-bkk', payload);
     return response.data;
   },
 

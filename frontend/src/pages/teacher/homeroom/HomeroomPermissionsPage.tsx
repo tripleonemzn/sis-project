@@ -21,18 +21,8 @@ import { classService } from '../../../services/class.service';
 import { permissionService, PermissionStatus, type StudentPermission } from '../../../services/permission.service';
 import { academicYearService } from '../../../services/academicYear.service';
 import { authService } from '../../../services/auth.service';
-import { examService } from '../../../services/exam.service';
+import { examService, type ExamRestriction } from '../../../services/exam.service';
 import { liveQueryOptions } from '../../../lib/query/liveQuery';
-
-interface ExamRestriction {
-  student: {
-    id: number;
-    name: string;
-    nisn: string;
-  };
-  isBlocked: boolean;
-  reason: string;
-}
 
 interface ExamRestrictionsResponse {
   restrictions: ExamRestriction[];
@@ -53,6 +43,14 @@ interface PermissionsQueryResponse {
     totalPages: number;
   };
 }
+
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount || 0);
 
 export const HomeroomPermissionsPage = () => {
   const { user: contextUser } = useOutletContext<{ user: User; activeYear: unknown }>() || {};
@@ -281,35 +279,52 @@ export const HomeroomPermissionsPage = () => {
     }
   };
 
-  const handleToggleRestriction = (studentId: number, currentStatus: boolean, studentName: string) => {
+  const handleToggleRestriction = (item: ExamRestriction) => {
     if (!activeAcademicYear || !selectedSemester || !selectedExamType) {
         toast.error('Pilih semester dan jenis ujian terlebih dahulu');
         return;
     }
-    
-    if (!currentStatus) { // Blocking
-      const reason = window.prompt(`Masukkan alasan pembatasan ujian untuk ${studentName}:`, 'Belum menyelesaikan administrasi');
+
+    if (item.isBlocked && item.autoBlocked) {
+      const autoReasons: string[] = [];
+      if (item.flags.belowKkm) autoReasons.push('nilai masih di bawah KKM');
+      if (item.flags.financeOutstanding) autoReasons.push('masih ada tunggakan');
+      if (item.flags.financeOverdue) autoReasons.push('ada tunggakan jatuh tempo');
+
+      toast.error(
+        autoReasons.length > 0
+          ? `Akses ujian otomatis ditolak karena ${autoReasons.join(', ')}. Selesaikan sumber masalahnya terlebih dahulu.`
+          : 'Akses ujian otomatis ditolak. Selesaikan sumber masalahnya terlebih dahulu.',
+      );
+      return;
+    }
+
+    if (!item.isBlocked) {
+      const reason = window.prompt(
+        `Masukkan alasan pembatasan ujian untuk ${item.student.name}:`,
+        'Belum menyelesaikan administrasi',
+      );
       if (reason === null) return;
-      
+
       updateRestrictionMutation.mutate({
-        studentId,
+        studentId: item.student.id,
         academicYearId: activeAcademicYear.id,
         semester: selectedSemester,
         examType: selectedExamType,
         programCode: selectedExamType,
         isBlocked: true,
-        reason
+        reason,
       });
-    } else { // Unblocking
-      if (window.confirm(`Buka akses ujian untuk ${studentName}?`)) {
+    } else {
+      if (window.confirm(`Buka akses ujian manual untuk ${item.student.name}?`)) {
         updateRestrictionMutation.mutate({
-          studentId,
+          studentId: item.student.id,
           academicYearId: activeAcademicYear.id,
           semester: selectedSemester,
           examType: selectedExamType,
           programCode: selectedExamType,
           isBlocked: false,
-          reason: ''
+          reason: '',
         });
       }
     }
@@ -668,7 +683,7 @@ export const HomeroomPermissionsPage = () => {
                               type="checkbox" 
                               className="sr-only peer"
                               checked={!item.isBlocked}
-                              onChange={() => handleToggleRestriction(item.student.id, item.isBlocked, item.student.name)}
+                              onChange={() => handleToggleRestriction(item)}
                             />
                             <div className="w-11 h-6 bg-red-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
                           </label>
@@ -677,8 +692,68 @@ export const HomeroomPermissionsPage = () => {
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 italic">
-                        {item.isBlocked ? (item.reason || 'Akses ditutup') : '-'}
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {!item.isBlocked ? (
+                          <span className="italic text-gray-400">-</span>
+                        ) : (
+                          <div className="space-y-2">
+                            <p className="text-sm text-gray-700">
+                              {item.reason || 'Akses ditutup'}
+                            </p>
+
+                            <div className="flex flex-wrap gap-2">
+                              {item.manualBlocked && (
+                                <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                  Manual
+                                </span>
+                              )}
+                              {item.flags.belowKkm && (
+                                <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                                  Nilai &lt; KKM
+                                </span>
+                              )}
+                              {item.flags.financeOutstanding && (
+                                <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
+                                  Tunggakan
+                                </span>
+                              )}
+                              {item.flags.financeOverdue && (
+                                <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">
+                                  Jatuh Tempo
+                                </span>
+                              )}
+                            </div>
+
+                            {item.details.belowKkmSubjects.length > 0 && (
+                              <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+                                <p className="font-medium">Mapel di bawah KKM</p>
+                                <p>
+                                  {item.details.belowKkmSubjects
+                                    .slice(0, 3)
+                                    .map((subject) => `${subject.subjectName} (${subject.score}/${subject.kkm})`)
+                                    .join(', ')}
+                                  {item.details.belowKkmSubjects.length > 3
+                                    ? ` +${item.details.belowKkmSubjects.length - 3} mapel lainnya`
+                                    : ''}
+                                </p>
+                              </div>
+                            )}
+
+                            {item.flags.financeOutstanding && (
+                              <div className="rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-700">
+                                <p className="font-medium">
+                                  Tunggakan {formatCurrency(item.details.outstandingAmount)}
+                                </p>
+                                <p>
+                                  {item.details.outstandingInvoices} tagihan aktif
+                                  {item.details.overdueInvoices > 0
+                                    ? `, ${item.details.overdueInvoices} sudah jatuh tempo`
+                                    : ''}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))

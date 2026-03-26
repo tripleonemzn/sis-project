@@ -1,4 +1,4 @@
-export type LearningResourceSection = 'CP' | 'ATP' | 'PROTA' | 'PROMES' | 'MODULES' | 'KKTP';
+export type LearningResourceSection = 'CP' | 'ATP' | 'PROTA' | 'PROMES' | 'MODULES' | 'KKTP' | 'MATRIKS_SEBARAN';
 
 export type CpTpAnalysisItem = {
   id?: string;

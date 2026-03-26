@@ -41,46 +41,25 @@ interface StudentExtracurricular {
   catatan: string;
 }
 
-const ExtracurricularRow = ({ 
-  enrollment, 
-  onSave 
-}: { 
-  enrollment: StudentExtracurricularEnrollment; 
-  onSave: (id: number, grade: string, description: string) => void;
+const ExtracurricularRow = ({
+  enrollment,
+}: {
+  enrollment: StudentExtracurricularEnrollment;
 }) => {
-  const [grade, setGrade] = useState(enrollment.grade || '');
-  const [description, setDescription] = useState(enrollment.description || '');
-
-  const handleBlur = () => {
-    if (grade !== (enrollment.grade || '') || description !== (enrollment.description || '')) {
-      onSave(enrollment.id, grade, description);
-    }
-  };
-
   return (
     <div className="flex gap-2 mb-2 items-start last:mb-0">
       <div className="w-1/3 text-sm py-2 px-2 bg-gray-50 rounded border border-gray-100">
         {enrollment.ekskulName}
       </div>
       <div className="w-1/6">
-        <input
-          type="text"
-          value={grade}
-          onChange={(e) => setGrade(e.target.value)}
-          onBlur={handleBlur}
-          className="w-full text-sm border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 py-1.5 px-2 text-center"
-          placeholder="Nilai"
-        />
+        <div className="w-full text-sm border border-gray-200 bg-gray-50 rounded-md py-1.5 px-2 text-center font-medium text-gray-700 min-h-[38px] flex items-center justify-center">
+          {enrollment.grade || '-'}
+        </div>
       </div>
       <div className="w-1/2">
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          onBlur={handleBlur}
-          className="w-full text-sm border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 min-h-[38px] py-1.5 px-2"
-          placeholder="Deskripsi..."
-          rows={1}
-        />
+        <div className="w-full text-sm border border-gray-200 bg-gray-50 rounded-md min-h-[38px] py-1.5 px-2 text-gray-700">
+          {enrollment.description || '-'}
+        </div>
       </div>
     </div>
   );
@@ -90,14 +69,12 @@ const StudentRow = ({
   student, 
   index, 
   onSaveNote,
-  onSaveGrade,
   onAddAchievement,
   onDeleteAchievement
 }: { 
   student: StudentExtracurricular; 
   index: number;
   onSaveNote: (studentId: number, note: string) => void;
-  onSaveGrade: (enrollmentId: number, grade: string, description: string) => void;
   onAddAchievement: (studentId: number) => void;
   onDeleteAchievement: (achievementId: number) => void;
 }) => {
@@ -141,10 +118,9 @@ const StudentRow = ({
               <div className="w-1/2">Deskripsi</div>
             </div>
             {student.extracurriculars.map((enrollment) => (
-              <ExtracurricularRow 
-                key={enrollment.id} 
-                enrollment={enrollment} 
-                onSave={onSaveGrade}
+              <ExtracurricularRow
+                key={enrollment.id}
+                enrollment={enrollment}
               />
             ))}
           </div>
@@ -256,24 +232,6 @@ export const HomeroomExtracurricularsPage = ({
     onError: () => toast.error('Gagal menyimpan catatan')
   });
 
-  const updateGradeMutation = useMutation({
-    mutationFn: async ({ enrollmentId, grade, description }: { enrollmentId: number, grade: string, description: string }) => {
-      await api.post('/reports/extracurricular/grade', {
-        enrollmentId,
-        grade,
-        description,
-        semester,
-        ...(programCode ? { programCode } : {}),
-        ...(!programCode && normalizedReportType ? { reportType: normalizedReportType } : {}),
-      });
-    },
-    onSuccess: () => {
-      toast.success('Nilai ekstrakurikuler disimpan', { id: 'autosave-grade', duration: 2000 });
-      queryClient.invalidateQueries({ queryKey: extracurricularQueryKey });
-    },
-    onError: () => toast.error('Gagal menyimpan nilai')
-  });
-
   const createAchievementMutation = useMutation({
     mutationFn: async ({ studentId, name, rank, level, year }: { studentId: number, name: string, rank: string, level: string, year: number }) => {
       await api.post('/reports/achievement', { studentId, name, rank, level, year });
@@ -299,10 +257,6 @@ export const HomeroomExtracurricularsPage = ({
 
   const handleSaveNote = (studentId: number, note: string) => {
     updateNoteMutation.mutate({ studentId, note });
-  };
-
-  const handleSaveGrade = (enrollmentId: number, grade: string, description: string) => {
-    updateGradeMutation.mutate({ enrollmentId, grade, description });
   };
 
   const handleAddAchievement = (studentId: number) => {
@@ -364,6 +318,11 @@ export const HomeroomExtracurricularsPage = ({
 
   return (
     <div className="space-y-4">
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
+        Nilai dan deskripsi ekstrakurikuler diinput oleh pembina ekstrakurikuler, lalu otomatis
+        tampil di tab wali kelas ini. Wali kelas hanya menambahkan prestasi dan catatan bila
+        diperlukan.
+      </div>
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left border-collapse">
@@ -404,7 +363,6 @@ export const HomeroomExtracurricularsPage = ({
                   student={student} 
                   index={index} 
                   onSaveNote={handleSaveNote}
-                  onSaveGrade={handleSaveGrade}
                   onAddAchievement={handleAddAchievement}
                   onDeleteAchievement={handleDeleteAchievement}
                 />

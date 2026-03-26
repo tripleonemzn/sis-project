@@ -27,6 +27,20 @@ const PAYMENT_STATUS_COLORS: Record<'PENDING' | 'PAID' | 'PARTIAL' | 'CANCELLED'
   CANCELLED: '#b91c1c',
 };
 
+const INVOICE_STATUS_LABELS: Record<'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED', string> = {
+  UNPAID: 'Belum Lunas',
+  PARTIAL: 'Parsial',
+  PAID: 'Lunas',
+  CANCELLED: 'Dibatalkan',
+};
+
+const INVOICE_STATUS_COLORS: Record<'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED', string> = {
+  UNPAID: '#b45309',
+  PARTIAL: '#1d4ed8',
+  PAID: '#15803d',
+  CANCELLED: '#b91c1c',
+};
+
 function defaultSemesterByDate(): 'ODD' | 'EVEN' {
   const month = new Date().getMonth() + 1;
   return month >= 7 ? 'ODD' : 'EVEN';
@@ -293,9 +307,12 @@ export default function ParentFinanceScreen() {
                         padding: 10,
                       }}
                     >
-                      <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Jumlah Transaksi</Text>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15 }}>
-                        {selectedChildFinance.summary.totalRecords}
+                      <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Lewat Jatuh Tempo</Text>
+                      <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 15 }}>
+                        {selectedChildFinance.summary.overdueCount} tagihan
+                      </Text>
+                      <Text style={{ color: '#ef4444', marginTop: 2, fontSize: 12 }}>
+                        {formatCurrency(selectedChildFinance.summary.overdueAmount)}
                       </Text>
                     </View>
                   </View>
@@ -310,6 +327,71 @@ export default function ParentFinanceScreen() {
                     padding: 12,
                   }}
                 >
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Tagihan Siswa</Text>
+                  {selectedChildFinance.invoices.length > 0 ? (
+                    selectedChildFinance.invoices.map((invoice) => (
+                      <View
+                        key={`inv-${invoice.id}`}
+                        style={{
+                          paddingVertical: 10,
+                          borderBottomWidth: 1,
+                          borderBottomColor: '#eef2ff',
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <View style={{ flex: 1, paddingRight: 8 }}>
+                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }} numberOfLines={1}>
+                              {invoice.invoiceNo}
+                            </Text>
+                            <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                              {invoice.title ||
+                                `${invoice.periodKey} • ${invoice.semester === 'ODD' ? 'Ganjil' : 'Genap'}`}
+                            </Text>
+                          </View>
+                          <View
+                            style={{
+                              backgroundColor: `${INVOICE_STATUS_COLORS[invoice.status]}1a`,
+                              borderRadius: 999,
+                              paddingHorizontal: 8,
+                              paddingVertical: 3,
+                            }}
+                          >
+                            <Text style={{ color: INVOICE_STATUS_COLORS[invoice.status], fontSize: 11, fontWeight: '700' }}>
+                              {INVOICE_STATUS_LABELS[invoice.status]}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={{ marginTop: 6, flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                            Jatuh tempo: {formatDate(invoice.dueDate || '')}
+                          </Text>
+                          <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', fontSize: 12 }}>
+                            Sisa: {formatCurrency(invoice.balanceAmount)}
+                          </Text>
+                        </View>
+                        {invoice.isOverdue ? (
+                          <Text style={{ color: '#b91c1c', marginTop: 2, fontSize: 12 }}>
+                            Terlambat {invoice.daysPastDue} hari
+                          </Text>
+                        ) : null}
+                      </View>
+                    ))
+                  ) : (
+                    <View
+                      style={{
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: '#cbd5e1',
+                        borderStyle: 'dashed',
+                        backgroundColor: '#fff',
+                        padding: 12,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada tagihan untuk anak ini.</Text>
+                    </View>
+                  )}
+
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Riwayat Pembayaran Terbaru</Text>
                   {selectedChildFinance.payments.length > 0 ? (
                     selectedChildFinance.payments.map((payment) => (

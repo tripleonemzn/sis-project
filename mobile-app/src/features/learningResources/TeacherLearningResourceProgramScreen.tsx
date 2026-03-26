@@ -21,9 +21,12 @@ import { notifyApiError, notifyInfo, notifySuccess } from '../../lib/ui/feedback
 import { academicYearApi } from '../academicYear/academicYearApi';
 import { useAuth } from '../auth/AuthProvider';
 import { useTeacherAssignmentsQuery } from '../teacherAssignments/useTeacherAssignmentsQuery';
+import { TeacherAssignment } from '../teacherAssignments/types';
 import {
   teachingResourceProgramApi,
   TeachingResourceEntryItem,
+  TeachingResourceProgramItem,
+  TeachingResourceProgramSectionSchema,
   TeachingResourceEntryStatus,
 } from './teachingResourceProgramApi';
 
@@ -36,8 +39,13 @@ type ProgramScreenProps = {
 
 type EntrySectionDraft = {
   id: string;
+  schemaKey?: string;
   title: string;
   body: string;
+  rows: Array<{
+    id: string;
+    values: Record<string, string>;
+  }>;
 };
 
 type StatusFilter = 'ALL' | TeachingResourceEntryStatus;
@@ -126,11 +134,57 @@ function normalizeClassLevel(raw: unknown): string {
   return value;
 }
 
-function createSection(): EntrySectionDraft {
+function ensureArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function isDigitalApprovalOnlySection(schemaKey?: string, title?: string): boolean {
+  const key = String(schemaKey || '')
+    .trim()
+    .toLowerCase();
+  const label = String(title || '')
+    .trim()
+    .toLowerCase();
+  if (key.startsWith('ttd_')) return true;
+  if (key.includes('pengesahan')) return true;
+  if (label.includes('pengesahan dokumen')) return true;
+  if (label.includes('pengesahan semester')) return true;
+  return false;
+}
+
+function createSection(schema?: TeachingResourceProgramSectionSchema, rowIndex = 0): EntrySectionDraft {
+  const editorType = schema?.editorType === 'TABLE' ? 'TABLE' : 'TEXT';
+  const columns = Array.isArray(schema?.columns) ? schema.columns : [];
+  const prefillRows = Array.isArray(schema?.prefillRows) ? schema.prefillRows : [];
+  const defaultRowCount = editorType === 'TABLE' ? Math.max(1, Number(schema?.defaultRows || 1)) : 0;
+  const resolvedRows =
+    editorType === 'TABLE'
+      ? (prefillRows.length > 0 ? prefillRows : Array.from({ length: defaultRowCount }, () => ({} as Record<string, string>))).map(
+          (prefill, tableRowIndex) => {
+            const safePrefill: Record<string, string> = prefill || {};
+            return {
+              id: `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${tableRowIndex}`,
+              values: columns.reduce<Record<string, string>>((acc, column) => {
+                const key = String(column.key || '').trim();
+                if (!key) return acc;
+                acc[key] = String(safePrefill[key] || '').trim();
+                return acc;
+              }, {}),
+            };
+          },
+        )
+      : [];
   return {
     id: `section-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    title: '',
+    schemaKey: schema?.key,
+    title:
+      rowIndex === 0
+        ? String(schema?.label || '').trim()
+        : schema?.repeatable
+          ? `${String(schema?.label || 'Bagian').trim()} #${rowIndex + 1}`
+          : String(schema?.label || '').trim(),
     body: '',
+    rows: resolvedRows,
   };
 }
 
@@ -147,16 +201,158 @@ function formatDateTime(value?: string | null): string {
   });
 }
 
-function normalizeSectionsFromEntry(entry: TeachingResourceEntryItem): EntrySectionDraft[] {
-  const rawSections = Array.isArray(entry.content?.sections) ? entry.content.sections : [];
+function resolveSemesterLabel(semester: unknown): string {
+  const token = String(semester || '').trim().toUpperCase();
+  if (!token) return '';
+  if (token === 'ODD' || token === 'GANJIL') return 'Ganjil';
+  if (token === 'EVEN' || token === 'GENAP') return 'Genap';
+  return token;
+}
+
+function formatLongDate(value = new Date()): string {
+  return value.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function buildAutoSheetTitle(params: {
+  programLabel: string;
+  assignment: TeacherAssignment | null;
+  academicYearName: string;
+  semesterLabel: string;
+}): string {
+  const parts = [
+    String(params.programLabel || '').trim(),
+    String(params.assignment?.subject?.name || '').trim(),
+    String(params.assignment?.class?.name || '').trim(),
+    String(params.academicYearName || '').trim(),
+    String(params.semesterLabel || '').trim(),
+  ].filter(Boolean);
+  return parts.join(' - ');
+}
+
+function hydrateSheetSections(params: {
+  sections: EntrySectionDraft[];
+  schemaMap: Map<string, TeachingResourceProgramSectionSchema>;
+  assignment: TeacherAssignment | null;
+  academicYearName: string;
+  semesterLabel: string;
+}): EntrySectionDraft[] {
+  const mapel = String(params.assignment?.subject?.name || '').trim();
+  const tingkat = normalizeClassLevel(params.assignment?.class?.level);
+  const programKeahlian = String(params.assignment?.class?.major?.name || '').trim();
+  const tahunAjaran = String(params.academicYearName || '').trim();
+  const semester = String(params.semesterLabel || '').trim();
+  const guruMapel = String(params.assignment?.teacher?.name || '').trim();
+  const tempatTanggal = `Bekasi, ${formatLongDate(new Date())}`;
+
+  const setIfBlank = (target: Record<string, string>, key: string, value: string) => {
+    if (!key || !value) return;
+    if (!String(target[key] || '').trim()) {
+      target[key] = value;
+    }
+  };
+
+  return params.sections.map((section) => {
+    const schema = params.schemaMap.get(String(section.schemaKey || '').trim());
+    if (!schema || (schema.editorType || 'TEXT') !== 'TABLE') return section;
+    const columns = Array.isArray(schema.columns) ? schema.columns : [];
+    const columnKeys = columns.map((column) => String(column.key || '').trim()).filter(Boolean);
+    const rows = (section.rows.length > 0 ? section.rows : createSection(schema, 0).rows).map((row, rowIndex) => {
+      const values = {
+        ...row.values,
+      };
+      if (columnKeys.includes('no')) setIfBlank(values, 'no', String(rowIndex + 1));
+      if (columnKeys.includes('mata_pelajaran')) setIfBlank(values, 'mata_pelajaran', mapel);
+      if (columnKeys.includes('tingkat')) setIfBlank(values, 'tingkat', tingkat);
+      if (columnKeys.includes('program_keahlian')) setIfBlank(values, 'program_keahlian', programKeahlian);
+      if (columnKeys.includes('tahun_ajaran')) setIfBlank(values, 'tahun_ajaran', tahunAjaran);
+      if (columnKeys.includes('semester')) setIfBlank(values, 'semester', semester);
+      if (columnKeys.includes('pihak_1_jabatan')) setIfBlank(values, 'pihak_1_jabatan', 'Kepala Sekolah');
+      if (columnKeys.includes('pihak_2_jabatan')) setIfBlank(values, 'pihak_2_jabatan', 'Guru Mata Pelajaran');
+      if (columnKeys.includes('pihak_2_nama')) setIfBlank(values, 'pihak_2_nama', guruMapel);
+      if (columnKeys.includes('tempat_tanggal')) setIfBlank(values, 'tempat_tanggal', tempatTanggal);
+      return {
+        ...row,
+        values,
+      };
+    });
+
+    return {
+      ...section,
+      title: section.title || String(schema.label || '').trim(),
+      rows,
+    };
+  });
+}
+
+function buildDefaultSections(schemaSections: TeachingResourceProgramSectionSchema[]): EntrySectionDraft[] {
+  const normalizedSections = ensureArray<TeachingResourceProgramSectionSchema>(schemaSections).filter(
+    (section) =>
+      !isDigitalApprovalOnlySection(String(section?.key || '').trim(), String(section?.label || '').trim()),
+  );
+  if (!normalizedSections.length) return [createSection()];
+  const generated: EntrySectionDraft[] = [];
+  normalizedSections.forEach((schema) => {
+    const isTable = schema.editorType === 'TABLE';
+    if (isTable) {
+      generated.push(createSection(schema, 0));
+      return;
+    }
+    const sectionCount = schema.repeatable ? Math.max(1, Number(schema.defaultRows || 1)) : 1;
+    for (let idx = 0; idx < sectionCount; idx += 1) {
+      generated.push(createSection(schema, idx));
+    }
+  });
+  return generated.length ? generated : [createSection()];
+}
+
+function normalizeSectionsFromEntry(
+  entry: TeachingResourceEntryItem,
+  defaultSections: EntrySectionDraft[],
+): EntrySectionDraft[] {
+  const rawSections = ensureArray<{
+    schemaKey?: unknown;
+    title?: unknown;
+    body?: unknown;
+    rows?: unknown;
+  }>(entry.content?.sections);
   const parsed = rawSections
-    .map((item, index) => ({
-      id: `section-${entry.id}-${index + 1}`,
-      title: String(item?.title || '').trim(),
-      body: String(item?.body || '').trim(),
-    }))
-    .filter((item) => item.title || item.body);
-  return parsed.length > 0 ? parsed : [createSection()];
+    .map((item, index) => {
+      const rows = Array.isArray(item?.rows)
+        ? item.rows
+            .map((rawRow, rowIndex) => {
+              if (!rawRow || typeof rawRow !== 'object') return null;
+              const values = Object.entries(rawRow as Record<string, unknown>).reduce<Record<string, string>>(
+                (acc, [key, value]) => {
+                  const normalizedKey = String(key || '').trim();
+                  if (!normalizedKey) return acc;
+                  acc[normalizedKey] = String(value ?? '').trim();
+                  return acc;
+                },
+                {},
+              );
+              if (!Object.keys(values).length) return null;
+              return {
+                id: `row-${entry.id}-${index + 1}-${rowIndex + 1}`,
+                values,
+              };
+            })
+            .filter((row): row is NonNullable<typeof row> => Boolean(row))
+        : [];
+      return {
+        id: `section-${entry.id}-${index + 1}`,
+        schemaKey: String(item?.schemaKey || '').trim() || undefined,
+        title: String(item?.title || '').trim(),
+        body: String(item?.body || '').trim(),
+        rows,
+      };
+    })
+    .filter((item) => !isDigitalApprovalOnlySection(item.schemaKey, item.title))
+    .filter((item) => item.title || item.body || item.rows.length > 0);
+  return parsed.length > 0 ? parsed : defaultSections;
 }
 
 export function TeacherLearningResourceProgramScreen({
@@ -184,7 +380,7 @@ export function TeacherLearningResourceProgramScreen({
   const [entrySummary, setEntrySummary] = useState('');
   const [entryNotes, setEntryNotes] = useState('');
   const [entryTags, setEntryTags] = useState('');
-  const [sections, setSections] = useState<EntrySectionDraft[]>([createSection()]);
+  const [sections, setSections] = useState<EntrySectionDraft[]>(() => [createSection()]);
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-learning-program-active-year', normalizedProgramCode],
@@ -203,7 +399,10 @@ export function TeacherLearningResourceProgramScreen({
     user,
   });
 
-  const assignments = useMemo(() => assignmentsQuery.data?.assignments ?? [], [assignmentsQuery.data?.assignments]);
+  const assignments = useMemo(
+    () => ensureArray<TeacherAssignment>(assignmentsQuery.data?.assignments),
+    [assignmentsQuery.data?.assignments],
+  );
   const relevantAssignments = useMemo(() => {
     if (!activeYearQuery.data?.id) return assignments;
     return assignments.filter((item) => Number(item.academicYear.id) === Number(activeYearQuery.data?.id));
@@ -219,6 +418,11 @@ export function TeacherLearningResourceProgramScreen({
   }, [relevantAssignments, selectedAssignmentId]);
 
   const selectedAssignment = relevantAssignments.find((item) => item.id === selectedAssignmentId) || null;
+  const academicYearName = useMemo(() => String(activeYearQuery.data?.name || '').trim(), [activeYearQuery.data?.name]);
+  const activeSemesterLabel = useMemo(
+    () => resolveSemesterLabel(activeYearQuery.data?.semester),
+    [activeYearQuery.data?.semester],
+  );
 
   const programsQuery = useQuery({
     queryKey: ['mobile-learning-program-config', activeYearQuery.data?.id],
@@ -233,10 +437,8 @@ export function TeacherLearningResourceProgramScreen({
   });
 
   const activeProgram = useMemo(() => {
-    const programs = programsQuery.data?.programs || [];
-    return (
-      programs.find((item) => normalizeProgramCode(item.code) === normalizedProgramCode) || null
-    );
+    const programs = ensureArray<TeachingResourceProgramItem>(programsQuery.data?.programs);
+    return programs.find((item) => normalizeProgramCode(item.code) === normalizedProgramCode) || null;
   }, [normalizedProgramCode, programsQuery.data?.programs]);
 
   const effectiveTitle = useMemo(() => {
@@ -248,6 +450,31 @@ export function TeacherLearningResourceProgramScreen({
     const value = String(activeProgram?.description || '').trim();
     return value || fallbackDescription;
   }, [activeProgram?.description, fallbackDescription]);
+
+  const activeProgramSchemaSections = useMemo(
+    () =>
+      ensureArray<TeachingResourceProgramSectionSchema>(activeProgram?.schema?.sections).filter(
+        (section) =>
+          !isDigitalApprovalOnlySection(String(section?.key || '').trim(), String(section?.label || '').trim()),
+      ),
+    [activeProgram?.schema?.sections],
+  );
+  const usesSheetTemplate = useMemo(
+    () => Boolean(String(activeProgram?.schema?.sourceSheet || '').trim()),
+    [activeProgram?.schema?.sourceSheet],
+  );
+  const canAddSection = useMemo(() => {
+    if (!activeProgramSchemaSections.length) return true;
+    return activeProgramSchemaSections.some((section) => section.repeatable);
+  }, [activeProgramSchemaSections]);
+
+  const activeProgramSchemaMap = useMemo(() => {
+    const map = new Map<string, TeachingResourceProgramSectionSchema>();
+    activeProgramSchemaSections.forEach((section) => {
+      map.set(String(section.key || '').trim(), section);
+    });
+    return map;
+  }, [activeProgramSchemaSections]);
 
   const entriesQuery = useQuery({
     queryKey: [
@@ -272,7 +499,7 @@ export function TeacherLearningResourceProgramScreen({
     staleTime: 10 * 1000,
   });
 
-  const rows = entriesQuery.data?.rows || [];
+  const rows = ensureArray<TeachingResourceEntryItem>(entriesQuery.data?.rows);
   const total = Number(entriesQuery.data?.total || 0);
   const totalPages = Math.max(1, Number(entriesQuery.data?.totalPages || 1));
 
@@ -289,16 +516,42 @@ export function TeacherLearningResourceProgramScreen({
     setEntrySummary('');
     setEntryNotes('');
     setEntryTags('');
-    setSections([createSection()]);
+    setSections(buildDefaultSections(activeProgramSchemaSections));
   };
 
   const openCreateEditor = () => {
+    const defaultAssignmentId = usesSheetTemplate
+      ? selectedAssignmentId || relevantAssignments[0]?.id || null
+      : selectedAssignmentId;
+    const assignment =
+      relevantAssignments.find((item) => item.id === defaultAssignmentId) || null;
+    const generatedSections = buildDefaultSections(activeProgramSchemaSections);
+    const hydratedSections = usesSheetTemplate
+      ? hydrateSheetSections({
+          sections: generatedSections,
+          schemaMap: activeProgramSchemaMap,
+          assignment,
+          academicYearName,
+          semesterLabel: activeSemesterLabel,
+        })
+      : generatedSections;
+
     setEditingEntry(null);
-    setEntryTitle('');
+    setEntryTitle(
+      usesSheetTemplate
+        ? buildAutoSheetTitle({
+            programLabel: effectiveTitle,
+            assignment,
+            academicYearName,
+            semesterLabel: activeSemesterLabel,
+          })
+        : '',
+    );
     setEntrySummary('');
     setEntryNotes('');
     setEntryTags('');
-    setSections([createSection()]);
+    setSelectedAssignmentId(defaultAssignmentId);
+    setSections(hydratedSections);
     setIsEditorOpen(true);
   };
 
@@ -316,12 +569,27 @@ export function TeacherLearningResourceProgramScreen({
     setEntrySummary(String(entry.summary || ''));
     setEntryNotes(String(entry.content?.notes || ''));
     setEntryTags((entry.tags || []).join(', '));
-    setSections(normalizeSectionsFromEntry(entry));
+    setSections(normalizeSectionsFromEntry(entry, buildDefaultSections(activeProgramSchemaSections)));
     if (matchedAssignment) {
       setSelectedAssignmentId(matchedAssignment.id);
     }
     setIsEditorOpen(true);
   };
+
+  useEffect(() => {
+    if (!isEditorOpen) return;
+    if (editingEntry) return;
+    setSections((prev) => {
+      const hasMeaningfulContent = prev.some(
+        (section) =>
+          section.title.trim() ||
+          section.body.trim() ||
+          section.rows.some((row) => Object.values(row.values).some((value) => String(value || '').trim())),
+      );
+      if (hasMeaningfulContent) return prev;
+      return buildDefaultSections(activeProgramSchemaSections);
+    });
+  }, [activeProgramSchemaSections, editingEntry, isEditorOpen]);
 
   const mutateSuccess = async (message: string) => {
     await queryClient.invalidateQueries({ queryKey: ['mobile-learning-resource-entries'] });
@@ -335,11 +603,26 @@ export function TeacherLearningResourceProgramScreen({
       if (!entryTitle.trim()) throw new Error('Judul wajib diisi.');
 
       const normalizedSections = sections
-        .map((item) => ({
-          title: String(item.title || '').trim(),
-          body: String(item.body || '').trim(),
-        }))
-        .filter((item) => item.title || item.body);
+        .map((item) => {
+          const rows = item.rows
+            .map((row) => {
+              const values = Object.entries(row.values || {}).reduce<Record<string, string>>((acc, [key, value]) => {
+                const normalizedKey = String(key || '').trim();
+                if (!normalizedKey) return acc;
+                acc[normalizedKey] = String(value ?? '').trim();
+                return acc;
+              }, {});
+              return Object.values(values).some((value) => value) ? values : null;
+            })
+            .filter((row): row is Record<string, string> => Boolean(row));
+          return {
+            schemaKey: String(item.schemaKey || '').trim() || undefined,
+            title: String(item.title || '').trim(),
+            body: String(item.body || '').trim(),
+            rows,
+          };
+        })
+        .filter((item) => item.title || item.body || item.rows.length > 0);
 
       if (!normalizedSections.length) {
         throw new Error('Minimal 1 bagian isi dokumen wajib diisi.');
@@ -360,6 +643,8 @@ export function TeacherLearningResourceProgramScreen({
         content: {
           sections: normalizedSections,
           notes: entryNotes.trim() || undefined,
+          schemaVersion: Number(activeProgram?.schema?.version || 1),
+          schemaSourceSheet: String(activeProgram?.schema?.sourceSheet || '').trim() || undefined,
         },
       });
     },
@@ -378,11 +663,26 @@ export function TeacherLearningResourceProgramScreen({
       if (!entryTitle.trim()) throw new Error('Judul wajib diisi.');
 
       const normalizedSections = sections
-        .map((item) => ({
-          title: String(item.title || '').trim(),
-          body: String(item.body || '').trim(),
-        }))
-        .filter((item) => item.title || item.body);
+        .map((item) => {
+          const rows = item.rows
+            .map((row) => {
+              const values = Object.entries(row.values || {}).reduce<Record<string, string>>((acc, [key, value]) => {
+                const normalizedKey = String(key || '').trim();
+                if (!normalizedKey) return acc;
+                acc[normalizedKey] = String(value ?? '').trim();
+                return acc;
+              }, {});
+              return Object.values(values).some((value) => value) ? values : null;
+            })
+            .filter((row): row is Record<string, string> => Boolean(row));
+          return {
+            schemaKey: String(item.schemaKey || '').trim() || undefined,
+            title: String(item.title || '').trim(),
+            body: String(item.body || '').trim(),
+            rows,
+          };
+        })
+        .filter((item) => item.title || item.body || item.rows.length > 0);
 
       if (!normalizedSections.length) {
         throw new Error('Minimal 1 bagian isi dokumen wajib diisi.');
@@ -401,6 +701,8 @@ export function TeacherLearningResourceProgramScreen({
         content: {
           sections: normalizedSections,
           notes: entryNotes.trim() || undefined,
+          schemaVersion: Number(activeProgram?.schema?.version || 1),
+          schemaSourceSheet: String(activeProgram?.schema?.sourceSheet || '').trim() || undefined,
         },
       });
     },
@@ -441,12 +743,128 @@ export function TeacherLearningResourceProgramScreen({
     void createMutation.mutateAsync();
   };
 
+  const resolveSectionSchema = (section: EntrySectionDraft): TeachingResourceProgramSectionSchema | undefined =>
+    activeProgramSchemaMap.get(String(section.schemaKey || '').trim());
+
+  const isTableSection = (section: EntrySectionDraft): boolean =>
+    (resolveSectionSchema(section)?.editorType || 'TEXT') === 'TABLE';
+
+  const getMinimumRowCount = (section: EntrySectionDraft): number => {
+    const schema = resolveSectionSchema(section);
+    if (!schema) return 1;
+    const defaultRows = Math.max(1, Number(schema.defaultRows || 1));
+    const prefillRows = Array.isArray(schema.prefillRows) ? schema.prefillRows.length : 0;
+    return Math.max(defaultRows, prefillRows, 1);
+  };
+
+  const canAddRowForSection = (section: EntrySectionDraft): boolean => {
+    const schema = resolveSectionSchema(section);
+    if (!schema) return true;
+    const defaultRows = Math.max(1, Number(schema.defaultRows || 1));
+    const prefillRows = Array.isArray(schema.prefillRows) ? schema.prefillRows.length : 0;
+    const minimumRows = Math.max(defaultRows, prefillRows, 1);
+    if (minimumRows <= 1 && !schema.repeatable) return false;
+    return true;
+  };
+
+  const isSingleRowSheetForm = (section: EntrySectionDraft): boolean => {
+    if (!usesSheetTemplate || !isTableSection(section)) return false;
+    const schema = resolveSectionSchema(section);
+    if (!schema) return false;
+    const columns = Array.isArray(schema.columns) ? schema.columns : [];
+    if (columns.length === 0 || columns.length > 8) return false;
+    return getMinimumRowCount(section) <= 1 && section.rows.length <= 1;
+  };
+
+  const canEditSectionTitle = (section: EntrySectionDraft): boolean => {
+    const schema = resolveSectionSchema(section);
+    if (!schema) return true;
+    if ((schema.editorType || 'TEXT') !== 'TABLE') return true;
+    return schema.sectionTitleEditable === true;
+  };
+
+  const canDeleteSection = (section: EntrySectionDraft): boolean => {
+    if (sections.length <= 1) return false;
+    const schema = resolveSectionSchema(section);
+    if (!schema) return true;
+    return schema.repeatable;
+  };
+
   const addSection = () => {
-    setSections((prev) => [...prev, createSection()]);
+    setSections((prev) => {
+      const repeatableSection = activeProgramSchemaSections.find((section) => section.repeatable) || null;
+      if (repeatableSection) {
+        const repeatableCount = prev.filter(
+          (item) => String(item.schemaKey || '').trim() === String(repeatableSection.key || '').trim(),
+        ).length;
+        return [...prev, createSection(repeatableSection, repeatableCount)];
+      }
+      if (activeProgramSchemaSections.length > 0) return prev;
+      return [...prev, createSection(undefined, prev.length)];
+    });
   };
 
   const updateSection = (id: string, field: 'title' | 'body', value: string) => {
     setSections((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
+  };
+
+  const addSectionRow = (sectionId: string) => {
+    setSections((prev) =>
+      prev.map((item) => {
+        if (item.id !== sectionId) return item;
+        if (!canAddRowForSection(item)) return item;
+        const schema = resolveSectionSchema(item);
+        const columns = Array.isArray(schema?.columns) ? schema.columns : [];
+        const nextRow = {
+          id: `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          values: columns.reduce<Record<string, string>>((acc, column) => {
+            const key = String(column.key || '').trim();
+            if (!key) return acc;
+            acc[key] = '';
+            return acc;
+          }, {}),
+        };
+        return {
+          ...item,
+          rows: [...item.rows, nextRow],
+        };
+      }),
+    );
+  };
+
+  const updateSectionRow = (sectionId: string, rowId: string, columnKey: string, value: string) => {
+    setSections((prev) =>
+      prev.map((item) => {
+        if (item.id !== sectionId) return item;
+        return {
+          ...item,
+          rows: item.rows.map((row) =>
+            row.id === rowId
+              ? {
+                  ...row,
+                  values: {
+                    ...row.values,
+                    [columnKey]: value,
+                  },
+                }
+              : row,
+          ),
+        };
+      }),
+    );
+  };
+
+  const removeSectionRow = (sectionId: string, rowId: string) => {
+    setSections((prev) =>
+      prev.map((item) => {
+        if (item.id !== sectionId) return item;
+        if (item.rows.length <= getMinimumRowCount(item)) return item;
+        return {
+          ...item,
+          rows: item.rows.filter((row) => row.id !== rowId),
+        };
+      }),
+    );
   };
 
   const removeSection = (id: string) => {
@@ -457,6 +875,29 @@ export function TeacherLearningResourceProgramScreen({
       }
       return prev.filter((item) => item.id !== id);
     });
+  };
+
+  const onSelectAssignment = (assignmentId: number) => {
+    setSelectedAssignmentId(assignmentId);
+    if (!isEditorOpen || Boolean(editingEntry) || !usesSheetTemplate) return;
+    const nextAssignment = relevantAssignments.find((item) => item.id === assignmentId) || null;
+    setEntryTitle(
+      buildAutoSheetTitle({
+        programLabel: effectiveTitle,
+        assignment: nextAssignment,
+        academicYearName,
+        semesterLabel: activeSemesterLabel,
+      }),
+    );
+    setSections((prev) =>
+      hydrateSheetSections({
+        sections: prev,
+        schemaMap: activeProgramSchemaMap,
+        assignment: nextAssignment,
+        academicYearName,
+        semesterLabel: activeSemesterLabel,
+      }),
+    );
   };
 
   const onDeleteEntry = (entry: TeachingResourceEntryItem) => {
@@ -597,7 +1038,7 @@ export function TeacherLearningResourceProgramScreen({
                   return (
                     <Pressable
                       key={assignment.id}
-                      onPress={() => setSelectedAssignmentId(assignment.id)}
+                      onPress={() => onSelectAssignment(assignment.id)}
                       style={{
                         borderWidth: 1,
                         borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',
@@ -943,7 +1384,7 @@ export function TeacherLearningResourceProgramScreen({
               <TextInput
                 value={entryTitle}
                 onChangeText={setEntryTitle}
-                placeholder="Contoh: ATP Semester Genap XII"
+                placeholder={String(activeProgram?.schema?.titleHint || 'Contoh: ATP Semester Genap XII')}
                 placeholderTextColor="#94a3b8"
                 style={INPUT_BASE_STYLE}
               />
@@ -952,34 +1393,39 @@ export function TeacherLearningResourceProgramScreen({
               <TextInput
                 value={entrySummary}
                 onChangeText={setEntrySummary}
-                placeholder="Ringkasan dokumen"
+                placeholder={String(activeProgram?.schema?.summaryHint || 'Ringkasan dokumen')}
                 placeholderTextColor="#94a3b8"
                 style={INPUT_BASE_STYLE}
               />
 
-              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 10 }}>Tag (pisahkan koma)</Text>
-              <TextInput
-                value={entryTags}
-                onChangeText={setEntryTags}
-                placeholder="cp, semester genap, fase f"
-                placeholderTextColor="#94a3b8"
-                style={INPUT_BASE_STYLE}
-              />
+              {!usesSheetTemplate ? (
+                <>
+                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 10 }}>
+                    Tag (pisahkan koma)
+                  </Text>
+                  <TextInput
+                    value={entryTags}
+                    onChangeText={setEntryTags}
+                    placeholder="cp, semester genap, fase f"
+                    placeholderTextColor="#94a3b8"
+                    style={INPUT_BASE_STYLE}
+                  />
 
-              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 10 }}>Catatan</Text>
-              <TextInput
-                value={entryNotes}
-                onChangeText={setEntryNotes}
-                placeholder="Catatan tambahan untuk reviewer"
-                placeholderTextColor="#94a3b8"
-                multiline
-                textAlignVertical="top"
-                style={[INPUT_BASE_STYLE, { minHeight: 72 }]}
-              />
+                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 10 }}>Catatan</Text>
+                  <TextInput
+                    value={entryNotes}
+                    onChangeText={setEntryNotes}
+                    placeholder="Catatan tambahan untuk reviewer"
+                    placeholderTextColor="#94a3b8"
+                    multiline
+                    textAlignVertical="top"
+                    style={[INPUT_BASE_STYLE, { minHeight: 72 }]}
+                  />
+                </>
+              ) : null}
 
               <View style={{ marginTop: 10 }}>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Isi Dokumen</Text>
-
                 {sections.map((section, index) => (
                   <View
                     key={section.id}
@@ -993,47 +1439,185 @@ export function TeacherLearningResourceProgramScreen({
                     }}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Bagian {index + 1}</Text>
-                      <Pressable onPress={() => removeSection(section.id)} hitSlop={8}>
-                        <Feather name="trash-2" size={15} color="#b91c1c" />
-                      </Pressable>
+                      <View style={{ flexShrink: 1, paddingRight: 8 }}>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                          {usesSheetTemplate
+                            ? resolveSectionSchema(section)?.label || section.title || `Bagian ${index + 1}`
+                            : `Bagian ${index + 1}`}
+                        </Text>
+                        {resolveSectionSchema(section)?.description ? (
+                          <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+                            {resolveSectionSchema(section)?.description}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {canDeleteSection(section) ? (
+                        <Pressable onPress={() => removeSection(section.id)} hitSlop={8}>
+                          <Feather name="trash-2" size={15} color="#b91c1c" />
+                        </Pressable>
+                      ) : null}
                     </View>
 
-                    <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 8 }}>Judul Bagian</Text>
-                    <TextInput
-                      value={section.title}
-                      onChangeText={(value) => updateSection(section.id, 'title', value)}
-                      placeholder="Judul bagian"
-                      placeholderTextColor="#94a3b8"
-                      style={INPUT_BASE_STYLE}
-                    />
+                    {canEditSectionTitle(section) ? (
+                      <>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 8 }}>Judul Bagian</Text>
+                        <TextInput
+                          value={section.title}
+                          onChangeText={(value) => updateSection(section.id, 'title', value)}
+                          placeholder={resolveSectionSchema(section)?.titlePlaceholder || 'Judul bagian'}
+                          placeholderTextColor="#94a3b8"
+                          style={INPUT_BASE_STYLE}
+                        />
+                      </>
+                    ) : (
+                      <View
+                        style={{
+                          marginTop: 8,
+                          borderWidth: 1,
+                          borderColor: '#e2e8f0',
+                          borderRadius: 10,
+                          backgroundColor: '#f8fafc',
+                          paddingHorizontal: 10,
+                          paddingVertical: 8,
+                        }}
+                      >
+                        <Text style={{ color: '#334155', fontWeight: '600' }}>
+                          {section.title || resolveSectionSchema(section)?.label || `Bagian ${index + 1}`}
+                        </Text>
+                      </View>
+                    )}
 
-                    <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 8 }}>Isi</Text>
-                    <TextInput
-                      value={section.body}
-                      onChangeText={(value) => updateSection(section.id, 'body', value)}
-                      placeholder="Isi konten bagian"
-                      placeholderTextColor="#94a3b8"
-                      multiline
-                      textAlignVertical="top"
-                      style={[INPUT_BASE_STYLE, { minHeight: 92 }]}
-                    />
+                    {isTableSection(section) ? (
+                      isSingleRowSheetForm(section) ? (
+                        <View
+                          style={{
+                            marginTop: 8,
+                            borderWidth: 1,
+                            borderColor: '#e2e8f0',
+                            borderRadius: 10,
+                            backgroundColor: '#fff',
+                            padding: 9,
+                          }}
+                        >
+                          {(resolveSectionSchema(section)?.columns || []).map((column) => (
+                            <View key={`${section.id}-single-${column.key}`} style={{ marginTop: 8 }}>
+                              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>{column.label}</Text>
+                              <TextInput
+                                value={String(section.rows[0]?.values?.[column.key] || '')}
+                                onChangeText={(value) =>
+                                  updateSectionRow(
+                                    section.id,
+                                    String(section.rows[0]?.id || ''),
+                                    column.key,
+                                    value,
+                                  )
+                                }
+                                placeholder={column.placeholder || ''}
+                                placeholderTextColor="#94a3b8"
+                                multiline={Boolean(column.multiline)}
+                                textAlignVertical={column.multiline ? 'top' : 'center'}
+                                style={[INPUT_BASE_STYLE, column.multiline ? { minHeight: 74 } : null]}
+                              />
+                            </View>
+                          ))}
+                        </View>
+                      ) : (
+                        <View style={{ marginTop: 8 }}>
+                          {section.rows.map((row, rowIndex) => (
+                            <View
+                              key={row.id}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#e2e8f0',
+                                borderRadius: 10,
+                                backgroundColor: '#fff',
+                                padding: 9,
+                                marginBottom: 7,
+                              }}
+                            >
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>Baris {rowIndex + 1}</Text>
+                                <Pressable
+                                  onPress={() => removeSectionRow(section.id, row.id)}
+                                  disabled={section.rows.length <= getMinimumRowCount(section)}
+                                  style={{
+                                    opacity: section.rows.length <= getMinimumRowCount(section) ? 0.45 : 1,
+                                    borderWidth: 1,
+                                    borderColor: '#fecaca',
+                                    backgroundColor: '#fef2f2',
+                                    borderRadius: 8,
+                                    paddingHorizontal: 8,
+                                    paddingVertical: 4,
+                                  }}
+                                >
+                                  <Text style={{ color: '#b91c1c', fontSize: 11, fontWeight: '700' }}>Hapus</Text>
+                                </Pressable>
+                              </View>
+                              {(resolveSectionSchema(section)?.columns || []).map((column) => (
+                                <View key={`${row.id}-${column.key}`} style={{ marginTop: 8 }}>
+                                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>{column.label}</Text>
+                                  <TextInput
+                                    value={String(row.values[column.key] || '')}
+                                    onChangeText={(value) => updateSectionRow(section.id, row.id, column.key, value)}
+                                    placeholder={column.placeholder || ''}
+                                    placeholderTextColor="#94a3b8"
+                                    multiline={Boolean(column.multiline)}
+                                    textAlignVertical={column.multiline ? 'top' : 'center'}
+                                    style={[INPUT_BASE_STYLE, column.multiline ? { minHeight: 74 } : null]}
+                                  />
+                                </View>
+                              ))}
+                            </View>
+                          ))}
+                          {canAddRowForSection(section) ? (
+                            <Pressable
+                              onPress={() => addSectionRow(section.id)}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#c7d8f6',
+                                backgroundColor: '#eef4ff',
+                                borderRadius: 10,
+                                paddingVertical: 9,
+                                alignItems: 'center',
+                              }}
+                            >
+                              <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Tambah Baris</Text>
+                            </Pressable>
+                          ) : null}
+                        </View>
+                      )
+                    ) : (
+                      <>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 8 }}>Isi</Text>
+                        <TextInput
+                          value={section.body}
+                          onChangeText={(value) => updateSection(section.id, 'body', value)}
+                          placeholder={resolveSectionSchema(section)?.bodyPlaceholder || 'Isi konten bagian'}
+                          placeholderTextColor="#94a3b8"
+                          multiline
+                          textAlignVertical="top"
+                          style={[INPUT_BASE_STYLE, { minHeight: 92 }]}
+                        />
+                      </>
+                    )}
                   </View>
                 ))}
 
-                <Pressable
-                  onPress={addSection}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#c7d8f6',
-                    backgroundColor: '#eef4ff',
-                    borderRadius: 10,
-                    paddingVertical: 9,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Tambah Bagian</Text>
-                </Pressable>
+                {canAddSection ? (
+                  <Pressable
+                    onPress={addSection}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#c7d8f6',
+                      backgroundColor: '#eef4ff',
+                      borderRadius: 10,
+                      paddingVertical: 9,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Tambah Bagian</Text>
+                  </Pressable>
+                ) : null}
               </View>
 
               <View style={{ height: 8 }} />

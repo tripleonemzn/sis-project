@@ -28,6 +28,7 @@ import {
   FileQuestion,
   Timer,
   BarChart3,
+  Calculator,
   Briefcase,
   User as UserIcon,
   AlertCircle,
@@ -39,6 +40,8 @@ import {
   Server,
   Mail,
   Activity,
+  ShieldAlert,
+  Vote,
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
@@ -52,6 +55,16 @@ import {
   normalizeExamProgramCode,
   type ExamProgram,
 } from '../../services/exam.service';
+import {
+  teachingResourceProgramService,
+  teachingResourceProgramCodeToSlug,
+  normalizeTeachingResourceProgramCode,
+  type TeachingResourceProgram,
+} from '../../services/teachingResourceProgram.service';
+import { inventoryService, type Room } from '../../services/inventory.service';
+import { tutorService } from '../../services/tutor.service';
+import { osisService } from '../../services/osis.service';
+import { resolveStaffDivision } from '../../utils/staffRole';
 
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
@@ -60,6 +73,7 @@ interface SidebarProps {
     id: number;
     name: string;
     role: string;
+    ptkType?: string | null;
     photo?: string | null;
     updatedAt?: string | Date;
     studentStatus?: 'ACTIVE' | 'GRADUATED' | 'MOVED' | 'DROPPED_OUT';
@@ -68,6 +82,11 @@ interface SidebarProps {
     additionalDuties?: string[] | null;
     managedMajor?: { id: number; name: string; code: string } | null;
     managedMajors?: { id: number; name: string; code: string }[] | null;
+    managedInventoryRooms?: {
+      id: number;
+      name: string;
+      managerUserId?: number | null;
+    }[] | null;
     studentClass?: { id: number; name: string; presidentId?: number | null } | null;
     preferences?: Record<string, unknown> | null;
   };
@@ -81,12 +100,71 @@ export type MenuItem = {
   children?: MenuItem[];
 };
 
-const ROOT_MENU_PATHS = ['/admin', '/teacher', '/student', '/principal', '/staff', '/parent', '/tutor', '/examiner'] as const;
+const ROOT_MENU_PATHS = ['/admin', '/teacher', '/student', '/principal', '/staff', '/parent', '/candidate', '/public', '/tutor', '/examiner'] as const;
 
 function sortExamPrograms(programs: ExamProgram[]): ExamProgram[] {
   return [...programs]
     .filter((program) => Boolean(program?.isActive))
     .sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || String(a.label || '').localeCompare(String(b.label || '')));
+}
+
+function sortTeachingResourcePrograms(programs: TeachingResourceProgram[]): TeachingResourceProgram[] {
+  return [...programs]
+    .filter((program) => Boolean(program?.isActive))
+    .sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || String(a.label || '').localeCompare(String(b.label || '')));
+}
+
+function getTeachingResourceProgramIcon(programCode: string): React.ElementType {
+  const normalized = normalizeTeachingResourceProgramCode(programCode);
+  if (normalized === 'CP') return Target;
+  if (normalized === 'ATP') return GitBranch;
+  if (normalized === 'PROTA') return CalendarRange;
+  if (normalized === 'PROMES') return Calendar;
+  if (normalized === 'ALOKASI_WAKTU') return Timer;
+  if (normalized === 'MODUL_AJAR') return BookOpen;
+  if (normalized === 'KKTP') return Check;
+  if (normalized === 'MATRIKS_SEBARAN') return Layers;
+  return BookOpen;
+}
+
+function normalizeGradeComponentCode(raw: unknown): string {
+  return String(raw || '').trim().toUpperCase();
+}
+
+function normalizeDutyCode(raw: unknown): string {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+}
+
+function isOsisLabel(raw: unknown): boolean {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .includes('OSIS');
+}
+
+function isMidtermComponent(code: string): boolean {
+  if (!code) return false;
+  if (['MIDTERM', 'SBTS', 'PTS', 'UTS'].includes(code)) return true;
+  return code.includes('MIDTERM');
+}
+
+function isFinalComponent(code: string): boolean {
+  if (!code) return false;
+  if (['FINAL', 'SAS', 'SAT', 'PAS', 'PAT', 'PSAS', 'PSAT', 'FINAL_EVEN', 'FINAL_ODD'].includes(code)) {
+    return true;
+  }
+  return code.includes('FINAL');
+}
+
+function isHomeroomReportProgram(program: ExamProgram): boolean {
+  const componentType = normalizeGradeComponentCode(
+    program?.gradeComponentTypeCode || program?.gradeComponentType,
+  );
+  const baseType = normalizeGradeComponentCode(program?.baseTypeCode || program?.baseType);
+  return isMidtermComponent(componentType) || isFinalComponent(componentType) || isMidtermComponent(baseType) || isFinalComponent(baseType);
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -95,6 +173,10 @@ export const getMenuItems = (
   hasPendingDefense: boolean = false,
   pklEligibleGrades?: string | null,
   examPrograms?: ExamProgram[],
+  teachingResourcePrograms?: TeachingResourceProgram[],
+  assignedInventoryRooms?: Room[],
+  _hasOsisTutorAssignment: boolean = false,
+  hasActiveOsisElection: boolean = false,
 ): MenuItem[] => {
   const role = user.role;
 
@@ -132,6 +214,16 @@ export const getMenuItems = (
           { label: 'Verifikasi Akun', path: '/admin/user-verification', icon: UserCheck },
           { label: 'Assignment Guru', path: '/admin/teacher-assignments', icon: ClipboardList },
           { label: 'Export/Import', path: '/admin/import-export', icon: Download },
+        ]
+      },
+      {
+        label: 'PPDB & BKK',
+        path: '/admin/ppdb-bkk',
+        icon: Briefcase,
+        children: [
+          { label: 'PPDB Calon Siswa', path: '/admin/candidate-admissions', icon: FileText },
+          { label: 'Kelola Pelamar BKK', path: '/admin/bkk-users', icon: Briefcase },
+          { label: 'Lamaran BKK', path: '/admin/bkk-applications', icon: ClipboardList },
         ]
       },
       {
@@ -181,6 +273,29 @@ export const getMenuItems = (
     const teacherExamPrograms = sortExamPrograms(
       (examPrograms ?? []).filter((program) => program.showOnTeacherMenu),
     );
+    const teacherLearningPrograms = sortTeachingResourcePrograms(
+      (teachingResourcePrograms ?? []).filter((program) => program.showOnTeacherMenu),
+    );
+    const dynamicLearningPrograms: MenuItem[] = teacherLearningPrograms.map((program) => ({
+      label: String(program.label || program.code),
+      path: `/teacher/learning-resources/${teachingResourceProgramCodeToSlug(program.code)}`,
+      icon: getTeachingResourceProgramIcon(program.code),
+    }));
+    const teacherAssignedInventoryChildren: MenuItem[] =
+      assignedInventoryRooms?.map((room) => ({
+        label: room.name,
+        path: `/teacher/assigned-inventory/${room.id}`,
+        icon: Database,
+      })) || [];
+    const assignedInventoryMenu: MenuItem | null =
+      (assignedInventoryRooms?.length || 0) > 0
+        ? {
+            label: 'INVENTARIS TUGAS',
+            path: '/teacher/assigned-inventory',
+            icon: Database,
+            children: teacherAssignedInventoryChildren,
+          }
+        : null;
 
     const items: MenuItem[] = [
       { label: 'Dashboard', path: '/teacher', icon: LayoutDashboard },
@@ -198,19 +313,16 @@ export const getMenuItems = (
           { label: 'Rapor Mapel', path: '/teacher/report-subjects', icon: FileBarChart },
         ]
       },
-      {
-        label: 'PERANGKAT AJAR',
-        path: '/teacher/learning-resources',
-        icon: BookOpen,
-        children: [
-          { label: 'Capaian Pembelajaran (CP)', path: '/teacher/learning-resources/cp', icon: Target },
-          { label: 'Alur Tujuan Pembelajaran (ATP)', path: '/teacher/learning-resources/atp', icon: GitBranch },
-          { label: 'Program Tahunan', path: '/teacher/learning-resources/prota', icon: CalendarRange },
-          { label: 'Program Semester', path: '/teacher/learning-resources/promes', icon: Calendar },
-          { label: 'Modul Ajar', path: '/teacher/learning-resources/modules', icon: BookOpen },
-          { label: 'Kriteria Ketercapaian Tujuan Pembelajaran (KKTP)', path: '/teacher/learning-resources/kktp', icon: Check },
-        ]
-      },
+      ...(dynamicLearningPrograms.length > 0
+        ? [
+            {
+              label: 'PERANGKAT AJAR',
+              path: '/teacher/learning-resources',
+              icon: BookOpen,
+              children: dynamicLearningPrograms,
+            } as MenuItem,
+          ]
+        : []),
       {
         label: 'UJIAN',
         path: '/teacher/exams-group',
@@ -230,6 +342,24 @@ export const getMenuItems = (
 
     // Menu Khusus Wali Kelas
     if (isWaliKelas) {
+      const homeroomReportPrograms = sortExamPrograms(
+        (examPrograms ?? []).filter(
+          (program) => Boolean(program?.showOnTeacherMenu) && isHomeroomReportProgram(program),
+        ),
+      );
+      const seenProgramSlugs = new Set<string>();
+      const dynamicHomeroomReportMenus: MenuItem[] = homeroomReportPrograms.reduce<MenuItem[]>((acc, program) => {
+        const slug = examProgramCodeToSlug(program.code);
+        if (!slug || seenProgramSlugs.has(slug)) return acc;
+        seenProgramSlugs.add(slug);
+        acc.push({
+          label: String(program.label || program.shortLabel || program.code),
+          path: `/teacher/wali-kelas/rapor/program/${slug}`,
+          icon: FileBarChart,
+        });
+        return acc;
+      }, []);
+
       items.push({
         label: 'WALI KELAS',
         path: '/teacher/wali-kelas',
@@ -238,9 +368,7 @@ export const getMenuItems = (
           { label: 'Rekap Presensi', path: '/teacher/wali-kelas/attendance', icon: UserCheck },
           { label: 'Catatan Perilaku', path: '/teacher/wali-kelas/behavior', icon: AlertCircle },
           { label: 'Persetujuan Izin', path: '/teacher/wali-kelas/permissions', icon: UserCheck },
-          { label: 'Rapor SBTS', path: '/teacher/wali-kelas/rapor-sbts', icon: FileBarChart },
-          { label: 'Rapor SAS', path: '/teacher/wali-kelas/rapor-sas', icon: FileBarChart },
-          { label: 'Rapor SAT', path: '/teacher/wali-kelas/rapor-sat', icon: FileBarChart },
+          ...dynamicHomeroomReportMenus,
         ]
       });
     }
@@ -262,12 +390,13 @@ export const getMenuItems = (
     }
 
     // Menu Khusus Tugas Tambahan (Dynamic per Duty)
-    const kakomDuties = duties.filter(d => d.includes('KAPROG') || d.includes('KEPALA_KOMPETENSI'));
-    const otherDuties = duties.filter(d => !d.includes('KAPROG') && !d.includes('KEPALA_KOMPETENSI'));
+    const normalizedDuties = duties.map(normalizeDutyCode).filter(Boolean);
+    const kakomDuties = normalizedDuties.filter((duty) => duty.includes('KAPROG') || duty.includes('KEPALA_KOMPETENSI'));
+    const otherDuties = normalizedDuties.filter((duty) => !duty.includes('KAPROG') && !duty.includes('KEPALA_KOMPETENSI'));
 
     // Process Non-KAKOM Duties
-    otherDuties.forEach((rawDuty) => {
-      const duty = rawDuty.trim().toUpperCase();
+    let assignedInventoryAttachedToDuty = false;
+    otherDuties.forEach((duty) => {
       let label = duty;
       const icon = Briefcase;
       let children: MenuItem[] = [];
@@ -311,9 +440,10 @@ export const getMenuItems = (
         // Lalu menu Wakasek lainnya
         children.push(
           { label: 'Kelola Kurikulum', path: '/teacher/wakasek/curriculum', icon: Layers },
+          { label: 'Program Perangkat Ajar', path: '/teacher/wakasek/teaching-resource-programs', icon: BookOpen },
           { label: 'Kelola Ujian', path: '/teacher/wakasek/exams', icon: FileQuestion },
+          { label: 'Leger Nilai Akhir', path: '/teacher/wakasek/final-ledger', icon: Calculator },
           { label: 'Monitoring Kinerja', path: '/teacher/wakasek/performance', icon: BarChart3 },
-          { label: 'Persetujuan', path: '/teacher/wakasek/approvals', icon: UserCheck },
           { label: 'Laporan Akademik', path: '/teacher/wakasek/reports', icon: FileText },
         );
       } else if (baseRole === 'WAKASEK_KESISWAAN') {
@@ -323,6 +453,7 @@ export const getMenuItems = (
         children = [
           ...createGenericItems(duty),
           { label: 'Kelola Kesiswaan', path: '/teacher/wakasek/students', icon: GraduationCap },
+          { label: 'Pemilihan OSIS', path: '/teacher/wakasek/student-election', icon: Trophy },
           { label: 'Monitoring Kinerja', path: '/teacher/wakasek/student-performance', icon: BarChart3 },
           { label: 'Persetujuan', path: '/teacher/wakasek/student-approvals', icon: UserCheck },
           { label: 'Laporan Kesiswaan', path: '/teacher/wakasek/student-reports', icon: FileText }
@@ -347,23 +478,56 @@ export const getMenuItems = (
           { label: 'Persetujuan PKL', path: '/teacher/internship/approval', icon: Check },
           { label: 'Nilai PKL', path: '/teacher/wakasek/internship-components', icon: Percent },
           { label: 'Monitoring Jurnal', path: '/teacher/wakasek/journal-monitoring', icon: FileText },
-          { label: 'Mitra Industri', path: '/teacher/humas/partners', icon: Users },
+          { label: 'Mitra Industri', path: '/teacher/humas/partners?tab=partners', icon: Users },
+          { label: 'Lowongan BKK', path: '/teacher/humas/partners?tab=bkk', icon: Briefcase },
+          { label: 'Akun Pelamar BKK', path: '/teacher/humas/applicants', icon: UserCheck },
+          { label: 'Lamaran BKK', path: '/teacher/humas/partners?tab=applications', icon: ClipboardList },
           { label: 'Laporan', path: '/teacher/humas/reports', icon: FileText }
         ];
       } else if (duty === 'KEPALA_LAB') {
         label = 'KEPALA LAB';
         children = [
           ...createGenericItems(duty),
-          { label: 'Inventaris Lab', path: '/teacher/head-lab/inventory?filter=lab', icon: Database },
+          { label: 'Inventaris Lab', path: '/teacher/head-lab/inventory', icon: Database },
           { label: 'Jadwal Lab', path: '/teacher/head-lab/schedule', icon: Calendar },
           { label: 'Laporan Insiden', path: '/teacher/head-lab/incidents', icon: AlertCircle }
         ];
+        if (teacherAssignedInventoryChildren.length > 0) {
+          assignedInventoryAttachedToDuty = true;
+        }
       } else if (duty === 'KEPALA_PERPUSTAKAAN') {
         label = 'KEPALA PERPUSTAKAAN';
         children = [
           ...createGenericItems(duty),
-          { label: 'Kelola Perpustakaan', path: '/teacher/head-library/inventory?filter=library', icon: Database },
+          { label: 'Kelola Perpustakaan', path: '/teacher/head-library/inventory', icon: Database },
         ];
+        if (teacherAssignedInventoryChildren.length > 0) {
+          assignedInventoryAttachedToDuty = true;
+        }
+      } else if (duty === 'BP_BK') {
+        label = 'BP/BK';
+        children = [
+          ...createGenericItems(duty),
+          { label: 'Dashboard BP/BK', path: '/teacher/bk', icon: ShieldAlert },
+        ];
+      } else if (duty === 'PEMBINA_OSIS') {
+        label = 'PEMBINA OSIS';
+        children = [
+          ...createGenericItems(duty),
+          { label: 'Pemilihan OSIS', path: '/teacher/osis/election', icon: Trophy },
+          ...(hasActiveOsisElection ? [{ label: 'Pemungutan Suara', path: '/teacher/osis/vote', icon: Vote }] : []),
+        ];
+      } else if (duty === 'IT_CENTER') {
+        label = 'IT CENTER';
+        children = [
+          ...createGenericItems(duty),
+          ...(teacherAssignedInventoryChildren.length > 0
+            ? [{ label: 'Kelola Inventaris', path: '/teacher/assigned-inventory', icon: Database }]
+            : []),
+        ];
+        if (teacherAssignedInventoryChildren.length > 0) {
+          assignedInventoryAttachedToDuty = true;
+        }
       } else {
         // Fallback for other duties
         label = duty.replace(/_/g, ' ').toUpperCase();
@@ -432,6 +596,14 @@ export const getMenuItems = (
       });
     }
 
+    if (hasActiveOsisElection) {
+      items.push({
+        label: 'Pemungutan Suara OSIS',
+        path: '/teacher/osis/vote',
+        icon: Vote,
+      });
+    }
+
     items.push({
       label: 'PENGATURAN',
       path: '/teacher/general',
@@ -440,6 +612,10 @@ export const getMenuItems = (
         { label: 'Profil', path: '/teacher/profile', icon: UserIcon },
       ]
     });
+
+    if (assignedInventoryMenu && !assignedInventoryAttachedToDuty) {
+      items.push(assignedInventoryMenu);
+    }
 
     return items;
   }
@@ -461,12 +637,53 @@ export const getMenuItems = (
   }
 
   if (role === 'EXTRACURRICULAR_TUTOR') {
+    const osisAssignedRoom = (assignedInventoryRooms || []).find(
+      (room) => isOsisLabel(room.name),
+    );
+    const nonOsisAssignedInventoryRooms = (assignedInventoryRooms || []).filter(
+      (room) => !isOsisLabel(room.name) && room.id !== osisAssignedRoom?.id,
+    );
+    const tutorAssignedInventoryChildren: MenuItem[] =
+      nonOsisAssignedInventoryRooms.map((room) => ({
+        label: room.name,
+        path: `/tutor/assigned-inventory/${room.id}`,
+        icon: Database,
+      })) || [];
+    const hasTutorOsisMenu = _hasOsisTutorAssignment || Boolean(osisAssignedRoom);
+
     return [
       { label: 'Dashboard', path: '/tutor', icon: LayoutDashboard },
       { label: 'Email', path: '/email', icon: Mail },
-      { label: 'Anggota & Nilai', path: '/tutor/members', icon: Users },
-      { label: 'Program Kerja', path: '/tutor/work-programs', icon: ClipboardList },
-      { label: 'Inventaris Ekskul', path: '/tutor/inventory', icon: Database },
+      ...(hasTutorOsisMenu
+        ? [{
+            label: 'PEMBINA OSIS',
+            path: '/tutor/osis/election',
+            icon: Trophy,
+            children: [
+              { label: 'Anggota & Nilai', path: '/tutor/members?scope=osis', icon: Users },
+              { label: 'Program Kerja', path: '/tutor/work-programs?duty=PEMBINA_OSIS', icon: ClipboardList },
+              { label: 'Pemilihan OSIS', path: '/tutor/osis/election', icon: Trophy },
+              ...(hasActiveOsisElection ? [{ label: 'Pemungutan Suara', path: '/tutor/osis/vote', icon: Vote }] : []),
+              { label: 'Kelola Inventaris', path: '/tutor/inventory?scope=osis', icon: Database },
+            ],
+          } satisfies MenuItem]
+        : [
+            { label: 'Anggota & Nilai', path: '/tutor/members', icon: Users } satisfies MenuItem,
+            { label: 'Program Kerja', path: '/tutor/work-programs', icon: ClipboardList } satisfies MenuItem,
+            { label: 'Inventaris Ekskul', path: '/tutor/inventory', icon: Database } satisfies MenuItem,
+          ]
+      ),
+      ...(!hasTutorOsisMenu && hasActiveOsisElection
+        ? [{ label: 'Pemungutan Suara OSIS', path: '/tutor/osis/vote', icon: Vote } satisfies MenuItem]
+        : []),
+      ...(tutorAssignedInventoryChildren.length > 0
+        ? [{
+            label: 'INVENTARIS TUGAS',
+            path: '/tutor/assigned-inventory',
+            icon: Database,
+            children: tutorAssignedInventoryChildren,
+          } satisfies MenuItem]
+        : []),
       {
         label: 'PENGATURAN',
         path: '/tutor/general',
@@ -522,6 +739,7 @@ export const getMenuItems = (
     return [
       { label: 'Dashboard', path: '/student', icon: LayoutDashboard },
       { label: 'Ekstrakurikuler', path: '/student/extracurricular', icon: Trophy },
+      ...(hasActiveOsisElection ? [{ label: 'Pemilihan OSIS', path: '/student/osis', icon: Trophy }] : []),
       {
         label: 'AKADEMIK',
         path: '/student/academic',
@@ -585,18 +803,10 @@ export const getMenuItems = (
   }
 
   if (role === 'PRINCIPAL') {
-    return [
+    const items: MenuItem[] = [
       { label: 'Dashboard', path: '/principal', icon: LayoutDashboard },
       { label: 'Email', path: '/email', icon: Mail },
-      {
-        label: 'MONITORING',
-        path: '/principal/monitoring',
-        icon: Activity,
-        children: [
-          { label: 'Operasional Harian', path: '/principal/monitoring/operations', icon: Activity },
-          { label: 'Persetujuan Program Kerja', path: '/principal/work-program-approvals', icon: ClipboardList },
-        ],
-      },
+      { label: 'MONITORING', path: '/principal/monitoring/operations', icon: Activity },
       {
         label: 'AKADEMIK',
         path: '/principal/academic',
@@ -626,6 +836,7 @@ export const getMenuItems = (
         icon: Users,
         children: [
           { label: 'Data Siswa', path: '/principal/students', icon: GraduationCap },
+          { label: 'Pemilihan OSIS', path: '/principal/monitoring/osis', icon: Trophy },
         ],
       },
       {
@@ -637,24 +848,156 @@ export const getMenuItems = (
         ],
       },
     ];
+
+    if ((assignedInventoryRooms?.length || 0) > 0) {
+      items.push({
+        label: 'INVENTARIS TUGAS',
+        path: '/principal/assigned-inventory',
+        icon: Database,
+        children: assignedInventoryRooms!.map((room) => ({
+          label: room.name,
+          path: `/principal/assigned-inventory/${room.id}`,
+          icon: Database,
+        })),
+      });
+    }
+
+    return items;
   }
 
   if (role === 'STAFF') {
-    return [
+    const staffDivision = resolveStaffDivision(user);
+    const assignedInventoryChildren: MenuItem[] =
+      assignedInventoryRooms?.map((room) => ({
+        label: room.name,
+        path: `/staff/assigned-inventory/${room.id}`,
+        icon: Database,
+      })) || [];
+
+    if (staffDivision === 'ADMINISTRATION') {
+      const items: MenuItem[] = [
+        { label: 'Dashboard', path: '/staff', icon: LayoutDashboard },
+        { label: 'Email', path: '/email', icon: Mail },
+        ...(hasActiveOsisElection ? [{ label: 'Pemungutan Suara OSIS', path: '/staff/osis/vote', icon: Vote }] : []),
+        {
+          label: 'ADMINISTRASI',
+          path: '/staff/administration',
+          icon: ClipboardList,
+          children: [
+            { label: 'Administrasi Siswa', path: '/staff/administration/students', icon: GraduationCap },
+            { label: 'Administrasi Guru', path: '/staff/administration/teachers', icon: Users },
+            { label: 'Perizinan Siswa', path: '/staff/administration/permissions', icon: FileText },
+          ],
+        },
+      ];
+
+      if (assignedInventoryChildren.length > 0) {
+        items.push({
+          label: 'INVENTARIS TUGAS',
+          path: '/staff/assigned-inventory',
+          icon: Database,
+          children: assignedInventoryChildren,
+        });
+      }
+
+      return items;
+    }
+
+    if (staffDivision === 'HEAD_TU') {
+      const items: MenuItem[] = [
+        { label: 'Dashboard', path: '/staff', icon: LayoutDashboard },
+        { label: 'Email', path: '/email', icon: Mail },
+        ...(hasActiveOsisElection ? [{ label: 'Pemungutan Suara OSIS', path: '/staff/osis/vote', icon: Vote }] : []),
+        {
+          label: 'MONITORING TU',
+          path: '/staff/head-tu',
+          icon: FileBarChart,
+          children: [
+            { label: 'Operasional TU', path: '/staff/head-tu/administration', icon: ClipboardList },
+            { label: 'Monitoring Keuangan', path: '/staff/head-tu/finance', icon: Wallet },
+          ],
+        },
+        {
+          label: 'LAYANAN TU',
+          path: '/staff/head-tu/data',
+          icon: Database,
+          children: [
+            { label: 'Data Siswa', path: '/staff/head-tu/students', icon: GraduationCap },
+            { label: 'Data Guru & Staff', path: '/staff/head-tu/teachers', icon: Users },
+            { label: 'Perizinan Siswa', path: '/staff/head-tu/permissions', icon: FileText },
+            { label: 'Surat-Menyurat', path: '/staff/head-tu/letters', icon: FileText },
+            { label: 'Kartu Ujian', path: '/staff/head-tu/exam-cards', icon: ClipboardList },
+          ],
+        },
+      ];
+
+      if (assignedInventoryChildren.length > 0) {
+        items.push({
+          label: 'INVENTARIS TUGAS',
+          path: '/staff/assigned-inventory',
+          icon: Database,
+          children: assignedInventoryChildren,
+        });
+      }
+
+      return items;
+    }
+
+    const items: MenuItem[] = [
       { label: 'Dashboard', path: '/staff', icon: LayoutDashboard },
       { label: 'Email', path: '/email', icon: Mail },
-      { label: 'Pembayaran (SPP)', path: '/staff/payments', icon: CreditCard },
-      { label: 'Data Siswa', path: '/staff/students', icon: GraduationCap },
-      { label: 'Administrasi', path: '/staff/admin', icon: ClipboardList },
+      ...(hasActiveOsisElection ? [{ label: 'Pemungutan Suara OSIS', path: '/staff/osis/vote', icon: Vote }] : []),
+      {
+        label: 'KEUANGAN',
+        path: '/staff/finance',
+        icon: CreditCard,
+        children: [
+          { label: 'Pembayaran Siswa', path: '/staff/finance', icon: CreditCard },
+          { label: 'Data Siswa', path: '/staff/finance/students', icon: GraduationCap },
+          { label: 'Realisasi Anggaran', path: '/staff/finance/operations', icon: ClipboardList },
+        ],
+      },
     ];
+
+    if (assignedInventoryChildren.length > 0) {
+      items.push({
+        label: 'INVENTARIS TUGAS',
+        path: '/staff/assigned-inventory',
+        icon: Database,
+        children: assignedInventoryChildren,
+      });
+    }
+
+    return items;
   }
 
   if (role === 'PARENT') {
     return [
       { label: 'Dashboard', path: '/parent', icon: LayoutDashboard },
       { label: 'Data Anak', path: '/parent/children', icon: Users },
+      { label: 'Hubungkan Anak', path: '/parent/children?mode=link', icon: UserCheck },
       { label: 'Keuangan', path: '/parent/finance', icon: Wallet },
       { label: 'Absensi Anak', path: '/parent/attendance', icon: UserCheck },
+    ];
+  }
+
+  if (role === 'CALON_SISWA') {
+    return [
+      { label: 'Dashboard', path: '/candidate', icon: LayoutDashboard },
+      { label: 'Formulir PPDB', path: '/candidate/application', icon: FileText },
+      { label: 'Informasi PPDB', path: '/candidate/information', icon: GraduationCap },
+      { label: 'Tes Seleksi', path: '/candidate/exams', icon: FileText },
+      { label: 'Profil', path: '/candidate/profile', icon: UserIcon },
+    ];
+  }
+
+  if (role === 'UMUM') {
+    return [
+      { label: 'Dashboard BKK', path: '/public', icon: LayoutDashboard },
+      { label: 'Lowongan BKK', path: '/public/vacancies', icon: Briefcase },
+      { label: 'Lamaran Saya', path: '/public/applications', icon: FileText },
+      { label: 'Tes BKK', path: '/public/exams', icon: FileQuestion },
+      { label: 'Profil Pelamar', path: '/public/profile', icon: UserIcon },
     ];
   }
 
@@ -684,7 +1027,19 @@ export const Sidebar = ({ user }: SidebarProps) => {
       });
     },
   });
-  
+
+  const teachingResourceProgramsQuery = useQuery({
+    queryKey: ['sidebar-teaching-resource-programs', user.role, activeAcademicYearData?.id],
+    enabled: user.role === 'TEACHER' && Boolean(activeAcademicYearData?.id),
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      return teachingResourceProgramService.getPrograms({
+        academicYearId: activeAcademicYearData?.id,
+        roleContext: 'teacher',
+      });
+    },
+  });
+
   const hasPendingDefense = (examinerInternshipsData?.data?.data?.length || 0) > 0;
   const pklEligibleGrades = activeAcademicYearData?.pklEligibleGrades;
   const examPrograms = useMemo<ExamProgram[]>(() => {
@@ -702,9 +1057,102 @@ export const Sidebar = ({ user }: SidebarProps) => {
     return sortExamPrograms(normalized);
   }, [examProgramsQuery.data]);
 
+  const teachingResourcePrograms = useMemo<TeachingResourceProgram[]>(() => {
+    const fromApi = teachingResourceProgramsQuery.data?.data?.programs || [];
+    const normalized = fromApi
+      .map((program) => {
+        const code = normalizeTeachingResourceProgramCode(program?.code);
+        if (!code) return null;
+        return {
+          ...program,
+          code,
+        } as TeachingResourceProgram;
+      })
+      .filter((program): program is TeachingResourceProgram => Boolean(program));
+    return sortTeachingResourcePrograms(normalized);
+  }, [teachingResourceProgramsQuery.data]);
+
+  const shouldLoadAssignedInventoryRooms = ['TEACHER', 'STAFF', 'PRINCIPAL', 'EXTRACURRICULAR_TUTOR'].includes(
+    String(user.role || '').toUpperCase(),
+  );
+  const shouldLoadTutorAssignments = String(user.role || '').toUpperCase() === 'EXTRACURRICULAR_TUTOR';
+  const { data: assignedInventoryRoomsData } = useQuery({
+    queryKey: ['sidebar-assigned-inventory-rooms', user.id],
+    enabled: shouldLoadAssignedInventoryRooms,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    queryFn: () => inventoryService.getAssignedRooms(),
+  });
+  const { data: tutorOsisAssignmentData } = useQuery({
+    queryKey: ['sidebar-tutor-osis-assignment', user.id, activeAcademicYearData?.id],
+    enabled: shouldLoadTutorAssignments,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    queryFn: () => tutorService.hasOsisAssignment(activeAcademicYearData?.id),
+  });
+  const shouldLoadActiveOsisElection = ['TEACHER', 'STUDENT', 'STAFF', 'EXTRACURRICULAR_TUTOR'].includes(
+    String(user.role || '').toUpperCase(),
+  );
+  const { data: activeOsisElectionData } = useQuery({
+    queryKey: ['sidebar-active-osis-election', user.role],
+    enabled: shouldLoadActiveOsisElection,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    queryFn: () => osisService.getActiveElection(),
+  });
+
+  const assignedInventoryRooms = useMemo<Room[]>(() => {
+    const fromQuery = Array.isArray(assignedInventoryRoomsData?.data)
+      ? (assignedInventoryRoomsData?.data as Room[])
+      : [];
+
+    if (fromQuery.length > 0) return fromQuery;
+
+    const fromProfile = Array.isArray(user.managedInventoryRooms)
+      ? user.managedInventoryRooms.map((room) => ({
+          id: room.id,
+          name: room.name,
+          categoryId: 0,
+          createdAt: '',
+          updatedAt: '',
+          managerUserId: room.managerUserId ?? user.id,
+        }))
+      : [];
+
+    return fromProfile;
+  }, [assignedInventoryRoomsData?.data, user.id, user.managedInventoryRooms]);
+
+  const hasTutorOsisAssignment = useMemo(() => {
+    if (tutorOsisAssignmentData === true) return true;
+    return assignedInventoryRooms.some((room) => isOsisLabel(room.name));
+  }, [assignedInventoryRooms, tutorOsisAssignmentData]);
+  const hasActiveOsisElection = Boolean(activeOsisElectionData?.data);
+
   const items = useMemo(
-    () => getMenuItems(user, hasPendingDefense, pklEligibleGrades, examPrograms),
-    [user, hasPendingDefense, pklEligibleGrades, examPrograms],
+    () =>
+      getMenuItems(
+        user,
+        hasPendingDefense,
+        pklEligibleGrades,
+        examPrograms,
+        teachingResourcePrograms,
+        assignedInventoryRooms,
+        hasTutorOsisAssignment,
+        hasActiveOsisElection,
+      ),
+    [
+      user,
+      hasPendingDefense,
+      pklEligibleGrades,
+      examPrograms,
+      teachingResourcePrograms,
+      assignedInventoryRooms,
+      hasTutorOsisAssignment,
+      hasActiveOsisElection,
+    ],
   );
   // Helper: check path active with relaxed query matching
   const isChildPathActive = useCallback((itemPath: string) => {

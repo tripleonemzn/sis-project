@@ -8,6 +8,7 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { OfflineCacheNotice } from '../../../src/components/OfflineCacheNotice';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { useStaffStudentsQuery } from '../../../src/features/staff/useStaffStudentsQuery';
+import { getStaffStudentsSubtitle } from '../../../src/features/staff/staffRole';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 
@@ -85,7 +86,7 @@ export default function StaffStudentsScreen() {
     >
       <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Data Siswa</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Daftar siswa untuk kebutuhan administrasi dan verifikasi staff.
+        {getStaffStudentsSubtitle(user)}
       </Text>
 
       <View

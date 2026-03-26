@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import {
-  Alert,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -9,41 +9,90 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../../src/components/QueryStateView';
-import { OfflineCacheNotice } from '../../../src/components/OfflineCacheNotice';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
-import { useStaffPaymentsQuery } from '../../../src/features/staff/useStaffPaymentsQuery';
+import {
+  staffFinanceApi,
+  type FinanceComponentPeriodicity,
+  type FinanceInvoiceStatus,
+  type FinancePaymentMethod,
+  type FinanceReminderMode,
+  type SemesterCode,
+  type StaffFinanceComponent,
+  type StaffFinanceInvoice,
+  type StaffFinanceTariffRule,
+} from '../../../src/features/staff/staffFinanceApi';
 import { staffApi } from '../../../src/features/staff/staffApi';
-import { StaffBudgetRequest, StaffBudgetStatus } from '../../../src/features/staff/types';
+import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+import { canAccessStaffPayments, getStaffPaymentsBlockedMessage } from '../../../src/features/staff/staffRole';
 
-type FilterStatus = 'ALL' | StaffBudgetStatus;
+const PERIODICITY_OPTIONS: Array<{ value: FinanceComponentPeriodicity; label: string }> = [
+  { value: 'MONTHLY', label: 'Bulanan' },
+  { value: 'ONE_TIME', label: 'Sekali Bayar' },
+  { value: 'PERIODIC', label: 'Periodik' },
+];
 
-const STATUS_LABEL: Record<FilterStatus, string> = {
-  ALL: 'Semua',
-  PENDING: 'Menunggu',
-  APPROVED: 'Disetujui',
-  REJECTED: 'Ditolak',
-};
+const STATUS_OPTIONS: Array<{ value: '' | FinanceInvoiceStatus; label: string }> = [
+  { value: '', label: 'Semua Status' },
+  { value: 'UNPAID', label: 'Belum Bayar' },
+  { value: 'PARTIAL', label: 'Parsial' },
+  { value: 'PAID', label: 'Lunas' },
+  { value: 'CANCELLED', label: 'Dibatalkan' },
+];
 
-function getStageLabel(item: StaffBudgetRequest) {
-  if (item.status === 'REJECTED') return 'Ditolak Kepala Sekolah';
-  if (item.status === 'APPROVED' && !item.realizationConfirmedAt) return 'Menunggu konfirmasi realisasi';
-  if (item.realizationConfirmedAt && !item.lpjSubmittedAt) return 'Menunggu LPJ pengaju';
-  if (item.realizationConfirmedAt && item.lpjSubmittedAt) return 'Selesai (LPJ diterima)';
-  return 'Menunggu persetujuan';
+const PAYMENT_METHOD_OPTIONS: Array<{ value: FinancePaymentMethod; label: string }> = [
+  { value: 'CASH', label: 'Tunai' },
+  { value: 'BANK_TRANSFER', label: 'Transfer Bank' },
+  { value: 'VIRTUAL_ACCOUNT', label: 'Virtual Account' },
+  { value: 'E_WALLET', label: 'E-Wallet' },
+  { value: 'OTHER', label: 'Lainnya' },
+];
+
+type FinanceTab = 'dashboard' | 'components' | 'tariffs' | 'invoices';
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
 }
 
-function getStatusColor(status: StaffBudgetStatus) {
-  if (status === 'APPROVED') return '#15803d';
-  if (status === 'REJECTED') return '#b91c1c';
-  return '#b45309';
+function formatDate(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function getStatusBadge(status: FinanceInvoiceStatus) {
+  if (status === 'PAID') return { label: 'Lunas', bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  if (status === 'PARTIAL') return { label: 'Parsial', bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8' };
+  if (status === 'CANCELLED') return { label: 'Dibatalkan', bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+  return { label: 'Belum Bayar', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+}
+
+function getCollectionPriorityStyle(priority: 'MONITOR' | 'TINGGI' | 'KRITIS') {
+  if (priority === 'KRITIS') return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+  if (priority === 'TINGGI') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  return { bg: '#e0f2fe', border: '#bae6fd', text: '#075985' };
+}
+
+function getDueSoonLabel(daysUntilDue: number) {
+  if (daysUntilDue <= 0) return 'Hari ini';
+  if (daysUntilDue === 1) return '1 hari lagi';
+  return `${daysUntilDue} hari lagi`;
 }
 
 export default function StaffPaymentsScreen() {
@@ -51,56 +100,334 @@ export default function StaffPaymentsScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
-  const paymentsQuery = useStaffPaymentsQuery({ enabled: isAuthenticated, user });
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
-  const [statusFilter, setStatusFilter] = useState<FilterStatus>('ALL');
-  const [search, setSearch] = useState('');
+  const canOpenPayments = canAccessStaffPayments(user);
 
-  const confirmMutation = useMutation({
-    mutationFn: (budgetId: number) => staffApi.confirmBudgetRealization(budgetId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['mobile-staff-payments', user?.id] });
-      void paymentsQuery.refetch();
-      notifySuccess('Realisasi anggaran berhasil dikonfirmasi.');
-    },
-    onError: (error: unknown) => {
-      notifyApiError(error, 'Gagal mengkonfirmasi realisasi.');
-    },
+  const [activeTab, setActiveTab] = useState<FinanceTab>('dashboard');
+
+  const [componentCode, setComponentCode] = useState('');
+  const [componentName, setComponentName] = useState('');
+  const [componentDescription, setComponentDescription] = useState('');
+  const [componentPeriodicity, setComponentPeriodicity] =
+    useState<FinanceComponentPeriodicity>('MONTHLY');
+  const [editingComponentId, setEditingComponentId] = useState<number | null>(null);
+
+  const [tariffComponentId, setTariffComponentId] = useState<number | null>(null);
+  const [tariffClassId, setTariffClassId] = useState<number | null>(null);
+  const [tariffSemester, setTariffSemester] = useState<SemesterCode | ''>('');
+  const [tariffAmount, setTariffAmount] = useState('');
+  const [tariffNotes, setTariffNotes] = useState('');
+  const [editingTariffId, setEditingTariffId] = useState<number | null>(null);
+
+  const [invoiceSemester, setInvoiceSemester] = useState<SemesterCode>('EVEN');
+  const [invoicePeriodKey, setInvoicePeriodKey] = useState('');
+  const [invoiceDueDate, setInvoiceDueDate] = useState('');
+  const [invoiceTitle, setInvoiceTitle] = useState('');
+  const [invoiceClassId, setInvoiceClassId] = useState<number | null>(null);
+
+  const [invoiceSearch, setInvoiceSearch] = useState('');
+  const [invoiceStatus, setInvoiceStatus] = useState<'' | FinanceInvoiceStatus>('');
+  const [invoiceClassFilter, setInvoiceClassFilter] = useState<number | null>(null);
+
+  const [reminderDueSoonDays, setReminderDueSoonDays] = useState('3');
+
+  const [selectedInvoice, setSelectedInvoice] = useState<StaffFinanceInvoice | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<FinancePaymentMethod>('CASH');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentNote, setPaymentNote] = useState('');
+
+  const activeYearQuery = useQuery({
+    queryKey: ['mobile-staff-finance-active-year'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => academicYearApi.getActive({ allowStaleOnError: true }),
   });
 
-  const budgets = useMemo(() => paymentsQuery.data?.budgets || [], [paymentsQuery.data?.budgets]);
-  const filteredBudgets = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return budgets.filter((item) => {
-      if (statusFilter !== 'ALL' && item.status !== statusFilter) return false;
-      if (!query) return true;
-      const haystacks = [
-        item.title || '',
-        item.description || '',
-        item.additionalDuty || '',
-        item.requester?.name || '',
-      ];
-      return haystacks.some((value) => value.toLowerCase().includes(query));
+  const studentsQuery = useQuery({
+    queryKey: ['mobile-staff-finance-students'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => staffApi.listStudents(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const classes = useMemo(() => {
+    const map = new Map<number, string>();
+    (studentsQuery.data || []).forEach((student) => {
+      if (student.studentClass?.id && student.studentClass?.name) {
+        map.set(student.studentClass.id, student.studentClass.name);
+      }
     });
-  }, [budgets, search, statusFilter]);
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [studentsQuery.data]);
 
-  const totalAmount = filteredBudgets.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
+  const componentsQuery = useQuery({
+    queryKey: ['mobile-staff-finance-components'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => staffFinanceApi.listComponents(),
+  });
 
-  if (isLoading) return <AppLoadingScreen message="Memuat pembayaran..." />;
+  const tariffsQuery = useQuery({
+    queryKey: ['mobile-staff-finance-tariffs'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => staffFinanceApi.listTariffs(),
+  });
+
+  const invoicesQuery = useQuery({
+    queryKey: ['mobile-staff-finance-invoices', invoiceSearch, invoiceStatus, invoiceClassFilter],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () =>
+      staffFinanceApi.listInvoices({
+        limit: 100,
+        search: invoiceSearch.trim() || undefined,
+        status: invoiceStatus || undefined,
+        classId: invoiceClassFilter || undefined,
+      }),
+  });
+
+  const dashboardQuery = useQuery({
+    queryKey: ['mobile-staff-finance-dashboard', activeYearQuery.data?.id || 'none'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments && Boolean(activeYearQuery.data?.id),
+    queryFn: () =>
+      staffFinanceApi.listReports({
+        academicYearId: activeYearQuery.data?.id,
+      }),
+  });
+
+  const components = componentsQuery.data || [];
+  const tariffs = tariffsQuery.data || [];
+  const invoices = invoicesQuery.data?.invoices || [];
+  const invoiceSummary = invoicesQuery.data?.summary;
+
+  const overdueCount = useMemo(() => {
+    const today = Date.now();
+    return invoices.filter((invoice) => {
+      if (!invoice.dueDate) return false;
+      if (invoice.status === 'PAID' || invoice.status === 'CANCELLED') return false;
+      return new Date(invoice.dueDate).getTime() < today;
+    }).length;
+  }, [invoices]);
+
+  const topClassOutstanding = useMemo(() => {
+    const map = new Map<string, { className: string; amount: number }>();
+    invoices.forEach((invoice) => {
+      const className = invoice.student.studentClass?.name || 'Tanpa Kelas';
+      const prev = map.get(className) || { className, amount: 0 };
+      prev.amount += Number(invoice.balanceAmount || 0);
+      map.set(className, prev);
+    });
+    return Array.from(map.values())
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5);
+  }, [invoices]);
+
+  const resetComponentForm = () => {
+    setEditingComponentId(null);
+    setComponentCode('');
+    setComponentName('');
+    setComponentDescription('');
+    setComponentPeriodicity('MONTHLY');
+  };
+
+  const resetTariffForm = () => {
+    setEditingTariffId(null);
+    setTariffComponentId(null);
+    setTariffClassId(null);
+    setTariffSemester('');
+    setTariffAmount('');
+    setTariffNotes('');
+  };
+
+  const invalidateFinanceQueries = () => {
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-components'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-tariffs'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-invoices'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-dashboard'] });
+  };
+
+  const saveComponentMutation = useMutation({
+    mutationFn: () =>
+      editingComponentId
+        ? staffFinanceApi.updateComponent(editingComponentId, {
+            code: componentCode,
+            name: componentName,
+            description: componentDescription || '',
+            periodicity: componentPeriodicity,
+          })
+        : staffFinanceApi.createComponent({
+            code: componentCode,
+            name: componentName,
+            description: componentDescription || undefined,
+            periodicity: componentPeriodicity,
+          }),
+    onSuccess: () => {
+      notifySuccess(editingComponentId ? 'Komponen diperbarui.' : 'Komponen ditambahkan.');
+      resetComponentForm();
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal menyimpan komponen.'),
+  });
+
+  const toggleComponentMutation = useMutation({
+    mutationFn: (payload: { componentId: number; isActive: boolean }) =>
+      staffFinanceApi.updateComponent(payload.componentId, { isActive: payload.isActive }),
+    onSuccess: (_, payload) => {
+      notifySuccess(payload.isActive ? 'Komponen diaktifkan.' : 'Komponen dinonaktifkan.');
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal mengubah status komponen.'),
+  });
+
+  const saveTariffMutation = useMutation({
+    mutationFn: () =>
+      editingTariffId
+        ? staffFinanceApi.updateTariff(editingTariffId, {
+            componentId: Number(tariffComponentId),
+            classId: tariffClassId,
+            semester: tariffSemester || null,
+            amount: Number(tariffAmount),
+            notes: tariffNotes || null,
+          })
+        : staffFinanceApi.createTariff({
+            componentId: Number(tariffComponentId),
+            classId: tariffClassId || undefined,
+            semester: tariffSemester || undefined,
+            amount: Number(tariffAmount),
+            notes: tariffNotes || undefined,
+          }),
+    onSuccess: () => {
+      notifySuccess(editingTariffId ? 'Tarif diperbarui.' : 'Tarif ditambahkan.');
+      resetTariffForm();
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal menyimpan tarif.'),
+  });
+
+  const toggleTariffMutation = useMutation({
+    mutationFn: (payload: { tariffId: number; isActive: boolean }) =>
+      staffFinanceApi.updateTariff(payload.tariffId, { isActive: payload.isActive }),
+    onSuccess: (_, payload) => {
+      notifySuccess(payload.isActive ? 'Tarif diaktifkan.' : 'Tarif dinonaktifkan.');
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal mengubah status tarif.'),
+  });
+
+  const generateInvoiceMutation = useMutation({
+    mutationFn: () =>
+      staffFinanceApi.generateInvoices({
+        academicYearId: activeYearQuery.data?.id,
+        semester: invoiceSemester,
+        periodKey: invoicePeriodKey,
+        dueDate: invoiceDueDate || undefined,
+        title: invoiceTitle || undefined,
+        classId: invoiceClassId || undefined,
+      }),
+    onSuccess: (result) => {
+      notifySuccess(
+        `Generate selesai: ${result.summary.created} baru, ${result.summary.updated} diperbarui.`,
+      );
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal generate tagihan.'),
+  });
+
+  const dispatchReminderMutation = useMutation({
+    mutationFn: (mode: FinanceReminderMode) =>
+      staffFinanceApi.dispatchDueReminders({
+        mode,
+        dueSoonDays: Math.max(0, Number(reminderDueSoonDays || 0)),
+        preview: false,
+      }),
+    onSuccess: (result) => {
+      notifySuccess(
+        `Reminder terkirim ${result.createdNotifications} notifikasi (${result.dueSoonInvoices} due soon, ${result.overdueInvoices} overdue).`,
+      );
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal menjalankan reminder.'),
+  });
+
+  const payInvoiceMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedInvoice) throw new Error('Tagihan belum dipilih');
+      return staffFinanceApi.payInvoice(selectedInvoice.id, {
+        amount: Number(paymentAmount),
+        method: paymentMethod,
+        referenceNo: paymentReference || undefined,
+        note: paymentNote || undefined,
+      });
+    },
+    onSuccess: () => {
+      notifySuccess('Pembayaran berhasil dicatat.');
+      setSelectedInvoice(null);
+      setPaymentAmount('');
+      setPaymentReference('');
+      setPaymentNote('');
+      setPaymentMethod('CASH');
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal mencatat pembayaran.'),
+  });
+
+  const handleSaveComponent = () => {
+    if (!componentCode.trim() || !componentName.trim()) {
+      notifyApiError(null, 'Kode dan nama komponen wajib diisi.');
+      return;
+    }
+    saveComponentMutation.mutate();
+  };
+
+  const handleSaveTariff = () => {
+    if (!tariffComponentId || Number(tariffAmount) <= 0) {
+      notifyApiError(null, 'Komponen dan nominal tarif wajib diisi.');
+      return;
+    }
+    saveTariffMutation.mutate();
+  };
+
+  const handleGenerate = () => {
+    if (!invoicePeriodKey.trim()) {
+      notifyApiError(null, 'Period key wajib diisi (contoh 2026-03).');
+      return;
+    }
+    generateInvoiceMutation.mutate();
+  };
+
+  const handleManualReminder = (mode: FinanceReminderMode) => {
+    const dueSoonDays = Number(reminderDueSoonDays || 0);
+    if (!Number.isFinite(dueSoonDays) || dueSoonDays < 0 || dueSoonDays > 30) {
+      notifyApiError(null, 'Due soon harus 0 - 30 hari.');
+      return;
+    }
+    dispatchReminderMutation.mutate(mode);
+  };
+
+  const startPaying = (invoice: StaffFinanceInvoice) => {
+    setSelectedInvoice(invoice);
+    setPaymentAmount(String(Number(invoice.balanceAmount || 0)));
+    setPaymentMethod('CASH');
+    setPaymentReference('');
+    setPaymentNote('');
+  };
+
+  if (isLoading) return <AppLoadingScreen message="Memuat modul keuangan staff..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
-  if (user?.role !== 'STAFF') {
+  if (user?.role === 'STAFF' && !canOpenPayments) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Pembayaran SPP</Text>
-        <QueryStateView type="error" message="Halaman ini khusus untuk role staff." />
+        <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>
+          Pembayaran Staff
+        </Text>
+        <QueryStateView type="error" message={getStaffPaymentsBlockedMessage(user)} />
         <Pressable
           onPress={() => router.replace('/home')}
           style={{
             marginTop: 16,
             backgroundColor: BRAND_COLORS.blue,
-            paddingVertical: 12,
             borderRadius: 10,
+            paddingVertical: 12,
             alignItems: 'center',
           }}
         >
@@ -110,205 +437,1134 @@ export default function StaffPaymentsScreen() {
     );
   }
 
+  if (user?.role !== 'STAFF') {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+          Staff Keuangan
+        </Text>
+        <QueryStateView type="error" message="Halaman ini khusus role staff." />
+      </ScrollView>
+    );
+  }
+
+  const isInitialLoading =
+    activeYearQuery.isLoading ||
+    componentsQuery.isLoading ||
+    tariffsQuery.isLoading ||
+    invoicesQuery.isLoading ||
+    studentsQuery.isLoading;
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: '#f8fafc' }}
       contentContainerStyle={pagePadding}
       refreshControl={
         <RefreshControl
-          refreshing={paymentsQuery.isFetching && !paymentsQuery.isLoading}
-          onRefresh={() => paymentsQuery.refetch()}
+          refreshing={
+            activeYearQuery.isFetching ||
+            componentsQuery.isFetching ||
+            tariffsQuery.isFetching ||
+            invoicesQuery.isFetching ||
+            dashboardQuery.isFetching
+          }
+          onRefresh={() => {
+            void activeYearQuery.refetch();
+            void componentsQuery.refetch();
+            void tariffsQuery.refetch();
+            void invoicesQuery.refetch();
+            void dashboardQuery.refetch();
+            void studentsQuery.refetch();
+          }}
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Pembayaran SPP</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Konfirmasi realisasi pengajuan anggaran
-        {paymentsQuery.data?.activeYear?.name ? ` tahun ${paymentsQuery.data.activeYear.name}` : ''}.
+      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
+        Staff Keuangan
       </Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
+        Kelola komponen biaya, tarif dinamis, tagihan siswa, dan reminder jatuh tempo.
+      </Text>
+
+      {isInitialLoading ? <QueryStateView type="loading" message="Mengambil data keuangan..." /> : null}
+      {componentsQuery.isError || tariffsQuery.isError || invoicesQuery.isError ? (
+        <QueryStateView
+          type="error"
+          message="Gagal memuat data keuangan staff."
+          onRetry={() => {
+            void componentsQuery.refetch();
+            void tariffsQuery.refetch();
+            void invoicesQuery.refetch();
+          }}
+        />
+      ) : null}
 
       <View
         style={{
           backgroundColor: '#fff',
-          borderRadius: 12,
           borderWidth: 1,
-          borderColor: '#d6e2f7',
+          borderColor: '#dbe7fb',
+          borderRadius: 12,
           padding: 12,
           marginBottom: 12,
         }}
       >
-        <View
-          style={{
-            backgroundColor: '#f8fbff',
-            borderWidth: 1,
-            borderColor: '#d6e2f7',
-            borderRadius: 999,
-            paddingHorizontal: 12,
-            marginBottom: 10,
-            flexDirection: 'row',
-            alignItems: 'center',
-          }}
-        >
-          <Feather name="search" size={16} color={BRAND_COLORS.textMuted} />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Cari judul, pengaju, atau unit"
-            placeholderTextColor="#95a3be"
-            style={{
-              flex: 1,
-              paddingVertical: 10,
-              paddingHorizontal: 8,
-              color: BRAND_COLORS.textDark,
-            }}
-          />
+        <Text style={{ color: '#334155', fontSize: 12, marginBottom: 8 }}>
+          Tahun ajaran aktif: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{activeYearQuery.data?.name || '-'}</Text>
+        </Text>
+
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
+          <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <View style={{ backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 10, padding: 10 }}>
+              <Text style={{ color: '#1d4ed8', fontSize: 11 }}>Total Tagihan</Text>
+              <Text style={{ color: '#1e3a8a', fontWeight: '700', fontSize: 18 }}>{invoiceSummary?.totalInvoices || 0}</Text>
+            </View>
+          </View>
+          <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <View style={{ backgroundColor: '#fef3c7', borderWidth: 1, borderColor: '#fcd34d', borderRadius: 10, padding: 10 }}>
+              <Text style={{ color: '#92400e', fontSize: 11 }}>Outstanding</Text>
+              <Text style={{ color: '#78350f', fontWeight: '700', fontSize: 14 }} numberOfLines={1}>
+                {formatCurrency(invoiceSummary?.totalOutstanding || 0)}
+              </Text>
+            </View>
+          </View>
+          <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <View style={{ backgroundColor: '#dcfce7', borderWidth: 1, borderColor: '#86efac', borderRadius: 10, padding: 10 }}>
+              <Text style={{ color: '#166534', fontSize: 11 }}>Terbayar</Text>
+              <Text style={{ color: '#14532d', fontWeight: '700', fontSize: 14 }} numberOfLines={1}>
+                {formatCurrency(invoiceSummary?.totalPaid || 0)}
+              </Text>
+            </View>
+          </View>
+          <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <View style={{ backgroundColor: '#fee2e2', borderWidth: 1, borderColor: '#fca5a5', borderRadius: 10, padding: 10 }}>
+              <Text style={{ color: '#991b1b', fontSize: 11 }}>Lewat Jatuh Tempo</Text>
+              <Text style={{ color: '#7f1d1d', fontWeight: '700', fontSize: 18 }}>{overdueCount}</Text>
+            </View>
+          </View>
         </View>
 
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
-          {(Object.keys(STATUS_LABEL) as FilterStatus[]).map((status) => (
-            <View key={status} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+        <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 10 }}>
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Reminder Jatuh Tempo</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ color: '#475569', marginRight: 8 }}>Due soon (hari)</Text>
+            <TextInput
+              keyboardType="numeric"
+              value={reminderDueSoonDays}
+              onChangeText={setReminderDueSoonDays}
+              style={{
+                width: 68,
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                borderRadius: 8,
+                paddingHorizontal: 8,
+                paddingVertical: 6,
+                color: '#0f172a',
+                backgroundColor: '#fff',
+              }}
+            />
+          </View>
+          <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
               <Pressable
-                onPress={() => setStatusFilter(status)}
+                disabled={dispatchReminderMutation.isPending}
+                onPress={() => handleManualReminder('DUE_SOON')}
+                style={{
+                  backgroundColor: '#eff6ff',
+                  borderWidth: 1,
+                  borderColor: '#bfdbfe',
+                  borderRadius: 10,
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                  opacity: dispatchReminderMutation.isPending ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Kirim Due Soon</Text>
+              </Pressable>
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                disabled={dispatchReminderMutation.isPending}
+                onPress={() => handleManualReminder('OVERDUE')}
+                style={{
+                  backgroundColor: '#fff1f2',
+                  borderWidth: 1,
+                  borderColor: '#fda4af',
+                  borderRadius: 10,
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                  opacity: dispatchReminderMutation.isPending ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 12 }}>Kirim Overdue</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
+        {(
+          [
+            { key: 'dashboard', label: 'Dashboard' },
+            { key: 'components', label: 'Komponen' },
+            { key: 'tariffs', label: 'Tarif' },
+            { key: 'invoices', label: 'Tagihan' },
+          ] as Array<{ key: FinanceTab; label: string }>
+        ).map((tab) => {
+          const active = activeTab === tab.key;
+          return (
+            <View key={tab.key} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+              <Pressable
+                onPress={() => setActiveTab(tab.key)}
                 style={{
                   borderWidth: 1,
-                  borderColor: statusFilter === status ? BRAND_COLORS.blue : '#d6e2f7',
-                  backgroundColor: statusFilter === status ? '#e9f1ff' : '#fff',
-                  borderRadius: 9,
+                  borderColor: active ? '#1d4ed8' : '#d6e2f7',
+                  backgroundColor: active ? '#e9f1ff' : '#fff',
+                  borderRadius: 10,
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700' }}>{tab.label}</Text>
+              </Pressable>
+            </View>
+          );
+        })}
+      </View>
+
+      {activeTab === 'dashboard' ? (
+        <>
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>KPI Kolektibilitas</Text>
+            <Text style={{ color: '#334155', marginBottom: 4 }}>
+              Collection rate:{' '}
+              <Text style={{ color: '#166534', fontWeight: '700' }}>
+                {dashboardQuery.data ? `${dashboardQuery.data.kpi.collectionRate.toFixed(1)}%` : '-'}
+              </Text>
+            </Text>
+            <Text style={{ color: '#334155', marginBottom: 4 }}>
+              Overdue rate:{' '}
+              <Text style={{ color: '#b45309', fontWeight: '700' }}>
+                {dashboardQuery.data ? `${dashboardQuery.data.kpi.overdueRate.toFixed(1)}%` : '-'}
+              </Text>
+            </Text>
+            <Text style={{ color: '#334155', marginBottom: 8 }}>
+              DSO:{' '}
+              <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
+                {dashboardQuery.data ? `${dashboardQuery.data.kpi.dsoDays.toFixed(1)} hari` : '-'}
+              </Text>
+            </Text>
+
+            <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 8 }}>
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Top Tunggakan per Kelas</Text>
+              {topClassOutstanding.length === 0 ? (
+                <Text style={{ color: '#64748b' }}>Belum ada data tunggakan.</Text>
+              ) : (
+                topClassOutstanding.map((row) => (
+                  <View
+                    key={row.className}
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      paddingVertical: 6,
+                      borderBottomWidth: 1,
+                      borderBottomColor: '#f1f5f9',
+                    }}
+                  >
+                    <Text style={{ color: '#334155' }}>{row.className}</Text>
+                    <Text style={{ color: '#92400e', fontWeight: '700' }}>{formatCurrency(row.amount)}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+          </View>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <View style={{ backgroundColor: '#fff1f2', borderWidth: 1, borderColor: '#fecdd3', borderRadius: 12, padding: 12 }}>
+                <Text style={{ color: '#be123c', fontSize: 11 }}>Siswa Follow Up</Text>
+                <Text style={{ color: '#881337', fontWeight: '700', fontSize: 18, marginTop: 3 }}>
+                  {dashboardQuery.data?.collectionOverview.studentsWithOutstanding || 0}
+                </Text>
+              </View>
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <View style={{ backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fdba74', borderRadius: 12, padding: 12 }}>
+                <Text style={{ color: '#c2410c', fontSize: 11 }}>Prioritas Tinggi</Text>
+                <Text style={{ color: '#9a3412', fontWeight: '700', fontSize: 18, marginTop: 3 }}>
+                  {dashboardQuery.data?.collectionOverview.highPriorityCount || 0}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 12 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <View style={{ backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca', borderRadius: 12, padding: 12 }}>
+                <Text style={{ color: '#b91c1c', fontSize: 11 }}>Kasus Kritis</Text>
+                <Text style={{ color: '#991b1b', fontWeight: '700', fontSize: 18, marginTop: 3 }}>
+                  {dashboardQuery.data?.collectionOverview.criticalCount || 0}
+                </Text>
+              </View>
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <View style={{ backgroundColor: '#f0f9ff', borderWidth: 1, borderColor: '#bae6fd', borderRadius: 12, padding: 12 }}>
+                <Text style={{ color: '#0369a1', fontSize: 11 }}>Jatuh Tempo 7 Hari</Text>
+                <Text style={{ color: '#0c4a6e', fontWeight: '700', fontSize: 18, marginTop: 3 }}>
+                  {dashboardQuery.data?.collectionOverview.dueSoonCount || 0}
+                </Text>
+                <Text style={{ color: '#0369a1', fontSize: 11, marginTop: 2 }}>
+                  {formatCurrency(dashboardQuery.data?.collectionOverview.dueSoonOutstanding || 0)}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Antrian Penagihan Prioritas</Text>
+            {!dashboardQuery.data?.collectionPriorityQueue?.length ? (
+              <Text style={{ color: '#64748b' }}>Belum ada saldo outstanding aktif.</Text>
+            ) : (
+              dashboardQuery.data.collectionPriorityQueue.slice(0, 5).map((row) => {
+                const badge = getCollectionPriorityStyle(row.priority);
+                return (
+                  <View key={row.studentId} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#0f172a', fontWeight: '700' }}>{row.studentName}</Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                          {row.className} • {row.nis || row.username}
+                        </Text>
+                      </View>
+                      <View style={{ backgroundColor: badge.bg, borderColor: badge.border, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                        <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{row.priority}</Text>
+                      </View>
+                    </View>
+                    <Text style={{ color: '#334155', fontSize: 12, marginTop: 6 }}>
+                      Outstanding <Text style={{ fontWeight: '700', color: '#0f172a' }}>{formatCurrency(row.totalOutstanding)}</Text> • overdue {formatCurrency(row.overdueOutstanding)}
+                    </Text>
+                    <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+                      Max lewat {row.maxDaysPastDue} hari • pembayaran terakhir {formatDate(row.lastPaymentDate)}
+                    </Text>
+                  </View>
+                );
+              })
+            )}
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Tagihan Jatuh Tempo Dekat</Text>
+            {!dashboardQuery.data?.dueSoonInvoices?.length ? (
+              <Text style={{ color: '#64748b' }}>Tidak ada tagihan jatuh tempo dalam 7 hari.</Text>
+            ) : (
+              dashboardQuery.data.dueSoonInvoices.slice(0, 5).map((row) => (
+                <View key={row.invoiceId} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#0f172a', fontWeight: '700' }}>{row.studentName}</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        {row.invoiceNo} • {row.className}
+                      </Text>
+                    </View>
+                    <View style={{ backgroundColor: '#f0f9ff', borderColor: '#bae6fd', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                      <Text style={{ color: '#0369a1', fontSize: 11, fontWeight: '700' }}>{getDueSoonLabel(row.daysUntilDue)}</Text>
+                    </View>
+                  </View>
+                  <Text style={{ color: '#0c4a6e', fontWeight: '700', marginTop: 6 }}>{formatCurrency(row.balanceAmount)}</Text>
+                  <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+                    Jatuh tempo {formatDate(row.dueDate)} • {row.title || row.periodKey}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Komponen Penyumbang Tunggakan</Text>
+            {!dashboardQuery.data?.componentReceivableRecap?.length ? (
+              <Text style={{ color: '#64748b' }}>Belum ada outstanding per komponen.</Text>
+            ) : (
+              dashboardQuery.data.componentReceivableRecap.slice(0, 5).map((row) => (
+                <View key={`${row.componentCode}-${row.componentName}`} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#0f172a', fontWeight: '700' }}>{row.componentName}</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        {row.componentCode || '-'} • {row.studentCount} siswa
+                      </Text>
+                    </View>
+                    <Text style={{ color: '#92400e', fontWeight: '700' }}>{formatCurrency(row.totalOutstanding)}</Text>
+                  </View>
+                  <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+                    Overdue {formatCurrency(row.overdueOutstanding)} • {row.invoiceCount} invoice aktif
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+        </>
+      ) : null}
+
+      {activeTab === 'components' ? (
+        <View
+          style={{
+            backgroundColor: '#fff',
+            borderWidth: 1,
+            borderColor: '#dbe7fb',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Master Komponen</Text>
+          <TextInput
+            value={componentCode}
+            onChangeText={setComponentCode}
+            placeholder="Kode komponen"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <TextInput
+            value={componentName}
+            onChangeText={setComponentName}
+            placeholder="Nama komponen"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <TextInput
+            value={componentDescription}
+            onChangeText={setComponentDescription}
+            placeholder="Deskripsi (opsional)"
+            placeholderTextColor="#94a3b8"
+            multiline
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', minHeight: 72, textAlignVertical: 'top', backgroundColor: '#fff' }}
+          />
+
+          <ScrollView horizontal style={{ marginBottom: 8 }} showsHorizontalScrollIndicator={false}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {PERIODICITY_OPTIONS.map((option) => {
+                const active = componentPeriodicity === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setComponentPeriodicity(option.value)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: active ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 12,
+                      paddingVertical: 7,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={handleSaveComponent}
+                disabled={saveComponentMutation.isPending}
+                style={{ backgroundColor: '#2563eb', borderRadius: 10, paddingVertical: 10, alignItems: 'center', opacity: saveComponentMutation.isPending ? 0.6 : 1 }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700' }}>
+                  {editingComponentId ? 'Simpan Perubahan' : 'Tambah Komponen'}
+                </Text>
+              </Pressable>
+            </View>
+            {editingComponentId ? (
+              <View style={{ width: 120, paddingHorizontal: 4 }}>
+                <Pressable
+                  onPress={resetComponentForm}
+                  style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
+                >
+                  <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+
+          {(components || []).map((component: StaffFinanceComponent) => (
+            <View
+              key={component.id}
+              style={{
+                borderWidth: 1,
+                borderColor: '#dbe7fb',
+                borderRadius: 10,
+                padding: 10,
+                marginBottom: 8,
+                backgroundColor: '#fff',
+              }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <Text style={{ color: '#0f172a', fontWeight: '700' }}>{component.name}</Text>
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: component.isActive ? '#86efac' : '#fecaca',
+                    backgroundColor: component.isActive ? '#dcfce7' : '#fee2e2',
+                    borderRadius: 999,
+                    paddingHorizontal: 8,
+                    paddingVertical: 2,
+                  }}
+                >
+                  <Text style={{ color: component.isActive ? '#166534' : '#991b1b', fontSize: 11, fontWeight: '700' }}>
+                    {component.isActive ? 'Aktif' : 'Nonaktif'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={{ color: '#475569', fontSize: 12 }}>{component.code}</Text>
+              {component.description ? <Text style={{ color: '#64748b', marginTop: 2 }}>{component.description}</Text> : null}
+              <View style={{ flexDirection: 'row', marginHorizontal: -4, marginTop: 8 }}>
+                <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                  <Pressable
+                    onPress={() => {
+                      setEditingComponentId(component.id);
+                      setComponentCode(component.code);
+                      setComponentName(component.name);
+                      setComponentDescription(component.description || '');
+                      setComponentPeriodicity(component.periodicity);
+                    }}
+                    style={{ borderWidth: 1, borderColor: '#bfdbfe', backgroundColor: '#eff6ff', borderRadius: 8, paddingVertical: 8, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Edit</Text>
+                  </Pressable>
+                </View>
+                <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                  <Pressable
+                    onPress={() =>
+                      toggleComponentMutation.mutate({
+                        componentId: component.id,
+                        isActive: !component.isActive,
+                      })
+                    }
+                    style={{
+                      borderWidth: 1,
+                      borderColor: component.isActive ? '#fecaca' : '#86efac',
+                      backgroundColor: component.isActive ? '#fff1f2' : '#f0fdf4',
+                      borderRadius: 8,
+                      paddingVertical: 8,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: component.isActive ? '#be123c' : '#166534', fontWeight: '700' }}>
+                      {component.isActive ? 'Nonaktifkan' : 'Aktifkan'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {activeTab === 'tariffs' ? (
+        <View
+          style={{
+            backgroundColor: '#fff',
+            borderWidth: 1,
+            borderColor: '#dbe7fb',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Rule Tarif</Text>
+
+          <Text style={{ color: '#475569', marginBottom: 4 }}>Komponen</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {components.map((component) => {
+                const active = tariffComponentId === component.id;
+                return (
+                  <Pressable
+                    key={component.id}
+                    onPress={() => setTariffComponentId(component.id)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: active ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      {component.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <Text style={{ color: '#475569', marginBottom: 4 }}>Kelas (opsional)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => setTariffClassId(null)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: tariffClassId === null ? '#1d4ed8' : '#dbeafe',
+                  backgroundColor: tariffClassId === null ? '#e9f1ff' : '#fff',
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                }}
+              >
+                <Text style={{ color: tariffClassId === null ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                  Semua kelas
+                </Text>
+              </Pressable>
+              {classes.map((classItem) => {
+                const active = tariffClassId === classItem.id;
+                return (
+                  <Pressable
+                    key={classItem.id}
+                    onPress={() => setTariffClassId(classItem.id)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: active ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      {classItem.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => setTariffSemester('')}
+                style={{
+                  borderWidth: 1,
+                  borderColor: tariffSemester === '' ? '#1d4ed8' : '#dbeafe',
+                  backgroundColor: tariffSemester === '' ? '#e9f1ff' : '#fff',
+                  borderRadius: 8,
                   paddingVertical: 8,
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: statusFilter === status ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}>
-                  {STATUS_LABEL[status]}
+                <Text style={{ color: tariffSemester === '' ? '#1e3a8a' : '#475569', fontWeight: '700' }}>Semua</Text>
+              </Pressable>
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => setTariffSemester('ODD')}
+                style={{
+                  borderWidth: 1,
+                  borderColor: tariffSemester === 'ODD' ? '#1d4ed8' : '#dbeafe',
+                  backgroundColor: tariffSemester === 'ODD' ? '#e9f1ff' : '#fff',
+                  borderRadius: 8,
+                  paddingVertical: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: tariffSemester === 'ODD' ? '#1e3a8a' : '#475569', fontWeight: '700' }}>Ganjil</Text>
+              </Pressable>
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => setTariffSemester('EVEN')}
+                style={{
+                  borderWidth: 1,
+                  borderColor: tariffSemester === 'EVEN' ? '#1d4ed8' : '#dbeafe',
+                  backgroundColor: tariffSemester === 'EVEN' ? '#e9f1ff' : '#fff',
+                  borderRadius: 8,
+                  paddingVertical: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: tariffSemester === 'EVEN' ? '#1e3a8a' : '#475569', fontWeight: '700' }}>Genap</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <TextInput
+            keyboardType="numeric"
+            value={tariffAmount}
+            onChangeText={setTariffAmount}
+            placeholder="Nominal tarif"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <TextInput
+            value={tariffNotes}
+            onChangeText={setTariffNotes}
+            placeholder="Catatan (opsional)"
+            placeholderTextColor="#94a3b8"
+            multiline
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', minHeight: 64, textAlignVertical: 'top', backgroundColor: '#fff' }}
+          />
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={handleSaveTariff}
+                disabled={saveTariffMutation.isPending}
+                style={{ backgroundColor: '#059669', borderRadius: 10, paddingVertical: 10, alignItems: 'center', opacity: saveTariffMutation.isPending ? 0.6 : 1 }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700' }}>
+                  {editingTariffId ? 'Simpan Perubahan' : 'Tambah Tarif'}
                 </Text>
               </Pressable>
             </View>
-          ))}
-        </View>
+            {editingTariffId ? (
+              <View style={{ width: 120, paddingHorizontal: 4 }}>
+                <Pressable
+                  onPress={resetTariffForm}
+                  style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
+                >
+                  <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
 
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
-          Total nominal: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Rp {totalAmount.toLocaleString('id-ID')}</Text>
-        </Text>
-      </View>
-
-      {paymentsQuery.isLoading ? <QueryStateView type="loading" message="Mengambil data pembayaran..." /> : null}
-      {paymentsQuery.isError ? (
-        <QueryStateView type="error" message="Gagal memuat data pembayaran." onRetry={() => paymentsQuery.refetch()} />
-      ) : null}
-      {paymentsQuery.data?.fromCache ? <OfflineCacheNotice cachedAt={paymentsQuery.data.cachedAt} /> : null}
-
-      {!paymentsQuery.isLoading && !paymentsQuery.isError ? (
-        filteredBudgets.length > 0 ? (
-          <View>
-            {filteredBudgets.map((item) => {
-              const canConfirm = item.status === 'APPROVED' && !item.realizationConfirmedAt;
-              return (
+          {tariffs.map((tariff: StaffFinanceTariffRule) => (
+            <View key={tariff.id} style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 10, padding: 10, marginBottom: 8, backgroundColor: '#fff' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <Text style={{ color: '#0f172a', fontWeight: '700' }}>{tariff.component?.name || '-'}</Text>
                 <View
-                  key={item.id}
                   style={{
-                    backgroundColor: '#fff',
                     borderWidth: 1,
-                    borderColor: '#dbe7fb',
-                    borderRadius: 12,
-                    padding: 12,
-                    marginBottom: 10,
+                    borderColor: tariff.isActive ? '#86efac' : '#fecaca',
+                    backgroundColor: tariff.isActive ? '#dcfce7' : '#fee2e2',
+                    borderRadius: 999,
+                    paddingHorizontal: 8,
+                    paddingVertical: 2,
                   }}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15, flex: 1, paddingRight: 8 }}>
-                      {item.title || 'Tanpa judul'}
-                    </Text>
-                    <View
-                      style={{
-                        borderRadius: 999,
-                        borderWidth: 1,
-                        borderColor: '#d6e2f7',
-                        paddingHorizontal: 8,
-                        paddingVertical: 2,
-                        backgroundColor: '#f8fbff',
-                      }}
-                    >
-                      <Text style={{ color: getStatusColor(item.status), fontWeight: '700', fontSize: 11 }}>{STATUS_LABEL[item.status]}</Text>
-                    </View>
-                  </View>
-
-                  <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 6 }}>{item.description || '-'}</Text>
-                  <Text style={{ color: '#475569', marginBottom: 2 }}>
-                    Pengaju: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{item.requester?.name || '-'}</Text>
+                  <Text style={{ color: tariff.isActive ? '#166534' : '#991b1b', fontSize: 11, fontWeight: '700' }}>
+                    {tariff.isActive ? 'Aktif' : 'Nonaktif'}
                   </Text>
-                  <Text style={{ color: '#475569', marginBottom: 2 }}>
-                    Unit: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{item.additionalDuty?.replace(/_/g, ' ') || '-'}</Text>
-                  </Text>
-                  <Text style={{ color: '#475569', marginBottom: 2 }}>
-                    Tahap: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{getStageLabel(item)}</Text>
-                  </Text>
-                  <Text style={{ color: '#475569', marginBottom: 8 }}>
-                    Total: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Rp {Number(item.totalAmount || 0).toLocaleString('id-ID')}</Text>
-                  </Text>
-
-                  {canConfirm ? (
-                    <Pressable
-                      disabled={confirmMutation.isPending}
-                      onPress={() => {
-                        Alert.alert(
-                          'Konfirmasi Realisasi',
-                          `Konfirmasi realisasi untuk "${item.title}"?`,
-                          [
-                            { text: 'Batal', style: 'cancel' },
-                            {
-                              text: 'Konfirmasi',
-                              style: 'default',
-                              onPress: () => confirmMutation.mutate(item.id),
-                            },
-                          ],
-                        );
-                      }}
-                      style={{
-                        backgroundColor: confirmMutation.isPending ? '#93c5fd' : BRAND_COLORS.blue,
-                        borderRadius: 9,
-                        alignItems: 'center',
-                        paddingVertical: 10,
-                      }}
-                    >
-                      <Text style={{ color: '#fff', fontWeight: '700' }}>
-                        {confirmMutation.isPending ? 'Memproses...' : 'Konfirmasi Realisasi'}
-                      </Text>
-                    </Pressable>
-                  ) : null}
                 </View>
-              );
-            })}
-          </View>
-        ) : (
-          <View
-            style={{
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: '#cbd5e1',
-              borderStyle: 'dashed',
-              backgroundColor: '#fff',
-              padding: 14,
-              marginBottom: 10,
-            }}
-          >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>Tidak ada data</Text>
-            <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data pembayaran sesuai filter saat ini.</Text>
-          </View>
-        )
+              </View>
+              <Text style={{ color: '#64748b', marginBottom: 2 }}>
+                Scope: {tariff.class?.name || 'Semua kelas'} • {tariff.semester === 'ODD' ? 'Ganjil' : tariff.semester === 'EVEN' ? 'Genap' : 'Semua semester'}
+              </Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>{formatCurrency(tariff.amount)}</Text>
+
+              <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+                <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                  <Pressable
+                    onPress={() => {
+                      setEditingTariffId(tariff.id);
+                      setTariffComponentId(tariff.componentId);
+                      setTariffClassId(tariff.classId || null);
+                      setTariffSemester(tariff.semester || '');
+                      setTariffAmount(String(Number(tariff.amount || 0)));
+                      setTariffNotes(tariff.notes || '');
+                    }}
+                    style={{ borderWidth: 1, borderColor: '#bfdbfe', backgroundColor: '#eff6ff', borderRadius: 8, paddingVertical: 8, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Edit</Text>
+                  </Pressable>
+                </View>
+                <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                  <Pressable
+                    onPress={() =>
+                      toggleTariffMutation.mutate({
+                        tariffId: tariff.id,
+                        isActive: !tariff.isActive,
+                      })
+                    }
+                    style={{
+                      borderWidth: 1,
+                      borderColor: tariff.isActive ? '#fecaca' : '#86efac',
+                      backgroundColor: tariff.isActive ? '#fff1f2' : '#f0fdf4',
+                      borderRadius: 8,
+                      paddingVertical: 8,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: tariff.isActive ? '#be123c' : '#166534', fontWeight: '700' }}>
+                      {tariff.isActive ? 'Nonaktifkan' : 'Aktifkan'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
       ) : null}
 
-      <Pressable
-        onPress={() => router.replace('/home')}
-        style={{
-          marginTop: 10,
-          backgroundColor: BRAND_COLORS.blue,
-          borderRadius: 10,
-          paddingVertical: 12,
-          alignItems: 'center',
-        }}
-      >
-        <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
-      </Pressable>
+      {activeTab === 'invoices' ? (
+        <View
+          style={{
+            backgroundColor: '#fff',
+            borderWidth: 1,
+            borderColor: '#dbe7fb',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Generate Tagihan</Text>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => setInvoiceSemester('ODD')}
+                style={{
+                  borderWidth: 1,
+                  borderColor: invoiceSemester === 'ODD' ? '#1d4ed8' : '#dbeafe',
+                  backgroundColor: invoiceSemester === 'ODD' ? '#e9f1ff' : '#fff',
+                  borderRadius: 8,
+                  paddingVertical: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: invoiceSemester === 'ODD' ? '#1e3a8a' : '#475569', fontWeight: '700' }}>Ganjil</Text>
+              </Pressable>
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => setInvoiceSemester('EVEN')}
+                style={{
+                  borderWidth: 1,
+                  borderColor: invoiceSemester === 'EVEN' ? '#1d4ed8' : '#dbeafe',
+                  backgroundColor: invoiceSemester === 'EVEN' ? '#e9f1ff' : '#fff',
+                  borderRadius: 8,
+                  paddingVertical: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: invoiceSemester === 'EVEN' ? '#1e3a8a' : '#475569', fontWeight: '700' }}>Genap</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <TextInput
+            value={invoicePeriodKey}
+            onChangeText={setInvoicePeriodKey}
+            placeholder="Period key (YYYY-MM)"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <TextInput
+            value={invoiceDueDate}
+            onChangeText={setInvoiceDueDate}
+            placeholder="Jatuh tempo (YYYY-MM-DD, opsional)"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <TextInput
+            value={invoiceTitle}
+            onChangeText={setInvoiceTitle}
+            placeholder="Judul tagihan (opsional)"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+
+          <Text style={{ color: '#475569', marginBottom: 4 }}>Kelas target (opsional)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => setInvoiceClassId(null)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: invoiceClassId === null ? '#1d4ed8' : '#dbeafe',
+                  backgroundColor: invoiceClassId === null ? '#e9f1ff' : '#fff',
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                }}
+              >
+                <Text style={{ color: invoiceClassId === null ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                  Semua kelas
+                </Text>
+              </Pressable>
+              {classes.map((classItem) => {
+                const active = invoiceClassId === classItem.id;
+                return (
+                  <Pressable
+                    key={classItem.id}
+                    onPress={() => setInvoiceClassId(classItem.id)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: active ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      {classItem.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <Pressable
+            onPress={handleGenerate}
+            disabled={generateInvoiceMutation.isPending}
+            style={{
+              backgroundColor: '#4f46e5',
+              borderRadius: 10,
+              paddingVertical: 11,
+              alignItems: 'center',
+              marginBottom: 12,
+              opacity: generateInvoiceMutation.isPending ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>
+              {generateInvoiceMutation.isPending ? 'Memproses...' : 'Generate Tagihan'}
+            </Text>
+          </Pressable>
+
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Daftar Tagihan</Text>
+          <TextInput
+            value={invoiceSearch}
+            onChangeText={setInvoiceSearch}
+            placeholder="Cari invoice / nama siswa"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {STATUS_OPTIONS.map((statusOption) => {
+                const active = invoiceStatus === statusOption.value;
+                return (
+                  <Pressable
+                    key={statusOption.label}
+                    onPress={() => setInvoiceStatus(statusOption.value)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: active ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      {statusOption.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          {invoices.map((invoice) => {
+            const status = getStatusBadge(invoice.status);
+            return (
+              <View
+                key={invoice.id}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 10,
+                  padding: 10,
+                  marginBottom: 8,
+                  backgroundColor: '#fff',
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={{ color: '#0f172a', fontWeight: '700' }}>{invoice.invoiceNo}</Text>
+                    <Text style={{ color: '#64748b', fontSize: 12 }}>
+                      {invoice.student.name} • {invoice.student.studentClass?.name || '-'}
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: status.border,
+                      backgroundColor: status.bg,
+                      borderRadius: 999,
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                    }}
+                  >
+                    <Text style={{ color: status.text, fontWeight: '700', fontSize: 11 }}>{status.label}</Text>
+                  </View>
+                </View>
+
+                <Text style={{ color: '#475569', fontSize: 12, marginBottom: 2 }}>
+                  Periode: {invoice.periodKey} • {invoice.semester === 'ODD' ? 'Ganjil' : 'Genap'}
+                </Text>
+                <Text style={{ color: '#475569', fontSize: 12, marginBottom: 2 }}>
+                  Jatuh tempo: {formatDate(invoice.dueDate)}
+                </Text>
+                <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>
+                  Sisa: {formatCurrency(invoice.balanceAmount)}
+                </Text>
+
+                <Pressable
+                  onPress={() => startPaying(invoice)}
+                  disabled={invoice.status === 'PAID' || invoice.status === 'CANCELLED'}
+                  style={{
+                    backgroundColor:
+                      invoice.status === 'PAID' || invoice.status === 'CANCELLED' ? '#cbd5e1' : '#059669',
+                    borderRadius: 8,
+                    paddingVertical: 9,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>Catat Pembayaran</Text>
+                </Pressable>
+              </View>
+            );
+          })}
+
+          {invoices.length === 0 ? (
+            <View style={{ borderWidth: 1, borderColor: '#e2e8f0', borderStyle: 'dashed', borderRadius: 10, padding: 14 }}>
+              <Text style={{ color: '#64748b', textAlign: 'center' }}>Belum ada tagihan.</Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      <Modal visible={Boolean(selectedInvoice)} animationType="fade" transparent onRequestClose={() => setSelectedInvoice(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#dbe7fb' }}>
+            <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>Catat Pembayaran</Text>
+              <Text style={{ color: '#64748b', marginTop: 2 }}>
+                {selectedInvoice?.invoiceNo || '-'} • Sisa {formatCurrency(selectedInvoice?.balanceAmount || 0)}
+              </Text>
+            </View>
+
+            <View style={{ padding: 14 }}>
+              <TextInput
+                keyboardType="numeric"
+                value={paymentAmount}
+                onChangeText={setPaymentAmount}
+                placeholder="Nominal pembayaran"
+                placeholderTextColor="#94a3b8"
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+              />
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {PAYMENT_METHOD_OPTIONS.map((methodOption) => {
+                    const active = paymentMethod === methodOption.value;
+                    return (
+                      <Pressable
+                        key={methodOption.value}
+                        onPress={() => setPaymentMethod(methodOption.value)}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: active ? '#1d4ed8' : '#dbeafe',
+                          backgroundColor: active ? '#e9f1ff' : '#fff',
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                        }}
+                      >
+                        <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                          {methodOption.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+
+              <TextInput
+                value={paymentReference}
+                onChangeText={setPaymentReference}
+                placeholder="Referensi (opsional)"
+                placeholderTextColor="#94a3b8"
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+              />
+              <TextInput
+                value={paymentNote}
+                onChangeText={setPaymentNote}
+                placeholder="Catatan (opsional)"
+                placeholderTextColor="#94a3b8"
+                multiline
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', minHeight: 72, textAlignVertical: 'top', backgroundColor: '#fff' }}
+              />
+            </View>
+
+            <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', padding: 12, flexDirection: 'row' }}>
+              <View style={{ flex: 1, paddingRight: 6 }}>
+                <Pressable
+                  onPress={() => setSelectedInvoice(null)}
+                  style={{ borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, paddingVertical: 10, alignItems: 'center', backgroundColor: '#fff' }}
+                >
+                  <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+                </Pressable>
+              </View>
+              <View style={{ flex: 1, paddingLeft: 6 }}>
+                <Pressable
+                  disabled={payInvoiceMutation.isPending || Number(paymentAmount) <= 0}
+                  onPress={() => payInvoiceMutation.mutate()}
+                  style={{
+                    backgroundColor: payInvoiceMutation.isPending || Number(paymentAmount) <= 0 ? '#93c5fd' : '#2563eb',
+                    borderRadius: 10,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>
+                    {payInvoiceMutation.isPending ? 'Memproses...' : 'Simpan'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
