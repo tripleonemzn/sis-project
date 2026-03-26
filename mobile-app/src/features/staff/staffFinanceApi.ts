@@ -12,7 +12,8 @@ export type FinanceComponentPeriodicity = 'MONTHLY' | 'ONE_TIME' | 'PERIODIC';
 export type FinanceAdjustmentKind = 'DISCOUNT' | 'SCHOLARSHIP' | 'SURCHARGE';
 export type FinanceInvoiceStatus = 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
 export type FinancePaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER';
-export type FinanceCreditTransactionKind = 'OVERPAYMENT' | 'REFUND';
+export type FinancePaymentSource = 'DIRECT' | 'CREDIT_BALANCE';
+export type FinanceCreditTransactionKind = 'OVERPAYMENT' | 'APPLIED_TO_INVOICE' | 'REFUND';
 export type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE';
 
 export type StaffFinanceComponent = {
@@ -135,6 +136,27 @@ export type StaffFinanceInvoice = {
       level: string;
     } | null;
   };
+  payments: Array<{
+    id: number;
+    paymentNo: string;
+    amount: number;
+    allocatedAmount: number;
+    creditedAmount: number;
+    source: FinancePaymentSource;
+    method: FinancePaymentMethod;
+    referenceNo?: string | null;
+    paidAt: string;
+  }>;
+  installments: Array<{
+    sequence: number;
+    amount: number;
+    dueDate?: string | null;
+    paidAmount: number;
+    balanceAmount: number;
+    status: FinanceInvoiceStatus;
+    isOverdue: boolean;
+    daysPastDue: number;
+  }>;
 };
 
 export type StaffFinanceCreditTransaction = {
@@ -152,6 +174,7 @@ export type StaffFinanceCreditTransaction = {
   payment?: {
     id: number;
     paymentNo: string;
+    source?: FinancePaymentSource | null;
     invoiceId?: number | null;
     invoiceNo?: string | null;
     periodKey?: string | null;
@@ -242,6 +265,8 @@ export type StaffFinanceInvoiceGenerationDetail = {
   invoiceId?: number | null;
   invoiceNo?: string | null;
   totalAmount: number;
+  projectedPaidAmount: number;
+  projectedBalanceAmount: number;
   itemCount: number;
   componentNames: string[];
   items: Array<{
@@ -252,6 +277,21 @@ export type StaffFinanceInvoiceGenerationDetail = {
     amount: number;
     notes?: string | null;
   }>;
+  creditAutoApply: {
+    enabled: boolean;
+    availableBalance: number;
+    appliedAmount: number;
+    remainingBalance: number;
+  };
+  installmentPlan: {
+    count: number;
+    intervalDays: number;
+    installments: Array<{
+      sequence: number;
+      amount: number;
+      dueDate?: string | null;
+    }>;
+  };
   reason?: string | null;
 };
 
@@ -263,6 +303,9 @@ export type StaffFinanceInvoiceGenerationResult = {
     classId: number | null;
     majorId: number | null;
     gradeLevel: string | null;
+    installmentCount: number;
+    installmentIntervalDays: number;
+    autoApplyCreditBalance: boolean;
     replaceExisting: boolean;
     selectedStudentCount: number;
     selectionMode: 'FILTERS' | 'EXPLICIT_STUDENTS';
@@ -275,6 +318,8 @@ export type StaffFinanceInvoiceGenerationResult = {
     skippedExisting: number;
     skippedLocked: number;
     totalProjectedAmount: number;
+    totalProjectedAppliedCredit: number;
+    totalProjectedOutstanding: number;
   };
   details: StaffFinanceInvoiceGenerationDetail[];
 };
@@ -535,6 +580,9 @@ export const staffFinanceApi = {
     classId?: number;
     majorId?: number;
     gradeLevel?: string;
+    installmentCount?: number;
+    installmentIntervalDays?: number;
+    autoApplyCreditBalance?: boolean;
     studentIds?: number[];
     replaceExisting?: boolean;
   }) {
@@ -554,6 +602,9 @@ export const staffFinanceApi = {
     classId?: number;
     majorId?: number;
     gradeLevel?: string;
+    installmentCount?: number;
+    installmentIntervalDays?: number;
+    autoApplyCreditBalance?: boolean;
     studentIds?: number[];
     replaceExisting?: boolean;
   }) {

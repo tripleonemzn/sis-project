@@ -79,6 +79,7 @@ export type ParentChildReportCard = {
 
 export type ParentPaymentStatus = 'PENDING' | 'PAID' | 'PARTIAL' | 'CANCELLED';
 export type ParentPaymentType = 'MONTHLY' | 'ONE_TIME';
+export type ParentPaymentSource = 'DIRECT' | 'CREDIT_BALANCE';
 
 export type ParentPaymentRecord = {
   id: number;
@@ -86,6 +87,7 @@ export type ParentPaymentRecord = {
   amount: number;
   allocatedAmount?: number;
   creditedAmount?: number;
+  source?: ParentPaymentSource | null;
   status: ParentPaymentStatus;
   type: ParentPaymentType;
   method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER' | null;
@@ -143,6 +145,16 @@ export type ParentChildFinanceOverview = {
       componentName: string;
       amount: number;
       periodicity?: 'MONTHLY' | 'ONE_TIME' | 'PERIODIC' | null;
+    }>;
+    installments: Array<{
+      sequence: number;
+      amount: number;
+      dueDate?: string | null;
+      paidAmount: number;
+      balanceAmount: number;
+      status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
+      isOverdue: boolean;
+      daysPastDue: number;
     }>;
   }>;
   payments: ParentPaymentRecord[];

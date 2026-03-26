@@ -38,6 +38,10 @@ const INVOICE_STATUS_COLORS: Record<'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED',
   CANCELLED: '#b91c1c',
 };
 
+function getPaymentSourceLabel(source?: 'DIRECT' | 'CREDIT_BALANCE' | null) {
+  return source === 'CREDIT_BALANCE' ? 'Saldo Kredit' : 'Pembayaran Langsung';
+}
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
@@ -284,6 +288,14 @@ export default function StudentFinanceScreen() {
                       Sisa: {formatCurrency(invoice.balanceAmount)}
                     </Text>
                   </View>
+                  <Text style={{ color: '#6d28d9', marginTop: 2, fontSize: 12 }}>
+                    {(invoice.installments || []).length} termin • {(invoice.installments || []).filter((installment) => installment.status === 'PAID').length} lunas
+                  </Text>
+                  {(invoice.installments || []).length > 0 ? (
+                    <Text style={{ color: '#6d28d9', marginTop: 2, fontSize: 12 }}>
+                      Termin berikutnya: {(invoice.installments || []).find((installment) => installment.balanceAmount > 0)?.sequence || '-'}
+                    </Text>
+                  ) : null}
                   {invoice.isOverdue ? (
                     <Text style={{ color: '#b91c1c', marginTop: 2, fontSize: 12 }}>
                       Terlambat {invoice.daysPastDue} hari
@@ -344,6 +356,9 @@ export default function StudentFinanceScreen() {
                       </Text>
                     </View>
                   </View>
+                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2, fontSize: 12 }}>
+                    Sumber: {getPaymentSourceLabel(payment.source)}
+                  </Text>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 4 }}>
                     {formatCurrency(payment.amount)}
                   </Text>

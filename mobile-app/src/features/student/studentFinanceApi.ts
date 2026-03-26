@@ -9,6 +9,7 @@ type ApiResponse<T> = {
 
 export type StudentPaymentStatus = 'PENDING' | 'PAID' | 'PARTIAL' | 'CANCELLED';
 export type StudentPaymentType = 'MONTHLY' | 'ONE_TIME';
+export type StudentPaymentSource = 'DIRECT' | 'CREDIT_BALANCE';
 
 export type StudentFinanceOverview = {
   student: {
@@ -56,6 +57,7 @@ export type StudentFinanceOverview = {
     amount: number;
     allocatedAmount?: number;
     creditedAmount?: number;
+    source?: StudentPaymentSource | null;
     status: StudentPaymentStatus;
     type: StudentPaymentType;
     method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER' | null;
@@ -85,6 +87,16 @@ export type StudentFinanceOverview = {
       componentName: string;
       amount: number;
       periodicity?: 'MONTHLY' | 'ONE_TIME' | 'PERIODIC' | null;
+    }>;
+    installments: Array<{
+      sequence: number;
+      amount: number;
+      dueDate?: string | null;
+      paidAmount: number;
+      balanceAmount: number;
+      status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
+      isOverdue: boolean;
+      daysPastDue: number;
     }>;
   }>;
   creditBalance: {

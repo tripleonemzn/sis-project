@@ -21,6 +21,7 @@ import { normalizeNisnInput } from '../../utils/nisn';
 
 type SemesterCode = 'ODD' | 'EVEN';
 type ParentPaymentStatus = 'PENDING' | 'PAID' | 'PARTIAL' | 'CANCELLED';
+type ParentPaymentSource = 'DIRECT' | 'CREDIT_BALANCE';
 type ParentAttendanceStatus = 'PRESENT' | 'SICK' | 'PERMISSION' | 'ABSENT' | 'ALPHA' | 'LATE';
 
 interface ParentChild {
@@ -55,6 +56,7 @@ interface ParentPayment {
   amount: number;
   allocatedAmount?: number;
   creditedAmount?: number;
+  source?: ParentPaymentSource | null;
   status: ParentPaymentStatus;
   type: 'MONTHLY' | 'ONE_TIME';
   method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER' | null;
@@ -110,6 +112,16 @@ interface ParentChildFinanceOverview {
       componentName: string;
       amount: number;
       periodicity?: 'MONTHLY' | 'ONE_TIME' | 'PERIODIC' | null;
+    }>;
+    installments: Array<{
+      sequence: number;
+      amount: number;
+      dueDate?: string | null;
+      paidAmount: number;
+      balanceAmount: number;
+      status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
+      isOverdue: boolean;
+      daysPastDue: number;
     }>;
   }>;
   payments: ParentPayment[];
@@ -202,6 +214,10 @@ const PAYMENT_STATUS_COLOR: Record<ParentPaymentStatus, string> = {
   PARTIAL: 'bg-blue-50 text-blue-700 border-blue-200',
   CANCELLED: 'bg-rose-50 text-rose-700 border-rose-200',
 };
+
+function getParentPaymentSourceLabel(source?: ParentPaymentSource | null): string {
+  return source === 'CREDIT_BALANCE' ? 'Saldo Kredit' : 'Pembayaran Langsung';
+}
 
 const INVOICE_STATUS_LABELS: Record<'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED', string> = {
   UNPAID: 'Belum Lunas',
@@ -1075,12 +1091,22 @@ const ParentFinancePage = () => {
                                 {invoice.title ||
                                   `${invoice.periodKey} • ${invoice.semester === 'ODD' ? 'Ganjil' : 'Genap'}`}
                               </div>
+                              <div className="mt-1 text-[11px] text-violet-700">
+                                {invoice.installments.length} termin •{' '}
+                                {invoice.installments.filter((installment) => installment.status === 'PAID').length} lunas
+                              </div>
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-700">
                               {formatDate(invoice.dueDate || '')}
                               {invoice.isOverdue ? (
                                 <div className="text-xs text-rose-600">
                                   Terlambat {invoice.daysPastDue} hari
+                                </div>
+                              ) : null}
+                              {invoice.installments.length > 0 ? (
+                                <div className="mt-1 text-[11px] text-violet-700">
+                                  Termin berikutnya:{' '}
+                                  {invoice.installments.find((installment) => installment.balanceAmount > 0)?.sequence || '-'}
                                 </div>
                               ) : null}
                             </td>
@@ -1135,6 +1161,9 @@ const ParentFinancePage = () => {
                             <td className="px-6 py-4 text-sm text-gray-700">{formatDate(payment.createdAt)}</td>
                             <td className="px-6 py-4 text-sm text-gray-700">
                               {payment.type === 'MONTHLY' ? 'Bulanan' : 'Sekali Bayar'}
+                              <div className="mt-1 text-[11px] text-gray-500">
+                                {getParentPaymentSourceLabel(payment.source)}
+                              </div>
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-900 text-right font-medium">
                               {formatCurrency(payment.amount)}

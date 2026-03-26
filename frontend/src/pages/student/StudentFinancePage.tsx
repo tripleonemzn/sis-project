@@ -39,6 +39,10 @@ function getStatusLabel(status: StudentPaymentStatus): string {
   return 'Belum Lunas';
 }
 
+function getPaymentSourceLabel(source?: 'DIRECT' | 'CREDIT_BALANCE' | null): string {
+  return source === 'CREDIT_BALANCE' ? 'Saldo Kredit' : 'Pembayaran Langsung';
+}
+
 function getInvoiceStatusBadgeClass(status: StudentInvoiceStatus): string {
   if (status === 'PAID') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   if (status === 'PARTIAL') return 'border-amber-200 bg-amber-50 text-amber-700';
@@ -169,11 +173,21 @@ export default function StudentFinancePage() {
                       <div className="text-xs text-gray-500">
                         {invoice.title || `${invoice.periodKey} • ${invoice.semester === 'ODD' ? 'Ganjil' : 'Genap'}`}
                       </div>
+                      <div className="mt-1 text-[11px] text-violet-700">
+                        {invoice.installments.length} termin •{' '}
+                        {invoice.installments.filter((installment) => installment.status === 'PAID').length} lunas
+                      </div>
                     </td>
                     <td className="px-5 py-3 text-sm text-gray-700">
                       {formatDate(invoice.dueDate || '')}
                       {invoice.isOverdue ? (
                         <div className="text-xs text-rose-600">Terlambat {invoice.daysPastDue} hari</div>
+                      ) : null}
+                      {invoice.installments.length > 0 ? (
+                        <div className="mt-1 text-[11px] text-violet-700">
+                          Termin berikutnya:{' '}
+                          {invoice.installments.find((installment) => installment.balanceAmount > 0)?.sequence || '-'}
+                        </div>
                       ) : null}
                     </td>
                     <td className="px-5 py-3 text-sm text-right font-semibold text-gray-900">
@@ -240,6 +254,7 @@ export default function StudentFinancePage() {
                         <CreditCard className="w-3.5 h-3.5 text-gray-400" />
                         {payment.type === 'MONTHLY' ? 'Bulanan' : 'Sekali Bayar'}
                       </span>
+                      <div className="mt-1 text-[11px] text-slate-500">{getPaymentSourceLabel(payment.source)}</div>
                     </td>
                     <td className="px-5 py-3 text-sm text-right font-semibold text-gray-900">
                       {formatCurrency(payment.amount)}

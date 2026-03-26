@@ -2,6 +2,7 @@ import api from './api';
 
 export type StudentPaymentStatus = 'PENDING' | 'PAID' | 'PARTIAL' | 'CANCELLED';
 export type StudentPaymentType = 'MONTHLY' | 'ONE_TIME';
+export type StudentPaymentSource = 'DIRECT' | 'CREDIT_BALANCE';
 
 interface ApiResponse<T> {
   data: T;
@@ -55,6 +56,7 @@ export interface StudentFinanceOverview {
     amount: number;
     allocatedAmount?: number;
     creditedAmount?: number;
+    source?: StudentPaymentSource | null;
     status: StudentPaymentStatus;
     type: StudentPaymentType;
     method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER' | null;
@@ -84,6 +86,16 @@ export interface StudentFinanceOverview {
       componentName: string;
       amount: number;
       periodicity?: 'MONTHLY' | 'ONE_TIME' | 'PERIODIC' | null;
+    }>;
+    installments: Array<{
+      sequence: number;
+      amount: number;
+      dueDate?: string | null;
+      paidAmount: number;
+      balanceAmount: number;
+      status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
+      isOverdue: boolean;
+      daysPastDue: number;
     }>;
   }>;
   creditBalance: {

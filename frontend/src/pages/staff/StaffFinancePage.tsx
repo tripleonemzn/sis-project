@@ -127,6 +127,7 @@ function getPaymentMethodLabel(method?: FinancePaymentMethod | null) {
 }
 
 function getCreditTransactionLabel(transaction: FinanceCreditTransaction) {
+  if (transaction.kind === 'APPLIED_TO_INVOICE') return 'Saldo kredit dipakai ke invoice';
   if (transaction.kind === 'REFUND') return 'Refund saldo kredit';
   return 'Kelebihan bayar masuk saldo kredit';
 }
@@ -232,6 +233,9 @@ export const StaffFinancePage = () => {
   const [invoiceClassId, setInvoiceClassId] = useState<number | ''>('');
   const [invoiceMajorId, setInvoiceMajorId] = useState<number | ''>('');
   const [invoiceGradeLevel, setInvoiceGradeLevel] = useState('');
+  const [invoiceInstallmentCount, setInvoiceInstallmentCount] = useState(1);
+  const [invoiceInstallmentIntervalDays, setInvoiceInstallmentIntervalDays] = useState(30);
+  const [invoiceAutoApplyCreditBalance, setInvoiceAutoApplyCreditBalance] = useState(true);
   const [invoiceReplaceExisting, setInvoiceReplaceExisting] = useState(false);
   const [invoiceStudentSearch, setInvoiceStudentSearch] = useState('');
   const [invoiceSelectedStudentIds, setInvoiceSelectedStudentIds] = useState<number[]>([]);
@@ -451,6 +455,13 @@ export const StaffFinancePage = () => {
   const paymentPreviewAmount = Number(paymentAmount || 0);
   const paymentAllocatedAmount = Math.min(paymentPreviewAmount, Number(selectedInvoice?.balanceAmount || 0));
   const paymentCreditedAmount = Math.max(paymentPreviewAmount - Number(selectedInvoice?.balanceAmount || 0), 0);
+  const selectedInvoiceInstallments = selectedInvoice?.installments || [];
+  const selectedInvoiceNextInstallment = selectedInvoiceInstallments.find(
+    (installment) => installment.balanceAmount > 0,
+  );
+  const selectedInvoiceCreditAppliedAmount = (selectedInvoice?.payments || [])
+    .filter((payment) => payment.source === 'CREDIT_BALANCE')
+    .reduce((sum, payment) => sum + Number(payment.allocatedAmount || payment.amount || 0), 0);
   const overdueCount = useMemo(() => {
     const today = Date.now();
     return invoices.filter((invoice) => {
@@ -698,6 +709,9 @@ export const StaffFinancePage = () => {
         classId: invoiceClassId === '' ? undefined : Number(invoiceClassId),
         majorId: invoiceMajorId === '' ? undefined : Number(invoiceMajorId),
         gradeLevel: invoiceGradeLevel.trim() || undefined,
+        installmentCount: Math.max(1, Number(invoiceInstallmentCount || 1)),
+        installmentIntervalDays: Math.max(1, Number(invoiceInstallmentIntervalDays || 30)),
+        autoApplyCreditBalance: invoiceAutoApplyCreditBalance,
         studentIds: invoiceSelectedStudentIds.length > 0 ? invoiceSelectedStudentIds : undefined,
         replaceExisting: invoiceReplaceExisting,
       }),
@@ -707,6 +721,7 @@ export const StaffFinancePage = () => {
       );
       previewInvoiceMutation.reset();
       queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-credits'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
     },
     onError: (error: unknown) => {
@@ -726,6 +741,9 @@ export const StaffFinancePage = () => {
         classId: invoiceClassId === '' ? undefined : Number(invoiceClassId),
         majorId: invoiceMajorId === '' ? undefined : Number(invoiceMajorId),
         gradeLevel: invoiceGradeLevel.trim() || undefined,
+        installmentCount: Math.max(1, Number(invoiceInstallmentCount || 1)),
+        installmentIntervalDays: Math.max(1, Number(invoiceInstallmentIntervalDays || 30)),
+        autoApplyCreditBalance: invoiceAutoApplyCreditBalance,
         studentIds: invoiceSelectedStudentIds.length > 0 ? invoiceSelectedStudentIds : undefined,
         replaceExisting: invoiceReplaceExisting,
       }),
@@ -911,12 +929,36 @@ export const StaffFinancePage = () => {
       toast.error('Period key wajib diisi, contoh 2026-03');
       return;
     }
+    if (!Number.isFinite(invoiceInstallmentCount) || invoiceInstallmentCount < 1 || invoiceInstallmentCount > 24) {
+      toast.error('Jumlah cicilan harus antara 1 sampai 24');
+      return;
+    }
+    if (
+      !Number.isFinite(invoiceInstallmentIntervalDays) ||
+      invoiceInstallmentIntervalDays < 1 ||
+      invoiceInstallmentIntervalDays > 180
+    ) {
+      toast.error('Jarak antar cicilan harus antara 1 sampai 180 hari');
+      return;
+    }
     generateInvoiceMutation.mutate();
   };
 
   const handlePreviewInvoices = () => {
     if (!invoicePeriodKey.trim()) {
       toast.error('Period key wajib diisi, contoh 2026-03');
+      return;
+    }
+    if (!Number.isFinite(invoiceInstallmentCount) || invoiceInstallmentCount < 1 || invoiceInstallmentCount > 24) {
+      toast.error('Jumlah cicilan harus antara 1 sampai 24');
+      return;
+    }
+    if (
+      !Number.isFinite(invoiceInstallmentIntervalDays) ||
+      invoiceInstallmentIntervalDays < 1 ||
+      invoiceInstallmentIntervalDays > 180
+    ) {
+      toast.error('Jarak antar cicilan harus antara 1 sampai 180 hari');
       return;
     }
     previewInvoiceMutation.mutate();
@@ -973,6 +1015,9 @@ export const StaffFinancePage = () => {
     invoiceClassId,
     invoiceMajorId,
     invoiceGradeLevel,
+    invoiceInstallmentCount,
+    invoiceInstallmentIntervalDays,
+    invoiceAutoApplyCreditBalance,
     invoiceReplaceExisting,
     invoiceSelectedStudentIds,
   ]);
@@ -1964,6 +2009,39 @@ export const StaffFinancePage = () => {
             placeholder="Judul tagihan (opsional)"
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
           />
+          <input
+            type="number"
+            min={1}
+            max={24}
+            value={invoiceInstallmentCount}
+            onChange={(event) =>
+              setInvoiceInstallmentCount(Math.max(1, Math.min(24, Number(event.target.value || 1))))
+            }
+            placeholder="Jumlah cicilan"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+          <input
+            type="number"
+            min={1}
+            max={180}
+            value={invoiceInstallmentIntervalDays}
+            onChange={(event) =>
+              setInvoiceInstallmentIntervalDays(
+                Math.max(1, Math.min(180, Number(event.target.value || 30))),
+              )
+            }
+            placeholder="Jarak cicilan (hari)"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+          <label className="inline-flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+            <input
+              type="checkbox"
+              checked={invoiceAutoApplyCreditBalance}
+              onChange={(event) => setInvoiceAutoApplyCreditBalance(event.target.checked)}
+              className="rounded border-gray-300 text-sky-600 focus:ring-sky-500"
+            />
+            Auto-apply saldo kredit yang tersedia
+          </label>
           <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
             <input
               type="checkbox"
@@ -2086,7 +2164,7 @@ export const StaffFinancePage = () => {
                   </p>
                 ) : null}
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs min-w-[280px]">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs min-w-[320px]">
                 <div className="rounded-lg bg-white border border-emerald-100 px-3 py-2">
                   <div className="text-emerald-700">Siap dibuat</div>
                   <div className="mt-1 text-base font-semibold text-emerald-900">
@@ -2115,6 +2193,18 @@ export const StaffFinancePage = () => {
                   <div className="text-slate-700">Tanpa tarif</div>
                   <div className="mt-1 text-base font-semibold text-slate-900">
                     {previewInvoiceMutation.data.summary.skippedNoTariff}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-white border border-sky-100 px-3 py-2">
+                  <div className="text-sky-700">Auto-apply kredit</div>
+                  <div className="mt-1 text-sm font-semibold text-sky-900">
+                    {formatCurrency(previewInvoiceMutation.data.summary.totalProjectedAppliedCredit)}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-white border border-violet-100 px-3 py-2">
+                  <div className="text-violet-700">Outstanding akhir</div>
+                  <div className="mt-1 text-sm font-semibold text-violet-900">
+                    {formatCurrency(previewInvoiceMutation.data.summary.totalProjectedOutstanding)}
                   </div>
                 </div>
               </div>
@@ -2159,6 +2249,31 @@ export const StaffFinancePage = () => {
                               ))}
                             </div>
                           ) : null}
+                          {detail.creditAutoApply.appliedAmount > 0 ? (
+                            <div className="mt-2 rounded-lg border border-sky-100 bg-sky-50/80 px-2 py-1.5 text-[11px] text-sky-800">
+                              Auto-apply saldo kredit: {formatCurrency(detail.creditAutoApply.appliedAmount)} dari saldo{' '}
+                              {formatCurrency(detail.creditAutoApply.availableBalance)}.
+                              <span className="font-semibold text-sky-900">
+                                {' '}Sisa tagihan setelah apply {formatCurrency(detail.projectedBalanceAmount)}
+                              </span>
+                            </div>
+                          ) : null}
+                          <div className="mt-2 text-[11px] text-violet-700">
+                            Skema cicilan: {detail.installmentPlan.count} termin • interval {detail.installmentPlan.intervalDays} hari
+                          </div>
+                          {detail.installmentPlan.installments.length > 0 ? (
+                            <div className="mt-1 space-y-1">
+                              {detail.installmentPlan.installments.map((installment) => (
+                                <div
+                                  key={`${detail.studentId}-${installment.sequence}`}
+                                  className="text-[11px] text-violet-800"
+                                >
+                                  Termin {installment.sequence} • {formatCurrency(installment.amount)} • jatuh tempo{' '}
+                                  {formatDate(installment.dueDate)}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
                           {detail.reason ? <div className="mt-2 text-[11px] text-amber-700">{detail.reason}</div> : null}
                         </td>
                         <td className="px-3 py-2 text-xs">
@@ -2167,7 +2282,10 @@ export const StaffFinancePage = () => {
                           </span>
                         </td>
                         <td className="px-3 py-2 text-sm text-right text-gray-800">
-                          {detail.totalAmount > 0 ? formatCurrency(detail.totalAmount) : '-'}
+                          <div>{detail.totalAmount > 0 ? formatCurrency(detail.totalAmount) : '-'}</div>
+                          <div className="mt-1 text-[11px] text-violet-700">
+                            Akhir {detail.projectedBalanceAmount > 0 ? formatCurrency(detail.projectedBalanceAmount) : 'Lunas'}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -2247,6 +2365,23 @@ export const StaffFinancePage = () => {
                     <td className="px-4 py-3 text-sm text-gray-700">
                       <div className="font-semibold text-gray-900">{invoice.invoiceNo}</div>
                       <div className="text-xs text-gray-500">Jatuh tempo: {formatDate(invoice.dueDate)}</div>
+                      <div className="mt-1 text-[11px] text-violet-700">
+                        {invoice.installments.length} termin •{' '}
+                        {invoice.installments.filter((installment) => installment.status === 'PAID').length} lunas
+                      </div>
+                      {invoice.payments.some((payment) => payment.source === 'CREDIT_BALANCE') ? (
+                        <div className="mt-1 text-[11px] text-sky-700">
+                          Auto-apply kredit{' '}
+                          {formatCurrency(
+                            invoice.payments
+                              .filter((payment) => payment.source === 'CREDIT_BALANCE')
+                              .reduce(
+                                (sum, payment) => sum + Number(payment.allocatedAmount || payment.amount || 0),
+                                0,
+                              ),
+                          )}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700">
                       <div className="font-medium text-gray-900">{invoice.student.name}</div>
@@ -2824,6 +2959,32 @@ export const StaffFinancePage = () => {
               <div className="text-xs text-gray-600">
                 Sisa tagihan: <span className="font-semibold">{formatCurrency(selectedInvoice.balanceAmount)}</span>
               </div>
+              {selectedInvoiceCreditAppliedAmount > 0 ? (
+                <div className="rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2 text-xs text-sky-800">
+                  Saldo kredit yang sudah terpakai ke invoice ini:{' '}
+                  <span className="font-semibold">{formatCurrency(selectedInvoiceCreditAppliedAmount)}</span>
+                </div>
+              ) : null}
+              {selectedInvoiceInstallments.length > 0 ? (
+                <div className="rounded-lg border border-violet-100 bg-violet-50/70 px-3 py-2 text-xs text-violet-900">
+                  <div className="font-semibold">
+                    Skema cicilan {selectedInvoiceInstallments.length} termin
+                    {selectedInvoiceNextInstallment
+                      ? ` • Termin berikutnya ${selectedInvoiceNextInstallment.sequence} (${formatCurrency(
+                          selectedInvoiceNextInstallment.balanceAmount,
+                        )})`
+                      : ' • Semua termin sudah lunas'}
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {selectedInvoiceInstallments.map((installment) => (
+                      <div key={`${selectedInvoice.id}-${installment.sequence}`}>
+                        Termin {installment.sequence} • {formatCurrency(installment.amount)} • sisa{' '}
+                        {formatCurrency(installment.balanceAmount)} • jatuh tempo {formatDate(installment.dueDate)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <input
                 type="number"
                 min={0}

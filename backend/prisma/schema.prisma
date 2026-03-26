@@ -1528,6 +1528,7 @@ model FinanceInvoice {
   createdBy      User?                @relation("FinanceInvoiceCreator", fields: [createdById], references: [id], onDelete: SetNull)
   items          FinanceInvoiceItem[]
   payments       FinancePayment[]
+  installments   FinanceInvoiceInstallment[]
 
   @@unique([studentId, semester, periodKey])
   @@index([studentId, status])
@@ -1561,6 +1562,7 @@ model FinancePayment {
   amount      Float
   allocatedAmount Float            @default(0)
   creditedAmount Float             @default(0)
+  source      FinancePaymentSource @default(DIRECT)
   method      FinancePaymentMethod @default(OTHER)
   referenceNo String?
   note        String?
@@ -1576,6 +1578,21 @@ model FinancePayment {
   @@index([studentId, paidAt])
   @@index([invoiceId, paidAt])
   @@map("finance_payments")
+}
+
+model FinanceInvoiceInstallment {
+  id        Int            @id @default(autoincrement())
+  invoiceId Int
+  sequence  Int
+  amount    Float
+  dueDate   DateTime?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  invoice   FinanceInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([invoiceId, sequence])
+  @@index([invoiceId, dueDate])
+  @@map("finance_invoice_installments")
 }
 
 model FinanceCreditBalance {
@@ -2021,8 +2038,14 @@ enum FinancePaymentMethod {
   OTHER
 }
 
+enum FinancePaymentSource {
+  DIRECT
+  CREDIT_BALANCE
+}
+
 enum FinanceCreditTransactionKind {
   OVERPAYMENT
+  APPLIED_TO_INVOICE
   REFUND
 }
 
