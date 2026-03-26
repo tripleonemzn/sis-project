@@ -277,6 +277,10 @@ export default function StaffPaymentsScreen() {
   const [reminderDueSoonDays, setReminderDueSoonDays] = useState('3');
 
   const [selectedInvoice, setSelectedInvoice] = useState<StaffFinanceInvoice | null>(null);
+  const [installmentDrafts, setInstallmentDrafts] = useState<
+    Array<{ sequence: number; amount: string; dueDate: string }>
+  >([]);
+  const [installmentScheduleNote, setInstallmentScheduleNote] = useState('');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<FinancePaymentMethod>('CASH');
   const [paymentReference, setPaymentReference] = useState('');
@@ -463,12 +467,14 @@ export default function StaffPaymentsScreen() {
   const paymentAllocatedAmount = Math.min(paymentPreviewAmount, Number(selectedInvoice?.balanceAmount || 0));
   const paymentCreditedAmount = Math.max(paymentPreviewAmount - Number(selectedInvoice?.balanceAmount || 0), 0);
   const selectedInvoiceInstallments = selectedInvoice?.installments || [];
-  const selectedInvoiceNextInstallment = selectedInvoiceInstallments.find(
-    (installment) => installment.balanceAmount > 0,
-  );
+  const selectedInvoiceNextInstallment =
+    selectedInvoice?.installmentSummary?.nextInstallment ||
+    selectedInvoiceInstallments.find((installment) => installment.balanceAmount > 0) ||
+    null;
   const selectedInvoiceCreditAppliedAmount = (selectedInvoice?.payments || [])
     .filter((payment) => payment.source === 'CREDIT_BALANCE')
     .reduce((sum, payment) => sum + Number(payment.allocatedAmount || payment.amount || 0), 0);
+  const selectedInvoiceCanEditAmounts = Number(selectedInvoice?.paidAmount || 0) <= 0;
 
   useEffect(() => {
     if (invoiceAcademicYearId == null && activeYearQuery.data?.id) {
@@ -775,6 +781,27 @@ export default function StaffPaymentsScreen() {
     onError: (error: unknown) => notifyApiError(error, 'Gagal mencatat pembayaran.'),
   });
 
+  const updateInstallmentsMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedInvoice) throw new Error('Tagihan belum dipilih');
+      return staffFinanceApi.updateInvoiceInstallments(selectedInvoice.id, {
+        installments: installmentDrafts.map((draft) => ({
+          sequence: draft.sequence,
+          amount: Number(draft.amount),
+          dueDate: draft.dueDate || null,
+        })),
+        note: installmentScheduleNote.trim() || undefined,
+      });
+    },
+    onSuccess: (invoice) => {
+      notifySuccess('Jadwal cicilan diperbarui.');
+      setSelectedInvoice(invoice);
+      setInstallmentScheduleNote('');
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal memperbarui jadwal cicilan.'),
+  });
+
   const refundMutation = useMutation({
     mutationFn: () => {
       if (!selectedCreditBalance) throw new Error('Saldo kredit belum dipilih');
@@ -886,6 +913,16 @@ export default function StaffPaymentsScreen() {
     setPaymentNote('');
   };
 
+  const handleInstallmentDraftChange = (
+    sequence: number,
+    field: 'amount' | 'dueDate',
+    value: string,
+  ) => {
+    setInstallmentDrafts((current) =>
+      current.map((draft) => (draft.sequence === sequence ? { ...draft, [field]: value } : draft)),
+    );
+  };
+
   const startRefund = (balance: StaffFinanceCreditBalanceRow) => {
     setSelectedCreditBalance(balance);
     setRefundAmount(String(Number(balance.balanceAmount || 0)));
@@ -939,6 +976,33 @@ export default function StaffPaymentsScreen() {
     setAdjustmentStudentSearch('');
   };
 
+  const handleSaveInstallments = () => {
+    if (!selectedInvoice) {
+      notifyApiError(null, 'Tagihan belum dipilih.');
+      return;
+    }
+
+    if (installmentDrafts.length === 0) {
+      notifyApiError(null, 'Skema cicilan belum tersedia.');
+      return;
+    }
+
+    if (installmentDrafts.some((draft) => Number(draft.amount) <= 0)) {
+      notifyApiError(null, 'Nominal setiap termin harus lebih dari 0.');
+      return;
+    }
+
+    if (selectedInvoiceCanEditAmounts) {
+      const totalInstallments = installmentDrafts.reduce((sum, draft) => sum + Number(draft.amount || 0), 0);
+      if (Math.abs(totalInstallments - Number(selectedInvoice.totalAmount || 0)) > 0.009) {
+        notifyApiError(null, 'Total seluruh termin harus sama dengan total invoice.');
+        return;
+      }
+    }
+
+    updateInstallmentsMutation.mutate();
+  };
+
   const handleSaveRefund = () => {
     if (!selectedCreditBalance) {
       notifyApiError(null, 'Saldo kredit siswa belum dipilih.');
@@ -972,6 +1036,23 @@ export default function StaffPaymentsScreen() {
     invoiceReplaceExisting,
     invoiceSelectedStudentIds,
   ]);
+
+  useEffect(() => {
+    if (!selectedInvoice) {
+      setInstallmentDrafts([]);
+      setInstallmentScheduleNote('');
+      return;
+    }
+
+    setInstallmentDrafts(
+      (selectedInvoice.installments || []).map((installment) => ({
+        sequence: installment.sequence,
+        amount: String(Number(installment.amount || 0)),
+        dueDate: installment.dueDate ? String(installment.dueDate).slice(0, 10) : '',
+      })),
+    );
+    setInstallmentScheduleNote('');
+  }, [selectedInvoice]);
 
   if (isLoading) return <AppLoadingScreen message="Memuat modul keuangan staff..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -3321,8 +3402,21 @@ export default function StaffPaymentsScreen() {
                   Jatuh tempo: {formatDate(invoice.dueDate)}
                 </Text>
                 <Text style={{ color: '#6d28d9', fontSize: 12, marginBottom: 2 }}>
-                  {(invoice.installments || []).length} termin • {(invoice.installments || []).filter((installment) => installment.status === 'PAID').length} lunas
+                  {invoice.installmentSummary?.totalCount ?? (invoice.installments || []).length} termin •{' '}
+                  {invoice.installmentSummary?.paidCount ?? (invoice.installments || []).filter((installment) => installment.status === 'PAID').length} lunas
                 </Text>
+                {invoice.installmentSummary?.nextInstallment ? (
+                  <Text style={{ color: '#6d28d9', fontSize: 12, marginBottom: 2 }}>
+                    Termin berikutnya {invoice.installmentSummary.nextInstallment.sequence} • jatuh tempo{' '}
+                    {formatDate(invoice.installmentSummary.nextInstallment.dueDate || '')}
+                  </Text>
+                ) : null}
+                {(invoice.installmentSummary?.overdueCount || 0) > 0 ? (
+                  <Text style={{ color: '#b91c1c', fontSize: 12, marginBottom: 2 }}>
+                    {invoice.installmentSummary?.overdueCount || 0} termin overdue • outstanding{' '}
+                    {formatCurrency(invoice.installmentSummary?.overdueAmount || 0)}
+                  </Text>
+                ) : null}
                 {invoice.payments.some((payment) => payment.source === 'CREDIT_BALANCE') ? (
                   <Text style={{ color: '#0369a1', fontSize: 12, marginBottom: 2 }}>
                     Auto-apply kredit{' '}
@@ -3366,13 +3460,13 @@ export default function StaffPaymentsScreen() {
         <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 }}>
           <View style={{ backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#dbe7fb' }}>
             <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
-              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>Catat Pembayaran</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>Kelola Tagihan</Text>
               <Text style={{ color: '#64748b', marginTop: 2 }}>
                 {selectedInvoice?.invoiceNo || '-'} • Sisa {formatCurrency(selectedInvoice?.balanceAmount || 0)}
               </Text>
             </View>
 
-            <View style={{ padding: 14 }}>
+            <ScrollView style={{ maxHeight: 520 }} contentContainerStyle={{ padding: 14 }}>
               {selectedInvoiceCreditAppliedAmount > 0 ? (
                 <View
                   style={{
@@ -3409,14 +3503,140 @@ export default function StaffPaymentsScreen() {
                       ? ` • Termin berikutnya ${selectedInvoiceNextInstallment.sequence} (${formatCurrency(selectedInvoiceNextInstallment.balanceAmount)})`
                       : ' • Semua termin sudah lunas'}
                   </Text>
-                  {selectedInvoiceInstallments.map((installment) => (
-                    <Text
-                      key={`${selectedInvoice?.id || 0}-${installment.sequence}`}
-                      style={{ color: '#6d28d9', fontSize: 11, marginTop: 4 }}
+                  {(selectedInvoice?.installmentSummary?.overdueCount || 0) > 0 ? (
+                    <View
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#fecaca',
+                        backgroundColor: '#fff1f2',
+                        borderRadius: 8,
+                        paddingHorizontal: 8,
+                        paddingVertical: 6,
+                        marginTop: 8,
+                      }}
                     >
-                      Termin {installment.sequence} • {formatCurrency(installment.amount)} • sisa {formatCurrency(installment.balanceAmount)} • jatuh tempo {formatDate(installment.dueDate || '')}
+                      <Text style={{ color: '#b91c1c', fontSize: 11 }}>
+                        {selectedInvoice?.installmentSummary?.overdueCount || 0} termin overdue • outstanding{' '}
+                        {formatCurrency(selectedInvoice?.installmentSummary?.overdueAmount || 0)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#c4b5fd',
+                      backgroundColor: '#ffffff',
+                      borderRadius: 8,
+                      paddingHorizontal: 8,
+                      paddingVertical: 6,
+                      marginTop: 8,
+                    }}
+                  >
+                    <Text style={{ color: '#6d28d9', fontSize: 11 }}>
+                      {selectedInvoiceCanEditAmounts
+                        ? 'Invoice belum menerima pembayaran. Nominal dan jatuh tempo termin bisa diubah selama total seluruh termin tetap sama.'
+                        : 'Invoice sudah menerima pembayaran. Nominal termin dikunci, tetapi jatuh tempo termin yang masih aktif masih bisa digeser.'}
                     </Text>
+                  </View>
+                  {selectedInvoiceInstallments.map((installment, index) => (
+                    <View
+                      key={`${selectedInvoice?.id || 0}-${installment.sequence}`}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#c4b5fd',
+                        backgroundColor: '#fff',
+                        borderRadius: 8,
+                        paddingHorizontal: 8,
+                        paddingVertical: 8,
+                        marginTop: 8,
+                      }}
+                    >
+                      <Text style={{ color: '#5b21b6', fontSize: 12, fontWeight: '700' }}>
+                        Termin {installment.sequence} • sisa {formatCurrency(installment.balanceAmount)}
+                      </Text>
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                        <TextInput
+                          keyboardType="numeric"
+                          value={installmentDrafts[index]?.amount || ''}
+                          onChangeText={(value) => handleInstallmentDraftChange(installment.sequence, 'amount', value)}
+                          editable={selectedInvoiceCanEditAmounts}
+                          placeholder="Nominal"
+                          placeholderTextColor="#a78bfa"
+                          style={{
+                            flex: 1,
+                            borderWidth: 1,
+                            borderColor: '#c4b5fd',
+                            borderRadius: 8,
+                            paddingHorizontal: 10,
+                            paddingVertical: 8,
+                            color: selectedInvoiceCanEditAmounts ? '#0f172a' : '#64748b',
+                            backgroundColor: selectedInvoiceCanEditAmounts ? '#fff' : '#f8fafc',
+                          }}
+                        />
+                        <TextInput
+                          value={installmentDrafts[index]?.dueDate || ''}
+                          onChangeText={(value) => handleInstallmentDraftChange(installment.sequence, 'dueDate', value)}
+                          editable={selectedInvoiceCanEditAmounts || installment.balanceAmount > 0}
+                          placeholder="YYYY-MM-DD"
+                          placeholderTextColor="#a78bfa"
+                          style={{
+                            flex: 1,
+                            borderWidth: 1,
+                            borderColor: '#c4b5fd',
+                            borderRadius: 8,
+                            paddingHorizontal: 10,
+                            paddingVertical: 8,
+                            color:
+                              selectedInvoiceCanEditAmounts || installment.balanceAmount > 0
+                                ? '#0f172a'
+                                : '#64748b',
+                            backgroundColor:
+                              selectedInvoiceCanEditAmounts || installment.balanceAmount > 0
+                                ? '#fff'
+                                : '#f8fafc',
+                          }}
+                        />
+                      </View>
+                      <Text style={{ color: '#6d28d9', fontSize: 11, marginTop: 6 }}>
+                        Jatuh tempo saat ini: {formatDate(installment.dueDate || '')} • status {installment.status}
+                        {installment.isOverdue ? ` • overdue ${installment.daysPastDue} hari` : ''}
+                      </Text>
+                    </View>
                   ))}
+                  <TextInput
+                    value={installmentScheduleNote}
+                    onChangeText={setInstallmentScheduleNote}
+                    placeholder="Catatan perubahan jadwal cicilan (opsional)"
+                    placeholderTextColor="#a78bfa"
+                    multiline
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#c4b5fd',
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 9,
+                      marginTop: 10,
+                      color: '#0f172a',
+                      minHeight: 72,
+                      textAlignVertical: 'top',
+                      backgroundColor: '#fff',
+                    }}
+                  />
+                  <Pressable
+                    onPress={handleSaveInstallments}
+                    disabled={updateInstallmentsMutation.isPending}
+                    style={{
+                      backgroundColor: updateInstallmentsMutation.isPending ? '#c4b5fd' : '#7c3aed',
+                      borderRadius: 8,
+                      paddingVertical: 10,
+                      alignItems: 'center',
+                      marginTop: 10,
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700' }}>
+                      {updateInstallmentsMutation.isPending ? 'Menyimpan jadwal...' : 'Simpan Jadwal Cicilan'}
+                    </Text>
+                  </Pressable>
                 </View>
               ) : null}
 
@@ -3489,7 +3709,7 @@ export default function StaffPaymentsScreen() {
                 multiline
                 style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', minHeight: 72, textAlignVertical: 'top', backgroundColor: '#fff' }}
               />
-            </View>
+            </ScrollView>
 
             <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', padding: 12, flexDirection: 'row' }}>
               <View style={{ flex: 1, paddingRight: 6 }}>

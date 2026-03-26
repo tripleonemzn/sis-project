@@ -123,6 +123,22 @@ interface ParentChildFinanceOverview {
       isOverdue: boolean;
       daysPastDue: number;
     }>;
+    installmentSummary: {
+      totalCount: number;
+      paidCount: number;
+      overdueCount: number;
+      overdueAmount: number;
+      nextInstallment: {
+        sequence: number;
+        amount: number;
+        dueDate?: string | null;
+        paidAmount: number;
+        balanceAmount: number;
+        status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
+        isOverdue: boolean;
+        daysPastDue: number;
+      } | null;
+    };
   }>;
   payments: ParentPayment[];
   creditBalance: {
@@ -1092,8 +1108,7 @@ const ParentFinancePage = () => {
                                   `${invoice.periodKey} • ${invoice.semester === 'ODD' ? 'Ganjil' : 'Genap'}`}
                               </div>
                               <div className="mt-1 text-[11px] text-violet-700">
-                                {invoice.installments.length} termin •{' '}
-                                {invoice.installments.filter((installment) => installment.status === 'PAID').length} lunas
+                                {invoice.installmentSummary.totalCount} termin • {invoice.installmentSummary.paidCount} lunas
                               </div>
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-700">
@@ -1103,10 +1118,16 @@ const ParentFinancePage = () => {
                                   Terlambat {invoice.daysPastDue} hari
                                 </div>
                               ) : null}
-                              {invoice.installments.length > 0 ? (
+                              {invoice.installmentSummary.nextInstallment ? (
                                 <div className="mt-1 text-[11px] text-violet-700">
-                                  Termin berikutnya:{' '}
-                                  {invoice.installments.find((installment) => installment.balanceAmount > 0)?.sequence || '-'}
+                                  Termin berikutnya: {invoice.installmentSummary.nextInstallment.sequence} •{' '}
+                                  {formatDate(invoice.installmentSummary.nextInstallment.dueDate || '')}
+                                </div>
+                              ) : null}
+                              {invoice.installmentSummary.overdueCount > 0 ? (
+                                <div className="mt-1 text-[11px] text-rose-600">
+                                  {invoice.installmentSummary.overdueCount} termin overdue • outstanding{' '}
+                                  {formatCurrency(invoice.installmentSummary.overdueAmount)}
                                 </div>
                               ) : null}
                             </td>

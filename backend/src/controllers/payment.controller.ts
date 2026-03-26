@@ -88,6 +88,12 @@ function addDays(date: Date, days: number): Date {
   return nextDate;
 }
 
+function isSameFinanceDate(left?: Date | null, right?: Date | null) {
+  if (!left && !right) return true;
+  if (!left || !right) return false;
+  return new Date(left).getTime() === new Date(right).getTime();
+}
+
 function buildFinanceInstallmentPlan(params: {
   totalAmount: number;
   installmentCount?: number;
@@ -114,6 +120,17 @@ function buildFinanceInstallmentPlan(params: {
     };
   });
 }
+
+type SerializedFinanceInstallment = {
+  sequence: number;
+  amount: number;
+  dueDate: Date | null;
+  paidAmount: number;
+  balanceAmount: number;
+  status: FinanceInvoiceStatus;
+  isOverdue: boolean;
+  daysPastDue: number;
+};
 
 function serializeFinanceInstallments(params: {
   invoiceTotalAmount: number;
@@ -194,6 +211,123 @@ function serializeFinanceInstallments(params: {
       daysPastDue,
     };
   });
+}
+
+function buildFinanceInstallmentSummary(installments: SerializedFinanceInstallment[]) {
+  const totalCount = installments.length;
+  const paidCount = installments.filter((installment) => installment.status === 'PAID').length;
+  const overdueInstallments = installments.filter((installment) => installment.isOverdue);
+  const overdueCount = overdueInstallments.length;
+  const overdueAmount = overdueInstallments.reduce(
+    (sum, installment) => sum + Number(installment.balanceAmount || 0),
+    0,
+  );
+  const nextInstallment = installments.find((installment) => installment.balanceAmount > 0) || null;
+
+  return {
+    totalCount,
+    paidCount,
+    overdueCount,
+    overdueAmount: normalizeFinanceAmount(overdueAmount),
+    nextInstallment: nextInstallment
+      ? {
+          sequence: nextInstallment.sequence,
+          amount: normalizeFinanceAmount(nextInstallment.amount),
+          dueDate: nextInstallment.dueDate || null,
+          paidAmount: normalizeFinanceAmount(nextInstallment.paidAmount),
+          balanceAmount: normalizeFinanceAmount(nextInstallment.balanceAmount),
+          status: nextInstallment.status,
+          isOverdue: nextInstallment.isOverdue,
+          daysPastDue: nextInstallment.daysPastDue,
+        }
+      : null,
+  };
+}
+
+function resolveFinanceInvoiceDueDate(params: {
+  invoiceTotalAmount: number;
+  invoicePaidAmount: number;
+  invoiceStatus: FinanceInvoiceStatus;
+  invoiceDueDate?: Date | null;
+  installments?: Array<{
+    sequence: number;
+    amount: number;
+    dueDate?: Date | null;
+  }> | null;
+}) {
+  const serializedInstallments = serializeFinanceInstallments({
+    invoiceTotalAmount: params.invoiceTotalAmount,
+    invoicePaidAmount: params.invoicePaidAmount,
+    invoiceStatus: params.invoiceStatus,
+    invoiceDueDate: params.invoiceDueDate || null,
+    installments: params.installments || [],
+  });
+
+  const nextInstallment = serializedInstallments.find((installment) => installment.balanceAmount > 0);
+  if (nextInstallment?.dueDate) {
+    return nextInstallment.dueDate;
+  }
+
+  const datedInstallment = serializedInstallments.find((installment) => installment.dueDate);
+  if (datedInstallment?.dueDate) {
+    return datedInstallment.dueDate;
+  }
+
+  return params.invoiceDueDate || null;
+}
+
+function serializeFinanceInvoiceRecord<
+  T extends {
+    totalAmount: number;
+    paidAmount: number;
+    balanceAmount: number;
+    status: FinanceInvoiceStatus;
+    dueDate?: Date | null;
+    installments?: Array<{
+      sequence: number;
+      amount: number;
+      dueDate?: Date | null;
+    }> | null;
+    payments?: Array<{
+      id: number;
+      paymentNo: string;
+      amount: number;
+      allocatedAmount: number;
+      creditedAmount: number;
+      source?: FinancePaymentSource | null;
+      method: FinancePaymentMethod;
+      referenceNo?: string | null;
+      paidAt: Date;
+    }>;
+  },
+>(invoice: T, options?: { asOfDate?: Date }) {
+  const totalAmount = Number(invoice.totalAmount || 0);
+  const paidAmount = Number(invoice.paidAmount || 0);
+  const balanceAmount = Number(invoice.balanceAmount || 0);
+  const installments = serializeFinanceInstallments({
+    invoiceTotalAmount: totalAmount,
+    invoicePaidAmount: paidAmount,
+    invoiceStatus: invoice.status,
+    invoiceDueDate: invoice.dueDate || null,
+    installments: invoice.installments || [],
+    asOfDate: options?.asOfDate,
+  });
+
+  return {
+    ...invoice,
+    totalAmount,
+    paidAmount,
+    balanceAmount,
+    installmentSummary: buildFinanceInstallmentSummary(installments),
+    installments,
+    payments: (invoice.payments || []).map((payment) => ({
+      ...payment,
+      amount: Number(payment.amount || 0),
+      allocatedAmount: Number(payment.allocatedAmount || 0),
+      creditedAmount: Number(payment.creditedAmount || 0),
+      source: payment.source || FinancePaymentSource.DIRECT,
+    })),
+  };
 }
 
 function resolveFinanceRouteByRole(role: string, studentId: number): string {
@@ -679,6 +813,36 @@ const createFinancePaymentSchema = z.object({
   referenceNo: z.string().trim().max(120).optional(),
   note: z.string().trim().max(500).optional(),
   paidAt: z.coerce.date().optional(),
+});
+
+const financeOptionalDateSchema = z.preprocess(
+  (value) => (value === '' || value === undefined ? null : value),
+  z.coerce.date().nullable(),
+);
+
+const updateFinanceInvoiceInstallmentsSchema = z.object({
+  installments: z
+    .array(
+      z.object({
+        sequence: z.coerce.number().int().positive(),
+        amount: z.coerce.number().positive(),
+        dueDate: financeOptionalDateSchema.optional().default(null),
+      }),
+    )
+    .min(1)
+    .max(24)
+    .refine(
+      (installments) => new Set(installments.map((installment) => installment.sequence)).size === installments.length,
+      'Urutan termin harus unik',
+    )
+    .refine(
+      (installments) =>
+        [...installments]
+          .sort((left, right) => left.sequence - right.sequence)
+          .every((installment, index) => installment.sequence === index + 1),
+      'Urutan termin harus berurutan mulai dari 1',
+    ),
+  note: z.string().trim().max(500).optional(),
 });
 
 const listFinanceCreditsQuerySchema = z.object({
@@ -2084,22 +2248,24 @@ async function buildFinanceInvoiceGenerationPlan(payload: z.infer<typeof generat
   };
 }
 
-async function syncFinanceInvoiceInstallments(
+async function replaceFinanceInvoiceInstallments(
   tx: Prisma.TransactionClient,
   params: {
     invoiceId: number;
-    totalAmount: number;
-    dueDate?: Date | null;
-    installmentCount: number;
-    installmentIntervalDays: number;
+    installments: Array<{
+      sequence: number;
+      amount: number;
+      dueDate?: Date | null;
+    }>;
   },
 ) {
-  const installments = buildFinanceInstallmentPlan({
-    totalAmount: params.totalAmount,
-    installmentCount: params.installmentCount,
-    firstDueDate: params.dueDate || null,
-    intervalDays: params.installmentIntervalDays,
-  });
+  const installments = [...params.installments]
+    .sort((left, right) => left.sequence - right.sequence)
+    .map((installment) => ({
+      sequence: installment.sequence,
+      amount: normalizeFinanceAmount(installment.amount),
+      dueDate: installment.dueDate ? new Date(installment.dueDate) : null,
+    }));
 
   await tx.financeInvoiceInstallment.deleteMany({
     where: { invoiceId: params.invoiceId },
@@ -2119,6 +2285,29 @@ async function syncFinanceInvoiceInstallments(
   return installments;
 }
 
+async function syncFinanceInvoiceInstallments(
+  tx: Prisma.TransactionClient,
+  params: {
+    invoiceId: number;
+    totalAmount: number;
+    dueDate?: Date | null;
+    installmentCount: number;
+    installmentIntervalDays: number;
+  },
+) {
+  const installments = buildFinanceInstallmentPlan({
+    totalAmount: params.totalAmount,
+    installmentCount: params.installmentCount,
+    firstDueDate: params.dueDate || null,
+    intervalDays: params.installmentIntervalDays,
+  });
+
+  return replaceFinanceInvoiceInstallments(tx, {
+    invoiceId: params.invoiceId,
+    installments,
+  });
+}
+
 async function autoApplyFinanceCreditBalanceToInvoice(
   tx: Prisma.TransactionClient,
   params: {
@@ -2127,6 +2316,12 @@ async function autoApplyFinanceCreditBalanceToInvoice(
     studentId: number;
     actorId: number;
     enabled: boolean;
+    dueDate?: Date | null;
+    installments?: Array<{
+      sequence: number;
+      amount: number;
+      dueDate?: Date | null;
+    }> | null;
   },
 ) {
   if (!params.enabled) {
@@ -2142,6 +2337,7 @@ async function autoApplyFinanceCreditBalanceToInvoice(
         paidAmount: number;
         balanceAmount: number;
         status: FinanceInvoiceStatus;
+        dueDate: Date | null;
       },
     };
   }
@@ -2180,6 +2376,7 @@ async function autoApplyFinanceCreditBalanceToInvoice(
         paidAmount: Number(invoice.paidAmount || 0),
         balanceAmount: Number(invoice.balanceAmount || 0),
         status: invoice.status,
+        dueDate: params.dueDate || null,
       },
     };
   }
@@ -2198,6 +2395,7 @@ async function autoApplyFinanceCreditBalanceToInvoice(
         paidAmount: Number(invoice.paidAmount || 0),
         balanceAmount: Number(invoice.balanceAmount || 0),
         status: invoice.status,
+        dueDate: params.dueDate || null,
       },
     };
   }
@@ -2207,6 +2405,13 @@ async function autoApplyFinanceCreditBalanceToInvoice(
     Math.max(Number(invoice.totalAmount || 0) - nextPaidAmount, 0),
   );
   const nextStatus: FinanceInvoiceStatus = nextBalanceAmount <= 0 ? 'PAID' : 'PARTIAL';
+  const nextDueDate = resolveFinanceInvoiceDueDate({
+    invoiceTotalAmount: Number(invoice.totalAmount || 0),
+    invoicePaidAmount: nextPaidAmount,
+    invoiceStatus: nextStatus,
+    invoiceDueDate: params.dueDate || null,
+    installments: params.installments || [],
+  });
   const balanceAfter = normalizeFinanceAmount(Math.max(balanceBefore - appliedAmount, 0));
   const paymentNo = makeFinancePaymentNo(params.studentId);
 
@@ -2236,6 +2441,7 @@ async function autoApplyFinanceCreditBalanceToInvoice(
       paidAmount: nextPaidAmount,
       balanceAmount: nextBalanceAmount,
       status: nextStatus,
+      dueDate: nextDueDate,
     },
   });
 
@@ -2269,6 +2475,7 @@ async function autoApplyFinanceCreditBalanceToInvoice(
       paidAmount: nextPaidAmount,
       balanceAmount: nextBalanceAmount,
       status: nextStatus,
+      dueDate: nextDueDate,
     },
   };
 }
@@ -2726,7 +2933,7 @@ export const generateFinanceInvoices = asyncHandler(async (req: Request, res: Re
             notes: item.notes,
           })),
         });
-        await syncFinanceInvoiceInstallments(tx, {
+        const syncedInstallments = await syncFinanceInvoiceInstallments(tx, {
           invoiceId: row.invoiceId!,
           totalAmount: row.totalAmount,
           dueDate: payload.dueDate || null,
@@ -2740,6 +2947,8 @@ export const generateFinanceInvoices = asyncHandler(async (req: Request, res: Re
           studentId: row.student.id,
           actorId: actor.id,
           enabled: payload.autoApplyCreditBalance,
+          dueDate: payload.dueDate || null,
+          installments: syncedInstallments,
         });
 
         return {
@@ -2824,7 +3033,7 @@ export const generateFinanceInvoices = asyncHandler(async (req: Request, res: Re
         },
       });
 
-      await syncFinanceInvoiceInstallments(tx, {
+      const syncedInstallments = await syncFinanceInvoiceInstallments(tx, {
         invoiceId: createdInvoice.id,
         totalAmount: row.totalAmount,
         dueDate: payload.dueDate || null,
@@ -2838,6 +3047,8 @@ export const generateFinanceInvoices = asyncHandler(async (req: Request, res: Re
         studentId: row.student.id,
         actorId: actor.id,
         enabled: payload.autoApplyCreditBalance,
+        dueDate: payload.dueDate || null,
+        installments: syncedInstallments,
       });
 
       return {
@@ -3041,25 +3252,7 @@ export const listFinanceInvoices = asyncHandler(async (req: Request, res: Respon
     take: limit,
   });
 
-  const serializedInvoices = invoices.map((invoice) => ({
-    ...invoice,
-    totalAmount: Number(invoice.totalAmount || 0),
-    paidAmount: Number(invoice.paidAmount || 0),
-    balanceAmount: Number(invoice.balanceAmount || 0),
-    installments: serializeFinanceInstallments({
-      invoiceTotalAmount: Number(invoice.totalAmount || 0),
-      invoicePaidAmount: Number(invoice.paidAmount || 0),
-      invoiceStatus: invoice.status,
-      invoiceDueDate: invoice.dueDate || null,
-      installments: invoice.installments,
-    }),
-    payments: invoice.payments.map((payment) => ({
-      ...payment,
-      amount: Number(payment.amount || 0),
-      allocatedAmount: Number(payment.allocatedAmount || 0),
-      creditedAmount: Number(payment.creditedAmount || 0),
-    })),
-  }));
+  const serializedInvoices = invoices.map((invoice) => serializeFinanceInvoiceRecord(invoice));
 
   const summary = serializedInvoices.reduce(
     (acc, invoice) => {
@@ -3383,6 +3576,15 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
             },
           },
         },
+        installments: {
+          select: {
+            id: true,
+            sequence: true,
+            amount: true,
+            dueDate: true,
+          },
+          orderBy: [{ sequence: 'asc' }],
+        },
       },
     });
 
@@ -3423,6 +3625,13 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
     const paidAmount = Number(invoice.paidAmount || 0) + allocatedAmount;
     const balanceAmount = Math.max(Number(invoice.totalAmount || 0) - paidAmount, 0);
     const status: FinanceInvoiceStatus = balanceAmount <= 0 ? 'PAID' : 'PARTIAL';
+    const nextDueDate = resolveFinanceInvoiceDueDate({
+      invoiceTotalAmount: Number(invoice.totalAmount || 0),
+      invoicePaidAmount: paidAmount,
+      invoiceStatus: status,
+      invoiceDueDate: invoice.dueDate || null,
+      installments: invoice.installments,
+    });
 
     const updatedInvoice = await tx.financeInvoice.update({
       where: { id: invoice.id },
@@ -3430,6 +3639,7 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
         paidAmount,
         balanceAmount,
         status,
+        dueDate: nextDueDate,
       },
       include: {
         student: {
@@ -3578,6 +3788,279 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
   res
     .status(201)
     .json(new ApiResponse(201, result, 'Pembayaran tagihan berhasil dicatat'));
+});
+
+export const updateFinanceInvoiceInstallments = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+
+  const invoiceId = Number(req.params.id);
+  if (!Number.isInteger(invoiceId) || invoiceId <= 0) {
+    throw new ApiError(400, 'ID tagihan tidak valid');
+  }
+
+  const payload = updateFinanceInvoiceInstallmentsSchema.parse(req.body);
+
+  const result = await prisma.$transaction(async (tx) => {
+    const invoice = await tx.financeInvoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nis: true,
+            nisn: true,
+            studentClass: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+            },
+          },
+        },
+        items: {
+          select: {
+            id: true,
+            componentId: true,
+            componentCode: true,
+            componentName: true,
+            amount: true,
+            notes: true,
+          },
+        },
+        payments: {
+          select: {
+            id: true,
+            paymentNo: true,
+            amount: true,
+            allocatedAmount: true,
+            creditedAmount: true,
+            source: true,
+            method: true,
+            referenceNo: true,
+            paidAt: true,
+          },
+          orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
+        },
+        installments: {
+          select: {
+            id: true,
+            sequence: true,
+            amount: true,
+            dueDate: true,
+          },
+          orderBy: [{ sequence: 'asc' }],
+        },
+      },
+    });
+
+    if (!invoice) {
+      throw new ApiError(404, 'Tagihan tidak ditemukan');
+    }
+
+    if (invoice.status === 'PAID') {
+      throw new ApiError(400, 'Tagihan yang sudah lunas tidak bisa dijadwalkan ulang');
+    }
+
+    if (invoice.status === 'CANCELLED') {
+      throw new ApiError(400, 'Tagihan yang dibatalkan tidak bisa dijadwalkan ulang');
+    }
+
+    const currentInstallments = serializeFinanceInstallments({
+      invoiceTotalAmount: Number(invoice.totalAmount || 0),
+      invoicePaidAmount: Number(invoice.paidAmount || 0),
+      invoiceStatus: invoice.status,
+      invoiceDueDate: invoice.dueDate || null,
+      installments: invoice.installments,
+    });
+
+    const nextInstallments = [...payload.installments]
+      .sort((left, right) => left.sequence - right.sequence)
+      .map((installment) => ({
+        sequence: installment.sequence,
+        amount: normalizeFinanceAmount(installment.amount),
+        dueDate: installment.dueDate ? new Date(installment.dueDate) : null,
+      }));
+
+    if (Number(invoice.paidAmount || 0) > 0) {
+      if (nextInstallments.length !== currentInstallments.length) {
+        throw new ApiError(
+          400,
+          'Invoice yang sudah memiliki pembayaran hanya boleh mengubah jatuh tempo termin yang masih berjalan',
+        );
+      }
+
+      for (const currentInstallment of currentInstallments) {
+        const nextInstallment = nextInstallments.find(
+          (installment) => installment.sequence === currentInstallment.sequence,
+        );
+
+        if (!nextInstallment) {
+          throw new ApiError(400, 'Data termin pengganti tidak lengkap');
+        }
+
+        if (
+          Math.abs(
+            normalizeFinanceAmount(nextInstallment.amount) -
+              normalizeFinanceAmount(currentInstallment.amount),
+          ) > 0.009
+        ) {
+          throw new ApiError(
+            400,
+            'Nominal termin tidak boleh diubah setelah invoice menerima pembayaran',
+          );
+        }
+
+        if (
+          currentInstallment.balanceAmount <= 0 &&
+          !isSameFinanceDate(nextInstallment.dueDate, currentInstallment.dueDate)
+        ) {
+          throw new ApiError(
+            400,
+            `Termin ${currentInstallment.sequence} yang sudah lunas tidak boleh diubah jatuh temponya`,
+          );
+        }
+      }
+    } else {
+      const nextTotalAmount = normalizeFinanceAmount(
+        nextInstallments.reduce((sum, installment) => sum + installment.amount, 0),
+      );
+
+      if (Math.abs(nextTotalAmount - normalizeFinanceAmount(Number(invoice.totalAmount || 0))) > 0.009) {
+        throw new ApiError(400, 'Total seluruh termin harus sama dengan total invoice');
+      }
+    }
+
+    const savedInstallments = await replaceFinanceInvoiceInstallments(tx, {
+      invoiceId: invoice.id,
+      installments: nextInstallments,
+    });
+
+    const nextDueDate = resolveFinanceInvoiceDueDate({
+      invoiceTotalAmount: Number(invoice.totalAmount || 0),
+      invoicePaidAmount: Number(invoice.paidAmount || 0),
+      invoiceStatus: invoice.status,
+      invoiceDueDate: invoice.dueDate || null,
+      installments: savedInstallments,
+    });
+
+    const updatedInvoice = await tx.financeInvoice.update({
+      where: { id: invoice.id },
+      data: {
+        dueDate: nextDueDate,
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nis: true,
+            nisn: true,
+            studentClass: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+            },
+          },
+        },
+        items: {
+          select: {
+            id: true,
+            componentId: true,
+            componentCode: true,
+            componentName: true,
+            amount: true,
+            notes: true,
+          },
+        },
+        payments: {
+          select: {
+            id: true,
+            paymentNo: true,
+            amount: true,
+            allocatedAmount: true,
+            creditedAmount: true,
+            source: true,
+            method: true,
+            referenceNo: true,
+            paidAt: true,
+          },
+          orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
+        },
+        installments: {
+          select: {
+            id: true,
+            sequence: true,
+            amount: true,
+            dueDate: true,
+          },
+          orderBy: [{ sequence: 'asc' }],
+        },
+      },
+    });
+
+    return {
+      beforeInstallments: currentInstallments,
+      invoice: updatedInvoice,
+    };
+  });
+
+  const serializedInvoice = serializeFinanceInvoiceRecord(result.invoice);
+  const nextInstallment = serializedInvoice.installmentSummary.nextInstallment;
+
+  await createFinanceNotifications({
+    studentId: result.invoice.student.id,
+    title: 'Jadwal Cicilan Diperbarui',
+    message: nextInstallment
+      ? `Jadwal cicilan invoice ${result.invoice.invoiceNo} diperbarui. Termin berikutnya sekarang termin ${nextInstallment.sequence} dengan jatuh tempo ${nextInstallment.dueDate ? new Date(nextInstallment.dueDate).toLocaleDateString('id-ID') : 'belum ditentukan'}.`
+      : `Jadwal cicilan invoice ${result.invoice.invoiceNo} berhasil diperbarui.`,
+    type: 'FINANCE_INSTALLMENTS_UPDATED',
+    data: {
+      module: 'FINANCE',
+      invoiceId: result.invoice.id,
+      invoiceNo: result.invoice.invoiceNo,
+      studentId: result.invoice.student.id,
+      nextInstallment: nextInstallment
+        ? {
+            sequence: nextInstallment.sequence,
+            dueDate: nextInstallment.dueDate,
+            balanceAmount: nextInstallment.balanceAmount,
+          }
+        : null,
+    },
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      (actor.additionalDuties || []).map((duty) => String(duty)),
+      'UPDATE',
+      'FINANCE_INVOICE_INSTALLMENTS',
+      result.invoice.id,
+      {
+        invoiceNo: result.invoice.invoiceNo,
+        installments: result.beforeInstallments,
+      },
+      {
+        invoiceNo: result.invoice.invoiceNo,
+        installments: serializedInvoice.installments,
+        note: payload.note?.trim() || null,
+      },
+      payload.note?.trim() || 'Pembaruan jadwal cicilan invoice',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat perubahan cicilan finance', auditError);
+  }
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, { invoice: serializedInvoice }, 'Jadwal cicilan berhasil diperbarui'));
 });
 
 export const listFinanceCredits = asyncHandler(async (req: Request, res: Response) => {
@@ -4019,18 +4502,18 @@ function buildFinancePortalOverview(financeInvoices: FinancePortalInvoiceRecord[
     .slice(0, limit);
 
   const invoiceRows = financeInvoices.slice(0, limit).map((invoice) => {
-    const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
+    const serializedInvoice = serializeFinanceInvoiceRecord(invoice, { asOfDate: today });
+    const dueDate = serializedInvoice.dueDate ? new Date(serializedInvoice.dueDate) : null;
     if (dueDate) {
       dueDate.setHours(0, 0, 0, 0);
     }
 
-    const balanceAmount = Number(invoice.balanceAmount || 0);
     const isOverdue =
       !!dueDate &&
       dueDate < today &&
-      balanceAmount > 0 &&
-      invoice.status !== 'PAID' &&
-      invoice.status !== 'CANCELLED';
+      serializedInvoice.balanceAmount > 0 &&
+      serializedInvoice.status !== 'PAID' &&
+      serializedInvoice.status !== 'CANCELLED';
     const daysPastDue =
       dueDate && isOverdue
         ? Math.max(0, Math.floor((today.getTime() - dueDate.getTime()) / 86_400_000))
@@ -4044,9 +4527,9 @@ function buildFinancePortalOverview(financeInvoices: FinancePortalInvoiceRecord[
       semester: invoice.semester,
       dueDate: invoice.dueDate,
       status: invoice.status,
-      totalAmount: Number(invoice.totalAmount || 0),
-      paidAmount: Number(invoice.paidAmount || 0),
-      balanceAmount,
+      totalAmount: serializedInvoice.totalAmount,
+      paidAmount: serializedInvoice.paidAmount,
+      balanceAmount: serializedInvoice.balanceAmount,
       isOverdue,
       daysPastDue,
       items: invoice.items.map((item) => ({
@@ -4055,14 +4538,8 @@ function buildFinancePortalOverview(financeInvoices: FinancePortalInvoiceRecord[
         amount: Number(item.amount || 0),
         periodicity: item.component?.periodicity || null,
       })),
-      installments: serializeFinanceInstallments({
-        invoiceTotalAmount: Number(invoice.totalAmount || 0),
-        invoicePaidAmount: Number(invoice.paidAmount || 0),
-        invoiceStatus: invoice.status,
-        invoiceDueDate: invoice.dueDate || null,
-        installments: invoice.installments,
-        asOfDate: today,
-      }),
+      installmentSummary: serializedInvoice.installmentSummary,
+      installments: serializedInvoice.installments,
     };
   });
 

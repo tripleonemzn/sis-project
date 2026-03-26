@@ -161,6 +161,22 @@ export interface FinanceInvoice {
     isOverdue: boolean;
     daysPastDue: number;
   }>;
+  installmentSummary: {
+    totalCount: number;
+    paidCount: number;
+    overdueCount: number;
+    overdueAmount: number;
+    nextInstallment: {
+      sequence: number;
+      amount: number;
+      dueDate?: string | null;
+      paidAmount: number;
+      balanceAmount: number;
+      status: FinanceInvoiceStatus;
+      isOverdue: boolean;
+      daysPastDue: number;
+    } | null;
+  };
 }
 
 export interface FinanceCreditTransaction {
@@ -720,6 +736,24 @@ export const staffFinanceService = {
     });
 
     return response.data.data;
+  },
+
+  async updateInvoiceInstallments(
+    invoiceId: number,
+    payload: {
+      installments: Array<{
+        sequence: number;
+        amount: number;
+        dueDate?: string | null;
+      }>;
+      note?: string;
+    },
+  ) {
+    const response = await api.patch<ApiResponse<{ invoice: FinanceInvoice }>>(
+      `/payments/invoices/${invoiceId}/installments`,
+      payload,
+    );
+    return response.data.data.invoice;
   },
 
   async listReports(params?: FinanceReportQueryParams) {

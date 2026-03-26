@@ -98,6 +98,22 @@ export type StudentFinanceOverview = {
       isOverdue: boolean;
       daysPastDue: number;
     }>;
+    installmentSummary: {
+      totalCount: number;
+      paidCount: number;
+      overdueCount: number;
+      overdueAmount: number;
+      nextInstallment: {
+        sequence: number;
+        amount: number;
+        dueDate?: string | null;
+        paidAmount: number;
+        balanceAmount: number;
+        status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
+        isOverdue: boolean;
+        daysPastDue: number;
+      } | null;
+    };
   }>;
   creditBalance: {
     balanceAmount: number;

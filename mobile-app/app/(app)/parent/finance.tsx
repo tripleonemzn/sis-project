@@ -393,11 +393,19 @@ export default function ParentFinanceScreen() {
                           </Text>
                         </View>
                         <Text style={{ color: '#6d28d9', marginTop: 2, fontSize: 12 }}>
-                          {(invoice.installments || []).length} termin • {(invoice.installments || []).filter((installment) => installment.status === 'PAID').length} lunas
+                          {invoice.installmentSummary?.totalCount ?? (invoice.installments || []).length} termin •{' '}
+                          {invoice.installmentSummary?.paidCount ?? (invoice.installments || []).filter((installment) => installment.status === 'PAID').length} lunas
                         </Text>
-                        {(invoice.installments || []).length > 0 ? (
+                        {invoice.installmentSummary?.nextInstallment ? (
                           <Text style={{ color: '#6d28d9', marginTop: 2, fontSize: 12 }}>
-                            Termin berikutnya: {(invoice.installments || []).find((installment) => installment.balanceAmount > 0)?.sequence || '-'}
+                            Termin berikutnya: {invoice.installmentSummary.nextInstallment.sequence} •{' '}
+                            {formatDate(invoice.installmentSummary.nextInstallment.dueDate || '')}
+                          </Text>
+                        ) : null}
+                        {(invoice.installmentSummary?.overdueCount || 0) > 0 ? (
+                          <Text style={{ color: '#b91c1c', marginTop: 2, fontSize: 12 }}>
+                            {invoice.installmentSummary?.overdueCount || 0} termin overdue • outstanding{' '}
+                            {formatCurrency(invoice.installmentSummary?.overdueAmount || 0)}
                           </Text>
                         ) : null}
                         {invoice.isOverdue ? (

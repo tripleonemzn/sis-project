@@ -157,6 +157,22 @@ export type StaffFinanceInvoice = {
     isOverdue: boolean;
     daysPastDue: number;
   }>;
+  installmentSummary: {
+    totalCount: number;
+    paidCount: number;
+    overdueCount: number;
+    overdueAmount: number;
+    nextInstallment: {
+      sequence: number;
+      amount: number;
+      dueDate?: string | null;
+      paidAmount: number;
+      balanceAmount: number;
+      status: FinanceInvoiceStatus;
+      isOverdue: boolean;
+      daysPastDue: number;
+    } | null;
+  };
 };
 
 export type StaffFinanceCreditTransaction = {
@@ -627,6 +643,24 @@ export const staffFinanceApi = {
       params,
     });
     return response.data.data;
+  },
+
+  async updateInvoiceInstallments(
+    invoiceId: number,
+    payload: {
+      installments: Array<{
+        sequence: number;
+        amount: number;
+        dueDate?: string | null;
+      }>;
+      note?: string;
+    },
+  ) {
+    const response = await apiClient.patch<ApiResponse<{ invoice: StaffFinanceInvoice }>>(
+      `/payments/invoices/${invoiceId}/installments`,
+      payload,
+    );
+    return response.data.data.invoice;
   },
 
   async payInvoice(

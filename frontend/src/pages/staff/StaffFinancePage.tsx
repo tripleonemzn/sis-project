@@ -253,6 +253,10 @@ export const StaffFinancePage = () => {
   const [reminderDueSoonDays, setReminderDueSoonDays] = useState('3');
 
   const [selectedInvoice, setSelectedInvoice] = useState<FinanceInvoice | null>(null);
+  const [installmentDrafts, setInstallmentDrafts] = useState<
+    Array<{ sequence: number; amount: string; dueDate: string }>
+  >([]);
+  const [installmentScheduleNote, setInstallmentScheduleNote] = useState('');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<FinancePaymentMethod>('CASH');
   const [paymentReference, setPaymentReference] = useState('');
@@ -456,12 +460,14 @@ export const StaffFinancePage = () => {
   const paymentAllocatedAmount = Math.min(paymentPreviewAmount, Number(selectedInvoice?.balanceAmount || 0));
   const paymentCreditedAmount = Math.max(paymentPreviewAmount - Number(selectedInvoice?.balanceAmount || 0), 0);
   const selectedInvoiceInstallments = selectedInvoice?.installments || [];
-  const selectedInvoiceNextInstallment = selectedInvoiceInstallments.find(
-    (installment) => installment.balanceAmount > 0,
-  );
+  const selectedInvoiceNextInstallment =
+    selectedInvoice?.installmentSummary?.nextInstallment ||
+    selectedInvoiceInstallments.find((installment) => installment.balanceAmount > 0) ||
+    null;
   const selectedInvoiceCreditAppliedAmount = (selectedInvoice?.payments || [])
     .filter((payment) => payment.source === 'CREDIT_BALANCE')
     .reduce((sum, payment) => sum + Number(payment.allocatedAmount || payment.amount || 0), 0);
+  const selectedInvoiceCanEditAmounts = Number(selectedInvoice?.paidAmount || 0) <= 0;
   const overdueCount = useMemo(() => {
     const today = Date.now();
     return invoices.filter((invoice) => {
@@ -782,6 +788,34 @@ export const StaffFinancePage = () => {
     },
   });
 
+  const updateInstallmentsMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedInvoice) {
+        throw new Error('Tagihan belum dipilih');
+      }
+
+      return staffFinanceService.updateInvoiceInstallments(selectedInvoice.id, {
+        installments: installmentDrafts.map((draft) => ({
+          sequence: draft.sequence,
+          amount: Number(draft.amount),
+          dueDate: draft.dueDate || null,
+        })),
+        note: installmentScheduleNote.trim() || undefined,
+      });
+    },
+    onSuccess: (invoice) => {
+      toast.success('Jadwal cicilan berhasil diperbarui');
+      setSelectedInvoice(invoice);
+      setInstallmentScheduleNote('');
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal memperbarui jadwal cicilan');
+    },
+  });
+
   const refundMutation = useMutation({
     mutationFn: () => {
       if (!selectedCreditBalance) {
@@ -831,6 +865,16 @@ export const StaffFinancePage = () => {
     setPaymentMethod('CASH');
     setPaymentReference('');
     setPaymentNote('');
+  };
+
+  const handleInstallmentDraftChange = (
+    sequence: number,
+    field: 'amount' | 'dueDate',
+    value: string,
+  ) => {
+    setInstallmentDrafts((current) =>
+      current.map((draft) => (draft.sequence === sequence ? { ...draft, [field]: value } : draft)),
+    );
   };
 
   const startRefund = (balance: FinanceCreditBalanceRow) => {
@@ -988,6 +1032,33 @@ export const StaffFinancePage = () => {
     setAdjustmentStudentSearch('');
   };
 
+  const handleSaveInstallments = () => {
+    if (!selectedInvoice) {
+      toast.error('Tagihan belum dipilih');
+      return;
+    }
+
+    if (installmentDrafts.length === 0) {
+      toast.error('Skema cicilan belum tersedia');
+      return;
+    }
+
+    if (installmentDrafts.some((draft) => Number(draft.amount) <= 0)) {
+      toast.error('Nominal setiap termin harus lebih dari 0');
+      return;
+    }
+
+    if (selectedInvoiceCanEditAmounts) {
+      const totalInstallments = installmentDrafts.reduce((sum, draft) => sum + Number(draft.amount || 0), 0);
+      if (Math.abs(totalInstallments - Number(selectedInvoice.totalAmount || 0)) > 0.009) {
+        toast.error('Total seluruh termin harus sama dengan total invoice');
+        return;
+      }
+    }
+
+    updateInstallmentsMutation.mutate();
+  };
+
   const handleSaveRefund = () => {
     if (!selectedCreditBalance) {
       toast.error('Saldo kredit siswa belum dipilih');
@@ -1021,6 +1092,23 @@ export const StaffFinancePage = () => {
     invoiceReplaceExisting,
     invoiceSelectedStudentIds,
   ]);
+
+  useEffect(() => {
+    if (!selectedInvoice) {
+      setInstallmentDrafts([]);
+      setInstallmentScheduleNote('');
+      return;
+    }
+
+    setInstallmentDrafts(
+      (selectedInvoice.installments || []).map((installment) => ({
+        sequence: installment.sequence,
+        amount: String(Number(installment.amount || 0)),
+        dueDate: installment.dueDate ? String(installment.dueDate).slice(0, 10) : '',
+      })),
+    );
+    setInstallmentScheduleNote('');
+  }, [selectedInvoice]);
 
   const handleExportReport = async (
     format: 'csv' | 'xlsx',
@@ -2366,9 +2454,20 @@ export const StaffFinancePage = () => {
                       <div className="font-semibold text-gray-900">{invoice.invoiceNo}</div>
                       <div className="text-xs text-gray-500">Jatuh tempo: {formatDate(invoice.dueDate)}</div>
                       <div className="mt-1 text-[11px] text-violet-700">
-                        {invoice.installments.length} termin •{' '}
-                        {invoice.installments.filter((installment) => installment.status === 'PAID').length} lunas
+                        {invoice.installmentSummary.totalCount} termin • {invoice.installmentSummary.paidCount} lunas
                       </div>
+                      {invoice.installmentSummary.nextInstallment ? (
+                        <div className="mt-1 text-[11px] text-violet-700">
+                          Termin berikutnya {invoice.installmentSummary.nextInstallment.sequence} • jatuh tempo{' '}
+                          {formatDate(invoice.installmentSummary.nextInstallment.dueDate)}
+                        </div>
+                      ) : null}
+                      {invoice.installmentSummary.overdueCount > 0 ? (
+                        <div className="mt-1 text-[11px] text-rose-700">
+                          {invoice.installmentSummary.overdueCount} termin overdue • outstanding{' '}
+                          {formatCurrency(invoice.installmentSummary.overdueAmount)}
+                        </div>
+                      ) : null}
                       {invoice.payments.some((payment) => payment.source === 'CREDIT_BALANCE') ? (
                         <div className="mt-1 text-[11px] text-sky-700">
                           Auto-apply kredit{' '}
@@ -2952,10 +3051,10 @@ export const StaffFinancePage = () => {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">Catat Pembayaran</h3>
+              <h3 className="text-base font-semibold text-gray-900">Kelola Tagihan</h3>
               <p className="text-xs text-gray-500 mt-1">Invoice: {selectedInvoice.invoiceNo}</p>
             </div>
-            <div className="px-5 py-4 space-y-3">
+            <div className="px-5 py-4 space-y-3 max-h-[70vh] overflow-y-auto">
               <div className="text-xs text-gray-600">
                 Sisa tagihan: <span className="font-semibold">{formatCurrency(selectedInvoice.balanceAmount)}</span>
               </div>
@@ -2975,14 +3074,79 @@ export const StaffFinancePage = () => {
                         )})`
                       : ' • Semua termin sudah lunas'}
                   </div>
+                  {selectedInvoice.installmentSummary.overdueCount > 0 ? (
+                    <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-700">
+                      {selectedInvoice.installmentSummary.overdueCount} termin overdue • outstanding{' '}
+                      {formatCurrency(selectedInvoice.installmentSummary.overdueAmount)}
+                    </div>
+                  ) : null}
+                  <div className="mt-2 rounded-md border border-violet-200 bg-white/80 px-2 py-1 text-[11px] text-violet-800">
+                    {selectedInvoiceCanEditAmounts
+                      ? 'Invoice belum menerima pembayaran. Anda bisa ubah nominal dan jatuh tempo, selama total seluruh termin tetap sama dengan total invoice.'
+                      : 'Invoice sudah menerima pembayaran. Nominal termin dikunci, tetapi jatuh tempo termin yang masih berjalan masih bisa digeser.'}
+                  </div>
                   <div className="mt-2 space-y-1">
-                    {selectedInvoiceInstallments.map((installment) => (
-                      <div key={`${selectedInvoice.id}-${installment.sequence}`}>
-                        Termin {installment.sequence} • {formatCurrency(installment.amount)} • sisa{' '}
-                        {formatCurrency(installment.balanceAmount)} • jatuh tempo {formatDate(installment.dueDate)}
+                    {selectedInvoiceInstallments.map((installment, index) => (
+                      <div
+                        key={`${selectedInvoice.id}-${installment.sequence}`}
+                        className="rounded-md border border-violet-200 bg-white/80 px-2 py-2"
+                      >
+                        <div className="font-medium text-violet-900">
+                          Termin {installment.sequence} • sisa {formatCurrency(installment.balanceAmount)}
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          <input
+                            type="number"
+                            min={0}
+                            value={installmentDrafts[index]?.amount || ''}
+                            onChange={(event) =>
+                              handleInstallmentDraftChange(
+                                installment.sequence,
+                                'amount',
+                                event.target.value,
+                              )
+                            }
+                            disabled={!selectedInvoiceCanEditAmounts}
+                            className="border border-violet-200 rounded-lg px-3 py-2 text-xs bg-white disabled:bg-slate-100 disabled:text-slate-500"
+                          />
+                          <input
+                            type="date"
+                            value={installmentDrafts[index]?.dueDate || ''}
+                            onChange={(event) =>
+                              handleInstallmentDraftChange(
+                                installment.sequence,
+                                'dueDate',
+                                event.target.value,
+                              )
+                            }
+                            disabled={!selectedInvoiceCanEditAmounts && installment.balanceAmount <= 0}
+                            className="border border-violet-200 rounded-lg px-3 py-2 text-xs bg-white disabled:bg-slate-100 disabled:text-slate-500"
+                          />
+                        </div>
+                        <div className="mt-1 text-[11px] text-violet-700">
+                          Jatuh tempo saat ini: {formatDate(installment.dueDate)} • status {installment.status}
+                          {installment.isOverdue ? ` • overdue ${installment.daysPastDue} hari` : ''}
+                        </div>
                       </div>
                     ))}
                   </div>
+                  <textarea
+                    value={installmentScheduleNote}
+                    onChange={(event) => setInstallmentScheduleNote(event.target.value)}
+                    placeholder="Catatan perubahan jadwal cicilan (opsional)"
+                    className="mt-3 border border-violet-200 rounded-lg px-3 py-2 text-xs w-full min-h-20 bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleSaveInstallments()}
+                    disabled={updateInstallmentsMutation.isPending}
+                    className="mt-3 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                  >
+                    {updateInstallmentsMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : null}
+                    Simpan Jadwal Cicilan
+                  </button>
                 </div>
               ) : null}
               <input
