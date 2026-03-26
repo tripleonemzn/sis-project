@@ -22,6 +22,7 @@ import {
   type StaffFinanceCreditBalanceRow,
   type StaffFinanceCreditTransaction,
   type FinanceInvoiceStatus,
+  type FinanceLateFeeMode,
   type FinancePaymentMethod,
   type FinanceReminderMode,
   type SemesterCode,
@@ -65,6 +66,11 @@ const PAYMENT_METHOD_OPTIONS: Array<{ value: FinancePaymentMethod; label: string
   { value: 'VIRTUAL_ACCOUNT', label: 'Virtual Account' },
   { value: 'E_WALLET', label: 'E-Wallet' },
   { value: 'OTHER', label: 'Lainnya' },
+];
+
+const LATE_FEE_MODE_OPTIONS: Array<{ value: FinanceLateFeeMode; label: string }> = [
+  { value: 'FIXED', label: 'Tetap per termin overdue' },
+  { value: 'DAILY', label: 'Harian per termin overdue' },
 ];
 
 type FinanceTab = 'dashboard' | 'components' | 'tariffs' | 'adjustments' | 'invoices';
@@ -136,6 +142,10 @@ function getAdjustmentKindLabel(kind: FinanceAdjustmentKind) {
 
 function getPaymentMethodLabel(method?: FinancePaymentMethod | null) {
   return PAYMENT_METHOD_OPTIONS.find((option) => option.value === method)?.label || method || '-';
+}
+
+function getLateFeeModeLabel(mode?: FinanceLateFeeMode | null) {
+  return LATE_FEE_MODE_OPTIONS.find((option) => option.value === mode)?.label || mode || '-';
 }
 
 function getCreditTransactionLabel(transaction: StaffFinanceCreditTransaction) {
@@ -223,6 +233,11 @@ export default function StaffPaymentsScreen() {
   const [componentDescription, setComponentDescription] = useState('');
   const [componentPeriodicity, setComponentPeriodicity] =
     useState<FinanceComponentPeriodicity>('MONTHLY');
+  const [componentLateFeeEnabled, setComponentLateFeeEnabled] = useState(false);
+  const [componentLateFeeMode, setComponentLateFeeMode] = useState<FinanceLateFeeMode>('FIXED');
+  const [componentLateFeeAmount, setComponentLateFeeAmount] = useState('');
+  const [componentLateFeeGraceDays, setComponentLateFeeGraceDays] = useState('0');
+  const [componentLateFeeCapAmount, setComponentLateFeeCapAmount] = useState('');
   const [editingComponentId, setEditingComponentId] = useState<number | null>(null);
 
   const [tariffComponentId, setTariffComponentId] = useState<number | null>(null);
@@ -510,6 +525,11 @@ export default function StaffPaymentsScreen() {
     setComponentName('');
     setComponentDescription('');
     setComponentPeriodicity('MONTHLY');
+    setComponentLateFeeEnabled(false);
+    setComponentLateFeeMode('FIXED');
+    setComponentLateFeeAmount('');
+    setComponentLateFeeGraceDays('0');
+    setComponentLateFeeCapAmount('');
   };
 
   const resetTariffForm = () => {
@@ -571,12 +591,28 @@ export default function StaffPaymentsScreen() {
             name: componentName,
             description: componentDescription || '',
             periodicity: componentPeriodicity,
+            lateFeeEnabled: componentLateFeeEnabled,
+            lateFeeMode: componentLateFeeMode,
+            lateFeeAmount: componentLateFeeEnabled ? Number(componentLateFeeAmount || 0) : 0,
+            lateFeeGraceDays: Number(componentLateFeeGraceDays || 0),
+            lateFeeCapAmount:
+              componentLateFeeEnabled && componentLateFeeCapAmount !== ''
+                ? Number(componentLateFeeCapAmount)
+                : null,
           })
         : staffFinanceApi.createComponent({
             code: componentCode,
             name: componentName,
             description: componentDescription || undefined,
             periodicity: componentPeriodicity,
+            lateFeeEnabled: componentLateFeeEnabled,
+            lateFeeMode: componentLateFeeMode,
+            lateFeeAmount: componentLateFeeEnabled ? Number(componentLateFeeAmount || 0) : 0,
+            lateFeeGraceDays: Number(componentLateFeeGraceDays || 0),
+            lateFeeCapAmount:
+              componentLateFeeEnabled && componentLateFeeCapAmount !== ''
+                ? Number(componentLateFeeCapAmount)
+                : null,
           }),
     onSuccess: () => {
       notifySuccess(editingComponentId ? 'Komponen diperbarui.' : 'Komponen ditambahkan.');
@@ -802,6 +838,16 @@ export default function StaffPaymentsScreen() {
     onError: (error: unknown) => notifyApiError(error, 'Gagal memperbarui jadwal cicilan.'),
   });
 
+  const applyLateFeesMutation = useMutation({
+    mutationFn: (invoice: StaffFinanceInvoice) => staffFinanceApi.applyInvoiceLateFees(invoice.id),
+    onSuccess: (invoice) => {
+      notifySuccess('Denda keterlambatan diterapkan.');
+      setSelectedInvoice(invoice);
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal menerapkan denda keterlambatan.'),
+  });
+
   const refundMutation = useMutation({
     mutationFn: () => {
       if (!selectedCreditBalance) throw new Error('Saldo kredit belum dipilih');
@@ -823,6 +869,18 @@ export default function StaffPaymentsScreen() {
   const handleSaveComponent = () => {
     if (!componentCode.trim() || !componentName.trim()) {
       notifyApiError(null, 'Kode dan nama komponen wajib diisi.');
+      return;
+    }
+    if (componentLateFeeEnabled && Number(componentLateFeeAmount || 0) <= 0) {
+      notifyApiError(null, 'Nominal denda harus lebih dari 0.');
+      return;
+    }
+    if (Number(componentLateFeeGraceDays || 0) < 0) {
+      notifyApiError(null, 'Grace period tidak boleh negatif.');
+      return;
+    }
+    if (componentLateFeeCapAmount !== '' && Number(componentLateFeeCapAmount) < 0) {
+      notifyApiError(null, 'Maksimum denda tidak boleh negatif.');
       return;
     }
     saveComponentMutation.mutate();
@@ -1698,6 +1756,96 @@ export default function StaffPaymentsScreen() {
             </View>
           </ScrollView>
 
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              backgroundColor: '#f8fafc',
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 8,
+            }}
+          >
+            <Pressable
+              onPress={() => setComponentLateFeeEnabled((current) => !current)}
+              style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}
+            >
+              <Text style={{ color: '#334155', fontWeight: '700', flex: 1, paddingRight: 8 }}>
+                Aktifkan denda keterlambatan
+              </Text>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: componentLateFeeEnabled ? '#f59e0b' : '#cbd5e1',
+                  backgroundColor: componentLateFeeEnabled ? '#fef3c7' : '#fff',
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                }}
+              >
+                <Text style={{ color: componentLateFeeEnabled ? '#92400e' : '#64748b', fontWeight: '700', fontSize: 12 }}>
+                  {componentLateFeeEnabled ? 'Aktif' : 'Off'}
+                </Text>
+              </View>
+            </Pressable>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {LATE_FEE_MODE_OPTIONS.map((option) => {
+                  const active = componentLateFeeMode === option.value;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      onPress={() => setComponentLateFeeMode(option.value)}
+                      disabled={!componentLateFeeEnabled}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: active ? '#d97706' : '#fde68a',
+                        backgroundColor: active ? '#fff7ed' : '#fff',
+                        borderRadius: 999,
+                        paddingHorizontal: 12,
+                        paddingVertical: 7,
+                        opacity: componentLateFeeEnabled ? 1 : 0.5,
+                      }}
+                    >
+                      <Text style={{ color: active ? '#9a3412' : '#92400e', fontWeight: '700', fontSize: 12 }}>
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            <TextInput
+              keyboardType="numeric"
+              value={componentLateFeeAmount}
+              onChangeText={setComponentLateFeeAmount}
+              editable={componentLateFeeEnabled}
+              placeholder="Nominal denda"
+              placeholderTextColor="#94a3b8"
+              style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: componentLateFeeEnabled ? '#fff' : '#f8fafc' }}
+            />
+            <TextInput
+              keyboardType="numeric"
+              value={componentLateFeeGraceDays}
+              onChangeText={setComponentLateFeeGraceDays}
+              editable={componentLateFeeEnabled}
+              placeholder="Grace period (hari)"
+              placeholderTextColor="#94a3b8"
+              style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: componentLateFeeEnabled ? '#fff' : '#f8fafc' }}
+            />
+            <TextInput
+              keyboardType="numeric"
+              value={componentLateFeeCapAmount}
+              onChangeText={setComponentLateFeeCapAmount}
+              editable={componentLateFeeEnabled}
+              placeholder="Maksimum denda per termin (opsional)"
+              placeholderTextColor="#94a3b8"
+              style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, color: '#0f172a', backgroundColor: componentLateFeeEnabled ? '#fff' : '#f8fafc' }}
+            />
+          </View>
+
           <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
             <View style={{ flex: 1, paddingHorizontal: 4 }}>
               <Pressable
@@ -1753,6 +1901,15 @@ export default function StaffPaymentsScreen() {
               </View>
               <Text style={{ color: '#475569', fontSize: 12 }}>{component.code}</Text>
               {component.description ? <Text style={{ color: '#64748b', marginTop: 2 }}>{component.description}</Text> : null}
+              <Text style={{ color: component.lateFeeEnabled ? '#92400e' : '#64748b', marginTop: 4, fontSize: 12 }}>
+                {component.lateFeeEnabled
+                  ? `Denda ${getLateFeeModeLabel(component.lateFeeMode)} • ${formatCurrency(component.lateFeeAmount)} • grace ${component.lateFeeGraceDays} hari${
+                      component.lateFeeCapAmount != null
+                        ? ` • cap ${formatCurrency(component.lateFeeCapAmount)}`
+                        : ''
+                    }`
+                  : 'Tanpa denda keterlambatan'}
+              </Text>
               <View style={{ flexDirection: 'row', marginHorizontal: -4, marginTop: 8 }}>
                 <View style={{ flex: 1, paddingHorizontal: 4 }}>
                   <Pressable
@@ -1762,6 +1919,15 @@ export default function StaffPaymentsScreen() {
                       setComponentName(component.name);
                       setComponentDescription(component.description || '');
                       setComponentPeriodicity(component.periodicity);
+                      setComponentLateFeeEnabled(component.lateFeeEnabled);
+                      setComponentLateFeeMode(component.lateFeeMode);
+                      setComponentLateFeeAmount(String(Number(component.lateFeeAmount || 0)));
+                      setComponentLateFeeGraceDays(String(Number(component.lateFeeGraceDays || 0)));
+                      setComponentLateFeeCapAmount(
+                        component.lateFeeCapAmount == null
+                          ? ''
+                          : String(Number(component.lateFeeCapAmount || 0)),
+                      );
                     }}
                     style={{ borderWidth: 1, borderColor: '#bfdbfe', backgroundColor: '#eff6ff', borderRadius: 8, paddingVertical: 8, alignItems: 'center' }}
                   >
@@ -3417,6 +3583,12 @@ export default function StaffPaymentsScreen() {
                     {formatCurrency(invoice.installmentSummary?.overdueAmount || 0)}
                   </Text>
                 ) : null}
+                {invoice.lateFeeSummary?.configured ? (
+                  <Text style={{ color: '#92400e', fontSize: 12, marginBottom: 2 }}>
+                    Potensi denda {formatCurrency(invoice.lateFeeSummary.calculatedAmount)} • pending{' '}
+                    {formatCurrency(invoice.lateFeeSummary.pendingAmount)}
+                  </Text>
+                ) : null}
                 {invoice.payments.some((payment) => payment.source === 'CREDIT_BALANCE') ? (
                   <Text style={{ color: '#0369a1', fontSize: 12, marginBottom: 2 }}>
                     Auto-apply kredit{' '}
@@ -3431,19 +3603,39 @@ export default function StaffPaymentsScreen() {
                   Sisa: {formatCurrency(invoice.balanceAmount)}
                 </Text>
 
-                <Pressable
-                  onPress={() => startPaying(invoice)}
-                  disabled={invoice.status === 'PAID' || invoice.status === 'CANCELLED'}
-                  style={{
-                    backgroundColor:
-                      invoice.status === 'PAID' || invoice.status === 'CANCELLED' ? '#cbd5e1' : '#059669',
-                    borderRadius: 8,
-                    paddingVertical: 9,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: '#fff', fontWeight: '700' }}>Catat Pembayaran</Text>
-                </Pressable>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {invoice.lateFeeSummary?.hasPending ? (
+                    <Pressable
+                      onPress={() => applyLateFeesMutation.mutate(invoice)}
+                      disabled={applyLateFeesMutation.isPending}
+                      style={{
+                        flex: 1,
+                        backgroundColor: applyLateFeesMutation.isPending ? '#fcd34d' : '#d97706',
+                        borderRadius: 8,
+                        paddingVertical: 9,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>
+                        {applyLateFeesMutation.isPending ? 'Menerapkan...' : 'Terapkan Denda'}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                  <Pressable
+                    onPress={() => startPaying(invoice)}
+                    disabled={invoice.status === 'PAID' || invoice.status === 'CANCELLED'}
+                    style={{
+                      flex: 1,
+                      backgroundColor:
+                        invoice.status === 'PAID' || invoice.status === 'CANCELLED' ? '#cbd5e1' : '#059669',
+                      borderRadius: 8,
+                      paddingVertical: 9,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700' }}>Catat Pembayaran</Text>
+                  </Pressable>
+                </View>
               </View>
             );
           })}
@@ -3482,6 +3674,48 @@ export default function StaffPaymentsScreen() {
                   <Text style={{ color: '#075985', fontSize: 12 }}>
                     Saldo kredit yang sudah terpakai: <Text style={{ fontWeight: '700' }}>{formatCurrency(selectedInvoiceCreditAppliedAmount)}</Text>
                   </Text>
+                </View>
+              ) : null}
+
+              {selectedInvoice?.lateFeeSummary?.configured ? (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#fcd34d',
+                    backgroundColor: '#fffbeb',
+                    borderRadius: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={{ color: '#92400e', fontSize: 12, fontWeight: '700' }}>
+                    Potensi denda {formatCurrency(selectedInvoice.lateFeeSummary.calculatedAmount)} • pending{' '}
+                    {formatCurrency(selectedInvoice.lateFeeSummary.pendingAmount)}
+                  </Text>
+                  {(selectedInvoice.lateFeeSummary.breakdown || []).map((item) => (
+                    <Text key={`late-fee-${item.componentCode}`} style={{ color: '#92400e', fontSize: 11, marginTop: 4 }}>
+                      {item.componentName} • {getLateFeeModeLabel(item.mode)} • grace {item.graceDays} hari • pending{' '}
+                      {formatCurrency(item.pendingAmount)}
+                    </Text>
+                  ))}
+                  {selectedInvoice.lateFeeSummary.hasPending ? (
+                    <Pressable
+                      onPress={() => applyLateFeesMutation.mutate(selectedInvoice)}
+                      disabled={applyLateFeesMutation.isPending}
+                      style={{
+                        backgroundColor: applyLateFeesMutation.isPending ? '#fcd34d' : '#d97706',
+                        borderRadius: 8,
+                        paddingVertical: 9,
+                        alignItems: 'center',
+                        marginTop: 8,
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>
+                        {applyLateFeesMutation.isPending ? 'Menerapkan denda...' : 'Terapkan Denda Keterlambatan'}
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               ) : null}
 

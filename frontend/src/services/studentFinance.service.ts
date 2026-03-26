@@ -113,6 +113,15 @@ export interface StudentFinanceOverview {
         daysPastDue: number;
       } | null;
     };
+    lateFeeSummary?: {
+      configured: boolean;
+      hasPending: boolean;
+      overdueInstallmentCount: number;
+      calculatedAmount: number;
+      appliedAmount: number;
+      pendingAmount: number;
+      asOfDate: string;
+    };
   }>;
   creditBalance: {
     balanceAmount: number;

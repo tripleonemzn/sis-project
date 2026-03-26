@@ -14,6 +14,7 @@ import {
   type FinanceComponentPeriodicity,
   type FinanceInvoice,
   type FinanceInvoiceStatus,
+  type FinanceLateFeeMode,
   type FinancePaymentMethod,
   type FinanceReminderMode,
   type FinanceTariffRule,
@@ -42,6 +43,11 @@ const PAYMENT_METHOD_OPTIONS: Array<{ value: FinancePaymentMethod; label: string
   { value: 'VIRTUAL_ACCOUNT', label: 'Virtual Account' },
   { value: 'E_WALLET', label: 'E-Wallet' },
   { value: 'OTHER', label: 'Lainnya' },
+];
+
+const LATE_FEE_MODE_OPTIONS: Array<{ value: FinanceLateFeeMode; label: string }> = [
+  { value: 'FIXED', label: 'Tetap per termin overdue' },
+  { value: 'DAILY', label: 'Harian per termin overdue' },
 ];
 
 const STATUS_OPTIONS: Array<{ value: '' | FinanceInvoiceStatus; label: string }> = [
@@ -126,6 +132,10 @@ function getPaymentMethodLabel(method?: FinancePaymentMethod | null) {
   return PAYMENT_METHOD_OPTIONS.find((option) => option.value === method)?.label || method || '-';
 }
 
+function getLateFeeModeLabel(mode?: FinanceLateFeeMode | null) {
+  return LATE_FEE_MODE_OPTIONS.find((option) => option.value === mode)?.label || mode || '-';
+}
+
 function getCreditTransactionLabel(transaction: FinanceCreditTransaction) {
   if (transaction.kind === 'APPLIED_TO_INVOICE') return 'Saldo kredit dipakai ke invoice';
   if (transaction.kind === 'REFUND') return 'Refund saldo kredit';
@@ -193,6 +203,11 @@ export const StaffFinancePage = () => {
   const [componentName, setComponentName] = useState('');
   const [componentDescription, setComponentDescription] = useState('');
   const [componentPeriodicity, setComponentPeriodicity] = useState<FinanceComponentPeriodicity>('MONTHLY');
+  const [componentLateFeeEnabled, setComponentLateFeeEnabled] = useState(false);
+  const [componentLateFeeMode, setComponentLateFeeMode] = useState<FinanceLateFeeMode>('FIXED');
+  const [componentLateFeeAmount, setComponentLateFeeAmount] = useState('');
+  const [componentLateFeeGraceDays, setComponentLateFeeGraceDays] = useState('0');
+  const [componentLateFeeCapAmount, setComponentLateFeeCapAmount] = useState('');
   const [editingComponentId, setEditingComponentId] = useState<number | null>(null);
 
   const [tariffComponentId, setTariffComponentId] = useState<number | ''>('');
@@ -499,6 +514,11 @@ export const StaffFinancePage = () => {
     setComponentName('');
     setComponentDescription('');
     setComponentPeriodicity('MONTHLY');
+    setComponentLateFeeEnabled(false);
+    setComponentLateFeeMode('FIXED');
+    setComponentLateFeeAmount('');
+    setComponentLateFeeGraceDays('0');
+    setComponentLateFeeCapAmount('');
   };
 
   const resetTariffForm = () => {
@@ -551,12 +571,28 @@ export const StaffFinancePage = () => {
             name: componentName,
             description: componentDescription || '',
             periodicity: componentPeriodicity,
+            lateFeeEnabled: componentLateFeeEnabled,
+            lateFeeMode: componentLateFeeMode,
+            lateFeeAmount: componentLateFeeEnabled ? Number(componentLateFeeAmount || 0) : 0,
+            lateFeeGraceDays: Number(componentLateFeeGraceDays || 0),
+            lateFeeCapAmount:
+              componentLateFeeEnabled && componentLateFeeCapAmount !== ''
+                ? Number(componentLateFeeCapAmount)
+                : null,
           })
         : staffFinanceService.createComponent({
             code: componentCode,
             name: componentName,
             description: componentDescription || undefined,
             periodicity: componentPeriodicity,
+            lateFeeEnabled: componentLateFeeEnabled,
+            lateFeeMode: componentLateFeeMode,
+            lateFeeAmount: componentLateFeeEnabled ? Number(componentLateFeeAmount || 0) : 0,
+            lateFeeGraceDays: Number(componentLateFeeGraceDays || 0),
+            lateFeeCapAmount:
+              componentLateFeeEnabled && componentLateFeeCapAmount !== ''
+                ? Number(componentLateFeeCapAmount)
+                : null,
           }),
     onSuccess: () => {
       toast.success(editingComponentId ? 'Komponen berhasil diperbarui' : 'Komponen berhasil ditambahkan');
@@ -816,6 +852,20 @@ export const StaffFinancePage = () => {
     },
   });
 
+  const applyLateFeesMutation = useMutation({
+    mutationFn: (invoice: FinanceInvoice) => staffFinanceService.applyInvoiceLateFees(invoice.id),
+    onSuccess: (invoice) => {
+      toast.success('Denda keterlambatan berhasil diterapkan');
+      setSelectedInvoice(invoice);
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal menerapkan denda keterlambatan');
+    },
+  });
+
   const refundMutation = useMutation({
     mutationFn: () => {
       if (!selectedCreditBalance) {
@@ -890,6 +940,18 @@ export const StaffFinancePage = () => {
       toast.error('Kode dan nama komponen wajib diisi');
       return;
     }
+    if (componentLateFeeEnabled && Number(componentLateFeeAmount || 0) <= 0) {
+      toast.error('Nominal denda harus lebih dari 0');
+      return;
+    }
+    if (Number(componentLateFeeGraceDays || 0) < 0) {
+      toast.error('Grace period tidak boleh negatif');
+      return;
+    }
+    if (componentLateFeeCapAmount !== '' && Number(componentLateFeeCapAmount) < 0) {
+      toast.error('Maksimum denda tidak boleh negatif');
+      return;
+    }
     saveComponentMutation.mutate();
   };
 
@@ -923,6 +985,13 @@ export const StaffFinancePage = () => {
     setComponentName(component.name);
     setComponentDescription(component.description || '');
     setComponentPeriodicity(component.periodicity);
+    setComponentLateFeeEnabled(component.lateFeeEnabled);
+    setComponentLateFeeMode(component.lateFeeMode);
+    setComponentLateFeeAmount(String(Number(component.lateFeeAmount || 0)));
+    setComponentLateFeeGraceDays(String(Number(component.lateFeeGraceDays || 0)));
+    setComponentLateFeeCapAmount(
+      component.lateFeeCapAmount == null ? '' : String(Number(component.lateFeeCapAmount || 0)),
+    );
   };
 
   const handleEditTariff = (tariff: FinanceTariffRule) => {
@@ -1426,6 +1495,58 @@ export const StaffFinancePage = () => {
             placeholder="Deskripsi komponen (opsional)"
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-20 w-full"
           />
+          <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-3">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                checked={componentLateFeeEnabled}
+                onChange={(event) => setComponentLateFeeEnabled(event.target.checked)}
+                className="rounded border-slate-300"
+              />
+              Aktifkan denda keterlambatan untuk komponen ini
+            </label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <select
+                value={componentLateFeeMode}
+                onChange={(event) => setComponentLateFeeMode(event.target.value as FinanceLateFeeMode)}
+                disabled={!componentLateFeeEnabled}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-slate-100"
+              >
+                {LATE_FEE_MODE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min={0}
+                value={componentLateFeeAmount}
+                onChange={(event) => setComponentLateFeeAmount(event.target.value)}
+                disabled={!componentLateFeeEnabled}
+                placeholder="Nominal denda"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-slate-100"
+              />
+              <input
+                type="number"
+                min={0}
+                value={componentLateFeeGraceDays}
+                onChange={(event) => setComponentLateFeeGraceDays(event.target.value)}
+                disabled={!componentLateFeeEnabled}
+                placeholder="Grace period (hari)"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-slate-100"
+              />
+            </div>
+            <input
+              type="number"
+              min={0}
+              value={componentLateFeeCapAmount}
+              onChange={(event) => setComponentLateFeeCapAmount(event.target.value)}
+              disabled={!componentLateFeeEnabled}
+              placeholder="Maksimum denda per termin (opsional)"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full disabled:bg-slate-100"
+            />
+          </div>
           <div className="border border-gray-100 rounded-lg overflow-hidden">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -1454,7 +1575,20 @@ export const StaffFinancePage = () => {
                   components.map((component: FinanceComponent) => (
                     <tr key={component.id}>
                       <td className="px-3 py-2 text-sm text-gray-700">{component.code}</td>
-                      <td className="px-3 py-2 text-sm text-gray-900">{component.name}</td>
+                      <td className="px-3 py-2 text-sm text-gray-900">
+                        <div className="font-medium">{component.name}</div>
+                        <div className="mt-1 text-[11px] text-slate-500">
+                          {component.lateFeeEnabled
+                            ? `Denda ${getLateFeeModeLabel(component.lateFeeMode)} • ${formatCurrency(
+                                component.lateFeeAmount,
+                              )} • grace ${component.lateFeeGraceDays} hari${
+                                component.lateFeeCapAmount != null
+                                  ? ` • cap ${formatCurrency(component.lateFeeCapAmount)}`
+                                  : ''
+                              }`
+                            : 'Tanpa denda keterlambatan'}
+                        </div>
+                      </td>
                       <td className="px-3 py-2 text-sm text-gray-600">
                         {PERIODICITY_OPTIONS.find((option) => option.value === component.periodicity)?.label ||
                           component.periodicity}
@@ -2468,6 +2602,13 @@ export const StaffFinancePage = () => {
                           {formatCurrency(invoice.installmentSummary.overdueAmount)}
                         </div>
                       ) : null}
+                      {invoice.lateFeeSummary?.configured ? (
+                        <div className="mt-1 text-[11px] text-amber-700">
+                          Potensi denda {formatCurrency(invoice.lateFeeSummary.calculatedAmount)} • sudah diterapkan{' '}
+                          {formatCurrency(invoice.lateFeeSummary.appliedAmount)} • pending{' '}
+                          {formatCurrency(invoice.lateFeeSummary.pendingAmount)}
+                        </div>
+                      ) : null}
                       {invoice.payments.some((payment) => payment.source === 'CREDIT_BALANCE') ? (
                         <div className="mt-1 text-[11px] text-sky-700">
                           Auto-apply kredit{' '}
@@ -2495,14 +2636,26 @@ export const StaffFinancePage = () => {
                     </td>
                     <td className="px-4 py-3 text-center text-xs text-gray-600">{invoice.status}</td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => startPaying(invoice)}
-                        disabled={invoice.status === 'PAID' || invoice.status === 'CANCELLED'}
-                        className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
-                      >
-                        Catat Bayar
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        {invoice.lateFeeSummary?.hasPending ? (
+                          <button
+                            type="button"
+                            onClick={() => applyLateFeesMutation.mutate(invoice)}
+                            disabled={applyLateFeesMutation.isPending}
+                            className="rounded-lg border border-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-40"
+                          >
+                            {applyLateFeesMutation.isPending ? 'Menerapkan...' : 'Terapkan Denda'}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => startPaying(invoice)}
+                          disabled={invoice.status === 'PAID' || invoice.status === 'CANCELLED'}
+                          className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
+                        >
+                          Catat Bayar
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -3062,6 +3215,31 @@ export const StaffFinancePage = () => {
                 <div className="rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2 text-xs text-sky-800">
                   Saldo kredit yang sudah terpakai ke invoice ini:{' '}
                   <span className="font-semibold">{formatCurrency(selectedInvoiceCreditAppliedAmount)}</span>
+                </div>
+              ) : null}
+              {selectedInvoice.lateFeeSummary?.configured ? (
+                <div className="rounded-lg border border-amber-100 bg-amber-50/70 px-3 py-2 text-xs text-amber-900">
+                  <div className="font-semibold">
+                    Potensi denda {formatCurrency(selectedInvoice.lateFeeSummary.calculatedAmount)} • pending{' '}
+                    {formatCurrency(selectedInvoice.lateFeeSummary.pendingAmount)}
+                  </div>
+                  {selectedInvoice.lateFeeSummary.breakdown.map((item) => (
+                    <div key={`late-fee-${item.componentCode}`} className="mt-1">
+                      {item.componentName} • {getLateFeeModeLabel(item.mode)} • grace {item.graceDays} hari • pending{' '}
+                      {formatCurrency(item.pendingAmount)}
+                    </div>
+                  ))}
+                  {selectedInvoice.lateFeeSummary.hasPending ? (
+                    <button
+                      type="button"
+                      onClick={() => applyLateFeesMutation.mutate(selectedInvoice)}
+                      disabled={applyLateFeesMutation.isPending}
+                      className="mt-2 inline-flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      {applyLateFeesMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                      Terapkan Denda Keterlambatan
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
               {selectedInvoiceInstallments.length > 0 ? (

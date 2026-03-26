@@ -194,6 +194,12 @@ export default function StudentFinancePage() {
                           {formatCurrency(invoice.installmentSummary.overdueAmount)}
                         </div>
                       ) : null}
+                      {invoice.lateFeeSummary?.configured ? (
+                        <div className="mt-1 text-[11px] text-amber-700">
+                          Denda keterlambatan: {formatCurrency(invoice.lateFeeSummary.appliedAmount)} diterapkan •{' '}
+                          {formatCurrency(invoice.lateFeeSummary.pendingAmount)} berpotensi ditambahkan
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-5 py-3 text-sm text-right font-semibold text-gray-900">
                       {formatCurrency(invoice.balanceAmount)}

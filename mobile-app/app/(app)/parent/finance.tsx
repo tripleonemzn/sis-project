@@ -408,6 +408,12 @@ export default function ParentFinanceScreen() {
                             {formatCurrency(invoice.installmentSummary?.overdueAmount || 0)}
                           </Text>
                         ) : null}
+                        {invoice.lateFeeSummary?.configured ? (
+                          <Text style={{ color: '#b45309', marginTop: 2, fontSize: 12 }}>
+                            Denda keterlambatan: {formatCurrency(invoice.lateFeeSummary.appliedAmount)} diterapkan •{' '}
+                            {formatCurrency(invoice.lateFeeSummary.pendingAmount)} berpotensi ditambahkan
+                          </Text>
+                        ) : null}
                         {invoice.isOverdue ? (
                           <Text style={{ color: '#b91c1c', marginTop: 2, fontSize: 12 }}>
                             Terlambat {invoice.daysPastDue} hari

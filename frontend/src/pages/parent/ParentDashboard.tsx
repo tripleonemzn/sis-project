@@ -139,6 +139,15 @@ interface ParentChildFinanceOverview {
         daysPastDue: number;
       } | null;
     };
+    lateFeeSummary?: {
+      configured: boolean;
+      hasPending: boolean;
+      overdueInstallmentCount: number;
+      calculatedAmount: number;
+      appliedAmount: number;
+      pendingAmount: number;
+      asOfDate: string;
+    };
   }>;
   payments: ParentPayment[];
   creditBalance: {
@@ -1128,6 +1137,13 @@ const ParentFinancePage = () => {
                                 <div className="mt-1 text-[11px] text-rose-600">
                                   {invoice.installmentSummary.overdueCount} termin overdue • outstanding{' '}
                                   {formatCurrency(invoice.installmentSummary.overdueAmount)}
+                                </div>
+                              ) : null}
+                              {invoice.lateFeeSummary?.configured ? (
+                                <div className="mt-1 text-[11px] text-amber-700">
+                                  Denda keterlambatan: {formatCurrency(invoice.lateFeeSummary.appliedAmount)} diterapkan
+                                  {' • '}
+                                  {formatCurrency(invoice.lateFeeSummary.pendingAmount)} berpotensi ditambahkan
                                 </div>
                               ) : null}
                             </td>

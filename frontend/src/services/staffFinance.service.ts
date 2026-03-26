@@ -3,6 +3,7 @@ import api from './api';
 export type FinanceComponentPeriodicity = 'MONTHLY' | 'ONE_TIME' | 'PERIODIC';
 export type FinanceAdjustmentKind = 'DISCOUNT' | 'SCHOLARSHIP' | 'SURCHARGE';
 export type FinanceInvoiceStatus = 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
+export type FinanceLateFeeMode = 'FIXED' | 'DAILY';
 export type FinancePaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER';
 export type FinancePaymentSource = 'DIRECT' | 'CREDIT_BALANCE';
 export type FinanceCreditTransactionKind = 'OVERPAYMENT' | 'APPLIED_TO_INVOICE' | 'REFUND';
@@ -15,6 +16,11 @@ export interface FinanceComponent {
   name: string;
   description?: string | null;
   periodicity: FinanceComponentPeriodicity;
+  lateFeeEnabled: boolean;
+  lateFeeMode: FinanceLateFeeMode;
+  lateFeeAmount: number;
+  lateFeeGraceDays: number;
+  lateFeeCapAmount?: number | null;
   isActive: boolean;
 }
 
@@ -176,6 +182,29 @@ export interface FinanceInvoice {
       isOverdue: boolean;
       daysPastDue: number;
     } | null;
+  };
+  lateFeeSummary?: {
+    configured: boolean;
+    hasPending: boolean;
+    overdueInstallmentCount: number;
+    calculatedAmount: number;
+    appliedAmount: number;
+    pendingAmount: number;
+    breakdown: Array<{
+      componentId: number;
+      componentCode: string;
+      componentName: string;
+      mode: FinanceLateFeeMode;
+      amount: number;
+      graceDays: number;
+      capAmount?: number | null;
+      overdueInstallmentCount: number;
+      chargeableDays: number;
+      calculatedAmount: number;
+      appliedAmount: number;
+      pendingAmount: number;
+    }>;
+    asOfDate: string;
   };
 }
 
@@ -522,6 +551,11 @@ export const staffFinanceService = {
     name: string;
     description?: string;
     periodicity: FinanceComponentPeriodicity;
+    lateFeeEnabled?: boolean;
+    lateFeeMode?: FinanceLateFeeMode;
+    lateFeeAmount?: number;
+    lateFeeGraceDays?: number;
+    lateFeeCapAmount?: number | null;
   }) {
     const response = await api.post<ApiResponse<{ component: FinanceComponent }>>('/payments/components', payload);
     return response.data.data.component;
@@ -534,6 +568,11 @@ export const staffFinanceService = {
       name: string;
       description: string;
       periodicity: FinanceComponentPeriodicity;
+      lateFeeEnabled: boolean;
+      lateFeeMode: FinanceLateFeeMode;
+      lateFeeAmount: number;
+      lateFeeGraceDays: number;
+      lateFeeCapAmount: number | null;
       isActive: boolean;
     }>,
   ) {
@@ -542,6 +581,20 @@ export const staffFinanceService = {
       payload,
     );
     return response.data.data.component;
+  },
+
+  async applyInvoiceLateFees(
+    invoiceId: number,
+    payload?: {
+      note?: string;
+      appliedAt?: string;
+    },
+  ) {
+    const response = await api.post<ApiResponse<{ invoice: FinanceInvoice; lateFeeSummary?: FinanceInvoice['lateFeeSummary'] }>>(
+      `/payments/invoices/${invoiceId}/late-fees/apply`,
+      payload,
+    );
+    return response.data.data.invoice;
   },
 
   async listTariffs(params?: {

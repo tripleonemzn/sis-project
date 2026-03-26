@@ -1430,6 +1430,11 @@ model FinanceComponent {
   name         String
   description  String?
   periodicity  FinanceComponentPeriodicity @default(ONE_TIME)
+  lateFeeEnabled Boolean                   @default(false)
+  lateFeeMode   FinanceLateFeeMode         @default(FIXED)
+  lateFeeAmount Float                      @default(0)
+  lateFeeGraceDays Int                     @default(0)
+  lateFeeCapAmount Float?
   isActive     Boolean                     @default(true)
   createdById  Int?
   createdAt    DateTime                    @default(now())
@@ -2021,6 +2026,11 @@ enum FinanceAdjustmentKind {
   DISCOUNT
   SCHOLARSHIP
   SURCHARGE
+}
+
+enum FinanceLateFeeMode {
+  FIXED
+  DAILY
 }
 
 enum FinanceInvoiceStatus {

@@ -3,6 +3,7 @@ import {
   FinanceCreditTransactionKind,
   FinanceComponentPeriodicity,
   FinanceInvoiceStatus,
+  FinanceLateFeeMode,
   FinancePaymentMethod,
   FinancePaymentSource,
   PaymentStatus,
@@ -222,7 +223,15 @@ function buildFinanceInstallmentSummary(installments: SerializedFinanceInstallme
     (sum, installment) => sum + Number(installment.balanceAmount || 0),
     0,
   );
-  const nextInstallment = installments.find((installment) => installment.balanceAmount > 0) || null;
+  const nextInstallment =
+    [...installments]
+      .filter((installment) => installment.balanceAmount > 0)
+      .sort((left, right) => {
+        const leftDue = left.dueDate ? new Date(left.dueDate).getTime() : Number.POSITIVE_INFINITY;
+        const rightDue = right.dueDate ? new Date(right.dueDate).getTime() : Number.POSITIVE_INFINITY;
+        if (leftDue !== rightDue) return leftDue - rightDue;
+        return left.sequence - right.sequence;
+      })[0] || null;
 
   return {
     totalCount,
@@ -263,7 +272,15 @@ function resolveFinanceInvoiceDueDate(params: {
     installments: params.installments || [],
   });
 
-  const nextInstallment = serializedInstallments.find((installment) => installment.balanceAmount > 0);
+  const nextInstallment =
+    [...serializedInstallments]
+      .filter((installment) => installment.balanceAmount > 0)
+      .sort((left, right) => {
+        const leftDue = left.dueDate ? new Date(left.dueDate).getTime() : Number.POSITIVE_INFINITY;
+        const rightDue = right.dueDate ? new Date(right.dueDate).getTime() : Number.POSITIVE_INFINITY;
+        if (leftDue !== rightDue) return leftDue - rightDue;
+        return left.sequence - right.sequence;
+      })[0] || null;
   if (nextInstallment?.dueDate) {
     return nextInstallment.dueDate;
   }
@@ -275,6 +292,23 @@ function resolveFinanceInvoiceDueDate(params: {
 
   return params.invoiceDueDate || null;
 }
+
+type FinanceLateFeeInvoiceItemLike = {
+  componentId?: number | null;
+  componentCode?: string | null;
+  componentName?: string | null;
+  amount: number;
+  component?: {
+    id?: number | null;
+    code?: string | null;
+    name?: string | null;
+    lateFeeEnabled?: boolean | null;
+    lateFeeMode?: FinanceLateFeeMode | null;
+    lateFeeAmount?: number | null;
+    lateFeeGraceDays?: number | null;
+    lateFeeCapAmount?: number | null;
+  } | null;
+};
 
 function serializeFinanceInvoiceRecord<
   T extends {
@@ -299,6 +333,7 @@ function serializeFinanceInvoiceRecord<
       referenceNo?: string | null;
       paidAt: Date;
     }>;
+    items?: Array<FinanceLateFeeInvoiceItemLike>;
   },
 >(invoice: T, options?: { asOfDate?: Date }) {
   const totalAmount = Number(invoice.totalAmount || 0);
@@ -319,6 +354,7 @@ function serializeFinanceInvoiceRecord<
     paidAmount,
     balanceAmount,
     installmentSummary: buildFinanceInstallmentSummary(installments),
+    lateFeeSummary: invoice.items ? buildFinanceLateFeeSummary(invoice, options?.asOfDate) : undefined,
     installments,
     payments: (invoice.payments || []).map((payment) => ({
       ...payment,
@@ -327,6 +363,177 @@ function serializeFinanceInvoiceRecord<
       creditedAmount: Number(payment.creditedAmount || 0),
       source: payment.source || FinancePaymentSource.DIRECT,
     })),
+  };
+}
+
+type FinanceLateFeeBreakdown = {
+  componentId: number;
+  componentCode: string;
+  componentName: string;
+  mode: FinanceLateFeeMode;
+  amount: number;
+  graceDays: number;
+  capAmount: number | null;
+  overdueInstallmentCount: number;
+  chargeableDays: number;
+  calculatedAmount: number;
+  appliedAmount: number;
+  pendingAmount: number;
+};
+
+type FinanceLateFeeSummary = {
+  configured: boolean;
+  hasPending: boolean;
+  overdueInstallmentCount: number;
+  calculatedAmount: number;
+  appliedAmount: number;
+  pendingAmount: number;
+  breakdown: FinanceLateFeeBreakdown[];
+  asOfDate: Date;
+};
+
+function buildFinanceLateFeeSummary<
+  T extends {
+    totalAmount: number;
+    paidAmount: number;
+    status: FinanceInvoiceStatus;
+    dueDate?: Date | null;
+    installments?: Array<{
+      sequence: number;
+      amount: number;
+      dueDate?: Date | null;
+    }> | null;
+    items?: Array<FinanceLateFeeInvoiceItemLike>;
+  },
+>(invoice: T, asOfDate?: Date) {
+  const invoiceItems = invoice.items || [];
+  const snapshotDate = asOfDate ? new Date(asOfDate) : new Date();
+  const serializedInstallments = serializeFinanceInstallments({
+    invoiceTotalAmount: Number(invoice.totalAmount || 0),
+    invoicePaidAmount: Number(invoice.paidAmount || 0),
+    invoiceStatus: invoice.status,
+    invoiceDueDate: invoice.dueDate || null,
+    installments: invoice.installments || [],
+    asOfDate: snapshotDate,
+  });
+
+  const overdueInstallments = serializedInstallments.filter(
+    (installment) => installment.balanceAmount > 0 && installment.isOverdue,
+  );
+
+  const appliedLateFeeMap = new Map<string, number>();
+  for (const item of invoiceItems) {
+    const componentCode = String(item.componentCode || item.component?.code || '');
+    if (!componentCode.startsWith('LATE_FEE:')) continue;
+    const originalCode = componentCode.replace(/^LATE_FEE:/, '');
+    appliedLateFeeMap.set(
+      originalCode,
+      normalizeFinanceAmount((appliedLateFeeMap.get(originalCode) || 0) + Number(item.amount || 0)),
+    );
+  }
+
+  const configuredComponents = new Map<
+    string,
+    {
+      componentId: number;
+      componentCode: string;
+      componentName: string;
+      mode: FinanceLateFeeMode;
+      amount: number;
+      graceDays: number;
+      capAmount: number | null;
+    }
+  >();
+
+  for (const item of invoiceItems) {
+    if (Number(item.amount || 0) <= 0) continue;
+    if (!item.component) continue;
+    if (!item.component.lateFeeEnabled || Number(item.component.lateFeeAmount || 0) <= 0) continue;
+    const componentCode = String(item.component.code || item.componentCode || '');
+    if (!componentCode) continue;
+    if (configuredComponents.has(componentCode)) continue;
+    configuredComponents.set(componentCode, {
+      componentId: Number(item.component.id || item.componentId || 0),
+      componentCode,
+      componentName: String(item.component.name || item.componentName || 'Komponen'),
+      mode: item.component.lateFeeMode || FinanceLateFeeMode.FIXED,
+      amount: normalizeFinanceAmount(Number(item.component.lateFeeAmount || 0)),
+      graceDays: Math.max(0, Math.trunc(Number(item.component.lateFeeGraceDays || 0))),
+      capAmount:
+        item.component.lateFeeCapAmount == null
+          ? null
+          : normalizeFinanceAmount(Number(item.component.lateFeeCapAmount || 0)),
+    });
+  }
+
+  const breakdown = Array.from(configuredComponents.values())
+    .map<FinanceLateFeeBreakdown>((component) => {
+      let chargeableInstallmentCount = 0;
+      let chargeableDays = 0;
+      let calculatedAmount = 0;
+
+      for (const installment of overdueInstallments) {
+        const overdueDays = Math.max(0, Number(installment.daysPastDue || 0));
+        const effectiveDays = Math.max(overdueDays - component.graceDays, 0);
+        if (effectiveDays <= 0) continue;
+
+        chargeableInstallmentCount += 1;
+        chargeableDays += effectiveDays;
+
+        const rawAmount =
+          component.mode === FinanceLateFeeMode.DAILY
+            ? normalizeFinanceAmount(component.amount * effectiveDays)
+            : component.amount;
+
+        calculatedAmount +=
+          component.capAmount != null
+            ? Math.min(rawAmount, component.capAmount)
+            : rawAmount;
+      }
+
+      calculatedAmount = normalizeFinanceAmount(calculatedAmount);
+      const appliedAmount = normalizeFinanceAmount(
+        Number(appliedLateFeeMap.get(component.componentCode) || 0),
+      );
+      const pendingAmount = normalizeFinanceAmount(Math.max(calculatedAmount - appliedAmount, 0));
+
+      return {
+        componentId: component.componentId,
+        componentCode: component.componentCode,
+        componentName: component.componentName,
+        mode: component.mode,
+        amount: component.amount,
+        graceDays: component.graceDays,
+        capAmount: component.capAmount,
+        overdueInstallmentCount: chargeableInstallmentCount,
+        chargeableDays,
+        calculatedAmount,
+        appliedAmount,
+        pendingAmount,
+      };
+    })
+    .filter((item) => item.calculatedAmount > 0 || item.appliedAmount > 0)
+    .sort((left, right) => right.pendingAmount - left.pendingAmount || left.componentName.localeCompare(right.componentName));
+
+  const calculatedAmount = normalizeFinanceAmount(
+    breakdown.reduce((sum, item) => sum + Number(item.calculatedAmount || 0), 0),
+  );
+  const appliedAmount = normalizeFinanceAmount(
+    breakdown.reduce((sum, item) => sum + Number(item.appliedAmount || 0), 0),
+  );
+  const pendingAmount = normalizeFinanceAmount(
+    breakdown.reduce((sum, item) => sum + Number(item.pendingAmount || 0), 0),
+  );
+
+  return {
+    configured: configuredComponents.size > 0,
+    hasPending: pendingAmount > 0,
+    overdueInstallmentCount: overdueInstallments.length,
+    calculatedAmount,
+    appliedAmount,
+    pendingAmount,
+    breakdown,
+    asOfDate: snapshotDate,
   };
 }
 
@@ -687,18 +894,51 @@ const listFinanceComponentsQuerySchema = z.object({
   search: z.string().optional(),
 });
 
-const createFinanceComponentSchema = z.object({
+const financeComponentSchemaFields = {
   code: z.string().min(2).max(40),
   name: z.string().min(2).max(120),
   description: z.string().max(500).optional(),
   periodicity: z.nativeEnum(FinanceComponentPeriodicity).default('ONE_TIME'),
+  lateFeeEnabled: z.boolean().optional().default(false),
+  lateFeeMode: z.nativeEnum(FinanceLateFeeMode).optional().default('FIXED'),
+  lateFeeAmount: z.coerce.number().min(0).optional().default(0),
+  lateFeeGraceDays: z.coerce.number().int().min(0).max(180).optional().default(0),
+  lateFeeCapAmount: z.coerce.number().min(0).nullable().optional(),
   isActive: z.boolean().optional().default(true),
-});
+};
 
-const updateFinanceComponentSchema = createFinanceComponentSchema.partial().refine(
-  (payload) => Object.keys(payload).length > 0,
-  'Tidak ada perubahan data',
-);
+function validateFinanceComponentLateFee(
+  payload: {
+    lateFeeEnabled?: boolean;
+    lateFeeAmount?: number;
+  },
+  ctx: z.RefinementCtx,
+) {
+  if (payload.lateFeeEnabled && Number(payload.lateFeeAmount || 0) <= 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['lateFeeAmount'],
+      message: 'Nominal denda harus lebih dari 0 ketika denda diaktifkan',
+    });
+  }
+}
+
+const createFinanceComponentSchema = z
+  .object(financeComponentSchemaFields)
+  .superRefine(validateFinanceComponentLateFee);
+
+const updateFinanceComponentSchema = z
+  .object(financeComponentSchemaFields)
+  .partial()
+  .superRefine((payload, ctx) => {
+    if (Object.keys(payload).length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Tidak ada perubahan data',
+      });
+    }
+    validateFinanceComponentLateFee(payload, ctx);
+  });
 
 const listFinanceTariffsQuerySchema = z.object({
   componentId: z.coerce.number().int().positive().optional(),
@@ -857,6 +1097,11 @@ const createFinanceRefundSchema = z.object({
   referenceNo: z.string().trim().max(120).optional(),
   note: z.string().trim().max(500).optional(),
   refundedAt: z.coerce.date().optional(),
+});
+
+const applyFinanceLateFeeSchema = z.object({
+  note: z.string().trim().max(500).optional(),
+  appliedAt: z.coerce.date().optional(),
 });
 
 const PERIOD_KEY_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -2519,6 +2764,12 @@ export const createFinanceComponent = asyncHandler(async (req: Request, res: Res
       name: payload.name.trim(),
       description: payload.description?.trim() || null,
       periodicity: payload.periodicity,
+      lateFeeEnabled: payload.lateFeeEnabled,
+      lateFeeMode: payload.lateFeeMode,
+      lateFeeAmount: normalizeFinanceAmount(payload.lateFeeAmount),
+      lateFeeGraceDays: payload.lateFeeGraceDays,
+      lateFeeCapAmount:
+        payload.lateFeeCapAmount == null ? null : normalizeFinanceAmount(payload.lateFeeCapAmount),
       isActive: payload.isActive,
       createdById: actor.id,
     },
@@ -2548,6 +2799,14 @@ export const updateFinanceComponent = asyncHandler(async (req: Request, res: Res
   if (payload.name !== undefined) data.name = payload.name.trim();
   if (payload.description !== undefined) data.description = payload.description?.trim() || null;
   if (payload.periodicity !== undefined) data.periodicity = payload.periodicity;
+  if (payload.lateFeeEnabled !== undefined) data.lateFeeEnabled = payload.lateFeeEnabled;
+  if (payload.lateFeeMode !== undefined) data.lateFeeMode = payload.lateFeeMode;
+  if (payload.lateFeeAmount !== undefined) data.lateFeeAmount = normalizeFinanceAmount(payload.lateFeeAmount);
+  if (payload.lateFeeGraceDays !== undefined) data.lateFeeGraceDays = payload.lateFeeGraceDays;
+  if (payload.lateFeeCapAmount !== undefined) {
+    data.lateFeeCapAmount =
+      payload.lateFeeCapAmount == null ? null : normalizeFinanceAmount(payload.lateFeeCapAmount);
+  }
   if (payload.isActive !== undefined) data.isActive = payload.isActive;
 
   const component = await prisma.financeComponent.update({
@@ -3222,6 +3481,18 @@ export const listFinanceInvoices = asyncHandler(async (req: Request, res: Respon
           componentName: true,
           amount: true,
           notes: true,
+          component: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              lateFeeEnabled: true,
+              lateFeeMode: true,
+              lateFeeAmount: true,
+              lateFeeGraceDays: true,
+              lateFeeCapAmount: true,
+            },
+          },
         },
       },
       payments: {
@@ -4063,6 +4334,293 @@ export const updateFinanceInvoiceInstallments = asyncHandler(async (req: Request
     .json(new ApiResponse(200, { invoice: serializedInvoice }, 'Jadwal cicilan berhasil diperbarui'));
 });
 
+export const applyFinanceInvoiceLateFees = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+
+  const invoiceId = Number(req.params.id);
+  if (!Number.isInteger(invoiceId) || invoiceId <= 0) {
+    throw new ApiError(400, 'ID tagihan tidak valid');
+  }
+
+  const payload = applyFinanceLateFeeSchema.parse(req.body || {});
+  const appliedAt = payload.appliedAt || new Date();
+
+  const result = await prisma.$transaction(async (tx) => {
+    const invoice = await tx.financeInvoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nis: true,
+            nisn: true,
+            studentClass: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+            },
+          },
+        },
+        items: {
+          select: {
+            id: true,
+            componentId: true,
+            componentCode: true,
+            componentName: true,
+            amount: true,
+            notes: true,
+            component: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                lateFeeEnabled: true,
+                lateFeeMode: true,
+                lateFeeAmount: true,
+                lateFeeGraceDays: true,
+                lateFeeCapAmount: true,
+              },
+            },
+          },
+        },
+        payments: {
+          select: {
+            id: true,
+            paymentNo: true,
+            amount: true,
+            allocatedAmount: true,
+            creditedAmount: true,
+            source: true,
+            method: true,
+            referenceNo: true,
+            paidAt: true,
+          },
+          orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
+        },
+        installments: {
+          select: {
+            id: true,
+            sequence: true,
+            amount: true,
+            dueDate: true,
+          },
+          orderBy: [{ sequence: 'asc' }],
+        },
+      },
+    });
+
+    if (!invoice) {
+      throw new ApiError(404, 'Tagihan tidak ditemukan');
+    }
+
+    if (invoice.status === 'PAID') {
+      throw new ApiError(400, 'Tagihan yang sudah lunas tidak bisa ditambah denda');
+    }
+
+    if (invoice.status === 'CANCELLED') {
+      throw new ApiError(400, 'Tagihan yang dibatalkan tidak bisa ditambah denda');
+    }
+
+    const lateFeeSummary = buildFinanceLateFeeSummary(invoice, appliedAt);
+    const pendingBreakdown = lateFeeSummary.breakdown.filter((item) => item.pendingAmount > 0);
+
+    if (!pendingBreakdown.length || lateFeeSummary.pendingAmount <= 0) {
+      throw new ApiError(400, 'Belum ada denda keterlambatan yang bisa diterapkan pada invoice ini');
+    }
+
+    await tx.financeInvoiceItem.createMany({
+      data: pendingBreakdown.map((item) => ({
+        invoiceId: invoice.id,
+        componentId: null,
+        componentCode: `LATE_FEE:${item.componentCode}`,
+        componentName: `Denda ${item.componentName}`,
+        amount: item.pendingAmount,
+        notes:
+          payload.note?.trim() ||
+          `Denda keterlambatan ${
+            item.mode === FinanceLateFeeMode.DAILY ? 'harian' : 'tetap'
+          } • grace ${item.graceDays} hari • snapshot ${appliedAt.toISOString()}`,
+      })),
+    });
+
+    const nextSequence =
+      invoice.installments.reduce((max, installment) => Math.max(max, installment.sequence), 0) + 1;
+    const lateFeeInstallment = {
+      sequence: nextSequence,
+      amount: normalizeFinanceAmount(lateFeeSummary.pendingAmount),
+      dueDate: appliedAt,
+    };
+
+    await tx.financeInvoiceInstallment.create({
+      data: {
+        invoiceId: invoice.id,
+        sequence: lateFeeInstallment.sequence,
+        amount: lateFeeInstallment.amount,
+        dueDate: lateFeeInstallment.dueDate,
+      },
+    });
+
+    const nextTotalAmount = normalizeFinanceAmount(
+      Number(invoice.totalAmount || 0) + lateFeeInstallment.amount,
+    );
+    const nextBalanceAmount = normalizeFinanceAmount(
+      Number(invoice.balanceAmount || 0) + lateFeeInstallment.amount,
+    );
+    const nextDueDate = resolveFinanceInvoiceDueDate({
+      invoiceTotalAmount: nextTotalAmount,
+      invoicePaidAmount: Number(invoice.paidAmount || 0),
+      invoiceStatus: invoice.status,
+      invoiceDueDate: invoice.dueDate || null,
+      installments: [...invoice.installments, lateFeeInstallment],
+    });
+
+    const updatedInvoice = await tx.financeInvoice.update({
+      where: { id: invoice.id },
+      data: {
+        totalAmount: nextTotalAmount,
+        balanceAmount: nextBalanceAmount,
+        dueDate: nextDueDate,
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nis: true,
+            nisn: true,
+            studentClass: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+            },
+          },
+        },
+        items: {
+          select: {
+            id: true,
+            componentId: true,
+            componentCode: true,
+            componentName: true,
+            amount: true,
+            notes: true,
+            component: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                lateFeeEnabled: true,
+                lateFeeMode: true,
+                lateFeeAmount: true,
+                lateFeeGraceDays: true,
+                lateFeeCapAmount: true,
+              },
+            },
+          },
+        },
+        payments: {
+          select: {
+            id: true,
+            paymentNo: true,
+            amount: true,
+            allocatedAmount: true,
+            creditedAmount: true,
+            source: true,
+            method: true,
+            referenceNo: true,
+            paidAt: true,
+          },
+          orderBy: [{ paidAt: 'desc' }],
+        },
+        installments: {
+          select: {
+            id: true,
+            sequence: true,
+            amount: true,
+            dueDate: true,
+          },
+          orderBy: [{ sequence: 'asc' }],
+        },
+      },
+    });
+
+    return {
+      invoice: updatedInvoice,
+      lateFeeSummary,
+      pendingBreakdown,
+      appliedAmount: lateFeeSummary.pendingAmount,
+    };
+  });
+
+  const serializedInvoice = serializeFinanceInvoiceRecord(result.invoice, { asOfDate: appliedAt });
+
+  await createFinanceNotifications({
+    studentId: result.invoice.student.id,
+    title: 'Denda Keterlambatan Diterapkan',
+    message: `Invoice ${result.invoice.invoiceNo} dikenakan denda keterlambatan Rp${Math.round(
+      result.appliedAmount,
+    ).toLocaleString('id-ID')}. Sisa tagihan saat ini Rp${Math.round(
+      Number(result.invoice.balanceAmount || 0),
+    ).toLocaleString('id-ID')}.`,
+    type: 'FINANCE_LATE_FEE_APPLIED',
+    data: {
+      module: 'FINANCE',
+      invoiceId: result.invoice.id,
+      invoiceNo: result.invoice.invoiceNo,
+      studentId: result.invoice.student.id,
+      appliedLateFeeAmount: result.appliedAmount,
+      breakdown: result.pendingBreakdown.map((item) => ({
+        componentCode: item.componentCode,
+        componentName: item.componentName,
+        amount: item.pendingAmount,
+        mode: item.mode,
+        graceDays: item.graceDays,
+      })),
+    },
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      (actor.additionalDuties || []).map((duty) => String(duty)),
+      'CREATE',
+      'FINANCE_LATE_FEE',
+      result.invoice.id,
+      {
+        invoiceNo: result.invoice.invoiceNo,
+        lateFeeSummary: result.lateFeeSummary,
+      },
+      {
+        invoiceNo: result.invoice.invoiceNo,
+        appliedAmount: result.appliedAmount,
+        breakdown: result.pendingBreakdown,
+        note: payload.note?.trim() || null,
+      },
+      payload.note?.trim() || 'Penerapan denda keterlambatan invoice',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat penerapan denda finance', auditError);
+  }
+
+  res.status(201).json(
+    new ApiResponse(
+      201,
+      {
+        invoice: serializedInvoice,
+        lateFeeSummary: serializedInvoice.lateFeeSummary,
+      },
+      'Denda keterlambatan berhasil diterapkan',
+    ),
+  );
+});
+
 export const listFinanceCredits = asyncHandler(async (req: Request, res: Response) => {
   await ensureFinanceActor((req as any).user || {}, { allowPrincipalReadOnly: true });
 
@@ -4437,11 +4995,20 @@ type FinancePortalInvoiceRecord = {
   paidAmount: number;
   balanceAmount: number;
   items: Array<{
+    componentId?: number | null;
+    componentCode?: string | null;
+    componentName?: string | null;
     amount: number;
     component: {
+      id?: number | null;
       code: string;
       name: string;
       periodicity: FinanceComponentPeriodicity;
+      lateFeeEnabled?: boolean | null;
+      lateFeeMode?: FinanceLateFeeMode | null;
+      lateFeeAmount?: number | null;
+      lateFeeGraceDays?: number | null;
+      lateFeeCapAmount?: number | null;
     } | null;
   }>;
   installments: Array<{
@@ -4533,11 +5100,12 @@ function buildFinancePortalOverview(financeInvoices: FinancePortalInvoiceRecord[
       isOverdue,
       daysPastDue,
       items: invoice.items.map((item) => ({
-        componentCode: item.component?.code || null,
-        componentName: item.component?.name || 'Komponen',
+        componentCode: item.component?.code || item.componentCode || null,
+        componentName: item.component?.name || item.componentName || 'Komponen',
         amount: Number(item.amount || 0),
         periodicity: item.component?.periodicity || null,
       })),
+      lateFeeSummary: serializedInvoice.lateFeeSummary,
       installmentSummary: serializedInvoice.installmentSummary,
       installments: serializedInvoice.installments,
     };
@@ -4678,12 +5246,21 @@ export const listParentPayments = asyncHandler(async (req: Request, res: Respons
           include: {
             items: {
               select: {
+                componentId: true,
+                componentCode: true,
+                componentName: true,
                 amount: true,
                 component: {
                   select: {
+                    id: true,
                     code: true,
                     name: true,
                     periodicity: true,
+                    lateFeeEnabled: true,
+                    lateFeeMode: true,
+                    lateFeeAmount: true,
+                    lateFeeGraceDays: true,
+                    lateFeeCapAmount: true,
                   },
                 },
               },
@@ -4974,12 +5551,21 @@ export const listStudentPayments = asyncHandler(async (req: Request, res: Respon
       include: {
         items: {
           select: {
+            componentId: true,
+            componentCode: true,
+            componentName: true,
             amount: true,
             component: {
               select: {
+                id: true,
                 code: true,
                 name: true,
                 periodicity: true,
+                lateFeeEnabled: true,
+                lateFeeMode: true,
+                lateFeeAmount: true,
+                lateFeeGraceDays: true,
+                lateFeeCapAmount: true,
               },
             },
           },
