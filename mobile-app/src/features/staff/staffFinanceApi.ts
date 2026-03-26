@@ -9,6 +9,7 @@ type ApiResponse<T> = {
 
 export type SemesterCode = 'ODD' | 'EVEN';
 export type FinanceComponentPeriodicity = 'MONTHLY' | 'ONE_TIME' | 'PERIODIC';
+export type FinanceAdjustmentKind = 'DISCOUNT' | 'SCHOLARSHIP' | 'SURCHARGE';
 export type FinanceInvoiceStatus = 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
 export type FinancePaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER';
 export type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE';
@@ -58,6 +59,59 @@ export type StaffFinanceTariffRule = {
   } | null;
 };
 
+export type StaffFinanceAdjustmentRule = {
+  id: number;
+  code: string;
+  name: string;
+  description?: string | null;
+  kind: FinanceAdjustmentKind;
+  amount: number;
+  componentId?: number | null;
+  academicYearId?: number | null;
+  majorId?: number | null;
+  classId?: number | null;
+  studentId?: number | null;
+  semester?: SemesterCode | null;
+  gradeLevel?: string | null;
+  isActive: boolean;
+  effectiveStart?: string | null;
+  effectiveEnd?: string | null;
+  notes?: string | null;
+  component?: {
+    id: number;
+    code: string;
+    name: string;
+    periodicity: FinanceComponentPeriodicity;
+  } | null;
+  class?: {
+    id: number;
+    name: string;
+    level: string;
+  } | null;
+  major?: {
+    id: number;
+    name: string;
+    code: string;
+  } | null;
+  academicYear?: {
+    id: number;
+    name: string;
+    isActive: boolean;
+  } | null;
+  student?: {
+    id: number;
+    name: string;
+    username: string;
+    nis?: string | null;
+    nisn?: string | null;
+    studentClass?: {
+      id: number;
+      name: string;
+      level: string;
+    } | null;
+  } | null;
+};
+
 export type StaffFinanceInvoice = {
   id: number;
   invoiceNo: string;
@@ -104,8 +158,9 @@ export type StaffFinanceInvoiceGenerationDetail = {
   itemCount: number;
   componentNames: string[];
   items: Array<{
-    componentId: number;
-    componentCode: string;
+    itemKey: string;
+    componentId?: number | null;
+    componentCode?: string | null;
     componentName: string;
     amount: number;
     notes?: string | null;
@@ -271,6 +326,75 @@ export const staffFinanceApi = {
       { params },
     );
     return response.data.data.tariffs || [];
+  },
+
+  async listAdjustments(params?: {
+    componentId?: number;
+    academicYearId?: number;
+    classId?: number;
+    majorId?: number;
+    studentId?: number;
+    semester?: SemesterCode;
+    kind?: FinanceAdjustmentKind;
+    isActive?: boolean;
+  }) {
+    const response = await apiClient.get<ApiResponse<{ adjustments: StaffFinanceAdjustmentRule[] }>>(
+      '/payments/adjustments',
+      { params },
+    );
+    return response.data.data.adjustments || [];
+  },
+
+  async createAdjustment(payload: {
+    code: string;
+    name: string;
+    description?: string;
+    kind: FinanceAdjustmentKind;
+    amount: number;
+    componentId?: number;
+    academicYearId?: number;
+    classId?: number;
+    majorId?: number;
+    studentId?: number;
+    semester?: SemesterCode;
+    gradeLevel?: string;
+    effectiveStart?: string;
+    effectiveEnd?: string;
+    notes?: string;
+  }) {
+    const response = await apiClient.post<ApiResponse<{ adjustment: StaffFinanceAdjustmentRule }>>(
+      '/payments/adjustments',
+      payload,
+    );
+    return response.data.data.adjustment;
+  },
+
+  async updateAdjustment(
+    adjustmentId: number,
+    payload: Partial<{
+      code: string;
+      name: string;
+      description: string | null;
+      kind: FinanceAdjustmentKind;
+      amount: number;
+      componentId: number | null;
+      academicYearId: number | null;
+      classId: number | null;
+      majorId: number | null;
+      studentId: number | null;
+      semester: SemesterCode | null;
+      gradeLevel: string | null;
+      effectiveStart: string | null;
+      effectiveEnd: string | null;
+      notes: string | null;
+      isActive: boolean;
+    }>,
+  ) {
+    const response = await apiClient.patch<ApiResponse<{ adjustment: StaffFinanceAdjustmentRule }>>(
+      `/payments/adjustments/${adjustmentId}`,
+      payload,
+    );
+    return response.data.data.adjustment;
   },
 
   async createTariff(payload: {

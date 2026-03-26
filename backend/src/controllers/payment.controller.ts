@@ -1,4 +1,5 @@
 import {
+  FinanceAdjustmentKind,
   FinanceComponentPeriodicity,
   FinanceInvoiceStatus,
   FinancePaymentMethod,
@@ -364,6 +365,26 @@ const listFinanceTariffsQuerySchema = z.object({
     }),
 });
 
+const listFinanceAdjustmentsQuerySchema = z.object({
+  componentId: z.coerce.number().int().positive().optional(),
+  academicYearId: z.coerce.number().int().positive().optional(),
+  classId: z.coerce.number().int().positive().optional(),
+  majorId: z.coerce.number().int().positive().optional(),
+  studentId: z.coerce.number().int().positive().optional(),
+  semester: z.nativeEnum(Semester).optional(),
+  kind: z.nativeEnum(FinanceAdjustmentKind).optional(),
+  isActive: z
+    .string()
+    .optional()
+    .transform((value) => {
+      if (value == null || value === '') return undefined;
+      const normalized = value.toLowerCase();
+      if (normalized === 'true' || normalized === '1') return true;
+      if (normalized === 'false' || normalized === '0') return false;
+      return undefined;
+    }),
+});
+
 const createFinanceTariffSchema = z.object({
   componentId: z.coerce.number().int().positive(),
   academicYearId: z.coerce.number().int().positive().optional(),
@@ -379,6 +400,30 @@ const createFinanceTariffSchema = z.object({
 });
 
 const updateFinanceTariffSchema = createFinanceTariffSchema.partial().refine(
+  (payload) => Object.keys(payload).length > 0,
+  'Tidak ada perubahan data',
+);
+
+const createFinanceAdjustmentSchema = z.object({
+  code: z.string().min(2).max(40),
+  name: z.string().min(2).max(120),
+  description: z.string().max(500).optional(),
+  kind: z.nativeEnum(FinanceAdjustmentKind).default('DISCOUNT'),
+  amount: z.coerce.number().positive(),
+  componentId: z.coerce.number().int().positive().optional(),
+  academicYearId: z.coerce.number().int().positive().optional(),
+  majorId: z.coerce.number().int().positive().optional(),
+  classId: z.coerce.number().int().positive().optional(),
+  studentId: z.coerce.number().int().positive().optional(),
+  semester: z.nativeEnum(Semester).optional(),
+  gradeLevel: z.string().trim().min(1).max(20).optional(),
+  isActive: z.boolean().optional().default(true),
+  effectiveStart: z.coerce.date().optional(),
+  effectiveEnd: z.coerce.date().optional(),
+  notes: z.string().max(500).optional(),
+});
+
+const updateFinanceAdjustmentSchema = createFinanceAdjustmentSchema.partial().refine(
   (payload) => Object.keys(payload).length > 0,
   'Tidak ada perubahan data',
 );
@@ -1158,6 +1203,48 @@ function scoreTariffForStudent(
   return score;
 }
 
+function scoreAdjustmentRuleForStudent(
+  rule: {
+    studentId: number | null;
+    classId: number | null;
+    majorId: number | null;
+    gradeLevel: string | null;
+    academicYearId: number | null;
+    semester: Semester | null;
+  },
+  student: {
+    id: number;
+    classId: number | null;
+    studentClass: {
+      level: string;
+      majorId: number;
+    } | null;
+  },
+  academicYearId: number,
+  semester: Semester,
+): number {
+  if (rule.studentId != null && rule.studentId !== student.id) return -1;
+  if (rule.classId != null && rule.classId !== student.classId) return -1;
+  if (rule.majorId != null && rule.majorId !== student.studentClass?.majorId) return -1;
+  if (
+    rule.gradeLevel != null &&
+    rule.gradeLevel.trim().toUpperCase() !== (student.studentClass?.level || '').trim().toUpperCase()
+  ) {
+    return -1;
+  }
+  if (rule.academicYearId != null && rule.academicYearId !== academicYearId) return -1;
+  if (rule.semester != null && rule.semester !== semester) return -1;
+
+  let score = 0;
+  if (rule.studentId != null) score += 128;
+  if (rule.classId != null) score += 64;
+  if (rule.majorId != null) score += 32;
+  if (rule.gradeLevel != null) score += 16;
+  if (rule.academicYearId != null) score += 8;
+  if (rule.semester != null) score += 4;
+  return score;
+}
+
 type FinanceInvoiceTargetStudent = {
   id: number;
   name: string;
@@ -1188,8 +1275,9 @@ type FinanceInvoiceGenerationPlanStatus =
   | 'SKIPPED_LOCKED_PAID';
 
 type FinanceInvoiceGenerationPlanItem = {
-  componentId: number;
-  componentCode: string;
+  itemKey: string;
+  componentId: number | null;
+  componentCode: string | null;
   componentName: string;
   amount: number;
   notes: string | null;
@@ -1206,6 +1294,70 @@ type FinanceInvoiceGenerationPlanRow = {
 
 function normalizeFinanceComparableText(value?: string | null) {
   return String(value || '').trim().toUpperCase();
+}
+
+type FinanceAdjustmentRuleCandidate = {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  kind: FinanceAdjustmentKind;
+  amount: number;
+  componentId: number | null;
+  academicYearId: number | null;
+  majorId: number | null;
+  classId: number | null;
+  studentId: number | null;
+  semester: Semester | null;
+  gradeLevel: string | null;
+  effectiveStart: Date | null;
+  effectiveEnd: Date | null;
+  notes: string | null;
+  component: {
+    id: number;
+    code: string;
+    name: string;
+  } | null;
+};
+
+function getFinanceAdjustmentKindLabel(kind: FinanceAdjustmentKind) {
+  if (kind === 'SCHOLARSHIP') return 'Beasiswa';
+  if (kind === 'SURCHARGE') return 'Surcharge';
+  return 'Potongan';
+}
+
+function getFinanceAdjustmentItemName(rule: FinanceAdjustmentRuleCandidate) {
+  const prefix = getFinanceAdjustmentKindLabel(rule.kind);
+  if (rule.component?.name) {
+    return `${prefix} - ${rule.name} (${rule.component.name})`;
+  }
+  return `${prefix} - ${rule.name}`;
+}
+
+function getFinanceAdjustmentItemNotes(rule: FinanceAdjustmentRuleCandidate, options?: { capped?: boolean }) {
+  const notes = [rule.description?.trim(), rule.notes?.trim()].filter((value): value is string => Boolean(value));
+  if (options?.capped && (rule.kind === 'DISCOUNT' || rule.kind === 'SCHOLARSHIP')) {
+    notes.push('Nominal diterapkan parsial sesuai sisa tagihan yang masih bisa disesuaikan.');
+  }
+  return notes.join(' • ') || null;
+}
+
+function compareFinanceAdjustmentRules(
+  left: { rule: FinanceAdjustmentRuleCandidate; score: number },
+  right: { rule: FinanceAdjustmentRuleCandidate; score: number },
+) {
+  const getPriority = (rule: FinanceAdjustmentRuleCandidate) => {
+    if (rule.componentId != null && (rule.kind === 'DISCOUNT' || rule.kind === 'SCHOLARSHIP')) return 0;
+    if (rule.componentId != null && rule.kind === 'SURCHARGE') return 1;
+    if (rule.componentId == null && (rule.kind === 'DISCOUNT' || rule.kind === 'SCHOLARSHIP')) return 2;
+    return 3;
+  };
+
+  const priorityDiff = getPriority(left.rule) - getPriority(right.rule);
+  if (priorityDiff !== 0) return priorityDiff;
+  if (left.score !== right.score) return right.score - left.score;
+  if (left.rule.amount !== right.rule.amount) return right.rule.amount - left.rule.amount;
+  return left.rule.id - right.rule.id;
 }
 
 async function resolveFinanceTargetAcademicYearId(academicYearId?: number) {
@@ -1283,6 +1435,7 @@ function mapFinanceInvoiceGenerationRowDetail(row: FinanceInvoiceGenerationPlanR
     itemCount: row.items.length,
     componentNames: row.items.map((item) => item.componentName),
     items: row.items.map((item) => ({
+      itemKey: item.itemKey,
       componentId: item.componentId,
       componentCode: item.componentCode,
       componentName: item.componentName,
@@ -1383,6 +1536,26 @@ async function buildFinanceInvoiceGenerationPlan(payload: z.infer<typeof generat
     },
   });
 
+  const adjustmentRules = await prisma.financeAdjustmentRule.findMany({
+    where: {
+      isActive: true,
+      AND: [
+        { OR: [{ academicYearId: null }, { academicYearId: targetAcademicYearId }] },
+        { OR: [{ semester: null }, { semester: payload.semester }] },
+      ],
+    },
+    include: {
+      component: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+        },
+      },
+    },
+    orderBy: [{ id: 'asc' }],
+  });
+
   const existingInvoices = await prisma.financeInvoice.findMany({
     where: {
       studentId: {
@@ -1433,13 +1606,69 @@ async function buildFinanceInvoiceGenerationPlan(payload: z.infer<typeof generat
     }
 
     const items = selectedTariffs.map<FinanceInvoiceGenerationPlanItem>((tariff) => ({
+      itemKey: `COMP-${tariff.componentId}`,
       componentId: tariff.componentId,
       componentCode: tariff.component.code,
       componentName: tariff.component.name,
       amount: Number(tariff.amount || 0),
       notes: tariff.notes || null,
     }));
-    const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
+
+    const matchedAdjustments = adjustmentRules
+      .filter((rule) => isDateInsideRange(today, rule.effectiveStart, rule.effectiveEnd))
+      .map((rule) => ({
+        rule: rule as FinanceAdjustmentRuleCandidate,
+        score: scoreAdjustmentRuleForStudent(rule, student, targetAcademicYearId, payload.semester),
+      }))
+      .filter((item) => item.score >= 0)
+      .sort(compareFinanceAdjustmentRules);
+
+    const componentRunningTotals = new Map<number, number>();
+    let runningSubtotal = 0;
+    for (const item of items) {
+      runningSubtotal += item.amount;
+      if (item.componentId != null) {
+        componentRunningTotals.set(
+          item.componentId,
+          (componentRunningTotals.get(item.componentId) || 0) + item.amount,
+        );
+      }
+    }
+
+    for (const { rule } of matchedAdjustments) {
+      const isReduction = rule.kind === 'DISCOUNT' || rule.kind === 'SCHOLARSHIP';
+      const targetComponentTotal =
+        rule.componentId != null ? Math.max(0, componentRunningTotals.get(rule.componentId) || 0) : null;
+      const availableAmount = rule.componentId != null ? targetComponentTotal || 0 : Math.max(0, runningSubtotal);
+      let appliedAmount = Number(rule.amount || 0);
+      let capped = false;
+
+      if (isReduction) {
+        appliedAmount = Math.min(appliedAmount, availableAmount);
+        capped = appliedAmount < Number(rule.amount || 0);
+      }
+
+      if (appliedAmount <= 0) {
+        continue;
+      }
+
+      const signedAmount = isReduction ? -appliedAmount : appliedAmount;
+      items.push({
+        itemKey: `ADJ-${rule.code}-${rule.componentId || 'ALL'}-${rule.studentId || student.id}`,
+        componentId: rule.componentId || null,
+        componentCode: rule.code,
+        componentName: getFinanceAdjustmentItemName(rule),
+        amount: signedAmount,
+        notes: getFinanceAdjustmentItemNotes(rule, { capped }),
+      });
+
+      runningSubtotal += signedAmount;
+      if (rule.componentId != null) {
+        componentRunningTotals.set(rule.componentId, (componentRunningTotals.get(rule.componentId) || 0) + signedAmount);
+      }
+    }
+
+    const totalAmount = Math.max(0, items.reduce((sum, item) => sum + item.amount, 0));
     const existingInvoice = existingInvoiceMap.get(student.id);
 
     if (existingInvoice && Number(existingInvoice.paidAmount || 0) > 0) {
@@ -1686,6 +1915,195 @@ export const updateFinanceTariffRule = asyncHandler(async (req: Request, res: Re
   res.status(200).json(new ApiResponse(200, { tariff }, 'Tarif keuangan berhasil diperbarui'));
 });
 
+export const listFinanceAdjustmentRules = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinanceActor((req as any).user || {}, { allowPrincipalReadOnly: true });
+
+  const { componentId, academicYearId, classId, majorId, studentId, semester, kind, isActive } =
+    listFinanceAdjustmentsQuerySchema.parse(req.query);
+
+  const adjustments = await prisma.financeAdjustmentRule.findMany({
+    where: {
+      ...(componentId ? { componentId } : {}),
+      ...(academicYearId ? { academicYearId } : {}),
+      ...(classId ? { classId } : {}),
+      ...(majorId ? { majorId } : {}),
+      ...(studentId ? { studentId } : {}),
+      ...(semester ? { semester } : {}),
+      ...(kind ? { kind } : {}),
+      ...(isActive !== undefined ? { isActive } : {}),
+    },
+    include: {
+      component: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          periodicity: true,
+        },
+      },
+      academicYear: {
+        select: {
+          id: true,
+          name: true,
+          isActive: true,
+        },
+      },
+      class: {
+        select: {
+          id: true,
+          name: true,
+          level: true,
+        },
+      },
+      major: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      },
+      student: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          nis: true,
+          nisn: true,
+          studentClass: {
+            select: {
+              id: true,
+              name: true,
+              level: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ kind: 'asc' }, { name: 'asc' }],
+  });
+
+  res.status(200).json(new ApiResponse(200, { adjustments }, 'Rule penyesuaian keuangan berhasil diambil'));
+});
+
+export const createFinanceAdjustmentRule = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+  const payload = createFinanceAdjustmentSchema.parse(req.body);
+
+  if (payload.effectiveStart && payload.effectiveEnd && payload.effectiveEnd < payload.effectiveStart) {
+    throw new ApiError(400, 'Periode efektif penyesuaian tidak valid');
+  }
+
+  const code = normalizeFinanceCode(payload.code);
+  if (!code) {
+    throw new ApiError(400, 'Kode penyesuaian tidak valid');
+  }
+
+  const adjustment = await prisma.financeAdjustmentRule.create({
+    data: {
+      code,
+      name: payload.name.trim(),
+      description: payload.description?.trim() || null,
+      kind: payload.kind,
+      amount: payload.amount,
+      componentId: payload.componentId || null,
+      academicYearId: payload.academicYearId || null,
+      majorId: payload.majorId || null,
+      classId: payload.classId || null,
+      studentId: payload.studentId || null,
+      semester: payload.semester || null,
+      gradeLevel: payload.gradeLevel?.trim() || null,
+      isActive: payload.isActive,
+      effectiveStart: payload.effectiveStart || null,
+      effectiveEnd: payload.effectiveEnd || null,
+      notes: payload.notes?.trim() || null,
+      createdById: actor.id,
+    },
+    include: {
+      component: true,
+      academicYear: true,
+      class: true,
+      major: true,
+      student: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          nis: true,
+          nisn: true,
+        },
+      },
+    },
+  });
+
+  res.status(201).json(new ApiResponse(201, { adjustment }, 'Rule penyesuaian keuangan berhasil dibuat'));
+});
+
+export const updateFinanceAdjustmentRule = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinanceActor((req as any).user || {});
+
+  const adjustmentId = Number(req.params.id);
+  if (!Number.isInteger(adjustmentId) || adjustmentId <= 0) {
+    throw new ApiError(400, 'ID penyesuaian tidak valid');
+  }
+
+  const payload = updateFinanceAdjustmentSchema.parse(req.body);
+  const data: Record<string, unknown> = {};
+
+  if (payload.code !== undefined) {
+    const normalizedCode = normalizeFinanceCode(payload.code);
+    if (!normalizedCode) {
+      throw new ApiError(400, 'Kode penyesuaian tidak valid');
+    }
+    data.code = normalizedCode;
+  }
+  if (payload.name !== undefined) data.name = payload.name.trim();
+  if (payload.description !== undefined) data.description = payload.description?.trim() || null;
+  if (payload.kind !== undefined) data.kind = payload.kind;
+  if (payload.amount !== undefined) data.amount = payload.amount;
+  if (payload.componentId !== undefined) data.componentId = payload.componentId || null;
+  if (payload.academicYearId !== undefined) data.academicYearId = payload.academicYearId || null;
+  if (payload.majorId !== undefined) data.majorId = payload.majorId || null;
+  if (payload.classId !== undefined) data.classId = payload.classId || null;
+  if (payload.studentId !== undefined) data.studentId = payload.studentId || null;
+  if (payload.semester !== undefined) data.semester = payload.semester || null;
+  if (payload.gradeLevel !== undefined) data.gradeLevel = payload.gradeLevel?.trim() || null;
+  if (payload.isActive !== undefined) data.isActive = payload.isActive;
+  if (payload.effectiveStart !== undefined) data.effectiveStart = payload.effectiveStart || null;
+  if (payload.effectiveEnd !== undefined) data.effectiveEnd = payload.effectiveEnd || null;
+  if (payload.notes !== undefined) data.notes = payload.notes?.trim() || null;
+
+  if (
+    (data.effectiveStart instanceof Date || data.effectiveEnd instanceof Date) &&
+    data.effectiveStart instanceof Date &&
+    data.effectiveEnd instanceof Date &&
+    data.effectiveEnd < data.effectiveStart
+  ) {
+    throw new ApiError(400, 'Periode efektif penyesuaian tidak valid');
+  }
+
+  const adjustment = await prisma.financeAdjustmentRule.update({
+    where: { id: adjustmentId },
+    data,
+    include: {
+      component: true,
+      academicYear: true,
+      class: true,
+      major: true,
+      student: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          nis: true,
+          nisn: true,
+        },
+      },
+    },
+  });
+
+  res.status(200).json(new ApiResponse(200, { adjustment }, 'Rule penyesuaian keuangan berhasil diperbarui'));
+});
+
 export const generateFinanceInvoices = asyncHandler(async (req: Request, res: Response) => {
   const actor = await ensureFinanceActor((req as any).user || {});
   const payload = generateInvoicesSchema.parse(req.body);
@@ -1705,6 +2123,7 @@ export const generateFinanceInvoices = asyncHandler(async (req: Request, res: Re
   >;
 
   for (const row of plan.rows) {
+    const nextStatus: FinanceInvoiceStatus = row.totalAmount <= 0 ? 'PAID' : 'UNPAID';
     if (row.status === 'SKIPPED_NO_TARIFF') {
       details.push({ ...mapFinanceInvoiceGenerationRowDetail(row), status: 'SKIPPED_NO_TARIFF' });
       continue;
@@ -1731,7 +2150,7 @@ export const generateFinanceInvoices = asyncHandler(async (req: Request, res: Re
             totalAmount: row.totalAmount,
             paidAmount: 0,
             balanceAmount: row.totalAmount,
-            status: 'UNPAID',
+            status: nextStatus,
             createdById: actor.id,
           },
         });
@@ -1785,7 +2204,7 @@ export const generateFinanceInvoices = asyncHandler(async (req: Request, res: Re
         totalAmount: row.totalAmount,
         paidAmount: 0,
         balanceAmount: row.totalAmount,
-        status: 'UNPAID',
+        status: nextStatus,
         createdById: actor.id,
         items: {
           create: row.items.map((item) => ({

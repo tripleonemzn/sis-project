@@ -4,6 +4,8 @@ import { BellRing, Download, Loader2, Pencil, Plus, Power, ReceiptText, WalletCa
 import toast from 'react-hot-toast';
 import { academicYearService, type AcademicYear } from '../../services/academicYear.service';
 import {
+  type FinanceAdjustmentKind,
+  type FinanceAdjustmentRule,
   staffFinanceService,
   type FinanceComponent,
   type FinanceComponentPeriodicity,
@@ -23,6 +25,12 @@ const PERIODICITY_OPTIONS: Array<{ value: FinanceComponentPeriodicity; label: st
   { value: 'MONTHLY', label: 'Bulanan' },
   { value: 'ONE_TIME', label: 'Sekali Bayar' },
   { value: 'PERIODIC', label: 'Periodik' },
+];
+
+const ADJUSTMENT_KIND_OPTIONS: Array<{ value: FinanceAdjustmentKind; label: string }> = [
+  { value: 'DISCOUNT', label: 'Potongan' },
+  { value: 'SCHOLARSHIP', label: 'Beasiswa' },
+  { value: 'SURCHARGE', label: 'Surcharge' },
 ];
 
 const PAYMENT_METHOD_OPTIONS: Array<{ value: FinancePaymentMethod; label: string }> = [
@@ -107,6 +115,33 @@ function describeTariffScope(tariff: FinanceTariffRule) {
   return parts.join(' • ');
 }
 
+function getAdjustmentKindLabel(kind: FinanceAdjustmentKind) {
+  return ADJUSTMENT_KIND_OPTIONS.find((option) => option.value === kind)?.label || kind;
+}
+
+function describeAdjustmentScope(adjustment: FinanceAdjustmentRule) {
+  const parts = [
+    adjustment.component?.name ? `Komponen ${adjustment.component.name}` : 'Seluruh invoice',
+    adjustment.student?.name
+      ? `Siswa ${adjustment.student.name}`
+      : adjustment.class?.name || 'Semua kelas',
+    adjustment.major?.name ? `Jurusan ${adjustment.major.name}` : 'Semua jurusan',
+    adjustment.gradeLevel ? `Tingkat ${adjustment.gradeLevel}` : 'Semua tingkat',
+    adjustment.semester === 'ODD'
+      ? 'Ganjil'
+      : adjustment.semester === 'EVEN'
+        ? 'Genap'
+        : 'Semua semester',
+    adjustment.academicYear?.name || 'Semua tahun ajaran',
+  ];
+
+  if (adjustment.effectiveStart || adjustment.effectiveEnd) {
+    parts.push(`Efektif ${formatEffectiveWindow(adjustment.effectiveStart, adjustment.effectiveEnd)}`);
+  }
+
+  return parts.join(' • ');
+}
+
 function getInvoicePreviewStatusMeta(status: string) {
   if (status === 'READY_CREATE' || status === 'CREATED') {
     return {
@@ -158,6 +193,24 @@ export const StaffFinancePage = () => {
   const [tariffEffectiveEnd, setTariffEffectiveEnd] = useState('');
   const [tariffNotes, setTariffNotes] = useState('');
   const [editingTariffId, setEditingTariffId] = useState<number | null>(null);
+
+  const [adjustmentCode, setAdjustmentCode] = useState('');
+  const [adjustmentName, setAdjustmentName] = useState('');
+  const [adjustmentDescription, setAdjustmentDescription] = useState('');
+  const [adjustmentKind, setAdjustmentKind] = useState<FinanceAdjustmentKind>('DISCOUNT');
+  const [adjustmentAmount, setAdjustmentAmount] = useState('');
+  const [adjustmentComponentId, setAdjustmentComponentId] = useState<number | ''>('');
+  const [adjustmentAcademicYearId, setAdjustmentAcademicYearId] = useState<number | ''>('');
+  const [adjustmentClassId, setAdjustmentClassId] = useState<number | ''>('');
+  const [adjustmentMajorId, setAdjustmentMajorId] = useState<number | ''>('');
+  const [adjustmentStudentId, setAdjustmentStudentId] = useState<number | ''>('');
+  const [adjustmentStudentSearch, setAdjustmentStudentSearch] = useState('');
+  const [adjustmentSemester, setAdjustmentSemester] = useState<SemesterCode | ''>('');
+  const [adjustmentGradeLevel, setAdjustmentGradeLevel] = useState('');
+  const [adjustmentEffectiveStart, setAdjustmentEffectiveStart] = useState('');
+  const [adjustmentEffectiveEnd, setAdjustmentEffectiveEnd] = useState('');
+  const [adjustmentNotes, setAdjustmentNotes] = useState('');
+  const [editingAdjustmentId, setEditingAdjustmentId] = useState<number | null>(null);
 
   const [invoiceYearId, setInvoiceYearId] = useState<number | ''>('');
   const [invoiceSemester, setInvoiceSemester] = useState<SemesterCode>('EVEN');
@@ -216,6 +269,12 @@ export const StaffFinancePage = () => {
   const tariffsQuery = useQuery({
     queryKey: ['staff-finance-tariffs'],
     queryFn: () => staffFinanceService.listTariffs(),
+    staleTime: 60_000,
+  });
+
+  const adjustmentsQuery = useQuery({
+    queryKey: ['staff-finance-adjustments'],
+    queryFn: () => staffFinanceService.listAdjustments(),
     staleTime: 60_000,
   });
 
@@ -305,6 +364,32 @@ export const StaffFinancePage = () => {
       .slice(0, keyword ? 12 : 8);
   }, [invoiceSelectedStudentIds, invoiceStudentSearch, students]);
 
+  const selectedAdjustmentStudent = useMemo(
+    () => (adjustmentStudentId === '' ? null : studentLookup.get(Number(adjustmentStudentId)) || null),
+    [adjustmentStudentId, studentLookup],
+  );
+
+  const adjustmentStudentCandidates = useMemo(() => {
+    const keyword = adjustmentStudentSearch.trim().toLowerCase();
+    return students
+      .filter((student) => (adjustmentStudentId === '' ? true : student.id !== Number(adjustmentStudentId)))
+      .filter((student) => {
+        if (!keyword) return true;
+        const haystack = [
+          student.name,
+          student.username,
+          student.nis || '',
+          student.nisn || '',
+          student.studentClass?.name || '',
+          student.studentClass?.major?.name || '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(keyword);
+      })
+      .slice(0, keyword ? 8 : 6);
+  }, [adjustmentStudentId, adjustmentStudentSearch, students]);
+
   const activeYear = useMemo(() => years.find((year) => year.isActive), [years]);
 
   const reportsQuery = useQuery({
@@ -330,6 +415,7 @@ export const StaffFinancePage = () => {
 
   const components = componentsQuery.data || [];
   const tariffs = tariffsQuery.data || [];
+  const adjustments = adjustmentsQuery.data || [];
   const invoices = invoicesQuery.data?.invoices || [];
   const invoiceSummary = invoicesQuery.data?.summary;
   const overdueCount = useMemo(() => {
@@ -377,6 +463,26 @@ export const StaffFinancePage = () => {
     setTariffEffectiveStart('');
     setTariffEffectiveEnd('');
     setTariffNotes('');
+  };
+
+  const resetAdjustmentForm = () => {
+    setEditingAdjustmentId(null);
+    setAdjustmentCode('');
+    setAdjustmentName('');
+    setAdjustmentDescription('');
+    setAdjustmentKind('DISCOUNT');
+    setAdjustmentAmount('');
+    setAdjustmentComponentId('');
+    setAdjustmentAcademicYearId('');
+    setAdjustmentClassId('');
+    setAdjustmentMajorId('');
+    setAdjustmentStudentId('');
+    setAdjustmentStudentSearch('');
+    setAdjustmentSemester('');
+    setAdjustmentGradeLevel('');
+    setAdjustmentEffectiveStart('');
+    setAdjustmentEffectiveEnd('');
+    setAdjustmentNotes('');
   };
 
   const saveComponentMutation = useMutation({
@@ -472,6 +578,71 @@ export const StaffFinancePage = () => {
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
       toast.error(apiError?.response?.data?.message || 'Gagal mengubah status tarif');
+    },
+  });
+
+  const saveAdjustmentMutation = useMutation({
+    mutationFn: () =>
+      editingAdjustmentId
+        ? staffFinanceService.updateAdjustment(editingAdjustmentId, {
+            code: adjustmentCode,
+            name: adjustmentName,
+            description: adjustmentDescription.trim() || null,
+            kind: adjustmentKind,
+            amount: Number(adjustmentAmount),
+            componentId: adjustmentComponentId === '' ? null : Number(adjustmentComponentId),
+            academicYearId: adjustmentAcademicYearId === '' ? null : Number(adjustmentAcademicYearId),
+            classId: adjustmentClassId === '' ? null : Number(adjustmentClassId),
+            majorId: adjustmentMajorId === '' ? null : Number(adjustmentMajorId),
+            studentId: adjustmentStudentId === '' ? null : Number(adjustmentStudentId),
+            semester: adjustmentSemester === '' ? null : adjustmentSemester,
+            gradeLevel: adjustmentGradeLevel.trim() || null,
+            effectiveStart: adjustmentEffectiveStart || null,
+            effectiveEnd: adjustmentEffectiveEnd || null,
+            notes: adjustmentNotes.trim() || null,
+          })
+        : staffFinanceService.createAdjustment({
+            code: adjustmentCode,
+            name: adjustmentName,
+            description: adjustmentDescription.trim() || undefined,
+            kind: adjustmentKind,
+            amount: Number(adjustmentAmount),
+            componentId: adjustmentComponentId === '' ? undefined : Number(adjustmentComponentId),
+            academicYearId: adjustmentAcademicYearId === '' ? undefined : Number(adjustmentAcademicYearId),
+            classId: adjustmentClassId === '' ? undefined : Number(adjustmentClassId),
+            majorId: adjustmentMajorId === '' ? undefined : Number(adjustmentMajorId),
+            studentId: adjustmentStudentId === '' ? undefined : Number(adjustmentStudentId),
+            semester: adjustmentSemester === '' ? undefined : adjustmentSemester,
+            gradeLevel: adjustmentGradeLevel.trim() || undefined,
+            effectiveStart: adjustmentEffectiveStart || undefined,
+            effectiveEnd: adjustmentEffectiveEnd || undefined,
+            notes: adjustmentNotes.trim() || undefined,
+          }),
+    onSuccess: () => {
+      toast.success(editingAdjustmentId ? 'Rule penyesuaian berhasil diperbarui' : 'Rule penyesuaian berhasil ditambahkan');
+      resetAdjustmentForm();
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-adjustments'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal menyimpan rule penyesuaian');
+    },
+  });
+
+  const toggleAdjustmentMutation = useMutation({
+    mutationFn: ({ adjustmentId, isActive }: { adjustmentId: number; isActive: boolean }) =>
+      staffFinanceService.updateAdjustment(adjustmentId, { isActive }),
+    onSuccess: (_, payload) => {
+      toast.success(payload.isActive ? 'Rule penyesuaian diaktifkan' : 'Rule penyesuaian dinonaktifkan');
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-adjustments'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal mengubah status rule penyesuaian');
     },
   });
 
@@ -597,6 +768,18 @@ export const StaffFinancePage = () => {
     saveTariffMutation.mutate();
   };
 
+  const handleSaveAdjustment = () => {
+    if (!adjustmentCode.trim() || !adjustmentName.trim() || Number(adjustmentAmount) <= 0) {
+      toast.error('Kode, nama, dan nominal penyesuaian wajib diisi');
+      return;
+    }
+    if (adjustmentEffectiveStart && adjustmentEffectiveEnd && adjustmentEffectiveEnd < adjustmentEffectiveStart) {
+      toast.error('Periode efektif penyesuaian tidak valid');
+      return;
+    }
+    saveAdjustmentMutation.mutate();
+  };
+
   const handleEditComponent = (component: FinanceComponent) => {
     setEditingComponentId(component.id);
     setComponentCode(component.code);
@@ -617,6 +800,26 @@ export const StaffFinancePage = () => {
     setTariffEffectiveStart(tariff.effectiveStart ? String(tariff.effectiveStart).slice(0, 10) : '');
     setTariffEffectiveEnd(tariff.effectiveEnd ? String(tariff.effectiveEnd).slice(0, 10) : '');
     setTariffNotes(tariff.notes || '');
+  };
+
+  const handleEditAdjustment = (adjustment: FinanceAdjustmentRule) => {
+    setEditingAdjustmentId(adjustment.id);
+    setAdjustmentCode(adjustment.code);
+    setAdjustmentName(adjustment.name);
+    setAdjustmentDescription(adjustment.description || '');
+    setAdjustmentKind(adjustment.kind);
+    setAdjustmentAmount(String(Number(adjustment.amount || 0)));
+    setAdjustmentComponentId(adjustment.componentId || '');
+    setAdjustmentAcademicYearId(adjustment.academicYearId || '');
+    setAdjustmentClassId(adjustment.classId || '');
+    setAdjustmentMajorId(adjustment.majorId || '');
+    setAdjustmentStudentId(adjustment.studentId || '');
+    setAdjustmentStudentSearch('');
+    setAdjustmentSemester(adjustment.semester || '');
+    setAdjustmentGradeLevel(adjustment.gradeLevel || '');
+    setAdjustmentEffectiveStart(adjustment.effectiveStart ? String(adjustment.effectiveStart).slice(0, 10) : '');
+    setAdjustmentEffectiveEnd(adjustment.effectiveEnd ? String(adjustment.effectiveEnd).slice(0, 10) : '');
+    setAdjustmentNotes(adjustment.notes || '');
   };
 
   const handleDispatchReminder = (mode: FinanceReminderMode) => {
@@ -656,6 +859,16 @@ export const StaffFinancePage = () => {
   const handleClearInvoiceStudentSelection = () => {
     setInvoiceSelectedStudentIds([]);
     setInvoiceStudentSearch('');
+  };
+
+  const handleSelectAdjustmentStudent = (studentId: number) => {
+    setAdjustmentStudentId(studentId);
+    setAdjustmentStudentSearch('');
+  };
+
+  const handleClearAdjustmentStudent = () => {
+    setAdjustmentStudentId('');
+    setAdjustmentStudentSearch('');
   };
 
   useEffect(() => {
@@ -1141,6 +1354,318 @@ export const StaffFinancePage = () => {
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-4">
         <div className="flex items-center gap-2">
+          <WalletCards className="w-4 h-4 text-violet-600" />
+          <h3 className="text-sm font-semibold text-gray-900">Rule Penyesuaian Dinamis</h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          <input
+            value={adjustmentCode}
+            onChange={(event) => setAdjustmentCode(event.target.value)}
+            placeholder="Kode rule (contoh: BEASISWA_PRESTASI)"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+          <input
+            value={adjustmentName}
+            onChange={(event) => setAdjustmentName(event.target.value)}
+            placeholder="Nama rule penyesuaian"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+          <select
+            value={adjustmentKind}
+            onChange={(event) => setAdjustmentKind(event.target.value as FinanceAdjustmentKind)}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          >
+            {ADJUSTMENT_KIND_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <input
+            type="number"
+            min={0}
+            value={adjustmentAmount}
+            onChange={(event) => setAdjustmentAmount(event.target.value)}
+            placeholder="Nominal penyesuaian"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+          <select
+            value={adjustmentComponentId === '' ? '' : String(adjustmentComponentId)}
+            onChange={(event) => setAdjustmentComponentId(event.target.value ? Number(event.target.value) : '')}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          >
+            <option value="">Seluruh invoice</option>
+            {components.map((component) => (
+              <option key={component.id} value={component.id}>
+                {component.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={adjustmentAcademicYearId === '' ? '' : String(adjustmentAcademicYearId)}
+            onChange={(event) =>
+              setAdjustmentAcademicYearId(event.target.value ? Number(event.target.value) : '')
+            }
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          >
+            <option value="">Semua tahun ajaran</option>
+            {years.map((year) => (
+              <option key={year.id} value={year.id}>
+                {year.name}
+                {year.isActive ? ' (Aktif)' : ''}
+              </option>
+            ))}
+          </select>
+          <select
+            value={adjustmentClassId === '' ? '' : String(adjustmentClassId)}
+            onChange={(event) => setAdjustmentClassId(event.target.value ? Number(event.target.value) : '')}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          >
+            <option value="">Semua kelas</option>
+            {classes.map((classItem) => (
+              <option key={classItem.id} value={classItem.id}>
+                {classItem.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={adjustmentMajorId === '' ? '' : String(adjustmentMajorId)}
+            onChange={(event) => setAdjustmentMajorId(event.target.value ? Number(event.target.value) : '')}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          >
+            <option value="">Semua jurusan</option>
+            {majors.map((major) => (
+              <option key={major.id} value={major.id}>
+                {major.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={adjustmentSemester}
+            onChange={(event) => setAdjustmentSemester(event.target.value as SemesterCode | '')}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          >
+            <option value="">Semua semester</option>
+            <option value="ODD">Ganjil</option>
+            <option value="EVEN">Genap</option>
+          </select>
+          <input
+            value={adjustmentGradeLevel}
+            onChange={(event) => setAdjustmentGradeLevel(event.target.value)}
+            placeholder="Tingkat (opsional)"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+          <input
+            type="date"
+            value={adjustmentEffectiveStart}
+            onChange={(event) => setAdjustmentEffectiveStart(event.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+          <input
+            type="date"
+            value={adjustmentEffectiveEnd}
+            onChange={(event) => setAdjustmentEffectiveEnd(event.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+          <button
+            type="button"
+            onClick={handleSaveAdjustment}
+            disabled={saveAdjustmentMutation.isPending}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-violet-600 text-white text-sm font-semibold px-4 py-2 hover:bg-violet-700 disabled:opacity-50"
+          >
+            {saveAdjustmentMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+            {editingAdjustmentId ? 'Simpan Perubahan' : 'Tambah Penyesuaian'}
+          </button>
+          {editingAdjustmentId ? (
+            <button
+              type="button"
+              onClick={resetAdjustmentForm}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-semibold px-4 py-2 hover:bg-gray-50"
+            >
+              <X className="w-4 h-4" />
+              Batal Edit
+            </button>
+          ) : null}
+        </div>
+
+        <textarea
+          value={adjustmentDescription}
+          onChange={(event) => setAdjustmentDescription(event.target.value)}
+          placeholder="Deskripsi penyesuaian (opsional)"
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-20 w-full"
+        />
+        <textarea
+          value={adjustmentNotes}
+          onChange={(event) => setAdjustmentNotes(event.target.value)}
+          placeholder="Catatan tambahan (opsional)"
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-20 w-full"
+        />
+
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+            <div>
+              <div className="text-sm font-semibold text-slate-900">Target Siswa Spesifik</div>
+              <p className="text-xs text-slate-600 mt-1">
+                Kosongkan jika rule berlaku global sesuai filter. Isi jika rule hanya berlaku untuk siswa tertentu.
+              </p>
+            </div>
+            {selectedAdjustmentStudent ? (
+              <button
+                type="button"
+                onClick={handleClearAdjustmentStudent}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                <X className="w-3.5 h-3.5" />
+                Reset Siswa
+              </button>
+            ) : null}
+          </div>
+          <input
+            value={adjustmentStudentSearch}
+            onChange={(event) => setAdjustmentStudentSearch(event.target.value)}
+            placeholder="Cari siswa berdasarkan nama, username, NIS, NISN, kelas"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full bg-white"
+          />
+          {selectedAdjustmentStudent ? (
+            <div className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs text-violet-900">
+              <span>
+                {selectedAdjustmentStudent.name} • {selectedAdjustmentStudent.studentClass?.name || '-'}
+              </span>
+              <button
+                type="button"
+                onClick={handleClearAdjustmentStudent}
+                className="text-violet-700 hover:text-violet-900"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <div className="text-xs text-slate-500">Belum ada siswa spesifik yang dipilih.</div>
+          )}
+          {adjustmentStudentCandidates.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {adjustmentStudentCandidates.map((student) => (
+                <button
+                  key={student.id}
+                  type="button"
+                  onClick={() => handleSelectAdjustmentStudent(student.id)}
+                  className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left hover:border-violet-200 hover:bg-violet-50/60"
+                >
+                  <div>
+                    <div className="text-sm font-medium text-slate-900">{student.name}</div>
+                    <div className="mt-1 text-xs text-slate-600">
+                      {student.username} • {student.studentClass?.name || 'Tanpa kelas'}
+                    </div>
+                    <div className="mt-1 text-[11px] text-slate-500">
+                      {(student.nis ? `NIS ${student.nis}` : student.nisn ? `NISN ${student.nisn}` : 'Tanpa identitas') +
+                        ' • ' +
+                        (student.studentClass?.major?.name || 'Tanpa jurusan')}
+                    </div>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-700">
+                    Pilih
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : adjustmentStudentSearch.trim() ? (
+            <div className="text-xs text-slate-500">Tidak ada siswa yang cocok dengan pencarian.</div>
+          ) : null}
+        </div>
+
+        <div className="border border-gray-100 rounded-lg overflow-hidden max-h-72 overflow-y-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rule</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Scope</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Nominal</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {adjustmentsQuery.isLoading ? (
+                <tr>
+                  <td className="px-3 py-4 text-center text-sm text-gray-500" colSpan={5}>
+                    Memuat rule penyesuaian...
+                  </td>
+                </tr>
+              ) : adjustments.length === 0 ? (
+                <tr>
+                  <td className="px-3 py-4 text-center text-sm text-gray-500" colSpan={5}>
+                    Belum ada rule penyesuaian.
+                  </td>
+                </tr>
+              ) : (
+                adjustments.map((adjustment) => (
+                  <tr key={adjustment.id}>
+                    <td className="px-3 py-2 text-sm text-gray-900">
+                      <div className="font-medium">{adjustment.name}</div>
+                      <div className="mt-1 text-[11px] text-gray-500">
+                        {adjustment.code} • {getAdjustmentKindLabel(adjustment.kind)}
+                      </div>
+                      {adjustment.notes ? <div className="mt-1 text-[11px] text-gray-500">{adjustment.notes}</div> : null}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-600">
+                      <div>{describeAdjustmentScope(adjustment)}</div>
+                      {adjustment.description ? (
+                        <div className="mt-1 text-[11px] text-gray-500">{adjustment.description}</div>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 font-semibold ${
+                          adjustment.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                        }`}
+                      >
+                        {adjustment.isActive ? 'Aktif' : 'Nonaktif'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-sm text-right text-gray-700">
+                      {(adjustment.kind === 'DISCOUNT' || adjustment.kind === 'SCHOLARSHIP' ? '-' : '+') +
+                        formatCurrency(adjustment.amount)}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditAdjustment(adjustment)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toggleAdjustmentMutation.mutate({
+                              adjustmentId: adjustment.id,
+                              isActive: !adjustment.isActive,
+                            })
+                          }
+                          disabled={toggleAdjustmentMutation.isPending}
+                          className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold ${
+                            adjustment.isActive
+                              ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                              : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                          } disabled:opacity-50`}
+                        >
+                          <Power className="w-3.5 h-3.5" />
+                          {adjustment.isActive ? 'Nonaktifkan' : 'Aktifkan'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-4">
+        <div className="flex items-center gap-2">
           <ReceiptText className="w-4 h-4 text-indigo-600" />
           <h3 className="text-sm font-semibold text-gray-900">Generate Tagihan Siswa</h3>
         </div>
@@ -1406,7 +1931,7 @@ export const StaffFinancePage = () => {
                           {detail.items.length > 0 ? (
                             <div className="mt-2 space-y-1">
                               {detail.items.map((item) => (
-                                <div key={`${detail.studentId}-${item.componentId}`} className="text-[11px] text-gray-500">
+                                <div key={`${detail.studentId}-${item.itemKey}`} className="text-[11px] text-gray-500">
                                   <span className="font-medium text-gray-600">{item.componentName}</span> •{' '}
                                   {formatCurrency(item.amount)}
                                   {item.notes ? ` • ${item.notes}` : ''}

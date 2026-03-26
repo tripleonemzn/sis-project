@@ -90,6 +90,8 @@ model User {
   createdFinancePayments         FinancePayment[]                 @relation("FinancePaymentCreator")
   createdFinanceComponents       FinanceComponent[]               @relation("FinanceComponentCreator")
   createdFinanceTariffRules      FinanceTariffRule[]              @relation("FinanceTariffRuleCreator")
+  financeAdjustmentRules         FinanceAdjustmentRule[]          @relation("FinanceAdjustmentRuleStudent")
+  createdFinanceAdjustmentRules  FinanceAdjustmentRule[]          @relation("FinanceAdjustmentRuleCreator")
   pklAssessments                 PklAssessment[]
   reportNotes                    ReportNote[]
   achievements                   StudentAchievement[]
@@ -250,6 +252,7 @@ model AcademicYear {
   scoreEntries                   StudentScoreEntry[]
   subjectKkms                    SubjectKKM[]
   financeTariffRules             FinanceTariffRule[]
+  financeAdjustmentRules         FinanceAdjustmentRule[]
   financeInvoices                FinanceInvoice[]
   teacherAssignments             TeacherAssignment[]
   teachingDevices                TeachingDevice[]
@@ -496,6 +499,7 @@ model Major {
   classes            Class[]
   candidateAdmissions CandidateAdmission[]
   financeTariffRules FinanceTariffRule[]
+  financeAdjustmentRules FinanceAdjustmentRule[]
   ukkSchemes         UkkScheme[]
   examiners          User[]              @relation("ExaminerMajor")
   workPrograms       WorkProgram[]
@@ -525,6 +529,7 @@ model Class {
   teacherAssignments TeacherAssignment[]
   students           User[]              @relation("StudentClass")
   financeTariffRules FinanceTariffRule[]
+  financeAdjustmentRules FinanceAdjustmentRule[]
   studentBehaviors   StudentBehavior[]
   bpbkCounselings    BpBkCounseling[]
   libraryBookLoans   LibraryBookLoan[]
@@ -1426,6 +1431,7 @@ model FinanceComponent {
   updatedAt    DateTime                    @updatedAt
   createdBy    User?                       @relation("FinanceComponentCreator", fields: [createdById], references: [id], onDelete: SetNull)
   tariffRules  FinanceTariffRule[]
+  adjustmentRules FinanceAdjustmentRule[]
   invoiceItems FinanceInvoiceItem[]
 
   @@index([isActive])
@@ -1458,6 +1464,41 @@ model FinanceTariffRule {
   @@index([academicYearId, semester, isActive])
   @@index([classId, majorId, gradeLevel])
   @@map("finance_tariff_rules")
+}
+
+model FinanceAdjustmentRule {
+  id             Int                   @id @default(autoincrement())
+  code           String                @unique
+  name           String
+  description    String?
+  kind           FinanceAdjustmentKind @default(DISCOUNT)
+  amount         Float
+  componentId    Int?
+  academicYearId Int?
+  majorId        Int?
+  classId        Int?
+  studentId      Int?
+  semester       Semester?
+  gradeLevel     String?
+  isActive       Boolean               @default(true)
+  effectiveStart DateTime?
+  effectiveEnd   DateTime?
+  notes          String?
+  createdById    Int?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  component      FinanceComponent?     @relation(fields: [componentId], references: [id], onDelete: SetNull)
+  academicYear   AcademicYear?         @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  major          Major?                @relation(fields: [majorId], references: [id], onDelete: SetNull)
+  class          Class?                @relation(fields: [classId], references: [id], onDelete: SetNull)
+  student        User?                 @relation("FinanceAdjustmentRuleStudent", fields: [studentId], references: [id], onDelete: SetNull)
+  createdBy      User?                 @relation("FinanceAdjustmentRuleCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([componentId, isActive])
+  @@index([studentId, isActive])
+  @@index([academicYearId, semester, isActive])
+  @@index([classId, majorId, gradeLevel])
+  @@map("finance_adjustment_rules")
 }
 
 model FinanceInvoice {
@@ -1885,6 +1926,12 @@ enum FinanceComponentPeriodicity {
   MONTHLY
   ONE_TIME
   PERIODIC
+}
+
+enum FinanceAdjustmentKind {
+  DISCOUNT
+  SCHOLARSHIP
+  SURCHARGE
 }
 
 enum FinanceInvoiceStatus {

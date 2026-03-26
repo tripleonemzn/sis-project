@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import {
+  createFinanceAdjustmentRule,
   createFinanceComponent,
   dispatchFinanceDueRemindersHandler,
   exportFinanceReports,
   createFinancePayment,
   createFinanceTariffRule,
   generateFinanceInvoices,
+  listFinanceAdjustmentRules,
   listFinanceComponents,
   listFinanceInvoices,
   listFinanceReports,
@@ -13,6 +15,7 @@ import {
   listFinanceTariffRules,
   listParentPayments,
   previewFinanceInvoices,
+  updateFinanceAdjustmentRule,
   updateFinanceComponent,
   updateFinanceTariffRule,
 } from '../controllers/payment.controller';
@@ -31,6 +34,9 @@ router.patch('/components/:id', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), u
 router.get('/tariffs', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceTariffRules);
 router.post('/tariffs', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceTariffRule);
 router.patch('/tariffs/:id', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceTariffRule);
+router.get('/adjustments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceAdjustmentRules);
+router.post('/adjustments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceAdjustmentRule);
+router.patch('/adjustments/:id', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceAdjustmentRule);
 router.post('/invoices/preview', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), previewFinanceInvoices);
 router.post('/invoices/generate', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), generateFinanceInvoices);
 router.get('/invoices', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceInvoices);

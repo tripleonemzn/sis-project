@@ -16,12 +16,14 @@ import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import {
+  type FinanceAdjustmentKind,
   staffFinanceApi,
   type FinanceComponentPeriodicity,
   type FinanceInvoiceStatus,
   type FinancePaymentMethod,
   type FinanceReminderMode,
   type SemesterCode,
+  type StaffFinanceAdjustmentRule,
   type StaffFinanceComponent,
   type StaffFinanceInvoice,
   type StaffFinanceTariffRule,
@@ -40,6 +42,12 @@ const PERIODICITY_OPTIONS: Array<{ value: FinanceComponentPeriodicity; label: st
   { value: 'PERIODIC', label: 'Periodik' },
 ];
 
+const ADJUSTMENT_KIND_OPTIONS: Array<{ value: FinanceAdjustmentKind; label: string }> = [
+  { value: 'DISCOUNT', label: 'Potongan' },
+  { value: 'SCHOLARSHIP', label: 'Beasiswa' },
+  { value: 'SURCHARGE', label: 'Surcharge' },
+];
+
 const STATUS_OPTIONS: Array<{ value: '' | FinanceInvoiceStatus; label: string }> = [
   { value: '', label: 'Semua Status' },
   { value: 'UNPAID', label: 'Belum Bayar' },
@@ -56,7 +64,7 @@ const PAYMENT_METHOD_OPTIONS: Array<{ value: FinancePaymentMethod; label: string
   { value: 'OTHER', label: 'Lainnya' },
 ];
 
-type FinanceTab = 'dashboard' | 'components' | 'tariffs' | 'invoices';
+type FinanceTab = 'dashboard' | 'components' | 'tariffs' | 'adjustments' | 'invoices';
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('id-ID', {
@@ -114,6 +122,33 @@ function describeTariffScope(tariff: StaffFinanceTariffRule) {
 
   if (tariff.effectiveStart || tariff.effectiveEnd) {
     parts.push(`Efektif ${formatEffectiveWindow(tariff.effectiveStart, tariff.effectiveEnd)}`);
+  }
+
+  return parts.join(' • ');
+}
+
+function getAdjustmentKindLabel(kind: FinanceAdjustmentKind) {
+  return ADJUSTMENT_KIND_OPTIONS.find((option) => option.value === kind)?.label || kind;
+}
+
+function describeAdjustmentScope(adjustment: StaffFinanceAdjustmentRule) {
+  const parts = [
+    adjustment.component?.name ? `Komponen ${adjustment.component.name}` : 'Seluruh invoice',
+    adjustment.student?.name
+      ? `Siswa ${adjustment.student.name}`
+      : adjustment.class?.name || 'Semua kelas',
+    adjustment.major?.name ? `Jurusan ${adjustment.major.name}` : 'Semua jurusan',
+    adjustment.gradeLevel ? `Tingkat ${adjustment.gradeLevel}` : 'Semua tingkat',
+    adjustment.semester === 'ODD'
+      ? 'Ganjil'
+      : adjustment.semester === 'EVEN'
+        ? 'Genap'
+        : 'Semua semester',
+    adjustment.academicYear?.name || 'Semua tahun ajaran',
+  ];
+
+  if (adjustment.effectiveStart || adjustment.effectiveEnd) {
+    parts.push(`Efektif ${formatEffectiveWindow(adjustment.effectiveStart, adjustment.effectiveEnd)}`);
   }
 
   return parts.join(' • ');
@@ -188,6 +223,24 @@ export default function StaffPaymentsScreen() {
   const [tariffEffectiveEnd, setTariffEffectiveEnd] = useState('');
   const [tariffNotes, setTariffNotes] = useState('');
   const [editingTariffId, setEditingTariffId] = useState<number | null>(null);
+
+  const [adjustmentCode, setAdjustmentCode] = useState('');
+  const [adjustmentName, setAdjustmentName] = useState('');
+  const [adjustmentDescription, setAdjustmentDescription] = useState('');
+  const [adjustmentKind, setAdjustmentKind] = useState<FinanceAdjustmentKind>('DISCOUNT');
+  const [adjustmentAmount, setAdjustmentAmount] = useState('');
+  const [adjustmentComponentId, setAdjustmentComponentId] = useState<number | null>(null);
+  const [adjustmentAcademicYearId, setAdjustmentAcademicYearId] = useState<number | null>(null);
+  const [adjustmentClassId, setAdjustmentClassId] = useState<number | null>(null);
+  const [adjustmentMajorId, setAdjustmentMajorId] = useState<number | null>(null);
+  const [adjustmentStudentId, setAdjustmentStudentId] = useState<number | null>(null);
+  const [adjustmentStudentSearch, setAdjustmentStudentSearch] = useState('');
+  const [adjustmentSemester, setAdjustmentSemester] = useState<SemesterCode | ''>('');
+  const [adjustmentGradeLevel, setAdjustmentGradeLevel] = useState('');
+  const [adjustmentEffectiveStart, setAdjustmentEffectiveStart] = useState('');
+  const [adjustmentEffectiveEnd, setAdjustmentEffectiveEnd] = useState('');
+  const [adjustmentNotes, setAdjustmentNotes] = useState('');
+  const [editingAdjustmentId, setEditingAdjustmentId] = useState<number | null>(null);
 
   const [invoiceSemester, setInvoiceSemester] = useState<SemesterCode>('EVEN');
   const [invoiceAcademicYearId, setInvoiceAcademicYearId] = useState<number | null>(null);
@@ -301,6 +354,32 @@ export default function StaffPaymentsScreen() {
       .slice(0, keyword ? 12 : 8);
   }, [invoiceSelectedStudentIds, invoiceStudentSearch, studentsQuery.data]);
 
+  const selectedAdjustmentStudent = useMemo(
+    () => (adjustmentStudentId == null ? null : studentLookup.get(adjustmentStudentId) || null),
+    [adjustmentStudentId, studentLookup],
+  );
+
+  const adjustmentStudentCandidates = useMemo(() => {
+    const keyword = adjustmentStudentSearch.trim().toLowerCase();
+    return (studentsQuery.data || [])
+      .filter((student) => (adjustmentStudentId == null ? true : student.id !== adjustmentStudentId))
+      .filter((student) => {
+        if (!keyword) return true;
+        const haystack = [
+          student.name,
+          student.username,
+          student.nis || '',
+          student.nisn || '',
+          student.studentClass?.name || '',
+          student.studentClass?.major?.name || '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(keyword);
+      })
+      .slice(0, keyword ? 8 : 6);
+  }, [adjustmentStudentId, adjustmentStudentSearch, studentsQuery.data]);
+
   const componentsQuery = useQuery({
     queryKey: ['mobile-staff-finance-components'],
     enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
@@ -311,6 +390,12 @@ export default function StaffPaymentsScreen() {
     queryKey: ['mobile-staff-finance-tariffs'],
     enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
     queryFn: () => staffFinanceApi.listTariffs(),
+  });
+
+  const adjustmentsQuery = useQuery({
+    queryKey: ['mobile-staff-finance-adjustments'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => staffFinanceApi.listAdjustments(),
   });
 
   const invoicesQuery = useQuery({
@@ -336,6 +421,7 @@ export default function StaffPaymentsScreen() {
 
   const components = componentsQuery.data || [];
   const tariffs = tariffsQuery.data || [];
+  const adjustments = adjustmentsQuery.data || [];
   const invoices = invoicesQuery.data?.invoices || [];
   const invoiceSummary = invoicesQuery.data?.summary;
 
@@ -389,9 +475,30 @@ export default function StaffPaymentsScreen() {
     setTariffNotes('');
   };
 
+  const resetAdjustmentForm = () => {
+    setEditingAdjustmentId(null);
+    setAdjustmentCode('');
+    setAdjustmentName('');
+    setAdjustmentDescription('');
+    setAdjustmentKind('DISCOUNT');
+    setAdjustmentAmount('');
+    setAdjustmentComponentId(null);
+    setAdjustmentAcademicYearId(null);
+    setAdjustmentClassId(null);
+    setAdjustmentMajorId(null);
+    setAdjustmentStudentId(null);
+    setAdjustmentStudentSearch('');
+    setAdjustmentSemester('');
+    setAdjustmentGradeLevel('');
+    setAdjustmentEffectiveStart('');
+    setAdjustmentEffectiveEnd('');
+    setAdjustmentNotes('');
+  };
+
   const invalidateFinanceQueries = () => {
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-components'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-tariffs'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-adjustments'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-invoices'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-dashboard'] });
   };
@@ -472,6 +579,61 @@ export default function StaffPaymentsScreen() {
       invalidateFinanceQueries();
     },
     onError: (error: unknown) => notifyApiError(error, 'Gagal mengubah status tarif.'),
+  });
+
+  const saveAdjustmentMutation = useMutation({
+    mutationFn: () =>
+      editingAdjustmentId
+        ? staffFinanceApi.updateAdjustment(editingAdjustmentId, {
+            code: adjustmentCode,
+            name: adjustmentName,
+            description: adjustmentDescription.trim() || null,
+            kind: adjustmentKind,
+            amount: Number(adjustmentAmount),
+            componentId: adjustmentComponentId,
+            academicYearId: adjustmentAcademicYearId,
+            classId: adjustmentClassId,
+            majorId: adjustmentMajorId,
+            studentId: adjustmentStudentId,
+            semester: adjustmentSemester || null,
+            gradeLevel: adjustmentGradeLevel.trim() || null,
+            effectiveStart: adjustmentEffectiveStart || null,
+            effectiveEnd: adjustmentEffectiveEnd || null,
+            notes: adjustmentNotes.trim() || null,
+          })
+        : staffFinanceApi.createAdjustment({
+            code: adjustmentCode,
+            name: adjustmentName,
+            description: adjustmentDescription.trim() || undefined,
+            kind: adjustmentKind,
+            amount: Number(adjustmentAmount),
+            componentId: adjustmentComponentId || undefined,
+            academicYearId: adjustmentAcademicYearId || undefined,
+            classId: adjustmentClassId || undefined,
+            majorId: adjustmentMajorId || undefined,
+            studentId: adjustmentStudentId || undefined,
+            semester: adjustmentSemester || undefined,
+            gradeLevel: adjustmentGradeLevel.trim() || undefined,
+            effectiveStart: adjustmentEffectiveStart || undefined,
+            effectiveEnd: adjustmentEffectiveEnd || undefined,
+            notes: adjustmentNotes.trim() || undefined,
+          }),
+    onSuccess: () => {
+      notifySuccess(editingAdjustmentId ? 'Rule penyesuaian diperbarui.' : 'Rule penyesuaian ditambahkan.');
+      resetAdjustmentForm();
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal menyimpan rule penyesuaian.'),
+  });
+
+  const toggleAdjustmentMutation = useMutation({
+    mutationFn: (payload: { adjustmentId: number; isActive: boolean }) =>
+      staffFinanceApi.updateAdjustment(payload.adjustmentId, { isActive: payload.isActive }),
+    onSuccess: (_, payload) => {
+      notifySuccess(payload.isActive ? 'Rule penyesuaian diaktifkan.' : 'Rule penyesuaian dinonaktifkan.');
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal mengubah status rule penyesuaian.'),
   });
 
   const generateInvoiceMutation = useMutation({
@@ -572,6 +734,22 @@ export default function StaffPaymentsScreen() {
     saveTariffMutation.mutate();
   };
 
+  const handleSaveAdjustment = () => {
+    if (!adjustmentCode.trim() || !adjustmentName.trim() || Number(adjustmentAmount) <= 0) {
+      notifyApiError(null, 'Kode, nama, dan nominal penyesuaian wajib diisi.');
+      return;
+    }
+    if (
+      adjustmentEffectiveStart &&
+      adjustmentEffectiveEnd &&
+      adjustmentEffectiveEnd < adjustmentEffectiveStart
+    ) {
+      notifyApiError(null, 'Periode efektif penyesuaian tidak valid.');
+      return;
+    }
+    saveAdjustmentMutation.mutate();
+  };
+
   const handleGenerate = () => {
     if (!invoicePeriodKey.trim()) {
       notifyApiError(null, 'Period key wajib diisi (contoh 2026-03).');
@@ -605,6 +783,27 @@ export default function StaffPaymentsScreen() {
     setPaymentNote('');
   };
 
+  const handleEditAdjustment = (adjustment: StaffFinanceAdjustmentRule) => {
+    setEditingAdjustmentId(adjustment.id);
+    setAdjustmentCode(adjustment.code);
+    setAdjustmentName(adjustment.name);
+    setAdjustmentDescription(adjustment.description || '');
+    setAdjustmentKind(adjustment.kind);
+    setAdjustmentAmount(String(Number(adjustment.amount || 0)));
+    setAdjustmentComponentId(adjustment.componentId || null);
+    setAdjustmentAcademicYearId(adjustment.academicYearId || null);
+    setAdjustmentClassId(adjustment.classId || null);
+    setAdjustmentMajorId(adjustment.majorId || null);
+    setAdjustmentStudentId(adjustment.studentId || null);
+    setAdjustmentStudentSearch('');
+    setAdjustmentSemester(adjustment.semester || '');
+    setAdjustmentGradeLevel(adjustment.gradeLevel || '');
+    setAdjustmentEffectiveStart(adjustment.effectiveStart ? String(adjustment.effectiveStart).slice(0, 10) : '');
+    setAdjustmentEffectiveEnd(adjustment.effectiveEnd ? String(adjustment.effectiveEnd).slice(0, 10) : '');
+    setAdjustmentNotes(adjustment.notes || '');
+    setActiveTab('adjustments');
+  };
+
   const handleSelectInvoiceStudent = (studentId: number) => {
     setInvoiceSelectedStudentIds((current) => (current.includes(studentId) ? current : [...current, studentId]));
     setInvoiceStudentSearch('');
@@ -617,6 +816,16 @@ export default function StaffPaymentsScreen() {
   const handleClearInvoiceStudentSelection = () => {
     setInvoiceSelectedStudentIds([]);
     setInvoiceStudentSearch('');
+  };
+
+  const handleSelectAdjustmentStudent = (studentId: number) => {
+    setAdjustmentStudentId(studentId);
+    setAdjustmentStudentSearch('');
+  };
+
+  const handleClearAdjustmentStudent = () => {
+    setAdjustmentStudentId(null);
+    setAdjustmentStudentSearch('');
   };
 
   useEffect(() => {
@@ -675,6 +884,7 @@ export default function StaffPaymentsScreen() {
     activeYearQuery.isLoading ||
     componentsQuery.isLoading ||
     tariffsQuery.isLoading ||
+    adjustmentsQuery.isLoading ||
     invoicesQuery.isLoading ||
     studentsQuery.isLoading;
 
@@ -688,6 +898,7 @@ export default function StaffPaymentsScreen() {
             activeYearQuery.isFetching ||
             componentsQuery.isFetching ||
             tariffsQuery.isFetching ||
+            adjustmentsQuery.isFetching ||
             invoicesQuery.isFetching ||
             dashboardQuery.isFetching
           }
@@ -695,6 +906,7 @@ export default function StaffPaymentsScreen() {
             void activeYearQuery.refetch();
             void componentsQuery.refetch();
             void tariffsQuery.refetch();
+            void adjustmentsQuery.refetch();
             void invoicesQuery.refetch();
             void dashboardQuery.refetch();
             void studentsQuery.refetch();
@@ -710,13 +922,14 @@ export default function StaffPaymentsScreen() {
       </Text>
 
       {isInitialLoading ? <QueryStateView type="loading" message="Mengambil data keuangan..." /> : null}
-      {componentsQuery.isError || tariffsQuery.isError || invoicesQuery.isError ? (
+      {componentsQuery.isError || tariffsQuery.isError || adjustmentsQuery.isError || invoicesQuery.isError ? (
         <QueryStateView
           type="error"
           message="Gagal memuat data keuangan staff."
           onRetry={() => {
             void componentsQuery.refetch();
             void tariffsQuery.refetch();
+            void adjustmentsQuery.refetch();
             void invoicesQuery.refetch();
           }}
         />
@@ -832,6 +1045,7 @@ export default function StaffPaymentsScreen() {
             { key: 'dashboard', label: 'Dashboard' },
             { key: 'components', label: 'Komponen' },
             { key: 'tariffs', label: 'Tarif' },
+            { key: 'adjustments', label: 'Penyesuaian' },
             { key: 'invoices', label: 'Tagihan' },
           ] as Array<{ key: FinanceTab; label: string }>
         ).map((tab) => {
@@ -1575,6 +1789,560 @@ export default function StaffPaymentsScreen() {
         </View>
       ) : null}
 
+      {activeTab === 'adjustments' ? (
+        <View
+          style={{
+            backgroundColor: '#fff',
+            borderWidth: 1,
+            borderColor: '#dbe7fb',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Rule Penyesuaian Dinamis</Text>
+
+          <TextInput
+            value={adjustmentCode}
+            onChangeText={setAdjustmentCode}
+            placeholder="Kode rule (contoh: BEASISWA_PRESTASI)"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <TextInput
+            value={adjustmentName}
+            onChangeText={setAdjustmentName}
+            placeholder="Nama rule penyesuaian"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {ADJUSTMENT_KIND_OPTIONS.map((option) => {
+                const active = adjustmentKind === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setAdjustmentKind(option.value)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#7c3aed' : '#ddd6fe',
+                      backgroundColor: active ? '#f5f3ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 12,
+                      paddingVertical: 7,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#6d28d9' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <TextInput
+            keyboardType="numeric"
+            value={adjustmentAmount}
+            onChangeText={setAdjustmentAmount}
+            placeholder="Nominal penyesuaian"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+
+          <Text style={{ color: '#475569', marginBottom: 4 }}>Komponen target (opsional)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => setAdjustmentComponentId(null)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: adjustmentComponentId === null ? '#7c3aed' : '#ddd6fe',
+                  backgroundColor: adjustmentComponentId === null ? '#f5f3ff' : '#fff',
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                }}
+              >
+                <Text style={{ color: adjustmentComponentId === null ? '#6d28d9' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                  Seluruh invoice
+                </Text>
+              </Pressable>
+              {components.map((component) => {
+                const active = adjustmentComponentId === component.id;
+                return (
+                  <Pressable
+                    key={component.id}
+                    onPress={() => setAdjustmentComponentId(component.id)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#7c3aed' : '#ddd6fe',
+                      backgroundColor: active ? '#f5f3ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#6d28d9' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      {component.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <Text style={{ color: '#475569', marginBottom: 4 }}>Tahun ajaran (opsional)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => setAdjustmentAcademicYearId(null)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: adjustmentAcademicYearId === null ? '#7c3aed' : '#ddd6fe',
+                  backgroundColor: adjustmentAcademicYearId === null ? '#f5f3ff' : '#fff',
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                }}
+              >
+                <Text style={{ color: adjustmentAcademicYearId === null ? '#6d28d9' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                  Semua tahun
+                </Text>
+              </Pressable>
+              {academicYears.map((year) => {
+                const active = adjustmentAcademicYearId === year.id;
+                return (
+                  <Pressable
+                    key={year.id}
+                    onPress={() => setAdjustmentAcademicYearId(year.id)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#7c3aed' : '#ddd6fe',
+                      backgroundColor: active ? '#f5f3ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#6d28d9' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      {year.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <Text style={{ color: '#475569', marginBottom: 4 }}>Kelas (opsional)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => setAdjustmentClassId(null)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: adjustmentClassId === null ? '#7c3aed' : '#ddd6fe',
+                  backgroundColor: adjustmentClassId === null ? '#f5f3ff' : '#fff',
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                }}
+              >
+                <Text style={{ color: adjustmentClassId === null ? '#6d28d9' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                  Semua kelas
+                </Text>
+              </Pressable>
+              {classes.map((classItem) => {
+                const active = adjustmentClassId === classItem.id;
+                return (
+                  <Pressable
+                    key={classItem.id}
+                    onPress={() => setAdjustmentClassId(classItem.id)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#7c3aed' : '#ddd6fe',
+                      backgroundColor: active ? '#f5f3ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#6d28d9' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      {classItem.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <Text style={{ color: '#475569', marginBottom: 4 }}>Jurusan (opsional)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => setAdjustmentMajorId(null)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: adjustmentMajorId === null ? '#7c3aed' : '#ddd6fe',
+                  backgroundColor: adjustmentMajorId === null ? '#f5f3ff' : '#fff',
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                }}
+              >
+                <Text style={{ color: adjustmentMajorId === null ? '#6d28d9' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                  Semua jurusan
+                </Text>
+              </Pressable>
+              {majors.map((major) => {
+                const active = adjustmentMajorId === major.id;
+                return (
+                  <Pressable
+                    key={major.id}
+                    onPress={() => setAdjustmentMajorId(major.id)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#7c3aed' : '#ddd6fe',
+                      backgroundColor: active ? '#f5f3ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#6d28d9' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      {major.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => setAdjustmentSemester('')}
+                style={{
+                  borderWidth: 1,
+                  borderColor: adjustmentSemester === '' ? '#7c3aed' : '#ddd6fe',
+                  backgroundColor: adjustmentSemester === '' ? '#f5f3ff' : '#fff',
+                  borderRadius: 8,
+                  paddingVertical: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: adjustmentSemester === '' ? '#6d28d9' : '#475569', fontWeight: '700' }}>Semua</Text>
+              </Pressable>
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => setAdjustmentSemester('ODD')}
+                style={{
+                  borderWidth: 1,
+                  borderColor: adjustmentSemester === 'ODD' ? '#7c3aed' : '#ddd6fe',
+                  backgroundColor: adjustmentSemester === 'ODD' ? '#f5f3ff' : '#fff',
+                  borderRadius: 8,
+                  paddingVertical: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: adjustmentSemester === 'ODD' ? '#6d28d9' : '#475569', fontWeight: '700' }}>Ganjil</Text>
+              </Pressable>
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => setAdjustmentSemester('EVEN')}
+                style={{
+                  borderWidth: 1,
+                  borderColor: adjustmentSemester === 'EVEN' ? '#7c3aed' : '#ddd6fe',
+                  backgroundColor: adjustmentSemester === 'EVEN' ? '#f5f3ff' : '#fff',
+                  borderRadius: 8,
+                  paddingVertical: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: adjustmentSemester === 'EVEN' ? '#6d28d9' : '#475569', fontWeight: '700' }}>Genap</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <TextInput
+            value={adjustmentGradeLevel}
+            onChangeText={setAdjustmentGradeLevel}
+            placeholder="Tingkat (opsional)"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <TextInput
+            value={adjustmentEffectiveStart}
+            onChangeText={setAdjustmentEffectiveStart}
+            placeholder="Efektif mulai (YYYY-MM-DD, opsional)"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <TextInput
+            value={adjustmentEffectiveEnd}
+            onChangeText={setAdjustmentEffectiveEnd}
+            placeholder="Efektif sampai (YYYY-MM-DD, opsional)"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <TextInput
+            value={adjustmentDescription}
+            onChangeText={setAdjustmentDescription}
+            placeholder="Deskripsi (opsional)"
+            placeholderTextColor="#94a3b8"
+            multiline
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', minHeight: 64, textAlignVertical: 'top', backgroundColor: '#fff' }}
+          />
+          <TextInput
+            value={adjustmentNotes}
+            onChangeText={setAdjustmentNotes}
+            placeholder="Catatan (opsional)"
+            placeholderTextColor="#94a3b8"
+            multiline
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', minHeight: 64, textAlignVertical: 'top', backgroundColor: '#fff' }}
+          />
+
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#ddd6fe',
+              backgroundColor: '#f8fafc',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 8,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Target Siswa Spesifik</Text>
+                <Text style={{ color: '#64748b', fontSize: 12 }}>
+                  Kosongkan jika rule berlaku global sesuai filter. Isi jika rule hanya berlaku untuk siswa tertentu.
+                </Text>
+              </View>
+              {selectedAdjustmentStudent ? (
+                <Pressable
+                  onPress={handleClearAdjustmentStudent}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#cbd5e1',
+                    backgroundColor: '#fff',
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                  }}
+                >
+                  <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>Reset</Text>
+                </Pressable>
+              ) : null}
+            </View>
+
+            <TextInput
+              value={adjustmentStudentSearch}
+              onChangeText={setAdjustmentStudentSearch}
+              placeholder="Cari siswa berdasarkan nama, username, NIS, NISN, kelas"
+              placeholderTextColor="#94a3b8"
+              style={{
+                borderWidth: 1,
+                borderColor: '#d1d5db',
+                borderRadius: 8,
+                paddingHorizontal: 10,
+                paddingVertical: 9,
+                marginBottom: 8,
+                color: '#0f172a',
+                backgroundColor: '#fff',
+              }}
+            />
+
+            {selectedAdjustmentStudent ? (
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#c7d2fe',
+                  backgroundColor: '#eef2ff',
+                  borderRadius: 10,
+                  padding: 10,
+                  marginBottom: 8,
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#312e81', fontWeight: '700' }}>{selectedAdjustmentStudent.name}</Text>
+                  <Text style={{ color: '#4338ca', fontSize: 12 }}>
+                    {selectedAdjustmentStudent.studentClass?.name || 'Tanpa kelas'} • {selectedAdjustmentStudent.username}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={handleClearAdjustmentStudent}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#c7d2fe',
+                    backgroundColor: '#fff',
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                  }}
+                >
+                  <Text style={{ color: '#4338ca', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                Belum ada siswa spesifik yang dipilih.
+              </Text>
+            )}
+
+            {adjustmentStudentCandidates.length > 0 ? (
+              <View>
+                {adjustmentStudentCandidates.map((student) => (
+                  <Pressable
+                    key={student.id}
+                    onPress={() => handleSelectAdjustmentStudent(student.id)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#dbe7fb',
+                      backgroundColor: '#fff',
+                      borderRadius: 10,
+                      padding: 10,
+                      marginBottom: 6,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#0f172a', fontWeight: '700' }}>{student.name}</Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                          {student.username} • {student.studentClass?.name || 'Tanpa kelas'}
+                        </Text>
+                        <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>
+                          {(student.nis ? `NIS ${student.nis}` : student.nisn ? `NISN ${student.nisn}` : 'Tanpa identitas') +
+                            ' • ' +
+                            (student.studentClass?.major?.name || 'Tanpa jurusan')}
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#c7d2fe',
+                          backgroundColor: '#eef2ff',
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 4,
+                        }}
+                      >
+                        <Text style={{ color: '#4338ca', fontWeight: '700', fontSize: 11 }}>Pilih</Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            ) : adjustmentStudentSearch.trim() ? (
+              <Text style={{ color: '#64748b', fontSize: 12 }}>
+                Tidak ada siswa yang cocok dengan pencarian.
+              </Text>
+            ) : null}
+          </View>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={handleSaveAdjustment}
+                disabled={saveAdjustmentMutation.isPending}
+                style={{ backgroundColor: '#7c3aed', borderRadius: 10, paddingVertical: 10, alignItems: 'center', opacity: saveAdjustmentMutation.isPending ? 0.6 : 1 }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700' }}>
+                  {editingAdjustmentId ? 'Simpan Perubahan' : 'Tambah Penyesuaian'}
+                </Text>
+              </Pressable>
+            </View>
+            {editingAdjustmentId ? (
+              <View style={{ width: 120, paddingHorizontal: 4 }}>
+                <Pressable
+                  onPress={resetAdjustmentForm}
+                  style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
+                >
+                  <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+
+          {adjustments.map((adjustment: StaffFinanceAdjustmentRule) => (
+            <View key={adjustment.id} style={{ borderWidth: 1, borderColor: '#ddd6fe', borderRadius: 10, padding: 10, marginBottom: 8, backgroundColor: '#fff' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={{ color: '#0f172a', fontWeight: '700' }}>{adjustment.name}</Text>
+                  <Text style={{ color: '#64748b', fontSize: 12 }}>
+                    {adjustment.code} • {getAdjustmentKindLabel(adjustment.kind)}
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: adjustment.isActive ? '#86efac' : '#fecaca',
+                    backgroundColor: adjustment.isActive ? '#dcfce7' : '#fee2e2',
+                    borderRadius: 999,
+                    paddingHorizontal: 8,
+                    paddingVertical: 2,
+                  }}
+                >
+                  <Text style={{ color: adjustment.isActive ? '#166534' : '#991b1b', fontSize: 11, fontWeight: '700' }}>
+                    {adjustment.isActive ? 'Aktif' : 'Nonaktif'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={{ color: '#64748b', marginBottom: 2 }}>
+                Scope: {describeAdjustmentScope(adjustment)}
+              </Text>
+              {adjustment.description ? <Text style={{ color: '#64748b', marginBottom: 2 }}>{adjustment.description}</Text> : null}
+              {adjustment.notes ? <Text style={{ color: '#94a3b8', marginBottom: 2 }}>{adjustment.notes}</Text> : null}
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>
+                {(adjustment.kind === 'DISCOUNT' || adjustment.kind === 'SCHOLARSHIP' ? '-' : '+') +
+                  formatCurrency(adjustment.amount)}
+              </Text>
+
+              <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+                <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                  <Pressable
+                    onPress={() => handleEditAdjustment(adjustment)}
+                    style={{ borderWidth: 1, borderColor: '#bfdbfe', backgroundColor: '#eff6ff', borderRadius: 8, paddingVertical: 8, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Edit</Text>
+                  </Pressable>
+                </View>
+                <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                  <Pressable
+                    onPress={() =>
+                      toggleAdjustmentMutation.mutate({
+                        adjustmentId: adjustment.id,
+                        isActive: !adjustment.isActive,
+                      })
+                    }
+                    style={{
+                      borderWidth: 1,
+                      borderColor: adjustment.isActive ? '#fecaca' : '#86efac',
+                      backgroundColor: adjustment.isActive ? '#fff1f2' : '#f0fdf4',
+                      borderRadius: 8,
+                      paddingVertical: 8,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: adjustment.isActive ? '#be123c' : '#166534', fontWeight: '700' }}>
+                      {adjustment.isActive ? 'Nonaktifkan' : 'Aktifkan'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       {activeTab === 'invoices' ? (
         <View
           style={{
@@ -2100,7 +2868,7 @@ export default function StaffPaymentsScreen() {
                       <View style={{ marginBottom: 4 }}>
                         {detail.items.map((item) => (
                           <Text
-                            key={`${detail.studentId}-${item.componentId}`}
+                            key={`${detail.studentId}-${item.itemKey}`}
                             style={{ color: '#64748b', fontSize: 12, marginBottom: 2 }}
                           >
                             <Text style={{ color: '#475569', fontWeight: '700' }}>{item.componentName}</Text>
