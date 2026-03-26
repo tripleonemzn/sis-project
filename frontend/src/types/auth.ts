@@ -53,6 +53,7 @@ export interface User {
   studentClass?: {
     id: number;
     name: string;
+    level?: string | null;
     presidentId?: number | null;
     academicYearId?: number | null;
     major?: {

@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BellRing, Download, Loader2, Pencil, Plus, Power, ReceiptText, WalletCards, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { academicYearService, type AcademicYear } from '../../services/academicYear.service';
-import { classService, type Class } from '../../services/class.service';
 import {
   staffFinanceService,
   type FinanceComponent,
@@ -16,6 +15,9 @@ import {
   type FinanceReportSnapshot,
   type SemesterCode,
 } from '../../services/staffFinance.service';
+import { majorService, type Major } from '../../services/major.service';
+import { userService } from '../../services/user.service';
+import type { User } from '../../types/auth';
 
 const PERIODICITY_OPTIONS: Array<{ value: FinanceComponentPeriodicity; label: string }> = [
   { value: 'MONTHLY', label: 'Bulanan' },
@@ -82,6 +84,29 @@ function getDueSoonLabel(daysUntilDue: number) {
   return `${daysUntilDue} hari lagi`;
 }
 
+function formatEffectiveWindow(start?: string | null, end?: string | null) {
+  if (!start && !end) return 'Selamanya';
+  const startLabel = start ? formatDate(start) : 'Awal';
+  const endLabel = end ? formatDate(end) : 'Seterusnya';
+  return `${startLabel} - ${endLabel}`;
+}
+
+function describeTariffScope(tariff: FinanceTariffRule) {
+  const parts = [
+    tariff.class?.name || 'Semua kelas',
+    tariff.major?.name ? `Jurusan ${tariff.major.name}` : 'Semua jurusan',
+    tariff.gradeLevel ? `Tingkat ${tariff.gradeLevel}` : 'Semua tingkat',
+    tariff.semester === 'ODD' ? 'Ganjil' : tariff.semester === 'EVEN' ? 'Genap' : 'Semua semester',
+    tariff.academicYear?.name || 'Semua tahun ajaran',
+  ];
+
+  if (tariff.effectiveStart || tariff.effectiveEnd) {
+    parts.push(`Efektif ${formatEffectiveWindow(tariff.effectiveStart, tariff.effectiveEnd)}`);
+  }
+
+  return parts.join(' • ');
+}
+
 export const StaffFinancePage = () => {
   const queryClient = useQueryClient();
 
@@ -94,8 +119,12 @@ export const StaffFinancePage = () => {
   const [tariffComponentId, setTariffComponentId] = useState<number | ''>('');
   const [tariffAcademicYearId, setTariffAcademicYearId] = useState<number | ''>('');
   const [tariffClassId, setTariffClassId] = useState<number | ''>('');
+  const [tariffMajorId, setTariffMajorId] = useState<number | ''>('');
   const [tariffSemester, setTariffSemester] = useState<SemesterCode | ''>('');
+  const [tariffGradeLevel, setTariffGradeLevel] = useState('');
   const [tariffAmount, setTariffAmount] = useState('');
+  const [tariffEffectiveStart, setTariffEffectiveStart] = useState('');
+  const [tariffEffectiveEnd, setTariffEffectiveEnd] = useState('');
   const [tariffNotes, setTariffNotes] = useState('');
   const [editingTariffId, setEditingTariffId] = useState<number | null>(null);
 
@@ -130,9 +159,15 @@ export const StaffFinancePage = () => {
     staleTime: 5 * 60 * 1000,
   });
 
-  const classesQuery = useQuery({
-    queryKey: ['staff-finance-classes'],
-    queryFn: () => classService.list({ page: 1, limit: 500 }),
+  const majorsQuery = useQuery({
+    queryKey: ['staff-finance-majors'],
+    queryFn: () => majorService.list({ page: 1, limit: 300 }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const studentsQuery = useQuery({
+    queryKey: ['staff-finance-students'],
+    queryFn: () => userService.getUsers({ role: 'STUDENT', limit: 10000 }),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -166,12 +201,28 @@ export const StaffFinancePage = () => {
     return payload?.data?.academicYears || payload?.academicYears || [];
   }, [yearsQuery.data]);
 
-  const classes = useMemo<Class[]>(() => {
-    const payload = classesQuery.data as
-      | { data?: { classes?: Class[] }; classes?: Class[] }
+  const majors = useMemo<Major[]>(() => {
+    const payload = majorsQuery.data as
+      | { data?: { majors?: Major[] }; majors?: Major[] }
       | undefined;
-    return payload?.data?.classes || payload?.classes || [];
-  }, [classesQuery.data]);
+    return payload?.data?.majors || payload?.majors || [];
+  }, [majorsQuery.data]);
+
+  const students = useMemo<User[]>(() => studentsQuery.data?.data || [], [studentsQuery.data?.data]);
+
+  const classes = useMemo<Array<{ id: number; name: string; level: string }>>(() => {
+    const map = new Map<number, { id: number; name: string; level: string }>();
+    students.forEach((student) => {
+      if (student.studentClass?.id && student.studentClass?.name) {
+        map.set(student.studentClass.id, {
+          id: student.studentClass.id,
+          name: student.studentClass.name,
+          level: student.studentClass.level || '',
+        });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [students]);
 
   const activeYear = useMemo(() => years.find((year) => year.isActive), [years]);
 
@@ -238,8 +289,12 @@ export const StaffFinancePage = () => {
     setTariffComponentId('');
     setTariffAcademicYearId('');
     setTariffClassId('');
+    setTariffMajorId('');
     setTariffSemester('');
+    setTariffGradeLevel('');
     setTariffAmount('');
+    setTariffEffectiveStart('');
+    setTariffEffectiveEnd('');
     setTariffNotes('');
   };
 
@@ -291,16 +346,24 @@ export const StaffFinancePage = () => {
             componentId: Number(tariffComponentId),
             academicYearId: tariffAcademicYearId === '' ? null : Number(tariffAcademicYearId),
             classId: tariffClassId === '' ? null : Number(tariffClassId),
+            majorId: tariffMajorId === '' ? null : Number(tariffMajorId),
             semester: tariffSemester === '' ? null : tariffSemester,
+            gradeLevel: tariffGradeLevel.trim() || null,
             amount: Number(tariffAmount),
+            effectiveStart: tariffEffectiveStart || null,
+            effectiveEnd: tariffEffectiveEnd || null,
             notes: tariffNotes || null,
           })
         : staffFinanceService.createTariff({
             componentId: Number(tariffComponentId),
             academicYearId: tariffAcademicYearId === '' ? undefined : Number(tariffAcademicYearId),
             classId: tariffClassId === '' ? undefined : Number(tariffClassId),
+            majorId: tariffMajorId === '' ? undefined : Number(tariffMajorId),
             semester: tariffSemester === '' ? undefined : tariffSemester,
+            gradeLevel: tariffGradeLevel.trim() || undefined,
             amount: Number(tariffAmount),
+            effectiveStart: tariffEffectiveStart || undefined,
+            effectiveEnd: tariffEffectiveEnd || undefined,
             notes: tariffNotes || undefined,
           }),
     onSuccess: () => {
@@ -421,6 +484,10 @@ export const StaffFinancePage = () => {
       toast.error('Komponen dan nominal tarif wajib diisi');
       return;
     }
+    if (tariffEffectiveStart && tariffEffectiveEnd && tariffEffectiveEnd < tariffEffectiveStart) {
+      toast.error('Periode efektif tarif tidak valid');
+      return;
+    }
     saveTariffMutation.mutate();
   };
 
@@ -437,8 +504,12 @@ export const StaffFinancePage = () => {
     setTariffComponentId(tariff.componentId);
     setTariffAcademicYearId(tariff.academicYearId || '');
     setTariffClassId(tariff.classId || '');
+    setTariffMajorId(tariff.majorId || '');
     setTariffSemester(tariff.semester || '');
+    setTariffGradeLevel(tariff.gradeLevel || '');
     setTariffAmount(String(Number(tariff.amount || 0)));
+    setTariffEffectiveStart(tariff.effectiveStart ? String(tariff.effectiveStart).slice(0, 10) : '');
+    setTariffEffectiveEnd(tariff.effectiveEnd ? String(tariff.effectiveEnd).slice(0, 10) : '');
     setTariffNotes(tariff.notes || '');
   };
 
@@ -731,7 +802,7 @@ export const StaffFinancePage = () => {
             <WalletCards className="w-4 h-4 text-emerald-600" />
             <h3 className="text-sm font-semibold text-gray-900">Rule Tarif Dinamis</h3>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             <select
               value={tariffComponentId === '' ? '' : String(tariffComponentId)}
               onChange={(event) => setTariffComponentId(event.target.value ? Number(event.target.value) : '')}
@@ -744,14 +815,6 @@ export const StaffFinancePage = () => {
                 </option>
               ))}
             </select>
-            <input
-              type="number"
-              min={0}
-              value={tariffAmount}
-              onChange={(event) => setTariffAmount(event.target.value)}
-              placeholder="Nominal tarif"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
             <select
               value={tariffAcademicYearId === '' ? '' : String(tariffAcademicYearId)}
               onChange={(event) =>
@@ -780,6 +843,32 @@ export const StaffFinancePage = () => {
               ))}
             </select>
             <select
+              value={tariffMajorId === '' ? '' : String(tariffMajorId)}
+              onChange={(event) => setTariffMajorId(event.target.value ? Number(event.target.value) : '')}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Semua jurusan</option>
+              {majors.map((major) => (
+                <option key={major.id} value={major.id}>
+                  {major.name}
+                </option>
+              ))}
+            </select>
+            <input
+              value={tariffGradeLevel}
+              onChange={(event) => setTariffGradeLevel(event.target.value)}
+              placeholder="Tingkat (contoh: X / XI / XII)"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            />
+            <input
+              type="number"
+              min={0}
+              value={tariffAmount}
+              onChange={(event) => setTariffAmount(event.target.value)}
+              placeholder="Nominal tarif"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            />
+            <select
               value={tariffSemester}
               onChange={(event) => setTariffSemester(event.target.value as SemesterCode | '')}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
@@ -788,6 +877,18 @@ export const StaffFinancePage = () => {
               <option value="ODD">Ganjil</option>
               <option value="EVEN">Genap</option>
             </select>
+            <input
+              type="date"
+              value={tariffEffectiveStart}
+              onChange={(event) => setTariffEffectiveStart(event.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            />
+            <input
+              type="date"
+              value={tariffEffectiveEnd}
+              onChange={(event) => setTariffEffectiveEnd(event.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            />
             <button
               type="button"
               onClick={handleSaveTariff}
@@ -843,14 +944,8 @@ export const StaffFinancePage = () => {
                     <tr key={tariff.id}>
                       <td className="px-3 py-2 text-sm text-gray-900">{tariff.component?.name || '-'}</td>
                       <td className="px-3 py-2 text-xs text-gray-600">
-                        {tariff.class?.name || 'Semua kelas'} •{' '}
-                        {tariff.semester === 'ODD'
-                          ? 'Ganjil'
-                          : tariff.semester === 'EVEN'
-                            ? 'Genap'
-                            : 'Semua semester'}
-                        {' • '}
-                        {tariff.academicYear?.name || 'Semua tahun ajaran'}
+                        <div>{describeTariffScope(tariff)}</div>
+                        {tariff.notes ? <div className="mt-1 text-[11px] text-gray-500">{tariff.notes}</div> : null}
                       </td>
                       <td className="px-3 py-2 text-xs">
                         <span

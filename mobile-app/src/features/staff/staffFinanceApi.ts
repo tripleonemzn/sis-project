@@ -26,10 +26,14 @@ export type StaffFinanceTariffRule = {
   id: number;
   componentId: number;
   academicYearId?: number | null;
+  majorId?: number | null;
   classId?: number | null;
   semester?: SemesterCode | null;
+  gradeLevel?: string | null;
   amount: number;
   isActive: boolean;
+  effectiveStart?: string | null;
+  effectiveEnd?: string | null;
   notes?: string | null;
   component?: {
     id: number;
@@ -41,6 +45,11 @@ export type StaffFinanceTariffRule = {
     id: number;
     name: string;
     level: string;
+  } | null;
+  major?: {
+    id: number;
+    name: string;
+    code: string;
   } | null;
   academicYear?: {
     id: number;
@@ -198,6 +207,7 @@ export const staffFinanceApi = {
     componentId?: number;
     academicYearId?: number;
     classId?: number;
+    majorId?: number;
     semester?: SemesterCode;
     isActive?: boolean;
   }) {
@@ -212,8 +222,12 @@ export const staffFinanceApi = {
     componentId: number;
     academicYearId?: number;
     classId?: number;
+    majorId?: number;
     semester?: SemesterCode;
+    gradeLevel?: string;
     amount: number;
+    effectiveStart?: string;
+    effectiveEnd?: string;
     notes?: string;
   }) {
     const response = await apiClient.post<ApiResponse<{ tariff: StaffFinanceTariffRule }>>(
@@ -229,8 +243,12 @@ export const staffFinanceApi = {
       componentId: number;
       academicYearId: number | null;
       classId: number | null;
+      majorId: number | null;
       semester: SemesterCode | null;
+      gradeLevel: string | null;
       amount: number;
+      effectiveStart: string | null;
+      effectiveEnd: string | null;
       notes: string | null;
       isActive: boolean;
     }>,

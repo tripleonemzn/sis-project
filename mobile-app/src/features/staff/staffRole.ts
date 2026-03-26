@@ -37,7 +37,7 @@ export function resolveStaffDivision(user?: StaffProfile | null): StaffDivision 
 
 export function canAccessStaffPayments(user?: StaffProfile | null) {
   const division = resolveStaffDivision(user);
-  return division === 'FINANCE' || division === 'GENERAL';
+  return division === 'FINANCE';
 }
 
 export function getStaffHomeSubtitle(user?: StaffProfile | null) {

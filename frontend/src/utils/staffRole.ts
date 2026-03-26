@@ -43,7 +43,7 @@ export function isFinanceStaffProfile(
   }
 
   const division = resolveStaffDivision(profile);
-  return division === 'FINANCE' || division === 'GENERAL';
+  return division === 'FINANCE';
 }
 
 export function getStaffDivisionLabel(profile?: StaffRoleProfile | null) {

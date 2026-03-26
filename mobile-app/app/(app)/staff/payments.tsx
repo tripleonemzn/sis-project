@@ -28,6 +28,7 @@ import {
 } from '../../../src/features/staff/staffFinanceApi';
 import { staffApi } from '../../../src/features/staff/staffApi';
 import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
+import { adminApi } from '../../../src/features/admin/adminApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
@@ -95,6 +96,29 @@ function getDueSoonLabel(daysUntilDue: number) {
   return `${daysUntilDue} hari lagi`;
 }
 
+function formatEffectiveWindow(start?: string | null, end?: string | null) {
+  if (!start && !end) return 'Selamanya';
+  const startLabel = start ? formatDate(start) : 'Awal';
+  const endLabel = end ? formatDate(end) : 'Seterusnya';
+  return `${startLabel} - ${endLabel}`;
+}
+
+function describeTariffScope(tariff: StaffFinanceTariffRule) {
+  const parts = [
+    tariff.class?.name || 'Semua kelas',
+    tariff.major?.name ? `Jurusan ${tariff.major.name}` : 'Semua jurusan',
+    tariff.gradeLevel ? `Tingkat ${tariff.gradeLevel}` : 'Semua tingkat',
+    tariff.semester === 'ODD' ? 'Ganjil' : tariff.semester === 'EVEN' ? 'Genap' : 'Semua semester',
+    tariff.academicYear?.name || 'Semua tahun ajaran',
+  ];
+
+  if (tariff.effectiveStart || tariff.effectiveEnd) {
+    parts.push(`Efektif ${formatEffectiveWindow(tariff.effectiveStart, tariff.effectiveEnd)}`);
+  }
+
+  return parts.join(' • ');
+}
+
 export default function StaffPaymentsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -113,9 +137,14 @@ export default function StaffPaymentsScreen() {
   const [editingComponentId, setEditingComponentId] = useState<number | null>(null);
 
   const [tariffComponentId, setTariffComponentId] = useState<number | null>(null);
+  const [tariffAcademicYearId, setTariffAcademicYearId] = useState<number | null>(null);
   const [tariffClassId, setTariffClassId] = useState<number | null>(null);
+  const [tariffMajorId, setTariffMajorId] = useState<number | null>(null);
   const [tariffSemester, setTariffSemester] = useState<SemesterCode | ''>('');
+  const [tariffGradeLevel, setTariffGradeLevel] = useState('');
   const [tariffAmount, setTariffAmount] = useState('');
+  const [tariffEffectiveStart, setTariffEffectiveStart] = useState('');
+  const [tariffEffectiveEnd, setTariffEffectiveEnd] = useState('');
   const [tariffNotes, setTariffNotes] = useState('');
   const [editingTariffId, setEditingTariffId] = useState<number | null>(null);
 
@@ -150,6 +179,20 @@ export default function StaffPaymentsScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const academicYearsQuery = useQuery({
+    queryKey: ['mobile-staff-finance-academic-years'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => adminApi.listAcademicYears({ page: 1, limit: 100 }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const majorsQuery = useQuery({
+    queryKey: ['mobile-staff-finance-majors'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => adminApi.listMajors({ page: 1, limit: 300 }),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const classes = useMemo(() => {
     const map = new Map<number, string>();
     (studentsQuery.data || []).forEach((student) => {
@@ -161,6 +204,9 @@ export default function StaffPaymentsScreen() {
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [studentsQuery.data]);
+
+  const academicYears = academicYearsQuery.data?.items || [];
+  const majors = majorsQuery.data?.items || [];
 
   const componentsQuery = useQuery({
     queryKey: ['mobile-staff-finance-components'],
@@ -233,9 +279,14 @@ export default function StaffPaymentsScreen() {
   const resetTariffForm = () => {
     setEditingTariffId(null);
     setTariffComponentId(null);
+    setTariffAcademicYearId(null);
     setTariffClassId(null);
+    setTariffMajorId(null);
     setTariffSemester('');
+    setTariffGradeLevel('');
     setTariffAmount('');
+    setTariffEffectiveStart('');
+    setTariffEffectiveEnd('');
     setTariffNotes('');
   };
 
@@ -284,16 +335,26 @@ export default function StaffPaymentsScreen() {
       editingTariffId
         ? staffFinanceApi.updateTariff(editingTariffId, {
             componentId: Number(tariffComponentId),
+            academicYearId: tariffAcademicYearId,
             classId: tariffClassId,
+            majorId: tariffMajorId,
             semester: tariffSemester || null,
+            gradeLevel: tariffGradeLevel.trim() || null,
             amount: Number(tariffAmount),
+            effectiveStart: tariffEffectiveStart || null,
+            effectiveEnd: tariffEffectiveEnd || null,
             notes: tariffNotes || null,
           })
         : staffFinanceApi.createTariff({
             componentId: Number(tariffComponentId),
+            academicYearId: tariffAcademicYearId || undefined,
             classId: tariffClassId || undefined,
+            majorId: tariffMajorId || undefined,
             semester: tariffSemester || undefined,
+            gradeLevel: tariffGradeLevel.trim() || undefined,
             amount: Number(tariffAmount),
+            effectiveStart: tariffEffectiveStart || undefined,
+            effectiveEnd: tariffEffectiveEnd || undefined,
             notes: tariffNotes || undefined,
           }),
     onSuccess: () => {
@@ -381,6 +442,10 @@ export default function StaffPaymentsScreen() {
   const handleSaveTariff = () => {
     if (!tariffComponentId || Number(tariffAmount) <= 0) {
       notifyApiError(null, 'Komponen dan nominal tarif wajib diisi.');
+      return;
+    }
+    if (tariffEffectiveStart && tariffEffectiveEnd && tariffEffectiveEnd < tariffEffectiveStart) {
+      notifyApiError(null, 'Periode efektif tarif tidak valid.');
       return;
     }
     saveTariffMutation.mutate();
@@ -1042,6 +1107,48 @@ export default function StaffPaymentsScreen() {
             </View>
           </ScrollView>
 
+          <Text style={{ color: '#475569', marginBottom: 4 }}>Tahun ajaran (opsional)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => setTariffAcademicYearId(null)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: tariffAcademicYearId === null ? '#1d4ed8' : '#dbeafe',
+                  backgroundColor: tariffAcademicYearId === null ? '#e9f1ff' : '#fff',
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                }}
+              >
+                <Text style={{ color: tariffAcademicYearId === null ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                  Semua tahun
+                </Text>
+              </Pressable>
+              {academicYears.map((year) => {
+                const active = tariffAcademicYearId === year.id;
+                return (
+                  <Pressable
+                    key={year.id}
+                    onPress={() => setTariffAcademicYearId(year.id)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: active ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      {year.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
           <Text style={{ color: '#475569', marginBottom: 4 }}>Kelas (opsional)</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
             <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -1077,6 +1184,48 @@ export default function StaffPaymentsScreen() {
                   >
                     <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
                       {classItem.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <Text style={{ color: '#475569', marginBottom: 4 }}>Jurusan (opsional)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => setTariffMajorId(null)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: tariffMajorId === null ? '#1d4ed8' : '#dbeafe',
+                  backgroundColor: tariffMajorId === null ? '#e9f1ff' : '#fff',
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                }}
+              >
+                <Text style={{ color: tariffMajorId === null ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                  Semua jurusan
+                </Text>
+              </Pressable>
+              {majors.map((major) => {
+                const active = tariffMajorId === major.id;
+                return (
+                  <Pressable
+                    key={major.id}
+                    onPress={() => setTariffMajorId(major.id)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: active ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      {major.name}
                     </Text>
                   </Pressable>
                 );
@@ -1132,6 +1281,27 @@ export default function StaffPaymentsScreen() {
             </View>
           </View>
 
+          <TextInput
+            value={tariffGradeLevel}
+            onChangeText={setTariffGradeLevel}
+            placeholder="Tingkat (contoh: X / XI / XII)"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <TextInput
+            value={tariffEffectiveStart}
+            onChangeText={setTariffEffectiveStart}
+            placeholder="Efektif mulai (YYYY-MM-DD, opsional)"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <TextInput
+            value={tariffEffectiveEnd}
+            onChangeText={setTariffEffectiveEnd}
+            placeholder="Efektif sampai (YYYY-MM-DD, opsional)"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
           <TextInput
             keyboardType="numeric"
             value={tariffAmount}
@@ -1193,8 +1363,9 @@ export default function StaffPaymentsScreen() {
                 </View>
               </View>
               <Text style={{ color: '#64748b', marginBottom: 2 }}>
-                Scope: {tariff.class?.name || 'Semua kelas'} • {tariff.semester === 'ODD' ? 'Ganjil' : tariff.semester === 'EVEN' ? 'Genap' : 'Semua semester'}
+                Scope: {describeTariffScope(tariff)}
               </Text>
+              {tariff.notes ? <Text style={{ color: '#64748b', marginBottom: 2 }}>{tariff.notes}</Text> : null}
               <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>{formatCurrency(tariff.amount)}</Text>
 
               <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
@@ -1203,9 +1374,14 @@ export default function StaffPaymentsScreen() {
                     onPress={() => {
                       setEditingTariffId(tariff.id);
                       setTariffComponentId(tariff.componentId);
+                      setTariffAcademicYearId(tariff.academicYearId || null);
                       setTariffClassId(tariff.classId || null);
+                      setTariffMajorId(tariff.majorId || null);
                       setTariffSemester(tariff.semester || '');
+                      setTariffGradeLevel(tariff.gradeLevel || '');
                       setTariffAmount(String(Number(tariff.amount || 0)));
+                      setTariffEffectiveStart(tariff.effectiveStart ? String(tariff.effectiveStart).slice(0, 10) : '');
+                      setTariffEffectiveEnd(tariff.effectiveEnd ? String(tariff.effectiveEnd).slice(0, 10) : '');
                       setTariffNotes(tariff.notes || '');
                     }}
                     style={{ borderWidth: 1, borderColor: '#bfdbfe', backgroundColor: '#eff6ff', borderRadius: 8, paddingVertical: 8, alignItems: 'center' }}

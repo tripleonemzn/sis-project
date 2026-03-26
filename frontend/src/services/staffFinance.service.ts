@@ -25,6 +25,8 @@ export interface FinanceTariffRule {
   gradeLevel?: string | null;
   amount: number;
   isActive: boolean;
+  effectiveStart?: string | null;
+  effectiveEnd?: string | null;
   notes?: string | null;
   component?: {
     id: number;
@@ -314,6 +316,8 @@ export const staffFinanceService = {
     semester?: SemesterCode;
     gradeLevel?: string;
     amount: number;
+    effectiveStart?: string;
+    effectiveEnd?: string;
     notes?: string;
   }) {
     const response = await api.post<ApiResponse<{ tariff: FinanceTariffRule }>>('/payments/tariffs', payload);
@@ -330,6 +334,8 @@ export const staffFinanceService = {
       semester: SemesterCode | null;
       gradeLevel: string | null;
       amount: number;
+      effectiveStart: string | null;
+      effectiveEnd: string | null;
       notes: string | null;
       isActive: boolean;
     }>,
