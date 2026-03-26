@@ -198,6 +198,8 @@ export default function StaffPaymentsScreen() {
   const [invoiceMajorId, setInvoiceMajorId] = useState<number | null>(null);
   const [invoiceGradeLevel, setInvoiceGradeLevel] = useState('');
   const [invoiceReplaceExisting, setInvoiceReplaceExisting] = useState(false);
+  const [invoiceStudentSearch, setInvoiceStudentSearch] = useState('');
+  const [invoiceSelectedStudentIds, setInvoiceSelectedStudentIds] = useState<number[]>([]);
 
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [invoiceStatus, setInvoiceStatus] = useState<'' | FinanceInvoiceStatus>('');
@@ -265,6 +267,39 @@ export default function StaffPaymentsScreen() {
       ).sort((a, b) => a.localeCompare(b)),
     [classes],
   );
+
+  const studentLookup = useMemo(() => {
+    return new Map((studentsQuery.data || []).map((student) => [student.id, student]));
+  }, [studentsQuery.data]);
+
+  const selectedInvoiceStudents = useMemo(
+    () =>
+      invoiceSelectedStudentIds
+        .map((studentId) => studentLookup.get(studentId))
+        .filter((student): student is NonNullable<typeof student> => Boolean(student)),
+    [invoiceSelectedStudentIds, studentLookup],
+  );
+
+  const invoiceStudentCandidates = useMemo(() => {
+    const keyword = invoiceStudentSearch.trim().toLowerCase();
+    return (studentsQuery.data || [])
+      .filter((student) => !invoiceSelectedStudentIds.includes(student.id))
+      .filter((student) => {
+        if (!keyword) return true;
+        const haystack = [
+          student.name,
+          student.username,
+          student.nis || '',
+          student.nisn || '',
+          student.studentClass?.name || '',
+          student.studentClass?.major?.name || '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(keyword);
+      })
+      .slice(0, keyword ? 12 : 8);
+  }, [invoiceSelectedStudentIds, invoiceStudentSearch, studentsQuery.data]);
 
   const componentsQuery = useQuery({
     queryKey: ['mobile-staff-finance-components'],
@@ -450,6 +485,7 @@ export default function StaffPaymentsScreen() {
         classId: invoiceClassId || undefined,
         majorId: invoiceMajorId || undefined,
         gradeLevel: invoiceGradeLevel.trim() || undefined,
+        studentIds: invoiceSelectedStudentIds.length > 0 ? invoiceSelectedStudentIds : undefined,
         replaceExisting: invoiceReplaceExisting,
       }),
     onSuccess: (result) => {
@@ -473,6 +509,7 @@ export default function StaffPaymentsScreen() {
         classId: invoiceClassId || undefined,
         majorId: invoiceMajorId || undefined,
         gradeLevel: invoiceGradeLevel.trim() || undefined,
+        studentIds: invoiceSelectedStudentIds.length > 0 ? invoiceSelectedStudentIds : undefined,
         replaceExisting: invoiceReplaceExisting,
       }),
     onError: (error: unknown) => notifyApiError(error, 'Gagal membuat preview generate.'),
@@ -568,6 +605,20 @@ export default function StaffPaymentsScreen() {
     setPaymentNote('');
   };
 
+  const handleSelectInvoiceStudent = (studentId: number) => {
+    setInvoiceSelectedStudentIds((current) => (current.includes(studentId) ? current : [...current, studentId]));
+    setInvoiceStudentSearch('');
+  };
+
+  const handleRemoveInvoiceStudent = (studentId: number) => {
+    setInvoiceSelectedStudentIds((current) => current.filter((id) => id !== studentId));
+  };
+
+  const handleClearInvoiceStudentSelection = () => {
+    setInvoiceSelectedStudentIds([]);
+    setInvoiceStudentSearch('');
+  };
+
   useEffect(() => {
     previewInvoiceMutation.reset();
   }, [
@@ -580,6 +631,7 @@ export default function StaffPaymentsScreen() {
     invoiceMajorId,
     invoiceGradeLevel,
     invoiceReplaceExisting,
+    invoiceSelectedStudentIds,
   ]);
 
   if (isLoading) return <AppLoadingScreen message="Memuat modul keuangan staff..." />;
@@ -1761,6 +1813,171 @@ export default function StaffPaymentsScreen() {
             </Text>
           </Pressable>
 
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              backgroundColor: '#f8fafc',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 8,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: 8,
+                marginBottom: 8,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>
+                  Target Siswa Spesifik
+                </Text>
+                <Text style={{ color: '#64748b', fontSize: 12 }}>
+                  Jika ada siswa dipilih, generate hanya memproses siswa terpilih. Filter kelas, jurusan,
+                  dan tingkat tetap tampil sebagai referensi visual.
+                </Text>
+              </View>
+              {invoiceSelectedStudentIds.length > 0 ? (
+                <Pressable
+                  onPress={handleClearInvoiceStudentSelection}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#cbd5e1',
+                    backgroundColor: '#fff',
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                  }}
+                >
+                  <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>Reset</Text>
+                </Pressable>
+              ) : null}
+            </View>
+
+            <TextInput
+              value={invoiceStudentSearch}
+              onChangeText={setInvoiceStudentSearch}
+              placeholder="Cari siswa berdasarkan nama, username, NIS, NISN, kelas"
+              placeholderTextColor="#94a3b8"
+              style={{
+                borderWidth: 1,
+                borderColor: '#d1d5db',
+                borderRadius: 8,
+                paddingHorizontal: 10,
+                paddingVertical: 9,
+                marginBottom: 8,
+                color: '#0f172a',
+                backgroundColor: '#fff',
+              }}
+            />
+
+            {selectedInvoiceStudents.length > 0 ? (
+              <View style={{ marginBottom: 8 }}>
+                {selectedInvoiceStudents.map((student) => (
+                  <View
+                    key={student.id}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#c7d2fe',
+                      backgroundColor: '#eef2ff',
+                      borderRadius: 10,
+                      padding: 10,
+                      marginBottom: 6,
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#312e81', fontWeight: '700' }}>{student.name}</Text>
+                      <Text style={{ color: '#4338ca', fontSize: 12 }}>
+                        {student.studentClass?.name || 'Tanpa kelas'} • {student.username}
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() => handleRemoveInvoiceStudent(student.id)}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#c7d2fe',
+                        backgroundColor: '#fff',
+                        borderRadius: 999,
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                      }}
+                    >
+                      <Text style={{ color: '#4338ca', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                Belum ada siswa spesifik yang dipilih.
+              </Text>
+            )}
+
+            {invoiceStudentCandidates.length > 0 ? (
+              <View>
+                {invoiceStudentCandidates.map((student) => (
+                  <Pressable
+                    key={student.id}
+                    onPress={() => handleSelectInvoiceStudent(student.id)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#dbe7fb',
+                      backgroundColor: '#fff',
+                      borderRadius: 10,
+                      padding: 10,
+                      marginBottom: 6,
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        gap: 8,
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#0f172a', fontWeight: '700' }}>{student.name}</Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                          {student.username} • {student.studentClass?.name || 'Tanpa kelas'}
+                        </Text>
+                        <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>
+                          {(student.nis ? `NIS ${student.nis}` : student.nisn ? `NISN ${student.nisn}` : 'Tanpa identitas') +
+                            ' • ' +
+                            (student.studentClass?.major?.name || 'Tanpa jurusan')}
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#c7d2fe',
+                          backgroundColor: '#eef2ff',
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 4,
+                        }}
+                      >
+                        <Text style={{ color: '#4338ca', fontWeight: '700', fontSize: 11 }}>Pilih</Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            ) : invoiceStudentSearch.trim() ? (
+              <Text style={{ color: '#64748b', fontSize: 12 }}>
+                Tidak ada siswa yang cocok dengan pencarian.
+              </Text>
+            ) : null}
+          </View>
+
           <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 12 }}>
             <View style={{ flex: 1, paddingHorizontal: 4 }}>
               <Pressable
@@ -1816,6 +2033,11 @@ export default function StaffPaymentsScreen() {
                 {previewInvoiceMutation.data.summary.totalTargetStudents} siswa terjaring dengan proyeksi tagihan{' '}
                 {formatCurrency(previewInvoiceMutation.data.summary.totalProjectedAmount)}.
               </Text>
+              {previewInvoiceMutation.data.filters.selectedStudentCount > 0 ? (
+                <Text style={{ color: '#4338ca', fontSize: 12, marginBottom: 10 }}>
+                  Mode target eksplisit aktif untuk {previewInvoiceMutation.data.filters.selectedStudentCount} siswa.
+                </Text>
+              ) : null}
 
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
                 {[
@@ -1870,14 +2092,27 @@ export default function StaffPaymentsScreen() {
                           paddingHorizontal: 8,
                           paddingVertical: 2,
                         }}
-                      >
+                    >
                         <Text style={{ color: status.text, fontWeight: '700', fontSize: 11 }}>{status.label}</Text>
                       </View>
                     </View>
-                    {detail.componentNames.length > 0 ? (
-                      <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
-                        {detail.componentNames.join(', ')}
-                      </Text>
+                    {detail.items.length > 0 ? (
+                      <View style={{ marginBottom: 4 }}>
+                        {detail.items.map((item) => (
+                          <Text
+                            key={`${detail.studentId}-${item.componentId}`}
+                            style={{ color: '#64748b', fontSize: 12, marginBottom: 2 }}
+                          >
+                            <Text style={{ color: '#475569', fontWeight: '700' }}>{item.componentName}</Text>
+                            {' • '}
+                            {formatCurrency(item.amount)}
+                            {item.notes ? ` • ${item.notes}` : ''}
+                          </Text>
+                        ))}
+                      </View>
+                    ) : null}
+                    {detail.reason ? (
+                      <Text style={{ color: '#b45309', fontSize: 12, marginBottom: 4 }}>{detail.reason}</Text>
                     ) : null}
                     <Text style={{ color: '#0f172a', fontWeight: '700' }}>
                       {detail.totalAmount > 0 ? formatCurrency(detail.totalAmount) : '-'}

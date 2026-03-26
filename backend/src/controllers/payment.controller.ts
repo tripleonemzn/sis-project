@@ -1250,6 +1250,25 @@ function summarizeFinanceInvoiceGenerationRows(rows: FinanceInvoiceGenerationPla
   );
 }
 
+function getFinanceInvoiceGenerationReason(row: FinanceInvoiceGenerationPlanRow) {
+  if (row.status === 'SKIPPED_NO_TARIFF') {
+    return 'Tidak ada rule tarif aktif yang cocok untuk siswa ini pada filter dan periode yang dipilih.';
+  }
+  if (row.status === 'SKIPPED_EXISTS') {
+    return 'Invoice periode ini sudah ada. Aktifkan replace jika ingin memperbarui invoice yang belum dibayar.';
+  }
+  if (row.status === 'SKIPPED_LOCKED_PAID') {
+    return 'Invoice periode ini sudah memiliki pembayaran sehingga tidak bisa diganti otomatis.';
+  }
+  if (row.status === 'READY_UPDATE') {
+    return 'Invoice existing belum dibayar dan siap diperbarui jika generate dijalankan.';
+  }
+  if (row.status === 'READY_CREATE') {
+    return 'Invoice baru siap dibuat berdasarkan rule tarif yang cocok.';
+  }
+  return null;
+}
+
 function mapFinanceInvoiceGenerationRowDetail(row: FinanceInvoiceGenerationPlanRow) {
   return {
     studentId: row.student.id,
@@ -1263,6 +1282,14 @@ function mapFinanceInvoiceGenerationRowDetail(row: FinanceInvoiceGenerationPlanR
     totalAmount: row.totalAmount,
     itemCount: row.items.length,
     componentNames: row.items.map((item) => item.componentName),
+    items: row.items.map((item) => ({
+      componentId: item.componentId,
+      componentCode: item.componentCode,
+      componentName: item.componentName,
+      amount: item.amount,
+      notes: item.notes,
+    })),
+    reason: getFinanceInvoiceGenerationReason(row),
   };
 }
 
@@ -1277,11 +1304,13 @@ async function buildFinanceInvoiceGenerationPlan(payload: z.infer<typeof generat
     role: 'STUDENT',
   };
 
-  if (payload.classId) {
+  const hasExplicitStudentSelection = payload.studentIds.length > 0;
+
+  if (!hasExplicitStudentSelection && payload.classId) {
     studentWhere.classId = payload.classId;
   }
 
-  if (payload.studentIds.length > 0) {
+  if (hasExplicitStudentSelection) {
     studentWhere.id = { in: payload.studentIds };
   }
 
@@ -1319,10 +1348,11 @@ async function buildFinanceInvoiceGenerationPlan(payload: z.infer<typeof generat
 
   const normalizedGradeLevel = normalizeFinanceComparableText(payload.gradeLevel);
   const students = rawStudents.filter((student) => {
-    if (payload.majorId && student.studentClass?.majorId !== payload.majorId) {
+    if (!hasExplicitStudentSelection && payload.majorId && student.studentClass?.majorId !== payload.majorId) {
       return false;
     }
     if (
+      !hasExplicitStudentSelection &&
       normalizedGradeLevel &&
       normalizeFinanceComparableText(student.studentClass?.level) !== normalizedGradeLevel
     ) {
@@ -1446,6 +1476,7 @@ async function buildFinanceInvoiceGenerationPlan(payload: z.infer<typeof generat
 
   return {
     academicYearId: targetAcademicYearId,
+    selectionMode: hasExplicitStudentSelection ? 'EXPLICIT_STUDENTS' : 'FILTERS',
     rows,
     summary: summarizeFinanceInvoiceGenerationRows(rows),
   };
@@ -1819,6 +1850,8 @@ export const generateFinanceInvoices = asyncHandler(async (req: Request, res: Re
           majorId: payload.majorId || null,
           gradeLevel: payload.gradeLevel?.trim() || null,
           replaceExisting: payload.replaceExisting,
+          selectedStudentCount: payload.studentIds.length,
+          selectionMode: plan.selectionMode,
         },
         summary: plan.summary,
         details,
@@ -1845,6 +1878,8 @@ export const previewFinanceInvoices = asyncHandler(async (req: Request, res: Res
           majorId: payload.majorId || null,
           gradeLevel: payload.gradeLevel?.trim() || null,
           replaceExisting: payload.replaceExisting,
+          selectedStudentCount: payload.studentIds.length,
+          selectionMode: plan.selectionMode,
         },
         summary: plan.summary,
         details: plan.rows.map((row) => mapFinanceInvoiceGenerationRowDetail(row)),

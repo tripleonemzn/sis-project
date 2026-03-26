@@ -103,6 +103,14 @@ export type StaffFinanceInvoiceGenerationDetail = {
   totalAmount: number;
   itemCount: number;
   componentNames: string[];
+  items: Array<{
+    componentId: number;
+    componentCode: string;
+    componentName: string;
+    amount: number;
+    notes?: string | null;
+  }>;
+  reason?: string | null;
 };
 
 export type StaffFinanceInvoiceGenerationResult = {
@@ -114,6 +122,8 @@ export type StaffFinanceInvoiceGenerationResult = {
     majorId: number | null;
     gradeLevel: string | null;
     replaceExisting: boolean;
+    selectedStudentCount: number;
+    selectionMode: 'FILTERS' | 'EXPLICIT_STUDENTS';
   };
   summary: {
     totalTargetStudents: number;

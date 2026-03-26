@@ -168,6 +168,8 @@ export const StaffFinancePage = () => {
   const [invoiceMajorId, setInvoiceMajorId] = useState<number | ''>('');
   const [invoiceGradeLevel, setInvoiceGradeLevel] = useState('');
   const [invoiceReplaceExisting, setInvoiceReplaceExisting] = useState(false);
+  const [invoiceStudentSearch, setInvoiceStudentSearch] = useState('');
+  const [invoiceSelectedStudentIds, setInvoiceSelectedStudentIds] = useState<number[]>([]);
 
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'' | FinanceInvoiceStatus>('');
@@ -269,6 +271,39 @@ export const StaffFinancePage = () => {
       ).sort((a, b) => a.localeCompare(b)),
     [classes],
   );
+
+  const studentLookup = useMemo(() => {
+    return new Map(students.map((student) => [student.id, student]));
+  }, [students]);
+
+  const selectedInvoiceStudents = useMemo(
+    () =>
+      invoiceSelectedStudentIds
+        .map((studentId) => studentLookup.get(studentId))
+        .filter((student): student is User => Boolean(student)),
+    [invoiceSelectedStudentIds, studentLookup],
+  );
+
+  const invoiceStudentCandidates = useMemo(() => {
+    const keyword = invoiceStudentSearch.trim().toLowerCase();
+    return students
+      .filter((student) => !invoiceSelectedStudentIds.includes(student.id))
+      .filter((student) => {
+        if (!keyword) return true;
+        const haystack = [
+          student.name,
+          student.username,
+          student.nis || '',
+          student.nisn || '',
+          student.studentClass?.name || '',
+          student.studentClass?.major?.name || '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(keyword);
+      })
+      .slice(0, keyword ? 12 : 8);
+  }, [invoiceSelectedStudentIds, invoiceStudentSearch, students]);
 
   const activeYear = useMemo(() => years.find((year) => year.isActive), [years]);
 
@@ -451,6 +486,7 @@ export const StaffFinancePage = () => {
         classId: invoiceClassId === '' ? undefined : Number(invoiceClassId),
         majorId: invoiceMajorId === '' ? undefined : Number(invoiceMajorId),
         gradeLevel: invoiceGradeLevel.trim() || undefined,
+        studentIds: invoiceSelectedStudentIds.length > 0 ? invoiceSelectedStudentIds : undefined,
         replaceExisting: invoiceReplaceExisting,
       }),
     onSuccess: (data) => {
@@ -478,6 +514,7 @@ export const StaffFinancePage = () => {
         classId: invoiceClassId === '' ? undefined : Number(invoiceClassId),
         majorId: invoiceMajorId === '' ? undefined : Number(invoiceMajorId),
         gradeLevel: invoiceGradeLevel.trim() || undefined,
+        studentIds: invoiceSelectedStudentIds.length > 0 ? invoiceSelectedStudentIds : undefined,
         replaceExisting: invoiceReplaceExisting,
       }),
     onError: (error: unknown) => {
@@ -607,6 +644,20 @@ export const StaffFinancePage = () => {
     previewInvoiceMutation.mutate();
   };
 
+  const handleSelectInvoiceStudent = (studentId: number) => {
+    setInvoiceSelectedStudentIds((current) => (current.includes(studentId) ? current : [...current, studentId]));
+    setInvoiceStudentSearch('');
+  };
+
+  const handleRemoveInvoiceStudent = (studentId: number) => {
+    setInvoiceSelectedStudentIds((current) => current.filter((id) => id !== studentId));
+  };
+
+  const handleClearInvoiceStudentSelection = () => {
+    setInvoiceSelectedStudentIds([]);
+    setInvoiceStudentSearch('');
+  };
+
   useEffect(() => {
     previewInvoiceMutation.reset();
   }, [
@@ -619,6 +670,7 @@ export const StaffFinancePage = () => {
     invoiceMajorId,
     invoiceGradeLevel,
     invoiceReplaceExisting,
+    invoiceSelectedStudentIds,
   ]);
 
   const handleExportReport = async (
@@ -1176,6 +1228,85 @@ export const StaffFinancePage = () => {
             />
             Replace invoice existing yang belum dibayar
           </label>
+          <div className="md:col-span-3 xl:col-span-4 rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+              <div>
+                <div className="text-sm font-semibold text-slate-900">Target Siswa Spesifik</div>
+                <p className="text-xs text-slate-600 mt-1">
+                  Jika ada siswa dipilih, generate hanya memproses siswa terpilih dan filter kelas/jurusan/tingkat
+                  menjadi referensi visual.
+                </p>
+              </div>
+              {invoiceSelectedStudentIds.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={handleClearInvoiceStudentSelection}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Reset Pilihan
+                </button>
+              ) : null}
+            </div>
+            <input
+              value={invoiceStudentSearch}
+              onChange={(event) => setInvoiceStudentSearch(event.target.value)}
+              placeholder="Cari siswa spesifik berdasarkan nama, username, NIS, NISN, kelas"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full bg-white"
+            />
+            {selectedInvoiceStudents.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {selectedInvoiceStudents.map((student) => (
+                  <span
+                    key={student.id}
+                    className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs text-indigo-900"
+                  >
+                    <span>
+                      {student.name} • {student.studentClass?.name || '-'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveInvoiceStudent(student.id)}
+                      className="text-indigo-700 hover:text-indigo-900"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-slate-500">Belum ada siswa spesifik yang dipilih.</div>
+            )}
+            {invoiceStudentCandidates.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {invoiceStudentCandidates.map((student) => (
+                  <button
+                    key={student.id}
+                    type="button"
+                    onClick={() => handleSelectInvoiceStudent(student.id)}
+                    className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left hover:border-indigo-200 hover:bg-indigo-50/60"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">{student.name}</div>
+                      <div className="mt-1 text-xs text-slate-600">
+                        {student.username} • {student.studentClass?.name || 'Tanpa kelas'}
+                      </div>
+                      <div className="mt-1 text-[11px] text-slate-500">
+                        {(student.nis ? `NIS ${student.nis}` : student.nisn ? `NISN ${student.nisn}` : 'Tanpa identitas') +
+                          ' • ' +
+                          (student.studentClass?.major?.name || 'Tanpa jurusan')}
+                      </div>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-indigo-100 px-2 py-1 text-[11px] font-semibold text-indigo-700">
+                      Pilih
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : invoiceStudentSearch.trim() ? (
+              <div className="text-xs text-slate-500">Tidak ada siswa yang cocok dengan pencarian.</div>
+            ) : null}
+          </div>
           <button
             type="button"
             onClick={handlePreviewInvoices}
@@ -1204,6 +1335,11 @@ export const StaffFinancePage = () => {
                   {previewInvoiceMutation.data.summary.totalTargetStudents} siswa terjaring dengan proyeksi tagihan{' '}
                   {formatCurrency(previewInvoiceMutation.data.summary.totalProjectedAmount)}.
                 </p>
+                {previewInvoiceMutation.data.filters.selectedStudentCount > 0 ? (
+                  <p className="mt-1 text-xs text-indigo-700">
+                    Mode target eksplisit aktif untuk {previewInvoiceMutation.data.filters.selectedStudentCount} siswa.
+                  </p>
+                ) : null}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs min-w-[280px]">
                 <div className="rounded-lg bg-white border border-emerald-100 px-3 py-2">
@@ -1267,11 +1403,18 @@ export const StaffFinancePage = () => {
                               ' • ' +
                               (detail.gradeLevel ? `Tingkat ${detail.gradeLevel}` : 'Semua tingkat')}
                           </div>
-                          {detail.componentNames.length > 0 ? (
-                            <div className="mt-1 text-[11px] text-gray-500">
-                              {detail.componentNames.join(', ')}
+                          {detail.items.length > 0 ? (
+                            <div className="mt-2 space-y-1">
+                              {detail.items.map((item) => (
+                                <div key={`${detail.studentId}-${item.componentId}`} className="text-[11px] text-gray-500">
+                                  <span className="font-medium text-gray-600">{item.componentName}</span> •{' '}
+                                  {formatCurrency(item.amount)}
+                                  {item.notes ? ` • ${item.notes}` : ''}
+                                </div>
+                              ))}
                             </div>
                           ) : null}
+                          {detail.reason ? <div className="mt-2 text-[11px] text-amber-700">{detail.reason}</div> : null}
                         </td>
                         <td className="px-3 py-2 text-xs">
                           <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-semibold ${status.className}`}>
