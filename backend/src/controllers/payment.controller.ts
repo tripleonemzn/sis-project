@@ -1,5 +1,6 @@
 import {
   FinanceAdjustmentKind,
+  FinanceCreditTransactionKind,
   FinanceComponentPeriodicity,
   FinanceInvoiceStatus,
   FinancePaymentMethod,
@@ -13,6 +14,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import { writeAuditLog } from '../utils/auditLog';
 
 const listParentPaymentsQuerySchema = z.object({
   studentId: z.coerce.number().int().positive().optional(),
@@ -69,11 +71,92 @@ function makeFinancePaymentNo(studentId: number): string {
   return `PAY-${studentId}-${ts}${rand}`;
 }
 
+function makeFinanceRefundNo(studentId: number): string {
+  const ts = Date.now().toString().slice(-7);
+  const rand = Math.floor(Math.random() * 900 + 100).toString();
+  return `REF-${studentId}-${ts}${rand}`;
+}
+
 function resolveFinanceRouteByRole(role: string, studentId: number): string {
   const normalized = String(role || '').toUpperCase();
   if (normalized === 'PARENT') return `/parent/finance?childId=${studentId}`;
   if (normalized === 'STUDENT') return '/student/finance';
   return '/notifications';
+}
+
+function serializeFinancePaymentRecord(payment: {
+  id: number;
+  paymentNo?: string | null;
+  amount: number;
+  allocatedAmount?: number | null;
+  creditedAmount?: number | null;
+  method?: FinancePaymentMethod | null;
+  referenceNo?: string | null;
+  paidAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  invoice?: {
+    id: number;
+    invoiceNo: string;
+    periodKey?: string | null;
+    semester?: Semester | null;
+  } | null;
+}) {
+  return {
+    id: payment.id,
+    paymentNo: payment.paymentNo || null,
+    amount: Number(payment.amount || 0),
+    allocatedAmount: Number(payment.allocatedAmount || 0),
+    creditedAmount: Number(payment.creditedAmount || 0),
+    method: payment.method || null,
+    referenceNo: payment.referenceNo || null,
+    invoiceId: payment.invoice?.id || null,
+    invoiceNo: payment.invoice?.invoiceNo || null,
+    periodKey: payment.invoice?.periodKey || null,
+    semester: payment.invoice?.semester || null,
+    createdAt: payment.paidAt || payment.createdAt,
+    updatedAt: payment.updatedAt,
+  };
+}
+
+function serializeFinanceRefundRecord(refund: {
+  id: number;
+  refundNo: string;
+  amount: number;
+  method: FinancePaymentMethod;
+  referenceNo?: string | null;
+  note?: string | null;
+  refundedAt: Date;
+  createdAt: Date;
+  student: {
+    id: number;
+    name: string;
+    username: string;
+    nis?: string | null;
+    nisn?: string | null;
+    studentClass?: {
+      id: number;
+      name: string;
+      level?: string | null;
+    } | null;
+  };
+  createdBy?: {
+    id: number;
+    name: string;
+  } | null;
+}) {
+  return {
+    id: refund.id,
+    refundNo: refund.refundNo,
+    amount: Number(refund.amount || 0),
+    method: refund.method,
+    referenceNo: refund.referenceNo || null,
+    note: refund.note || null,
+    refundedAt: refund.refundedAt,
+    createdAt: refund.createdAt,
+    student: refund.student,
+    createdBy: refund.createdBy || null,
+  };
 }
 
 type FinanceNotificationRecipient = {
@@ -320,6 +403,21 @@ async function ensureFinanceActor(
   return user;
 }
 
+function buildFinanceStudentSearchFilter(search?: string) {
+  const normalizedSearch = search?.trim();
+  if (!normalizedSearch) return undefined;
+
+  return {
+    OR: [
+      { name: { contains: normalizedSearch, mode: 'insensitive' as const } },
+      { username: { contains: normalizedSearch, mode: 'insensitive' as const } },
+      { nis: { contains: normalizedSearch, mode: 'insensitive' as const } },
+      { nisn: { contains: normalizedSearch, mode: 'insensitive' as const } },
+      { studentClass: { name: { contains: normalizedSearch, mode: 'insensitive' as const } } },
+    ],
+  };
+}
+
 const listFinanceComponentsQuerySchema = z.object({
   isActive: z
     .string()
@@ -457,6 +555,20 @@ const createFinancePaymentSchema = z.object({
   referenceNo: z.string().trim().max(120).optional(),
   note: z.string().trim().max(500).optional(),
   paidAt: z.coerce.date().optional(),
+});
+
+const listFinanceCreditsQuerySchema = z.object({
+  studentId: z.coerce.number().int().positive().optional(),
+  search: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+});
+
+const createFinanceRefundSchema = z.object({
+  amount: z.coerce.number().positive(),
+  method: z.nativeEnum(FinancePaymentMethod).default('OTHER'),
+  referenceNo: z.string().trim().max(120).optional(),
+  note: z.string().trim().max(500).optional(),
+  refundedAt: z.coerce.date().optional(),
 });
 
 const PERIOD_KEY_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -2373,6 +2485,8 @@ export const listFinanceInvoices = asyncHandler(async (req: Request, res: Respon
           id: true,
           paymentNo: true,
           amount: true,
+          allocatedAmount: true,
+          creditedAmount: true,
           method: true,
           referenceNo: true,
           paidAt: true,
@@ -2720,9 +2834,8 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
     }
 
     const outstanding = Number(invoice.balanceAmount || 0);
-    if (payload.amount > outstanding) {
-      throw new ApiError(400, `Nominal melebihi sisa tagihan (maksimal ${outstanding})`);
-    }
+    const allocatedAmount = Math.min(payload.amount, outstanding);
+    const creditedAmount = Math.max(payload.amount - outstanding, 0);
 
     const paymentNo = makeFinancePaymentNo(invoice.studentId);
 
@@ -2732,6 +2845,8 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
         studentId: invoice.studentId,
         invoiceId: invoice.id,
         amount: payload.amount,
+        allocatedAmount,
+        creditedAmount,
         method: payload.method,
         referenceNo: payload.referenceNo?.trim() || null,
         note: payload.note?.trim() || null,
@@ -2740,7 +2855,7 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
       },
     });
 
-    const paidAmount = Number(invoice.paidAmount || 0) + payload.amount;
+    const paidAmount = Number(invoice.paidAmount || 0) + allocatedAmount;
     const balanceAmount = Math.max(Number(invoice.totalAmount || 0) - paidAmount, 0);
     const status: FinanceInvoiceStatus = balanceAmount <= 0 ? 'PAID' : 'PARTIAL';
 
@@ -2765,6 +2880,67 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
       },
     });
 
+    let creditBalanceSnapshot: {
+      id: number;
+      balanceAmount: number;
+      balanceBefore: number;
+    } | null = null;
+
+    if (creditedAmount > 0) {
+      const existingCreditBalance = await tx.financeCreditBalance.findUnique({
+        where: { studentId: invoice.studentId },
+        select: {
+          id: true,
+          balanceAmount: true,
+        },
+      });
+
+      const balanceBefore = Number(existingCreditBalance?.balanceAmount || 0);
+      const balanceAfter = balanceBefore + creditedAmount;
+
+      const creditBalance = existingCreditBalance
+        ? await tx.financeCreditBalance.update({
+            where: { id: existingCreditBalance.id },
+            data: {
+              balanceAmount: balanceAfter,
+            },
+            select: {
+              id: true,
+              balanceAmount: true,
+            },
+          })
+        : await tx.financeCreditBalance.create({
+            data: {
+              studentId: invoice.studentId,
+              balanceAmount: balanceAfter,
+            },
+            select: {
+              id: true,
+              balanceAmount: true,
+            },
+          });
+
+      await tx.financeCreditTransaction.create({
+        data: {
+          balanceId: creditBalance.id,
+          studentId: invoice.studentId,
+          paymentId: payment.id,
+          kind: FinanceCreditTransactionKind.OVERPAYMENT,
+          amount: creditedAmount,
+          balanceBefore,
+          balanceAfter,
+          note: payload.note?.trim() || `Kelebihan bayar dari ${paymentNo}`,
+          createdById: actor.id,
+        },
+      });
+
+      creditBalanceSnapshot = {
+        id: creditBalance.id,
+        balanceAmount: Number(creditBalance.balanceAmount || 0),
+        balanceBefore,
+      };
+    }
+
     const primaryPeriodicity = invoice.items[0]?.component?.periodicity;
     const legacyType: PaymentType = primaryPeriodicity === 'MONTHLY' ? 'MONTHLY' : 'ONE_TIME';
 
@@ -2782,13 +2958,16 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
     return {
       payment,
       invoice: updatedInvoice,
+      creditBalance: creditBalanceSnapshot,
     };
   });
+
+  const creditedAmount = Number(result.payment.creditedAmount || 0);
 
   await createFinanceNotifications({
     studentId: result.invoice.student.id,
     title: 'Pembayaran Tagihan Berhasil Dicatat',
-    message: `Pembayaran Rp${Math.round(result.payment.amount).toLocaleString('id-ID')} untuk tagihan ${result.invoice.invoiceNo} berhasil dicatat. Sisa tagihan: Rp${Math.round(Number(result.invoice.balanceAmount || 0)).toLocaleString('id-ID')}.`,
+    message: `Pembayaran Rp${Math.round(result.payment.amount).toLocaleString('id-ID')} untuk tagihan ${result.invoice.invoiceNo} berhasil dicatat. Sisa tagihan: Rp${Math.round(Number(result.invoice.balanceAmount || 0)).toLocaleString('id-ID')}.${creditedAmount > 0 ? ` Kelebihan bayar Rp${Math.round(creditedAmount).toLocaleString('id-ID')} masuk ke saldo kredit.` : ''}`,
     type: 'FINANCE_PAYMENT_RECORDED',
     data: {
       module: 'FINANCE',
@@ -2797,15 +2976,403 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
       paymentId: result.payment.id,
       paymentNo: result.payment.paymentNo,
       paidAmount: result.payment.amount,
+      allocatedAmount: Number(result.payment.allocatedAmount || 0),
+      creditedAmount,
       remainingBalance: Number(result.invoice.balanceAmount || 0),
+      creditBalanceAmount: Number(result.creditBalance?.balanceAmount || 0),
       semester: result.invoice.semester,
       periodKey: result.invoice.periodKey,
     },
   });
 
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      (actor.additionalDuties || []).map((duty) => String(duty)),
+      'CREATE',
+      'FINANCE_PAYMENT',
+      result.payment.id,
+      null,
+      {
+        invoiceId,
+        invoiceNo: result.invoice.invoiceNo,
+        studentId: result.invoice.student.id,
+        paymentNo: result.payment.paymentNo,
+        amount: Number(result.payment.amount || 0),
+        allocatedAmount: Number(result.payment.allocatedAmount || 0),
+        creditedAmount,
+        creditBalanceAmount: Number(result.creditBalance?.balanceAmount || 0),
+      },
+      creditedAmount > 0 ? 'Pembayaran invoice dengan kelebihan bayar menjadi saldo kredit' : 'Pembayaran invoice',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat pembayaran finance', auditError);
+  }
+
   res
     .status(201)
     .json(new ApiResponse(201, result, 'Pembayaran tagihan berhasil dicatat'));
+});
+
+export const listFinanceCredits = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinanceActor((req as any).user || {}, { allowPrincipalReadOnly: true });
+
+  const { studentId, search, limit } = listFinanceCreditsQuerySchema.parse(req.query);
+  const studentSearchWhere = buildFinanceStudentSearchFilter(search);
+
+  const activeCreditWhere: Prisma.FinanceCreditBalanceWhereInput = {
+    balanceAmount: { gt: 0 },
+    ...(studentId ? { studentId } : {}),
+    ...(studentSearchWhere ? { student: studentSearchWhere } : {}),
+  };
+
+  const listWhere: Prisma.FinanceCreditBalanceWhereInput = studentId
+    ? {
+        studentId,
+        ...(studentSearchWhere ? { student: studentSearchWhere } : {}),
+      }
+    : activeCreditWhere;
+
+  const refundWhere: Prisma.FinanceRefundWhereInput = {
+    ...(studentId ? { studentId } : {}),
+    ...(studentSearchWhere ? { student: studentSearchWhere } : {}),
+  };
+
+  const [balances, totalStudentsWithCredit, totalCreditAggregate, totalRefundAggregate, recentRefunds] =
+    await Promise.all([
+      prisma.financeCreditBalance.findMany({
+        where: listWhere,
+        include: {
+          student: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              nis: true,
+              nisn: true,
+              studentClass: {
+                select: {
+                  id: true,
+                  name: true,
+                  level: true,
+                },
+              },
+            },
+          },
+          transactions: {
+            take: 3,
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            include: {
+              payment: {
+                select: {
+                  id: true,
+                  paymentNo: true,
+                  invoice: {
+                    select: {
+                      id: true,
+                      invoiceNo: true,
+                      periodKey: true,
+                      semester: true,
+                    },
+                  },
+                },
+              },
+              refund: {
+                select: {
+                  id: true,
+                  refundNo: true,
+                  refundedAt: true,
+                  method: true,
+                },
+              },
+              createdBy: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ balanceAmount: 'desc' }, { updatedAt: 'desc' }, { id: 'desc' }],
+        take: limit,
+      }),
+      prisma.financeCreditBalance.count({ where: activeCreditWhere }),
+      prisma.financeCreditBalance.aggregate({
+        where: activeCreditWhere,
+        _sum: {
+          balanceAmount: true,
+        },
+      }),
+      prisma.financeRefund.aggregate({
+        where: refundWhere,
+        _sum: {
+          amount: true,
+        },
+        _count: {
+          _all: true,
+        },
+      }),
+      prisma.financeRefund.findMany({
+        where: refundWhere,
+        take: 12,
+        orderBy: [{ refundedAt: 'desc' }, { id: 'desc' }],
+        include: {
+          student: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              nis: true,
+              nisn: true,
+              studentClass: {
+                select: {
+                  id: true,
+                  name: true,
+                  level: true,
+                },
+              },
+            },
+          },
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        summary: {
+          totalStudentsWithCredit,
+          totalCreditBalance: Number(totalCreditAggregate._sum.balanceAmount || 0),
+          totalRefundRecords: totalRefundAggregate._count._all,
+          totalRefundAmount: Number(totalRefundAggregate._sum.amount || 0),
+        },
+        balances: balances.map((balance) => ({
+          balanceId: balance.id,
+          studentId: balance.studentId,
+          balanceAmount: Number(balance.balanceAmount || 0),
+          updatedAt: balance.updatedAt,
+          student: balance.student,
+          recentTransactions: balance.transactions.map((transaction) => ({
+            id: transaction.id,
+            kind: transaction.kind,
+            amount: Number(transaction.amount || 0),
+            balanceBefore: Number(transaction.balanceBefore || 0),
+            balanceAfter: Number(transaction.balanceAfter || 0),
+            note: transaction.note || null,
+            createdAt: transaction.createdAt,
+            createdBy: transaction.createdBy || null,
+            payment: transaction.payment
+              ? {
+                  id: transaction.payment.id,
+                  paymentNo: transaction.payment.paymentNo,
+                  invoiceId: transaction.payment.invoice?.id || null,
+                  invoiceNo: transaction.payment.invoice?.invoiceNo || null,
+                  periodKey: transaction.payment.invoice?.periodKey || null,
+                  semester: transaction.payment.invoice?.semester || null,
+                }
+              : null,
+            refund: transaction.refund
+              ? {
+                  id: transaction.refund.id,
+                  refundNo: transaction.refund.refundNo,
+                  refundedAt: transaction.refund.refundedAt,
+                  method: transaction.refund.method,
+                }
+              : null,
+          })),
+        })),
+        recentRefunds: recentRefunds.map((refund) => serializeFinanceRefundRecord(refund)),
+      },
+      'Saldo kredit dan refund berhasil diambil',
+    ),
+  );
+});
+
+export const createFinanceRefund = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+
+  const studentId = Number(req.params.studentId);
+  if (!Number.isInteger(studentId) || studentId <= 0) {
+    throw new ApiError(400, 'ID siswa tidak valid');
+  }
+
+  const payload = createFinanceRefundSchema.parse(req.body);
+
+  const result = await prisma.$transaction(async (tx) => {
+    const creditBalance = await tx.financeCreditBalance.findUnique({
+      where: { studentId },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nis: true,
+            nisn: true,
+            studentClass: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!creditBalance) {
+      throw new ApiError(404, 'Saldo kredit siswa tidak ditemukan');
+    }
+
+    const balanceBefore = Number(creditBalance.balanceAmount || 0);
+    if (balanceBefore <= 0) {
+      throw new ApiError(400, 'Saldo kredit siswa sudah kosong');
+    }
+
+    if (payload.amount > balanceBefore) {
+      throw new ApiError(400, `Nominal refund melebihi saldo kredit (maksimal ${balanceBefore})`);
+    }
+
+    const balanceAfter = Math.max(balanceBefore - payload.amount, 0);
+
+    const updatedBalance = await tx.financeCreditBalance.update({
+      where: { id: creditBalance.id },
+      data: {
+        balanceAmount: balanceAfter,
+      },
+      select: {
+        id: true,
+        balanceAmount: true,
+        updatedAt: true,
+      },
+    });
+
+    const creditTransaction = await tx.financeCreditTransaction.create({
+      data: {
+        balanceId: creditBalance.id,
+        studentId,
+        kind: FinanceCreditTransactionKind.REFUND,
+        amount: payload.amount,
+        balanceBefore,
+        balanceAfter,
+        note: payload.note?.trim() || null,
+        createdById: actor.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    const refund = await tx.financeRefund.create({
+      data: {
+        refundNo: makeFinanceRefundNo(studentId),
+        studentId,
+        creditBalanceId: creditBalance.id,
+        creditTransactionId: creditTransaction.id,
+        amount: payload.amount,
+        method: payload.method,
+        referenceNo: payload.referenceNo?.trim() || null,
+        note: payload.note?.trim() || null,
+        refundedAt: payload.refundedAt || new Date(),
+        createdById: actor.id,
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nis: true,
+            nisn: true,
+            studentClass: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+            },
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    return {
+      balance: {
+        id: updatedBalance.id,
+        amount: Number(updatedBalance.balanceAmount || 0),
+        updatedAt: updatedBalance.updatedAt,
+      },
+      refund: serializeFinanceRefundRecord(refund),
+      student: creditBalance.student,
+      balanceBefore,
+    };
+  });
+
+  await createFinanceNotifications({
+    studentId,
+    title: 'Refund Saldo Kredit Diproses',
+    message: `Refund saldo kredit sebesar Rp${Math.round(result.refund.amount).toLocaleString('id-ID')} berhasil diproses. Sisa saldo kredit: Rp${Math.round(result.balance.amount).toLocaleString('id-ID')}.`,
+    type: 'FINANCE_CREDIT_REFUND_RECORDED',
+    data: {
+      module: 'FINANCE',
+      studentId,
+      refundId: result.refund.id,
+      refundNo: result.refund.refundNo,
+      refundAmount: result.refund.amount,
+      balanceBefore: result.balanceBefore,
+      balanceAfter: result.balance.amount,
+    },
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      (actor.additionalDuties || []).map((duty) => String(duty)),
+      'CREATE',
+      'FINANCE_REFUND',
+      result.refund.id,
+      null,
+      {
+        studentId,
+        refundNo: result.refund.refundNo,
+        amount: result.refund.amount,
+        method: result.refund.method,
+        balanceBefore: result.balanceBefore,
+        balanceAfter: result.balance.amount,
+      },
+      'Refund saldo kredit siswa',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat refund finance', auditError);
+  }
+
+  res.status(201).json(
+    new ApiResponse(
+      201,
+      {
+        refund: result.refund,
+        balance: result.balance,
+      },
+      'Refund saldo kredit berhasil dicatat',
+    ),
+  );
 });
 
 export const listParentPayments = asyncHandler(async (req: Request, res: Response) => {
@@ -2860,34 +3427,70 @@ export const listParentPayments = asyncHandler(async (req: Request, res: Respons
 
   const childrenOverview = await Promise.all(
     targetChildren.map(async (child) => {
-      const financeInvoices = await prisma.financeInvoice.findMany({
-        where: { studentId: child.id },
-        include: {
-          items: {
-            select: {
-              amount: true,
-              component: {
-                select: {
-                  code: true,
-                  name: true,
-                  periodicity: true,
+      const [financeInvoices, creditBalance] = await Promise.all([
+        prisma.financeInvoice.findMany({
+          where: { studentId: child.id },
+          include: {
+            items: {
+              select: {
+                amount: true,
+                component: {
+                  select: {
+                    code: true,
+                    name: true,
+                    periodicity: true,
+                  },
                 },
               },
             },
-          },
-          payments: {
-            select: {
-              id: true,
-              amount: true,
-              paidAt: true,
-              createdAt: true,
-              updatedAt: true,
+            payments: {
+              select: {
+                id: true,
+                paymentNo: true,
+                amount: true,
+                allocatedAmount: true,
+                creditedAmount: true,
+                method: true,
+                referenceNo: true,
+                paidAt: true,
+                createdAt: true,
+                updatedAt: true,
+                invoice: {
+                  select: {
+                    id: true,
+                    invoiceNo: true,
+                    periodKey: true,
+                    semester: true,
+                  },
+                },
+              },
+              orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
             },
-            orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
           },
-        },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      });
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        }),
+        prisma.financeCreditBalance.findUnique({
+          where: { studentId: child.id },
+          select: {
+            balanceAmount: true,
+            updatedAt: true,
+            refunds: {
+              take: 3,
+              orderBy: [{ refundedAt: 'desc' }, { id: 'desc' }],
+              select: {
+                id: true,
+                refundNo: true,
+                amount: true,
+                method: true,
+                refundedAt: true,
+                referenceNo: true,
+                note: true,
+                createdAt: true,
+              },
+            },
+          },
+        }),
+      ]);
 
       // Prefer dynamic invoice engine when available.
       if (financeInvoices.length > 0) {
@@ -2910,12 +3513,9 @@ export const listParentPayments = asyncHandler(async (req: Request, res: Respons
             const invoiceType: PaymentType = monthlyAmount >= oneTimeAmount ? 'MONTHLY' : 'ONE_TIME';
 
             return invoice.payments.map((payment) => ({
-              id: payment.id,
-              amount: Number(payment.amount || 0),
+              ...serializeFinancePaymentRecord(payment),
               status: (invoice.status === 'PAID' ? 'PAID' : 'PARTIAL') as PaymentStatus,
               type: invoiceType,
-              createdAt: payment.paidAt || payment.createdAt,
-              updatedAt: payment.updatedAt,
             }));
           })
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -3034,9 +3634,24 @@ export const listParentPayments = asyncHandler(async (req: Request, res: Respons
               oneTimeCount: typeSummary.ONE_TIME.count,
               oneTimeAmount: typeSummary.ONE_TIME.amount,
             },
+            creditBalance: Number(creditBalance?.balanceAmount || 0),
           },
           invoices: invoiceRows,
           payments: financePayments,
+          creditBalance: {
+            balanceAmount: Number(creditBalance?.balanceAmount || 0),
+            updatedAt: creditBalance?.updatedAt || null,
+            refunds: (creditBalance?.refunds || []).map((refund) => ({
+              id: refund.id,
+              refundNo: refund.refundNo,
+              amount: Number(refund.amount || 0),
+              method: refund.method,
+              refundedAt: refund.refundedAt,
+              referenceNo: refund.referenceNo || null,
+              note: refund.note || null,
+              createdAt: refund.createdAt,
+            })),
+          },
         };
       }
 
@@ -3099,22 +3714,46 @@ export const listParentPayments = asyncHandler(async (req: Request, res: Respons
             cancelledCount: statusSummary.CANCELLED.count,
             cancelledAmount: statusSummary.CANCELLED.amount,
           },
-          type: {
-            monthlyCount: typeSummary.MONTHLY.count,
-            monthlyAmount: typeSummary.MONTHLY.amount,
-            oneTimeCount: typeSummary.ONE_TIME.count,
-            oneTimeAmount: typeSummary.ONE_TIME.amount,
+            type: {
+              monthlyCount: typeSummary.MONTHLY.count,
+              monthlyAmount: typeSummary.MONTHLY.amount,
+              oneTimeCount: typeSummary.ONE_TIME.count,
+              oneTimeAmount: typeSummary.ONE_TIME.amount,
+            },
+            creditBalance: Number(creditBalance?.balanceAmount || 0),
           },
-        },
         invoices: [],
         payments: payments.map((payment) => ({
           id: payment.id,
           amount: payment.amount,
           status: payment.status,
           type: payment.type,
+          paymentNo: null,
+          allocatedAmount: payment.amount,
+          creditedAmount: 0,
+          method: null,
+          referenceNo: null,
+          invoiceId: null,
+          invoiceNo: null,
+          periodKey: null,
+          semester: null,
           createdAt: payment.createdAt,
           updatedAt: payment.updatedAt,
         })),
+        creditBalance: {
+          balanceAmount: Number(creditBalance?.balanceAmount || 0),
+          updatedAt: creditBalance?.updatedAt || null,
+          refunds: (creditBalance?.refunds || []).map((refund) => ({
+            id: refund.id,
+            refundNo: refund.refundNo,
+            amount: Number(refund.amount || 0),
+            method: refund.method,
+            refundedAt: refund.refundedAt,
+            referenceNo: refund.referenceNo || null,
+            note: refund.note || null,
+            createdAt: refund.createdAt,
+          })),
+        },
       };
     }),
   );
@@ -3131,6 +3770,7 @@ export const listParentPayments = asyncHandler(async (req: Request, res: Respons
       acc.overdueAmount += child.summary.overdueAmount;
       acc.monthlyAmount += child.summary.type.monthlyAmount;
       acc.oneTimeAmount += child.summary.type.oneTimeAmount;
+      acc.creditBalanceAmount += Number(child.summary.creditBalance || 0);
       return acc;
     },
     {
@@ -3145,6 +3785,7 @@ export const listParentPayments = asyncHandler(async (req: Request, res: Respons
       overdueAmount: 0,
       monthlyAmount: 0,
       oneTimeAmount: 0,
+      creditBalanceAmount: 0,
     },
   );
 
@@ -3203,34 +3844,70 @@ export const listStudentPayments = asyncHandler(async (req: Request, res: Respon
     throw new ApiError(404, 'Data siswa tidak ditemukan');
   }
 
-  const financeInvoices = await prisma.financeInvoice.findMany({
-    where: { studentId },
-    include: {
-      items: {
-        select: {
-          amount: true,
-          component: {
-            select: {
-              code: true,
-              name: true,
-              periodicity: true,
+  const [financeInvoices, creditBalance] = await Promise.all([
+    prisma.financeInvoice.findMany({
+      where: { studentId },
+      include: {
+        items: {
+          select: {
+            amount: true,
+            component: {
+              select: {
+                code: true,
+                name: true,
+                periodicity: true,
+              },
             },
           },
         },
-      },
-      payments: {
-        select: {
-          id: true,
-          amount: true,
-          paidAt: true,
-          createdAt: true,
-          updatedAt: true,
+        payments: {
+          select: {
+            id: true,
+            paymentNo: true,
+            amount: true,
+            allocatedAmount: true,
+            creditedAmount: true,
+            method: true,
+            referenceNo: true,
+            paidAt: true,
+            createdAt: true,
+            updatedAt: true,
+            invoice: {
+              select: {
+                id: true,
+                invoiceNo: true,
+                periodKey: true,
+                semester: true,
+              },
+            },
+          },
+          orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
         },
-        orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
       },
-    },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-  });
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    }),
+    prisma.financeCreditBalance.findUnique({
+      where: { studentId },
+      select: {
+        balanceAmount: true,
+        updatedAt: true,
+        refunds: {
+          take: 3,
+          orderBy: [{ refundedAt: 'desc' }, { id: 'desc' }],
+          select: {
+            id: true,
+            refundNo: true,
+            amount: true,
+            method: true,
+            refundedAt: true,
+            referenceNo: true,
+            note: true,
+            createdAt: true,
+          },
+        },
+      },
+    }),
+  ]);
 
   if (financeInvoices.length > 0) {
     const statusSummary = createStatusSummary();
@@ -3252,12 +3929,9 @@ export const listStudentPayments = asyncHandler(async (req: Request, res: Respon
         const invoiceType: PaymentType = monthlyAmount >= oneTimeAmount ? 'MONTHLY' : 'ONE_TIME';
 
         return invoice.payments.map((payment) => ({
-          id: payment.id,
-          amount: Number(payment.amount || 0),
+          ...serializeFinancePaymentRecord(payment),
           status: (invoice.status === 'PAID' ? 'PAID' : 'PARTIAL') as PaymentStatus,
           type: invoiceType,
-          createdAt: payment.paidAt || payment.createdAt,
-          updatedAt: payment.updatedAt,
         }));
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -3378,12 +4052,27 @@ export const listStudentPayments = asyncHandler(async (req: Request, res: Respon
               monthlyAmount: typeSummary.MONTHLY.amount,
               oneTimeCount: typeSummary.ONE_TIME.count,
               oneTimeAmount: typeSummary.ONE_TIME.amount,
+            },
+            creditBalance: Number(creditBalance?.balanceAmount || 0),
           },
-        },
         invoices: invoiceRows,
         payments: financePayments,
+        creditBalance: {
+          balanceAmount: Number(creditBalance?.balanceAmount || 0),
+          updatedAt: creditBalance?.updatedAt || null,
+          refunds: (creditBalance?.refunds || []).map((refund) => ({
+            id: refund.id,
+            refundNo: refund.refundNo,
+            amount: Number(refund.amount || 0),
+            method: refund.method,
+            refundedAt: refund.refundedAt,
+            referenceNo: refund.referenceNo || null,
+            note: refund.note || null,
+            createdAt: refund.createdAt,
+          })),
+        },
       },
-      'Data keuangan siswa berhasil diambil',
+        'Data keuangan siswa berhasil diambil',
       ),
     );
     return;
@@ -3456,6 +4145,7 @@ export const listStudentPayments = asyncHandler(async (req: Request, res: Respon
             oneTimeCount: typeSummary.ONE_TIME.count,
             oneTimeAmount: typeSummary.ONE_TIME.amount,
           },
+          creditBalance: Number(creditBalance?.balanceAmount || 0),
         },
         invoices: [],
         payments: payments.map((payment) => ({
@@ -3463,9 +4153,32 @@ export const listStudentPayments = asyncHandler(async (req: Request, res: Respon
           amount: payment.amount,
           status: payment.status,
           type: payment.type,
+          paymentNo: null,
+          allocatedAmount: payment.amount,
+          creditedAmount: 0,
+          method: null,
+          referenceNo: null,
+          invoiceId: null,
+          invoiceNo: null,
+          periodKey: null,
+          semester: null,
           createdAt: payment.createdAt,
           updatedAt: payment.updatedAt,
         })),
+        creditBalance: {
+          balanceAmount: Number(creditBalance?.balanceAmount || 0),
+          updatedAt: creditBalance?.updatedAt || null,
+          refunds: (creditBalance?.refunds || []).map((refund) => ({
+            id: refund.id,
+            refundNo: refund.refundNo,
+            amount: Number(refund.amount || 0),
+            method: refund.method,
+            refundedAt: refund.refundedAt,
+            referenceNo: refund.referenceNo || null,
+            note: refund.note || null,
+            createdAt: refund.createdAt,
+          })),
+        },
       },
       'Data keuangan siswa berhasil diambil',
     ),

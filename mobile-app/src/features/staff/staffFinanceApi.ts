@@ -12,6 +12,7 @@ export type FinanceComponentPeriodicity = 'MONTHLY' | 'ONE_TIME' | 'PERIODIC';
 export type FinanceAdjustmentKind = 'DISCOUNT' | 'SCHOLARSHIP' | 'SURCHARGE';
 export type FinanceInvoiceStatus = 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
 export type FinancePaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER';
+export type FinanceCreditTransactionKind = 'OVERPAYMENT' | 'REFUND';
 export type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE';
 
 export type StaffFinanceComponent = {
@@ -134,6 +135,92 @@ export type StaffFinanceInvoice = {
       level: string;
     } | null;
   };
+};
+
+export type StaffFinanceCreditTransaction = {
+  id: number;
+  kind: FinanceCreditTransactionKind;
+  amount: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  note?: string | null;
+  createdAt: string;
+  createdBy?: {
+    id: number;
+    name: string;
+  } | null;
+  payment?: {
+    id: number;
+    paymentNo: string;
+    invoiceId?: number | null;
+    invoiceNo?: string | null;
+    periodKey?: string | null;
+    semester?: SemesterCode | null;
+  } | null;
+  refund?: {
+    id: number;
+    refundNo: string;
+    refundedAt: string;
+    method: FinancePaymentMethod;
+  } | null;
+};
+
+export type StaffFinanceRefundRecord = {
+  id: number;
+  refundNo: string;
+  amount: number;
+  method: FinancePaymentMethod;
+  referenceNo?: string | null;
+  note?: string | null;
+  refundedAt: string;
+  createdAt: string;
+  student: {
+    id: number;
+    name: string;
+    username: string;
+    nis?: string | null;
+    nisn?: string | null;
+    studentClass?: {
+      id: number;
+      name: string;
+      level: string;
+    } | null;
+  };
+  createdBy?: {
+    id: number;
+    name: string;
+  } | null;
+};
+
+export type StaffFinanceCreditBalanceRow = {
+  balanceId: number;
+  studentId: number;
+  balanceAmount: number;
+  updatedAt: string;
+  student: {
+    id: number;
+    name: string;
+    username: string;
+    nis?: string | null;
+    nisn?: string | null;
+    studentClass?: {
+      id: number;
+      name: string;
+      level: string;
+    } | null;
+  };
+  recentTransactions: StaffFinanceCreditTransaction[];
+};
+
+export type StaffFinanceCreditBalanceListResult = {
+  summary: {
+    totalStudentsWithCredit: number;
+    totalCreditBalance: number;
+    totalRefundRecords: number;
+    totalRefundAmount: number;
+  };
+  balances: StaffFinanceCreditBalanceRow[];
+  recentRefunds: StaffFinanceRefundRecord[];
 };
 
 export type StaffFinanceInvoiceGenerationDetailStatus =
@@ -506,10 +593,47 @@ export const staffFinanceApi = {
           id: number;
           paymentNo: string;
           amount: number;
+          allocatedAmount: number;
+          creditedAmount: number;
           method: FinancePaymentMethod;
         };
+        creditBalance?: {
+          id: number;
+          balanceAmount: number;
+          balanceBefore: number;
+        } | null;
       }>
     >(`/payments/invoices/${invoiceId}/payments`, payload);
+    return response.data.data;
+  },
+
+  async listCredits(params?: { studentId?: number; search?: string; limit?: number }) {
+    const response = await apiClient.get<ApiResponse<StaffFinanceCreditBalanceListResult>>('/payments/credits', {
+      params,
+    });
+    return response.data.data;
+  },
+
+  async createRefund(
+    studentId: number,
+    payload: {
+      amount: number;
+      method: FinancePaymentMethod;
+      referenceNo?: string;
+      note?: string;
+      refundedAt?: string;
+    },
+  ) {
+    const response = await apiClient.post<
+      ApiResponse<{
+        refund: StaffFinanceRefundRecord;
+        balance: {
+          id: number;
+          amount: number;
+          updatedAt: string;
+        };
+      }>
+    >(`/payments/credits/${studentId}/refunds`, payload);
     return response.data.data;
   },
 

@@ -47,12 +47,22 @@ export interface StudentFinanceOverview {
       oneTimeCount: number;
       oneTimeAmount: number;
     };
+    creditBalance: number;
   };
   payments: Array<{
     id: number;
+    paymentNo?: string | null;
     amount: number;
+    allocatedAmount?: number;
+    creditedAmount?: number;
     status: StudentPaymentStatus;
     type: StudentPaymentType;
+    method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER' | null;
+    referenceNo?: string | null;
+    invoiceId?: number | null;
+    invoiceNo?: string | null;
+    periodKey?: string | null;
+    semester?: 'ODD' | 'EVEN' | null;
     createdAt: string;
     updatedAt: string;
   }>;
@@ -76,6 +86,20 @@ export interface StudentFinanceOverview {
       periodicity?: 'MONTHLY' | 'ONE_TIME' | 'PERIODIC' | null;
     }>;
   }>;
+  creditBalance: {
+    balanceAmount: number;
+    updatedAt?: string | null;
+    refunds: Array<{
+      id: number;
+      refundNo: string;
+      amount: number;
+      method: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER';
+      refundedAt: string;
+      referenceNo?: string | null;
+      note?: string | null;
+      createdAt: string;
+    }>;
+  };
 }
 
 export const studentFinanceService = {

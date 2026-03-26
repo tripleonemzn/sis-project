@@ -86,8 +86,13 @@ model User {
   payments                       Payment[]
   financeInvoices                FinanceInvoice[]                 @relation("FinanceInvoiceStudent")
   financePayments                FinancePayment[]                 @relation("FinancePaymentStudent")
+  financeCreditBalance           FinanceCreditBalance?            @relation("FinanceCreditBalanceStudent")
+  financeCreditTransactions      FinanceCreditTransaction[]       @relation("FinanceCreditTransactionStudent")
+  financeRefunds                 FinanceRefund[]                  @relation("FinanceRefundStudent")
   createdFinanceInvoices         FinanceInvoice[]                 @relation("FinanceInvoiceCreator")
   createdFinancePayments         FinancePayment[]                 @relation("FinancePaymentCreator")
+  createdFinanceCreditTransactions FinanceCreditTransaction[]     @relation("FinanceCreditTransactionCreator")
+  createdFinanceRefunds          FinanceRefund[]                  @relation("FinanceRefundCreator")
   createdFinanceComponents       FinanceComponent[]               @relation("FinanceComponentCreator")
   createdFinanceTariffRules      FinanceTariffRule[]              @relation("FinanceTariffRuleCreator")
   financeAdjustmentRules         FinanceAdjustmentRule[]          @relation("FinanceAdjustmentRuleStudent")
@@ -1554,6 +1559,8 @@ model FinancePayment {
   studentId   Int
   invoiceId   Int
   amount      Float
+  allocatedAmount Float            @default(0)
+  creditedAmount Float             @default(0)
   method      FinancePaymentMethod @default(OTHER)
   referenceNo String?
   note        String?
@@ -1564,10 +1571,75 @@ model FinancePayment {
   student     User                 @relation("FinancePaymentStudent", fields: [studentId], references: [id], onDelete: Cascade)
   invoice     FinanceInvoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   createdBy   User?                @relation("FinancePaymentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  creditTransactions FinanceCreditTransaction[]
 
   @@index([studentId, paidAt])
   @@index([invoiceId, paidAt])
   @@map("finance_payments")
+}
+
+model FinanceCreditBalance {
+  id          Int                        @id @default(autoincrement())
+  studentId    Int                       @unique
+  balanceAmount Float                    @default(0)
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+  student     User                       @relation("FinanceCreditBalanceStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  transactions FinanceCreditTransaction[]
+  refunds     FinanceRefund[]
+
+  @@index([balanceAmount])
+  @@index([updatedAt])
+  @@map("finance_credit_balances")
+}
+
+model FinanceCreditTransaction {
+  id            Int                          @id @default(autoincrement())
+  balanceId     Int
+  studentId     Int
+  paymentId     Int?
+  kind          FinanceCreditTransactionKind
+  amount        Float
+  balanceBefore Float                        @default(0)
+  balanceAfter  Float                        @default(0)
+  note          String?
+  createdById   Int?
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
+  balance       FinanceCreditBalance         @relation(fields: [balanceId], references: [id], onDelete: Cascade)
+  student       User                         @relation("FinanceCreditTransactionStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  payment       FinancePayment?              @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdBy     User?                        @relation("FinanceCreditTransactionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  refund        FinanceRefund?
+
+  @@index([studentId, createdAt])
+  @@index([balanceId, createdAt])
+  @@index([paymentId])
+  @@map("finance_credit_transactions")
+}
+
+model FinanceRefund {
+  id                  Int                  @id @default(autoincrement())
+  refundNo            String               @unique
+  studentId           Int
+  creditBalanceId     Int
+  creditTransactionId Int?                 @unique
+  amount              Float
+  method              FinancePaymentMethod @default(OTHER)
+  referenceNo         String?
+  note                String?
+  refundedAt          DateTime             @default(now())
+  createdById         Int?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  student             User                 @relation("FinanceRefundStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  creditBalance       FinanceCreditBalance @relation(fields: [creditBalanceId], references: [id], onDelete: Cascade)
+  creditTransaction   FinanceCreditTransaction? @relation(fields: [creditTransactionId], references: [id], onDelete: SetNull)
+  createdBy           User?                @relation("FinanceRefundCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([studentId, refundedAt])
+  @@index([creditBalanceId, refundedAt])
+  @@map("finance_refunds")
 }
 
 model ExamPacket {
@@ -1947,6 +2019,11 @@ enum FinancePaymentMethod {
   VIRTUAL_ACCOUNT
   E_WALLET
   OTHER
+}
+
+enum FinanceCreditTransactionKind {
+  OVERPAYMENT
+  REFUND
 }
 
 enum Gender {

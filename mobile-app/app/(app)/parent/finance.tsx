@@ -316,6 +316,25 @@ export default function ParentFinanceScreen() {
                       </Text>
                     </View>
                   </View>
+                  <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                    <View
+                      style={{
+                        backgroundColor: '#fff',
+                        borderWidth: 1,
+                        borderColor: '#dbe7fb',
+                        borderRadius: 10,
+                        padding: 10,
+                      }}
+                    >
+                      <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Saldo Kredit</Text>
+                      <Text style={{ color: '#0369a1', fontWeight: '700', fontSize: 15 }}>
+                        {formatCurrency(selectedChildFinance.summary.creditBalance)}
+                      </Text>
+                      <Text style={{ color: '#0ea5e9', marginTop: 2, fontSize: 12 }}>
+                        Kelebihan bayar anak
+                      </Text>
+                    </View>
+                  </View>
                 </View>
 
                 <View
@@ -423,9 +442,19 @@ export default function ParentFinanceScreen() {
                         <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', marginTop: 5 }}>
                           {formatCurrency(payment.amount)}
                         </Text>
+                        {Number(payment.creditedAmount || 0) > 0 ? (
+                          <Text style={{ color: '#0369a1', fontSize: 12, marginTop: 2 }}>
+                            Saldo kredit: {formatCurrency(payment.creditedAmount || 0)}
+                          </Text>
+                        ) : null}
                         <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
                           Tanggal: {formatDate(payment.createdAt)}
                         </Text>
+                        {Number(payment.creditedAmount || 0) > 0 ? (
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                            Dialokasikan: {formatCurrency(payment.allocatedAmount || 0)}
+                          </Text>
+                        ) : null}
                       </View>
                     ))
                   ) : (

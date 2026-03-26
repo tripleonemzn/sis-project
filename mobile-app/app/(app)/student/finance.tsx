@@ -201,6 +201,26 @@ export default function StudentFinanceScreen() {
                 </Text>
               </View>
             </View>
+
+            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+              <View
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 10,
+                  padding: 10,
+                }}
+              >
+                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Saldo Kredit</Text>
+                <Text style={{ color: '#0369a1', fontWeight: '700', fontSize: 15 }}>
+                  {formatCurrency(overview.summary.creditBalance)}
+                </Text>
+                <Text style={{ color: '#0ea5e9', fontSize: 12, marginTop: 2 }}>
+                  Kelebihan bayar tersimpan
+                </Text>
+              </View>
+            </View>
           </View>
 
           <View
@@ -327,9 +347,19 @@ export default function StudentFinanceScreen() {
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 4 }}>
                     {formatCurrency(payment.amount)}
                   </Text>
+                  {Number(payment.creditedAmount || 0) > 0 ? (
+                    <Text style={{ color: '#0369a1', marginTop: 2, fontSize: 12 }}>
+                      Saldo kredit: {formatCurrency(payment.creditedAmount || 0)}
+                    </Text>
+                  ) : null}
                   <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
                     Tanggal: {formatDate(payment.createdAt)}
                   </Text>
+                  {Number(payment.creditedAmount || 0) > 0 ? (
+                    <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                      Dialokasikan ke invoice: {formatCurrency(payment.allocatedAmount || 0)}
+                    </Text>
+                  ) : null}
                 </View>
               ))
             ) : (

@@ -5,10 +5,12 @@ import {
   dispatchFinanceDueRemindersHandler,
   exportFinanceReports,
   createFinancePayment,
+  createFinanceRefund,
   createFinanceTariffRule,
   generateFinanceInvoices,
   listFinanceAdjustmentRules,
   listFinanceComponents,
+  listFinanceCredits,
   listFinanceInvoices,
   listFinanceReports,
   listStudentPayments,
@@ -41,6 +43,8 @@ router.post('/invoices/preview', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), 
 router.post('/invoices/generate', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), generateFinanceInvoices);
 router.get('/invoices', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceInvoices);
 router.post('/invoices/:id/payments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinancePayment);
+router.get('/credits', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceCredits);
+router.post('/credits/:studentId/refunds', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceRefund);
 router.post('/reminders/dispatch', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), dispatchFinanceDueRemindersHandler);
 router.get('/reports', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceReports);
 router.get(

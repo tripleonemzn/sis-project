@@ -19,6 +19,8 @@ import {
   type FinanceAdjustmentKind,
   staffFinanceApi,
   type FinanceComponentPeriodicity,
+  type StaffFinanceCreditBalanceRow,
+  type StaffFinanceCreditTransaction,
   type FinanceInvoiceStatus,
   type FinancePaymentMethod,
   type FinanceReminderMode,
@@ -26,6 +28,7 @@ import {
   type StaffFinanceAdjustmentRule,
   type StaffFinanceComponent,
   type StaffFinanceInvoice,
+  type StaffFinanceRefundRecord,
   type StaffFinanceTariffRule,
 } from '../../../src/features/staff/staffFinanceApi';
 import { staffApi } from '../../../src/features/staff/staffApi';
@@ -129,6 +132,15 @@ function describeTariffScope(tariff: StaffFinanceTariffRule) {
 
 function getAdjustmentKindLabel(kind: FinanceAdjustmentKind) {
   return ADJUSTMENT_KIND_OPTIONS.find((option) => option.value === kind)?.label || kind;
+}
+
+function getPaymentMethodLabel(method?: FinancePaymentMethod | null) {
+  return PAYMENT_METHOD_OPTIONS.find((option) => option.value === method)?.label || method || '-';
+}
+
+function getCreditTransactionLabel(transaction: StaffFinanceCreditTransaction) {
+  if (transaction.kind === 'REFUND') return 'Refund saldo kredit';
+  return 'Kelebihan bayar masuk saldo kredit';
 }
 
 function describeAdjustmentScope(adjustment: StaffFinanceAdjustmentRule) {
@@ -265,6 +277,12 @@ export default function StaffPaymentsScreen() {
   const [paymentMethod, setPaymentMethod] = useState<FinancePaymentMethod>('CASH');
   const [paymentReference, setPaymentReference] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
+  const [creditSearch, setCreditSearch] = useState('');
+  const [selectedCreditBalance, setSelectedCreditBalance] = useState<StaffFinanceCreditBalanceRow | null>(null);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundMethod, setRefundMethod] = useState<FinancePaymentMethod>('BANK_TRANSFER');
+  const [refundReference, setRefundReference] = useState('');
+  const [refundNote, setRefundNote] = useState('');
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-staff-finance-active-year'],
@@ -410,6 +428,16 @@ export default function StaffPaymentsScreen() {
       }),
   });
 
+  const creditsQuery = useQuery({
+    queryKey: ['mobile-staff-finance-credits', creditSearch],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () =>
+      staffFinanceApi.listCredits({
+        limit: 50,
+        search: creditSearch.trim() || undefined,
+      }),
+  });
+
   const dashboardQuery = useQuery({
     queryKey: ['mobile-staff-finance-dashboard', activeYearQuery.data?.id || 'none'],
     enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments && Boolean(activeYearQuery.data?.id),
@@ -424,6 +452,12 @@ export default function StaffPaymentsScreen() {
   const adjustments = adjustmentsQuery.data || [];
   const invoices = invoicesQuery.data?.invoices || [];
   const invoiceSummary = invoicesQuery.data?.summary;
+  const creditSummary = creditsQuery.data?.summary;
+  const creditBalances = creditsQuery.data?.balances || [];
+  const recentRefunds = creditsQuery.data?.recentRefunds || [];
+  const paymentPreviewAmount = Number(paymentAmount || 0);
+  const paymentAllocatedAmount = Math.min(paymentPreviewAmount, Number(selectedInvoice?.balanceAmount || 0));
+  const paymentCreditedAmount = Math.max(paymentPreviewAmount - Number(selectedInvoice?.balanceAmount || 0), 0);
 
   useEffect(() => {
     if (invoiceAcademicYearId == null && activeYearQuery.data?.id) {
@@ -495,11 +529,20 @@ export default function StaffPaymentsScreen() {
     setAdjustmentNotes('');
   };
 
+  const resetRefundForm = () => {
+    setSelectedCreditBalance(null);
+    setRefundAmount('');
+    setRefundMethod('BANK_TRANSFER');
+    setRefundReference('');
+    setRefundNote('');
+  };
+
   const invalidateFinanceQueries = () => {
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-components'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-tariffs'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-adjustments'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-invoices'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-credits'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-dashboard'] });
   };
 
@@ -714,6 +757,24 @@ export default function StaffPaymentsScreen() {
     onError: (error: unknown) => notifyApiError(error, 'Gagal mencatat pembayaran.'),
   });
 
+  const refundMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedCreditBalance) throw new Error('Saldo kredit belum dipilih');
+      return staffFinanceApi.createRefund(selectedCreditBalance.studentId, {
+        amount: Number(refundAmount),
+        method: refundMethod,
+        referenceNo: refundReference || undefined,
+        note: refundNote || undefined,
+      });
+    },
+    onSuccess: () => {
+      notifySuccess('Refund saldo kredit berhasil dicatat.');
+      resetRefundForm();
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal mencatat refund saldo kredit.'),
+  });
+
   const handleSaveComponent = () => {
     if (!componentCode.trim() || !componentName.trim()) {
       notifyApiError(null, 'Kode dan nama komponen wajib diisi.');
@@ -783,6 +844,14 @@ export default function StaffPaymentsScreen() {
     setPaymentNote('');
   };
 
+  const startRefund = (balance: StaffFinanceCreditBalanceRow) => {
+    setSelectedCreditBalance(balance);
+    setRefundAmount(String(Number(balance.balanceAmount || 0)));
+    setRefundMethod('BANK_TRANSFER');
+    setRefundReference('');
+    setRefundNote('');
+  };
+
   const handleEditAdjustment = (adjustment: StaffFinanceAdjustmentRule) => {
     setEditingAdjustmentId(adjustment.id);
     setAdjustmentCode(adjustment.code);
@@ -826,6 +895,22 @@ export default function StaffPaymentsScreen() {
   const handleClearAdjustmentStudent = () => {
     setAdjustmentStudentId(null);
     setAdjustmentStudentSearch('');
+  };
+
+  const handleSaveRefund = () => {
+    if (!selectedCreditBalance) {
+      notifyApiError(null, 'Saldo kredit siswa belum dipilih.');
+      return;
+    }
+    if (Number(refundAmount) <= 0) {
+      notifyApiError(null, 'Nominal refund harus lebih dari nol.');
+      return;
+    }
+    if (Number(refundAmount) > Number(selectedCreditBalance.balanceAmount || 0)) {
+      notifyApiError(null, 'Nominal refund melebihi saldo kredit siswa.');
+      return;
+    }
+    refundMutation.mutate();
   };
 
   useEffect(() => {
@@ -885,6 +970,7 @@ export default function StaffPaymentsScreen() {
     componentsQuery.isLoading ||
     tariffsQuery.isLoading ||
     adjustmentsQuery.isLoading ||
+    creditsQuery.isLoading ||
     invoicesQuery.isLoading ||
     studentsQuery.isLoading;
 
@@ -899,6 +985,7 @@ export default function StaffPaymentsScreen() {
             componentsQuery.isFetching ||
             tariffsQuery.isFetching ||
             adjustmentsQuery.isFetching ||
+            creditsQuery.isFetching ||
             invoicesQuery.isFetching ||
             dashboardQuery.isFetching
           }
@@ -907,6 +994,7 @@ export default function StaffPaymentsScreen() {
             void componentsQuery.refetch();
             void tariffsQuery.refetch();
             void adjustmentsQuery.refetch();
+            void creditsQuery.refetch();
             void invoicesQuery.refetch();
             void dashboardQuery.refetch();
             void studentsQuery.refetch();
@@ -922,7 +1010,7 @@ export default function StaffPaymentsScreen() {
       </Text>
 
       {isInitialLoading ? <QueryStateView type="loading" message="Mengambil data keuangan..." /> : null}
-      {componentsQuery.isError || tariffsQuery.isError || adjustmentsQuery.isError || invoicesQuery.isError ? (
+      {componentsQuery.isError || tariffsQuery.isError || adjustmentsQuery.isError || creditsQuery.isError || invoicesQuery.isError ? (
         <QueryStateView
           type="error"
           message="Gagal memuat data keuangan staff."
@@ -930,6 +1018,7 @@ export default function StaffPaymentsScreen() {
             void componentsQuery.refetch();
             void tariffsQuery.refetch();
             void adjustmentsQuery.refetch();
+            void creditsQuery.refetch();
             void invoicesQuery.refetch();
           }}
         />
@@ -1121,6 +1210,148 @@ export default function StaffPaymentsScreen() {
                   >
                     <Text style={{ color: '#334155' }}>{row.className}</Text>
                     <Text style={{ color: '#92400e', fontWeight: '700' }}>{formatCurrency(row.amount)}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Saldo Kredit Siswa</Text>
+            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+              Kelebihan bayar akan masuk ke saldo kredit dan bisa direfund dari sini.
+            </Text>
+
+            <TextInput
+              value={creditSearch}
+              onChangeText={setCreditSearch}
+              placeholder="Cari siswa / NIS / kelas"
+              placeholderTextColor="#94a3b8"
+              style={{
+                borderWidth: 1,
+                borderColor: '#d1d5db',
+                borderRadius: 8,
+                paddingHorizontal: 10,
+                paddingVertical: 9,
+                marginBottom: 10,
+                color: '#0f172a',
+                backgroundColor: '#fff',
+              }}
+            />
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
+              <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                <View style={{ backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#86efac', borderRadius: 10, padding: 10 }}>
+                  <Text style={{ color: '#166534', fontSize: 11 }}>Siswa dengan Kredit</Text>
+                  <Text style={{ color: '#166534', fontWeight: '700', fontSize: 16, marginTop: 3 }}>
+                    {creditSummary?.totalStudentsWithCredit || 0}
+                  </Text>
+                </View>
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                <View style={{ backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#86efac', borderRadius: 10, padding: 10 }}>
+                  <Text style={{ color: '#166534', fontSize: 11 }}>Total Saldo Kredit</Text>
+                  <Text style={{ color: '#166534', fontWeight: '700', fontSize: 16, marginTop: 3 }}>
+                    {formatCurrency(creditSummary?.totalCreditBalance || 0)}
+                  </Text>
+                </View>
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                <View style={{ backgroundColor: '#f0f9ff', borderWidth: 1, borderColor: '#bae6fd', borderRadius: 10, padding: 10 }}>
+                  <Text style={{ color: '#0369a1', fontSize: 11 }}>Total Refund</Text>
+                  <Text style={{ color: '#0369a1', fontWeight: '700', fontSize: 16, marginTop: 3 }}>
+                    {creditSummary?.totalRefundRecords || 0}
+                  </Text>
+                </View>
+              </View>
+              <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                <View style={{ backgroundColor: '#f0f9ff', borderWidth: 1, borderColor: '#bae6fd', borderRadius: 10, padding: 10 }}>
+                  <Text style={{ color: '#0369a1', fontSize: 11 }}>Nominal Refund</Text>
+                  <Text style={{ color: '#0369a1', fontWeight: '700', fontSize: 16, marginTop: 3 }}>
+                    {formatCurrency(creditSummary?.totalRefundAmount || 0)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {creditsQuery.isLoading ? (
+              <Text style={{ color: '#64748b' }}>Memuat saldo kredit...</Text>
+            ) : creditBalances.length === 0 ? (
+              <Text style={{ color: '#64748b' }}>Belum ada saldo kredit aktif.</Text>
+            ) : (
+              creditBalances.map((balance) => (
+                <View
+                  key={balance.balanceId}
+                  style={{
+                    borderTopWidth: 1,
+                    borderTopColor: '#eef2ff',
+                    paddingVertical: 10,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#0f172a', fontWeight: '700' }}>{balance.student.name}</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        {balance.student.studentClass?.name || 'Tanpa kelas'} • {balance.student.nis || balance.student.username}
+                      </Text>
+                      {balance.recentTransactions.map((transaction) => (
+                        <Text key={transaction.id} style={{ color: '#64748b', fontSize: 11, marginTop: 4 }}>
+                          {getCreditTransactionLabel(transaction)} • {formatCurrency(transaction.amount)} • saldo {formatCurrency(transaction.balanceAfter)}
+                        </Text>
+                      ))}
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ color: '#166534', fontWeight: '700' }}>{formatCurrency(balance.balanceAmount)}</Text>
+                      <Pressable
+                        onPress={() => startRefund(balance)}
+                        disabled={balance.balanceAmount <= 0}
+                        style={{
+                          marginTop: 8,
+                          borderWidth: 1,
+                          borderColor: '#bae6fd',
+                          backgroundColor: '#f0f9ff',
+                          borderRadius: 8,
+                          paddingHorizontal: 10,
+                          paddingVertical: 7,
+                          opacity: balance.balanceAmount <= 0 ? 0.5 : 1,
+                        }}
+                      >
+                        <Text style={{ color: '#0369a1', fontWeight: '700', fontSize: 12 }}>Refund</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+              ))
+            )}
+
+            <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', marginTop: 8, paddingTop: 8 }}>
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Refund Terbaru</Text>
+              {recentRefunds.length === 0 ? (
+                <Text style={{ color: '#64748b' }}>Belum ada refund saldo kredit.</Text>
+              ) : (
+                recentRefunds.slice(0, 6).map((refund: StaffFinanceRefundRecord) => (
+                  <View key={refund.id} style={{ paddingVertical: 7, borderTopWidth: 1, borderTopColor: '#eef2ff' }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#0f172a', fontWeight: '700' }}>{refund.student.name}</Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                          {refund.refundNo} • {getPaymentMethodLabel(refund.method)}
+                        </Text>
+                      </View>
+                      <Text style={{ color: '#0369a1', fontWeight: '700' }}>{formatCurrency(refund.amount)}</Text>
+                    </View>
+                    <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+                      {formatDate(refund.refundedAt)} • {refund.student.studentClass?.name || 'Tanpa kelas'}
+                    </Text>
                   </View>
                 ))
               )}
@@ -3016,6 +3247,25 @@ export default function StaffPaymentsScreen() {
                 style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
               />
 
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#bbf7d0',
+                  backgroundColor: '#f0fdf4',
+                  borderRadius: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  marginBottom: 8,
+                }}
+              >
+                <Text style={{ color: '#166534', fontSize: 12 }}>
+                  Dialokasikan ke invoice: <Text style={{ fontWeight: '700' }}>{formatCurrency(paymentAllocatedAmount)}</Text>
+                </Text>
+                <Text style={{ color: '#166534', fontSize: 12, marginTop: 2 }}>
+                  Masuk saldo kredit: <Text style={{ fontWeight: '700' }}>{formatCurrency(paymentCreditedAmount)}</Text>
+                </Text>
+              </View>
+
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   {PAYMENT_METHOD_OPTIONS.map((methodOption) => {
@@ -3081,6 +3331,99 @@ export default function StaffPaymentsScreen() {
                 >
                   <Text style={{ color: '#fff', fontWeight: '700' }}>
                     {payInvoiceMutation.isPending ? 'Memproses...' : 'Simpan'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={Boolean(selectedCreditBalance)} animationType="fade" transparent onRequestClose={resetRefundForm}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#dbe7fb' }}>
+            <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>Refund Saldo Kredit</Text>
+              <Text style={{ color: '#64748b', marginTop: 2 }}>
+                {selectedCreditBalance?.student.name || '-'} • Saldo {formatCurrency(selectedCreditBalance?.balanceAmount || 0)}
+              </Text>
+            </View>
+
+            <View style={{ padding: 14 }}>
+              <TextInput
+                keyboardType="numeric"
+                value={refundAmount}
+                onChangeText={setRefundAmount}
+                placeholder="Nominal refund"
+                placeholderTextColor="#94a3b8"
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+              />
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {PAYMENT_METHOD_OPTIONS.map((methodOption) => {
+                    const active = refundMethod === methodOption.value;
+                    return (
+                      <Pressable
+                        key={`refund-${methodOption.value}`}
+                        onPress={() => setRefundMethod(methodOption.value)}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: active ? '#1d4ed8' : '#dbeafe',
+                          backgroundColor: active ? '#e9f1ff' : '#fff',
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                        }}
+                      >
+                        <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                          {methodOption.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+
+              <TextInput
+                value={refundReference}
+                onChangeText={setRefundReference}
+                placeholder="Referensi refund (opsional)"
+                placeholderTextColor="#94a3b8"
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+              />
+              <TextInput
+                value={refundNote}
+                onChangeText={setRefundNote}
+                placeholder="Catatan refund (opsional)"
+                placeholderTextColor="#94a3b8"
+                multiline
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', minHeight: 72, textAlignVertical: 'top', backgroundColor: '#fff' }}
+              />
+            </View>
+
+            <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', padding: 12, flexDirection: 'row' }}>
+              <View style={{ flex: 1, paddingRight: 6 }}>
+                <Pressable
+                  onPress={resetRefundForm}
+                  style={{ borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, paddingVertical: 10, alignItems: 'center', backgroundColor: '#fff' }}
+                >
+                  <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+                </Pressable>
+              </View>
+              <View style={{ flex: 1, paddingLeft: 6 }}>
+                <Pressable
+                  disabled={refundMutation.isPending || Number(refundAmount) <= 0}
+                  onPress={handleSaveRefund}
+                  style={{
+                    backgroundColor: refundMutation.isPending || Number(refundAmount) <= 0 ? '#93c5fd' : '#0284c7',
+                    borderRadius: 10,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>
+                    {refundMutation.isPending ? 'Memproses...' : 'Simpan Refund'}
                   </Text>
                 </Pressable>
               </View>

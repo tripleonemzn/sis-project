@@ -82,9 +82,18 @@ export type ParentPaymentType = 'MONTHLY' | 'ONE_TIME';
 
 export type ParentPaymentRecord = {
   id: number;
+  paymentNo?: string | null;
   amount: number;
+  allocatedAmount?: number;
+  creditedAmount?: number;
   status: ParentPaymentStatus;
   type: ParentPaymentType;
+  method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER' | null;
+  referenceNo?: string | null;
+  invoiceId?: number | null;
+  invoiceNo?: string | null;
+  periodKey?: string | null;
+  semester?: 'ODD' | 'EVEN' | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -110,6 +119,7 @@ export type ParentChildFinanceSummary = {
     oneTimeCount: number;
     oneTimeAmount: number;
   };
+  creditBalance: number;
 };
 
 export type ParentChildFinanceOverview = {
@@ -136,6 +146,20 @@ export type ParentChildFinanceOverview = {
     }>;
   }>;
   payments: ParentPaymentRecord[];
+  creditBalance: {
+    balanceAmount: number;
+    updatedAt?: string | null;
+    refunds: Array<{
+      id: number;
+      refundNo: string;
+      amount: number;
+      method: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER';
+      refundedAt: string;
+      referenceNo?: string | null;
+      note?: string | null;
+      createdAt: string;
+    }>;
+  };
 };
 
 export type ParentFinanceOverview = {
@@ -156,6 +180,7 @@ export type ParentFinanceOverview = {
     overdueAmount: number;
     monthlyAmount: number;
     oneTimeAmount: number;
+    creditBalanceAmount: number;
   };
   children: ParentChildFinanceOverview[];
 };

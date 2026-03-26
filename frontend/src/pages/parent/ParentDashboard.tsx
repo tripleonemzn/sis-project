@@ -51,9 +51,18 @@ interface ParentChildLookupResult {
 
 interface ParentPayment {
   id: number;
+  paymentNo?: string | null;
   amount: number;
+  allocatedAmount?: number;
+  creditedAmount?: number;
   status: ParentPaymentStatus;
   type: 'MONTHLY' | 'ONE_TIME';
+  method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER' | null;
+  referenceNo?: string | null;
+  invoiceId?: number | null;
+  invoiceNo?: string | null;
+  periodKey?: string | null;
+  semester?: SemesterCode | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -81,6 +90,7 @@ interface ParentChildFinanceOverview {
       oneTimeCount: number;
       oneTimeAmount: number;
     };
+    creditBalance: number;
   };
   invoices: Array<{
     id: number;
@@ -103,6 +113,20 @@ interface ParentChildFinanceOverview {
     }>;
   }>;
   payments: ParentPayment[];
+  creditBalance: {
+    balanceAmount: number;
+    updatedAt?: string | null;
+    refunds: Array<{
+      id: number;
+      refundNo: string;
+      amount: number;
+      method: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER';
+      refundedAt: string;
+      referenceNo?: string | null;
+      note?: string | null;
+      createdAt: string;
+    }>;
+  };
 }
 
 interface ParentFinanceOverview {
@@ -123,6 +147,7 @@ interface ParentFinanceOverview {
     overdueAmount: number;
     monthlyAmount: number;
     oneTimeAmount: number;
+    creditBalanceAmount: number;
   };
   children: ParentChildFinanceOverview[];
 }
@@ -944,7 +969,7 @@ const ParentFinancePage = () => {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
           <p className="text-xs uppercase tracking-wider text-gray-500">Total Nominal</p>
           <p className="mt-2 text-xl font-bold text-gray-900">
@@ -983,6 +1008,13 @@ const ParentFinancePage = () => {
           <p className="mt-1 text-xs text-gray-500">
             {activeYearName} • {semester === 'ODD' ? 'Semester Ganjil' : 'Semester Genap'}
           </p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <p className="text-xs uppercase tracking-wider text-gray-500">Saldo Kredit</p>
+          <p className="mt-2 text-xl font-bold text-sky-700">
+            {formatCurrency(selectedChildFinance?.summary.creditBalance || 0)}
+          </p>
+          <p className="mt-1 text-xs text-gray-500">Kelebihan bayar anak</p>
         </div>
       </div>
 
@@ -1106,6 +1138,11 @@ const ParentFinancePage = () => {
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-900 text-right font-medium">
                               {formatCurrency(payment.amount)}
+                              {Number(payment.creditedAmount || 0) > 0 ? (
+                                <div className="mt-1 text-[11px] font-normal text-sky-700">
+                                  Kredit: {formatCurrency(payment.creditedAmount || 0)}
+                                </div>
+                              ) : null}
                             </td>
                             <td className="px-6 py-4 text-sm">
                               <span
@@ -1113,6 +1150,11 @@ const ParentFinancePage = () => {
                               >
                                 {PAYMENT_STATUS_LABELS[payment.status]}
                               </span>
+                              {Number(payment.creditedAmount || 0) > 0 ? (
+                                <div className="mt-1 text-[11px] text-gray-500">
+                                  Dialokasikan: {formatCurrency(payment.allocatedAmount || 0)}
+                                </div>
+                              ) : null}
                             </td>
                           </tr>
                         ))}

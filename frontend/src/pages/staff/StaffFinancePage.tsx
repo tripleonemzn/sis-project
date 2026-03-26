@@ -6,6 +6,9 @@ import { academicYearService, type AcademicYear } from '../../services/academicY
 import {
   type FinanceAdjustmentKind,
   type FinanceAdjustmentRule,
+  type FinanceCreditBalanceRow,
+  type FinanceCreditTransaction,
+  type FinanceRefundRecord,
   staffFinanceService,
   type FinanceComponent,
   type FinanceComponentPeriodicity,
@@ -117,6 +120,15 @@ function describeTariffScope(tariff: FinanceTariffRule) {
 
 function getAdjustmentKindLabel(kind: FinanceAdjustmentKind) {
   return ADJUSTMENT_KIND_OPTIONS.find((option) => option.value === kind)?.label || kind;
+}
+
+function getPaymentMethodLabel(method?: FinancePaymentMethod | null) {
+  return PAYMENT_METHOD_OPTIONS.find((option) => option.value === method)?.label || method || '-';
+}
+
+function getCreditTransactionLabel(transaction: FinanceCreditTransaction) {
+  if (transaction.kind === 'REFUND') return 'Refund saldo kredit';
+  return 'Kelebihan bayar masuk saldo kredit';
 }
 
 function describeAdjustmentScope(adjustment: FinanceAdjustmentRule) {
@@ -241,6 +253,12 @@ export const StaffFinancePage = () => {
   const [paymentMethod, setPaymentMethod] = useState<FinancePaymentMethod>('CASH');
   const [paymentReference, setPaymentReference] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
+  const [creditSearch, setCreditSearch] = useState('');
+  const [selectedCreditBalance, setSelectedCreditBalance] = useState<FinanceCreditBalanceRow | null>(null);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundMethod, setRefundMethod] = useState<FinancePaymentMethod>('BANK_TRANSFER');
+  const [refundReference, setRefundReference] = useState('');
+  const [refundNote, setRefundNote] = useState('');
 
   const yearsQuery = useQuery({
     queryKey: ['staff-finance-academic-years'],
@@ -286,6 +304,15 @@ export const StaffFinancePage = () => {
         status: invoiceStatusFilter || undefined,
         search: invoiceSearch.trim() || undefined,
         classId: invoiceClassFilter === '' ? undefined : Number(invoiceClassFilter),
+      }),
+  });
+
+  const creditsQuery = useQuery({
+    queryKey: ['staff-finance-credits', creditSearch],
+    queryFn: () =>
+      staffFinanceService.listCredits({
+        limit: 50,
+        search: creditSearch.trim() || undefined,
       }),
   });
 
@@ -418,6 +445,12 @@ export const StaffFinancePage = () => {
   const adjustments = adjustmentsQuery.data || [];
   const invoices = invoicesQuery.data?.invoices || [];
   const invoiceSummary = invoicesQuery.data?.summary;
+  const creditSummary = creditsQuery.data?.summary;
+  const creditBalances = creditsQuery.data?.balances || [];
+  const recentRefunds = creditsQuery.data?.recentRefunds || [];
+  const paymentPreviewAmount = Number(paymentAmount || 0);
+  const paymentAllocatedAmount = Math.min(paymentPreviewAmount, Number(selectedInvoice?.balanceAmount || 0));
+  const paymentCreditedAmount = Math.max(paymentPreviewAmount - Number(selectedInvoice?.balanceAmount || 0), 0);
   const overdueCount = useMemo(() => {
     const today = Date.now();
     return invoices.filter((invoice) => {
@@ -483,6 +516,14 @@ export const StaffFinancePage = () => {
     setAdjustmentEffectiveStart('');
     setAdjustmentEffectiveEnd('');
     setAdjustmentNotes('');
+  };
+
+  const resetRefundForm = () => {
+    setSelectedCreditBalance(null);
+    setRefundAmount('');
+    setRefundMethod('BANK_TRANSFER');
+    setRefundReference('');
+    setRefundNote('');
   };
 
   const saveComponentMutation = useMutation({
@@ -714,11 +755,37 @@ export const StaffFinancePage = () => {
       setPaymentNote('');
       setPaymentMethod('CASH');
       queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-credits'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
       toast.error(apiError?.response?.data?.message || 'Gagal mencatat pembayaran');
+    },
+  });
+
+  const refundMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedCreditBalance) {
+        throw new Error('Saldo kredit belum dipilih');
+      }
+      return staffFinanceService.createRefund(selectedCreditBalance.studentId, {
+        amount: Number(refundAmount),
+        method: refundMethod,
+        referenceNo: refundReference || undefined,
+        note: refundNote || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success('Refund saldo kredit berhasil dicatat');
+      resetRefundForm();
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-credits'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal mencatat refund saldo kredit');
     },
   });
 
@@ -746,6 +813,14 @@ export const StaffFinancePage = () => {
     setPaymentMethod('CASH');
     setPaymentReference('');
     setPaymentNote('');
+  };
+
+  const startRefund = (balance: FinanceCreditBalanceRow) => {
+    setSelectedCreditBalance(balance);
+    setRefundAmount(String(Number(balance.balanceAmount || 0)));
+    setRefundMethod('BANK_TRANSFER');
+    setRefundReference('');
+    setRefundNote('');
   };
 
   const handleSaveComponent = () => {
@@ -871,6 +946,22 @@ export const StaffFinancePage = () => {
     setAdjustmentStudentSearch('');
   };
 
+  const handleSaveRefund = () => {
+    if (!selectedCreditBalance) {
+      toast.error('Saldo kredit siswa belum dipilih');
+      return;
+    }
+    if (Number(refundAmount) <= 0) {
+      toast.error('Nominal refund harus lebih dari nol');
+      return;
+    }
+    if (Number(refundAmount) > Number(selectedCreditBalance.balanceAmount || 0)) {
+      toast.error('Nominal refund melebihi saldo kredit siswa');
+      return;
+    }
+    refundMutation.mutate();
+  };
+
   useEffect(() => {
     previewInvoiceMutation.reset();
   }, [
@@ -971,6 +1062,135 @@ export const StaffFinancePage = () => {
               ))}
             </div>
           )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="xl:col-span-2 rounded-xl border border-emerald-100 bg-white shadow-sm overflow-hidden">
+          <div className="px-4 py-4 border-b border-emerald-50 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-xs uppercase tracking-wider text-emerald-700">Saldo Kredit Siswa</div>
+              <p className="mt-1 text-sm text-slate-600">
+                Kelebihan bayar otomatis masuk ke saldo kredit dan bisa direfund dari sini.
+              </p>
+            </div>
+            <input
+              value={creditSearch}
+              onChange={(event) => setCreditSearch(event.target.value)}
+              placeholder="Cari siswa / NIS / kelas"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full lg:w-72"
+            />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 px-4 py-4 border-b border-gray-100 bg-emerald-50/40">
+            <div className="rounded-lg border border-emerald-100 bg-white px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-emerald-700">Siswa dengan Kredit</div>
+              <div className="mt-1 text-lg font-bold text-emerald-900">{creditSummary?.totalStudentsWithCredit || 0}</div>
+            </div>
+            <div className="rounded-lg border border-emerald-100 bg-white px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-emerald-700">Total Saldo Kredit</div>
+              <div className="mt-1 text-lg font-bold text-emerald-900">
+                {formatCurrency(creditSummary?.totalCreditBalance || 0)}
+              </div>
+            </div>
+            <div className="rounded-lg border border-sky-100 bg-white px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-sky-700">Total Refund</div>
+              <div className="mt-1 text-lg font-bold text-sky-900">{creditSummary?.totalRefundRecords || 0}</div>
+            </div>
+            <div className="rounded-lg border border-sky-100 bg-white px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-sky-700">Nominal Refund</div>
+              <div className="mt-1 text-lg font-bold text-sky-900">
+                {formatCurrency(creditSummary?.totalRefundAmount || 0)}
+              </div>
+            </div>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {creditsQuery.isLoading ? (
+              <div className="px-4 py-8 text-sm text-slate-500">Memuat saldo kredit...</div>
+            ) : creditBalances.length === 0 ? (
+              <div className="px-4 py-8 text-sm text-slate-500">Belum ada saldo kredit aktif.</div>
+            ) : (
+              creditBalances.map((balance) => (
+                <div key={balance.balanceId} className="px-4 py-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-900">{balance.student.name}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {balance.student.studentClass?.name || 'Tanpa kelas'} • {balance.student.nis || balance.student.username}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {balance.recentTransactions.map((transaction) => (
+                          <span
+                            key={transaction.id}
+                            className={`inline-flex items-center rounded-full border px-2 py-1 text-[11px] font-semibold ${
+                              transaction.kind === 'REFUND'
+                                ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            }`}
+                          >
+                            {getCreditTransactionLabel(transaction)} • {formatCurrency(transaction.amount)}
+                          </span>
+                        ))}
+                      </div>
+                      {balance.recentTransactions.length > 0 ? (
+                        <div className="mt-2 space-y-1">
+                          {balance.recentTransactions.map((transaction) => (
+                            <div key={`detail-${transaction.id}`} className="text-xs text-slate-500">
+                              {formatDate(transaction.createdAt)} • saldo {formatCurrency(transaction.balanceAfter)}
+                              {transaction.payment?.invoiceNo ? ` • ${transaction.payment.invoiceNo}` : ''}
+                              {transaction.refund?.refundNo ? ` • ${transaction.refund.refundNo}` : ''}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-col items-start lg:items-end gap-2">
+                      <div className="text-xs uppercase tracking-wider text-slate-500">Saldo Kredit</div>
+                      <div className="text-xl font-bold text-emerald-900">{formatCurrency(balance.balanceAmount)}</div>
+                      <button
+                        type="button"
+                        onClick={() => startRefund(balance)}
+                        disabled={balance.balanceAmount <= 0}
+                        className="inline-flex items-center justify-center rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700 hover:bg-sky-100 disabled:opacity-50"
+                      >
+                        Proses Refund
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-sky-100 bg-white shadow-sm overflow-hidden">
+          <div className="px-4 py-4 border-b border-sky-50">
+            <div className="text-xs uppercase tracking-wider text-sky-700">Refund Terbaru</div>
+            <p className="mt-1 text-sm text-slate-600">Riwayat pengembalian saldo kredit yang sudah diproses.</p>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {creditsQuery.isLoading ? (
+              <div className="px-4 py-8 text-sm text-slate-500">Memuat refund...</div>
+            ) : recentRefunds.length === 0 ? (
+              <div className="px-4 py-8 text-sm text-slate-500">Belum ada refund saldo kredit.</div>
+            ) : (
+              recentRefunds.map((refund: FinanceRefundRecord) => (
+                <div key={refund.id} className="px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-900">{refund.student.name}</div>
+                      <div className="mt-1 text-xs text-slate-500">{refund.refundNo} • {getPaymentMethodLabel(refund.method)}</div>
+                      <div className="mt-1 text-xs text-slate-500">{formatDate(refund.refundedAt)}</div>
+                      {refund.note ? <div className="mt-1 text-xs text-slate-500">{refund.note}</div> : null}
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-bold text-sky-900">{formatCurrency(refund.amount)}</div>
+                      <div className="mt-1 text-[11px] text-slate-500">{refund.student.studentClass?.name || 'Tanpa kelas'}</div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
 
@@ -2607,12 +2827,15 @@ export const StaffFinancePage = () => {
               <input
                 type="number"
                 min={0}
-                max={selectedInvoice.balanceAmount}
                 value={paymentAmount}
                 onChange={(event) => setPaymentAmount(event.target.value)}
                 placeholder="Nominal pembayaran"
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
               />
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-800">
+                <div>Dialokasikan ke invoice: <span className="font-semibold">{formatCurrency(paymentAllocatedAmount)}</span></div>
+                <div>Masuk saldo kredit: <span className="font-semibold">{formatCurrency(paymentCreditedAmount)}</span></div>
+              </div>
               <select
                 value={paymentMethod}
                 onChange={(event) => setPaymentMethod(event.target.value as FinancePaymentMethod)}
@@ -2653,6 +2876,76 @@ export const StaffFinancePage = () => {
               >
                 {payInvoiceMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
                 Simpan Pembayaran
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedCreditBalance && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          onClick={resetRefundForm}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h3 className="text-base font-semibold text-gray-900">Refund Saldo Kredit</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                {selectedCreditBalance.student.name} • Saldo {formatCurrency(selectedCreditBalance.balanceAmount)}
+              </p>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <input
+                type="number"
+                min={0}
+                value={refundAmount}
+                onChange={(event) => setRefundAmount(event.target.value)}
+                placeholder="Nominal refund"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
+              />
+              <select
+                value={refundMethod}
+                onChange={(event) => setRefundMethod(event.target.value as FinancePaymentMethod)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
+              >
+                {PAYMENT_METHOD_OPTIONS.map((option) => (
+                  <option key={`refund-${option.value}`} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={refundReference}
+                onChange={(event) => setRefundReference(event.target.value)}
+                placeholder="Referensi refund (opsional)"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
+              />
+              <textarea
+                value={refundNote}
+                onChange={(event) => setRefundNote(event.target.value)}
+                placeholder="Catatan refund (opsional)"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-h-20"
+              />
+            </div>
+            <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={resetRefundForm}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-xs font-medium text-gray-700"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveRefund}
+                disabled={refundMutation.isPending || Number(refundAmount) <= 0}
+                className="px-4 py-2 rounded-lg bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700 disabled:opacity-50 inline-flex items-center gap-2"
+              >
+                {refundMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                Simpan Refund
               </button>
             </div>
           </div>

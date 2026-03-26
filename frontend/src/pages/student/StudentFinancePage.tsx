@@ -91,7 +91,7 @@ export default function StudentFinancePage() {
         ) : null}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-sky-100/80 p-4">
           <p className="text-xs text-blue-700/80">Total Tagihan</p>
           <p className="mt-2 text-xl font-bold text-blue-900">
@@ -115,6 +115,15 @@ export default function StudentFinancePage() {
           </p>
           <p className="text-xs text-rose-700/80 mt-1">
             {formatCurrency(overview?.summary.overdueAmount || 0)}
+          </p>
+        </div>
+        <div className="rounded-xl border border-sky-100 bg-gradient-to-br from-sky-50 to-cyan-100/80 p-4">
+          <p className="text-xs text-sky-700/80">Saldo Kredit</p>
+          <p className="mt-2 text-xl font-bold text-sky-900">
+            {formatCurrency(overview?.summary.creditBalance || 0)}
+          </p>
+          <p className="text-xs text-sky-700/80 mt-1">
+            Kelebihan bayar otomatis tersimpan
           </p>
         </div>
       </div>
@@ -234,6 +243,11 @@ export default function StudentFinancePage() {
                     </td>
                     <td className="px-5 py-3 text-sm text-right font-semibold text-gray-900">
                       {formatCurrency(payment.amount)}
+                      {Number(payment.creditedAmount || 0) > 0 ? (
+                        <div className="text-[11px] font-normal text-sky-700 mt-1">
+                          Kredit: {formatCurrency(payment.creditedAmount || 0)}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-5 py-3 text-sm">
                       <span
@@ -241,6 +255,11 @@ export default function StudentFinancePage() {
                       >
                         {getStatusLabel(payment.status)}
                       </span>
+                      {Number(payment.creditedAmount || 0) > 0 ? (
+                        <div className="mt-1 text-[11px] text-gray-500">
+                          Dialokasikan ke invoice {formatCurrency(payment.allocatedAmount || 0)}
+                        </div>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
