@@ -17,11 +17,11 @@ type Params = {
 };
 
 export function useStudentExamsQuery({ enabled, user }: Params) {
-  const isStudent = user?.role === 'STUDENT';
+  const canAccessExams = user?.role === 'STUDENT' || user?.role === 'CALON_SISWA' || user?.role === 'UMUM';
 
   return useQuery({
     queryKey: ['mobile-student-exams', user?.id],
-    enabled: enabled && !!user && isStudent,
+    enabled: enabled && !!user && canAccessExams,
     queryFn: async (): Promise<StudentExamsQueryData> => {
       const cacheKey = `mobile_cache_student_exams_${user!.id}`;
       try {

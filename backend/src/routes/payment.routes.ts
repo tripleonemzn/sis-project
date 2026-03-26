@@ -1,5 +1,20 @@
 import { Router } from 'express';
-import { listParentPayments } from '../controllers/payment.controller';
+import {
+  createFinanceComponent,
+  dispatchFinanceDueRemindersHandler,
+  exportFinanceReports,
+  createFinancePayment,
+  createFinanceTariffRule,
+  generateFinanceInvoices,
+  listFinanceComponents,
+  listFinanceInvoices,
+  listFinanceReports,
+  listStudentPayments,
+  listFinanceTariffRules,
+  listParentPayments,
+  updateFinanceComponent,
+  updateFinanceTariffRule,
+} from '../controllers/payment.controller';
 import { authMiddleware } from '../middleware/auth';
 import { roleMiddleware } from '../middleware/role';
 
@@ -8,5 +23,22 @@ const router = Router();
 router.use(authMiddleware);
 
 router.get('/parent-overview', roleMiddleware(['PARENT']), listParentPayments);
+router.get('/student-overview', roleMiddleware(['STUDENT']), listStudentPayments);
+router.get('/components', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceComponents);
+router.post('/components', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceComponent);
+router.patch('/components/:id', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceComponent);
+router.get('/tariffs', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceTariffRules);
+router.post('/tariffs', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceTariffRule);
+router.patch('/tariffs/:id', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceTariffRule);
+router.post('/invoices/generate', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), generateFinanceInvoices);
+router.get('/invoices', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceInvoices);
+router.post('/invoices/:id/payments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinancePayment);
+router.post('/reminders/dispatch', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), dispatchFinanceDueRemindersHandler);
+router.get('/reports', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceReports);
+router.get(
+  '/reports/export',
+  roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']),
+  exportFinanceReports,
+);
 
 export default router;

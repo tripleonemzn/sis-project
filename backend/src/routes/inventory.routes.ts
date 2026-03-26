@@ -3,6 +3,8 @@ import { authMiddleware } from '../middleware/auth';
 import { roleMiddleware } from '../middleware/role';
 import { dutyMiddleware } from '../middleware/duty';
 import {
+  getAssignableInventoryManagers,
+  getAssignedInventoryRooms,
   getRoomCategories,
   createRoomCategory,
   updateRoomCategory,
@@ -37,13 +39,7 @@ const structureWriteMiddleware = [
 ];
 
 const itemWriteMiddleware = [
-  roleMiddleware(['ADMIN', 'TEACHER']),
-  dutyMiddleware([
-    'WAKASEK_SARPRAS',
-    'SEKRETARIS_SARPRAS',
-    'KEPALA_LAB',
-    'KEPALA_PERPUSTAKAAN',
-  ])
+  roleMiddleware(['ADMIN', 'TEACHER', 'STAFF', 'PRINCIPAL', 'EXTRACURRICULAR_TUTOR']),
 ];
 
 const libraryLoanReadMiddleware = [
@@ -65,11 +61,13 @@ const libraryLoanWriteMiddleware = [
 ];
 
 const readMiddleware = [
-  roleMiddleware(['ADMIN', 'TEACHER'])
+  roleMiddleware(['ADMIN', 'TEACHER', 'STAFF', 'PRINCIPAL', 'EXTRACURRICULAR_TUTOR'])
 ];
 
 // Categories
 router.get('/categories', ...readMiddleware, getRoomCategories);
+router.get('/assignable-managers', ...readMiddleware, getAssignableInventoryManagers);
+router.get('/assigned-rooms', ...readMiddleware, getAssignedInventoryRooms);
 router.post('/categories', ...structureWriteMiddleware, createRoomCategory);
 router.put('/categories/:id', ...structureWriteMiddleware, updateRoomCategory);
 router.delete('/categories/:id', ...structureWriteMiddleware, deleteRoomCategory);

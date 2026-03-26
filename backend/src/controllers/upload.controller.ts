@@ -47,11 +47,25 @@ const teacherPhotoStorage = multer.diskStorage({
 export const teacherDocumentUpload = multer({
   storage: teacherDocumentStorage,
   limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Hanya file gambar dan PDF yang diperbolehkan!'));
+    }
+  },
 });
 
 export const teacherPhotoUpload = multer({
   storage: teacherPhotoStorage,
   limits: { fileSize: 500 * 1024 }, // 500KB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Foto profil harus berupa file gambar!'));
+    }
+  },
 });
 
 const questionImageStorage = multer.diskStorage({

@@ -1,13 +1,14 @@
 import { useSearchParams } from 'react-router-dom';
-import { Users, Info } from 'lucide-react';
+import { ClipboardList, Info, Users } from 'lucide-react';
 import { PartnersTab } from './components/PartnersTab';
 import { VacanciesTab } from './components/VacanciesTab';
+import { ApplicationsTab } from './components/ApplicationsTab';
 
 export const IndustryPartnersPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = (searchParams.get('tab') as 'partners' | 'bkk') || 'partners';
+  const activeTab = (searchParams.get('tab') as 'partners' | 'bkk' | 'applications') || 'partners';
 
-  const setActiveTab = (tab: 'partners' | 'bkk') => {
+  const setActiveTab = (tab: 'partners' | 'bkk' | 'applications') => {
     setSearchParams(prev => {
       const newParams = new URLSearchParams(prev);
       newParams.set('tab', tab);
@@ -54,7 +55,22 @@ export const IndustryPartnersPage = () => {
           >
             <div className="flex items-center gap-2">
               <Info className="w-4 h-4" />
-              <span>Informasi BKK</span>
+                  <span>Lowongan BKK</span>
+            </div>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('applications')}
+            className={`
+              px-4 py-2 text-sm font-medium rounded-md transition-colors
+              ${activeTab === 'applications'
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
+            `}
+          >
+            <div className="flex items-center gap-2">
+              <ClipboardList className="w-4 h-4" />
+              <span>Lamaran Masuk</span>
             </div>
           </button>
         </div>
@@ -62,11 +78,7 @@ export const IndustryPartnersPage = () => {
 
       {/* Content */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 min-h-[400px] p-6">
-        {activeTab === 'partners' ? (
-          <PartnersTab />
-        ) : (
-          <VacanciesTab />
-        )}
+        {activeTab === 'partners' ? <PartnersTab /> : activeTab === 'applications' ? <ApplicationsTab /> : <VacanciesTab />}
       </div>
     </div>
   );

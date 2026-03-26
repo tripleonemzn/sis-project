@@ -14,6 +14,7 @@ import {
   Loader2,
   Filter,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { classService } from '../../../services/class.service';
 import { HomeroomLedgerPage } from './HomeroomLedgerPage';
 import { HomeroomExtracurricularsPage } from './HomeroomExtracurricularsPage';
@@ -23,8 +24,20 @@ import { HomeroomReportSatPage } from './HomeroomReportSatPage';
 import { HomeroomReportPage2 } from './HomeroomReportPage2';
 import { HomeroomReportP5Page } from './HomeroomReportP5Page';
 
-type TabType = 'ledger' | 'extracurriculars' | 'ranking' | 'rapor-1' | 'rapor-2' | 'rapor-p5';
 type SemesterType = 'ODD' | 'EVEN';
+type HomeroomFinalTabId =
+  | 'ledger'
+  | 'extracurriculars'
+  | 'ranking'
+  | 'report-main'
+  | 'report-support'
+  | 'report-p5';
+
+interface HomeroomFinalTabConfig {
+  id: HomeroomFinalTabId;
+  label: string;
+  icon: LucideIcon;
+}
 
 function normalizeComponentType(raw: unknown): string {
   return String(raw || '').trim().toUpperCase();
@@ -55,11 +68,18 @@ export const TeacherHomeroomFinalPage = ({
   fixedSemester = null,
   preferenceScope,
 }: TeacherHomeroomFinalPageProps) => {
-  const [activeTab, setActiveTab] = useState<TabType>('ledger');
+  const [activeTab, setActiveTab] = useState<string>('ledger');
   const [semester, setSemester] = useState<SemesterType>('ODD');
   const isSemesterLocked = fixedSemester === 'ODD' || fixedSemester === 'EVEN';
   const resolvedReportType = String(programBaseType || '').toUpperCase();
   const resolvedProgramLabel = String(programLabel || resolvedReportType || 'Rapor').trim();
+  const normalizedProgramCode = normalizeComponentType(programCode);
+  const isFinalProgram = useMemo(() => {
+    const reportType = normalizeComponentType(resolvedReportType);
+    if (['FINAL', 'SAS', 'SAT', 'FINAL_ODD', 'FINAL_EVEN'].includes(reportType)) return true;
+    return reportType.includes('FINAL') || ['SAS', 'SAT', 'PAS', 'PAT', 'PSAS', 'PSAT'].includes(normalizedProgramCode);
+  }, [resolvedReportType, normalizedProgramCode]);
+  const enableP5Tab = false;
 
   const { user: contextUser, activeYear: contextActiveYear } =
     useOutletContext<{ user: User; activeYear: { id: number; name: string } }>() || {};
@@ -102,17 +122,15 @@ export const TeacherHomeroomFinalPage = ({
   });
 
   useEffect(() => {
-    if (userData?.data?.preferences) {
-      const prefs = userData.data.preferences as Record<string, unknown>;
-      const savedTab = prefs[preferenceKey];
-      if (savedTab && savedTab !== activeTab) {
-        setActiveTab(savedTab as TabType);
-      }
+    if (!userData?.data?.preferences) return;
+    const prefs = userData.data.preferences as Record<string, unknown>;
+    const savedTab = String(prefs[preferenceKey] || '').trim();
+    if (savedTab && savedTab !== activeTab) {
+      setActiveTab(savedTab);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preferenceKey, userData]);
+  }, [preferenceKey, userData, activeTab]);
 
-  const handleTabChange = (tab: TabType) => {
+  const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     if (userId) {
       const currentPrefs = (userData?.data?.preferences || {}) as Record<string, unknown>;
@@ -147,14 +165,31 @@ export const TeacherHomeroomFinalPage = ({
     enabled: !!userId && user?.role === 'TEACHER' && !!activeAcademicYear?.id,
   });
 
-  const tabs = [
-    { id: 'ledger', label: 'Leger Nilai', icon: FileText },
-    { id: 'extracurriculars', label: 'Ekstrakurikuler', icon: Layers },
-    { id: 'ranking', label: 'Peringkat', icon: Trophy },
-    { id: 'rapor-1', label: 'Rapor 1', icon: FileBarChart },
-    { id: 'rapor-2', label: 'Rapor 2', icon: FileBarChart },
-    { id: 'rapor-p5', label: 'Rapor P5', icon: BarChart3 },
-  ];
+  const tabs = useMemo<HomeroomFinalTabConfig[]>(() => {
+    const dynamicTabs: HomeroomFinalTabConfig[] = [
+      { id: 'ledger', label: 'Leger Nilai', icon: FileText },
+      { id: 'extracurriculars', label: 'Ekstrakurikuler', icon: Layers },
+      { id: 'report-main', label: `Rapor ${resolvedProgramLabel}`, icon: FileBarChart },
+    ];
+
+    if (isFinalProgram) {
+      dynamicTabs.splice(2, 0, { id: 'ranking', label: 'Peringkat', icon: Trophy });
+      dynamicTabs.push({ id: 'report-support', label: 'Rapor Lampiran', icon: FileBarChart });
+    }
+
+    if (enableP5Tab) {
+      dynamicTabs.push({ id: 'report-p5', label: 'Rapor P5', icon: BarChart3 });
+    }
+
+    return dynamicTabs;
+  }, [resolvedProgramLabel, isFinalProgram, enableP5Tab]);
+
+  useEffect(() => {
+    if (!tabs.length) return;
+    if (!tabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(tabs[0].id);
+    }
+  }, [tabs, activeTab]);
 
   if (isLoadingYear || isLoadingClass) {
     return (
@@ -192,7 +227,7 @@ export const TeacherHomeroomFinalPage = ({
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => handleTabChange(tab.id as TabType)}
+                    onClick={() => handleTabChange(tab.id)}
                     className={`
                       px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap
                       ${isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}
@@ -256,7 +291,7 @@ export const TeacherHomeroomFinalPage = ({
                 semester={semester}
               />
             )}
-            {activeTab === 'rapor-1' &&
+            {activeTab === 'report-main' &&
               (semester === 'EVEN' ? (
                 <HomeroomReportSatPage
                   classId={classSummary.id}
@@ -274,7 +309,7 @@ export const TeacherHomeroomFinalPage = ({
                   reportLabel={resolvedProgramLabel}
                 />
               ))}
-            {activeTab === 'rapor-2' && (
+            {activeTab === 'report-support' && (
               <HomeroomReportPage2
                 classId={classSummary.id}
                 semester={semester}
@@ -283,7 +318,7 @@ export const TeacherHomeroomFinalPage = ({
                 reportLabel={resolvedProgramLabel}
               />
             )}
-            {activeTab === 'rapor-p5' && <HomeroomReportP5Page />}
+            {activeTab === 'report-p5' && <HomeroomReportP5Page />}
           </div>
         </div>
       )}

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-15T22:22:29.900Z",
+  "generatedAt": "2026-03-26T12:18:37.357Z",
   "perRoleSummary": [
     {
       "role": "ADMIN",
@@ -12,12 +12,12 @@
     },
     {
       "role": "CALON_SISWA",
-      "total": 2,
-      "nativeOnly": 2,
+      "total": 4,
+      "nativeOnly": 4,
       "nativeWithWebFallback": 0,
       "webBridgeRoute": 0,
       "webOnlyNoRoute": 0,
-      "hasOpenUrlInRouteTree": 0
+      "hasOpenUrlInRouteTree": 1
     },
     {
       "role": "EXAMINER",
@@ -39,8 +39,8 @@
     },
     {
       "role": "PARENT",
-      "total": 4,
-      "nativeOnly": 4,
+      "total": 5,
+      "nativeOnly": 5,
       "nativeWithWebFallback": 0,
       "webBridgeRoute": 0,
       "webOnlyNoRoute": 0,
@@ -84,12 +84,12 @@
     },
     {
       "role": "UMUM",
-      "total": 2,
-      "nativeOnly": 2,
+      "total": 6,
+      "nativeOnly": 6,
       "nativeWithWebFallback": 0,
       "webBridgeRoute": 0,
       "webOnlyNoRoute": 0,
-      "hasOpenUrlInRouteTree": 0
+      "hasOpenUrlInRouteTree": 1
     }
   ],
   "perRoleDetails": {
@@ -427,14 +427,29 @@
     ],
     "CALON_SISWA": [
       {
+        "key": "candidate-dashboard",
+        "label": "Dashboard",
+        "route": "/candidate",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/candidate/index.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
         "key": "candidate-application",
         "label": "Status Pendaftaran",
         "route": "/candidate/application",
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/candidate/application.tsx",
-        "hasOpenUrlInRouteTree": false,
-        "openUrlHits": []
+        "hasOpenUrlInRouteTree": true,
+        "openUrlHits": [
+          {
+            "file": "app/(app)/candidate/application.tsx",
+            "line": 422
+          }
+        ]
       },
       {
         "key": "candidate-information",
@@ -443,6 +458,16 @@
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/candidate/information.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "candidate-exams",
+        "label": "Tes Seleksi",
+        "route": "/exams",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/exams.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
       }
@@ -566,6 +591,16 @@
         "key": "child-progress",
         "label": "Data Anak",
         "route": "/parent/children",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/parent/children.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "child-link",
+        "label": "Hubungkan Anak",
+        "route": "/parent/children?mode=link",
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/parent/children.tsx",
@@ -1483,6 +1518,16 @@
     ],
     "UMUM": [
       {
+        "key": "public-dashboard",
+        "label": "Dashboard BKK",
+        "route": "/public",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/public/index.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
         "key": "public-information",
         "label": "Informasi Sekolah",
         "route": "/public/information",
@@ -1493,18 +1538,61 @@
         "openUrlHits": []
       },
       {
-        "key": "public-registration",
-        "label": "Pendaftaran Umum",
-        "route": "/public/registration",
+        "key": "public-vacancies",
+        "label": "Lowongan BKK",
+        "route": "/public/vacancies",
         "webPath": null,
         "mode": "NATIVE_ONLY",
-        "routeFile": "app/(app)/public/registration.tsx",
+        "routeFile": "app/(app)/public/vacancies.tsx",
+        "hasOpenUrlInRouteTree": true,
+        "openUrlHits": [
+          {
+            "file": "app/(app)/public/vacancies.tsx",
+            "line": 394
+          }
+        ]
+      },
+      {
+        "key": "public-applications",
+        "label": "Lamaran Saya",
+        "route": "/public/applications",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/public/applications.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "public-exams",
+        "label": "Tes BKK",
+        "route": "/exams",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/exams.tsx",
+        "hasOpenUrlInRouteTree": false,
+        "openUrlHits": []
+      },
+      {
+        "key": "public-profile",
+        "label": "Profil Pelamar",
+        "route": "/public/profile",
+        "webPath": null,
+        "mode": "NATIVE_ONLY",
+        "routeFile": "app/(app)/public/profile.tsx",
         "hasOpenUrlInRouteTree": false,
         "openUrlHits": []
       }
     ]
   },
   "globalOpenUrlUsages": [
+    {
+      "file": "app/(app)/candidate/application.tsx",
+      "line": 422
+    },
+    {
+      "file": "app/(app)/public/vacancies.tsx",
+      "line": 394
+    },
     {
       "file": "app/(app)/web-module/[moduleKey].tsx",
       "line": 44

@@ -9,6 +9,7 @@ type ActiveAcademicYearResponse = {
     name: string;
     isActive: boolean;
     semester?: 'ODD' | 'EVEN';
+    pklEligibleGrades?: string | null;
   };
 };
 

@@ -66,6 +66,98 @@ function normalizeSessionLabel(rawValue: unknown): string | null {
     return normalized ? normalized.toLowerCase() : null;
 }
 
+function normalizeExamTypeKey(rawValue: unknown): string {
+    return String(rawValue || '')
+        .trim()
+        .toUpperCase()
+        .replace(/QUIZ/g, 'FORMATIF')
+        .replace(/[^A-Z0-9]+/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '');
+}
+
+function resolveExamTypeCandidates(rawValue: unknown): string[] {
+    const normalized = normalizeExamTypeKey(rawValue);
+    if (!normalized) return [];
+
+    const candidates = new Set<string>([normalized]);
+
+    const isFinalFamily = [
+        'FINAL',
+        'SAS',
+        'SAT',
+        'PAS',
+        'PAT',
+        'SAS_SAT',
+        'SUMATIF_AKHIR_SEMESTER',
+        'SUMATIF_AKHIR_TAHUN',
+    ].includes(normalized);
+    if (isFinalFamily) {
+        candidates.add('FINAL');
+        candidates.add('SAS');
+        candidates.add('SAT');
+    }
+
+    const isMidtermFamily = ['MIDTERM', 'SBTS', 'SUMATIF_BERSAMA_TENGAH_SEMESTER'].includes(normalized);
+    if (isMidtermFamily) {
+        candidates.add('MIDTERM');
+        candidates.add('SBTS');
+    }
+
+    const isFormativeFamily = ['FORMATIF', 'FORMATIVE', 'UH', 'ULANGAN_HARIAN'].includes(normalized);
+    if (isFormativeFamily) {
+        candidates.add('FORMATIF');
+        candidates.add('UH');
+        candidates.add('ULANGAN_HARIAN');
+    }
+
+    return Array.from(candidates.values());
+}
+
+function hasExamTypeIntersection(left: unknown, right: unknown): boolean {
+    const leftCandidates = new Set(resolveExamTypeCandidates(left));
+    const rightCandidates = resolveExamTypeCandidates(right);
+    return rightCandidates.some((candidate) => leftCandidates.has(candidate));
+}
+
+function isSameSlotTime(
+    leftStart: Date | null | undefined,
+    leftEnd: Date | null | undefined,
+    rightStart: Date | null | undefined,
+    rightEnd: Date | null | undefined,
+): boolean {
+    if (!leftStart || !leftEnd || !rightStart || !rightEnd) return true;
+    const toleranceMs = 60_000; // toleransi 1 menit
+    return (
+        Math.abs(leftStart.getTime() - rightStart.getTime()) <= toleranceMs &&
+        Math.abs(leftEnd.getTime() - rightEnd.getTime()) <= toleranceMs
+    );
+}
+
+function isSameSessionScope(params: {
+    leftSessionId?: number | null;
+    leftSessionLabel?: string | null;
+    rightSessionId?: number | null;
+    rightSessionLabel?: string | null;
+}): boolean {
+    const leftSessionId =
+        Number.isFinite(Number(params.leftSessionId)) && Number(params.leftSessionId) > 0
+            ? Number(params.leftSessionId)
+            : null;
+    const rightSessionId =
+        Number.isFinite(Number(params.rightSessionId)) && Number(params.rightSessionId) > 0
+            ? Number(params.rightSessionId)
+            : null;
+
+    if (leftSessionId && rightSessionId) return leftSessionId === rightSessionId;
+    if (leftSessionId || rightSessionId) return false;
+
+    const leftLabel = normalizeSessionLabel(params.leftSessionLabel);
+    const rightLabel = normalizeSessionLabel(params.rightSessionLabel);
+    if (leftLabel || rightLabel) return leftLabel === rightLabel;
+    return true;
+}
+
 function parseDateOnly(value: unknown): Date | null {
     const raw = String(value || '').trim();
     if (!raw) return null;
@@ -82,9 +174,39 @@ function toDateRangeByDay(date: Date): { start: Date; end: Date } {
     return { start, end };
 }
 
+type PermissionSnapshot = {
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    reason: string | null;
+    approvalNote: string | null;
+    approvedBy: {
+        id: number;
+        name: string;
+        additionalDuties: AdditionalDuty[];
+        role: string;
+    } | null;
+};
+
+function resolveAbsentReason(permission: PermissionSnapshot | null): string {
+    if (!permission) return 'Tidak ada pengajuan izin pada jadwal ini.';
+
+    const requestedReason = String(permission.reason || '').trim();
+    const approvalReason = String(permission.approvalNote || '').trim();
+    const resolvedReason = approvalReason || requestedReason || 'Tanpa catatan.';
+    const approverName = String(permission.approvedBy?.name || '').trim();
+    const approverSuffix = approverName ? ` (${approverName})` : '';
+
+    if (permission.status === 'REJECTED') {
+        return `Izin ditolak wali kelas${approverSuffix}: ${resolvedReason}`;
+    }
+    if (permission.status === 'APPROVED') {
+        return `Izin disetujui wali kelas${approverSuffix}: ${resolvedReason}`;
+    }
+    return `Pengajuan izin masih menunggu persetujuan wali kelas: ${resolvedReason}`;
+}
+
 type ProctorRoomScheduleScope = {
     id: number;
-    classId: number;
+    classId: number | null;
     packetId: number | null;
     room: string | null;
     startTime: Date;
@@ -99,6 +221,25 @@ type ProctorRoomScheduleScope = {
         id: number;
         name: string;
     } | null;
+};
+
+type ProctorRoomSittingRow = {
+    id: number;
+    roomName: string;
+    academicYearId: number;
+    examType: string;
+    sessionId: number | null;
+    sessionLabel: string | null;
+    startTime: Date | null;
+    endTime: Date | null;
+    students: Array<{
+        studentId: number;
+        student: {
+            studentClass: {
+                name: string;
+            } | null;
+        };
+    }>;
 };
 
 async function resolveRoomScopeSchedules(baseScheduleId: number): Promise<{
@@ -205,7 +346,13 @@ async function resolveRoomScopeSchedules(baseScheduleId: number): Promise<{
             ? roomSchedules
             : [baseSchedule];
     const monitoredScheduleIds = Array.from(new Set(monitoredSchedules.map((item) => item.id)));
-    const monitoredClassIds = Array.from(new Set(monitoredSchedules.map((item) => item.classId)));
+    const monitoredClassIds = Array.from(
+        new Set(
+            monitoredSchedules
+                .map((item) => Number(item.classId))
+                .filter((classId) => Number.isFinite(classId) && classId > 0),
+        ),
+    );
     const monitoredClassNames = Array.from(
         new Set(monitoredSchedules.map((item) => item.class?.name || '').filter(Boolean)),
     );
@@ -216,6 +363,69 @@ async function resolveRoomScopeSchedules(baseScheduleId: number): Promise<{
         monitoredScheduleIds,
         monitoredClassIds,
         monitoredClassNames,
+    };
+}
+
+function filterMatchedSittingsForSlot(params: {
+    sittings: ProctorRoomSittingRow[];
+    roomName: string | null;
+    academicYearId: number | null;
+    examType: string | null;
+    startTime: Date | null;
+    endTime: Date | null;
+    sessionId: number | null;
+    sessionLabel: string | null;
+}): ProctorRoomSittingRow[] {
+    const roomLookup = String(params.roomName || '').trim().toLowerCase();
+    if (!roomLookup) return [];
+
+    return params.sittings.filter((sitting) => {
+        if (String(sitting.roomName || '').trim().toLowerCase() !== roomLookup) return false;
+        if (
+            Number.isFinite(Number(params.academicYearId)) &&
+            Number(params.academicYearId) > 0 &&
+            Number(sitting.academicYearId) !== Number(params.academicYearId)
+        ) {
+            return false;
+        }
+        if (!hasExamTypeIntersection(params.examType, sitting.examType)) return false;
+        if (
+            !isSameSessionScope({
+                leftSessionId: params.sessionId,
+                leftSessionLabel: params.sessionLabel,
+                rightSessionId: sitting.sessionId,
+                rightSessionLabel: sitting.sessionLabel,
+            })
+        ) {
+            return false;
+        }
+        if (!isSameSlotTime(params.startTime, params.endTime, sitting.startTime, sitting.endTime)) {
+            return false;
+        }
+        return true;
+    });
+}
+
+function collectSittingParticipants(sittings: ProctorRoomSittingRow[]): {
+    studentIds: Set<number>;
+    classNames: string[];
+} {
+    const studentIds = new Set<number>();
+    const classNames = new Set<string>();
+
+    sittings.forEach((sitting) => {
+        sitting.students.forEach((row) => {
+            if (Number.isFinite(Number(row.studentId)) && Number(row.studentId) > 0) {
+                studentIds.add(Number(row.studentId));
+            }
+            const className = String(row.student?.studentClass?.name || '').trim();
+            if (className) classNames.add(className);
+        });
+    });
+
+    return {
+        studentIds,
+        classNames: Array.from(classNames).sort((a, b) => a.localeCompare(b, 'id')),
     };
 }
 
@@ -291,7 +501,7 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
         const subjectId = schedule.packet?.subjectId || schedule.subjectId;
         const academicYearId = schedule.packet?.academicYearId || schedule.academicYearId;
 
-        if (subjectId) {
+        if (subjectId && schedule.class?.id) {
             const assignment = await prisma.teacherAssignment.findFirst({
                 where: {
                     teacherId: user.id,
@@ -362,7 +572,13 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
         : [{ id: schedule.id, classId: schedule.classId, packetId: schedule.packetId, class: schedule.class }];
 
     const monitoredScheduleIds = Array.from(new Set(monitoredSchedules.map((row: any) => row.id)));
-    const monitoredClassIds = Array.from(new Set(monitoredSchedules.map((row: any) => row.classId)));
+    const monitoredClassIds = Array.from(
+        new Set(
+            monitoredSchedules
+                .map((row: any) => Number(row.classId))
+                .filter((classId: number) => Number.isFinite(classId) && classId > 0),
+        ),
+    );
     const monitoredClassNames = Array.from(
         new Set(monitoredSchedules.map((row: any) => row.class?.name).filter(Boolean)),
     ) as string[];
@@ -373,6 +589,61 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
                 .filter((packetId: number) => Number.isFinite(packetId) && packetId > 0),
         ),
     );
+    const sittingExamTypeCandidates = resolveExamTypeCandidates(schedule.examType);
+
+    const roomSittings: ProctorRoomSittingRow[] = schedule.room
+        ? await prisma.examSitting.findMany({
+              where: {
+                  roomName: {
+                      equals: schedule.room,
+                      mode: 'insensitive',
+                  },
+                  ...(resolvedAcademicYearId ? { academicYearId: resolvedAcademicYearId } : {}),
+                  ...(sittingExamTypeCandidates.length > 0
+                      ? {
+                            examType: {
+                                in: sittingExamTypeCandidates,
+                            },
+                        }
+                      : {}),
+              },
+              select: {
+                  id: true,
+                  roomName: true,
+                  academicYearId: true,
+                  examType: true,
+                  sessionId: true,
+                  sessionLabel: true,
+                  startTime: true,
+                  endTime: true,
+                  students: {
+                      select: {
+                          studentId: true,
+                          student: {
+                              select: {
+                                  studentClass: {
+                                      select: { name: true },
+                                  },
+                              },
+                          },
+                      },
+                  },
+              },
+          })
+        : [];
+
+    const matchedSittings = filterMatchedSittingsForSlot({
+        sittings: roomSittings,
+        roomName: schedule.room,
+        academicYearId: resolvedAcademicYearId,
+        examType: schedule.examType,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        sessionId: schedule.sessionId,
+        sessionLabel: schedule.sessionLabel,
+    });
+    const sittingParticipants = collectSittingParticipants(matchedSittings);
+    const sittingParticipantIds = Array.from(sittingParticipants.studentIds.values());
 
     const packetQuestionCounts = monitoredPacketIds.length > 0
         ? await prisma.examPacket.findMany({
@@ -390,14 +661,53 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
     const students = await prisma.user.findMany({
         where: {
             role: 'STUDENT',
-            classId: { in: monitoredClassIds },
+            ...(sittingParticipantIds.length > 0
+                ? { id: { in: sittingParticipantIds } }
+                : { classId: { in: monitoredClassIds } }),
         },
-        select: { id: true, name: true, nis: true, studentClass: { select: { name: true } } },
+        select: { id: true, name: true, nis: true, classId: true, studentClass: { select: { name: true } } },
         orderBy: { name: 'asc' }
     });
 
+    const monitoredStudentIds = students
+        .map((row) => Number(row.id))
+        .filter((studentId) => Number.isFinite(studentId) && studentId > 0);
+    const monitoredClassIdsFromRoom = Array.from(
+        new Set(
+            students
+                .map((row) => Number(row.classId))
+                .filter((classId) => Number.isFinite(classId) && classId > 0),
+        ),
+    );
+    const effectiveMonitoredClassIds =
+        monitoredClassIdsFromRoom.length > 0 ? monitoredClassIdsFromRoom : monitoredClassIds;
+
+    const sessionScheduleScope: any = {
+        isActive: true,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        ...(resolvedAcademicYearId ? { academicYearId: resolvedAcademicYearId } : {}),
+        ...(resolvedSubjectId ? { subjectId: resolvedSubjectId } : {}),
+        ...(sittingExamTypeCandidates.length > 0 ? { examType: { in: sittingExamTypeCandidates } } : {}),
+    };
+    if (schedule.sessionId && Number.isFinite(schedule.sessionId)) {
+        sessionScheduleScope.OR = [{ sessionId: schedule.sessionId }];
+        if (schedule.sessionLabel) {
+            sessionScheduleScope.OR.push({ sessionId: null, sessionLabel: schedule.sessionLabel });
+        }
+    } else {
+        sessionScheduleScope.sessionId = null;
+        sessionScheduleScope.sessionLabel = schedule.sessionLabel ?? null;
+    }
+
     const sessions = await prisma.studentExamSession.findMany({
-        where: { scheduleId: { in: monitoredScheduleIds } },
+        where:
+            monitoredStudentIds.length > 0
+                ? {
+                      studentId: { in: monitoredStudentIds },
+                      schedule: { is: sessionScheduleScope },
+                  }
+                : { scheduleId: { in: monitoredScheduleIds } },
         select: {
             studentId: true,
             scheduleId: true,
@@ -410,7 +720,12 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
     });
     const progressSessions = await prisma.studentExamSession.findMany({
         where: {
-            scheduleId: { in: monitoredScheduleIds },
+            ...(monitoredStudentIds.length > 0
+                ? {
+                      studentId: { in: monitoredStudentIds },
+                      schedule: { is: sessionScheduleScope },
+                  }
+                : { scheduleId: { in: monitoredScheduleIds } }),
             status: { in: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.TIMEOUT, ExamSessionStatus.COMPLETED] },
         },
         select: {
@@ -428,6 +743,43 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
             : 0;
         questionCountByScheduleId.set(row.id, total);
     });
+    const sessionScheduleIds = Array.from(
+        new Set(
+            sessions
+                .map((row) => Number(row.scheduleId))
+                .filter((scheduleId) => Number.isFinite(scheduleId) && scheduleId > 0),
+        ),
+    );
+    const missingScheduleIds = sessionScheduleIds.filter((scheduleId) => !questionCountByScheduleId.has(scheduleId));
+    if (missingScheduleIds.length > 0) {
+        const sessionScheduleRows = await prisma.examSchedule.findMany({
+            where: { id: { in: missingScheduleIds } },
+            select: { id: true, packetId: true },
+        });
+        const missingPacketIds = Array.from(
+            new Set(
+                sessionScheduleRows
+                    .map((row) => Number(row.packetId))
+                    .filter((packetId) => Number.isFinite(packetId) && packetId > 0),
+            ),
+        );
+        const missingPacketRows = missingPacketIds.length
+            ? await prisma.examPacket.findMany({
+                  where: { id: { in: missingPacketIds } },
+                  select: { id: true, questions: true },
+              })
+            : [];
+        const missingPacketCountMap = new Map<number, number>();
+        missingPacketRows.forEach((packet) => {
+            const questions = packet.questions;
+            missingPacketCountMap.set(packet.id, Array.isArray(questions) ? questions.length : 0);
+        });
+        sessionScheduleRows.forEach((row) => {
+            const packetId = Number(row.packetId);
+            const total = Number.isFinite(packetId) ? missingPacketCountMap.get(packetId) || 0 : 0;
+            questionCountByScheduleId.set(row.id, total);
+        });
+    }
     const progressSessionMap = new Map<string, (typeof progressSessions)[number]>();
     progressSessions.forEach((row) => {
         progressSessionMap.set(`${row.studentId}:${row.scheduleId}`, row);
@@ -490,7 +842,7 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
                 (
                     await prisma.teacherAssignment.findMany({
                         where: {
-                            classId: { in: monitoredClassIds },
+                            classId: { in: effectiveMonitoredClassIds },
                             subjectId: resolvedSubjectId,
                             ...(resolvedAcademicYearId ? { academicYearId: resolvedAcademicYearId } : {}),
                         },
@@ -513,9 +865,11 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
             ...schedule,
             subjectName,
             displayTitle,
-            classNames: monitoredClassNames,
+            classNames:
+                sittingParticipants.classNames.length > 0 ? sittingParticipants.classNames : monitoredClassNames,
             teacherNames,
             monitoredScheduleIds,
+            serverNow: new Date().toISOString(),
         },
         students: studentList,
         isProctor,
@@ -559,8 +913,9 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
     if (!scope.baseSchedule || scope.monitoredScheduleIds.length === 0) {
         throw new ApiError(404, 'Data ruang ujian tidak ditemukan');
     }
+    const sittingExamTypeCandidates = resolveExamTypeCandidates(scope.baseSchedule.examType);
 
-    const [roomStudents, roomSessions] = await Promise.all([
+    const [roomStudents, roomSittings] = await Promise.all([
         scope.monitoredClassIds.length > 0
             ? prisma.user.findMany({
                   where: {
@@ -570,22 +925,128 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
                   select: { id: true },
               })
             : Promise.resolve([]),
-        scope.monitoredScheduleIds.length > 0
-            ? prisma.studentExamSession.findMany({
+        schedule.room
+            ? prisma.examSitting.findMany({
                   where: {
-                      scheduleId: { in: scope.monitoredScheduleIds },
-                      status: { in: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.COMPLETED, ExamSessionStatus.TIMEOUT] },
+                      roomName: {
+                          equals: schedule.room,
+                          mode: 'insensitive',
+                      },
+                      ...(scope.baseSchedule?.academicYearId
+                          ? { academicYearId: scope.baseSchedule.academicYearId }
+                          : {}),
+                      ...(sittingExamTypeCandidates.length > 0
+                          ? {
+                                examType: {
+                                    in: sittingExamTypeCandidates,
+                                },
+                            }
+                          : {}),
                   },
                   select: {
-                      studentId: true,
+                      id: true,
+                      roomName: true,
+                      academicYearId: true,
+                      examType: true,
+                      sessionId: true,
+                      sessionLabel: true,
+                      startTime: true,
+                      endTime: true,
+                      students: {
+                          select: {
+                              studentId: true,
+                              student: {
+                                  select: {
+                                      studentClass: {
+                                          select: { name: true },
+                                      },
+                                  },
+                              },
+                          },
+                      },
                   },
               })
             : Promise.resolve([]),
     ]);
 
-    const expectedCount = roomStudents.length;
-    const presentCount = new Set(roomSessions.map((row) => row.studentId)).size;
+    const matchedSittings = filterMatchedSittingsForSlot({
+        sittings: roomSittings as ProctorRoomSittingRow[],
+        roomName: schedule.room,
+        academicYearId: scope.baseSchedule?.academicYearId ?? null,
+        examType: scope.baseSchedule?.examType ?? null,
+        startTime: scope.baseSchedule?.startTime ?? null,
+        endTime: scope.baseSchedule?.endTime ?? null,
+        sessionId: scope.baseSchedule?.sessionId ?? null,
+        sessionLabel: scope.baseSchedule?.sessionLabel ?? null,
+    });
+    const sittingParticipants = collectSittingParticipants(matchedSittings);
+
+    const expectedStudentIds =
+        sittingParticipants.studentIds.size > 0
+            ? sittingParticipants.studentIds
+            : new Set(roomStudents.map((row) => Number(row.id)).filter((id) => Number.isFinite(id) && id > 0));
+    const expectedCount = expectedStudentIds.size;
+
+    const expectedStudentIdList = Array.from(expectedStudentIds.values());
+    const sessionScheduleScope: any = {
+        isActive: true,
+        startTime: scope.baseSchedule.startTime,
+        endTime: scope.baseSchedule.endTime,
+        ...(scope.baseSchedule.academicYearId ? { academicYearId: scope.baseSchedule.academicYearId } : {}),
+        ...(scope.baseSchedule.subjectId ? { subjectId: scope.baseSchedule.subjectId } : {}),
+        ...(sittingExamTypeCandidates.length > 0 ? { examType: { in: sittingExamTypeCandidates } } : {}),
+    };
+    if (scope.baseSchedule.sessionId && Number.isFinite(scope.baseSchedule.sessionId)) {
+        sessionScheduleScope.OR = [{ sessionId: scope.baseSchedule.sessionId }];
+        if (scope.baseSchedule.sessionLabel) {
+            sessionScheduleScope.OR.push({
+                sessionId: null,
+                sessionLabel: scope.baseSchedule.sessionLabel,
+            });
+        }
+    } else {
+        sessionScheduleScope.sessionId = null;
+        sessionScheduleScope.sessionLabel = scope.baseSchedule.sessionLabel ?? null;
+    }
+
+    const roomSessions =
+        expectedStudentIdList.length > 0
+            ? await prisma.studentExamSession.findMany({
+                  where: {
+                      studentId: { in: expectedStudentIdList },
+                      status: { in: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.COMPLETED, ExamSessionStatus.TIMEOUT] },
+                      schedule: { is: sessionScheduleScope },
+                  },
+                  select: {
+                      studentId: true,
+                  },
+              })
+            : scope.monitoredScheduleIds.length > 0
+                ? await prisma.studentExamSession.findMany({
+                      where: {
+                          scheduleId: { in: scope.monitoredScheduleIds },
+                          status: {
+                              in: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.COMPLETED, ExamSessionStatus.TIMEOUT],
+                          },
+                      },
+                      select: {
+                          studentId: true,
+                      },
+                  })
+                : [];
+
+    const presentSet = new Set<number>();
+    roomSessions.forEach((row) => {
+        const studentId = Number(row.studentId);
+        if (!Number.isFinite(studentId) || studentId <= 0) return;
+        if (expectedStudentIds.size > 0 && !expectedStudentIds.has(studentId)) return;
+        presentSet.add(studentId);
+    });
+    const presentCount = presentSet.size;
     const absentCount = Math.max(0, expectedCount - presentCount);
+
+    const monitoredClassNames =
+        sittingParticipants.classNames.length > 0 ? sittingParticipants.classNames : scope.monitoredClassNames;
 
     const normalizedNotes = String(notes || '').trim();
     const normalizedIncident = String(incident || '').trim();
@@ -653,7 +1114,7 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
                     scheduleId: parsedScheduleId,
                     reportId: report.id,
                     room: schedule.room,
-                    classNames: scope.monitoredClassNames,
+                    classNames: monitoredClassNames,
                     expectedCount,
                     presentCount,
                     absentCount,
@@ -670,7 +1131,7 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
                 ...report,
                 summary: {
                     room: schedule.room,
-                    classNames: scope.monitoredClassNames,
+                    classNames: monitoredClassNames,
                     expectedParticipants: expectedCount,
                     presentParticipants: presentCount,
                     absentParticipants: absentCount,
@@ -690,9 +1151,15 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
         .trim()
         .toUpperCase();
     const date = parseDateOnly(req.query.date);
-    const where: any = {
-        isActive: true,
-    };
+    const dateFrom = parseDateOnly(req.query.dateFrom);
+    const dateTo = parseDateOnly(req.query.dateTo);
+    const includeInactiveRaw = String(req.query.includeInactive || '').trim().toLowerCase();
+    const includeInactive = ['1', 'true', 'yes', 'y'].includes(includeInactiveRaw);
+
+    const where: any = {};
+    if (!includeInactive) {
+        where.isActive = true;
+    }
     if (Number.isFinite(parsedAcademicYearId) && parsedAcademicYearId > 0) {
         where.academicYearId = parsedAcademicYearId;
     }
@@ -705,6 +1172,17 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
             gte: range.start,
             lt: range.end,
         };
+    } else if (dateFrom || dateTo) {
+        const startDate = dateFrom || dateTo;
+        const endDate = dateTo || dateFrom;
+        if (startDate && endDate) {
+            const rangeStart = toDateRangeByDay(startDate).start;
+            const rangeEnd = toDateRangeByDay(endDate).end;
+            where.startTime = {
+                gte: rangeStart <= rangeEnd ? rangeStart : rangeEnd,
+                lt: rangeStart <= rangeEnd ? rangeEnd : rangeStart,
+            };
+        }
     }
 
     const schedules = await prisma.examSchedule.findMany({
@@ -714,8 +1192,10 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
             room: true,
             startTime: true,
             endTime: true,
+            sessionId: true,
             sessionLabel: true,
             examType: true,
+            academicYearId: true,
             classId: true,
             class: {
                 select: {
@@ -744,8 +1224,10 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
             room: string | null;
             startTime: Date;
             endTime: Date;
+            sessionId: number | null;
             sessionLabel: string | null;
             examType: string | null;
+            academicYearId: number | null;
             scheduleIds: number[];
             classIds: number[];
             classNames: string[];
@@ -764,14 +1246,20 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
 
     schedules.forEach((schedule) => {
         const roomKey = String(schedule.room || '').trim().toLowerCase();
+        const sessionIdKey =
+            Number.isFinite(Number(schedule.sessionId)) && Number(schedule.sessionId) > 0
+                ? String(schedule.sessionId)
+                : '__no_session_id__';
         const sessionKey = normalizeSessionLabel(schedule.sessionLabel) || '__no_session__';
-        const groupKey = `${roomKey}::${schedule.startTime.toISOString()}::${schedule.endTime.toISOString()}::${sessionKey}::${String(schedule.examType || '').trim().toUpperCase()}`;
+        const groupKey = `${roomKey}::${schedule.startTime.toISOString()}::${schedule.endTime.toISOString()}::${sessionIdKey}::${sessionKey}::${String(schedule.examType || '').trim().toUpperCase()}`;
         const current = groupedByRoomSlot.get(groupKey) || {
             room: schedule.room || null,
             startTime: schedule.startTime,
             endTime: schedule.endTime,
+            sessionId: Number.isFinite(Number(schedule.sessionId)) ? Number(schedule.sessionId) : null,
             sessionLabel: schedule.sessionLabel || null,
             examType: schedule.examType || null,
+            academicYearId: Number.isFinite(Number(schedule.academicYearId)) ? Number(schedule.academicYearId) : null,
             scheduleIds: [],
             classIds: [],
             classNames: [],
@@ -779,7 +1267,9 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
             latestReportAt: null,
         };
         current.scheduleIds.push(schedule.id);
-        current.classIds.push(schedule.classId);
+        if (Number.isFinite(Number(schedule.classId)) && Number(schedule.classId) > 0) {
+            current.classIds.push(Number(schedule.classId));
+        }
         if (schedule.class?.name) {
             current.classNames.push(schedule.class.name);
         }
@@ -807,9 +1297,11 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
         groupedByRoomSlot.set(groupKey, current);
     });
 
+    const groupedRows = Array.from(groupedByRoomSlot.values());
+
     const allClassIds = Array.from(
         new Set(
-            Array.from(groupedByRoomSlot.values())
+            groupedRows
                 .flatMap((group) => group.classIds)
                 .filter((classId) => Number.isFinite(classId) && classId > 0),
         ),
@@ -826,86 +1318,433 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
               },
           })
         : [];
-    const classStudentCountMap = new Map<number, number>(
-        classStudentCounts.map((row) => [Number(row.classId), Number(row._count?._all || 0)]),
-    );
-
-    const allScheduleIds = Array.from(
-        new Set(Array.from(groupedByRoomSlot.values()).flatMap((group) => group.scheduleIds)),
-    );
-    const sessionRows = allScheduleIds.length > 0
-        ? await prisma.studentExamSession.findMany({
+    const classStudents = allClassIds.length > 0
+        ? await prisma.user.findMany({
               where: {
-                  scheduleId: { in: allScheduleIds },
-                  status: { in: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.COMPLETED, ExamSessionStatus.TIMEOUT] },
+                  role: 'STUDENT',
+                  classId: { in: allClassIds },
               },
               select: {
-                  scheduleId: true,
-                  studentId: true,
+                  id: true,
+                  name: true,
+                  nis: true,
+                  classId: true,
+                  studentClass: {
+                      select: {
+                          name: true,
+                      },
+                  },
               },
           })
         : [];
+    const classStudentCountMap = new Map<number, number>(
+        classStudentCounts.map((row) => [Number(row.classId), Number(row._count?._all || 0)]),
+    );
+    const classStudentsByClassId = new Map<
+        number,
+        Array<{ id: number; name: string; nis: string | null; className: string | null }>
+    >();
+    const studentInfoById = new Map<number, { id: number; name: string; nis: string | null; className: string | null }>();
+    classStudents.forEach((student) => {
+        const classId = Number(student.classId);
+        if (!Number.isFinite(classId) || classId <= 0) return;
+        const row = {
+            id: Number(student.id),
+            name: String(student.name || '-'),
+            nis: student.nis ? String(student.nis) : null,
+            className: student.studentClass?.name ? String(student.studentClass.name) : null,
+        };
+        const bucket = classStudentsByClassId.get(classId) || [];
+        bucket.push(row);
+        classStudentsByClassId.set(classId, bucket);
+        studentInfoById.set(row.id, row);
+    });
+
+    const uniqueRooms = Array.from(
+        new Set(
+            groupedRows
+                .map((group) => String(group.room || '').trim())
+                .filter((roomName): roomName is string => Boolean(roomName)),
+        ),
+    );
+    const allStartTimes = groupedRows.map((group) => group.startTime.getTime());
+    const allEndTimes = groupedRows.map((group) => group.endTime.getTime());
+    const minStart = allStartTimes.length > 0 ? new Date(Math.min(...allStartTimes) - 3 * 60 * 60 * 1000) : null;
+    const maxEnd = allEndTimes.length > 0 ? new Date(Math.max(...allEndTimes) + 3 * 60 * 60 * 1000) : null;
+    const examTypeCandidatesForSitting = resolveExamTypeCandidates(examType);
+
+    const roomSittings: ProctorRoomSittingRow[] =
+        uniqueRooms.length > 0
+            ? await prisma.examSitting.findMany({
+                  where: {
+                      roomName: { in: uniqueRooms },
+                      ...(Number.isFinite(parsedAcademicYearId) && parsedAcademicYearId > 0
+                          ? { academicYearId: parsedAcademicYearId }
+                          : {}),
+                      ...(examTypeCandidatesForSitting.length > 0
+                          ? {
+                                examType: {
+                                    in: examTypeCandidatesForSitting,
+                                },
+                            }
+                          : {}),
+                      ...((minStart && maxEnd)
+                          ? {
+                                OR: [
+                                    {
+                                        startTime: {
+                                            gte: minStart,
+                                            lte: maxEnd,
+                                        },
+                                    },
+                                    { startTime: null },
+                                ],
+                            }
+                          : {}),
+                  },
+                  select: {
+                      id: true,
+                      roomName: true,
+                      academicYearId: true,
+                      examType: true,
+                      sessionId: true,
+                      sessionLabel: true,
+                      startTime: true,
+                      endTime: true,
+                      students: {
+                          select: {
+                              studentId: true,
+                              student: {
+                                  select: {
+                                      studentClass: {
+                                          select: {
+                                              name: true,
+                                          },
+                                      },
+                                  },
+                              },
+                          },
+                      },
+                  },
+              })
+            : [];
+
+    const matchedSittingsByGroup = groupedRows.map((group) =>
+        filterMatchedSittingsForSlot({
+            sittings: roomSittings,
+            roomName: group.room,
+            academicYearId: group.academicYearId,
+            examType: group.examType,
+            startTime: group.startTime,
+            endTime: group.endTime,
+            sessionId: group.sessionId,
+            sessionLabel: group.sessionLabel,
+        }),
+    );
+    const sittingParticipantsByGroup = matchedSittingsByGroup.map((sittings) => collectSittingParticipants(sittings));
+    const allSittingStudentIds = Array.from(
+        new Set(
+            sittingParticipantsByGroup.flatMap((bucket) => Array.from(bucket.studentIds.values())),
+        ),
+    );
+    const missingSittingStudentIds = allSittingStudentIds.filter((studentId) => !studentInfoById.has(studentId));
+    if (missingSittingStudentIds.length > 0) {
+        const missingStudents = await prisma.user.findMany({
+            where: {
+                id: { in: missingSittingStudentIds },
+                role: 'STUDENT',
+            },
+            select: {
+                id: true,
+                name: true,
+                nis: true,
+                studentClass: {
+                    select: {
+                        name: true,
+                    },
+                },
+            },
+        });
+        missingStudents.forEach((student) => {
+            const row = {
+                id: Number(student.id),
+                name: String(student.name || '-'),
+                nis: student.nis ? String(student.nis) : null,
+                className: student.studentClass?.name ? String(student.studentClass.name) : null,
+            };
+            studentInfoById.set(row.id, row);
+        });
+    }
+
+    const slotScopedSessionRows =
+        allSittingStudentIds.length > 0
+            ? await prisma.studentExamSession.findMany({
+                  where: {
+                      studentId: { in: allSittingStudentIds },
+                      status: { in: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.COMPLETED, ExamSessionStatus.TIMEOUT] },
+                      schedule: {
+                          is: {
+                              ...(Number.isFinite(parsedAcademicYearId) && parsedAcademicYearId > 0
+                                  ? {
+                                        academicYearId: parsedAcademicYearId,
+                                    }
+                                  : {}),
+                              ...(minStart && maxEnd
+                                  ? {
+                                        startTime: {
+                                            gte: minStart,
+                                            lte: maxEnd,
+                                        },
+                                    }
+                                  : {}),
+                          },
+                      },
+                  },
+                  select: {
+                      studentId: true,
+                      schedule: {
+                          select: {
+                              room: true,
+                              academicYearId: true,
+                              examType: true,
+                              sessionId: true,
+                              sessionLabel: true,
+                              startTime: true,
+                              endTime: true,
+                          },
+                      },
+                  },
+              })
+            : [];
+
+    const presentStudentIdsByGroup = groupedRows.map(() => new Set<number>());
+    slotScopedSessionRows.forEach((row) => {
+        const studentId = Number(row.studentId);
+        if (!Number.isFinite(studentId) || studentId <= 0) return;
+        groupedRows.forEach((group, index) => {
+            const expectedIds = sittingParticipantsByGroup[index]?.studentIds || new Set<number>();
+            if (!expectedIds.has(studentId)) return;
+            const schedule = row.schedule;
+            if (
+                Number.isFinite(Number(group.academicYearId)) &&
+                Number(group.academicYearId) > 0 &&
+                Number(schedule?.academicYearId) !== Number(group.academicYearId)
+            ) {
+                return;
+            }
+            if (!hasExamTypeIntersection(group.examType, schedule?.examType)) return;
+            if (
+                !isSameSessionScope({
+                    leftSessionId: group.sessionId,
+                    leftSessionLabel: group.sessionLabel,
+                    rightSessionId: schedule?.sessionId ?? null,
+                    rightSessionLabel: schedule?.sessionLabel ?? null,
+                })
+            ) {
+                return;
+            }
+            if (!isSameSlotTime(group.startTime, group.endTime, schedule?.startTime ?? null, schedule?.endTime ?? null)) {
+                return;
+            }
+            presentStudentIdsByGroup[index].add(studentId);
+        });
+    });
+
+    const allScheduleIds = Array.from(new Set(groupedRows.flatMap((group) => group.scheduleIds)));
+    const scheduleScopedSessionRows =
+        allScheduleIds.length > 0
+            ? await prisma.studentExamSession.findMany({
+                  where: {
+                      scheduleId: { in: allScheduleIds },
+                      status: { in: [ExamSessionStatus.IN_PROGRESS, ExamSessionStatus.COMPLETED, ExamSessionStatus.TIMEOUT] },
+                  },
+                  select: {
+                      scheduleId: true,
+                      studentId: true,
+                  },
+              })
+            : [];
 
     const studentIdsBySchedule = new Map<number, Set<number>>();
-    sessionRows.forEach((row) => {
+    scheduleScopedSessionRows.forEach((row) => {
         const bucket = studentIdsBySchedule.get(row.scheduleId) || new Set<number>();
         bucket.add(row.studentId);
         studentIdsBySchedule.set(row.scheduleId, bucket);
     });
 
-    const reportRows = Array.from(groupedByRoomSlot.values())
-        .map((group) => {
+    const reportRows = (
+        await Promise.all(
+            groupedRows.map(async (group, groupIndex) => {
             const uniqueClassIds = Array.from(new Set(group.classIds));
-            const uniqueClassNames = Array.from(new Set(group.classNames)).sort((a, b) => a.localeCompare(b, 'id'));
-            const expectedParticipants = uniqueClassIds.reduce(
+            const fallbackClassNames = Array.from(new Set(group.classNames)).sort((a, b) => a.localeCompare(b, 'id'));
+            const fallbackExpectedParticipants = uniqueClassIds.reduce(
                 (total, classId) => total + (classStudentCountMap.get(classId) || 0),
                 0,
             );
+            const fallbackExpectedIds = new Set<number>();
+            uniqueClassIds.forEach((classId) => {
+                (classStudentsByClassId.get(classId) || []).forEach((student) => {
+                    const studentId = Number(student.id);
+                    if (!Number.isFinite(studentId) || studentId <= 0) return;
+                    fallbackExpectedIds.add(studentId);
+                });
+            });
+
+            const sittingParticipants = sittingParticipantsByGroup[groupIndex] || {
+                studentIds: new Set<number>(),
+                classNames: [],
+            };
+            const expectedStudentIds =
+                sittingParticipants.studentIds.size > 0 ? sittingParticipants.studentIds : fallbackExpectedIds;
+            const expectedParticipants =
+                expectedStudentIds.size > 0
+                    ? expectedStudentIds.size
+                    : fallbackExpectedParticipants;
+
             const presentSet = new Set<number>();
             group.scheduleIds.forEach((scheduleId) => {
                 const students = studentIdsBySchedule.get(scheduleId);
                 if (!students) return;
                 students.forEach((studentId) => presentSet.add(studentId));
             });
-            const computedPresent = presentSet.size;
+            const slotPresentSet = presentStudentIdsByGroup[groupIndex] || new Set<number>();
+            const effectivePresentSet = new Set<number>();
+            if (expectedStudentIds.size > 0) {
+                presentSet.forEach((studentId) => {
+                    if (expectedStudentIds.has(studentId)) {
+                        effectivePresentSet.add(studentId);
+                    }
+                });
+                slotPresentSet.forEach((studentId) => {
+                    if (expectedStudentIds.has(studentId)) {
+                        effectivePresentSet.add(studentId);
+                    }
+                });
+            } else {
+                presentSet.forEach((studentId) => effectivePresentSet.add(studentId));
+                slotPresentSet.forEach((studentId) => effectivePresentSet.add(studentId));
+            }
+            const computedPresent = effectivePresentSet.size;
             const computedAbsent = Math.max(0, expectedParticipants - computedPresent);
+            const absentStudentIds =
+                expectedStudentIds.size > 0
+                    ? Array.from(expectedStudentIds.values()).filter((studentId) => !effectivePresentSet.has(studentId))
+                    : [];
+
+            const overlappingPermissions =
+                absentStudentIds.length > 0
+                    ? await prisma.studentPermission.findMany({
+                          where: {
+                              studentId: { in: absentStudentIds },
+                              ...(group.academicYearId ? { academicYearId: group.academicYearId } : {}),
+                              startDate: { lte: group.endTime },
+                              endDate: { gte: group.startTime },
+                          },
+                          select: {
+                              studentId: true,
+                              status: true,
+                              reason: true,
+                              approvalNote: true,
+                              updatedAt: true,
+                              id: true,
+                              approvedBy: {
+                                  select: {
+                                      id: true,
+                                      name: true,
+                                      additionalDuties: true,
+                                      role: true,
+                                  },
+                              },
+                          },
+                          orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+                      })
+                    : [];
+
+            const permissionByStudentId = new Map<number, PermissionSnapshot>();
+            overlappingPermissions.forEach((permission) => {
+                if (!permissionByStudentId.has(permission.studentId)) {
+                    permissionByStudentId.set(permission.studentId, {
+                        status: permission.status,
+                        reason: permission.reason,
+                        approvalNote: permission.approvalNote,
+                        approvedBy: permission.approvedBy
+                            ? {
+                                  id: permission.approvedBy.id,
+                                  name: permission.approvedBy.name,
+                                  additionalDuties: permission.approvedBy.additionalDuties || [],
+                                  role: permission.approvedBy.role,
+                              }
+                            : null,
+                    });
+                }
+            });
+
+            const absentStudents =
+                absentStudentIds.length > 0
+                    ? absentStudentIds
+                          .map((studentId) => {
+                              const profile = studentInfoById.get(studentId);
+                              const permission = permissionByStudentId.get(studentId) || null;
+                              return {
+                                  id: studentId,
+                                  name: profile?.name || `Siswa #${studentId}`,
+                                  nis: profile?.nis || null,
+                                  className: profile?.className || null,
+                                  absentReason: resolveAbsentReason(permission),
+                                  permissionStatus: permission?.status || null,
+                              };
+                          })
+                          .sort((a, b) => {
+                              const classCompare = String(a.className || '').localeCompare(
+                                  String(b.className || ''),
+                                  'id',
+                                  { numeric: true, sensitivity: 'base' },
+                              );
+                              if (classCompare !== 0) return classCompare;
+                              return String(a.name || '').localeCompare(String(b.name || ''), 'id');
+                          })
+                    : [];
 
             const latestReport =
                 group.reportRows
                     .slice()
                     .sort((a, b) => b.signedAt.getTime() - a.signedAt.getTime())[0] || null;
-            const presentParticipants =
-                latestReport && (latestReport.studentCountPresent > 0 || latestReport.studentCountAbsent > 0)
-                    ? latestReport.studentCountPresent
-                    : computedPresent;
-            const absentParticipants =
-                latestReport && (latestReport.studentCountPresent > 0 || latestReport.studentCountAbsent > 0)
-                    ? latestReport.studentCountAbsent
-                    : computedAbsent;
+            // Gunakan hitungan realtime dari student_exam_sessions sebagai angka utama peserta.
+            // Nilai yang tersimpan di berita acara dapat stale jika ditandatangani saat ujian belum selesai.
+            const presentParticipants = computedPresent;
+            const absentParticipants = computedAbsent;
 
-            return {
-                room: group.room,
-                startTime: group.startTime,
-                endTime: group.endTime,
-                sessionLabel: group.sessionLabel,
-                examType: group.examType,
-                classNames: uniqueClassNames,
-                scheduleIds: group.scheduleIds,
-                expectedParticipants,
-                presentParticipants,
-                absentParticipants,
-                totalParticipants: expectedParticipants,
-                report: latestReport
-                    ? {
-                          id: latestReport.id,
-                          signedAt: latestReport.signedAt,
-                          notes: latestReport.notes,
-                          incident: latestReport.incident,
-                          proctor: latestReport.proctor,
-                      }
-                    : null,
-            };
-        })
+                return {
+                    room: group.room,
+                    startTime: group.startTime,
+                    endTime: group.endTime,
+                    sessionLabel: group.sessionLabel,
+                    examType: group.examType,
+                    classNames:
+                        sittingParticipants.classNames.length > 0
+                            ? sittingParticipants.classNames
+                            : fallbackClassNames,
+                    scheduleIds: group.scheduleIds,
+                    expectedParticipants,
+                    presentParticipants,
+                    absentParticipants,
+                    totalParticipants: expectedParticipants,
+                    absentStudents,
+                    reportedPresentParticipants: latestReport?.studentCountPresent ?? null,
+                    reportedAbsentParticipants: latestReport?.studentCountAbsent ?? null,
+                    report: latestReport
+                        ? {
+                              id: latestReport.id,
+                              signedAt: latestReport.signedAt,
+                              notes: latestReport.notes,
+                              incident: latestReport.incident,
+                              proctor: latestReport.proctor,
+                          }
+                        : null,
+                };
+            }),
+        )
+    )
         .sort((a, b) => {
             const timeDiff = a.startTime.getTime() - b.startTime.getTime();
             if (timeDiff !== 0) return timeDiff;

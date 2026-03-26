@@ -10,6 +10,42 @@ type ExtracurricularFieldPair = {
 const EXTRACURRICULAR_PREDICATES = ['SB', 'B', 'C', 'K'] as const;
 type ExtracurricularPredicate = (typeof EXTRACURRICULAR_PREDICATES)[number];
 
+const DEFAULT_EXTRACURRICULAR_PREDICATE_LABELS: Record<ExtracurricularPredicate, string> = {
+  SB: 'Sangat Baik (SB)',
+  B: 'Baik (B)',
+  C: 'Cukup (C)',
+  K: 'Kurang (K)',
+};
+
+const EXTRACURRICULAR_ATTENDANCE_STATUSES = ['PRESENT', 'PERMIT', 'SICK', 'ABSENT'] as const;
+type ExtracurricularAttendanceStatus = (typeof EXTRACURRICULAR_ATTENDANCE_STATUSES)[number];
+
+function normalizeAttendanceStatus(raw: unknown): ExtracurricularAttendanceStatus {
+  const value = String(raw || '').trim().toUpperCase();
+  if (value === 'PRESENT' || value === 'HADIR') return 'PRESENT';
+  if (value === 'PERMIT' || value === 'IZIN') return 'PERMIT';
+  if (value === 'SICK' || value === 'SAKIT') return 'SICK';
+  if (value === 'ABSENT' || value === 'ALPA') return 'ABSENT';
+  throw new ApiError(400, 'Status absensi harus salah satu dari HADIR, IZIN, SAKIT, atau ALPA.');
+}
+
+function sanitizeWeekKey(raw: unknown): string {
+  const value = String(raw || '').trim().toUpperCase();
+  if (!/^\d{4}-W\d{2}$/.test(value)) {
+    throw new ApiError(400, 'Format pekan absensi tidak valid.');
+  }
+  return value;
+}
+
+function getCurrentWeekKey(date = new Date()): string {
+  const utc = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = utc.getUTCDay() || 7;
+  utc.setUTCDate(utc.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((utc.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${utc.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+}
+
 function normalizeProgramCode(raw: unknown): string {
   return String(raw || '')
     .trim()
@@ -96,10 +132,21 @@ function mapBaseTypeFromCode(rawCode: unknown): ExamType | null {
 }
 
 function normalizePredicate(raw: unknown): ExtracurricularPredicate {
-  const value = String(raw || '')
+  const rawString = String(raw || '').trim();
+  const value = rawString
     .trim()
     .toUpperCase()
     .replace(/\s+/g, '_');
+
+  if (rawString.toUpperCase() === 'SB') return 'SB';
+  if (rawString.toUpperCase() === 'B') return 'B';
+  if (rawString.toUpperCase() === 'C') return 'C';
+  if (rawString.toUpperCase() === 'K') return 'K';
+
+  if (/\(SB\)/i.test(rawString) || /^SANGAT\s+BAIK/i.test(rawString)) return 'SB';
+  if (/\(B\)/i.test(rawString) || /^BAIK/i.test(rawString)) return 'B';
+  if (/\(C\)/i.test(rawString) || /^CUKUP/i.test(rawString)) return 'C';
+  if (/\(K\)/i.test(rawString) || /^KURANG/i.test(rawString)) return 'K';
 
   if (value === 'SB' || value === 'A' || value === 'SANGAT_BAIK') return 'SB';
   if (value === 'B' || value === 'BAIK') return 'B';
@@ -118,6 +165,83 @@ function normalizeComparableName(value: unknown): string {
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+async function notifyHomeroomExtracurricularGradeUpdated(params: {
+  enrollmentId: number;
+  academicYearId: number;
+  semester?: Semester;
+  reportType?: string;
+  programCode?: string;
+}) {
+  const enrollment = await prisma.ekstrakurikulerEnrollment.findUnique({
+    where: { id: params.enrollmentId },
+    select: {
+      id: true,
+      student: {
+        select: {
+          id: true,
+          name: true,
+          studentClass: {
+            select: {
+              id: true,
+              name: true,
+              teacherId: true,
+            },
+          },
+        },
+      },
+      ekskul: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  if (!enrollment?.student.studentClass?.teacherId) return;
+
+  const dayStart = new Date();
+  dayStart.setHours(0, 0, 0, 0);
+  const title = 'Nilai Ekstrakurikuler Diperbarui';
+  const message = `Pembina memperbarui nilai ekstrakurikuler ${enrollment.student.name} pada ${enrollment.ekskul.name}.`;
+
+  const existingToday = await prisma.notification.findFirst({
+    where: {
+      userId: enrollment.student.studentClass.teacherId,
+      type: 'EXTRACURRICULAR_GRADE_UPDATED',
+      title,
+      message,
+      createdAt: { gte: dayStart },
+    },
+    select: { id: true },
+  });
+
+  if (existingToday) return;
+
+  await prisma.notification.create({
+    data: {
+      userId: enrollment.student.studentClass.teacherId,
+      title,
+      message,
+      type: 'EXTRACURRICULAR_GRADE_UPDATED',
+      data: {
+        module: 'EXTRACURRICULAR',
+        enrollmentId: enrollment.id,
+        studentId: enrollment.student.id,
+        classId: enrollment.student.studentClass.id,
+        className: enrollment.student.studentClass.name,
+        ekskulId: enrollment.ekskul.id,
+        ekskulName: enrollment.ekskul.name,
+        academicYearId: params.academicYearId,
+        semester: params.semester || null,
+        reportType: params.reportType || null,
+        programCode: params.programCode || null,
+        route: '/teacher/wali-kelas/students',
+      },
+    },
+  });
 }
 
 function getRoomMatchScore(ekskulName: string, roomName: string): number {
@@ -423,6 +547,161 @@ export class TutorService {
     return enrollments;
   }
 
+  async getAttendanceOverview(
+    tutorId: number,
+    params: {
+      ekskulId: number;
+      academicYearId: number;
+      weekKey?: string;
+    },
+  ) {
+    const assignment = await this.ensureActiveAssignment(tutorId, params.ekskulId, params.academicYearId);
+    const normalizedWeekKey = sanitizeWeekKey(params.weekKey || getCurrentWeekKey());
+
+    const [config, week] = await Promise.all([
+      (prisma as any).ekstrakurikulerAttendanceConfig.findUnique({
+        where: { tutorAssignmentId: assignment.id },
+      }),
+      (prisma as any).ekstrakurikulerAttendanceWeek.findUnique({
+        where: {
+          tutorAssignmentId_weekKey: {
+            tutorAssignmentId: assignment.id,
+            weekKey: normalizedWeekKey,
+          },
+        },
+        include: {
+          entries: true,
+        },
+      }),
+    ]);
+
+    return {
+      assignmentId: assignment.id,
+      ekskulId: params.ekskulId,
+      academicYearId: params.academicYearId,
+      weekKey: normalizedWeekKey,
+      sessionsPerWeek: Math.max(1, Number(config?.sessionsPerWeek || 1)),
+      records: Array.isArray(week?.entries)
+        ? week.entries.map((entry: any) => ({
+            enrollmentId: entry.enrollmentId,
+            sessionIndex: entry.sessionIndex,
+            status: entry.status,
+            note: entry.note || '',
+          }))
+        : [],
+    };
+  }
+
+  async saveAttendanceConfig(
+    tutorId: number,
+    params: {
+      ekskulId: number;
+      academicYearId: number;
+      sessionsPerWeek: number;
+    },
+  ) {
+    const assignment = await this.ensureActiveAssignment(tutorId, params.ekskulId, params.academicYearId);
+    const sessionsPerWeek = Math.max(1, Math.min(14, Number(params.sessionsPerWeek || 1)));
+
+    const config = await (prisma as any).ekstrakurikulerAttendanceConfig.upsert({
+      where: { tutorAssignmentId: assignment.id },
+      update: { sessionsPerWeek },
+      create: {
+        tutorAssignmentId: assignment.id,
+        sessionsPerWeek,
+      },
+    });
+
+    return {
+      assignmentId: assignment.id,
+      sessionsPerWeek: Number(config.sessionsPerWeek || sessionsPerWeek),
+    };
+  }
+
+  async saveAttendanceRecords(
+    tutorId: number,
+    params: {
+      ekskulId: number;
+      academicYearId: number;
+      weekKey: string;
+      records: Array<{
+        enrollmentId: number;
+        sessionIndex: number;
+        status: string;
+        note?: string;
+      }>;
+    },
+  ) {
+    const assignment = await this.ensureActiveAssignment(tutorId, params.ekskulId, params.academicYearId);
+    const normalizedWeekKey = sanitizeWeekKey(params.weekKey);
+    const config = await (prisma as any).ekstrakurikulerAttendanceConfig.findUnique({
+      where: { tutorAssignmentId: assignment.id },
+    });
+    const sessionsPerWeek = Math.max(1, Number(config?.sessionsPerWeek || 1));
+    const validEnrollmentIds = new Set(
+      (
+        await prisma.ekstrakurikulerEnrollment.findMany({
+          where: {
+            ekskulId: params.ekskulId,
+            academicYearId: params.academicYearId,
+          },
+          select: { id: true },
+        })
+      ).map((row) => row.id),
+    );
+
+    const sanitizedRecords = params.records
+      .filter((record) => validEnrollmentIds.has(Number(record.enrollmentId)))
+      .map((record) => ({
+        enrollmentId: Number(record.enrollmentId),
+        sessionIndex: Math.max(1, Math.min(sessionsPerWeek, Number(record.sessionIndex || 1))),
+        status: normalizeAttendanceStatus(record.status),
+        note: String(record.note || '').trim() || null,
+      }))
+      .filter((record) => record.status);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const week = await (tx as any).ekstrakurikulerAttendanceWeek.upsert({
+        where: {
+          tutorAssignmentId_weekKey: {
+            tutorAssignmentId: assignment.id,
+            weekKey: normalizedWeekKey,
+          },
+        },
+        update: {},
+        create: {
+          tutorAssignmentId: assignment.id,
+          weekKey: normalizedWeekKey,
+        },
+      });
+
+      await (tx as any).ekstrakurikulerAttendanceEntry.deleteMany({
+        where: { weekId: week.id },
+      });
+
+      if (sanitizedRecords.length > 0) {
+        await (tx as any).ekstrakurikulerAttendanceEntry.createMany({
+          data: sanitizedRecords.map((record) => ({
+            weekId: week.id,
+            enrollmentId: record.enrollmentId,
+            sessionIndex: record.sessionIndex,
+            status: record.status,
+            note: record.note,
+          })),
+        });
+      }
+
+      return week;
+    });
+
+    return {
+      assignmentId: assignment.id,
+      weekId: result.id,
+      weekKey: normalizedWeekKey,
+      savedRecords: sanitizedRecords.length,
+    };
+  }
+
   async getGradeTemplates(
     tutorId: number,
     params: {
@@ -451,13 +730,35 @@ export class TutorService {
       orderBy: [{ predicate: 'asc' }],
     });
 
-    const templates = EXTRACURRICULAR_PREDICATES.reduce<Record<ExtracurricularPredicate, string>>(
+    const templates = EXTRACURRICULAR_PREDICATES.reduce<
+      Record<ExtracurricularPredicate, { label: string; description: string }>
+    >(
       (acc, predicate) => {
         const found = rows.find((row: any) => normalizePredicate(row.predicate) === predicate);
-        acc[predicate] = String(found?.description || '');
+        acc[predicate] = {
+          label: String(found?.predicate || DEFAULT_EXTRACURRICULAR_PREDICATE_LABELS[predicate]),
+          description: String(found?.description || ''),
+        };
         return acc;
       },
-      { SB: '', B: '', C: '', K: '' },
+      {
+        SB: {
+          label: DEFAULT_EXTRACURRICULAR_PREDICATE_LABELS.SB,
+          description: '',
+        },
+        B: {
+          label: DEFAULT_EXTRACURRICULAR_PREDICATE_LABELS.B,
+          description: '',
+        },
+        C: {
+          label: DEFAULT_EXTRACURRICULAR_PREDICATE_LABELS.C,
+          description: '',
+        },
+        K: {
+          label: DEFAULT_EXTRACURRICULAR_PREDICATE_LABELS.K,
+          description: '',
+        },
+      },
     );
 
     return {
@@ -477,7 +778,9 @@ export class TutorService {
       semester: Semester;
       reportType?: string;
       programCode?: string;
-      templates: Partial<Record<ExtracurricularPredicate, string>>;
+      templates: Partial<
+        Record<ExtracurricularPredicate, { label?: string; description?: string }>
+      >;
     },
   ) {
     await this.ensureActiveAssignment(tutorId, params.ekskulId, params.academicYearId);
@@ -488,14 +791,19 @@ export class TutorService {
       programCode: params.programCode,
     });
 
-    const rows = EXTRACURRICULAR_PREDICATES.map((predicate) => ({
-      ekskulId: params.ekskulId,
-      academicYearId: params.academicYearId,
-      semester: params.semester,
-      reportSlot,
-      predicate,
-      description: String(params.templates?.[predicate] || '').trim(),
-    }));
+    const rows = EXTRACURRICULAR_PREDICATES.map((predicate) => {
+      const template = params.templates?.[predicate] || {};
+      const label = String(template.label || '').trim() || DEFAULT_EXTRACURRICULAR_PREDICATE_LABELS[predicate];
+      const description = String(template.description || '').trim();
+      return {
+        ekskulId: params.ekskulId,
+        academicYearId: params.academicYearId,
+        semester: params.semester,
+        reportSlot,
+        predicate: label,
+        description,
+      };
+    });
 
     await prisma.$transaction(async (tx) => {
       await (tx as any).ekstrakurikulerGradeTemplate.deleteMany({
@@ -507,7 +815,11 @@ export class TutorService {
         },
       });
 
-      const toInsert = rows.filter((row) => row.description.length > 0);
+      const toInsert = rows.filter(
+        (row) =>
+          row.description.length > 0 ||
+          row.predicate !== DEFAULT_EXTRACURRICULAR_PREDICATE_LABELS[normalizePredicate(row.predicate)],
+      );
       if (toInsert.length > 0) {
         await (tx as any).ekstrakurikulerGradeTemplate.createMany({
           data: toInsert,
@@ -520,10 +832,33 @@ export class TutorService {
       academicYearId: params.academicYearId,
       semester: params.semester,
       reportSlot,
-      templates: rows.reduce<Record<ExtracurricularPredicate, string>>((acc, row) => {
-        acc[row.predicate] = row.description;
+      templates: rows.reduce<
+        Record<ExtracurricularPredicate, { label: string; description: string }>
+      >((acc, row) => {
+        const code = normalizePredicate(row.predicate);
+        acc[code] = {
+          label: row.predicate,
+          description: row.description,
+        };
         return acc;
-      }, { SB: '', B: '', C: '', K: '' }),
+      }, {
+        SB: {
+          label: DEFAULT_EXTRACURRICULAR_PREDICATE_LABELS.SB,
+          description: '',
+        },
+        B: {
+          label: DEFAULT_EXTRACURRICULAR_PREDICATE_LABELS.B,
+          description: '',
+        },
+        C: {
+          label: DEFAULT_EXTRACURRICULAR_PREDICATE_LABELS.C,
+          description: '',
+        },
+        K: {
+          label: DEFAULT_EXTRACURRICULAR_PREDICATE_LABELS.K,
+          description: '',
+        },
+      }),
     };
   }
 
@@ -740,10 +1075,20 @@ export class TutorService {
       updateData = { grade: normalizedGrade, description: normalizedDescription };
     }
 
-    return prisma.ekstrakurikulerEnrollment.update({
+    const updated = await prisma.ekstrakurikulerEnrollment.update({
       where: { id: enrollmentId },
       data: updateData,
     });
+
+    await notifyHomeroomExtracurricularGradeUpdated({
+      enrollmentId,
+      academicYearId: enrollment.academicYearId,
+      semester,
+      reportType: normalizedReportCode,
+      programCode: normalizedProgramCode,
+    });
+
+    return updated;
   }
 }
 

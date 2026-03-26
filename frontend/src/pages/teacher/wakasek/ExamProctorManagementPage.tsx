@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   Calendar,
+  Archive,
   Save,
   MapPin,
   FileText,
@@ -98,6 +99,14 @@ interface ProctorReportRow {
   presentParticipants: number;
   absentParticipants: number;
   totalParticipants: number;
+  absentStudents?: Array<{
+    id: number;
+    name: string;
+    nis?: string | null;
+    className?: string | null;
+    absentReason?: string | null;
+    permissionStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | null;
+  }>;
   report: {
     id: number;
     signedAt: string;
@@ -365,6 +374,9 @@ const ExamProctorManagementPage = () => {
   
   // Filters
   const [selectedDate, setSelectedDate] = useState<string>(() => String(searchParams.get(dateParamKey) || ''));
+  const [reportMode, setReportMode] = useState<'daily' | 'archive'>('daily');
+  const [reportDateFrom, setReportDateFrom] = useState<string>(() => String(searchParams.get('mengawasReportFrom') || ''));
+  const [reportDateTo, setReportDateTo] = useState<string>(() => String(searchParams.get('mengawasReportTo') || ''));
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
   const [proctorReports, setProctorReports] = useState<ProctorReportRow[]>([]);
   const [proctorReportSummary, setProctorReportSummary] = useState<ProctorReportSummary>({
@@ -390,6 +402,7 @@ const ExamProctorManagementPage = () => {
   
   // UI State
   const [expandedSlots, setExpandedSlots] = useState<string[]>([]);
+  const [absentModalRow, setAbsentModalRow] = useState<ProctorReportRow | null>(null);
 
   const visiblePrograms = useMemo(
     () =>
@@ -653,12 +666,20 @@ const ExamProctorManagementPage = () => {
 
     setReportsLoading(true);
     try {
+      const reportParams: Record<string, string | undefined> = {
+        academicYearId: selectedAcademicYear,
+        programCode: activeProgramCode,
+      };
+      if (reportMode === 'daily') {
+        reportParams.date = selectedDate || undefined;
+      } else {
+        reportParams.includeInactive = 'true';
+        reportParams.dateFrom = reportDateFrom || undefined;
+        reportParams.dateTo = reportDateTo || undefined;
+      }
+
       const response = await api.get('/proctoring/reports', {
-        params: {
-          academicYearId: selectedAcademicYear,
-          programCode: activeProgramCode,
-          date: selectedDate || undefined,
-        },
+        params: reportParams,
       });
       const payload = response.data?.data || {};
       const rows = Array.isArray(payload?.rows) ? (payload.rows as ProctorReportRow[]) : [];
@@ -687,7 +708,7 @@ const ExamProctorManagementPage = () => {
     } finally {
       setReportsLoading(false);
     }
-  }, [activeProgramCode, selectedAcademicYear, selectedDate]);
+  }, [activeProgramCode, selectedAcademicYear, selectedDate, reportMode, reportDateFrom, reportDateTo]);
 
   useEffect(() => {
     void fetchProctorReports();
@@ -719,6 +740,17 @@ const ExamProctorManagementPage = () => {
       setSearchParams(nextParams, { replace: true });
     }
   }, [selectedDate, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (reportDateFrom) nextParams.set('mengawasReportFrom', reportDateFrom);
+    else nextParams.delete('mengawasReportFrom');
+    if (reportDateTo) nextParams.set('mengawasReportTo', reportDateTo);
+    else nextParams.delete('mengawasReportTo');
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [reportDateFrom, reportDateTo, searchParams, setSearchParams]);
 
   // --- Grouping Logic ---
   const groupedData = useMemo(() => {
@@ -1235,11 +1267,67 @@ const ExamProctorManagementPage = () => {
               Laporan ruang ujian otomatis diterima dari pengawas untuk program {activeProgram?.shortLabel || activeProgram?.label || activeProgramCode || '-'}.
             </p>
           </div>
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <FileText size={14} />
-            <span>{proctorReportSummary.reportedRooms}/{proctorReportSummary.totalRooms} ruang sudah melapor</span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center space-x-1 bg-gray-100 p-1 rounded-lg border border-gray-200">
+              <button
+                type="button"
+                onClick={() => setReportMode('daily')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  reportMode === 'daily' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Harian
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!reportDateFrom && selectedDate) setReportDateFrom(selectedDate);
+                  if (!reportDateTo && selectedDate) setReportDateTo(selectedDate);
+                  setReportMode('archive');
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  reportMode === 'archive' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Archive size={12} />
+                Arsip
+              </button>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <FileText size={14} />
+              <span>{proctorReportSummary.reportedRooms}/{proctorReportSummary.totalRooms} ruang sudah melapor</span>
+            </div>
           </div>
         </div>
+
+        {reportMode === 'archive' && (
+          <div className="px-6 py-3 border-b border-gray-200 bg-amber-50/40">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative">
+                <Calendar className="absolute left-3 top-2.5 text-gray-400" size={14} />
+                <input
+                  type="date"
+                  value={reportDateFrom}
+                  onChange={(event) => setReportDateFrom(event.target.value)}
+                  className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <span className="text-xs text-gray-500">s/d</span>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-2.5 text-gray-400" size={14} />
+                <input
+                  type="date"
+                  value={reportDateTo}
+                  onChange={(event) => setReportDateTo(event.target.value)}
+                  className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <span className="text-xs text-amber-700">
+                Mode arsip menampilkan riwayat termasuk jadwal nonaktif.
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 px-6 py-4 bg-gray-50 border-b border-gray-200">
           <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
@@ -1310,7 +1398,19 @@ const ExamProctorManagementPage = () => {
                     <td className="px-6 py-4 align-top text-sm text-gray-700">
                       <div>Seharusnya: <span className="font-semibold">{row.expectedParticipants}</span></div>
                       <div className="text-emerald-700">Hadir: <span className="font-semibold">{row.presentParticipants}</span></div>
-                      <div className="text-rose-700">Tidak hadir: <span className="font-semibold">{row.absentParticipants}</span></div>
+                      {row.absentParticipants > 0 && Array.isArray(row.absentStudents) && row.absentStudents.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setAbsentModalRow(row)}
+                          className="text-rose-700 hover:text-rose-800 hover:underline focus:outline-none focus:ring-2 focus:ring-rose-400/50 rounded-sm"
+                        >
+                          Tidak hadir: <span className="font-semibold">{row.absentParticipants}</span>
+                        </button>
+                      ) : (
+                        <div className="text-rose-700">
+                          Tidak hadir: <span className="font-semibold">{row.absentParticipants}</span>
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 align-top text-sm text-gray-700">
                       {row.report?.proctor?.name ? (
@@ -1339,6 +1439,73 @@ const ExamProctorManagementPage = () => {
           </div>
         )}
       </div>
+
+      {absentModalRow &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 p-4"
+            onClick={() => setAbsentModalRow(null)}
+          >
+            <div
+              className="w-full max-w-4xl max-h-[85vh] overflow-hidden rounded-xl bg-white shadow-2xl border border-gray-200"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Daftar Siswa Tidak Hadir</h3>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {absentModalRow.room || 'Belum ditentukan'} • {format(new Date(absentModalRow.startTime), 'HH:mm')} -{' '}
+                    {format(new Date(absentModalRow.endTime), 'HH:mm')} WIB
+                    {absentModalRow.sessionLabel ? ` • ${absentModalRow.sessionLabel}` : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAbsentModalRow(null)}
+                  className="inline-flex items-center justify-center rounded-md border border-gray-200 p-2 text-gray-600 hover:bg-gray-50"
+                  aria-label="Tutup popup siswa tidak hadir"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-5 overflow-y-auto max-h-[calc(85vh-78px)]">
+                {!Array.isArray(absentModalRow.absentStudents) || absentModalRow.absentStudents.length === 0 ? (
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+                    Tidak ada data siswa tidak hadir.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border border-gray-200 rounded-lg overflow-hidden">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 w-14">No</th>
+                          <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Nama Siswa</th>
+                          <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 w-40">Kelas</th>
+                          <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Keterangan Tidak Hadir</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {absentModalRow.absentStudents.map((student, index) => (
+                          <tr key={`absent-student-${student.id}-${index}`} className="align-top">
+                            <td className="px-3 py-2 text-sm text-gray-700">{index + 1}</td>
+                            <td className="px-3 py-2">
+                              <div className="text-sm font-medium text-gray-900">{student.name}</div>
+                              {student.nis ? <div className="text-xs text-gray-500">NIS: {student.nis}</div> : null}
+                            </td>
+                            <td className="px-3 py-2 text-sm text-gray-700">{student.className || '-'}</td>
+                            <td className="px-3 py-2 text-sm text-gray-700">{student.absentReason || 'Tanpa keterangan.'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 };

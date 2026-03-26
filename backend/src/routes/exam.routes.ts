@@ -10,6 +10,7 @@ import {
     getPacketItemAnalysis,
     getPacketSubmissions,
     getSessionDetail,
+    updateSessionScore,
     syncPacketItemAnalysis,
     getQuestions,
     getProgramSessions,
@@ -19,6 +20,8 @@ import {
     updateSchedule,
     deleteSchedule,
     getAvailableExams,
+    createExamBrowserLaunchToken,
+    exchangeExamBrowserLaunchToken,
     startExam,
     submitAnswers,
     getExamRestrictions,
@@ -33,6 +36,9 @@ import {
 
 const router = Router();
 
+// Public route for external exam-browser app (token exchange).
+router.post('/launch/exchange', exchangeExamBrowserLaunchToken);
+
 router.use(authMiddleware);
 
 router.get('/programs', getExamPrograms);
@@ -45,9 +51,10 @@ router.get('/restrictions', roleMiddleware(['TEACHER', 'ADMIN']), getExamRestric
 router.put('/restrictions', roleMiddleware(['TEACHER', 'ADMIN']), updateExamRestriction);
 
 // Student Routes (Must be before other routes if any overlap, though here they are distinct)
-router.get('/available', roleMiddleware(['STUDENT']), getAvailableExams);
-router.get('/:id/start', roleMiddleware(['STUDENT']), startExam);
-router.post('/:id/answers', roleMiddleware(['STUDENT']), submitAnswers);
+router.get('/available', roleMiddleware(['STUDENT', 'CALON_SISWA', 'UMUM']), getAvailableExams);
+router.post('/:id/launch-token', roleMiddleware(['STUDENT', 'CALON_SISWA', 'UMUM']), createExamBrowserLaunchToken);
+router.get('/:id/start', roleMiddleware(['STUDENT', 'CALON_SISWA', 'UMUM']), startExam);
+router.post('/:id/answers', roleMiddleware(['STUDENT', 'CALON_SISWA', 'UMUM']), submitAnswers);
 
 // Packets
 router.get('/packets', getPackets);
@@ -56,6 +63,7 @@ router.get('/packets/:id/item-analysis', roleMiddleware(['TEACHER', 'ADMIN', 'EX
 router.post('/packets/:id/item-analysis/sync', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), syncPacketItemAnalysis);
 router.get('/packets/:id', getPacketById);
 router.get('/sessions/:id/detail', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), getSessionDetail);
+router.patch('/sessions/:id/score', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), updateSessionScore);
 router.post('/packets', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), createPacket);
 router.put('/packets/:id', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), updatePacket);
 router.delete('/packets/:id', roleMiddleware(['TEACHER', 'ADMIN', 'EXAMINER']), deletePacket);

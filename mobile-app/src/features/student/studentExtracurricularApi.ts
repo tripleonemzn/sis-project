@@ -39,7 +39,7 @@ export type StudentExtracurricularListPayload = {
 
 export const studentExtracurricularApi = {
   async listExtracurriculars() {
-    const response = await apiClient.get<ApiEnvelope<StudentExtracurricularListPayload>>('/extracurriculars', {
+    const response = await apiClient.get<ApiEnvelope<StudentExtracurricularListPayload>>('/public/extracurriculars', {
       params: {
         page: 1,
         limit: 100,
@@ -64,4 +64,3 @@ export const studentExtracurricularApi = {
     return response.data?.data;
   },
 };
-

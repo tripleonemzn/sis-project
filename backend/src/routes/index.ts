@@ -37,6 +37,7 @@ import tutorRoutes from './tutor.routes';
 import studentExtracurricularRoutes from './studentExtracurricular.routes';
 import internshipRoutes from './internship.routes';
 import humasRoutes from './humas.routes';
+import candidateAdmissionRoutes from './candidateAdmission.routes';
 import auditRoutes from './audit.routes';
 import inventoryRoutes from './inventory.routes';
 import budgetLpjRoutes from './budgetLpj.routes';
@@ -44,6 +45,10 @@ import paymentRoutes from './payment.routes';
 import mobileUpdateRoutes from './mobileUpdate.routes';
 import serverRoutes from './server.routes';
 import webmailRoutes from './webmail.routes';
+import bpbkRoutes from './bpbk.routes';
+import teachingResourceProgramRoutes from './teachingResourceProgram.routes';
+import officeRoutes from './office.routes';
+import osisRoutes from './osis.routes';
 
 const router = Router();
 
@@ -85,6 +90,7 @@ router.use('/tutor', tutorRoutes);
 router.use('/student/extracurriculars', studentExtracurricularRoutes);
 router.use('/internships', internshipRoutes);
 router.use('/humas', humasRoutes);
+router.use('/candidate-admissions', candidateAdmissionRoutes);
 router.use('/audit', auditRoutes);
 router.use('/inventory', inventoryRoutes);
 router.use('/budget-lpj', budgetLpjRoutes);
@@ -92,5 +98,9 @@ router.use('/payments', paymentRoutes);
 router.use('/mobile-updates', mobileUpdateRoutes);
 router.use('/server', serverRoutes);
 router.use('/webmail', webmailRoutes);
+router.use('/bpbk', bpbkRoutes);
+router.use('/teaching-resources', teachingResourceProgramRoutes);
+router.use('/office', officeRoutes);
+router.use('/osis', osisRoutes);
 
 export default router;

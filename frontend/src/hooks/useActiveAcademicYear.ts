@@ -26,6 +26,10 @@ function extractAcademicYearPayload(res: unknown): AcademicYearLike | null {
   return null;
 }
 
+function toAcademicYearArray(value: unknown): AcademicYearLike[] {
+  return Array.isArray(value) ? (value as AcademicYearLike[]) : [];
+}
+
 function isValidYear(year: AcademicYearLike | null | undefined): year is AcademicYearLike {
   return Boolean(year && typeof year === 'object' && (year.id || year.academicYearId));
 }
@@ -63,7 +67,11 @@ export const useActiveAcademicYear = () => {
 
       // Secondary source: list endpoint filtered active
       const listRes = await academicYearService.list({ page: 1, limit: 20, isActive: true });
-      const list = listRes?.data?.academicYears || listRes?.academicYears || listRes?.data?.data?.academicYears || [];
+      const list = [
+        ...toAcademicYearArray(listRes?.data?.academicYears),
+        ...toAcademicYearArray(listRes?.academicYears),
+        ...toAcademicYearArray(listRes?.data?.data?.academicYears),
+      ];
       const activeFromList = list.find((item: AcademicYearLike) => item?.isActive) || list[0] || null;
       if (isValidYear(activeFromList)) {
         return ensureResolvedSemester(activeFromList);

@@ -18,8 +18,13 @@ import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { useAuth } from '../../src/features/auth/AuthProvider';
 import type { AuthUser } from '../../src/features/auth/types';
+import {
+  MOBILE_CANDIDATE_DOCUMENT_OPTIONS,
+  getMobileCandidateDocumentCategoryLabel,
+} from '../../src/features/candidateAdmission/types';
 import { MOBILE_PROFILE_QUERY_KEY, useProfileQuery } from '../../src/features/profile/useProfileQuery';
 import { profileApi } from '../../src/features/profile/profileApi';
+import type { UpdateSelfProfilePayload } from '../../src/features/profile/profileApi';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifyError, notifySuccess } from '../../src/lib/ui/feedback';
@@ -149,6 +154,19 @@ function resolveMediaUrl(path?: string | null) {
   const webBaseUrl = ENV.API_BASE_URL.replace(/\/api\/?$/, '');
   if (path.startsWith('/')) return `${webBaseUrl}${path}`;
   return `${webBaseUrl}/${path}`;
+}
+
+function getCandidateAcceptedFormats(category: string) {
+  return (
+    MOBILE_CANDIDATE_DOCUMENT_OPTIONS.find((item) => item.value === category)?.acceptedFormats.map((item) =>
+      item.toLowerCase(),
+    ) || ['pdf', 'jpg', 'jpeg', 'png']
+  );
+}
+
+function getFileExtension(name?: string | null) {
+  const segments = String(name || '').toLowerCase().split('.');
+  return segments.length > 1 ? segments[segments.length - 1] : '';
 }
 
 function buildForm(profile: AuthUser | null): EditableProfileForm {
@@ -297,11 +315,15 @@ export default function ProfileScreen() {
   const isStaff = profile?.role === 'STAFF';
   const isParent = profile?.role === 'PARENT';
   const isExaminer = profile?.role === 'EXAMINER';
+  const isCandidate = profile?.role === 'CALON_SISWA';
   const profilePhotoUrl = resolveMediaUrl(profile?.photo);
-  const canUploadPhoto = ['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'STUDENT', 'PARENT'].includes(profile?.role || '');
-  const canUploadDocuments = ['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER'].includes(profile?.role || '');
+  const canUploadPhoto = ['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'STUDENT', 'PARENT', 'CALON_SISWA'].includes(profile?.role || '');
+  const canUploadDocuments = ['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'CALON_SISWA'].includes(profile?.role || '');
   const [photoUploading, setPhotoUploading] = useState(false);
   const [documentUploading, setDocumentUploading] = useState(false);
+  const [candidateDocumentCategory, setCandidateDocumentCategory] = useState<string>(
+    MOBILE_CANDIDATE_DOCUMENT_OPTIONS[0]?.value || 'PPDB_AKTA_KELAHIRAN',
+  );
   const showNip = isTeacher || isPrincipal || isStaff;
   const showNik = isTeacher || isPrincipal || isStudent;
   const showNuptk = isTeacher || isPrincipal || isStaff;
@@ -325,8 +347,7 @@ export default function ProfileScreen() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!profile?.id) throw new Error('Data profil belum siap.');
-      return profileApi.updateSelf(profile.id, {
-        name: form.name.trim(),
+      const payload: UpdateSelfProfilePayload = {
         gender: (form.gender || null) as 'MALE' | 'FEMALE' | null,
         birthPlace: toNullable(form.birthPlace),
         birthDate: toNullable(form.birthDate),
@@ -359,7 +380,13 @@ export default function ProfileScreen() {
         appointmentDecree: toNullable(form.appointmentDecree),
         appointmentDate: toNullable(form.appointmentDate),
         institution: toNullable(form.institution),
-      });
+      };
+
+      if (!isStudent) {
+        payload.name = form.name.trim();
+      }
+
+      return profileApi.updateSelf(profile.id, payload);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: MOBILE_PROFILE_QUERY_KEY });
@@ -426,6 +453,18 @@ export default function ProfileScreen() {
         notifyError('Ukuran dokumen maksimal 2MB.');
         return;
       }
+      if (isCandidate) {
+        const acceptedFormats = getCandidateAcceptedFormats(candidateDocumentCategory);
+        const extension = getFileExtension(name);
+        if (!acceptedFormats.includes(extension)) {
+          notifyError(
+            `Format dokumen tidak sesuai. Gunakan ${acceptedFormats
+              .map((item) => item.toUpperCase())
+              .join(', ')} untuk kategori ini.`,
+          );
+          return;
+        }
+      }
 
       setDocumentUploading(true);
       const uploaded = await profileApi.uploadProfileDocument({
@@ -433,6 +472,7 @@ export default function ProfileScreen() {
         name,
         type: mime,
       });
+      const uploadCategory = isCandidate ? candidateDocumentCategory : 'Dokumen Pendukung';
 
       const existingDocs = (profile.documents || []).map((doc: ProfileDocument) => ({
         title: doc.title || doc.originalname || 'Dokumen',
@@ -446,7 +486,7 @@ export default function ProfileScreen() {
           {
             title: name,
             fileUrl: uploaded.url,
-            category: 'Dokumen Pendukung',
+            category: uploadCategory,
           },
         ],
       });
@@ -520,12 +560,16 @@ export default function ProfileScreen() {
             <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 10 }}>Data Akun</Text>
             <ProfileRow label="Username" value={profile.username} />
             <ProfileRow label="Role" value={profile.role} />
-            <FormField
-              label="Nama Lengkap"
-              value={form.name}
-              onChangeText={(value) => setForm((prev) => ({ ...prev, name: value }))}
-              placeholder="Masukkan nama lengkap"
-            />
+            {isStudent ? (
+              <ProfileRow label="Nama Lengkap" value={profile.name || '-'} />
+            ) : (
+              <FormField
+                label="Nama Lengkap"
+                value={form.name}
+                onChangeText={(value) => setForm((prev) => ({ ...prev, name: value }))}
+                placeholder="Masukkan nama lengkap"
+              />
+            )}
 
             {isStudent ? (
               <View style={{ marginTop: 2 }}>
@@ -850,6 +894,53 @@ export default function ProfileScreen() {
             </View>
 
             <View style={{ marginTop: 4 }}>
+              {isCandidate ? (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#bfdbfe',
+                    backgroundColor: '#eff6ff',
+                    borderRadius: 12,
+                    padding: 12,
+                    marginBottom: 10,
+                  }}
+                >
+                  <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>
+                    Kategori Dokumen PPDB
+                  </Text>
+                  <Text style={{ color: '#1d4ed8', fontSize: 12, marginBottom: 10 }}>
+                    Pilih kategori sebelum upload supaya checklist PPDB mengenali dokumen dengan benar.
+                  </Text>
+                  {MOBILE_CANDIDATE_DOCUMENT_OPTIONS.map((option) => {
+                    const active = candidateDocumentCategory === option.value;
+                    return (
+                      <Pressable
+                        key={option.value}
+                        onPress={() => setCandidateDocumentCategory(option.value)}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: active ? '#1d4ed8' : '#bfdbfe',
+                          backgroundColor: '#fff',
+                          borderRadius: 10,
+                          padding: 10,
+                          marginBottom: 8,
+                        }}
+                      >
+                        <Text style={{ color: active ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: 13 }}>
+                          {option.label}
+                        </Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>
+                          {option.description}
+                        </Text>
+                        <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 4 }}>
+                          Format: {option.acceptedFormats.join(', ')}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+
               <Text style={{ color: '#334155', fontSize: 12, marginBottom: 8 }}>
                 Dokumen Pendukung (PDF/JPG/PNG max 2MB)
               </Text>
@@ -894,7 +985,9 @@ export default function ProfileScreen() {
                   >
                     <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13 }}>{doc.title || 'Dokumen'}</Text>
                     <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
-                      {doc.category || 'Dokumen Pendukung'}
+                      {isCandidate
+                        ? getMobileCandidateDocumentCategoryLabel(doc.category)
+                        : doc.category || 'Dokumen Pendukung'}
                     </Text>
                     <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
                       <View style={{ flex: 1, paddingHorizontal: 4 }}>

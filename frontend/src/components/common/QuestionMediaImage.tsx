@@ -17,12 +17,15 @@ export function QuestionMediaImage({
   ...rest
 }: QuestionMediaImageProps) {
   const resolvedInputSrc = String(src || '').trim();
+  const isGifSource = /\.gif(?:[?#].*)?$/i.test(resolvedInputSrc);
   const thumbnailSrc = useMemo(() => {
-    if (!preferThumbnail) return resolvedInputSrc;
+    if (isGifSource || !preferThumbnail) return resolvedInputSrc;
     return buildQuestionImageThumbnailUrl(resolvedInputSrc);
-  }, [resolvedInputSrc, preferThumbnail]);
+  }, [resolvedInputSrc, preferThumbnail, isGifSource]);
 
   const activeSrc = thumbnailSrc || resolvedInputSrc;
+  const effectiveLoading = isGifSource ? 'eager' : loading;
+  const effectiveDecoding = isGifSource ? 'sync' : decoding;
 
   return (
     <img
@@ -30,8 +33,8 @@ export function QuestionMediaImage({
       key={activeSrc || resolvedInputSrc}
       src={activeSrc || resolvedInputSrc}
       alt={alt}
-      loading={loading}
-      decoding={decoding}
+      loading={effectiveLoading}
+      decoding={effectiveDecoding}
       onError={(event) => {
         const target = event.currentTarget;
         if (

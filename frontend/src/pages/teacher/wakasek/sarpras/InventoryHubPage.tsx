@@ -24,6 +24,7 @@ import {
   type Room,
   type CreateRoomPayload,
   type RoomCategory,
+  type InventoryAssignableUser,
   type LibraryBookLoan,
   type LibraryBorrowerStatus,
   type LibraryLoanBookOption,
@@ -38,6 +39,7 @@ import { authService } from '../../../../services/auth.service';
 import toast from 'react-hot-toast';
 
 type InventoryHubContextUser = {
+  id?: number;
   role?: string;
   additionalDuties?: string[] | null;
 };
@@ -81,6 +83,134 @@ function todayDateInput() {
     '0',
   )}`;
 }
+
+const InventoryManagerSelect = ({
+  value,
+  options,
+  onChange,
+  placeholder = 'Belum ditugaskan',
+}: {
+  value: number | null;
+  options: InventoryAssignableUser[];
+  onChange: (value: number | null) => void;
+  placeholder?: string;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const filteredOptions = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return options;
+    return options.filter((candidate) => {
+      const secondary = String(candidate.displayLabel || candidate.ptkType || candidate.role || '').toLowerCase();
+      const extracurriculars = Array.isArray(candidate.extracurricularNames)
+        ? candidate.extracurricularNames.join(' ').toLowerCase()
+        : '';
+      return (
+        candidate.name.toLowerCase().includes(keyword) ||
+        secondary.includes(keyword) ||
+        extracurriculars.includes(keyword)
+      );
+    });
+  }, [options, search]);
+
+  const selected = options.find((candidate) => candidate.id === value) || null;
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent flex items-center justify-between text-left"
+      >
+        <span className={selected ? 'text-gray-900' : 'text-gray-500'}>
+          {selected
+            ? `${selected.name}${
+                selected.displayLabel
+                  ? ` - ${selected.displayLabel}`
+                  : selected.ptkType
+                    ? ` - ${selected.ptkType}`
+                    : selected.role
+                      ? ` - ${selected.role}`
+                      : ''
+              }`
+            : placeholder}
+        </span>
+        <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-2 z-[120] rounded-xl border border-gray-200 bg-white shadow-xl overflow-hidden">
+          <div className="p-2 border-b border-gray-100">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Cari penanggung jawab..."
+                className="w-full rounded-lg border border-gray-200 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                autoFocus
+              />
+            </div>
+          </div>
+          <div className="max-h-64 overflow-y-auto py-1">
+            <button
+              type="button"
+              onClick={() => {
+                onChange(null);
+                setIsOpen(false);
+                setSearch('');
+              }}
+              className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 ${
+                value === null ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+              }`}
+            >
+              {placeholder}
+            </button>
+            {filteredOptions.length === 0 ? (
+              <div className="px-3 py-3 text-sm text-gray-500">Tidak ada penanggung jawab yang cocok.</div>
+            ) : (
+              filteredOptions.map((candidate) => (
+                <button
+                  key={candidate.id}
+                  type="button"
+                  onClick={() => {
+                    onChange(candidate.id);
+                    setIsOpen(false);
+                    setSearch('');
+                  }}
+                  className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 ${
+                    candidate.id === value ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                  }`}
+                >
+                  <div>{candidate.name}</div>
+                  {(candidate.displayLabel || candidate.ptkType || candidate.role) && (
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {candidate.displayLabel || candidate.ptkType || candidate.role}
+                    </div>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 function toInputDate(value?: string | null) {
   if (!value) return '';
@@ -221,13 +351,15 @@ export const InventoryHubPage = () => {
   });
   
   const user = contextUser || authData?.data;
+  const isAssignedScope = location.pathname.includes('/assigned-inventory');
 
   // Check if user has write access (Wakasek Sarpras or Secretary)
-  const canEdit = Boolean(
+  const canManageRooms = Boolean(
     user?.role === 'ADMIN' ||
       user?.additionalDuties?.includes('WAKASEK_SARPRAS') ||
       user?.additionalDuties?.includes('SEKRETARIS_SARPRAS'),
   );
+  const canEdit = canManageRooms;
   const canManageLibraryLoans =
     canEdit || user?.additionalDuties?.includes('KEPALA_PERPUSTAKAAN');
   const isLibraryScope = filterParam === 'library';
@@ -308,7 +440,20 @@ export const InventoryHubPage = () => {
     return true;
   });
 
-  const activeCategory = categories.find(c => c.id === Number(currentTabId)) || categories[0];
+  const activeCategory = isAssignedScope
+    ? undefined
+    : categories.find(c => c.id === Number(currentTabId)) || categories[0];
+
+  const { data: assignableUsersData } = useQuery({
+    queryKey: ['inventory-assignable-users'],
+    enabled: canManageRooms,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    queryFn: inventoryService.getAssignableManagers,
+  });
+
+  const assignableUsers = assignableUsersData?.data || [];
 
   const deleteCategoryMutation = useMutation({
     mutationFn: inventoryService.deleteRoomCategory,
@@ -335,17 +480,25 @@ export const InventoryHubPage = () => {
 
   // Set default tab if none selected
   useEffect(() => {
+    if (isAssignedScope) {
+      return;
+    }
     if ((!currentTabId || !categories.some(c => c.id === Number(currentTabId))) && categories.length > 0) {
       const params: Record<string, string> = { tab: String(categories[0].id) };
       if (filterParam) params.filter = filterParam;
       setSearchParams(params);
     }
-  }, [categories, currentTabId, filterParam, setSearchParams]);
+  }, [categories, currentTabId, filterParam, isAssignedScope, setSearchParams]);
 
   const { data: roomsData, isLoading } = useQuery({
-    queryKey: ['rooms', activeCategory?.id],
-    queryFn: () => activeCategory ? inventoryService.getRooms({ categoryId: activeCategory.id }) : { data: [] },
-    enabled: !!activeCategory,
+    queryKey: ['rooms', isAssignedScope ? 'assigned' : activeCategory?.id],
+    queryFn: () =>
+      isAssignedScope
+        ? inventoryService.getRooms({ assignedOnly: true })
+        : activeCategory
+          ? inventoryService.getRooms({ categoryId: activeCategory.id })
+          : { data: [] },
+    enabled: isAssignedScope || !!activeCategory,
   });
 
   const rooms = roomsData?.data || [];
@@ -588,12 +741,16 @@ export const InventoryHubPage = () => {
     }
   };
   
-  const pageTitle = filterParam === 'lab'
+  const pageTitle = isAssignedScope
+    ? 'Inventaris Tugas'
+    : filterParam === 'lab'
     ? 'Inventaris Lab'
     : filterParam === 'library'
       ? 'Inventaris Perpustakaan'
       : 'Aset Sekolah';
-  const pageSubtitle = filterParam === 'lab'
+  const pageSubtitle = isAssignedScope
+    ? 'Kelola inventaris ruangan yang ditugaskan oleh Wakasek Sarpras'
+    : filterParam === 'lab'
     ? 'Kelola data ruangan dan inventaris laboratorium'
     : filterParam === 'library'
       ? 'Kelola data ruangan dan inventaris perpustakaan'
@@ -666,7 +823,7 @@ export const InventoryHubPage = () => {
           </div>
         ) : null}
 
-        {!isLibraryScope ? (
+        {!isLibraryScope && !isAssignedScope ? (
           <div className="border-b border-gray-200 mb-4">
             <div className="flex overflow-x-auto gap-4 pb-1 scrollbar-hide">
               {categories.map((category) => {
@@ -935,7 +1092,11 @@ export const InventoryHubPage = () => {
           </div>
           <h3 className="text-lg font-medium text-gray-900">Belum ada data ruangan</h3>
           <p className="text-gray-500 mt-1">
-            Silakan tambahkan ruangan baru untuk kategori <strong>{activeCategory?.name}</strong>
+            {isAssignedScope ? (
+              <>Belum ada ruangan yang ditugaskan kepada akun ini.</>
+            ) : (
+              <>Silakan tambahkan ruangan baru untuk kategori <strong>{activeCategory?.name}</strong></>
+            )}
           </p>
         </div>
       ) : (
@@ -1022,6 +1183,7 @@ export const InventoryHubPage = () => {
           onClose={() => setIsRoomModalOpen(false)} 
           categoryId={activeCategory.id}
           categoryName={activeCategory.name}
+          assignableUsers={assignableUsers}
         />
       )}
 
@@ -1029,7 +1191,8 @@ export const InventoryHubPage = () => {
       {isEditRoomModalOpen && editingRoom && (
         <EditRoomModal 
           room={editingRoom}
-          onClose={() => setIsEditRoomModalOpen(false)} 
+          onClose={() => setIsEditRoomModalOpen(false)}
+          assignableUsers={assignableUsers}
         />
       )}
     </div>
@@ -1394,6 +1557,12 @@ const RoomCard = ({ room, canEdit, onEdit }: { room: Room; canEdit: boolean; onE
           <Box size={16} className="text-gray-400" />
           <span>{room._count?.items || 0} Item Inventaris</span>
         </div>
+        {room.managerUser?.name ? (
+          <div className="flex items-center gap-2">
+            <Users size={16} className="text-gray-400" />
+            <span>PJ: {room.managerUser.name}</span>
+          </div>
+        ) : null}
       </div>
 
       <button 
@@ -1508,7 +1677,17 @@ const AddCategoryModal = ({ onClose }: { onClose: () => void }) => {
   );
 };
 
-const AddRoomModal = ({ onClose, categoryId, categoryName }: { onClose: () => void; categoryId: number; categoryName: string }) => {
+const AddRoomModal = ({
+  onClose,
+  categoryId,
+  categoryName,
+  assignableUsers,
+}: {
+  onClose: () => void;
+  categoryId: number;
+  categoryName: string;
+  assignableUsers: InventoryAssignableUser[];
+}) => {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<Partial<CreateRoomPayload>>({
     name: '',
@@ -1516,7 +1695,8 @@ const AddRoomModal = ({ onClose, categoryId, categoryName }: { onClose: () => vo
     capacity: 0,
     location: '',
     condition: 'BAIK',
-    description: ''
+    description: '',
+    managerUserId: null,
   });
 
   const createMutation = useMutation({
@@ -1524,6 +1704,7 @@ const AddRoomModal = ({ onClose, categoryId, categoryName }: { onClose: () => vo
     onSuccess: () => {
       toast.success('Ruangan berhasil dibuat');
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['sidebar-assigned-inventory-rooms'] });
       onClose();
     },
     onError: (error: unknown) => {
@@ -1597,6 +1778,15 @@ const AddRoomModal = ({ onClose, categoryId, categoryName }: { onClose: () => vo
             />
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Penanggung Jawab Inventaris</label>
+            <InventoryManagerSelect
+              value={formData.managerUserId ?? null}
+              options={assignableUsers}
+              onChange={(managerUserId) => setFormData({ ...formData, managerUserId })}
+            />
+          </div>
+
           <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
             <button
               type="button"
@@ -1619,7 +1809,15 @@ const AddRoomModal = ({ onClose, categoryId, categoryName }: { onClose: () => vo
   );
 };
 
-const EditRoomModal = ({ room, onClose }: { room: Room; onClose: () => void }) => {
+const EditRoomModal = ({
+  room,
+  onClose,
+  assignableUsers,
+}: {
+  room: Room;
+  onClose: () => void;
+  assignableUsers: InventoryAssignableUser[];
+}) => {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<Partial<CreateRoomPayload>>({
     name: room.name,
@@ -1627,7 +1825,8 @@ const EditRoomModal = ({ room, onClose }: { room: Room; onClose: () => void }) =
     capacity: room.capacity || 0,
     location: room.location || '',
     condition: room.condition || 'BAIK',
-    description: room.description || ''
+    description: room.description || '',
+    managerUserId: room.managerUserId ?? null,
   });
 
   const updateMutation = useMutation({
@@ -1635,6 +1834,7 @@ const EditRoomModal = ({ room, onClose }: { room: Room; onClose: () => void }) =
     onSuccess: () => {
       toast.success('Ruangan berhasil diperbarui');
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['sidebar-assigned-inventory-rooms'] });
       onClose();
     },
     onError: (error: unknown) => {
@@ -1705,6 +1905,15 @@ const EditRoomModal = ({ room, onClose }: { room: Room; onClose: () => void }) =
               onChange={e => setFormData({ ...formData, location: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="Contoh: Gedung A Lt. 2"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Penanggung Jawab Inventaris</label>
+            <InventoryManagerSelect
+              value={formData.managerUserId ?? null}
+              options={assignableUsers}
+              onChange={(managerUserId) => setFormData({ ...formData, managerUserId })}
             />
           </div>
 

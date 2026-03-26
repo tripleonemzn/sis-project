@@ -1,5 +1,5 @@
 import { apiClient } from '../../lib/api/client';
-import { StaffBudgetRequest, StaffStudent } from './types';
+import { StaffBudgetRequest, StaffPersonnel, StaffStudent } from './types';
 
 type ApiListResponse<T> = {
   statusCode: number;
@@ -33,6 +33,22 @@ export const staffApi = {
     const response = await apiClient.get<ApiListResponse<StaffStudent>>('/users', {
       params: {
         role: 'STUDENT',
+      },
+    });
+    return response.data.data || [];
+  },
+  async listTeachers() {
+    const response = await apiClient.get<ApiListResponse<StaffPersonnel>>('/users', {
+      params: {
+        role: 'TEACHER',
+      },
+    });
+    return response.data.data || [];
+  },
+  async listStaffs() {
+    const response = await apiClient.get<ApiListResponse<StaffPersonnel>>('/users', {
+      params: {
+        role: 'STAFF',
       },
     });
     return response.data.data || [];

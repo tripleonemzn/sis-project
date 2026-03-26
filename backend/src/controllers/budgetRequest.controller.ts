@@ -153,6 +153,24 @@ export const listBudgetRequests = asyncHandler(async (req: Request, res: Respons
           major: true,
         },
       },
+      lpjInvoices: {
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          submittedAt: true,
+          sentToFinanceAt: true,
+          financeCompletedAt: true,
+          items: {
+            select: {
+              amount: true,
+            },
+          },
+        },
+      },
     },
     orderBy: { createdAt: 'desc' },
   });

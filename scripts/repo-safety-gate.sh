@@ -5,10 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODE="${1:-all}"
 
 case "$MODE" in
-  all|mobile|web)
+  all|mobile|web|exambrowser)
     ;;
   *)
-    echo "Usage: bash ./scripts/repo-safety-gate.sh [all|mobile|web]"
+    echo "Usage: bash ./scripts/repo-safety-gate.sh [all|mobile|web|exambrowser]"
     exit 1
     ;;
 esac
@@ -60,6 +60,9 @@ is_allowed_path() {
     mobile)
       [[ "$path" == mobile-app/* || "$path" == scripts/* || "$path" == .gitignore || "$path" == *.md || "$path" == ops/* ]]
       ;;
+    exambrowser)
+      [[ "$path" == exam-browser-app/* || "$path" == scripts/* || "$path" == .gitignore || "$path" == *.md || "$path" == ops/* ]]
+      ;;
     web)
       [[ "$path" == backend/* || "$path" == frontend/* || "$path" == scripts/* || "$path" == mobile-app/* || "$path" == ops/* || "$path" == *.md || "$path" == update_all.sh || "$path" == demo_sis.html || "$path" == .gitignore ]]
       ;;
@@ -103,6 +106,10 @@ run_check() {
 if [ "$MODE" = "mobile" ] || [ "$MODE" = "all" ]; then
   run_check "mobile-app" "npm run typecheck"
   run_check "mobile-app" "npm run audit:parity"
+fi
+
+if [ "$MODE" = "exambrowser" ] || [ "$MODE" = "all" ]; then
+  run_check "exam-browser-app" "npm run typecheck"
 fi
 
 if [ "$MODE" = "web" ] || [ "$MODE" = "all" ]; then

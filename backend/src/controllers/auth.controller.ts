@@ -4,7 +4,13 @@ import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { generateToken } from '../middleware/auth';
 import { z } from 'zod';
-import { Role, VerificationStatus, VerificationMethod } from '@prisma/client';
+import { getNisnValidationMessage, normalizeNisnInput } from '../utils/nisn';
+import {
+  CandidateAdmissionStatus,
+  Role,
+  VerificationStatus,
+  VerificationMethod,
+} from '@prisma/client';
 
 const registerSchema = z.object({
   username: z.string().min(3),
@@ -17,6 +23,95 @@ const loginSchema = z.object({
   username: z.string(),
   password: z.string(),
 });
+
+const SELF_SERVICE_PUBLIC_ROLES = new Set<Role>([Role.PARENT, Role.CALON_SISWA, Role.UMUM]);
+
+const optionalEmailSchema = z
+  .string()
+  .email('Format email tidak valid')
+  .or(z.literal(''))
+  .optional()
+  .transform((value) => {
+    const normalized = String(value || '').trim();
+    return normalized.length > 0 ? normalized : undefined;
+  });
+
+const optionalPhoneSchema = z
+  .string()
+  .min(8, 'Nomor HP minimal 8 digit')
+  .or(z.literal(''))
+  .optional()
+  .transform((value) => {
+    const normalized = String(value || '').trim();
+    return normalized.length > 0 ? normalized : undefined;
+  });
+
+const nisnSchema = z
+  .string()
+  .transform((value) => normalizeNisnInput(value))
+  .pipe(
+    z.string().superRefine((value, ctx) => {
+      const message = getNisnValidationMessage(value);
+      if (message) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message,
+        });
+      }
+    }),
+  );
+
+function isSelfServicePublicRole(role: Role): boolean {
+  return SELF_SERVICE_PUBLIC_ROLES.has(role);
+}
+
+function normalizeOptionalText(value?: string | null): string | undefined {
+  const normalized = String(value || '').trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function buildCandidateRegistrationNumber(userId: number, createdAt = new Date()): string {
+  const year = createdAt.getFullYear();
+  const month = String(createdAt.getMonth() + 1).padStart(2, '0');
+  const day = String(createdAt.getDate()).padStart(2, '0');
+  return `PPDB-${year}${month}${day}-${String(userId).padStart(6, '0')}`;
+}
+
+async function ensureUsernameAvailable(username: string) {
+  const existingUser = await prisma.user.findUnique({
+    where: { username },
+  });
+
+  if (existingUser) {
+    throw new ApiError(400, 'Username sudah digunakan');
+  }
+}
+
+async function createPublicUserAccount(params: {
+  username: string;
+  password: string;
+  name: string;
+  role: 'PARENT' | 'UMUM';
+  phone?: string;
+  email?: string;
+}) {
+  await ensureUsernameAvailable(params.username);
+
+  const hashedPassword = await bcrypt.hash(params.password, 10);
+
+  return prisma.user.create({
+    data: {
+      username: params.username,
+      password: hashedPassword,
+      name: params.name,
+      role: params.role,
+      phone: normalizeOptionalText(params.phone),
+      email: normalizeOptionalText(params.email),
+      verificationMethod: VerificationMethod.NONE,
+      verificationStatus: VerificationStatus.PENDING,
+    },
+  });
+}
 
 const getConfiguredDemoUsernames = () => {
   const raw = String(process.env.DEMO_USERNAMES || 'demo,demo_staff,siswa_demo,ortu_demo');
@@ -61,13 +156,7 @@ function setMeCache(key: string, payload: unknown) {
 export const register = asyncHandler(async (req: Request, res: Response) => {
   const body = registerSchema.parse(req.body);
 
-  const existingUser = await prisma.user.findUnique({
-    where: { username: body.username },
-  });
-
-  if (existingUser) {
-    throw new ApiError(400, 'Username sudah digunakan');
-  }
+  await ensureUsernameAvailable(body.username);
 
   const hashedPassword = await bcrypt.hash(body.password, 10);
 
@@ -105,6 +194,14 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
           major: { select: { id: true, name: true, code: true } },
         },
       },
+      managedInventoryRooms: {
+        select: {
+          id: true,
+          name: true,
+          managerUserId: true,
+        },
+        orderBy: { name: 'asc' },
+      },
       children: { select: { id: true, name: true, username: true, nisn: true } },
       documents: true,
     },
@@ -120,7 +217,10 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     throw new ApiError(401, 'Username atau password salah');
   }
 
-  if (user.verificationStatus !== VerificationStatus.VERIFIED) {
+  if (
+    user.verificationStatus !== VerificationStatus.VERIFIED &&
+    !isSelfServicePublicRole(user.role)
+  ) {
     throw new ApiError(403, 'Akun belum diverifikasi oleh admin');
   }
 
@@ -167,6 +267,22 @@ export const getMe = asyncHandler(async (req: any, res: Response) => {
           major: { select: { id: true, name: true, code: true } },
         },
       },
+      managedInventoryRooms: {
+        select: {
+          id: true,
+          name: true,
+          managerUserId: true,
+        },
+        orderBy: { name: 'asc' },
+      },
+      children: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          nisn: true,
+        },
+      },
       documents: true,
     },
   });
@@ -187,7 +303,10 @@ export const getMe = asyncHandler(async (req: any, res: Response) => {
 
 // Register Calon Siswa (PPDB) using NISN and password
 const calonSiswaRegisterSchema = z.object({
-  nisn: z.string().min(10).max(10),
+  name: z.string().min(1, 'Nama wajib diisi').optional(),
+  nisn: nisnSchema,
+  phone: optionalPhoneSchema,
+  email: optionalEmailSchema,
   password: z.string().min(6),
   confirmPassword: z.string().min(6),
 }).refine((data) => data.password === data.confirmPassword, {
@@ -207,17 +326,31 @@ export const registerCalonSiswa = asyncHandler(async (req: Request, res: Respons
 
   const hashedPassword = await bcrypt.hash(body.password, 10);
 
-  const user = await prisma.user.create({
-    data: {
-      username: body.nisn, // login tetap via username sesuai kebijakan
-      nisn: body.nisn,
-      password: hashedPassword,
-      name: `Calon Siswa ${body.nisn}`,
-      role: Role.CALON_SISWA,
-      verificationMethod: VerificationMethod.NONE,
-      verificationStatus: VerificationStatus.PENDING,
-      studentStatus: undefined,
-    },
+  const user = await prisma.$transaction(async (tx) => {
+    const createdUser = await tx.user.create({
+      data: {
+        username: body.nisn, // login tetap via username sesuai kebijakan
+        nisn: body.nisn,
+        password: hashedPassword,
+        name: normalizeOptionalText(body.name) ?? `Calon Siswa ${body.nisn}`,
+        role: Role.CALON_SISWA,
+        phone: normalizeOptionalText(body.phone),
+        email: normalizeOptionalText(body.email),
+        verificationMethod: VerificationMethod.NONE,
+        verificationStatus: VerificationStatus.PENDING,
+        studentStatus: undefined,
+      },
+    });
+
+    await tx.candidateAdmission.create({
+      data: {
+        userId: createdUser.id,
+        registrationNumber: buildCandidateRegistrationNumber(createdUser.id, createdUser.createdAt),
+        status: CandidateAdmissionStatus.DRAFT,
+      },
+    });
+
+    return createdUser;
   });
 
   const { password, ...userWithoutPassword } = user;
@@ -230,6 +363,8 @@ const umumRegisterSchema = z.object({
   password: z.string().min(6),
   confirmPassword: z.string().min(6),
   name: z.string().min(1).optional(),
+  phone: optionalPhoneSchema,
+  email: optionalEmailSchema,
 }).refine((data) => data.password === data.confirmPassword, {
   message: 'Konfirmasi password tidak cocok',
   path: ['confirmPassword'],
@@ -238,27 +373,73 @@ const umumRegisterSchema = z.object({
 export const registerUmum = asyncHandler(async (req: Request, res: Response) => {
   const body = umumRegisterSchema.parse(req.body);
 
-  const existingUser = await prisma.user.findUnique({
-    where: { username: body.username },
-  });
-  if (existingUser) {
-    throw new ApiError(400, 'Username sudah digunakan');
-  }
-
-  const hashedPassword = await bcrypt.hash(body.password, 10);
-  const user = await prisma.user.create({
-    data: {
-      username: body.username,
-      password: hashedPassword,
-      name: body.name ?? `Pelamar Umum ${body.username}`,
-      role: Role.UMUM,
-      verificationMethod: VerificationMethod.NONE,
-      verificationStatus: VerificationStatus.PENDING,
-    },
+  const user = await createPublicUserAccount({
+    username: body.username,
+    password: body.password,
+    name: normalizeOptionalText(body.name) ?? `Pelamar Umum ${body.username}`,
+    role: Role.UMUM,
+    phone: body.phone,
+    email: body.email,
   });
 
   const { password, ...userWithoutPassword } = user;
   res.status(201).json(new ApiResponse(201, userWithoutPassword, 'Pelamar umum terdaftar. Menunggu verifikasi admin'));
+});
+
+const parentRegisterSchema = z.object({
+  username: z.string().min(3),
+  password: z.string().min(6),
+  confirmPassword: z.string().min(6),
+  name: z.string().min(1, 'Nama wajib diisi'),
+  phone: z.string().min(8, 'Nomor HP minimal 8 digit'),
+  email: optionalEmailSchema,
+}).refine((data) => data.password === data.confirmPassword, {
+  message: 'Konfirmasi password tidak cocok',
+  path: ['confirmPassword'],
+});
+
+export const registerParent = asyncHandler(async (req: Request, res: Response) => {
+  const body = parentRegisterSchema.parse(req.body);
+
+  const user = await createPublicUserAccount({
+    username: body.username,
+    password: body.password,
+    name: body.name.trim(),
+    role: Role.PARENT,
+    phone: body.phone,
+    email: body.email,
+  });
+
+  const { password, ...userWithoutPassword } = user;
+  res.status(201).json(new ApiResponse(201, userWithoutPassword, 'Akun orang tua berhasil dibuat. Silakan login untuk mulai menghubungkan data anak.'));
+});
+
+const bkkRegisterSchema = z.object({
+  username: z.string().min(3),
+  password: z.string().min(6),
+  confirmPassword: z.string().min(6),
+  name: z.string().min(1, 'Nama wajib diisi'),
+  phone: z.string().min(8, 'Nomor HP minimal 8 digit'),
+  email: optionalEmailSchema,
+}).refine((data) => data.password === data.confirmPassword, {
+  message: 'Konfirmasi password tidak cocok',
+  path: ['confirmPassword'],
+});
+
+export const registerBkk = asyncHandler(async (req: Request, res: Response) => {
+  const body = bkkRegisterSchema.parse(req.body);
+
+  const user = await createPublicUserAccount({
+    username: body.username,
+    password: body.password,
+    name: body.name.trim(),
+    role: Role.UMUM,
+    phone: body.phone,
+    email: body.email,
+  });
+
+  const { password, ...userWithoutPassword } = user;
+  res.status(201).json(new ApiResponse(201, userWithoutPassword, 'Akun pelamar BKK berhasil dibuat. Silakan login untuk melihat lowongan yang tersedia.'));
 });
 
 // Admin: verify user account (set verificationStatus)
@@ -295,13 +476,34 @@ export const adminAcceptCalonSiswa = asyncHandler(async (req: Request, res: Resp
     throw new ApiError(400, 'Pengguna bukan CALON_SISWA');
   }
 
-  const updated = await prisma.user.update({
-    where: { id: userId },
-    data: {
-      role: Role.STUDENT,
-      studentStatus: undefined,
-      verificationStatus: VerificationStatus.VERIFIED,
-    },
+  const acceptedAt = new Date();
+  const updated = await prisma.$transaction(async (tx) => {
+    const updatedUser = await tx.user.update({
+      where: { id: userId },
+      data: {
+        role: Role.STUDENT,
+        studentStatus: undefined,
+        verificationStatus: VerificationStatus.VERIFIED,
+      },
+    });
+
+    await tx.candidateAdmission.upsert({
+      where: { userId },
+      create: {
+        userId,
+        registrationNumber: buildCandidateRegistrationNumber(userId, user.createdAt),
+        status: CandidateAdmissionStatus.ACCEPTED,
+        reviewedAt: acceptedAt,
+        acceptedAt,
+      },
+      update: {
+        status: CandidateAdmissionStatus.ACCEPTED,
+        reviewedAt: acceptedAt,
+        acceptedAt,
+      },
+    });
+
+    return updatedUser;
   });
 
   const { password, ...userWithoutPassword } = updated;

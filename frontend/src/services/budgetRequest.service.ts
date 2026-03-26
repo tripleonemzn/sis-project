@@ -1,6 +1,7 @@
 import api from './api';
 import type { AcademicYear } from './academicYear.service';
 import type { AdditionalDuty } from './workProgram.service';
+import type { LpjInvoiceStatus } from './budgetLpj.service';
 
 export interface BudgetRequest {
   id: number;
@@ -48,6 +49,19 @@ export interface BudgetRequest {
   lpjFileSize?: number | null;
   lpjMimeType?: string | null;
   lpjSubmittedAt?: string | null;
+  lpjInvoices?: {
+    id: number;
+    title?: string | null;
+    status: LpjInvoiceStatus;
+    createdAt: string;
+    updatedAt: string;
+    submittedAt?: string | null;
+    sentToFinanceAt?: string | null;
+    financeCompletedAt?: string | null;
+    items?: {
+      amount: number;
+    }[];
+  }[];
 }
 
 export interface CreateBudgetRequestPayload {

@@ -13,6 +13,23 @@ function hasHumasDuty(duties?: string[] | null) {
   });
 }
 
+const DEFAULT_PKL_ELIGIBLE_GRADES = ['XI'];
+
+function normalizeEligiblePklGrades(raw?: string | null): string[] {
+  const parsed = String(raw || '')
+    .split(',')
+    .map((item) => String(item || '').trim().toUpperCase())
+    .filter((item) => item === 'X' || item === 'XI' || item === 'XII');
+  return parsed.length > 0 ? parsed : DEFAULT_PKL_ELIGIBLE_GRADES;
+}
+
+function isEligibleForPklByClass(className: string, rawEligibleGrades?: string | null): boolean {
+  const normalizedClass = String(className || '').trim().toUpperCase();
+  if (!normalizedClass) return false;
+  const eligibleGrades = normalizeEligiblePklGrades(rawEligibleGrades);
+  return eligibleGrades.some((grade) => normalizedClass === grade || normalizedClass.startsWith(`${grade} `));
+}
+
 async function assertCanManageInternshipExaminer(userId: number) {
   const actor = await prisma.user.findUnique({
     where: { id: Number(userId) },
@@ -48,8 +65,12 @@ export const getMyInternship = asyncHandler(async (req: AuthRequest, res: Respon
 
   if (!student) throw new ApiError(404, 'Data siswa tidak ditemukan');
 
+  const activeAcademicYear = await prisma.academicYear.findFirst({
+    where: { isActive: true }
+  });
+
   const className = student.studentClass?.name || '';
-  const isEligible = className.startsWith('XI') || className.startsWith('XII');
+  const isEligible = isEligibleForPklByClass(className, activeAcademicYear?.pklEligibleGrades);
 
   const internship = await prisma.internship.findFirst({
     where: { studentId },
@@ -124,10 +145,6 @@ export const getMyInternship = asyncHandler(async (req: AuthRequest, res: Respon
 
   const wakasekHumas = await prisma.user.findFirst({
     where: { additionalDuties: { has: 'WAKASEK_HUMAS' } }
-  });
-
-  const activeAcademicYear = await prisma.academicYear.findFirst({
-    where: { isActive: true }
   });
 
   res.status(200).json(new ApiResponse(200, { 

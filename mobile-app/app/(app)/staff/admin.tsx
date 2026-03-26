@@ -6,7 +6,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
+import { permissionApi } from '../../../src/features/permissions/permissionApi';
+import type { StudentPermission } from '../../../src/features/permissions/types';
+import {
+  staffAdministrationApi,
+  type StaffAdministrationSummary,
+} from '../../../src/features/staff/staffAdministrationApi';
+import {
+  staffFinanceApi,
+  type StaffFinanceReportSnapshot,
+} from '../../../src/features/staff/staffFinanceApi';
 import { staffApi } from '../../../src/features/staff/staffApi';
+import { resolveStaffDivision } from '../../../src/features/staff/staffRole';
+import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
+import type {
+  StaffBudgetRequest,
+  StaffPersonnel,
+  StaffStudent,
+} from '../../../src/features/staff/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 
@@ -29,41 +46,147 @@ function SummaryCard({ title, value, subtitle }: { title: string; value: string;
   );
 }
 
+type StaffAdminOverviewData =
+  | {
+      kind: 'FINANCE';
+      budgets: StaffBudgetRequest[];
+      students: StaffStudent[];
+      dashboard: StaffFinanceReportSnapshot;
+    }
+  | {
+      kind: 'ADMINISTRATION';
+      summary: StaffAdministrationSummary;
+    }
+  | {
+      kind: 'HEAD_TU';
+      students: StaffStudent[];
+      teachers: StaffPersonnel[];
+      staffs: StaffPersonnel[];
+      permissions: StudentPermission[];
+      budgets: StaffBudgetRequest[];
+    };
+
+function openWebModule(router: ReturnType<typeof useRouter>, moduleKey: string) {
+  router.push(`/web-module/${moduleKey}` as never);
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function getCollectionPriorityStyle(priority: 'MONITOR' | 'TINGGI' | 'KRITIS') {
+  if (priority === 'KRITIS') return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+  if (priority === 'TINGGI') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  return { bg: '#e0f2fe', border: '#bae6fd', text: '#075985' };
+}
+
+function getDueSoonLabel(daysUntilDue: number) {
+  if (daysUntilDue <= 0) return 'Hari ini';
+  if (daysUntilDue === 1) return '1 hari lagi';
+  return `${daysUntilDue} hari lagi`;
+}
+
 export default function StaffAdminScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const staffDivision = resolveStaffDivision(user);
+  const activeYearQuery = useQuery({
+    queryKey: ['mobile-staff-admin-active-year', user?.id],
+    enabled: isAuthenticated && user?.role === 'STAFF',
+    queryFn: () => academicYearApi.getActive({ allowStaleOnError: true }),
+    staleTime: 5 * 60 * 1000,
+  });
 
   const dataQuery = useQuery({
-    queryKey: ['mobile-staff-admin-overview', user?.id],
+    queryKey: ['mobile-staff-admin-overview', user?.id, staffDivision, activeYearQuery.data?.id || 'none'],
     enabled: isAuthenticated && user?.role === 'STAFF',
-    queryFn: async () => {
-      const [budgets, students] = await Promise.all([staffApi.listBudgetRequests(), staffApi.listStudents()]);
-      return { budgets, students };
+    queryFn: async (): Promise<StaffAdminOverviewData> => {
+      if (staffDivision === 'ADMINISTRATION') {
+        const summary = await staffAdministrationApi.getSummary();
+        return { kind: 'ADMINISTRATION', summary };
+      }
+
+      if (staffDivision === 'HEAD_TU') {
+        const [students, teachers, staffs, permissions, budgets] = await Promise.all([
+          staffApi.listStudents(),
+          staffApi.listTeachers(),
+          staffApi.listStaffs(),
+          permissionApi.list({ limit: 200 }),
+          staffApi.listBudgetRequests(),
+        ]);
+        return { kind: 'HEAD_TU', students, teachers, staffs, permissions, budgets };
+      }
+
+      const [budgets, students, dashboard] = await Promise.all([
+        staffApi.listBudgetRequests(),
+        staffApi.listStudents(),
+        staffFinanceApi.listReports({
+          academicYearId: activeYearQuery.data?.id,
+        }),
+      ]);
+      return { kind: 'FINANCE', budgets, students, dashboard };
     },
   });
 
-  const budgets = useMemo(() => dataQuery.data?.budgets || [], [dataQuery.data?.budgets]);
-  const students = useMemo(() => dataQuery.data?.students || [], [dataQuery.data?.students]);
+  const financeBudgets = useMemo(
+    () => (dataQuery.data?.kind === 'FINANCE' ? dataQuery.data.budgets : []),
+    [dataQuery.data],
+  );
+  const financeStudents = useMemo(
+    () => (dataQuery.data?.kind === 'FINANCE' ? dataQuery.data.students : []),
+    [dataQuery.data],
+  );
+  const financeDashboard = useMemo(
+    () => (dataQuery.data?.kind === 'FINANCE' ? dataQuery.data.dashboard : null),
+    [dataQuery.data],
+  );
+  const administrationSummary = useMemo(
+    () => (dataQuery.data?.kind === 'ADMINISTRATION' ? dataQuery.data.summary : null),
+    [dataQuery.data],
+  );
+  const headTuStudents = useMemo(
+    () => (dataQuery.data?.kind === 'HEAD_TU' ? dataQuery.data.students : []),
+    [dataQuery.data],
+  );
+  const headTuTeachers = useMemo(
+    () => (dataQuery.data?.kind === 'HEAD_TU' ? dataQuery.data.teachers : []),
+    [dataQuery.data],
+  );
+  const headTuStaffs = useMemo(
+    () => (dataQuery.data?.kind === 'HEAD_TU' ? dataQuery.data.staffs : []),
+    [dataQuery.data],
+  );
+  const headTuPermissions = useMemo(
+    () => (dataQuery.data?.kind === 'HEAD_TU' ? dataQuery.data.permissions : []),
+    [dataQuery.data],
+  );
+  const headTuBudgets = useMemo(
+    () => (dataQuery.data?.kind === 'HEAD_TU' ? dataQuery.data.budgets : []),
+    [dataQuery.data],
+  );
 
-  const summary = useMemo(() => {
-    const pending = budgets.filter((item) => item.status === 'PENDING').length;
-    const approved = budgets.filter((item) => item.status === 'APPROVED').length;
-    const rejected = budgets.filter((item) => item.status === 'REJECTED').length;
-    const totalAmount = budgets.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
+  const financeSummary = useMemo(() => {
+    const pending = financeBudgets.filter((item) => item.status === 'PENDING').length;
+    const approved = financeBudgets.filter((item) => item.status === 'APPROVED').length;
+    const rejected = financeBudgets.filter((item) => item.status === 'REJECTED').length;
+    const totalAmount = financeBudgets.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
+    return { pending, approved, rejected, totalAmount };
+  }, [financeBudgets]);
 
-    return {
-      pending,
-      approved,
-      rejected,
-      totalAmount,
-    };
-  }, [budgets]);
-
-  const recentPendingBudgets = budgets
-    .filter((item) => item.status === 'PENDING')
-    .slice(0, 6);
+  const financeRecentPendingBudgets = financeBudgets.filter((item) => item.status === 'PENDING').slice(0, 6);
+  const headTuPendingPermissions = headTuPermissions.filter((item) => item.status === 'PENDING').length;
+  const headTuPendingBudgets = headTuBudgets.filter((item) => item.status === 'PENDING').length;
+  const headTuAdministrationStaff = headTuStaffs.filter((item) => resolveStaffDivision(item) === 'ADMINISTRATION').length;
+  const headTuFinanceStaff = headTuStaffs.filter((item) => resolveStaffDivision(item) === 'FINANCE').length;
 
   if (isLoading) return <AppLoadingScreen message="Memuat administrasi staff..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -77,6 +200,19 @@ export default function StaffAdminScreen() {
     );
   }
 
+  const title =
+    staffDivision === 'HEAD_TU'
+      ? 'Workspace Kepala TU'
+      : staffDivision === 'ADMINISTRATION'
+        ? 'Administrasi Staff'
+        : 'Operasional Keuangan';
+  const subtitle =
+    staffDivision === 'HEAD_TU'
+      ? 'Ringkasan monitoring TU, layanan administrasi, dan koordinasi staff.'
+      : staffDivision === 'ADMINISTRATION'
+        ? 'Ringkasan administrasi siswa, guru, dan antrian perizinan.'
+        : 'Ringkasan proses keuangan: pengajuan anggaran dan data siswa.';
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: '#f8fafc' }}
@@ -85,40 +221,38 @@ export default function StaffAdminScreen() {
         <RefreshControl refreshing={dataQuery.isFetching && !dataQuery.isLoading} onRefresh={() => dataQuery.refetch()} />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Administrasi Staff</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Ringkasan proses administrasi: pengajuan anggaran dan data siswa.
-      </Text>
+      <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>{title}</Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{subtitle}</Text>
 
-      <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard title="Data Siswa" value={String(students.length)} subtitle="Total siswa terdaftar" />
-        </View>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard title="Pengajuan" value={String(budgets.length)} subtitle="Total pengajuan anggaran" />
-        </View>
-      </View>
-
-      <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 12 }}>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard title="Menunggu" value={String(summary.pending)} subtitle="Belum diproses" />
-        </View>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard
-            title="Total Nominal"
-            value={`Rp ${summary.totalAmount.toLocaleString('id-ID')}`}
-            subtitle="Akumulasi seluruh pengajuan"
-          />
-        </View>
-      </View>
-
-      {dataQuery.isLoading ? <QueryStateView type="loading" message="Mengambil data administrasi..." /> : null}
+      {dataQuery.isLoading ? <QueryStateView type="loading" message="Mengambil data staff..." /> : null}
       {dataQuery.isError ? (
-        <QueryStateView type="error" message="Gagal memuat data administrasi." onRetry={() => dataQuery.refetch()} />
+        <QueryStateView type="error" message="Gagal memuat ringkasan staff." onRetry={() => dataQuery.refetch()} />
       ) : null}
 
-      {!dataQuery.isLoading && !dataQuery.isError ? (
+      {!dataQuery.isLoading && !dataQuery.isError && dataQuery.data?.kind === 'FINANCE' ? (
         <>
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <SummaryCard title="Data Siswa" value={String(financeStudents.length)} subtitle="Total siswa terdaftar" />
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <SummaryCard title="Pengajuan" value={String(financeBudgets.length)} subtitle="Total pengajuan anggaran" />
+            </View>
+          </View>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 12 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <SummaryCard title="Menunggu" value={String(financeSummary.pending)} subtitle="Belum diproses" />
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <SummaryCard
+                title="Total Nominal"
+                value={`Rp ${financeSummary.totalAmount.toLocaleString('id-ID')}`}
+                subtitle="Akumulasi seluruh pengajuan"
+              />
+            </View>
+          </View>
+
           <View
             style={{
               backgroundColor: '#fff',
@@ -131,13 +265,13 @@ export default function StaffAdminScreen() {
           >
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Ringkasan Status Pengajuan</Text>
             <Text style={{ color: '#475569', marginBottom: 3 }}>
-              Menunggu: <Text style={{ color: '#b45309', fontWeight: '700' }}>{summary.pending}</Text>
+              Menunggu: <Text style={{ color: '#b45309', fontWeight: '700' }}>{financeSummary.pending}</Text>
             </Text>
             <Text style={{ color: '#475569', marginBottom: 3 }}>
-              Disetujui: <Text style={{ color: '#15803d', fontWeight: '700' }}>{summary.approved}</Text>
+              Disetujui: <Text style={{ color: '#15803d', fontWeight: '700' }}>{financeSummary.approved}</Text>
             </Text>
             <Text style={{ color: '#475569' }}>
-              Ditolak: <Text style={{ color: '#b91c1c', fontWeight: '700' }}>{summary.rejected}</Text>
+              Ditolak: <Text style={{ color: '#b91c1c', fontWeight: '700' }}>{financeSummary.rejected}</Text>
             </Text>
           </View>
 
@@ -153,8 +287,8 @@ export default function StaffAdminScreen() {
           >
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Pengajuan Menunggu Tindak Lanjut</Text>
 
-            {recentPendingBudgets.length > 0 ? (
-              recentPendingBudgets.map((item) => (
+            {financeRecentPendingBudgets.length > 0 ? (
+              financeRecentPendingBudgets.map((item) => (
                 <View key={item.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.title || 'Tanpa judul'}</Text>
                   <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
@@ -166,42 +300,518 @@ export default function StaffAdminScreen() {
               <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada pengajuan pending saat ini.</Text>
             )}
           </View>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <SummaryCard
+                title="Follow Up"
+                value={String(financeDashboard?.collectionOverview.studentsWithOutstanding || 0)}
+                subtitle="Siswa outstanding aktif"
+              />
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <SummaryCard
+                title="Kasus Kritis"
+                value={String(financeDashboard?.collectionOverview.criticalCount || 0)}
+                subtitle="Prioritas penagihan"
+              />
+            </View>
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Antrian Penagihan Prioritas</Text>
+            {!financeDashboard?.collectionPriorityQueue.length ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada saldo outstanding aktif.</Text>
+            ) : (
+              financeDashboard.collectionPriorityQueue.slice(0, 4).map((row) => {
+                const badge = getCollectionPriorityStyle(row.priority);
+                return (
+                  <View key={row.studentId} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.studentName}</Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                          {row.className} • {row.nis || row.username}
+                        </Text>
+                      </View>
+                      <View style={{ backgroundColor: badge.bg, borderColor: badge.border, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                        <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{row.priority}</Text>
+                      </View>
+                    </View>
+                    <Text style={{ color: '#475569', fontSize: 12, marginTop: 6 }}>
+                      Outstanding <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Rp {Math.round(row.totalOutstanding).toLocaleString('id-ID')}</Text> • overdue Rp {Math.round(row.overdueOutstanding).toLocaleString('id-ID')}
+                    </Text>
+                  </View>
+                );
+              })
+            )}
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Tagihan Jatuh Tempo Dekat</Text>
+            {!financeDashboard?.dueSoonInvoices.length ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada tagihan jatuh tempo dalam 7 hari.</Text>
+            ) : (
+              financeDashboard.dueSoonInvoices.slice(0, 4).map((row) => (
+                <View key={row.invoiceId} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.studentName}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                    {row.invoiceNo} • {row.className} • {getDueSoonLabel(row.daysUntilDue)}
+                  </Text>
+                  <Text style={{ color: '#0369a1', fontSize: 11, marginTop: 2 }}>
+                    {formatDate(row.dueDate)} • Rp {Math.round(row.balanceAmount).toLocaleString('id-ID')}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+            <View style={{ width: '50%', paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => router.push('/staff/payments' as never)}
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#c7d6f5',
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Buka Pembayaran</Text>
+              </Pressable>
+            </View>
+
+            <View style={{ width: '50%', paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => router.push('/staff/students' as never)}
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#c7d6f5',
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Buka Data Siswa</Text>
+              </Pressable>
+            </View>
+          </View>
         </>
       ) : null}
 
-      <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
-        <View style={{ width: '50%', paddingHorizontal: 4 }}>
-          <Pressable
-            onPress={() => router.push('/staff/payments' as never)}
-            style={{
-              backgroundColor: '#fff',
-              borderWidth: 1,
-              borderColor: '#c7d6f5',
-              borderRadius: 10,
-              paddingVertical: 12,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Buka Pembayaran</Text>
-          </Pressable>
-        </View>
+      {!dataQuery.isLoading && !dataQuery.isError && dataQuery.data?.kind === 'ADMINISTRATION' ? (
+        <>
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <SummaryCard
+                title="Siswa"
+                value={String(administrationSummary?.overview.totalStudents || 0)}
+                subtitle="Data siswa terdaftar"
+              />
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <SummaryCard
+                title="Guru"
+                value={String(administrationSummary?.overview.totalTeachers || 0)}
+                subtitle="Data guru aktif"
+              />
+            </View>
+          </View>
 
-        <View style={{ width: '50%', paddingHorizontal: 4 }}>
-          <Pressable
-            onPress={() => router.push('/staff/students' as never)}
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 12 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <SummaryCard
+                title="Verifikasi"
+                value={String(
+                  (administrationSummary?.overview.pendingStudentVerification || 0) +
+                    (administrationSummary?.overview.pendingTeacherVerification || 0),
+                )}
+                subtitle="Menunggu validasi"
+              />
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <SummaryCard
+                title="Izin Pending"
+                value={String(administrationSummary?.overview.pendingPermissions || 0)}
+                subtitle="Perlu tindak lanjut"
+              />
+            </View>
+          </View>
+
+          <View
             style={{
               backgroundColor: '#fff',
               borderWidth: 1,
-              borderColor: '#c7d6f5',
-              borderRadius: 10,
-              paddingVertical: 12,
-              alignItems: 'center',
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Buka Data Siswa</Text>
-          </Pressable>
-        </View>
-      </View>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Fokus Administrasi</Text>
+            <Text style={{ color: '#475569', marginBottom: 4 }}>
+              Kelengkapan siswa: <Text style={{ color: '#0369a1', fontWeight: '700' }}>{administrationSummary?.overview.studentCompletenessRate || 0}%</Text>
+            </Text>
+            <Text style={{ color: '#475569', marginBottom: 4 }}>
+              Kelengkapan guru: <Text style={{ color: '#15803d', fontWeight: '700' }}>{administrationSummary?.overview.teacherCompletenessRate || 0}%</Text>
+            </Text>
+            <Text style={{ color: '#475569' }}>
+              Verifikasi ditolak: <Text style={{ color: '#b91c1c', fontWeight: '700' }}>
+                {(administrationSummary?.overview.rejectedStudentVerification || 0) +
+                  (administrationSummary?.overview.rejectedTeacherVerification || 0)}
+              </Text>
+            </Text>
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Kelas Prioritas Administrasi</Text>
+            {!administrationSummary?.studentClassRecap.length ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada rekap kelas.</Text>
+            ) : (
+              administrationSummary.studentClassRecap.slice(0, 5).map((row) => (
+                <View key={`${row.classId ?? 0}-${row.className}`} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.className}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                    {row.totalStudents} siswa • kelengkapan {row.completenessRate}% • prioritas {row.priorityCount}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>PTK Prioritas Guru</Text>
+            {!administrationSummary?.teacherPtkRecap.length ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada rekap PTK.</Text>
+            ) : (
+              administrationSummary.teacherPtkRecap.slice(0, 5).map((row) => (
+                <View key={row.ptkType} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.ptkType || '-'}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                    {row.totalTeachers} guru • kelengkapan {row.completenessRate}% • prioritas {row.priorityCount}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Prioritas Administrasi Siswa</Text>
+            {!administrationSummary?.studentPriorityQueue.length ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Seluruh data inti siswa sudah lengkap.</Text>
+            ) : (
+              administrationSummary.studentPriorityQueue.slice(0, 5).map((row) => (
+                <View key={row.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.name}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                    {row.className} • kurang {row.missingFields.join(', ')}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Prioritas Administrasi Guru</Text>
+            {!administrationSummary?.teacherPriorityQueue.length ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Seluruh data inti guru sudah lengkap.</Text>
+            ) : (
+              administrationSummary.teacherPriorityQueue.slice(0, 5).map((row) => (
+                <View key={row.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.name}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                    {row.ptkType} • kurang {row.missingFields.join(', ')}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Perizinan Menunggu Tindak Lanjut</Text>
+            {!administrationSummary?.permissionQueue.length ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada perizinan pending saat ini.</Text>
+            ) : (
+              administrationSummary.permissionQueue.slice(0, 5).map((row) => (
+                <View key={row.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.studentName}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                    {row.className} • {row.type} • {row.ageDays} hari
+                  </Text>
+                  <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+                    {formatDate(row.startDate)} - {formatDate(row.endDate)} • {row.agingLabel}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Aging Perizinan Pending</Text>
+            {!administrationSummary?.permissionAging.length ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada perizinan pending yang perlu dipantau.</Text>
+            ) : (
+              administrationSummary.permissionAging.map((row) => (
+                <View key={row.label} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                  <Text style={{ color: '#475569' }}>{row.label}</Text>
+                  <Text style={{ color: '#b91c1c', fontWeight: '700' }}>{row.count}</Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ width: '50%', paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => openWebModule(router, 'staff-administration-dashboard')}
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#c7d6f5',
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Workspace Admin</Text>
+              </Pressable>
+            </View>
+            <View style={{ width: '50%', paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => router.push('/staff/students' as never)}
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#c7d6f5',
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Data Siswa</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+            <View style={{ width: '50%', paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => openWebModule(router, 'staff-administration-teachers')}
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#c7d6f5',
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Data Guru</Text>
+              </Pressable>
+            </View>
+            <View style={{ width: '50%', paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => openWebModule(router, 'staff-administration-permissions')}
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#c7d6f5',
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Perizinan</Text>
+              </Pressable>
+            </View>
+          </View>
+        </>
+      ) : null}
+
+      {!dataQuery.isLoading && !dataQuery.isError && dataQuery.data?.kind === 'HEAD_TU' ? (
+        <>
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <SummaryCard title="Siswa" value={String(headTuStudents.length)} subtitle="Layanan siswa" />
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <SummaryCard title="Guru" value={String(headTuTeachers.length)} subtitle="Data guru aktif" />
+            </View>
+          </View>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 12 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <SummaryCard title="Staff TU" value={String(headTuStaffs.length)} subtitle="Personel terdaftar" />
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <SummaryCard title="Izin Pending" value={String(headTuPendingPermissions)} subtitle="Antrian administrasi" />
+            </View>
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Ringkasan Kepala TU</Text>
+            <Text style={{ color: '#475569', marginBottom: 4 }}>
+              Pengajuan anggaran menunggu: <Text style={{ color: '#b45309', fontWeight: '700' }}>{headTuPendingBudgets}</Text>
+            </Text>
+            <Text style={{ color: '#475569', marginBottom: 4 }}>
+              Staff administrasi: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{headTuAdministrationStaff}</Text>
+            </Text>
+            <Text style={{ color: '#475569' }}>
+              Staff keuangan: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{headTuFinanceStaff}</Text>
+            </Text>
+          </View>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ width: '50%', paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => openWebModule(router, 'staff-head-tu-dashboard')}
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#c7d6f5',
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Dashboard TU</Text>
+              </Pressable>
+            </View>
+            <View style={{ width: '50%', paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => openWebModule(router, 'staff-head-tu-finance')}
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#c7d6f5',
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Monitoring Keuangan</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+            <View style={{ width: '50%', paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => openWebModule(router, 'staff-head-tu-letters')}
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#c7d6f5',
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Surat-Menyurat</Text>
+              </Pressable>
+            </View>
+            <View style={{ width: '50%', paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={() => openWebModule(router, 'staff-head-tu-exam-cards')}
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#c7d6f5',
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Kartu Ujian</Text>
+              </Pressable>
+            </View>
+          </View>
+        </>
+      ) : null}
 
       <Pressable
         onPress={() => router.replace('/home')}

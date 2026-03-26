@@ -11,12 +11,18 @@ import {
   Filter,
   Loader2
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { classService } from '../../../services/class.service';
 import { HomeroomLedgerPage } from './HomeroomLedgerPage';
 import { HomeroomExtracurricularsPage } from './HomeroomExtracurricularsPage';
 import { HomeroomReportSbtsPage } from './HomeroomReportSbtsPage';
 
-type TabType = 'rapor' | 'ledger' | 'extracurriculars';
+type HomeroomMidtermTabId = 'report-main' | 'ledger' | 'extracurriculars';
+interface HomeroomMidtermTabConfig {
+  id: HomeroomMidtermTabId;
+  label: string;
+  icon: LucideIcon;
+}
 type SemesterType = 'ODD' | 'EVEN';
 
 function normalizeComponentType(raw: unknown): string {
@@ -36,7 +42,7 @@ export const TeacherHomeroomSbtsPage = ({
   programLabel,
   preferenceScope,
 }: TeacherHomeroomSbtsPageProps) => {
-  const [tabOverride, setTabOverride] = useState<TabType | null>(null);
+  const [tabOverride, setTabOverride] = useState<string | null>(null);
   const [semesterOverride, setSemesterOverride] = useState<SemesterType | null>(null);
   const resolvedReportType = String(programBaseType || '').toUpperCase();
   const resolvedProgramLabel = String(programLabel || resolvedReportType || 'Rapor');
@@ -81,14 +87,26 @@ export const TeacherHomeroomSbtsPage = ({
     }
   });
 
-  const savedTab = useMemo<TabType | undefined>(() => {
+  const tabs = useMemo<HomeroomMidtermTabConfig[]>(
+    () => [
+      { id: 'ledger', label: 'Leger Nilai', icon: FileText },
+      { id: 'extracurriculars', label: 'Ekstrakurikuler', icon: Layers },
+      { id: 'report-main', label: `Rapor ${resolvedProgramLabel}`, icon: FileBarChart },
+    ],
+    [resolvedProgramLabel],
+  );
+
+  const savedTab = useMemo<string | undefined>(() => {
     const prefs = (userData?.data?.preferences ?? {}) as Record<string, unknown>;
     const v = prefs[preferenceKey];
-    return v === 'ledger' || v === 'rapor' || v === 'extracurriculars' ? v : undefined;
-  }, [userData, preferenceKey]);
-  const activeTab = tabOverride ?? savedTab ?? 'ledger';
+    const normalized = String(v || '').trim();
+    return tabs.some((tab) => tab.id === normalized) ? normalized : undefined;
+  }, [userData, preferenceKey, tabs]);
 
-  const handleTabChange = (tab: TabType) => {
+  const fallbackTab = tabs[0]?.id || 'ledger';
+  const activeTab = tabOverride ?? savedTab ?? fallbackTab;
+
+  const handleTabChange = (tab: string) => {
     setTabOverride(tab);
     if (userId) {
       const currentPrefs = ((userData?.data?.preferences ?? {}) as Record<string, unknown>);
@@ -125,11 +143,8 @@ export const TeacherHomeroomSbtsPage = ({
     enabled: !!userId && user?.role === 'TEACHER' && !!activeAcademicYearId,
   });
 
-  const tabs = [
-    { id: 'ledger', label: 'Leger Nilai', icon: FileText },
-    { id: 'extracurriculars', label: 'Ekstrakurikuler', icon: Layers },
-    { id: 'rapor', label: `Rapor ${resolvedProgramLabel}`, icon: FileBarChart },
-  ];
+  const effectiveTab =
+    tabs.find((tab) => tab.id === activeTab)?.id || fallbackTab;
 
   if (isLoadingYear || isLoadingClass) {
     return (
@@ -163,12 +178,12 @@ export const TeacherHomeroomSbtsPage = ({
             <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200 overflow-x-auto">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
+                const isActive = effectiveTab === tab.id;
                 
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => handleTabChange(tab.id as TabType)}
+                    onClick={() => handleTabChange(tab.id)}
                     className={`
                       px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap
                       ${isActive 
@@ -207,7 +222,7 @@ export const TeacherHomeroomSbtsPage = ({
 
           {/* Tab Content */}
           <div>
-            {activeTab === 'rapor' && (
+            {effectiveTab === 'report-main' && (
               <HomeroomReportSbtsPage 
                 classId={classSummary.id} 
                 semester={semester}
@@ -216,7 +231,7 @@ export const TeacherHomeroomSbtsPage = ({
                 reportLabel={resolvedProgramLabel}
               />
             )}
-            {activeTab === 'ledger' && (
+            {effectiveTab === 'ledger' && (
               <HomeroomLedgerPage 
                 classId={classSummary.id} 
                 semester={semester}
@@ -225,7 +240,7 @@ export const TeacherHomeroomSbtsPage = ({
                 reportComponentType={normalizeComponentType(resolvedReportType || 'MIDTERM')}
               />
             )}
-            {activeTab === 'extracurriculars' && (
+            {effectiveTab === 'extracurriculars' && (
               <HomeroomExtracurricularsPage 
                 classId={classSummary.id} 
                 semester={semester}

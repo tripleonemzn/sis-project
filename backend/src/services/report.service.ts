@@ -34,7 +34,38 @@ type ReportScoreCarrier = {
   sbtsScore?: number | null;
   sasScore?: number | null;
   satScore?: number | null;
+  usScore?: number | null;
   slotScores?: unknown;
+};
+
+const isUsAliasCode = (raw: unknown): boolean => {
+  const normalized = normalizeLedgerCode(raw);
+  if (!normalized) return false;
+  return normalized === 'US_THEORY' || normalized === 'US_PRACTICE' || normalized === 'US_TEORI' || normalized === 'US_PRAKTEK';
+};
+
+const hasUsSlotScore = (rawSlotScores: unknown): boolean => {
+  const slotScores = parseSlotScoreMap(rawSlotScores);
+  return Object.entries(slotScores).some(([slotCode, score]) => {
+    if (score === null || score === undefined) return false;
+    return isUsAliasCode(slotCode);
+  });
+};
+
+const resolveEffectiveReportFinalScore = (
+  grade: { usScore?: number | null; finalScore?: number | null; slotScores?: unknown } | null | undefined,
+): number | null => {
+  if (!grade) return null;
+  const finalScore = parseScoreNumber(grade.finalScore);
+  const usScore = parseScoreNumber(grade.usScore);
+
+  if (usScore !== null && (hasUsSlotScore(grade.slotScores) || finalScore === null || finalScore <= 0)) {
+    return usScore;
+  }
+  if (finalScore !== null) {
+    return finalScore;
+  }
+  return null;
 };
 
 const readSlotOrLegacyScore = (
@@ -749,6 +780,7 @@ export class ReportService {
     const responseComponentType =
       normalizeLedgerCode(activeProgramComponentType) || (isMidtermReport ? 'MIDTERM' : 'FINAL');
     const responseComponentMode = isMidtermReport ? 'MIDTERM' : 'FINAL';
+    const isUsReport = isUsAliasCode(type) || isUsAliasCode(resolvedReportSlotCode) || isUsAliasCode(activeProgramComponentType);
     const defaultPrimarySlot = resolveSlotCode(
       formativeComponent || examGradeComponents[0] || null,
       resolvedReportSlotCode || 'FORMATIF',
@@ -881,7 +913,9 @@ export class ReportService {
             finalSlotCode,
             resolveLegacyFinalScore(reportScore, finalSlotCode),
           ) ?? 0;
-        const finalScore = report?.finalScore ?? finalComponentScore ?? 0;
+        const finalScore = isUsReport
+          ? reportScore?.usScore ?? report?.finalScore ?? finalComponentScore ?? 0
+          : report?.finalScore ?? finalComponentScore ?? 0;
         
         col1Score = finalScore > 0 ? Math.round(finalScore) : null;
         col1Predicate = finalScore > 0 ? getPredicate(finalScore, kkm) : null;
@@ -1283,6 +1317,10 @@ export class ReportService {
     const responseComponentType =
       normalizeLedgerCode(activeProgramComponentType) || (isMidtermReport ? 'MIDTERM' : 'FINAL');
     const responseComponentMode = isMidtermReport ? 'MIDTERM' : 'FINAL';
+    const isUsReport =
+      isUsAliasCode(reportType) ||
+      isUsAliasCode(resolvedReportSlotCode) ||
+      isUsAliasCode(activeProgramComponentType);
     const defaultPrimarySlot = resolveSlotCode(
       formativeComponent || examGradeComponents[0] || null,
       resolvedReportSlotCode || 'FORMATIF',
@@ -1343,7 +1381,8 @@ export class ReportService {
           formatif: formatifAvg,
           sbts: midtermScore,
           finalComponent: finalComponentScore,
-          finalScore: rGrade?.finalScore ?? null,
+          finalScore: isUsReport ? reportScore?.usScore ?? rGrade?.finalScore ?? null : rGrade?.finalScore ?? null,
+          usScore: reportScore?.usScore ?? null,
           predicate: rGrade?.predicate ?? null,
           description: rGrade?.description ?? null,
           slotScores,
@@ -1636,8 +1675,9 @@ export class ReportService {
     // Sum scores
     reportGrades.forEach((g) => {
       const entry = rankingMap.get(g.studentId);
-      if (entry && g.finalScore !== null) {
-        entry.totalScore += g.finalScore;
+      const effectiveScore = resolveEffectiveReportFinalScore(g as any);
+      if (entry && effectiveScore !== null) {
+        entry.totalScore += effectiveScore;
         entry.subjectCount += 1;
       }
     });

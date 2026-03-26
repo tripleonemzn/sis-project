@@ -5,7 +5,7 @@ import { authService } from '../../../services/auth.service';
 import { uploadService } from '../../../services/upload.service';
 import { majorService, type Major } from '../../../services/major.service';
 import type { User, UserDocumentInput, UserWrite } from '../../../types/auth';
-import { Plus, Edit, Trash2, X, Search, Loader2, FileText, Upload, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
+import { Plus, Edit, Eye, Trash2, X, Search, Loader2, FileText, Upload, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { useLocation } from 'react-router-dom';
 import { z } from 'zod';
@@ -23,7 +23,7 @@ const getErrorMessage = (error: unknown) => {
 const userFormSchema = z.object({
   username: z.string().min(3, 'Username minimal 3 karakter'),
   name: z.string().min(1, 'Nama wajib diisi'),
-  role: z.enum(['ADMIN', 'TEACHER', 'STUDENT', 'PRINCIPAL', 'STAFF', 'PARENT', 'EXAMINER', 'EXTRACURRICULAR_TUTOR']),
+  role: z.enum(['ADMIN', 'TEACHER', 'STUDENT', 'PRINCIPAL', 'STAFF', 'PARENT', 'UMUM', 'EXAMINER', 'EXTRACURRICULAR_TUTOR']),
   password: z.string().optional(),
   nip: z.string().optional().nullable(),
   nis: z.string().optional().nullable(),
@@ -66,12 +66,14 @@ const userFormSchema = z.object({
 
 type UserFormValues = z.infer<typeof userFormSchema>;
 
-type FixedRole = 'ADMIN' | 'PRINCIPAL' | 'STAFF' | 'PARENT' | 'EXAMINER' | 'EXTRACURRICULAR_TUTOR';
+type FixedRole = 'ADMIN' | 'PRINCIPAL' | 'STAFF' | 'PARENT' | 'UMUM' | 'EXAMINER' | 'EXTRACURRICULAR_TUTOR';
 
 type UserListProps = {
   fixedRole: FixedRole;
   title: string;
   description: string;
+  readOnly?: boolean;
+  readOnlyMessage?: string;
 };
 
 const tabs = [
@@ -120,7 +122,13 @@ const stripEmptyStrings = <T extends Record<string, unknown>>(obj: T) => {
   return out as T;
 };
 
-export const UserList = ({ fixedRole, title, description }: UserListProps) => {
+export const UserList = ({
+  fixedRole,
+  title,
+  description,
+  readOnly = false,
+  readOnlyMessage,
+}: UserListProps) => {
   const [showForm, setShowForm] = useState(false);
   const [activeTab, setActiveTab] = useState<typeof tabs[number]['id']>('account');
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -145,8 +153,8 @@ export const UserList = ({ fixedRole, title, description }: UserListProps) => {
   const isAdmin = authData?.data?.role === 'ADMIN';
 
   const { data: usersData, isLoading } = useQuery<{ data: User[] }>({
-    queryKey: ['users'],
-    queryFn: async () => userService.getAll(),
+    queryKey: ['users', fixedRole],
+    queryFn: async () => userService.getAll({ role: fixedRole }),
   });
 
   const { data: studentsForParent } = useQuery<{ data: User[] }>({
@@ -361,7 +369,7 @@ export const UserList = ({ fixedRole, title, description }: UserListProps) => {
       setEditingUser(user);
       setValue('username', user.username);
       setValue('name', user.name);
-      setValue('role', user.role);
+      setValue('role', user.role as UserFormValues['role']);
       setValue('password', '');
       setValue('nip', user.nip || '');
       setValue('nis', user.nis || '');
@@ -545,7 +553,7 @@ export const UserList = ({ fixedRole, title, description }: UserListProps) => {
           <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
           <p className="text-gray-500">{description}</p>
         </div>
-        {!showForm && (
+        {!showForm && !readOnly && (
           <button
             onClick={() => handleOpenForm()}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -555,6 +563,12 @@ export const UserList = ({ fixedRole, title, description }: UserListProps) => {
           </button>
         )}
       </div>
+
+      {readOnlyMessage ? (
+        <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          {readOnlyMessage}
+        </div>
+      ) : null}
 
       {!showForm ? (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -630,6 +644,17 @@ export const UserList = ({ fixedRole, title, description }: UserListProps) => {
                           >
                             {user.role}
                           </span>
+                          <span
+                            className={`inline-flex w-fit items-center px-2.5 py-1 rounded-full text-[11px] font-medium border ${
+                              user.verificationStatus === 'VERIFIED'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                : user.verificationStatus === 'REJECTED'
+                                  ? 'bg-rose-50 text-rose-700 border-rose-100'
+                                  : 'bg-amber-50 text-amber-700 border-amber-100'
+                            }`}
+                          >
+                            {user.verificationStatus || 'PENDING'}
+                          </span>
                           {user.role === 'STAFF' &&
                             (() => {
                               const staffCode = resolveStaffPositionCodeFromUser(user);
@@ -658,18 +683,24 @@ export const UserList = ({ fixedRole, title, description }: UserListProps) => {
                         <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => handleOpenForm(user)}
-                            className="p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors"
-                            title="Edit"
+                            className={`p-2 rounded-lg transition-colors ${
+                              readOnly
+                                ? 'text-blue-600 hover:bg-blue-50'
+                                : 'text-yellow-600 hover:bg-yellow-50'
+                            }`}
+                            title={readOnly ? 'Lihat detail' : 'Edit'}
                           >
-                            <Edit size={18} />
+                            {readOnly ? <Eye size={18} /> : <Edit size={18} />}
                           </button>
-                          <button
-                            onClick={() => handleDelete(user.id)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Hapus"
-                          >
-                            <Trash2 size={18} />
-                          </button>
+                          {!readOnly ? (
+                            <button
+                              onClick={() => handleDelete(user.id)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Hapus"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -737,6 +768,7 @@ export const UserList = ({ fixedRole, title, description }: UserListProps) => {
 
             <div className="p-6 bg-gray-50/60">
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                <fieldset disabled={readOnly} className={readOnly ? 'space-y-4' : undefined}>
                 {/* Data Akun Tab */}
                 {activeTab === 'account' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1320,6 +1352,7 @@ export const UserList = ({ fixedRole, title, description }: UserListProps) => {
                     </div>
                   </div>
                 )}
+                </fieldset>
 
                 <div className="flex justify-end gap-3 pt-6 border-t border-gray-100 mt-6">
                   <button
@@ -1327,16 +1360,18 @@ export const UserList = ({ fixedRole, title, description }: UserListProps) => {
                     onClick={handleCloseForm}
                     className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                   >
-                    Batal
+                    {readOnly ? 'Kembali' : 'Batal'}
                   </button>
-                  <button
-                    type="submit"
-                    disabled={createMutation.isPending || updateMutation.isPending}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {(createMutation.isPending || updateMutation.isPending) && <Loader2 size={16} className="animate-spin" />}
-                    {editingUser ? 'Simpan Perubahan' : 'Buat User'}
-                  </button>
+                  {!readOnly ? (
+                    <button
+                      type="submit"
+                      disabled={createMutation.isPending || updateMutation.isPending}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {(createMutation.isPending || updateMutation.isPending) && <Loader2 size={16} className="animate-spin" />}
+                      {editingUser ? 'Simpan Perubahan' : 'Buat User'}
+                    </button>
+                  ) : null}
                 </div>
               </form>
             </div>

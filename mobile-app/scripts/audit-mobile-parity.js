@@ -10,6 +10,7 @@ const ROLE_MENU_PATH = path.join(PROJECT_ROOT, 'src', 'features', 'dashboard', '
 const APP_ROOT = path.join(PROJECT_ROOT, 'app', '(app)');
 const SRC_ROOT = path.join(PROJECT_ROOT, 'src');
 const OUTPUT_DIR = path.join(PROJECT_ROOT, 'docs', 'audit');
+const transpiledModuleCache = new Map();
 
 function readFile(filePath) {
   return fs.readFileSync(filePath, 'utf8');
@@ -35,11 +36,13 @@ function listFilesRecursive(root, extensions = ['.ts', '.tsx']) {
   return results.sort();
 }
 
-function transpileRoleMenuModule() {
-  const source =
-    readFile(ROLE_MENU_PATH) +
-    '\nmodule.exports.__ROLE_MENUS = ROLE_MENUS;' +
-    '\nmodule.exports.__MATERIALIZE = materializeMenuTargets;';
+function transpileTsModule(filePath, extraSource = '') {
+  const cacheKey = `${filePath}::${extraSource}`;
+  if (transpiledModuleCache.has(cacheKey)) {
+    return transpiledModuleCache.get(cacheKey);
+  }
+
+  const source = readFile(filePath) + extraSource;
   const output = ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
@@ -48,17 +51,37 @@ function transpileRoleMenuModule() {
     },
   }).outputText;
 
+  const localRequire = (moduleId) => {
+    if (moduleId.startsWith('.')) {
+      const resolved = resolveImportToFile(filePath, moduleId);
+      if (!resolved) {
+        throw new Error(`Tidak bisa me-resolve import ${moduleId} dari ${path.relative(PROJECT_ROOT, filePath)}`);
+      }
+      return transpileTsModule(resolved);
+    }
+    return require(moduleId);
+  };
+
   const sandbox = {
     module: { exports: {} },
     exports: {},
-    require,
+    require: localRequire,
     __DEV__: false,
     process,
     console,
   };
   sandbox.exports = sandbox.module.exports;
-  vm.runInNewContext(output, sandbox, { filename: 'roleMenu.transpiled.js' });
+  vm.runInNewContext(output, sandbox, { filename: `${path.basename(filePath)}.transpiled.js` });
+  transpiledModuleCache.set(cacheKey, sandbox.module.exports);
   return sandbox.module.exports;
+}
+
+function transpileRoleMenuModule() {
+  return transpileTsModule(
+    ROLE_MENU_PATH,
+    '\nmodule.exports.__ROLE_MENUS = ROLE_MENUS;' +
+      '\nmodule.exports.__MATERIALIZE = materializeMenuTargets;',
+  );
 }
 
 function resolveRouteToFile(route) {

@@ -6,6 +6,7 @@ export type ParentChildDetail = {
   username: string;
   nis?: string | null;
   nisn?: string | null;
+  birthDate?: string | null;
   studentStatus?: string | null;
   verificationStatus?: string | null;
   studentClass?: {
@@ -17,6 +18,18 @@ export type ParentChildDetail = {
       code?: string | null;
     } | null;
   } | null;
+};
+
+export type ParentChildLinkPayload = {
+  nisn: string;
+  birthDate: string;
+};
+
+export type ParentChildLookupResult = {
+  student: ParentChildDetail;
+  alreadyLinkedToCurrentParent: boolean;
+  linkedParentCount: number;
+  oneTimeWarning: string;
 };
 
 export type ParentAttendanceRecord = StudentAttendanceHistory;
@@ -79,6 +92,8 @@ export type ParentPaymentRecord = {
 export type ParentChildFinanceSummary = {
   totalRecords: number;
   totalAmount: number;
+  overdueCount: number;
+  overdueAmount: number;
   status: {
     pendingCount: number;
     pendingAmount: number;
@@ -100,6 +115,26 @@ export type ParentChildFinanceSummary = {
 export type ParentChildFinanceOverview = {
   student: ParentChildDetail;
   summary: ParentChildFinanceSummary;
+  invoices: Array<{
+    id: number;
+    invoiceNo: string;
+    title?: string | null;
+    periodKey: string;
+    semester: 'ODD' | 'EVEN';
+    dueDate?: string | null;
+    status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
+    totalAmount: number;
+    paidAmount: number;
+    balanceAmount: number;
+    isOverdue: boolean;
+    daysPastDue: number;
+    items: Array<{
+      componentCode?: string | null;
+      componentName: string;
+      amount: number;
+      periodicity?: 'MONTHLY' | 'ONE_TIME' | 'PERIODIC' | null;
+    }>;
+  }>;
   payments: ParentPaymentRecord[];
 };
 
@@ -117,6 +152,8 @@ export type ParentFinanceOverview = {
     pendingAmount: number;
     partialAmount: number;
     cancelledAmount: number;
+    overdueCount: number;
+    overdueAmount: number;
     monthlyAmount: number;
     oneTimeAmount: number;
   };

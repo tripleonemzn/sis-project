@@ -217,7 +217,7 @@ type ExamProgramsResponse = {
   message: string;
   data: {
     academicYearId: number;
-    roleContext: 'teacher' | 'student' | 'all';
+    roleContext: 'teacher' | 'student' | 'candidate' | 'applicant' | 'all';
     programs: ExamProgramItem[];
   };
 };
@@ -285,7 +285,7 @@ export const examApi = {
   },
   async getExamPrograms(params?: {
     academicYearId?: number;
-    roleContext?: 'teacher' | 'student' | 'all';
+    roleContext?: 'teacher' | 'student' | 'candidate' | 'applicant' | 'all';
     includeInactive?: boolean;
   }) {
     const response = await apiClient.get<ExamProgramsResponse>('/exams/programs', {

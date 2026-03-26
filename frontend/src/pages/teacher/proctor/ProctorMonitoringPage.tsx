@@ -34,6 +34,7 @@ interface ExamSchedule {
   endTime: string;
   room: string | null;
   token: string | null;
+  serverNow?: string;
   displayTitle?: string;
   subjectName?: string;
   classNames?: string[];
@@ -44,6 +45,13 @@ interface ExamSchedule {
     subject: { name: string };
     duration: number;
   } | null;
+  proctoringReports?: Array<{
+    id: number;
+    signedAt?: string;
+    updatedAt?: string;
+    notes?: string | null;
+    incident?: string | null;
+  }>;
   class: {
     id: number;
     name: string;
@@ -57,20 +65,47 @@ const ProctorMonitoringPage: React.FC = () => {
   const [students, setStudents] = useState<StudentData[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [serverTimeDriftMinutes, setServerTimeDriftMinutes] = useState<number | null>(null);
   const pollingInFlightRef = useRef(false);
 
   // Berita Acara State
   const [notes, setNotes] = useState('');
   const [incident, setIncident] = useState('');
   const [submittingReport, setSubmittingReport] = useState(false);
+  const [reportSubmitted, setReportSubmitted] = useState(false);
+  const hasHydratedExistingReportRef = useRef(false);
 
   const fetchData = useCallback(async (options?: { silent?: boolean }) => {
     if (!scheduleId || pollingInFlightRef.current) return;
     pollingInFlightRef.current = true;
     try {
       const res = await api.get(`/proctoring/schedules/${scheduleId}`);
-      setSchedule(res.data.data.schedule);
+      const nextSchedule = res.data.data.schedule as ExamSchedule;
+      setSchedule(nextSchedule);
       setStudents(res.data.data.students);
+      const reportRows = Array.isArray(nextSchedule?.proctoringReports)
+        ? [...nextSchedule.proctoringReports]
+        : [];
+      const latestReport = reportRows
+        .sort((a, b) => {
+          const aTime = new Date(String(a.updatedAt || a.signedAt || 0)).getTime();
+          const bTime = new Date(String(b.updatedAt || b.signedAt || 0)).getTime();
+          return bTime - aTime;
+        })[0] || null;
+      const hasExistingReport = Boolean(latestReport?.id);
+      setReportSubmitted(hasExistingReport);
+      if (hasExistingReport && !hasHydratedExistingReportRef.current) {
+        setNotes(String(latestReport?.notes || ''));
+        setIncident(String(latestReport?.incident || ''));
+        hasHydratedExistingReportRef.current = true;
+      }
+      const serverNowMs = nextSchedule?.serverNow ? new Date(nextSchedule.serverNow).getTime() : NaN;
+      if (Number.isFinite(serverNowMs)) {
+        const driftMs = Math.abs(Date.now() - serverNowMs);
+        setServerTimeDriftMinutes(driftMs >= 2 * 60 * 1000 ? Math.round(driftMs / 60000) : null);
+      } else {
+        setServerTimeDriftMinutes(null);
+      }
     } catch (error) {
       console.error('Error fetching proctoring data:', error);
       if (!options?.silent) {
@@ -121,7 +156,10 @@ const ProctorMonitoringPage: React.FC = () => {
         studentCountPresent: presentCount,
         studentCountAbsent: absentCount
       });
+      setReportSubmitted(true);
+      hasHydratedExistingReportRef.current = true;
       toast.success('Berita Acara berhasil disimpan');
+      await fetchData({ silent: true });
     } catch (error) {
       console.error('Error submitting report:', error);
       toast.error('Gagal menyimpan Berita Acara');
@@ -176,6 +214,15 @@ const ProctorMonitoringPage: React.FC = () => {
     if (classCompare !== 0) return classCompare;
     return String(a.name || '').localeCompare(String(b.name || ''), 'id');
   });
+  const nowMs = Date.now();
+  const scheduleStartMs = new Date(schedule.startTime).getTime();
+  const scheduleEndMs = new Date(schedule.endTime).getTime();
+  const isScheduleRunning =
+    Number.isFinite(scheduleStartMs) &&
+    Number.isFinite(scheduleEndMs) &&
+    nowMs >= scheduleStartMs &&
+    nowMs <= scheduleEndMs;
+  const notStartedCount = orderedStudents.filter((student) => student.status === 'NOT_STARTED').length;
 
   return (
     <div className="space-y-5">
@@ -206,6 +253,23 @@ const ProctorMonitoringPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {(serverTimeDriftMinutes !== null || (isScheduleRunning && notStartedCount > 0)) && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+          <p className="text-sm font-semibold text-amber-800">Peringatan Sinkronisasi Waktu</p>
+          {serverTimeDriftMinutes !== null ? (
+            <p className="text-sm text-amber-700 mt-1">
+              Jam perangkat pengawas berbeda sekitar {serverTimeDriftMinutes} menit dari server. Aktifkan
+              sinkronisasi waktu otomatis agar monitoring akurat.
+            </p>
+          ) : (
+            <p className="text-sm text-amber-700 mt-1">
+              Jika siswa melapor tombol mulai tidak muncul (`-`), cek jam perangkat siswa dan pastikan
+              sinkronisasi waktu otomatis aktif (tanggal/jam/timezone harus sesuai server).
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-[2fr,1fr] gap-5">
         <div className="space-y-5">
@@ -348,12 +412,20 @@ const ProctorMonitoringPage: React.FC = () => {
                 />
               </div>
               <button 
-                className="w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                className={`w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 ${
+                  reportSubmitted
+                    ? 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500'
+                    : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
+                }`}
                 onClick={handleSubmitReport}
                 disabled={submittingReport}
               >
                 <Save className="h-4 w-4 mr-2" />
-                {submittingReport ? 'Menyimpan...' : 'Simpan Berita Acara'}
+                {submittingReport
+                  ? 'Menyimpan...'
+                  : reportSubmitted
+                    ? 'Berita Acara Terkirim'
+                    : 'Simpan Berita Acara'}
               </button>
             </div>
           </div>

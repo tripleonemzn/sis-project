@@ -8,6 +8,35 @@ export type RegisterUmumPayload = {
   password: string;
   confirmPassword: string;
   name: string;
+  phone?: string;
+  email?: string;
+};
+
+export type RegisterCalonSiswaPayload = {
+  name: string;
+  nisn: string;
+  phone: string;
+  email?: string;
+  password: string;
+  confirmPassword: string;
+};
+
+export type RegisterParentPayload = {
+  username: string;
+  password: string;
+  confirmPassword: string;
+  name: string;
+  phone: string;
+  email?: string;
+};
+
+export type RegisterBkkPayload = {
+  username: string;
+  password: string;
+  confirmPassword: string;
+  name: string;
+  phone: string;
+  email?: string;
 };
 
 export type AuthUser = {
@@ -16,6 +45,7 @@ export type AuthUser = {
   role: string;
   isDemo?: boolean;
   username: string;
+  verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
   gender?: 'MALE' | 'FEMALE' | null;
   birthPlace?: string | null;
   birthDate?: string | null;
@@ -102,3 +132,7 @@ export type RegisterUmumResponse = {
   message: string;
   data: AuthUser;
 };
+
+export type RegisterCalonSiswaResponse = RegisterUmumResponse;
+export type RegisterParentResponse = RegisterUmumResponse;
+export type RegisterBkkResponse = RegisterUmumResponse;

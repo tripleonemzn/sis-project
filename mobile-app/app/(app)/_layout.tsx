@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Redirect, Stack, usePathname, useRouter } from 'expo-router';
+import { Redirect, Stack, useRouter } from 'expo-router';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { useAuth } from '../../src/features/auth/AuthProvider';
 import { useMobileRealtimeSync } from '../../src/features/realtime/useMobileRealtimeSync';
@@ -15,11 +15,11 @@ export default function AppProtectedLayout() {
   useMobileRealtimeSync(isAuthenticated);
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const pathname = usePathname();
   const [isLogoutConfirmVisible, setIsLogoutConfirmVisible] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const isHome = pathname === '/home';
-  const unreadNotificationsQuery = useUnreadNotificationsQuery(isAuthenticated && !isHome);
+  // Global footer dinonaktifkan pada halaman menu agar navigasi bawah hanya muncul di home screen.
+  const showGlobalFooter = false;
+  const unreadNotificationsQuery = useUnreadNotificationsQuery(isAuthenticated && showGlobalFooter);
   const unreadCount = unreadNotificationsQuery.data ?? 0;
 
   if (isLoading) {
@@ -29,8 +29,6 @@ export default function AppProtectedLayout() {
   if (!isAuthenticated) {
     return <Redirect href="/welcome" />;
   }
-
-  const showGlobalFooter = !isHome;
 
   const handleNotificationPress = () => {
     router.push('/notifications');

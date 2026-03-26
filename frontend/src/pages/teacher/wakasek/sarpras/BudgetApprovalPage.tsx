@@ -760,11 +760,15 @@ export const BudgetApprovalPage = () => {
                             Status:{' '}
                             <span
                               className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                                invoice.status === 'APPROVED_BY_SARPRAS'
+                                invoice.status === 'APPROVED_BY_SARPRAS' ||
+                                invoice.status === 'COMPLETED'
                                   ? 'bg-green-100 text-green-800'
-                                  : invoice.status === 'SUBMITTED_TO_SARPRAS'
+                                  : invoice.status === 'SUBMITTED_TO_SARPRAS' ||
+                                    invoice.status === 'SENT_TO_FINANCE' ||
+                                    invoice.status === 'PROCESSING_FINANCE'
                                   ? 'bg-blue-100 text-blue-800'
-                                  : invoice.status === 'RETURNED'
+                                  : invoice.status === 'RETURNED' ||
+                                    invoice.status === 'RETURNED_BY_FINANCE'
                                   ? 'bg-red-100 text-red-800'
                                   : 'bg-yellow-100 text-yellow-800'
                               }`}
@@ -775,8 +779,16 @@ export const BudgetApprovalPage = () => {
                               {invoice.status === 'RETURNED' && 'Dikembalikan'}
                               {invoice.status === 'APPROVED_BY_SARPRAS' && 'Disetujui Wakasek'}
                               {invoice.status === 'SENT_TO_FINANCE' && 'Diteruskan ke Keuangan'}
+                              {invoice.status === 'PROCESSING_FINANCE' && 'Sedang diproses Keuangan'}
+                              {invoice.status === 'COMPLETED' && 'Selesai diproses Keuangan'}
+                              {invoice.status === 'RETURNED_BY_FINANCE' && 'Dikembalikan Keuangan'}
                             </span>
                           </p>
+                          {invoice.financeNote && (
+                            <p className="text-[11px] text-red-600 mt-1">
+                              Catatan keuangan: {invoice.financeNote}
+                            </p>
+                          )}
                         </div>
                         <div className="flex flex-col items-end gap-1 text-[11px]">
                           <div className="flex gap-2">

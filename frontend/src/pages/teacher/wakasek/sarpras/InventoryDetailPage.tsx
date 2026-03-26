@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useParams, useNavigate, useOutletContext, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, useOutletContext, useLocation, Navigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   ArrowLeft, 
@@ -26,8 +26,14 @@ import { id as idLocale } from 'date-fns/locale';
 
 type InventoryAttributeMap = Record<string, string | number>;
 type InventoryDetailContextUser = {
+  id?: number;
   role?: string;
   additionalDuties?: string[] | null;
+  managedInventoryRooms?: {
+    id: number;
+    name: string;
+    managerUserId?: number | null;
+  }[] | null;
 };
 
 const getErrorMessage = (error: unknown, fallback: string) => {
@@ -85,17 +91,26 @@ export const InventoryDetailPage = () => {
   const user = contextUser || authData?.data;
   
   // Check if user has write access
-  const canEdit = user?.role === 'ADMIN' || 
-                  user?.additionalDuties?.includes('WAKASEK_SARPRAS') || 
-                  user?.additionalDuties?.includes('SEKRETARIS_SARPRAS') ||
-                  user?.additionalDuties?.includes('KEPALA_LAB') ||
-                  user?.additionalDuties?.includes('KEPALA_PERPUSTAKAAN');
+  const baseCanEdit = user?.role === 'ADMIN' || 
+                user?.additionalDuties?.includes('WAKASEK_SARPRAS') || 
+                user?.additionalDuties?.includes('SEKRETARIS_SARPRAS') ||
+                user?.additionalDuties?.includes('KEPALA_LAB') ||
+                user?.additionalDuties?.includes('KEPALA_PERPUSTAKAAN');
 
   // Fetch Room Details
   const { data: roomData, isLoading: isRoomLoading } = useQuery({
     queryKey: ['room', normalizedRoomId],
     queryFn: () => inventoryService.getRoom(normalizedRoomId),
     enabled: hasValidRoomId,
+  });
+
+  const isAssignedInventoryPath = location.pathname.includes('/assigned-inventory');
+  const { data: assignedRoomsData } = useQuery({
+    queryKey: ['assigned-rooms-fallback', user?.id],
+    queryFn: () => inventoryService.getAssignedRooms(),
+    enabled: hasValidRoomId && isAssignedInventoryPath,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   // Fetch Inventory Items
@@ -105,8 +120,17 @@ export const InventoryDetailPage = () => {
     enabled: hasValidRoomId,
   });
 
-  const room = roomData?.data;
+  const assignedRoomFallbackFromQuery = Array.isArray(assignedRoomsData?.data)
+    ? assignedRoomsData.data.find((entry: { id?: number }) => Number(entry?.id) === normalizedRoomId)
+    : null;
+  const assignedRoomFallbackFromProfile = Array.isArray(user?.managedInventoryRooms)
+    ? user.managedInventoryRooms.find((entry) => Number(entry?.id) === normalizedRoomId)
+    : null;
+  const assignedRoomFallback = assignedRoomFallbackFromQuery || assignedRoomFallbackFromProfile || null;
+  const room = roomData?.data || assignedRoomFallback;
+  const canEdit = Boolean(baseCanEdit || (user?.id && room?.managerUserId && Number(user.id) === Number(room.managerUserId)));
   const items = itemsData?.data || [];
+  const isAssignedFallbackLoading = Boolean(isAssignedInventoryPath && !roomData?.data && !assignedRoomFallback && assignedRoomsData === undefined);
 
   const templateKey = useMemo(
     () =>
@@ -162,8 +186,15 @@ export const InventoryDetailPage = () => {
     }
   };
 
-  if (isRoomLoading) {
+  if (isRoomLoading || isAssignedFallbackLoading) {
     return <div className="p-6 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
+  }
+
+  if (location.pathname.includes('/tutor/assigned-inventory')) {
+    const normalizedRoomName = String(room?.name || assignedRoomFallback?.name || '').trim().toUpperCase();
+    if (!room || normalizedRoomName.includes('OSIS')) {
+      return <Navigate to="/tutor/inventory" replace />;
+    }
   }
 
   if (!room) {
@@ -177,18 +208,26 @@ export const InventoryDetailPage = () => {
         <button 
           onClick={() => {
             const base =
-              location.pathname.includes('/teacher/head-lab')
+              location.pathname.includes('/teacher/assigned-inventory')
+                ? '/teacher/assigned-inventory'
+                : location.pathname.includes('/tutor/assigned-inventory')
+                  ? '/tutor/assigned-inventory'
+                : location.pathname.includes('/staff/assigned-inventory')
+                  ? '/staff/assigned-inventory'
+                  : location.pathname.includes('/principal/assigned-inventory')
+                    ? '/principal/assigned-inventory'
+                    : location.pathname.includes('/teacher/head-lab')
                 ? '/teacher/head-lab/inventory'
                 : location.pathname.includes('/teacher/head-library')
                   ? '/teacher/head-library/inventory'
-                  : '/teacher/sarpras/inventory';
+                    : '/teacher/sarpras/inventory';
             const suffix = room?.categoryId ? `?tab=${room.categoryId}` : '';
             const filter = location.pathname.includes('/teacher/head-lab')
               ? (suffix ? '&filter=lab' : '?filter=lab')
               : location.pathname.includes('/teacher/head-library')
                 ? (suffix ? '&filter=library' : '?filter=library')
                 : '';
-            navigate(`${base}${suffix}${filter}`);
+            navigate(location.pathname.includes('/assigned-inventory') ? base : `${base}${suffix}${filter}`);
           }}
           className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors w-fit"
         >

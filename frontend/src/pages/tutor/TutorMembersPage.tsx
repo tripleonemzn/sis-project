@@ -1,9 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { tutorService } from '../../services/tutor.service';
+import {
+  tutorService,
+  type ExtracurricularGradeTemplate,
+  type ExtracurricularAttendanceStatus,
+} from '../../services/tutor.service';
 import { academicYearService } from '../../services/academicYear.service';
 import { examService, type ExamProgram } from '../../services/exam.service';
-import { Trophy, Save, Loader2, Filter } from 'lucide-react';
+import { Trophy, Save, Loader2, Filter, ClipboardCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 type Semester = 'ODD' | 'EVEN';
@@ -69,20 +73,47 @@ interface ReportProgramOption {
 }
 
 type GradePredicate = 'SB' | 'B' | 'C' | 'K';
+type PageTab = 'GRADE' | 'ATTENDANCE';
 
-const GRADE_OPTIONS: Array<{ value: GradePredicate; label: string }> = [
-  { value: 'SB', label: 'Sangat Baik (SB)' },
-  { value: 'B', label: 'Baik (B)' },
-  { value: 'C', label: 'Cukup (C)' },
-  { value: 'K', label: 'Kurang (K)' },
+interface AttendanceOverview {
+  assignmentId: number;
+  ekskulId: number;
+  academicYearId: number;
+  weekKey: string;
+  sessionsPerWeek: number;
+  records: Array<{
+    enrollmentId: number;
+    sessionIndex: number;
+    status: ExtracurricularAttendanceStatus;
+    note?: string;
+  }>;
+}
+
+const DEFAULT_GRADE_TEMPLATES: ExtracurricularGradeTemplate = {
+  SB: { label: 'Sangat Baik (SB)', description: '' },
+  B: { label: 'Baik (B)', description: '' },
+  C: { label: 'Cukup (C)', description: '' },
+  K: { label: 'Kurang (K)', description: '' },
+};
+
+const ATTENDANCE_STATUS_OPTIONS: Array<{
+  value: ExtracurricularAttendanceStatus;
+  label: string;
+}> = [
+  { value: 'PRESENT', label: 'Hadir' },
+  { value: 'PERMIT', label: 'Izin' },
+  { value: 'SICK', label: 'Sakit' },
+  { value: 'ABSENT', label: 'Alpa' },
 ];
 
-const EMPTY_TEMPLATES: Record<GradePredicate, string> = {
-  SB: '',
-  B: '',
-  C: '',
-  K: '',
-};
+function getCurrentWeekKey(date = new Date()) {
+  const utc = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = utc.getUTCDay() || 7;
+  utc.setUTCDate(utc.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((utc.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${utc.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+}
 
 function normalizeProgramCode(raw: unknown): string {
   return String(raw || '')
@@ -150,8 +181,12 @@ function formatProgramSemesterLabel(fixedSemester: Semester | null): string {
 }
 
 export const TutorMembersPage = () => {
+  const [activeTab, setActiveTab] = useState<PageTab>('GRADE');
   const [semester, setSemester] = useState<Semester>('ODD');
   const [reportType, setReportType] = useState('');
+  const [attendanceWeekKey, setAttendanceWeekKey] = useState(getCurrentWeekKey());
+  const [attendanceSessionsPerWeekDraft, setAttendanceSessionsPerWeekDraft] = useState(1);
+  const [attendanceEdits, setAttendanceEdits] = useState<Record<number, Record<number, ExtracurricularAttendanceStatus | ''>>>({});
 
   const { data: academicYearData } = useQuery({
     queryKey: ['academic-years', 'active'],
@@ -276,7 +311,7 @@ export const TutorMembersPage = () => {
     ],
   );
   const [gradeTemplateEditsByContext, setGradeTemplateEditsByContext] = useState<
-    Record<string, Record<GradePredicate, string>>
+    Record<string, ExtracurricularGradeTemplate>
   >({});
 
   const { data: membersData, isLoading } = useQuery({
@@ -288,6 +323,17 @@ export const TutorMembersPage = () => {
   const members: Enrollment[] = (membersData?.data || []) as Enrollment[];
 
   const queryClient = useQueryClient();
+  const { data: attendanceOverviewData, isFetching: isFetchingAttendance } = useQuery({
+    queryKey: ['tutor-attendance', selectedEkskulId, selectedAcademicYearId, attendanceWeekKey],
+    queryFn: () =>
+      tutorService.getAttendanceOverview({
+        ekskulId: selectedEkskulId,
+        academicYearId: selectedAcademicYearId!,
+        weekKey: attendanceWeekKey,
+      }),
+    enabled: !!selectedEkskulId && !!selectedAcademicYearId,
+  });
+  const attendanceOverview = (attendanceOverviewData?.data || null) as AttendanceOverview | null;
   const { data: gradeTemplateData, isFetching: isFetchingTemplates } = useQuery({
     queryKey: [
       'tutor-grade-templates',
@@ -312,20 +358,40 @@ export const TutorMembersPage = () => {
       !!(selectedReportProgram?.code || effectiveSelectedReportType),
   });
 
-  const serverGradeTemplates = useMemo<Record<GradePredicate, string>>(() => {
+  const serverGradeTemplates = useMemo<ExtracurricularGradeTemplate>(() => {
     const templatesRaw = gradeTemplateData?.data?.templates;
     return (
       templatesRaw && typeof templatesRaw === 'object'
         ? {
-            SB: String(templatesRaw.SB || ''),
-            B: String(templatesRaw.B || ''),
-            C: String(templatesRaw.C || ''),
-            K: String(templatesRaw.K || ''),
+            SB: {
+              label: String(templatesRaw.SB?.label || DEFAULT_GRADE_TEMPLATES.SB.label),
+              description: String(templatesRaw.SB?.description || ''),
+            },
+            B: {
+              label: String(templatesRaw.B?.label || DEFAULT_GRADE_TEMPLATES.B.label),
+              description: String(templatesRaw.B?.description || ''),
+            },
+            C: {
+              label: String(templatesRaw.C?.label || DEFAULT_GRADE_TEMPLATES.C.label),
+              description: String(templatesRaw.C?.description || ''),
+            },
+            K: {
+              label: String(templatesRaw.K?.label || DEFAULT_GRADE_TEMPLATES.K.label),
+              description: String(templatesRaw.K?.description || ''),
+            },
           }
-        : EMPTY_TEMPLATES
+        : DEFAULT_GRADE_TEMPLATES
     );
   }, [gradeTemplateData]);
   const gradeTemplates = gradeTemplateEditsByContext[templateContextKey] || serverGradeTemplates;
+  const gradeOptions = useMemo(
+    () =>
+      (Object.keys(DEFAULT_GRADE_TEMPLATES) as GradePredicate[]).map((value) => ({
+        value,
+        label: gradeTemplates[value]?.label || DEFAULT_GRADE_TEMPLATES[value].label,
+      })),
+    [gradeTemplates],
+  );
 
   const { mutateAsync: saveGrade } = useMutation({
     mutationFn: (payload: { 
@@ -346,7 +412,7 @@ export const TutorMembersPage = () => {
   });
 
   const { mutateAsync: saveGradeTemplates, isPending: isSavingGradeTemplates } = useMutation({
-    mutationFn: (templates: Record<GradePredicate, string>) =>
+    mutationFn: (templates: ExtracurricularGradeTemplate) =>
       tutorService.saveGradeTemplates({
         ekskulId: selectedEkskulId,
         academicYearId: selectedAcademicYearId!,
@@ -373,6 +439,47 @@ export const TutorMembersPage = () => {
       toast.error('Gagal menyimpan template deskripsi');
     },
   });
+  const { mutateAsync: saveAttendanceConfig, isPending: isSavingAttendanceConfig } = useMutation({
+    mutationFn: (sessionsPerWeek: number) =>
+      tutorService.saveAttendanceConfig({
+        ekskulId: selectedEkskulId,
+        academicYearId: selectedAcademicYearId!,
+        sessionsPerWeek,
+      }),
+    onSuccess: () => {
+      toast.success('Pengaturan absensi berhasil disimpan');
+      queryClient.invalidateQueries({
+        queryKey: ['tutor-attendance', selectedEkskulId, selectedAcademicYearId, attendanceWeekKey],
+      });
+    },
+    onError: () => {
+      toast.error('Gagal menyimpan pengaturan absensi');
+    },
+  });
+
+  const { mutateAsync: saveAttendanceRecords, isPending: isSavingAttendanceRecords } = useMutation({
+    mutationFn: (records: Array<{
+      enrollmentId: number;
+      sessionIndex: number;
+      status: ExtracurricularAttendanceStatus;
+      note?: string;
+    }>) =>
+      tutorService.saveAttendanceRecords({
+        ekskulId: selectedEkskulId,
+        academicYearId: selectedAcademicYearId!,
+        weekKey: attendanceWeekKey,
+        records,
+      }),
+    onSuccess: () => {
+      toast.success('Absensi berhasil disimpan');
+      queryClient.invalidateQueries({
+        queryKey: ['tutor-attendance', selectedEkskulId, selectedAcademicYearId, attendanceWeekKey],
+      });
+    },
+    onError: () => {
+      toast.error('Gagal menyimpan absensi');
+    },
+  });
 
   const localValueContextKey = useMemo(
     () =>
@@ -397,6 +504,17 @@ export const TutorMembersPage = () => {
     Record<string, Record<number, { grade: string; description: string }>>
   >({});
   const localValues = localValuesByContext[localValueContextKey] || {};
+
+  useEffect(() => {
+    if (!attendanceOverview) return;
+    setAttendanceSessionsPerWeekDraft(Math.max(1, Number(attendanceOverview.sessionsPerWeek || 1)));
+    const nextEdits: Record<number, Record<number, ExtracurricularAttendanceStatus | ''>> = {};
+    for (const record of attendanceOverview.records || []) {
+      if (!nextEdits[record.enrollmentId]) nextEdits[record.enrollmentId] = {};
+      nextEdits[record.enrollmentId][record.sessionIndex] = record.status;
+    }
+    setAttendanceEdits(nextEdits);
+  }, [attendanceOverview]);
 
   const getDataForContext = (en: Enrollment) => {
     if (!en) return { grade: '', description: '' };
@@ -436,11 +554,7 @@ export const TutorMembersPage = () => {
       }
 
       const nextGrade = value.toUpperCase();
-      const nextTemplate = gradeTemplates[nextGrade as GradePredicate] || '';
-      const previousTemplate = gradeTemplates[existingGrade as GradePredicate] || '';
-      const shouldApplyTemplate =
-        Boolean(nextTemplate) &&
-        (!existingDescription.trim() || existingDescription.trim() === previousTemplate.trim());
+      const nextTemplate = gradeTemplates[nextGrade as GradePredicate]?.description || '';
 
       return {
         ...prev,
@@ -448,7 +562,7 @@ export const TutorMembersPage = () => {
           ...scoped,
           [id]: {
             grade: nextGrade,
-            description: shouldApplyTemplate ? nextTemplate : existingDescription,
+            description: nextTemplate || existingDescription,
           },
         },
       };
@@ -476,11 +590,50 @@ export const TutorMembersPage = () => {
     });
   };
 
+  const handleAttendanceChange = (
+    enrollmentId: number,
+    sessionIndex: number,
+    status: ExtracurricularAttendanceStatus | '',
+  ) => {
+    setAttendanceEdits((prev) => ({
+      ...prev,
+      [enrollmentId]: {
+        ...(prev[enrollmentId] || {}),
+        [sessionIndex]: status,
+      },
+    }));
+  };
+
+  const handleSaveAttendanceConfig = async () => {
+    await saveAttendanceConfig(Math.max(1, attendanceSessionsPerWeekDraft));
+  };
+
+  const handleSaveAttendanceRecords = async () => {
+    const records = Object.entries(attendanceEdits).flatMap(([enrollmentId, sessions]) =>
+      Object.entries(sessions)
+        .filter(([, status]) => status)
+        .map(([sessionIndex, status]) => ({
+          enrollmentId: Number(enrollmentId),
+          sessionIndex: Number(sessionIndex),
+          status: status as ExtracurricularAttendanceStatus,
+        })),
+    );
+    await saveAttendanceRecords(records);
+  };
+
   const handleSemesterChange = (s: Semester) => {
     setSemester(s);
   };
 
   const currentEkskulName = assignments.find((a) => a.ekskulId === selectedEkskulId)?.ekskul?.name || 'Ekstrakurikuler';
+  const attendanceSessionIndexes = useMemo(
+    () =>
+      Array.from(
+        { length: Math.max(1, Number(attendanceOverview?.sessionsPerWeek || attendanceSessionsPerWeekDraft || 1)) },
+        (_, index) => index + 1,
+      ),
+    [attendanceOverview?.sessionsPerWeek, attendanceSessionsPerWeekDraft],
+  );
 
   return (
     <div className="space-y-6">
@@ -542,135 +695,305 @@ export const TutorMembersPage = () => {
             </div>
           </div>
         </div>
-
-        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/60">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-3">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-800">Template Deskripsi Predikat</h3>
-              <p className="text-xs text-gray-500">
-                Template tersimpan per ekskul, semester, dan komponen rapor.
-              </p>
-            </div>
+        <div className="px-6 pt-4 border-b border-gray-100">
+          <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1">
             <button
               type="button"
-              onClick={() => saveGradeTemplates(gradeTemplates)}
-              disabled={
-                isSavingGradeTemplates ||
-                isFetchingTemplates ||
-                !selectedEkskulId ||
-                !selectedAcademicYearId ||
-                !selectedReportProgram
-              }
-              className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              onClick={() => setActiveTab('GRADE')}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
+                activeTab === 'GRADE' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+              }`}
             >
-              {isSavingGradeTemplates ? (
-                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4 mr-1" />
-              )}
-              Simpan Template
+              Anggota & Nilai
             </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-            {GRADE_OPTIONS.map((option) => (
-              <div key={option.value} className="bg-white rounded-lg border border-gray-200 p-3">
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  {option.label}
-                </label>
-                <textarea
-                  rows={2}
-                  value={gradeTemplates[option.value]}
-                  onChange={(e) =>
-                    setGradeTemplateEditsByContext((prev) => ({
-                      ...prev,
-                      [templateContextKey]: {
-                        ...(prev[templateContextKey] || EMPTY_TEMPLATES),
-                        [option.value]: e.target.value,
-                      },
-                    }))
-                  }
-                  className="w-full rounded-lg border-gray-300 text-xs focus:ring-blue-500 focus:border-blue-500"
-                  placeholder={`Template deskripsi ${option.value}`}
-                />
-              </div>
-            ))}
+            <button
+              type="button"
+              onClick={() => setActiveTab('ATTENDANCE')}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
+                activeTab === 'ATTENDANCE' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              Absensi
+            </button>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kelas</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NIS</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deskripsi Nilai</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-6 text-center text-gray-500">
-                    <Loader2 className="inline mr-2 animate-spin" /> Loading...
-                  </td>
-                </tr>
-              ) : members.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-6 text-center text-gray-500">Belum ada anggota</td>
-                </tr>
-              ) : (
-                members.map((en) => {
-                  const data = getDataForContext(en);
-                  const lv = localValues[en.id] || { grade: data.grade || '', description: data.description || '' };
-                  
-                  return (
-                    <tr key={en.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-gray-900">{en.student.name}</div>
-                      </td>
-                      <td className="px-6 py-4 text-gray-700">{en.student.studentClass?.name || '-'}</td>
-                      <td className="px-6 py-4 text-gray-700">{en.student.nis || '-'}</td>
-                      <td className="px-6 py-4">
-                        <select
-                          value={lv.grade}
-                          onChange={(e) => handleChange(en.id, 'grade', e.target.value)}
-                          className="rounded-lg border-gray-300 text-sm focus:ring-blue-500 focus:border-blue-500"
-                        >
-                          <option value="">Pilih Predikat</option>
-                          {GRADE_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-6 py-4">
-                        <input
-                          type="text"
-                          value={lv.description}
-                          onChange={(e) => handleChange(en.id, 'description', e.target.value)}
-                          className="w-full rounded-lg border-gray-300 text-sm focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="Deskripsi pencapaian siswa..."
-                        />
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => handleSave(en.id)}
-                          className="text-blue-600 hover:text-blue-800 p-2 rounded-full hover:bg-blue-50 transition-colors"
-                          title="Simpan Nilai"
-                        >
-                          <Save size={18} />
-                        </button>
+        {activeTab === 'GRADE' ? (
+          <>
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/60">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-800">Template Deskripsi Predikat</h3>
+                  <p className="text-xs text-gray-500">
+                    Template tersimpan per ekskul, semester, dan komponen rapor.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => saveGradeTemplates(gradeTemplates)}
+                  disabled={
+                    isSavingGradeTemplates ||
+                    isFetchingTemplates ||
+                    !selectedEkskulId ||
+                    !selectedAcademicYearId ||
+                    !selectedReportProgram
+                  }
+                  className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSavingGradeTemplates ? (
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-1" />
+                  )}
+                  Simpan Template
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                {gradeOptions.map((option) => (
+                  <div key={option.value} className="bg-white rounded-lg border border-gray-200 p-3">
+                    <input
+                      type="text"
+                      value={gradeTemplates[option.value]?.label || ''}
+                      onChange={(e) =>
+                        setGradeTemplateEditsByContext((prev) => ({
+                          ...prev,
+                          [templateContextKey]: {
+                            ...(prev[templateContextKey] || DEFAULT_GRADE_TEMPLATES),
+                            [option.value]: {
+                              ...(prev[templateContextKey]?.[option.value] || gradeTemplates[option.value]),
+                              label: e.target.value,
+                            },
+                          },
+                        }))
+                      }
+                      className="w-full rounded-lg border-gray-300 text-xs font-semibold text-gray-700 mb-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder={DEFAULT_GRADE_TEMPLATES[option.value].label}
+                    />
+                    <textarea
+                      rows={2}
+                      value={gradeTemplates[option.value]?.description || ''}
+                      onChange={(e) =>
+                        setGradeTemplateEditsByContext((prev) => ({
+                          ...prev,
+                          [templateContextKey]: {
+                            ...(prev[templateContextKey] || DEFAULT_GRADE_TEMPLATES),
+                            [option.value]: {
+                              ...(prev[templateContextKey]?.[option.value] || gradeTemplates[option.value]),
+                              description: e.target.value,
+                            },
+                          },
+                        }))
+                      }
+                      className="w-full rounded-lg border-gray-300 text-xs focus:ring-blue-500 focus:border-blue-500"
+                      placeholder={`Template deskripsi ${option.value}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kelas</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NIS</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deskripsi Nilai</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {isLoading ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-6 text-center text-gray-500">
+                        <Loader2 className="inline mr-2 animate-spin" /> Loading...
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                  ) : members.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-6 text-center text-gray-500">Belum ada anggota</td>
+                    </tr>
+                  ) : (
+                    members.map((en) => {
+                      const data = getDataForContext(en);
+                      const lv = localValues[en.id] || { grade: data.grade || '', description: data.description || '' };
+                      
+                      return (
+                        <tr key={en.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4">
+                            <div className="font-medium text-gray-900">{en.student.name}</div>
+                          </td>
+                          <td className="px-6 py-4 text-gray-700">{en.student.studentClass?.name || '-'}</td>
+                          <td className="px-6 py-4 text-gray-700">{en.student.nis || '-'}</td>
+                          <td className="px-6 py-4">
+                            <select
+                              value={lv.grade}
+                              onChange={(e) => handleChange(en.id, 'grade', e.target.value)}
+                              className="rounded-lg border-gray-300 text-sm focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              <option value="">Pilih Predikat</option>
+                              {gradeOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-6 py-4">
+                            <input
+                              type="text"
+                              value={lv.description}
+                              onChange={(e) => handleChange(en.id, 'description', e.target.value)}
+                              className="w-full rounded-lg border-gray-300 text-sm focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="Deskripsi pencapaian siswa..."
+                            />
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <button
+                              onClick={() => handleSave(en.id)}
+                              className="text-blue-600 hover:text-blue-800 p-2 rounded-full hover:bg-blue-50 transition-colors"
+                              title="Simpan Nilai"
+                            >
+                              <Save size={18} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/60">
+              <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1">
+                  <div className="bg-white rounded-lg border border-gray-200 p-3">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Pertemuan per minggu
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={14}
+                      value={attendanceSessionsPerWeekDraft}
+                      onChange={(e) => setAttendanceSessionsPerWeekDraft(Math.max(1, Number(e.target.value || 1)))}
+                      className="w-full rounded-lg border-gray-300 text-sm focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <p className="mt-2 text-xs text-gray-500">
+                      Dibuat dinamis sesuai kebutuhan pembina ekskul.
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-lg border border-gray-200 p-3">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Pekan absensi
+                    </label>
+                    <input
+                      type="week"
+                      value={attendanceWeekKey}
+                      onChange={(e) => setAttendanceWeekKey(e.target.value || getCurrentWeekKey())}
+                      className="w-full rounded-lg border-gray-300 text-sm focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <p className="mt-2 text-xs text-gray-500">
+                      Absensi ini hanya untuk pegangan pembina, tidak terintegrasi ke modul lain.
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-lg border border-gray-200 p-3">
+                    <div className="text-xs font-medium text-gray-600 mb-1">Ringkasan</div>
+                    <div className="text-sm font-semibold text-gray-800">{members.length} anggota</div>
+                    <div className="mt-2 text-xs text-gray-500">
+                      Kolom absensi otomatis mengikuti jumlah pertemuan per minggu yang Anda tetapkan.
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveAttendanceConfig}
+                    disabled={!selectedEkskulId || !selectedAcademicYearId || isSavingAttendanceConfig}
+                    className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-blue-200 bg-white text-blue-700 text-sm font-semibold hover:bg-blue-50 disabled:opacity-60"
+                  >
+                    {isSavingAttendanceConfig ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <ClipboardCheck className="w-4 h-4 mr-1" />}
+                    Simpan Pengaturan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveAttendanceRecords}
+                    disabled={!selectedEkskulId || !selectedAcademicYearId || isSavingAttendanceRecords}
+                    className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60"
+                  >
+                    {isSavingAttendanceRecords ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+                    Simpan Absensi
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[820px]">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kelas</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NIS</th>
+                    {attendanceSessionIndexes.map((sessionIndex) => (
+                      <th key={sessionIndex} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Pertemuan {sessionIndex}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {isLoading || isFetchingAttendance ? (
+                    <tr>
+                      <td colSpan={3 + attendanceSessionIndexes.length} className="px-6 py-6 text-center text-gray-500">
+                        <Loader2 className="inline mr-2 animate-spin" /> Loading...
+                      </td>
+                    </tr>
+                  ) : members.length === 0 ? (
+                    <tr>
+                      <td colSpan={3 + attendanceSessionIndexes.length} className="px-6 py-6 text-center text-gray-500">Belum ada anggota</td>
+                    </tr>
+                  ) : (
+                    members.map((en) => (
+                      <tr key={en.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 font-medium text-gray-900">{en.student.name}</td>
+                        <td className="px-6 py-4 text-gray-700">{en.student.studentClass?.name || '-'}</td>
+                        <td className="px-6 py-4 text-gray-700">{en.student.nis || '-'}</td>
+                        {attendanceSessionIndexes.map((sessionIndex) => (
+                          <td key={`${en.id}-${sessionIndex}`} className="px-4 py-4">
+                            <select
+                              value={attendanceEdits[en.id]?.[sessionIndex] || ''}
+                              onChange={(e) =>
+                                handleAttendanceChange(
+                                  en.id,
+                                  sessionIndex,
+                                  (e.target.value || '') as ExtracurricularAttendanceStatus | '',
+                                )
+                              }
+                              className="w-full min-w-[120px] rounded-lg border-gray-300 text-sm focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              <option value="">Belum diisi</option>
+                              {ATTENDANCE_STATUS_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

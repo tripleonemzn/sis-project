@@ -6,6 +6,7 @@ import { GlobalErrorBoundary } from "./components/common/GlobalErrorBoundary";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { DashboardLayout } from "./layouts/DashboardLayout";
 import { authService } from "./services/auth.service";
+const RegisterPage = lazy(() => import("./pages/auth/RegisterPage").then(m => ({ default: m.RegisterPage })));
 
 type SisWindow = Window & {
   __SIS_SLIDESHOW_SETTINGS__?: Record<string, unknown>;
@@ -37,6 +38,7 @@ const MyClassesPage = lazy(() => import("./pages/teacher/MyClassesPage").then(m 
 const TeacherClassStudentsPage = lazy(() => import("./pages/teacher/classes/TeacherClassStudentsPage").then(m => ({ default: m.TeacherClassStudentsPage })));
 const TeacherPlaceholderPage = lazy(() => import("./pages/teacher/TeacherPlaceholderPage"));
 const TeacherHomeroomPage = lazy(() => import("./pages/teacher/TeacherHomeroomPage").then(m => ({ default: m.TeacherHomeroomPage })));
+const TeacherBpBkPage = lazy(() => import("./pages/teacher/TeacherBpBkPage").then(m => ({ default: m.TeacherBpBkPage })));
 const TeacherAttendanceListPage = lazy(() => import("./pages/teacher/TeacherAttendanceListPage").then(m => ({ default: m.TeacherAttendanceListPage })));
 const TeacherAttendancePage = lazy(() => import("./pages/teacher/TeacherAttendancePage").then(m => ({ default: m.TeacherAttendancePage })));
 const TeacherGradesPage = lazy(() => import("./pages/teacher/TeacherGradesPage").then(m => ({ default: m.TeacherGradesPage })));
@@ -63,6 +65,14 @@ const ExamSittingManagementPage = lazy(() => import("./pages/teacher/wakasek/Exa
 const ExamProctorManagementPage = lazy(() => import("./pages/teacher/wakasek/ExamProctorManagementPage"));
 const ExamManagementHubPage = lazy(() => import("./pages/teacher/wakasek/ExamManagementHubPage"));
 const CurriculumManagementHubPage = lazy(() => import("./pages/teacher/wakasek/CurriculumManagementHubPage"));
+const WakasekPerformancePage = lazy(() => import("./pages/teacher/wakasek/WakasekPerformancePage"));
+const WakasekAcademicReportsPage = lazy(() => import("./pages/teacher/wakasek/WakasekAcademicReportsPage"));
+const CurriculumFinalLedgerPage = lazy(() =>
+  import('./pages/teacher/wakasek/curriculum/CurriculumFinalLedgerPage'),
+);
+const TeachingResourceProgramManagementPage = lazy(() =>
+  import('./pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage'),
+);
 const StudentManagementHubPage = lazy(() => import("./pages/teacher/wakasek/StudentManagementHubPage"));
 const InternshipComponentPage = lazy(() => import("./pages/teacher/wakasek/InternshipComponentPage").then(m => ({ default: m.InternshipComponentPage })));
 const JournalMonitoringPage = lazy(() => import("./pages/teacher/wakasek/JournalMonitoringPage"));
@@ -74,9 +84,10 @@ const InventoryHubPage = lazy(() => import('./pages/teacher/wakasek/sarpras/Inve
 const InventoryDetailPage = lazy(() => import('./pages/teacher/wakasek/sarpras/InventoryDetailPage').then(m => ({ default: m.InventoryDetailPage })));
 const BudgetApprovalPage = lazy(() => import('./pages/teacher/wakasek/sarpras/BudgetApprovalPage').then(m => ({ default: m.BudgetApprovalPage })));
 const IndustryPartnersPage = lazy(() => import("./pages/teacher/humas/IndustryPartnersPage").then(m => ({ default: m.IndustryPartnersPage })));
-const CpPage = lazy(() => import("./pages/teacher/learning-resources/CpPage"));
-const AtpPage = lazy(() => import("./pages/teacher/learning-resources/AtpPage"));
-const ModulesPage = lazy(() => import("./pages/teacher/learning-resources/ModulesPage"));
+const OsisElectionPage = lazy(() => import("./pages/teacher/osis/OsisElectionPage").then(m => ({ default: m.OsisElectionPage })));
+const OsisElectionMonitoringPage = lazy(() => import("./pages/common/OsisElectionMonitoringPage").then(m => ({ default: m.OsisElectionMonitoringPage })));
+const StudentOsisElectionPage = lazy(() => import("./pages/student/StudentOsisElectionPage").then(m => ({ default: m.StudentOsisElectionPage })));
+const LearningResourceProgramPage = lazy(() => import("./pages/teacher/learning-resources/LearningResourceProgramPage"));
 const AuditLogPage = lazy(() => import("./pages/admin/audit/AuditLogPage").then(m => ({ default: m.AuditLogPage })));
 const ServerAreaPage = lazy(() => import("./pages/admin/ServerAreaPage").then(m => ({ default: m.default })));
 const StudentExamsPage = lazy(() => import("./pages/student/StudentExamsPage"));
@@ -89,6 +100,7 @@ const StudentClassAttendancePage = lazy(() => import("./pages/student/StudentCla
 const StudentLearningPage = lazy(() => import("./pages/student/StudentLearningPage"));
 const StudentDashboard = lazy(() => import("./pages/student/StudentDashboard").then(m => ({ default: m.StudentDashboard })));
 const StudentExtracurricularPage = lazy(() => import("./pages/student/StudentExtracurricularPage").then(m => ({ default: m.StudentExtracurricularPage })));
+const StudentFinancePage = lazy(() => import("./pages/student/StudentFinancePage"));
 const StudentInternshipDashboard = lazy(() => import("./pages/student/internship/StudentInternshipDashboard"));
 const StudentInternshipReportPage = lazy(() => import("./pages/student/internship/StudentInternshipReportPage"));
 const StudentInternshipJournal = lazy(() => import("./pages/student/internship/StudentInternshipJournal"));
@@ -96,6 +108,15 @@ const StudentInternshipAttendance = lazy(() => import("./pages/student/internshi
 const PrincipalDashboard = lazy(() => import("./pages/principal/PrincipalDashboard").then(m => ({ default: m.PrincipalDashboard })));
 const StaffDashboard = lazy(() => import("./pages/staff/StaffDashboard").then(m => ({ default: m.StaffDashboard })));
 const ParentDashboard = lazy(() => import("./pages/parent/ParentDashboard").then(m => ({ default: m.ParentDashboard })));
+const CandidateDashboardPage = lazy(() => import("./pages/public/CandidatePortalPage").then(m => ({ default: m.CandidateDashboardPage })));
+const CandidateInformationPage = lazy(() => import("./pages/public/CandidatePortalPage").then(m => ({ default: m.CandidateInformationPage })));
+const CandidateApplicationPage = lazy(() => import("./pages/public/CandidateApplicationPage").then(m => ({ default: m.CandidateApplicationPage })));
+const BkkDashboardPage = lazy(() => import("./pages/public/BkkPortalPage").then(m => ({ default: m.BkkDashboardPage })));
+const BkkVacanciesPage = lazy(() => import("./pages/public/BkkPortalPage").then(m => ({ default: m.BkkVacanciesPage })));
+const BkkApplicationsPage = lazy(() => import("./pages/public/BkkApplicationsPage").then(m => ({ default: m.BkkApplicationsPage })));
+const BkkCareerProfilePage = lazy(() => import("./pages/public/BkkCareerProfilePage").then(m => ({ default: m.BkkCareerProfilePage })));
+const CandidateAdmissionReviewPage = lazy(() => import("./pages/admin/users/CandidateAdmissionReviewPage").then(m => ({ default: m.CandidateAdmissionReviewPage })));
+const AdminBkkApplicationsPage = lazy(() => import("./pages/admin/users/AdminBkkApplicationsPage").then(m => ({ default: m.AdminBkkApplicationsPage })));
 const TrainingClassesPage = lazy(() => import("./pages/admin/training/TrainingClassesPage").then(m => ({ default: m.TrainingClassesPage })));
 const ExtracurricularPage = lazy(() => import("./pages/admin/extracurriculars/ExtracurricularPage").then(m => ({ default: m.ExtracurricularPage })));
 const ReportCardsPage = lazy(() => import("./pages/admin/academic/ReportCardsPage").then(m => ({ default: m.ReportCardsPage })));
@@ -108,6 +129,8 @@ const UKKSchemeFormPage = lazy(() => import("./pages/examiner/UKKSchemeFormPage"
 const InternshipGradeInputPage = lazy(() => import("./pages/public/InternshipGradeInputPage").then(m => ({ default: m.InternshipGradeInputPage })));
 const PklLetterPrint = lazy(() => import("./pages/print/PklLetterPrint"));
 const PklGroupLetterPrint = lazy(() => import("./pages/print/PklGroupLetterPrint"));
+const CandidateDecisionLetterPrint = lazy(() => import("./pages/print/CandidateDecisionLetterPrint"));
+const BkkShortlistBatchPrint = lazy(() => import("./pages/print/BkkShortlistBatchPrint"));
 const EmailPage = lazy(() => import("./pages/common/EmailPage").then(m => ({ default: m.EmailPage })));
 
 // Helper hook for auth
@@ -146,6 +169,10 @@ const DashboardRedirect = () => {
       return <Navigate to="/staff" replace />;
     case "PARENT":
       return <Navigate to="/parent" replace />;
+    case "CALON_SISWA":
+      return <Navigate to="/candidate" replace />;
+    case "UMUM":
+      return <Navigate to="/public" replace />;
     case "EXAMINER":
       return <Navigate to="/examiner" replace />;
     case "EXTRACURRICULAR_TUTOR":
@@ -200,9 +227,13 @@ function App() {
         <Suspense fallback={<div className="w-full h-screen flex items-center justify-center text-gray-600">Memuat...</div>}>
           <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/register/:type" element={<RegisterPage />} />
           <Route path="/pkl/grade/:accessCode" element={<InternshipGradeInputPage />} />
           <Route path="/print/pkl/:id" element={<PklLetterPrint />} />
           <Route path="/print/pkl-group" element={<PklGroupLetterPrint />} />
+          <Route path="/print/candidate-admission/:id/decision-letter" element={<CandidateDecisionLetterPrint />} />
+          <Route path="/print/bkk-shortlist-batch" element={<BkkShortlistBatchPrint />} />
         
           <Route path="/" element={<DashboardLayout />}>
             <Route index element={<DashboardRedirect />} />
@@ -263,6 +294,16 @@ function App() {
               }
             />
             <Route
+              path="bkk-users"
+              element={
+                <UserList
+                  fixedRole="UMUM"
+                  title="Kelola Pelamar BKK"
+                  description="Kelola akun pelamar BKK dan data calon tenaga kerja."
+                />
+              }
+            />
+            <Route
               path="examiner-users"
               element={
                 <UserList
@@ -285,6 +326,8 @@ function App() {
             <Route path="teachers" element={<TeacherManagementPage />} />
             <Route path="students" element={<StudentManagementPage />} />
             <Route path="user-verification" element={<UserVerificationPage />} />
+            <Route path="candidate-admissions" element={<CandidateAdmissionReviewPage />} />
+            <Route path="bkk-applications" element={<AdminBkkApplicationsPage />} />
             <Route path="teacher-assignments" element={<TeacherAssignmentPage />} />
             <Route path="import-export" element={<ImportExportPage />} />
             <Route path="academic-years" element={<AcademicYearPage />} />
@@ -315,11 +358,15 @@ function App() {
             }>
               <Route index element={<TutorDashboardPage />} />
               <Route path="dashboard" element={<TutorDashboardPage />} />
-              <Route path="members" element={<TutorMembersPage />} />
-              <Route path="work-programs" element={<WorkProgramPage />} />
-              <Route path="inventory" element={<TutorInventoryPage />} />
-              <Route path="profile" element={<UserProfilePage />} />
-              <Route path="general" element={<Navigate to="profile" replace />} />
+            <Route path="members" element={<TutorMembersPage />} />
+            <Route path="work-programs" element={<WorkProgramPage />} />
+            <Route path="inventory" element={<TutorInventoryPage />} />
+            <Route path="osis/election" element={<OsisElectionPage />} />
+            <Route path="osis/vote" element={<StudentOsisElectionPage />} />
+            <Route path="assigned-inventory" element={<InventoryHubPage />} />
+            <Route path="assigned-inventory/:roomId" element={<InventoryDetailPage />} />
+            <Route path="profile" element={<UserProfilePage />} />
+            <Route path="general" element={<Navigate to="profile" replace />} />
             </Route>
             <Route
               path="teacher"
@@ -338,6 +385,11 @@ function App() {
             <Route path="attendance" element={<TeacherAttendanceListPage />} />
             <Route path="attendance/:assignmentId" element={<TeacherAttendancePage />} />
             <Route path="grades" element={<TeacherGradesPage />} />
+            <Route path="grades/us" element={<Navigate to="/teacher/grades" replace />} />
+            <Route path="bk" element={<TeacherBpBkPage />} />
+            <Route path="bk/behaviors" element={<TeacherBpBkPage />} />
+            <Route path="bk/permissions" element={<TeacherBpBkPage />} />
+            <Route path="bk/counselings" element={<TeacherBpBkPage />} />
             <Route path="internship/approval" element={<InternshipApprovalPage />} />
             <Route path="internship/guidance" element={<TeacherInternshipGuidance />} />
             <Route path="internship/defense" element={<TeacherDefenseGradingPage />} />
@@ -357,6 +409,14 @@ function App() {
             <Route path="wakasek/proctor-schedule" element={<ExamProctorManagementPage />} />
             <Route path="wakasek/curriculum" element={<CurriculumManagementHubPage />} />
             <Route
+              path="wakasek/teaching-resource-programs"
+              element={<TeachingResourceProgramManagementPage />}
+            />
+            <Route path="wakasek/final-ledger" element={<CurriculumFinalLedgerPage />} />
+            <Route path="wakasek/consolidation" element={<Navigate to="/teacher/wakasek/final-ledger" replace />} />
+            <Route path="wakasek/performance" element={<WakasekPerformancePage />} />
+            <Route path="wakasek/reports" element={<WakasekAcademicReportsPage />} />
+            <Route
               path="wakasek/work-program-approvals"
               element={<WorkProgramApprovalsPage />}
             />
@@ -371,23 +431,45 @@ function App() {
             <Route path="report-subjects" element={<TeacherSubjectReportPage />} />
             <Route path="materials" element={<MaterialsAndAssignmentsPage />} />
             <Route path="assignments/:id/submissions" element={<AssignmentSubmissionsPage />} />
+            <Route path="osis/election" element={<OsisElectionPage />} />
+            <Route path="osis/vote" element={<StudentOsisElectionPage />} />
             <Route path="learning-resources" element={<TeacherPlaceholderPage />} />
-            <Route path="learning-resources/cp" element={<CpPage />} />
-            <Route path="learning-resources/atp" element={<AtpPage />} />
-            <Route path="learning-resources/modules" element={<ModulesPage />} />
-            <Route path="learning-resources/prota" element={<TeacherPlaceholderPage />} />
-            <Route path="learning-resources/promes" element={<TeacherPlaceholderPage />} />
-            <Route path="learning-resources/kktp" element={<TeacherPlaceholderPage />} />
+            <Route path="learning-resources/cp" element={<LearningResourceProgramPage />} />
+            <Route path="learning-resources/atp" element={<LearningResourceProgramPage />} />
+            <Route path="learning-resources/modules" element={<LearningResourceProgramPage />} />
+            <Route path="learning-resources/modul-ajar" element={<LearningResourceProgramPage />} />
+            <Route path="learning-resources/prota" element={<LearningResourceProgramPage />} />
+            <Route path="learning-resources/promes" element={<LearningResourceProgramPage />} />
+            <Route path="learning-resources/alokasi-waktu" element={<LearningResourceProgramPage />} />
+            <Route path="learning-resources/kktp" element={<LearningResourceProgramPage />} />
+            <Route path="learning-resources/matriks-sebaran" element={<LearningResourceProgramPage />} />
+            <Route path="learning-resources/:programCode/new" element={<LearningResourceProgramPage />} />
+            <Route path="learning-resources/:programCode" element={<LearningResourceProgramPage />} />
             <Route path="communication" element={<TeacherPlaceholderPage />} />
             <Route path="profile" element={<UserProfilePage />} />
             
             <Route path="humas/partners" element={<IndustryPartnersPage />} />
+            <Route
+              path="humas/applicants"
+              element={
+                <UserList
+                  fixedRole="UMUM"
+                  title="Akun Pelamar BKK"
+                  description="Pantau akun pelamar BKK dan status verifikasinya dari workspace Wakasek Humas."
+                  readOnly
+                  readOnlyMessage="Mode review Wakasek Humas: Anda dapat melihat profil, dokumen, dan status verifikasi pelamar. Verifikasi akun, perubahan identitas login, dan penghapusan akun tetap melalui Admin."
+                />
+              }
+            />
             <Route path="humas/reports" element={<TeacherPlaceholderPage />} />
             <Route path="humas/settings" element={<HumasSettingsPage />} />
             <Route path="academic/audit-logs" element={<AuditLogPage />} />
+            <Route path="wakasek/student-election" element={<OsisElectionMonitoringPage />} />
 
             <Route path="sarpras/inventory" element={<InventoryHubPage />} />
             <Route path="sarpras/inventory/:roomId" element={<InventoryDetailPage />} />
+            <Route path="assigned-inventory" element={<InventoryHubPage />} />
+            <Route path="assigned-inventory/:roomId" element={<InventoryDetailPage />} />
             <Route path="sarpras/budgets" element={<BudgetApprovalPage />} />
             <Route path="sarpras/*" element={<TeacherPlaceholderPage />} />
             <Route path="wali-kelas/*" element={<TeacherHomeroomPage />} />
@@ -419,6 +501,7 @@ function App() {
             <Route path="attendance" element={<StudentAttendancePage />} />
             <Route path="class-attendance" element={<StudentClassAttendancePage />} />
             <Route path="extracurricular" element={<StudentExtracurricularPage />} />
+            <Route path="osis" element={<StudentOsisElectionPage />} />
             
             {/* PKL Routes */}
             <Route path="internship" element={<Outlet />}>
@@ -430,7 +513,7 @@ function App() {
             </Route>
 
             <Route path="profile" element={<UserProfilePage />} />
-            <Route path="finance" element={<TeacherPlaceholderPage />} />
+            <Route path="finance" element={<StudentFinancePage />} />
             <Route path="academic/*" element={<TeacherPlaceholderPage />} />
             <Route path="administration/*" element={<TeacherPlaceholderPage />} />
             </Route>
@@ -449,6 +532,34 @@ function App() {
                 <ParentDashboard />
               </RoleRoute>
             } />
+            <Route path="candidate" element={
+              <RoleRoute allowedRoles={['CALON_SISWA']}>
+                <Outlet />
+              </RoleRoute>
+            }>
+              <Route index element={<CandidateDashboardPage />} />
+              <Route path="dashboard" element={<CandidateDashboardPage />} />
+              <Route path="application" element={<CandidateApplicationPage />} />
+              <Route path="information" element={<CandidateInformationPage />} />
+              <Route path="exams" element={<StudentExamsPage />} />
+              <Route path="exams/program/:programCode" element={<StudentExamsPage />} />
+              <Route path="exams/:id/take" element={<StudentExamTakePage />} />
+              <Route path="profile" element={<UserProfilePage />} />
+            </Route>
+            <Route path="public" element={
+              <RoleRoute allowedRoles={['UMUM']}>
+                <Outlet />
+              </RoleRoute>
+            }>
+              <Route index element={<BkkDashboardPage />} />
+              <Route path="dashboard" element={<BkkDashboardPage />} />
+              <Route path="vacancies" element={<BkkVacanciesPage />} />
+              <Route path="applications" element={<BkkApplicationsPage />} />
+              <Route path="exams" element={<StudentExamsPage />} />
+              <Route path="exams/program/:programCode" element={<StudentExamsPage />} />
+              <Route path="exams/:id/take" element={<StudentExamTakePage />} />
+              <Route path="profile" element={<BkkCareerProfilePage />} />
+            </Route>
           
             <Route path="examiner" element={
               <RoleRoute allowedRoles={['EXAMINER']}>

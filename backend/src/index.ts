@@ -6,8 +6,10 @@ import dotenv from 'dotenv';
 import { createServer } from 'http';
 import routes from './routes';
 import path from 'path';
+import { ZodError } from 'zod';
 import { resolveGalleryDir } from './utils/galleryPath';
 import { dispatchLibraryOverdueReminders } from './controllers/inventory.controller';
+import { dispatchFinanceDueReminders } from './controllers/payment.controller';
 import { broadcastMutationEvent, initializeRealtimeGateway } from './realtime/realtimeGateway';
 import { verifyToken } from './middleware/auth';
 
@@ -15,6 +17,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const HOST = String(process.env.HOST || '').trim();
 
 const SKIP_REALTIME_MUTATION_PATTERNS: RegExp[] = [
   /^\/api\/exams\/\d+\/answers$/,
@@ -168,6 +171,21 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     });
   }
 
+  const isZodValidationError =
+    err instanceof ZodError ||
+    (err?.name === 'ZodError' && Array.isArray(err?.errors));
+
+  if (isZodValidationError) {
+    const zodErrors = Array.isArray(err?.errors) ? err.errors : [];
+    const firstMessage = zodErrors[0]?.message || 'Validasi input gagal';
+    return res.status(400).json({
+      success: false,
+      statusCode: 400,
+      message: firstMessage,
+      errors: zodErrors,
+    });
+  }
+
   const statusCode = err.statusCode || 500;
   const message = err.message || "Kesalahan Server Internal";
   if (statusCode >= 500) {
@@ -184,8 +202,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 const server = createServer(app);
 initializeRealtimeGateway(server);
 
-server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+server.listen(Number(PORT), HOST || undefined, () => {
+  console.log(`Server is running on ${HOST || '0.0.0.0'}:${PORT}`);
 
   const reminderIntervalMinutes = Number(process.env.LIBRARY_OVERDUE_REMINDER_INTERVAL_MINUTES || '15');
   const appInstance = String(process.env.NODE_APP_INSTANCE || '').trim();
@@ -211,5 +229,42 @@ server.listen(PORT, () => {
     console.log(`[LIBRARY_OVERDUE_REMINDER] Worker aktif setiap ${reminderIntervalMinutes} menit`);
   } else if (!shouldRunReminderWorker) {
     console.log(`[LIBRARY_OVERDUE_REMINDER] Worker nonaktif pada instance ${appInstance}`);
+  }
+
+  const financeReminderIntervalMinutes = Number(
+    process.env.FINANCE_DUE_REMINDER_INTERVAL_MINUTES || '60',
+  );
+  const financeReminderDueSoonDays = Number(process.env.FINANCE_DUE_REMINDER_DUE_SOON_DAYS || '3');
+
+  if (
+    Number.isFinite(financeReminderIntervalMinutes) &&
+    financeReminderIntervalMinutes > 0 &&
+    shouldRunReminderWorker
+  ) {
+    const intervalMs = Math.floor(financeReminderIntervalMinutes * 60 * 1000);
+
+    const runFinanceReminderWorker = async () => {
+      try {
+        await dispatchFinanceDueReminders({
+          dueSoonDays: financeReminderDueSoonDays,
+          mode: 'ALL',
+          preview: false,
+        });
+      } catch (error) {
+        console.error('[FINANCE_DUE_REMINDER_ERROR]', error);
+      }
+    };
+
+    // Run once on boot and continue periodically.
+    void runFinanceReminderWorker();
+    setInterval(() => {
+      void runFinanceReminderWorker();
+    }, intervalMs);
+
+    console.log(
+      `[FINANCE_DUE_REMINDER] Worker aktif setiap ${financeReminderIntervalMinutes} menit (due soon ${financeReminderDueSoonDays} hari)`,
+    );
+  } else if (!shouldRunReminderWorker) {
+    console.log(`[FINANCE_DUE_REMINDER] Worker nonaktif pada instance ${appInstance}`);
   }
 });

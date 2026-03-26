@@ -50,15 +50,65 @@ const gradeTemplateQuerySchema = z.object({
 
 const saveGradeTemplateSchema = gradeTemplateQuerySchema.extend({
   templates: z.object({
-    SB: z.string().optional().default(''),
-    B: z.string().optional().default(''),
-    C: z.string().optional().default(''),
-    K: z.string().optional().default(''),
+    SB: z
+      .object({
+        label: z.string().optional().default(''),
+        description: z.string().optional().default(''),
+      })
+      .optional()
+      .default({ label: '', description: '' }),
+    B: z
+      .object({
+        label: z.string().optional().default(''),
+        description: z.string().optional().default(''),
+      })
+      .optional()
+      .default({ label: '', description: '' }),
+    C: z
+      .object({
+        label: z.string().optional().default(''),
+        description: z.string().optional().default(''),
+      })
+      .optional()
+      .default({ label: '', description: '' }),
+    K: z
+      .object({
+        label: z.string().optional().default(''),
+        description: z.string().optional().default(''),
+      })
+      .optional()
+      .default({ label: '', description: '' }),
   }),
 });
 
 const tutorInventoryQuerySchema = z.object({
   academicYearId: z.coerce.number().int().optional(),
+});
+
+const attendanceOverviewQuerySchema = z.object({
+  ekskulId: z.coerce.number().int(),
+  academicYearId: z.coerce.number().int(),
+  weekKey: z.string().optional(),
+});
+
+const saveAttendanceConfigSchema = z.object({
+  ekskulId: z.coerce.number().int(),
+  academicYearId: z.coerce.number().int(),
+  sessionsPerWeek: z.coerce.number().int().min(1).max(14),
+});
+
+const saveAttendanceRecordsSchema = z.object({
+  ekskulId: z.coerce.number().int(),
+  academicYearId: z.coerce.number().int(),
+  weekKey: z.string().min(1),
+  records: z.array(
+    z.object({
+      enrollmentId: z.coerce.number().int(),
+      sessionIndex: z.coerce.number().int().min(1),
+      status: z.string(),
+      note: z.string().optional(),
+    }),
+  ),
 });
 
 const createTutorInventoryItemSchema = z.object({
@@ -129,6 +179,33 @@ export const getTutorInventoryOverview = asyncHandler(async (req: AuthRequest, r
   const data = await tutorService.getInventoryOverview(tutorId, academicYearId);
 
   res.status(200).json(new ApiResponse(200, data, 'Inventaris ekstrakurikuler berhasil diambil'));
+});
+
+export const getTutorAttendanceOverview = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const payload = attendanceOverviewQuerySchema.parse(req.query);
+  const tutorId = req.user!.id;
+
+  const data = await tutorService.getAttendanceOverview(tutorId, payload);
+
+  res.status(200).json(new ApiResponse(200, data, 'Data absensi ekstrakurikuler berhasil diambil'));
+});
+
+export const saveTutorAttendanceConfig = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const payload = saveAttendanceConfigSchema.parse(req.body);
+  const tutorId = req.user!.id;
+
+  const data = await tutorService.saveAttendanceConfig(tutorId, payload);
+
+  res.status(200).json(new ApiResponse(200, data, 'Pengaturan absensi ekstrakurikuler berhasil disimpan'));
+});
+
+export const saveTutorAttendanceRecords = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const payload = saveAttendanceRecordsSchema.parse(req.body);
+  const tutorId = req.user!.id;
+
+  const data = await tutorService.saveAttendanceRecords(tutorId, payload);
+
+  res.status(200).json(new ApiResponse(200, data, 'Absensi ekstrakurikuler berhasil disimpan'));
 });
 
 export const createTutorInventoryItem = asyncHandler(async (req: AuthRequest, res: Response) => {

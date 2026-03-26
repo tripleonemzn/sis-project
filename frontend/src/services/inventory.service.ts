@@ -28,6 +28,7 @@ export interface Room {
   location?: string;
   condition?: 'BAIK' | 'RUSAK_RINGAN' | 'RUSAK_BERAT';
   description?: string;
+  managerUserId?: number | null;
   createdAt: string;
   updatedAt: string;
   category?: {
@@ -35,9 +36,26 @@ export interface Room {
     name: string;
     inventoryTemplateKey?: string | null;
   } | null;
+  managerUser?: {
+    id: number;
+    name: string;
+    role: string;
+    ptkType?: string | null;
+    additionalDuties?: string[] | null;
+  } | null;
   _count?: {
     items: number;
   };
+}
+
+export interface InventoryAssignableUser {
+  id: number;
+  name: string;
+  role: string;
+  ptkType?: string | null;
+  additionalDuties?: string[] | null;
+  extracurricularNames?: string[];
+  displayLabel?: string | null;
 }
 
 export interface CreateRoomPayload {
@@ -47,6 +65,7 @@ export interface CreateRoomPayload {
   location?: string;
   condition?: string;
   description?: string;
+  managerUserId?: number | null;
 }
 
 export interface InventoryItem {
@@ -170,13 +189,23 @@ export const inventoryService = {
   },
 
   // Rooms
-  getRooms: async (params?: { categoryId?: number }) => {
+  getRooms: async (params?: { categoryId?: number; assignedOnly?: boolean }) => {
     const response = await api.get('/inventory/rooms', { params });
     return response.data;
   },
 
   getRoom: async (id: number) => {
     const response = await api.get(`/inventory/rooms/${id}`);
+    return response.data;
+  },
+
+  getAssignableManagers: async () => {
+    const response = await api.get('/inventory/assignable-managers');
+    return response.data;
+  },
+
+  getAssignedRooms: async () => {
+    const response = await api.get('/inventory/assigned-rooms');
     return response.data;
   },
 

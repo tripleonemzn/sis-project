@@ -2,8 +2,11 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import { writeAuditLog } from '../utils/auditLog';
 import { z } from 'zod';
 import { Role, AdditionalDuty, Gender, StudentStatus, VerificationStatus } from '@prisma/client';
+import { validateCandidateProfileDocuments } from '../utils/candidateAdmissionDocuments';
+import { getNisnValidationMessage, normalizeNisnInput } from '../utils/nisn';
 
 const dateSchema = z
   .string()
@@ -151,6 +154,60 @@ const updateUserSchema = z.object({
 const bulkVerifySchema = z.object({
   userIds: z.array(z.number().int()).min(1),
 });
+
+const nisnInputSchema = z
+  .string()
+  .transform((value) => normalizeNisnInput(value))
+  .pipe(
+    z.string().superRefine((value, ctx) => {
+      const message = getNisnValidationMessage(value);
+      if (message) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message,
+        });
+      }
+    }),
+  );
+
+const parentChildLinkSchema = z.object({
+  nisn: nisnInputSchema,
+  birthDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Tanggal lahir wajib menggunakan format YYYY-MM-DD'),
+});
+
+const parentChildLookupSchema = z.object({
+  nisn: nisnInputSchema,
+});
+
+const parentChildSelect = {
+  id: true,
+  name: true,
+  username: true,
+  nis: true,
+  nisn: true,
+  birthDate: true,
+  studentStatus: true,
+  verificationStatus: true,
+  studentClass: {
+    select: {
+      id: true,
+      name: true,
+      major: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      },
+    },
+  },
+} as const;
+
+function normalizeDateOnly(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
 
 export const getUsers = asyncHandler(async (req: Request, res: Response) => {
   const { role, verificationStatus, class_id } = req.query;
@@ -319,8 +376,261 @@ export const getUserById = asyncHandler(async (req: Request, res: Response) => {
   res.status(200).json(new ApiResponse(200, userWithoutPassword, 'Data pengguna berhasil diambil'));
 });
 
+export const listMyChildren = asyncHandler(async (req: Request, res: Response) => {
+  const currentUser = (req as Request & { user?: { id: number; role: Role } }).user;
+
+  if (currentUser?.role !== Role.PARENT) {
+    throw new ApiError(403, 'Halaman ini khusus untuk role orang tua');
+  }
+
+  const parent = await prisma.user.findUnique({
+    where: { id: Number(currentUser.id) },
+    select: {
+      children: {
+        select: parentChildSelect,
+        orderBy: {
+          name: 'asc',
+        },
+      },
+    },
+  });
+
+  if (!parent) {
+    throw new ApiError(404, 'Pengguna tidak ditemukan');
+  }
+
+  res.status(200).json(new ApiResponse(200, parent.children, 'Data anak berhasil diambil'));
+});
+
+export const lookupMyChild = asyncHandler(async (req: Request, res: Response) => {
+  const currentUser = (req as Request & { user?: { id: number; role: Role } }).user;
+
+  if (currentUser?.role !== Role.PARENT) {
+    throw new ApiError(403, 'Halaman ini khusus untuk role orang tua');
+  }
+
+  const { nisn } = parentChildLookupSchema.parse(req.query);
+
+  const parent = await prisma.user.findUnique({
+    where: { id: Number(currentUser.id) },
+    select: {
+      id: true,
+      children: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  });
+
+  if (!parent) {
+    throw new ApiError(404, 'Pengguna tidak ditemukan');
+  }
+
+  const student = await prisma.user.findFirst({
+    where: {
+      role: Role.STUDENT,
+      nisn,
+    },
+    select: {
+      ...parentChildSelect,
+      parents: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  });
+
+  if (!student) {
+    throw new ApiError(404, 'Data siswa dengan NISN tersebut tidak ditemukan');
+  }
+
+  const alreadyLinkedToCurrentParent = parent.children.some((child) => child.id === student.id);
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        student: {
+          id: student.id,
+          name: student.name,
+          username: student.username,
+          nis: student.nis,
+          nisn: student.nisn,
+          birthDate: student.birthDate,
+          studentStatus: student.studentStatus,
+          verificationStatus: student.verificationStatus,
+          studentClass: student.studentClass,
+        },
+        alreadyLinkedToCurrentParent,
+        linkedParentCount: student.parents.length,
+        oneTimeWarning:
+          'Setiap NISN cukup dikaitkan satu kali ke akun ini. Jika memiliki lebih dari satu anak, ulangi proses dengan NISN yang berbeda.',
+      },
+      alreadyLinkedToCurrentParent
+        ? 'Data siswa sudah terhubung ke akun orang tua ini'
+        : 'Data siswa ditemukan. Lanjutkan verifikasi tanggal lahir untuk menghubungkan akun.',
+    ),
+  );
+});
+
+export const linkMyChild = asyncHandler(async (req: Request, res: Response) => {
+  const currentUser = (req as Request & { user?: { id: number; role: Role } }).user;
+
+  if (currentUser?.role !== Role.PARENT) {
+    throw new ApiError(403, 'Halaman ini khusus untuk role orang tua');
+  }
+
+  const { nisn, birthDate } = parentChildLinkSchema.parse(req.body);
+
+  const parent = await prisma.user.findUnique({
+    where: { id: Number(currentUser.id) },
+    select: {
+      id: true,
+      children: {
+        select: {
+          id: true,
+          nisn: true,
+        },
+      },
+    },
+  });
+
+  if (!parent) {
+    throw new ApiError(404, 'Pengguna tidak ditemukan');
+  }
+
+  const student = await prisma.user.findFirst({
+    where: {
+      role: Role.STUDENT,
+      nisn,
+    },
+    select: {
+      id: true,
+      name: true,
+      nisn: true,
+      birthDate: true,
+    },
+  });
+
+  if (!student) {
+    throw new ApiError(404, 'Data siswa dengan NISN tersebut tidak ditemukan');
+  }
+
+  if (!student.birthDate) {
+    throw new ApiError(400, 'Data tanggal lahir siswa belum tersedia. Hubungi admin sekolah.');
+  }
+
+  if (normalizeDateOnly(student.birthDate) !== birthDate) {
+    throw new ApiError(400, 'NISN dan tanggal lahir tidak cocok');
+  }
+
+  const alreadyLinked = parent.children.some((child) => child.id === student.id);
+
+  if (!alreadyLinked) {
+    await prisma.user.update({
+      where: { id: parent.id },
+      data: {
+        children: {
+          connect: { id: student.id },
+        },
+      },
+    });
+  }
+
+  const refreshedParent = await prisma.user.findUnique({
+    where: { id: parent.id },
+    select: {
+      children: {
+        select: parentChildSelect,
+        orderBy: {
+          name: 'asc',
+        },
+      },
+    },
+  });
+
+  res.status(alreadyLinked ? 200 : 201).json(
+    new ApiResponse(
+      alreadyLinked ? 200 : 201,
+      refreshedParent?.children || [],
+      alreadyLinked
+        ? 'Data anak sudah terhubung ke akun orang tua ini'
+        : `Data ${student.name} berhasil dihubungkan ke akun orang tua`,
+    ),
+  );
+});
+
+export const unlinkMyChild = asyncHandler(async (req: Request, res: Response) => {
+  const currentUser = (req as Request & { user?: { id: number; role: Role } }).user;
+  const childId = Number(req.params.childId);
+
+  if (currentUser?.role !== Role.PARENT) {
+    throw new ApiError(403, 'Halaman ini khusus untuk role orang tua');
+  }
+
+  if (!Number.isInteger(childId) || childId <= 0) {
+    throw new ApiError(400, 'ID anak tidak valid');
+  }
+
+  const parent = await prisma.user.findUnique({
+    where: { id: Number(currentUser.id) },
+    select: {
+      id: true,
+      children: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  if (!parent) {
+    throw new ApiError(404, 'Pengguna tidak ditemukan');
+  }
+
+  const child = parent.children.find((item) => item.id === childId);
+  if (!child) {
+    throw new ApiError(404, 'Data anak tidak terhubung ke akun orang tua ini');
+  }
+
+  await prisma.user.update({
+    where: { id: parent.id },
+    data: {
+      children: {
+        disconnect: { id: childId },
+      },
+    },
+  });
+
+  const refreshedParent = await prisma.user.findUnique({
+    where: { id: parent.id },
+    select: {
+      children: {
+        select: parentChildSelect,
+        orderBy: {
+          name: 'asc',
+        },
+      },
+    },
+  });
+
+  res.status(200).json(
+    new ApiResponse(200, refreshedParent?.children || [], `Data ${child.name} berhasil dilepas dari akun orang tua`),
+  );
+});
+
 export const createUser = asyncHandler(async (req: Request, res: Response) => {
   const { documents, childNisns, managedMajorIds, examinerMajorId, ...body } = createUserSchema.parse(req.body);
+
+  if (body.role === Role.CALON_SISWA && documents) {
+    const validation = validateCandidateProfileDocuments(documents);
+    if (validation.errors.length > 0) {
+      throw new ApiError(400, `Dokumen calon siswa tidak valid: ${validation.errors.join(' | ')}`);
+    }
+  }
 
   // Enforce username = NISN for students
   if (body.role === Role.STUDENT) {
@@ -420,6 +730,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
   if (currentUser?.role !== Role.ADMIN) {
     // Non-admin hanya boleh mengubah profil dirinya sendiri (termasuk password akun sendiri)
     delete body.username;
+    delete body.nis;
     delete body.nisn;
     delete body.role;
     delete body.verificationStatus;
@@ -449,6 +760,20 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
 
   const updatedUser = await prisma.$transaction(async (tx) => {
     const roleAfterUpdate = body.role ?? user.role;
+
+    if (roleAfterUpdate === Role.CALON_SISWA && documents) {
+      const validation = validateCandidateProfileDocuments(documents);
+      if (validation.errors.length > 0) {
+        throw new ApiError(400, `Dokumen calon siswa tidak valid: ${validation.errors.join(' | ')}`);
+      }
+    }
+
+    // Lock identity fields for student self-update
+    if (currentUser?.role !== Role.ADMIN && user.role === Role.STUDENT) {
+      delete body.name;
+      delete body.nis;
+      delete body.nisn;
+    }
 
     // Enforce username = NISN for students
     if (roleAfterUpdate === Role.STUDENT) {
@@ -554,6 +879,38 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
   });
 
   const { password: _, ...userWithoutPassword } = updatedUser;
+
+  try {
+    await writeAuditLog(
+      Number(currentUser?.id || 0),
+      String(currentUser?.role || 'UNKNOWN'),
+      null,
+      'UPDATE',
+      'USER',
+      Number(id),
+      {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        role: user.role,
+        classId: user.classId,
+        nis: user.nis,
+        nisn: user.nisn,
+      },
+      {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        username: updatedUser.username,
+        role: updatedUser.role,
+        classId: updatedUser.classId,
+        nis: updatedUser.nis,
+        nisn: updatedUser.nisn,
+      },
+      (req.body as any)?.reason || undefined,
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat update user', auditError);
+  }
 
   res.status(200).json(new ApiResponse(200, userWithoutPassword, 'Pengguna berhasil diperbarui'));
 });

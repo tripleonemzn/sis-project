@@ -1,4 +1,5 @@
 import { AuthUser } from '../auth/types';
+import { resolveStaffDivision } from '../staff/staffRole';
 
 type MenuTarget =
   | {
@@ -23,6 +24,8 @@ export type RoleMenuGroup = {
 
 export type RoleMenuBuildOptions = {
   hasPendingDefense?: boolean;
+  pklEligibleGrades?: string[];
+  pklVisibilityOverride?: boolean;
 };
 
 const STRICT_WEB_PARITY_KEYS = new Set<string>([
@@ -602,16 +605,23 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
   PARENT: [
     { key: 'parent-dashboard', label: 'Dashboard', route: '/parent/overview' },
     { key: 'child-progress', label: 'Data Anak', route: '/parent/children' },
+    { key: 'child-link', label: 'Hubungkan Anak', route: '/parent/children?mode=link' },
     { key: 'parent-finance', label: 'Keuangan', route: '/parent/finance' },
     { key: 'child-attendance', label: 'Absensi Anak', route: '/parent/attendance' },
   ],
   CALON_SISWA: [
+    { key: 'candidate-dashboard', label: 'Dashboard', route: '/candidate' },
     { key: 'candidate-application', label: 'Status Pendaftaran', route: '/candidate/application' },
     { key: 'candidate-information', label: 'Informasi PPDB', route: '/candidate/information' },
+    { key: 'candidate-exams', label: 'Tes Seleksi', route: '/exams' },
   ],
   UMUM: [
+    { key: 'public-dashboard', label: 'Dashboard BKK', route: '/public' },
     { key: 'public-information', label: 'Informasi Sekolah', route: '/public/information' },
-    { key: 'public-registration', label: 'Pendaftaran Umum', route: '/public/registration' },
+    { key: 'public-vacancies', label: 'Lowongan BKK', route: '/public/vacancies' },
+    { key: 'public-applications', label: 'Lamaran Saya', route: '/public/applications' },
+    { key: 'public-exams', label: 'Tes BKK', route: '/exams' },
+    { key: 'public-profile', label: 'Profil Pelamar', route: '/public/profile' },
   ],
   EXTRACURRICULAR_TUTOR: [
     { key: 'tutor-dashboard', label: 'Dashboard', route: '/tutor/dashboard' },
@@ -623,7 +633,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
   ],
 };
 
-const PKL_ELIGIBLE_GRADES = ['XI', 'XII'];
+const DEFAULT_PKL_ELIGIBLE_GRADES = ['XI'];
 
 function normalizeDuty(value: string) {
   return value.trim().toUpperCase();
@@ -655,18 +665,48 @@ function isClassPresident(user: AuthUser) {
   return user.studentClass?.presidentId === user.id;
 }
 
-function isPklEligibleStudent(user: AuthUser) {
+function normalizeEligibleGrades(rawGrades: string[] | undefined): string[] {
+  const normalized = (rawGrades || [])
+    .map((grade) => String(grade || '').trim().toUpperCase())
+    .filter((grade) => grade === 'X' || grade === 'XI' || grade === 'XII');
+  return normalized.length > 0 ? normalized : DEFAULT_PKL_ELIGIBLE_GRADES;
+}
+
+function resolveStudentGrade(user: AuthUser): 'X' | 'XI' | 'XII' | '' {
+  const levelToken = String((user.studentClass as { level?: string | number } | null | undefined)?.level || '')
+    .trim()
+    .toUpperCase();
+  if (levelToken === '10' || levelToken === 'X') return 'X';
+  if (levelToken === '11' || levelToken === 'XI') return 'XI';
+  if (levelToken === '12' || levelToken === 'XII') return 'XII';
+
+  const classNameToken = String(user.studentClass?.name || '')
+    .trim()
+    .toUpperCase();
+  const classMatch = classNameToken.match(/\b(XII|XI|X|12|11|10)\b/);
+  const normalizedMatch = String(classMatch?.[1] || '');
+  if (normalizedMatch === '10' || normalizedMatch === 'X') return 'X';
+  if (normalizedMatch === '11' || normalizedMatch === 'XI') return 'XI';
+  if (normalizedMatch === '12' || normalizedMatch === 'XII') return 'XII';
+  return '';
+}
+
+function isPklEligibleStudent(user: AuthUser, options?: RoleMenuBuildOptions) {
   if (user.role !== 'STUDENT') return false;
-  const className = user.studentClass?.name?.toUpperCase() || '';
-  if (!className) return false;
-  return PKL_ELIGIBLE_GRADES.some((grade) => className === grade || className.startsWith(`${grade} `));
+  if (typeof options?.pklVisibilityOverride === 'boolean') {
+    return options.pklVisibilityOverride;
+  }
+  const studentGrade = resolveStudentGrade(user);
+  if (!studentGrade) return false;
+  const eligibleGrades = normalizeEligibleGrades(options?.pklEligibleGrades);
+  return eligibleGrades.includes(studentGrade);
 }
 
 function isStudentAlumni(user: AuthUser) {
   return user.role === 'STUDENT' && user.studentStatus === 'GRADUATED';
 }
 
-function shouldShowMenuItem(user: AuthUser, item: RoleMenuItem) {
+function shouldShowMenuItem(user: AuthUser, item: RoleMenuItem, options?: RoleMenuBuildOptions) {
   if (user.role === 'STUDENT') {
     if (isStudentAlumni(user)) {
       const alumniAllowed = new Set([
@@ -683,7 +723,7 @@ function shouldShowMenuItem(user: AuthUser, item: RoleMenuItem) {
     }
 
     if (item.key.startsWith('student-pkl-')) {
-      return isPklEligibleStudent(user);
+      return isPklEligibleStudent(user, options);
     }
   }
 
@@ -997,7 +1037,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
   ],
   PARENT: [
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['parent-dashboard'] },
-    { key: 'children', label: 'Data Anak', menuKeys: ['child-progress'] },
+    { key: 'children', label: 'Data Anak', menuKeys: ['child-progress', 'child-link'] },
     { key: 'finance', label: 'Keuangan', menuKeys: ['parent-finance'] },
     { key: 'attendance', label: 'Absensi Anak', menuKeys: ['child-attendance'] },
   ],
@@ -1017,11 +1057,71 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
   CALON_SISWA: [
     { key: 'information', label: 'Informasi', menuKeys: ['candidate-information'] },
     { key: 'registration', label: 'Pendaftaran', menuKeys: ['candidate-application'] },
+    { key: 'exam', label: 'Tes', menuKeys: ['candidate-exams'] },
   ],
   UMUM: [
     { key: 'information', label: 'Informasi', menuKeys: ['public-information'] },
-    { key: 'registration', label: 'Pendaftaran', menuKeys: ['public-registration'] },
+    { key: 'career', label: 'Karier', menuKeys: ['public-vacancies', 'public-applications'] },
+    { key: 'profile', label: 'Profil', menuKeys: ['public-profile'] },
   ],
+};
+
+const STAFF_EXTRA_MENU_ITEMS: Record<string, RoleMenuItem> = {
+  'staff-administration-dashboard': {
+    key: 'staff-administration-dashboard',
+    label: 'Dashboard Administrasi',
+    webPath: '/staff/administration',
+  },
+  'staff-administration-teachers': {
+    key: 'staff-administration-teachers',
+    label: 'Administrasi Guru',
+    webPath: '/staff/administration/teachers',
+  },
+  'staff-administration-permissions': {
+    key: 'staff-administration-permissions',
+    label: 'Perizinan Siswa',
+    webPath: '/staff/administration/permissions',
+  },
+  'staff-head-tu-dashboard': {
+    key: 'staff-head-tu-dashboard',
+    label: 'Dashboard Kepala TU',
+    webPath: '/staff/head-tu',
+  },
+  'staff-head-tu-administration': {
+    key: 'staff-head-tu-administration',
+    label: 'Operasional TU',
+    webPath: '/staff/head-tu/administration',
+  },
+  'staff-head-tu-finance': {
+    key: 'staff-head-tu-finance',
+    label: 'Monitoring Keuangan',
+    webPath: '/staff/head-tu/finance',
+  },
+  'staff-head-tu-students': {
+    key: 'staff-head-tu-students',
+    label: 'Data Siswa',
+    webPath: '/staff/head-tu/students',
+  },
+  'staff-head-tu-teachers': {
+    key: 'staff-head-tu-teachers',
+    label: 'Data Guru & Staff',
+    webPath: '/staff/head-tu/teachers',
+  },
+  'staff-head-tu-permissions': {
+    key: 'staff-head-tu-permissions',
+    label: 'Perizinan Siswa',
+    webPath: '/staff/head-tu/permissions',
+  },
+  'staff-head-tu-letters': {
+    key: 'staff-head-tu-letters',
+    label: 'Surat-Menyurat',
+    webPath: '/staff/head-tu/letters',
+  },
+  'staff-head-tu-exam-cards': {
+    key: 'staff-head-tu-exam-cards',
+    label: 'Kartu Ujian',
+    webPath: '/staff/head-tu/exam-cards',
+  },
 };
 
 function buildGroupedMenu(role: string, items: RoleMenuItem[]): RoleMenuGroup[] {
@@ -1076,6 +1176,84 @@ function mapMenuByKey(items: RoleMenuItem[]) {
 
 function cloneMenu(item?: RoleMenuItem | null) {
   return item ? { ...item } : null;
+}
+
+function getStaffMenuItemByKey(key: string) {
+  const nativeItem = ROLE_MENUS.STAFF.find((item) => item.key === key);
+  return cloneMenu(nativeItem || STAFF_EXTRA_MENU_ITEMS[key] || null);
+}
+
+function buildStaffRoleMenu(user: AuthUser) {
+  const division = resolveStaffDivision(user);
+  const baseKeys = ['staff-dashboard', 'staff-email'];
+  const roleKeys =
+    division === 'HEAD_TU'
+      ? [
+          'staff-head-tu-dashboard',
+          'staff-head-tu-administration',
+          'staff-head-tu-finance',
+          'staff-head-tu-students',
+          'staff-head-tu-teachers',
+          'staff-head-tu-permissions',
+          'staff-head-tu-letters',
+          'staff-head-tu-exam-cards',
+        ]
+      : division === 'ADMINISTRATION'
+        ? [
+            'staff-students',
+            'staff-administration-dashboard',
+            'staff-administration-teachers',
+            'staff-administration-permissions',
+          ]
+        : ['staff-payments', 'staff-students', 'staff-admin'];
+
+  return [...baseKeys, ...roleKeys]
+    .map((key) => getStaffMenuItemByKey(key))
+    .filter((item): item is RoleMenuItem => Boolean(item));
+}
+
+function buildStaffGroups(user: AuthUser, menus: RoleMenuItem[]) {
+  const byKey = mapMenuByKey(menus);
+  const pushGroup = (groups: RoleMenuGroup[], key: string, label: string, keys: string[]) => {
+    const items = pickMenus(byKey, keys);
+    if (items.length > 0) {
+      groups.push({ key, label, items });
+    }
+  };
+
+  const groups: RoleMenuGroup[] = [];
+  const division = resolveStaffDivision(user);
+
+  pushGroup(groups, 'dashboard', 'Dashboard', ['staff-dashboard', 'staff-email']);
+
+  if (division === 'HEAD_TU') {
+    pushGroup(groups, 'monitoring-tu', 'MONITORING TU', [
+      'staff-head-tu-dashboard',
+      'staff-head-tu-administration',
+      'staff-head-tu-finance',
+    ]);
+    pushGroup(groups, 'layanan-tu', 'LAYANAN TU', [
+      'staff-head-tu-students',
+      'staff-head-tu-teachers',
+      'staff-head-tu-permissions',
+      'staff-head-tu-letters',
+      'staff-head-tu-exam-cards',
+    ]);
+    return groups;
+  }
+
+  if (division === 'ADMINISTRATION') {
+    pushGroup(groups, 'students', 'DATA SISWA', ['staff-students']);
+    pushGroup(groups, 'administration', 'ADMINISTRASI', [
+      'staff-administration-dashboard',
+      'staff-administration-teachers',
+      'staff-administration-permissions',
+    ]);
+    return groups;
+  }
+
+  pushGroup(groups, 'payments', 'KEUANGAN', ['staff-payments', 'staff-students', 'staff-admin']);
+  return groups;
 }
 
 function pickMenu(byKey: Map<string, RoleMenuItem>, key: string) {
@@ -1362,17 +1540,17 @@ if (__DEV__) {
   assertRoleMenuIntegrity(ROLE_MENUS);
 }
 
-export function getRoleMenu(user?: AuthUser | null): RoleMenuItem[] {
+export function getRoleMenu(user?: AuthUser | null, options?: RoleMenuBuildOptions): RoleMenuItem[] {
   if (!user) return materializeMenuTargets(BASE_MENU);
   if (user.isDemo) return getDemoRoleMenu();
 
-  const roleItems = ROLE_MENUS[user.role] || BASE_MENU;
-  const filteredItems = roleItems.filter((item) => shouldShowMenuItem(user, item));
+  const roleItems = user.role === 'STAFF' ? buildStaffRoleMenu(user) : ROLE_MENUS[user.role] || BASE_MENU;
+  const filteredItems = roleItems.filter((item) => shouldShowMenuItem(user, item, options));
   return materializeMenuTargets(dedupeMenuByKey(filteredItems));
 }
 
 export function getGroupedRoleMenu(user?: AuthUser | null, options?: RoleMenuBuildOptions): RoleMenuGroup[] {
-  const menus = getRoleMenu(user);
+  const menus = getRoleMenu(user, options);
   if (!user) {
     return [
       {
@@ -1393,6 +1571,10 @@ export function getGroupedRoleMenu(user?: AuthUser | null, options?: RoleMenuBui
 
   if (user.role === 'TEACHER') {
     return buildTeacherGroups(user, menus, options);
+  }
+
+  if (user.role === 'STAFF') {
+    return buildStaffGroups(user, menus);
   }
 
   const grouped = buildGroupedMenu(user.role, menus);

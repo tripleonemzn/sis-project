@@ -11,6 +11,35 @@ export type TeachingResourceProgramItem = {
   showOnTeacherMenu: boolean;
   targetClassLevels?: string[];
   source: 'default' | 'custom';
+  schema?: TeachingResourceProgramSchema;
+};
+
+export type TeachingResourceProgramSectionSchema = {
+  key: string;
+  label: string;
+  description?: string;
+  repeatable: boolean;
+  defaultRows: number;
+  editorType?: 'TEXT' | 'TABLE';
+  columns?: Array<{
+    key: string;
+    label: string;
+    placeholder?: string;
+    multiline?: boolean;
+  }>;
+  prefillRows?: Array<Record<string, string>>;
+  sectionTitleEditable?: boolean;
+  titlePlaceholder?: string;
+  bodyPlaceholder?: string;
+};
+
+export type TeachingResourceProgramSchema = {
+  version: number;
+  sourceSheet?: string;
+  intro: string;
+  titleHint?: string;
+  summaryHint?: string;
+  sections: TeachingResourceProgramSectionSchema[];
 };
 
 export type TeachingResourceEntryStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
@@ -27,7 +56,12 @@ export type TeachingResourceEntryItem = {
   title: string;
   summary?: string | null;
   content: {
-    sections?: Array<{ title?: string; body?: string }>;
+    sections?: Array<{
+      schemaKey?: string;
+      title?: string;
+      body?: string;
+      rows?: Array<Record<string, string>>;
+    }>;
     references?: string[];
     notes?: string;
     [key: string]: unknown;

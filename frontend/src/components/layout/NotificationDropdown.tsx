@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Bell, Clock } from 'lucide-react';
 import api from '../../services/api';
 import clsx from 'clsx';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
+import { authService } from '../../services/auth.service';
+import { getStaffFinanceNotificationPath } from '../../utils/staffRole';
 
 interface Notification {
   id: number;
@@ -12,9 +15,15 @@ interface Notification {
   message: string;
   type: string;
   isRead: boolean;
-  data: {
-    scheduleId?: number | string;
-  } | null;
+  data:
+    | {
+        scheduleId?: number | string;
+        route?: string;
+        studentId?: number | string;
+        childId?: number | string;
+        module?: string;
+      }
+    | null;
   createdAt: string;
 }
 
@@ -29,6 +38,12 @@ export const NotificationDropdown = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const isExamTakePage = /^\/student\/exams\/\d+\/take$/.test(location.pathname);
+  const { data: meResponse } = useQuery({
+    queryKey: ['me'],
+    queryFn: authService.getMeSafe,
+    staleTime: 60_000,
+  });
+  const currentUser = meResponse?.data;
 
   const fetchNotifications = async (limit = 10) => {
     try {
@@ -123,6 +138,11 @@ export const NotificationDropdown = () => {
       }
     }
 
+    const routeFromPayload =
+      typeof notification.data?.route === 'string' && notification.data.route.trim().startsWith('/')
+        ? notification.data.route.trim()
+        : null;
+
     // Navigate based on type/data
     if (notification.type === 'EXAM_PROCTOR' && notification.data?.scheduleId) {
       navigate(`/teacher/proctoring/${notification.data.scheduleId}`);
@@ -131,6 +151,16 @@ export const NotificationDropdown = () => {
       // Since ProctorSchedulePage uses internal state for tab, we might need to handle this.
       // For now, just go to the schedule page, and user can switch tab.
       navigate('/teacher/proctoring');
+    } else if (routeFromPayload) {
+      navigate(routeFromPayload);
+    } else if (notification.type.startsWith('FINANCE_')) {
+      if (location.pathname.startsWith('/parent')) {
+        navigate('/parent/finance');
+      } else if (location.pathname.startsWith('/student')) {
+        navigate('/student/finance');
+      } else if (location.pathname.startsWith('/staff')) {
+        navigate(getStaffFinanceNotificationPath(currentUser));
+      }
     }
     
     setIsOpen(false);

@@ -3,11 +3,14 @@ import { authMiddleware } from '../middleware/auth';
 import { roleMiddleware } from '../middleware/role';
 import {
   createTutorInventoryItem,
+  getTutorAttendanceOverview,
   getTutorAssignments,
   getExtracurricularMembers,
   getTutorGradeTemplates,
   getTutorInventoryOverview,
   inputTutorGrade,
+  saveTutorAttendanceConfig,
+  saveTutorAttendanceRecords,
   saveTutorGradeTemplates,
 } from '../controllers/tutor.controller';
 
@@ -21,6 +24,9 @@ router.get('/members', getExtracurricularMembers);
 router.post('/grades', inputTutorGrade);
 router.get('/grade-templates', getTutorGradeTemplates);
 router.put('/grade-templates', saveTutorGradeTemplates);
+router.get('/attendance', getTutorAttendanceOverview);
+router.put('/attendance/config', saveTutorAttendanceConfig);
+router.put('/attendance/records', saveTutorAttendanceRecords);
 router.get('/inventory-overview', getTutorInventoryOverview);
 router.post('/inventory-items', createTutorInventoryItem);
 

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, XCircle, Loader2, Search } from 'lucide-react';
 import { useLocation, useSearchParams } from 'react-router-dom';
@@ -86,6 +86,7 @@ export default function WorkProgramApprovalsPage() {
   const isReadOnly = ['1', 'true', 'yes'].includes(
     String(searchParams.get('readonly') || '').trim().toLowerCase(),
   );
+  const focusProgramId = Number(searchParams.get('focusProgramId') || 0);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [feedback, setFeedback] = useState('');
@@ -168,6 +169,24 @@ export default function WorkProgramApprovalsPage() {
     const activeKey = hasSelected ? selectedGroupKey : groups[0].key;
     return filteredPrograms.filter((p) => getGroupKey(p) === activeKey);
   }, [filteredPrograms, groups, selectedGroupKey]);
+
+  useEffect(() => {
+    if (!focusProgramId || isReadOnly) return;
+    const target = filteredPrograms.find((program) => Number(program.id) === focusProgramId);
+    if (!target) return;
+
+    const targetGroup = getGroupKey(target);
+    if (selectedGroupKey !== targetGroup) {
+      setSelectedGroupKey(targetGroup);
+      return;
+    }
+
+    if (selectedId !== focusProgramId) {
+      setSelectedId(focusProgramId);
+      setFeedback(target.feedback || '');
+      setAction('APPROVED');
+    }
+  }, [focusProgramId, filteredPrograms, isReadOnly, selectedGroupKey, selectedId, getGroupKey]);
 
   const approvalMutation = useMutation({
     mutationFn: async (payload: { id: number; status: 'APPROVED' | 'REJECTED'; feedback?: string }) =>

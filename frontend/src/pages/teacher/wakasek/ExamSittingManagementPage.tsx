@@ -205,10 +205,7 @@ const ExamSittingManagementPage = () => {
       haystack.includes('praktik') ||
       haystack.includes('praktek') ||
       haystack.includes('lab') ||
-      haystack.includes('laboratorium') ||
-      haystack.includes('olahraga') ||
-      haystack.includes('sport') ||
-      haystack.includes('lapangan')
+      haystack.includes('laboratorium')
     );
   }, []);
 
@@ -1283,7 +1280,7 @@ const ExamSittingManagementPage = () => {
                   )}
                 {examEligibleRooms.length === 0 && (
                   <p className="text-xs text-red-600 mt-1">
-                    Belum ada daftar ruang kategori kelas/praktik/olahraga.
+                    Belum ada daftar ruang kategori kelas/praktik/lab.
                   </p>
                 )}
               </div>

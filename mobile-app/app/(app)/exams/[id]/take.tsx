@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
+import ExamHtmlContent from '../../../../src/components/ExamHtmlContent';
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
 import { examApi } from '../../../../src/features/exams/examApi';
@@ -17,13 +18,6 @@ function parseScheduleId(raw: string | string[] | undefined): number | null {
   const parsed = Number(value);
   if (Number.isNaN(parsed) || parsed <= 0) return null;
   return parsed;
-}
-
-function toPlainText(value: unknown): string {
-  return String(value || '')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 function normalizeQuestionType(question: ExamQuestion): ExamQuestionType {
@@ -72,6 +66,16 @@ function parseQuestions(raw: unknown): ExamQuestion[] {
         id: qId,
         content: typeof q.content === 'string' ? q.content : null,
         question_text: typeof q.question_text === 'string' ? q.question_text : null,
+        question_image_url:
+          typeof q.question_image_url === 'string' ? q.question_image_url : null,
+        image_url: typeof q.image_url === 'string' ? q.image_url : null,
+        question_video_url:
+          typeof q.question_video_url === 'string' ? q.question_video_url : null,
+        video_url: typeof q.video_url === 'string' ? q.video_url : null,
+        question_video_type:
+          q.question_video_type === 'youtube' || q.question_video_type === 'upload'
+            ? q.question_video_type
+            : undefined,
         type: typeof q.type === 'string' ? (q.type as ExamQuestionType) : undefined,
         question_type:
           typeof q.question_type === 'string' ? (q.question_type as ExamQuestionType) : undefined,
@@ -122,17 +126,75 @@ function formatDateTime(value?: string | null): string {
   return `${day} ${month} ${year} ${hour}:${minute}`;
 }
 
+function normalizeSubjectToken(value: string | null | undefined): string {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function isGenericSubject(name?: string | null, code?: string | null): boolean {
+  const normalizedName = normalizeSubjectToken(name);
+  const normalizedCode = normalizeSubjectToken(code);
+  if (!normalizedName && !normalizedCode) return true;
+  if (['TKAU', 'KONSENTRASI_KEAHLIAN', 'KONSENTRASI', 'KEJURUAN'].includes(normalizedCode)) return true;
+  if (normalizedName === 'KONSENTRASI' || normalizedName === 'KEJURUAN') return true;
+  if (normalizedName.includes('KONSENTRASI_KEAHLIAN')) return true;
+  return false;
+}
+
+function resolveTakeExamSubject(packet: {
+  title?: string | null;
+  subject?: {
+    name?: string | null;
+    code?: string | null;
+  } | null;
+}) {
+  const packetSubject = packet?.subject || null;
+  let fallbackName = '';
+  const title = String(packet?.title || '').trim();
+  if (title.includes('•')) {
+    const parts = title
+      .split('•')
+      .map((part) => String(part || '').trim())
+      .filter(Boolean);
+    if (parts.length >= 2) {
+      const candidate = parts[1];
+      if (candidate && !/\d{4}-\d{2}-\d{2}/.test(candidate)) {
+        fallbackName = candidate;
+      }
+    }
+  }
+
+  const pickedIsGeneric = isGenericSubject(packetSubject?.name, packetSubject?.code);
+  const useFallbackName = Boolean(fallbackName) && pickedIsGeneric;
+  return {
+    name: String(
+      (useFallbackName ? fallbackName : packetSubject?.name) || fallbackName || 'Mata pelajaran',
+    ),
+    code: useFallbackName ? '' : String(packetSubject?.code || '').trim(),
+  };
+}
+
 export default function StudentExamTakeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const canAccessExams = user?.role === 'STUDENT' || user?.role === 'CALON_SISWA' || user?.role === 'UMUM';
+  const isCandidateMode = user?.role === 'CALON_SISWA';
+  const isApplicantMode = user?.role === 'UMUM';
+  const applicantVerificationLocked =
+    isApplicantMode && String(user?.verificationStatus || 'PENDING').toUpperCase() !== 'VERIFIED';
+  const examTakeLabel = isCandidateMode ? 'Tes Seleksi' : isApplicantMode ? 'Tes BKK' : 'Ujian';
   const pageContentPadding = getStandardPagePadding(insets);
   const pageContentPaddingCompact = getStandardPagePadding(insets, { horizontal: 20 });
   const scheduleId = useMemo(() => parseScheduleId(params.id), [params.id]);
 
   const startQuery = useStudentExamStartQuery({
-    enabled: isAuthenticated && !!scheduleId,
+    enabled: isAuthenticated && !!scheduleId && !applicantVerificationLocked,
     user,
     scheduleId,
   });
@@ -151,6 +213,8 @@ export default function StudentExamTakeScreen() {
   const [isFinished, setIsFinished] = useState(false);
   const answersRef = useRef<Record<string, unknown>>({});
   const autoSubmitGuardRef = useRef(false);
+  const autoSubmitFailedRef = useRef(false);
+  const finalSubmitOriginRef = useRef<'manual' | 'auto' | null>(null);
   const isExamReady = Boolean(startQuery.data);
   const persistedAnswers = useMemo(
     () => parseAnswers(startQuery.data?.session?.answers),
@@ -213,6 +277,8 @@ export default function StudentExamTakeScreen() {
       if (!isFinalSubmit) {
         setAutosaveState('saved');
         setLastSavedAt(new Date().toISOString());
+      } else {
+        finalSubmitOriginRef.current = null;
       }
       return true;
     } catch (error: unknown) {
@@ -221,12 +287,23 @@ export default function StudentExamTakeScreen() {
       if (!isFinalSubmit) {
         setAutosaveState('error');
       } else {
-        autoSubmitGuardRef.current = false;
-        Alert.alert('Submit Gagal', msg);
+        if (finalSubmitOriginRef.current === 'auto') {
+          autoSubmitFailedRef.current = true;
+          Alert.alert('Waktu Ujian Berakhir', msg, [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/exams'),
+            },
+          ]);
+        } else {
+          autoSubmitGuardRef.current = false;
+          Alert.alert('Submit Gagal', msg);
+        }
+        finalSubmitOriginRef.current = null;
       }
       return false;
     }
-  }, [isFinished, submitMutation]);
+  }, [isFinished, router, submitMutation]);
 
   useEffect(() => {
     if (!isExamReady || isFinished || isFinalSubmitting) return;
@@ -240,8 +317,10 @@ export default function StudentExamTakeScreen() {
     if (!isExamReady || isFinished || isFinalSubmitting) return;
     if (remainingSeconds > 0) return;
     if (autoSubmitGuardRef.current) return;
+    if (autoSubmitFailedRef.current) return;
 
     autoSubmitGuardRef.current = true;
+    finalSubmitOriginRef.current = 'auto';
     void (async () => {
       const ok = await saveProgress(true);
       if (!ok) return;
@@ -257,9 +336,17 @@ export default function StudentExamTakeScreen() {
 
   const submitFinal = () => {
     if (isFinalSubmitting || isFinished || autoSubmitGuardRef.current) return;
+    if (answeredCount < questions.length) {
+      Alert.alert(
+        'Jawaban Belum Lengkap',
+        `Masih ada ${questions.length - answeredCount} soal yang belum dijawab. Lengkapi semua jawaban sebelum mengumpulkan ujian.`,
+      );
+      return;
+    }
+
     Alert.alert(
       'Kumpulkan Ujian',
-      `Jawaban terisi ${answeredCount}/${questions.length}. Yakin ingin mengumpulkan?`,
+      `Semua ${questions.length} soal sudah dijawab. Yakin ingin mengumpulkan ujian?`,
       [
         { text: 'Batal', style: 'cancel' },
         {
@@ -267,6 +354,7 @@ export default function StudentExamTakeScreen() {
           style: 'destructive',
           onPress: () => {
             autoSubmitGuardRef.current = true;
+            finalSubmitOriginRef.current = 'manual';
             setIsFinalSubmitting(true);
             void (async () => {
               const ok = await saveProgress(true);
@@ -289,6 +377,10 @@ export default function StudentExamTakeScreen() {
   const currentQuestion = questions[currentIndex];
   const currentType = currentQuestion ? normalizeQuestionType(currentQuestion) : 'MULTIPLE_CHOICE';
   const currentOptions = currentQuestion?.options || [];
+  const resolvedTakeSubject = useMemo(
+    () => resolveTakeExamSubject(startQuery.data?.packet || {}),
+    [startQuery.data?.packet],
+  );
 
   const answeredCount = questions.reduce((total, question) => {
     const value = effectiveAnswers[question.id];
@@ -305,11 +397,35 @@ export default function StudentExamTakeScreen() {
   if (isLoading) return <AppLoadingScreen message="Memuat ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
-  if (user?.role !== 'STUDENT') {
+  if (!canAccessExams) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Mengerjakan Ujian</Text>
-        <QueryStateView type="error" message="Halaman ini khusus untuk role siswa." />
+        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>
+          {`Mengerjakan ${examTakeLabel}`}
+        </Text>
+        <QueryStateView type="error" message="Halaman ini hanya tersedia untuk peserta ujian yang aktif." />
+      </ScrollView>
+    );
+  }
+
+  if (applicantVerificationLocked) {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
+        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#fde68a',
+            borderRadius: 12,
+            backgroundColor: '#fffbeb',
+            padding: 14,
+          }}
+        >
+          <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tes BKK menunggu verifikasi admin</Text>
+          <Text style={{ color: '#92400e' }}>
+            Akun pelamar Anda belum diverifikasi. Lengkapi profil pelamar lalu tunggu verifikasi admin sebelum mengikuti Tes BKK.
+          </Text>
+        </View>
       </ScrollView>
     );
   }
@@ -317,8 +433,8 @@ export default function StudentExamTakeScreen() {
   if (!scheduleId) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Mengerjakan Ujian</Text>
-        <QueryStateView type="error" message="ID jadwal ujian tidak valid." />
+        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
+        <QueryStateView type="error" message={`ID jadwal ${examTakeLabel.toLowerCase()} tidak valid.`} />
       </ScrollView>
     );
   }
@@ -328,10 +444,10 @@ export default function StudentExamTakeScreen() {
   if (startQuery.isError || !startQuery.data) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Mengerjakan Ujian</Text>
+        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
         <QueryStateView
           type="error"
-          message="Gagal memulai sesi ujian."
+          message={`Gagal memulai sesi ${examTakeLabel.toLowerCase()}.`}
           onRetry={() => startQuery.refetch()}
         />
         <Pressable
@@ -344,7 +460,7 @@ export default function StudentExamTakeScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Daftar Ujian</Text>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Daftar Tes</Text>
         </Pressable>
       </ScrollView>
     );
@@ -353,8 +469,8 @@ export default function StudentExamTakeScreen() {
   if (questions.length === 0 || !currentQuestion) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPadding}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Mengerjakan Ujian</Text>
-        <QueryStateView type="error" message="Soal ujian tidak tersedia." />
+        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>{`Mengerjakan ${examTakeLabel}`}</Text>
+        <QueryStateView type="error" message={`Soal ${examTakeLabel.toLowerCase()} tidak tersedia.`} />
         <Pressable
           onPress={() => router.replace('/exams')}
           style={{
@@ -365,7 +481,7 @@ export default function StudentExamTakeScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Daftar Ujian</Text>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Daftar Tes</Text>
         </Pressable>
       </ScrollView>
     );
@@ -375,27 +491,35 @@ export default function StudentExamTakeScreen() {
     <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pageContentPaddingCompact}>
       <View
         style={{
-          backgroundColor: '#fff',
+          backgroundColor: '#ffffff',
           borderWidth: 1,
-          borderColor: '#e2e8f0',
-          borderRadius: 12,
-          padding: 12,
-          marginBottom: 10,
+          borderColor: '#dbeafe',
+          borderRadius: 18,
+          padding: 16,
+          marginBottom: 12,
+          shadowColor: '#0f172a',
+          shadowOpacity: 0.06,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 2,
         }}
       >
-        <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16, marginBottom: 4 }}>
+        <Text style={{ color: '#0f172a', fontWeight: '800', fontSize: 19, marginBottom: 6 }}>
           {startQuery.data.packet.title}
         </Text>
-        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
-          {startQuery.data.packet.subject.name} ({startQuery.data.packet.subject.code})
+        <Text style={{ color: '#64748b', fontSize: 13, marginBottom: 10 }}>
+          {resolvedTakeSubject.name}
+          {resolvedTakeSubject.code ? ` (${resolvedTakeSubject.code})` : ''}
         </Text>
-        <Text style={{ color: '#334155', fontSize: 12, marginBottom: 2 }}>
-          Sisa waktu: {formatTime(remainingSeconds)}
-        </Text>
-        <Text style={{ color: '#334155', fontSize: 12, marginBottom: 2 }}>
-          Mulai sesi: {formatDateTime(startQuery.data.session.startTime)}
-        </Text>
-        <Text style={{ color: '#334155', fontSize: 12 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <View style={{ backgroundColor: '#ecfeff', borderColor: '#a5f3fc', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
+            <Text style={{ color: '#0f766e', fontSize: 12, fontWeight: '700' }}>Sisa waktu {formatTime(remainingSeconds)}</Text>
+          </View>
+          <View style={{ backgroundColor: '#eff6ff', borderColor: '#bfdbfe', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
+            <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>Mulai {formatDateTime(startQuery.data.session.startTime)}</Text>
+          </View>
+        </View>
+        <Text style={{ color: '#475569', fontSize: 12, marginTop: 10 }}>
           Autosave:{' '}
           {autosaveState === 'saving'
             ? 'menyimpan...'
@@ -468,9 +592,15 @@ export default function StudentExamTakeScreen() {
         <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>
           Soal {currentIndex + 1} dari {questions.length}
         </Text>
-        <Text style={{ color: '#0f172a', fontSize: 15, marginBottom: 12 }}>
-          {toPlainText(currentQuestion.question_text || currentQuestion.content || '-')}
-        </Text>
+        <View style={{ marginBottom: 12 }}>
+          <ExamHtmlContent
+            html={currentQuestion.question_text || currentQuestion.content || '-'}
+            imageUrl={currentQuestion.question_image_url || currentQuestion.image_url}
+            videoUrl={currentQuestion.question_video_url || currentQuestion.video_url}
+            videoType={currentQuestion.question_video_type || null}
+            interactive={Boolean(currentQuestion.question_video_url || currentQuestion.video_url)}
+          />
+        </View>
 
         {currentType === 'ESSAY' ? (
           <TextInput
@@ -497,7 +627,6 @@ export default function StudentExamTakeScreen() {
         ) : currentOptions.length > 0 ? (
           <View>
             {currentOptions.map((option) => {
-              const optionText = toPlainText(option.option_text || option.content || '-');
               const selectedValue = effectiveAnswers[currentQuestion.id];
               const selected =
                 currentType === 'COMPLEX_MULTIPLE_CHOICE'
@@ -535,14 +664,17 @@ export default function StudentExamTakeScreen() {
                     borderWidth: 1,
                     borderColor: selected ? '#1d4ed8' : '#cbd5e1',
                     backgroundColor: selected ? '#eff6ff' : '#fff',
-                    borderRadius: 9,
-                    padding: 10,
-                    marginBottom: 8,
+                    borderRadius: 14,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    marginBottom: 10,
                   }}
                 >
-                  <Text style={{ color: selected ? '#1d4ed8' : '#0f172a', fontWeight: '600' }}>
-                    {optionText}
-                  </Text>
+                  <ExamHtmlContent
+                    html={option.option_text || option.content || '-'}
+                    imageUrl={option.option_image_url || option.image_url}
+                    minHeight={56}
+                  />
                 </Pressable>
               );
             })}
