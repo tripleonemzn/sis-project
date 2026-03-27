@@ -1547,6 +1547,9 @@ export type StaffFinanceAuditSummary = {
 };
 
 export type StaffFinancePerformanceSignalTone = 'POSITIVE' | 'WATCH' | 'RISK';
+export type StaffFinanceIntegrityArea = 'VERIFICATION' | 'TREASURY' | 'APPROVAL' | 'CLOSING' | 'PORTAL' | 'DATA';
+export type StaffFinanceIntegritySeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type StaffFinanceIntegrityStatus = 'READY' | 'WATCH' | 'ACTION_REQUIRED' | 'BLOCKED';
 
 export type StaffFinancePerformanceSummary = {
   filters: {
@@ -1609,6 +1612,46 @@ export type StaffFinancePerformanceSummary = {
     netFlowAmount: number;
     finalizedReconciliationCount: number;
     finalizedClosingCount: number;
+  }>;
+};
+
+export type StaffFinanceIntegritySummary = {
+  filters: {
+    generatedAt: string;
+    limit: number;
+  };
+  overview: {
+    readinessScore: number;
+    status: StaffFinanceIntegrityStatus;
+    headline: string;
+    detail: string;
+    totalIssues: number;
+    blockingIssues: number;
+    highIssues: number;
+    passedChecks: number;
+    totalChecks: number;
+    pendingAmount: number;
+  };
+  checklist: Array<{
+    key: string;
+    title: string;
+    area: StaffFinanceIntegrityArea;
+    passed: boolean;
+    severity: StaffFinanceIntegritySeverity;
+    count: number;
+    amount: number;
+    detail: string;
+    updatedAt?: string | null;
+  }>;
+  issues: Array<{
+    key: string;
+    title: string;
+    area: StaffFinanceIntegrityArea;
+    severity: StaffFinanceIntegritySeverity;
+    detail: string;
+    count: number;
+    amount: number;
+    updatedAt?: string | null;
   }>;
 };
 
@@ -2499,6 +2542,18 @@ export const staffFinanceApi = {
   }) {
     const response = await apiClient.get<ApiResponse<StaffFinancePerformanceSummary>>(
       '/payments/performance-summary',
+      {
+        params,
+      },
+    );
+    return response.data.data;
+  },
+
+  async getIntegritySummary(params?: {
+    limit?: number;
+  }) {
+    const response = await apiClient.get<ApiResponse<StaffFinanceIntegritySummary>>(
+      '/payments/integrity-summary',
       {
         params,
       },

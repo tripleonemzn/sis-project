@@ -18,6 +18,7 @@ import {
   PaymentStatus,
   PaymentType,
   Prisma,
+  Role,
   Semester,
 } from '@prisma/client';
 import ExcelJS from 'exceljs';
@@ -3726,6 +3727,10 @@ const listFinanceAuditSummaryQuerySchema = z.object({
 
 const listFinancePerformanceSummaryQuerySchema = z.object({
   months: z.coerce.number().int().min(3).max(18).optional().default(6),
+});
+
+const listFinanceIntegritySummaryQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(12).optional().default(8),
 });
 
 const listFinanceBankReconciliationsQuerySchema = z.object({
@@ -7712,6 +7717,9 @@ type FinanceGovernanceSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 type FinanceAuditArea = 'POLICY' | 'COLLECTION' | 'TREASURY' | 'APPROVAL';
 type FinanceAuditSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 type FinancePerformanceSignalTone = 'POSITIVE' | 'WATCH' | 'RISK';
+type FinanceIntegrityArea = 'VERIFICATION' | 'TREASURY' | 'APPROVAL' | 'CLOSING' | 'PORTAL' | 'DATA';
+type FinanceIntegritySeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+type FinanceIntegrityStatus = 'READY' | 'WATCH' | 'ACTION_REQUIRED' | 'BLOCKED';
 
 function getFinanceGovernanceSeverityWeight(severity: FinanceGovernanceSeverity) {
   if (severity === 'CRITICAL') return 4;
@@ -7757,6 +7765,35 @@ function getFinanceMonthLabelShort(date: Date) {
     month: 'short',
     year: 'numeric',
   });
+}
+
+function getFinanceAgeInDays(value?: Date | string | null) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const diff = getFinanceStartOfDay(new Date()).getTime() - getFinanceStartOfDay(date).getTime();
+  return Math.max(0, Math.floor(diff / (24 * 60 * 60 * 1000)));
+}
+
+function formatFinanceAgeLabel(days?: number | null) {
+  if (days == null) return null;
+  if (days <= 0) return 'hari ini';
+  if (days === 1) return '1 hari';
+  return `${days} hari`;
+}
+
+function getFinanceIntegritySeverityWeight(severity: FinanceIntegritySeverity) {
+  if (severity === 'CRITICAL') return 22;
+  if (severity === 'HIGH') return 14;
+  if (severity === 'MEDIUM') return 8;
+  return 4;
+}
+
+function resolveFinanceIntegrityStatus(issues: Array<{ severity: FinanceIntegritySeverity }>): FinanceIntegrityStatus {
+  if (issues.some((issue) => issue.severity === 'CRITICAL')) return 'BLOCKED';
+  if (issues.some((issue) => issue.severity === 'HIGH')) return 'ACTION_REQUIRED';
+  if (issues.length > 0) return 'WATCH';
+  return 'READY';
 }
 
 async function buildFinanceGovernanceSummary(filters: {
@@ -9033,6 +9070,554 @@ async function buildFinancePerformanceSummary(filters: {
     },
     signals,
     monthlyTrend,
+  };
+}
+
+async function buildFinanceIntegritySummary(filters: {
+  limit: number;
+}) {
+  const issueLimit = Math.max(1, Math.min(12, Math.trunc(Number(filters.limit || 8))));
+  const now = new Date();
+  const todayStart = getFinanceStartOfDay(now);
+  const currentMonthStart = getFinanceMonthStart(now);
+
+  const pendingNonCashWhere: Prisma.FinancePaymentWhereInput = {
+    verificationStatus: FinancePaymentVerificationStatus.PENDING,
+    method: {
+      not: FinancePaymentMethod.CASH,
+    },
+  };
+
+  const portalPendingWhere: Prisma.FinancePaymentWhereInput = {
+    ...pendingNonCashWhere,
+    createdBy: {
+      is: {
+        role: {
+          in: [Role.STUDENT, Role.PARENT],
+        },
+      },
+    },
+  };
+
+  const pendingCashApprovalStatuses: FinanceCashSessionApprovalStatus[] = [
+    FinanceCashSessionApprovalStatus.PENDING_HEAD_TU,
+    FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL,
+  ];
+  const pendingClosingApprovalStatuses: FinanceClosingPeriodApprovalStatus[] = [
+    FinanceClosingPeriodApprovalStatus.PENDING_HEAD_TU,
+    FinanceClosingPeriodApprovalStatus.PENDING_PRINCIPAL,
+  ];
+  const pendingWriteOffStatuses: FinanceWriteOffStatus[] = [
+    FinanceWriteOffStatus.PENDING_HEAD_TU,
+    FinanceWriteOffStatus.PENDING_PRINCIPAL,
+  ];
+  const pendingReversalStatuses: FinancePaymentReversalStatus[] = [
+    FinancePaymentReversalStatus.PENDING_HEAD_TU,
+    FinancePaymentReversalStatus.PENDING_PRINCIPAL,
+  ];
+  const pendingReopenStatuses: FinanceClosingPeriodReopenStatus[] = [
+    FinanceClosingPeriodReopenStatus.PENDING_HEAD_TU,
+    FinanceClosingPeriodReopenStatus.PENDING_PRINCIPAL,
+  ];
+
+  const [
+    pendingNonCashAggregate,
+    pendingNonCashOldest,
+    portalPendingAggregate,
+    portalPendingOldest,
+    openCashSessions,
+    openReconciliationCount,
+    openReconciliationOldest,
+    unmatchedOpenStatements,
+    pendingWriteOffAggregate,
+    pendingReversalAggregate,
+    pendingCashSessionAggregate,
+    pendingClosingAggregate,
+    pendingReopenCount,
+    overdueClosingPeriods,
+    closedClosingAnomalies,
+    negativeCreditAggregate,
+  ] = await Promise.all([
+    prisma.financePayment.aggregate({
+      where: pendingNonCashWhere,
+      _count: { _all: true },
+      _sum: { amount: true },
+    }),
+    prisma.financePayment.findFirst({
+      where: pendingNonCashWhere,
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: {
+        createdAt: true,
+      },
+    }),
+    prisma.financePayment.aggregate({
+      where: portalPendingWhere,
+      _count: { _all: true },
+      _sum: { amount: true },
+    }),
+    prisma.financePayment.findFirst({
+      where: portalPendingWhere,
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: {
+        createdAt: true,
+      },
+    }),
+    prisma.financeCashSession.findMany({
+      where: {
+        status: FinanceCashSessionStatus.OPEN,
+      },
+      orderBy: [{ businessDate: 'asc' }, { openedAt: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        sessionNo: true,
+        businessDate: true,
+        openedAt: true,
+      },
+    }),
+    prisma.financeBankReconciliation.count({
+      where: {
+        status: 'OPEN',
+      },
+    }),
+    prisma.financeBankReconciliation.findFirst({
+      where: {
+        status: 'OPEN',
+      },
+      orderBy: [{ periodStart: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        reconciliationNo: true,
+        periodStart: true,
+      },
+    }),
+    prisma.financeBankStatementEntry.aggregate({
+      where: {
+        status: 'UNMATCHED',
+        reconciliation: {
+          status: 'OPEN',
+        },
+      },
+      _count: { _all: true },
+      _sum: { amount: true },
+    }),
+    prisma.financeWriteOffRequest.aggregate({
+      where: {
+        status: {
+          in: pendingWriteOffStatuses,
+        },
+      },
+      _count: { _all: true },
+      _sum: {
+        requestedAmount: true,
+      },
+    }),
+    prisma.financePaymentReversalRequest.aggregate({
+      where: {
+        status: {
+          in: pendingReversalStatuses,
+        },
+      },
+      _count: { _all: true },
+      _sum: {
+        requestedAmount: true,
+      },
+    }),
+    prisma.financeCashSession.aggregate({
+      where: {
+        approvalStatus: {
+          in: pendingCashApprovalStatuses,
+        },
+      },
+      _count: { _all: true },
+      _sum: {
+        varianceAmount: true,
+      },
+    }),
+    prisma.financeClosingPeriod.aggregate({
+      where: {
+        approvalStatus: {
+          in: pendingClosingApprovalStatuses,
+        },
+      },
+      _count: { _all: true },
+      _sum: {
+        outstandingAmount: true,
+        pendingVerificationAmount: true,
+        unmatchedBankAmount: true,
+      },
+    }),
+    prisma.financeClosingPeriodReopenRequest.count({
+      where: {
+        status: {
+          in: pendingReopenStatuses,
+        },
+      },
+    }),
+    prisma.financeClosingPeriod.findMany({
+      where: {
+        status: {
+          in: [FinanceClosingPeriodStatus.OPEN, FinanceClosingPeriodStatus.CLOSING_REVIEW],
+        },
+        periodEnd: {
+          lt: currentMonthStart,
+        },
+      },
+      orderBy: [{ periodEnd: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        periodNo: true,
+        label: true,
+        periodEnd: true,
+        outstandingAmount: true,
+        pendingVerificationAmount: true,
+        unmatchedBankAmount: true,
+        openCashSessionCount: true,
+        openReconciliationCount: true,
+      },
+    }),
+    prisma.financeClosingPeriod.findMany({
+      where: {
+        status: FinanceClosingPeriodStatus.CLOSED,
+        OR: [
+          { pendingVerificationAmount: { gt: 0 } },
+          { unmatchedBankAmount: { gt: 0 } },
+          { openCashSessionCount: { gt: 0 } },
+          { openReconciliationCount: { gt: 0 } },
+        ],
+      },
+      orderBy: [{ closedAt: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        periodNo: true,
+        label: true,
+        closedAt: true,
+        pendingVerificationAmount: true,
+        unmatchedBankAmount: true,
+        openCashSessionCount: true,
+        openReconciliationCount: true,
+      },
+    }),
+    prisma.financeCreditBalance.aggregate({
+      where: {
+        balanceAmount: {
+          lt: 0,
+        },
+      },
+      _count: { _all: true },
+      _sum: {
+        balanceAmount: true,
+      },
+    }),
+  ]);
+
+  const pendingNonCashCount = pendingNonCashAggregate._count._all;
+  const pendingNonCashAmount = normalizeFinanceAmount(Number(pendingNonCashAggregate._sum.amount || 0));
+  const pendingNonCashAgeDays = getFinanceAgeInDays(pendingNonCashOldest?.createdAt || null);
+
+  const portalPendingCount = portalPendingAggregate._count._all;
+  const portalPendingAmount = normalizeFinanceAmount(Number(portalPendingAggregate._sum.amount || 0));
+  const portalPendingAgeDays = getFinanceAgeInDays(portalPendingOldest?.createdAt || null);
+
+  const staleOpenCashSessions = openCashSessions.filter(
+    (session) => getFinanceStartOfDay(session.businessDate).getTime() < todayStart.getTime(),
+  );
+  const staleOpenCashAgeDays = getFinanceAgeInDays(staleOpenCashSessions[0]?.businessDate || null);
+
+  const unmatchedOpenStatementCount = unmatchedOpenStatements._count._all;
+  const unmatchedOpenStatementAmount = normalizeFinanceAmount(
+    Number(unmatchedOpenStatements._sum.amount || 0),
+  );
+  const openReconciliationAgeDays = getFinanceAgeInDays(openReconciliationOldest?.periodStart || null);
+
+  const pendingApprovalCount =
+    pendingWriteOffAggregate._count._all +
+    pendingReversalAggregate._count._all +
+    pendingCashSessionAggregate._count._all +
+    pendingClosingAggregate._count._all +
+    pendingReopenCount;
+  const pendingApprovalAmount = normalizeFinanceAmount(
+    Number(pendingWriteOffAggregate._sum.requestedAmount || 0) +
+      Number(pendingReversalAggregate._sum.requestedAmount || 0) +
+      Math.abs(Number(pendingCashSessionAggregate._sum.varianceAmount || 0)) +
+      Number(pendingClosingAggregate._sum.outstandingAmount || 0) +
+      Number(pendingClosingAggregate._sum.pendingVerificationAmount || 0) +
+      Number(pendingClosingAggregate._sum.unmatchedBankAmount || 0),
+  );
+
+  const overdueClosingAmount = normalizeFinanceAmount(
+    overdueClosingPeriods.reduce(
+      (sum, period) =>
+        sum +
+        Number(period.outstandingAmount || 0) +
+        Number(period.pendingVerificationAmount || 0) +
+        Number(period.unmatchedBankAmount || 0),
+      0,
+    ),
+  );
+  const overdueClosingAgeDays = getFinanceAgeInDays(overdueClosingPeriods[0]?.periodEnd || null);
+
+  const closedClosingAnomalyAmount = normalizeFinanceAmount(
+    closedClosingAnomalies.reduce(
+      (sum, period) =>
+        sum +
+        Number(period.pendingVerificationAmount || 0) +
+        Number(period.unmatchedBankAmount || 0),
+      0,
+    ),
+  );
+  const negativeCreditCount = negativeCreditAggregate._count._all;
+  const negativeCreditAmount = Math.abs(Number(negativeCreditAggregate._sum.balanceAmount || 0));
+  const dataAnomalyCount = closedClosingAnomalies.length + negativeCreditCount;
+  const dataAnomalyAmount = normalizeFinanceAmount(closedClosingAnomalyAmount + negativeCreditAmount);
+
+  const checklist: Array<{
+    key: string;
+    title: string;
+    area: FinanceIntegrityArea;
+    passed: boolean;
+    severity: FinanceIntegritySeverity;
+    count: number;
+    amount: number;
+    detail: string;
+    updatedAt: string | null;
+  }> = [];
+
+  const verificationPassed = pendingNonCashCount === 0;
+  const verificationSeverity: FinanceIntegritySeverity =
+    pendingNonCashCount === 0
+      ? 'LOW'
+      : pendingNonCashAgeDays != null && pendingNonCashAgeDays >= 5
+        ? 'CRITICAL'
+        : pendingNonCashAmount >= 25000000 || pendingNonCashCount >= 25
+          ? 'CRITICAL'
+          : pendingNonCashAgeDays != null && pendingNonCashAgeDays >= 3
+            ? 'HIGH'
+            : pendingNonCashAmount >= 10000000 || pendingNonCashCount >= 10
+              ? 'HIGH'
+              : 'MEDIUM';
+  checklist.push({
+    key: 'verification_backlog',
+    title: 'Verifikasi pembayaran non-tunai',
+    area: 'VERIFICATION',
+    passed: verificationPassed,
+    severity: verificationSeverity,
+    count: pendingNonCashCount,
+    amount: pendingNonCashAmount,
+    detail: verificationPassed
+      ? 'Tidak ada pembayaran non-tunai yang menunggu verifikasi.'
+      : `${pendingNonCashCount} pembayaran pending senilai ${formatFinanceGovernanceCurrency(
+          pendingNonCashAmount,
+        )}${pendingNonCashAgeDays != null ? ` • tertua ${formatFinanceAgeLabel(pendingNonCashAgeDays)}` : ''}.`,
+    updatedAt: pendingNonCashOldest?.createdAt?.toISOString() || null,
+  });
+
+  const portalPassed = portalPendingCount === 0;
+  const portalSeverity: FinanceIntegritySeverity =
+    portalPendingCount === 0
+      ? 'LOW'
+      : portalPendingAgeDays != null && portalPendingAgeDays >= 7
+        ? 'CRITICAL'
+        : portalPendingAmount >= 25000000 || portalPendingCount >= 20
+          ? 'CRITICAL'
+          : portalPendingAgeDays != null && portalPendingAgeDays >= 3
+            ? 'HIGH'
+            : portalPendingAmount >= 10000000 || portalPendingCount >= 8
+              ? 'HIGH'
+              : 'MEDIUM';
+  checklist.push({
+    key: 'portal_backlog',
+    title: 'Submission pembayaran portal',
+    area: 'PORTAL',
+    passed: portalPassed,
+    severity: portalSeverity,
+    count: portalPendingCount,
+    amount: portalPendingAmount,
+    detail: portalPassed
+      ? 'Tidak ada submission pembayaran siswa/orang tua yang menggantung.'
+      : `${portalPendingCount} submission portal belum diverifikasi senilai ${formatFinanceGovernanceCurrency(
+          portalPendingAmount,
+        )}${portalPendingAgeDays != null ? ` • tertua ${formatFinanceAgeLabel(portalPendingAgeDays)}` : ''}.`,
+    updatedAt: portalPendingOldest?.createdAt?.toISOString() || null,
+  });
+
+  const treasuryIssueCount =
+    staleOpenCashSessions.length + openReconciliationCount + (unmatchedOpenStatementCount > 0 ? 1 : 0);
+  const treasuryPassed = treasuryIssueCount === 0;
+  const treasurySeverity: FinanceIntegritySeverity =
+    treasuryPassed
+      ? 'LOW'
+      : staleOpenCashAgeDays != null && staleOpenCashAgeDays >= 2
+        ? 'CRITICAL'
+        : openReconciliationAgeDays != null && openReconciliationAgeDays >= 14
+          ? 'CRITICAL'
+          : unmatchedOpenStatementAmount >= 25000000
+            ? 'CRITICAL'
+            : staleOpenCashSessions.length > 0 || openReconciliationCount > 0 || unmatchedOpenStatementAmount > 0
+              ? 'HIGH'
+              : 'MEDIUM';
+  checklist.push({
+    key: 'treasury_open_items',
+    title: 'Treasury open items',
+    area: 'TREASURY',
+    passed: treasuryPassed,
+    severity: treasurySeverity,
+    count: treasuryIssueCount,
+    amount: unmatchedOpenStatementAmount,
+    detail: treasuryPassed
+      ? 'Sesi kas, rekonsiliasi bank, dan mutasi terbuka sudah bersih.'
+      : `${staleOpenCashSessions.length} sesi kas terbuka • ${openReconciliationCount} rekonsiliasi open${
+          unmatchedOpenStatementCount > 0
+            ? ` • ${unmatchedOpenStatementCount} mutasi belum match senilai ${formatFinanceGovernanceCurrency(
+                unmatchedOpenStatementAmount,
+              )}`
+            : ''
+        }.`,
+    updatedAt:
+      openReconciliationOldest?.periodStart?.toISOString() ||
+      staleOpenCashSessions[0]?.openedAt?.toISOString() ||
+      null,
+  });
+
+  const approvalPassed = pendingApprovalCount === 0;
+  const approvalSeverity: FinanceIntegritySeverity =
+    approvalPassed
+      ? 'LOW'
+      : pendingApprovalAmount >= 50000000 || pendingApprovalCount >= 20
+        ? 'CRITICAL'
+        : pendingApprovalAmount >= 25000000 || pendingApprovalCount >= 8
+          ? 'HIGH'
+          : 'MEDIUM';
+  checklist.push({
+    key: 'approval_backlog',
+    title: 'Approval finance bertingkat',
+    area: 'APPROVAL',
+    passed: approvalPassed,
+    severity: approvalSeverity,
+    count: pendingApprovalCount,
+    amount: pendingApprovalAmount,
+    detail: approvalPassed
+      ? 'Tidak ada approval write-off, reversal, settlement, closing, atau reopen yang tertunda.'
+      : `${pendingApprovalCount} approval finance masih menggantung dengan exposure ${formatFinanceGovernanceCurrency(
+          pendingApprovalAmount,
+        )}.`,
+    updatedAt: null,
+  });
+
+  const closingPassed = overdueClosingPeriods.length === 0;
+  const closingSeverity: FinanceIntegritySeverity =
+    closingPassed
+      ? 'LOW'
+      : overdueClosingAgeDays != null && overdueClosingAgeDays >= 31
+        ? 'CRITICAL'
+        : overdueClosingAmount >= 50000000 || overdueClosingPeriods.length >= 2
+          ? 'CRITICAL'
+          : 'HIGH';
+  checklist.push({
+    key: 'closing_discipline',
+    title: 'Disiplin closing period',
+    area: 'CLOSING',
+    passed: closingPassed,
+    severity: closingSeverity,
+    count: overdueClosingPeriods.length,
+    amount: overdueClosingAmount,
+    detail: closingPassed
+      ? 'Tidak ada closing period lampau yang tertinggal.'
+      : `${overdueClosingPeriods.length} period lampau belum selesai dengan exposure ${formatFinanceGovernanceCurrency(
+          overdueClosingAmount,
+        )}${overdueClosingAgeDays != null ? ` • tertua ${formatFinanceAgeLabel(overdueClosingAgeDays)}` : ''}.`,
+    updatedAt: overdueClosingPeriods[0]?.periodEnd?.toISOString() || null,
+  });
+
+  const dataPassed = dataAnomalyCount === 0;
+  const dataSeverity: FinanceIntegritySeverity =
+    dataPassed ? 'LOW' : closedClosingAnomalies.length > 0 ? 'CRITICAL' : 'HIGH';
+  checklist.push({
+    key: 'data_integrity',
+    title: 'Anomali data finance',
+    area: 'DATA',
+    passed: dataPassed,
+    severity: dataSeverity,
+    count: dataAnomalyCount,
+    amount: dataAnomalyAmount,
+    detail: dataPassed
+      ? 'Tidak ada closed period bermasalah atau saldo kredit negatif.'
+      : `${closedClosingAnomalies.length} closed period masih menyimpan blocker${
+          negativeCreditCount > 0 ? ` • ${negativeCreditCount} saldo kredit negatif` : ''
+        } • exposure ${formatFinanceGovernanceCurrency(dataAnomalyAmount)}.`,
+    updatedAt: closedClosingAnomalies[0]?.closedAt?.toISOString() || null,
+  });
+
+  const issues = checklist
+    .filter((item) => !item.passed)
+    .map((item) => ({
+      key: item.key,
+      title: item.title,
+      area: item.area,
+      severity: item.severity,
+      detail: item.detail,
+      count: item.count,
+      amount: item.amount,
+      updatedAt: item.updatedAt,
+    }))
+    .sort((left, right) => {
+      const severityDiff =
+        getFinanceIntegritySeverityWeight(right.severity) -
+        getFinanceIntegritySeverityWeight(left.severity);
+      if (severityDiff !== 0) return severityDiff;
+      if (right.amount !== left.amount) return right.amount - left.amount;
+      if (right.count !== left.count) return right.count - left.count;
+      return left.title.localeCompare(right.title, 'id-ID', { sensitivity: 'base' });
+    });
+
+  const blockingIssues = issues.filter((issue) => issue.severity === 'CRITICAL').length;
+  const highIssues = issues.filter((issue) => issue.severity === 'HIGH').length;
+  const totalPendingAmount = normalizeFinanceAmount(
+    issues.reduce((sum, issue) => sum + Number(issue.amount || 0), 0),
+  );
+  const scoreDeduction = issues.reduce((sum, issue) => {
+    return (
+      sum +
+      getFinanceIntegritySeverityWeight(issue.severity) +
+      Math.min(12, Math.max(0, issue.count - 1))
+    );
+  }, 0);
+  const readinessScore = Math.max(0, Math.min(100, 100 - scoreDeduction));
+  const status = resolveFinanceIntegrityStatus(issues);
+  const passedChecks = checklist.filter((item) => item.passed).length;
+  const topIssue = issues[0] || null;
+
+  const headline =
+    status === 'READY'
+      ? 'Kesiapan finance bersih dan siap operasional'
+      : status === 'WATCH'
+        ? 'Ada backlog ringan yang perlu dirapikan'
+        : status === 'ACTION_REQUIRED'
+          ? 'Masih ada alur finance yang perlu dibereskan segera'
+          : 'Masih ada blocker integritas finance yang harus ditutup';
+
+  const detail = topIssue
+    ? `${topIssue.title}: ${topIssue.detail}`
+    : 'Tidak ada backlog verifikasi, approval tertunda, atau anomali data yang terdeteksi.';
+
+  return {
+    filters: {
+      generatedAt: new Date().toISOString(),
+      limit: issueLimit,
+    },
+    overview: {
+      readinessScore,
+      status,
+      headline,
+      detail,
+      totalIssues: issues.length,
+      blockingIssues,
+      highIssues,
+      passedChecks,
+      totalChecks: checklist.length,
+      pendingAmount: totalPendingAmount,
+    },
+    checklist,
+    issues: issues.slice(0, issueLimit),
   };
 }
 
@@ -11448,6 +12033,19 @@ export const getFinanceAuditSummary = asyncHandler(async (req: Request, res: Res
   res
     .status(200)
     .json(new ApiResponse(200, snapshot, 'Ringkasan audit finance berhasil diambil'));
+});
+
+export const getFinanceIntegritySummary = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinanceActor((req as any).user || {}, {
+    allowPrincipalReadOnly: true,
+    allowHeadTuReadOnly: true,
+  });
+
+  const filters = listFinanceIntegritySummaryQuerySchema.parse(req.query || {});
+  const snapshot = await buildFinanceIntegritySummary(filters);
+  res
+    .status(200)
+    .json(new ApiResponse(200, snapshot, 'Ringkasan integrity finance berhasil diambil'));
 });
 
 export const getFinancePerformanceSummary = asyncHandler(async (req: Request, res: Response) => {

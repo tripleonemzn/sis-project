@@ -20,6 +20,7 @@ import {
   type StaffFinanceClosingPeriod,
   type StaffFinanceClosingPeriodReopenRequest,
   type StaffFinanceGovernanceSummary,
+  type StaffFinanceIntegritySummary,
   type StaffFinancePerformanceSummary,
   type StaffFinancePaymentReversalRequest,
   type StaffFinanceWriteOffRequest,
@@ -159,6 +160,20 @@ function getPerformanceSignalStyle(level: StaffFinancePerformanceSummary['signal
   return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
 }
 
+function getIntegrityStatusStyle(level: StaffFinanceIntegritySummary['overview']['status']) {
+  if (level === 'READY') return { bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  if (level === 'WATCH') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  if (level === 'ACTION_REQUIRED') return { bg: '#ffedd5', border: '#fdba74', text: '#c2410c' };
+  return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+}
+
+function getIntegritySeverityStyle(level: StaffFinanceIntegritySummary['issues'][number]['severity']) {
+  if (level === 'CRITICAL') return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+  if (level === 'HIGH') return { bg: '#ffedd5', border: '#fdba74', text: '#c2410c' };
+  if (level === 'MEDIUM') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  return { bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
+}
+
 export default function StaffAdminScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -282,6 +297,17 @@ export default function StaffAdminScreen() {
     staleTime: 60 * 1000,
   });
 
+  const headTuIntegrityQuery = useQuery({
+    queryKey: ['mobile-head-tu-finance-integrity', user?.id],
+    enabled: isAuthenticated && user?.role === 'STAFF' && staffDivision === 'HEAD_TU',
+    queryFn: () =>
+      staffFinanceApi.getIntegritySummary({
+        limit: 6,
+      }),
+    staleTime: 60 * 1000,
+    refetchInterval: 45_000,
+  });
+
   const headTuClosingPeriodsQuery = useQuery({
     queryKey: ['mobile-head-tu-finance-closing-periods', user?.id],
     enabled: isAuthenticated && user?.role === 'STAFF' && staffDivision === 'HEAD_TU',
@@ -317,6 +343,7 @@ export default function StaffAdminScreen() {
       }),
     onSuccess: (_, payload) => {
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-write-offs', user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-integrity', user?.id] });
       const message = payload.approved ? 'Write-off diteruskan ke Kepala Sekolah.' : 'Pengajuan write-off ditolak.';
       notifySuccess(message);
     },
@@ -332,6 +359,7 @@ export default function StaffAdminScreen() {
       }),
     onSuccess: (_, payload) => {
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-payment-reversals', user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-integrity', user?.id] });
       notifySuccess(payload.approved ? 'Reversal diteruskan ke Kepala Sekolah.' : 'Pengajuan reversal ditolak.');
     },
     onError: (error: unknown) => {
@@ -348,6 +376,7 @@ export default function StaffAdminScreen() {
     onSuccess: (_, payload) => {
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-cash-session-approvals', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-cash-sessions', user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-integrity', user?.id] });
       notifySuccess(payload.approved ? 'Settlement kas diproses oleh Head TU.' : 'Settlement kas ditolak.');
     },
     onError: (error: unknown) => {
@@ -364,6 +393,7 @@ export default function StaffAdminScreen() {
     onSuccess: (_, payload) => {
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-closing-periods', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-closing-period-approvals', user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-integrity', user?.id] });
       notifySuccess(payload.approved ? 'Closing period diproses oleh Head TU.' : 'Closing period ditolak.');
     },
     onError: (error: unknown) => {
@@ -381,6 +411,7 @@ export default function StaffAdminScreen() {
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-closing-periods', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-closing-period-reopen-requests', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-closing-period-reopen-approvals', user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-integrity', user?.id] });
       notifySuccess(payload.approved ? 'Reopen closing period diproses oleh Head TU.' : 'Reopen closing period ditolak.');
     },
     onError: (error: unknown) => {
@@ -474,6 +505,7 @@ export default function StaffAdminScreen() {
     [headTuClosingPeriodReopenRequestsQuery.data],
   );
   const headTuClosingPeriodReopenSummary = headTuClosingPeriodReopenRequestsQuery.data?.summary;
+  const headTuIntegrity = headTuIntegrityQuery.data || null;
   const headTuPendingClosingPeriods = useMemo(
     () => headTuClosingPeriodApprovalsQuery.data?.periods || [],
     [headTuClosingPeriodApprovalsQuery.data],
@@ -494,6 +526,7 @@ export default function StaffAdminScreen() {
       void headTuGovernanceQuery.refetch();
       void headTuAuditQuery.refetch();
       void headTuPerformanceQuery.refetch();
+      void headTuIntegrityQuery.refetch();
       void headTuBudgetRealizationQuery.refetch();
       void headTuClosingPeriodsQuery.refetch();
       void headTuClosingPeriodApprovalsQuery.refetch();
@@ -751,9 +784,117 @@ export default function StaffAdminScreen() {
                     </Text>
                   </View>
                 ))}
-              </>
-            )}
+          </>
+        )}
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#dbe7fb',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Integrity &amp; Readiness</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+              Checklist final untuk melihat apakah finance sudah benar-benar bersih dari backlog dan blocker.
+            </Text>
           </View>
+          {headTuIntegrity ? (
+            (() => {
+              const badge = getIntegrityStatusStyle(headTuIntegrity.overview.status);
+              return (
+                <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                  <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{headTuIntegrity.overview.status}</Text>
+                </View>
+              );
+            })()
+          ) : null}
+        </View>
+
+        {headTuIntegrityQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil integrity finance..." />
+        ) : !headTuIntegrity ? (
+          <Text style={{ color: BRAND_COLORS.textMuted }}>Ringkasan integrity finance belum tersedia.</Text>
+        ) : (
+          <>
+            <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <SummaryCard title="Score" value={`${headTuIntegrity.overview.readinessScore}%`} subtitle="Kesiapan aktual" />
+              </View>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <SummaryCard
+                  title="Checklist"
+                  value={`${headTuIntegrity.overview.passedChecks}/${headTuIntegrity.overview.totalChecks}`}
+                  subtitle="Lolos"
+                />
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <SummaryCard title="Issue" value={String(headTuIntegrity.overview.totalIssues)} subtitle="Aktif" />
+              </View>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <SummaryCard title="Exposure" value={formatCurrency(headTuIntegrity.overview.pendingAmount)} subtitle="Perhatian" />
+              </View>
+            </View>
+
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Checklist Penutup</Text>
+            {headTuIntegrity.checklist.map((item) => {
+              const badge = item.passed
+                ? { bg: '#dcfce7', border: '#86efac', text: '#166534', label: 'PASS' }
+                : { ...getIntegritySeverityStyle(item.severity), label: item.severity };
+              return (
+                <View key={item.key} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 10 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.title}</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{item.detail}</Text>
+                    </View>
+                    <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                      <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{badge.label}</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 8, marginBottom: 6 }}>Issue Queue</Text>
+            {headTuIntegrity.issues.length === 0 ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada issue aktif. Finance terlihat bersih.</Text>
+            ) : (
+              headTuIntegrity.issues.map((issue) => {
+                const badge = getIntegritySeverityStyle(issue.severity);
+                return (
+                  <View key={issue.key} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 10 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                            <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{issue.severity}</Text>
+                          </View>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }}>{issue.area}</Text>
+                        </View>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 6 }}>{issue.title}</Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{issue.detail}</Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatCurrency(issue.amount)}</Text>
+                        <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>{issue.count} item</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </>
+        )}
+      </View>
 
           <View
             style={{

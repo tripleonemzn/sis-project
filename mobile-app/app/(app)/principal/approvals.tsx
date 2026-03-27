@@ -27,6 +27,7 @@ import {
   type StaffFinanceClosingPeriod,
   type StaffFinanceClosingPeriodReopenRequest,
   type StaffFinanceGovernanceSummary,
+  type StaffFinanceIntegritySummary,
   type StaffFinancePerformanceSummary,
   type StaffFinancePaymentReversalRequest,
   type StaffFinanceWriteOffRequest,
@@ -115,6 +116,20 @@ function getPerformanceSignalStyle(level: StaffFinancePerformanceSummary['signal
   if (level === 'POSITIVE') return { bg: '#dcfce7', border: '#86efac', text: '#166534' };
   if (level === 'WATCH') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
   return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+}
+
+function getIntegrityStatusStyle(level: StaffFinanceIntegritySummary['overview']['status']) {
+  if (level === 'READY') return { bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  if (level === 'WATCH') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  if (level === 'ACTION_REQUIRED') return { bg: '#ffedd5', border: '#fdba74', text: '#c2410c' };
+  return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+}
+
+function getIntegritySeverityStyle(level: StaffFinanceIntegritySummary['issues'][number]['severity']) {
+  if (level === 'CRITICAL') return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+  if (level === 'HIGH') return { bg: '#ffedd5', border: '#fdba74', text: '#c2410c' };
+  if (level === 'MEDIUM') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  return { bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
 }
 
 export default function PrincipalApprovalsScreen() {
@@ -210,6 +225,17 @@ export default function PrincipalApprovalsScreen() {
     staleTime: 60 * 1000,
   });
 
+  const integrityQuery = useQuery({
+    queryKey: ['mobile-principal-finance-integrity', user?.id],
+    enabled: isAuthenticated && user?.role === 'PRINCIPAL',
+    queryFn: () =>
+      staffFinanceApi.getIntegritySummary({
+        limit: 6,
+      }),
+    staleTime: 60 * 1000,
+    refetchInterval: 45_000,
+  });
+
   const closingPeriodsQuery = useQuery({
     queryKey: ['mobile-principal-closing-periods', user?.id],
     enabled: isAuthenticated && user?.role === 'PRINCIPAL',
@@ -259,6 +285,7 @@ export default function PrincipalApprovalsScreen() {
       }),
     onSuccess: (_, payload) => {
       void queryClient.invalidateQueries({ queryKey: ['mobile-principal-write-offs', user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['mobile-principal-finance-integrity', user?.id] });
       notifySuccess(payload.approved ? 'Write-off disetujui.' : 'Write-off ditolak.');
     },
     onError: (error: unknown) => {
@@ -273,6 +300,7 @@ export default function PrincipalApprovalsScreen() {
       }),
     onSuccess: (_, payload) => {
       void queryClient.invalidateQueries({ queryKey: ['mobile-principal-payment-reversals', user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['mobile-principal-finance-integrity', user?.id] });
       notifySuccess(payload.approved ? 'Reversal pembayaran disetujui.' : 'Reversal pembayaran ditolak.');
     },
     onError: (error: unknown) => {
@@ -305,6 +333,7 @@ export default function PrincipalApprovalsScreen() {
     onSuccess: (_, payload) => {
       void queryClient.invalidateQueries({ queryKey: ['mobile-principal-closing-periods', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['mobile-principal-closing-period-approvals', user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['mobile-principal-finance-integrity', user?.id] });
       notifySuccess(payload.approved ? 'Closing period disetujui.' : 'Closing period ditolak.');
     },
     onError: (error: unknown) => {
@@ -323,6 +352,7 @@ export default function PrincipalApprovalsScreen() {
       void queryClient.invalidateQueries({ queryKey: ['mobile-principal-closing-period-approvals', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['mobile-principal-closing-period-reopen-requests', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['mobile-principal-closing-period-reopen-approvals', user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['mobile-principal-finance-integrity', user?.id] });
       notifySuccess(payload.approved ? 'Reopen closing period disetujui.' : 'Reopen closing period ditolak.');
     },
     onError: (error: unknown) => {
@@ -343,6 +373,7 @@ export default function PrincipalApprovalsScreen() {
   const financeGovernance = governanceQuery.data || null;
   const financeAudit = auditQuery.data || null;
   const financePerformance = performanceQuery.data || null;
+  const financeIntegrity = integrityQuery.data || null;
   const financeClosingPeriods = useMemo(
     () => closingPeriodsQuery.data?.periods || [],
     [closingPeriodsQuery.data],
@@ -519,6 +550,7 @@ export default function PrincipalApprovalsScreen() {
             (cashSessionsQuery.isFetching && !cashSessionsQuery.isLoading) ||
             (cashSessionApprovalsQuery.isFetching && !cashSessionApprovalsQuery.isLoading) ||
             (bankReconciliationsQuery.isFetching && !bankReconciliationsQuery.isLoading) ||
+            (integrityQuery.isFetching && !integrityQuery.isLoading) ||
             (performanceQuery.isFetching && !performanceQuery.isLoading) ||
             (auditQuery.isFetching && !auditQuery.isLoading) ||
             (budgetRealizationQuery.isFetching && !budgetRealizationQuery.isLoading) ||
@@ -535,6 +567,7 @@ export default function PrincipalApprovalsScreen() {
             void cashSessionApprovalsQuery.refetch();
             void bankReconciliationsQuery.refetch();
             void governanceQuery.refetch();
+            void integrityQuery.refetch();
             void performanceQuery.refetch();
             void auditQuery.refetch();
             void budgetRealizationQuery.refetch();
@@ -870,6 +903,134 @@ export default function PrincipalApprovalsScreen() {
                         </Text>
                       </View>
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatCurrency(item.amount)}</Text>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </>
+        )}
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#d6e2f7',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Integrity &amp; Readiness</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+              Checklist final untuk memastikan finance tidak menyisakan blocker operasional sebelum dianggap siap penuh.
+            </Text>
+          </View>
+          {financeIntegrity ? (
+            (() => {
+              const badge = getIntegrityStatusStyle(financeIntegrity.overview.status);
+              return (
+                <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                  <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{financeIntegrity.overview.status}</Text>
+                </View>
+              );
+            })()
+          ) : null}
+        </View>
+
+        {integrityQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil integrity finance..." />
+        ) : !financeIntegrity ? (
+          <Text style={{ color: BRAND_COLORS.textMuted }}>Ringkasan integrity finance belum tersedia.</Text>
+        ) : (
+          <>
+            <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, padding: 12 }}>
+                  <Text style={{ color: '#64748b', fontSize: 11 }}>Score</Text>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 3 }}>
+                    {financeIntegrity.overview.readinessScore}%
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>Kesiapan aktual</Text>
+                </View>
+              </View>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, padding: 12 }}>
+                  <Text style={{ color: '#64748b', fontSize: 11 }}>Checklist</Text>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 3 }}>
+                    {financeIntegrity.overview.passedChecks}/{financeIntegrity.overview.totalChecks}
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>Lolos</Text>
+                </View>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, padding: 12 }}>
+                  <Text style={{ color: '#64748b', fontSize: 11 }}>Issue</Text>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 3 }}>
+                    {financeIntegrity.overview.totalIssues}
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>Aktif</Text>
+                </View>
+              </View>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, padding: 12 }}>
+                  <Text style={{ color: '#64748b', fontSize: 11 }}>Exposure</Text>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 3 }}>
+                    {formatCurrency(financeIntegrity.overview.pendingAmount)}
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>Perhatian</Text>
+                </View>
+              </View>
+            </View>
+
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Checklist Penutup</Text>
+            {financeIntegrity.checklist.map((item) => {
+              const badge = item.passed
+                ? { bg: '#dcfce7', border: '#86efac', text: '#166534', label: 'PASS' }
+                : { ...getIntegritySeverityStyle(item.severity), label: item.severity };
+              return (
+                <View key={item.key} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 10 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.title}</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{item.detail}</Text>
+                    </View>
+                    <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                      <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{badge.label}</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 8, marginBottom: 6 }}>Issue Queue</Text>
+            {financeIntegrity.issues.length === 0 ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada issue aktif. Finance terlihat bersih.</Text>
+            ) : (
+              financeIntegrity.issues.map((issue) => {
+                const badge = getIntegritySeverityStyle(issue.severity);
+                return (
+                  <View key={issue.key} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 10 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                            <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{issue.severity}</Text>
+                          </View>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }}>{issue.area}</Text>
+                        </View>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 6 }}>{issue.title}</Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{issue.detail}</Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatCurrency(issue.amount)}</Text>
+                        <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>{issue.count} item</Text>
+                      </View>
                     </View>
                   </View>
                 );

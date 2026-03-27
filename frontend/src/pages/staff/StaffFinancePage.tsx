@@ -26,6 +26,7 @@ import {
   type FinanceComponentPeriodicity,
   type FinanceInvoice,
   type FinanceInvoiceStatus,
+  type FinanceIntegritySummary,
   type FinanceLedgerBook,
   type FinanceLedgerEntry,
   type FinanceLateFeeMode,
@@ -269,6 +270,20 @@ function getPerformanceSignalTone(tone: FinancePerformanceSummary['signals'][num
     return 'bg-amber-50 text-amber-700 border border-amber-200';
   }
   return 'bg-rose-50 text-rose-700 border border-rose-200';
+}
+
+function getIntegrityStatusTone(status: FinanceIntegritySummary['overview']['status']) {
+  if (status === 'READY') return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+  if (status === 'WATCH') return 'bg-amber-50 text-amber-700 border border-amber-200';
+  if (status === 'ACTION_REQUIRED') return 'bg-orange-50 text-orange-700 border border-orange-200';
+  return 'bg-rose-50 text-rose-700 border border-rose-200';
+}
+
+function getIntegritySeverityTone(severity: FinanceIntegritySummary['issues'][number]['severity']) {
+  if (severity === 'CRITICAL') return 'bg-rose-50 text-rose-700 border border-rose-200';
+  if (severity === 'HIGH') return 'bg-orange-50 text-orange-700 border border-orange-200';
+  if (severity === 'MEDIUM') return 'bg-amber-50 text-amber-700 border border-amber-200';
+  return 'bg-slate-50 text-slate-700 border border-slate-200';
 }
 
 function isTrackedNonCashPaymentMethod(method?: FinancePaymentMethod | null) {
@@ -871,6 +886,16 @@ export const StaffFinancePage = () => {
     staleTime: 30_000,
   });
 
+  const integritySummaryQuery = useQuery({
+    queryKey: ['staff-finance-integrity-summary'],
+    queryFn: () =>
+      staffFinanceService.getIntegritySummary({
+        limit: 6,
+      }),
+    staleTime: 30_000,
+    refetchInterval: 45_000,
+  });
+
   const closingPeriodApprovalPolicyQuery = useQuery({
     queryKey: ['staff-finance-closing-period-policy'],
     queryFn: () => staffFinanceService.getClosingPeriodApprovalPolicy(),
@@ -927,6 +952,7 @@ export const StaffFinancePage = () => {
   const closingPeriodApprovalPolicy = closingPeriodApprovalPolicyQuery.data || null;
   const budgetRealizationSummary = budgetRealizationQuery.data || null;
   const performanceSummary = performanceSummaryQuery.data || null;
+  const integritySummary = integritySummaryQuery.data || null;
   const closedClosingPeriods = useMemo(
     () => closingPeriods.filter((period) => period.status === 'CLOSED'),
     [closingPeriods],
@@ -4752,6 +4778,133 @@ export const StaffFinancePage = () => {
                       </tbody>
                     </table>
                   </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-4 border-b border-slate-100">
+          <div className="text-xs uppercase tracking-wider text-slate-700">Finance Integrity &amp; Readiness</div>
+          <p className="mt-1 text-sm text-slate-600">
+            Checklist penutup untuk memastikan verifikasi, approval, treasury, closing, dan portal finance benar-benar bersih sebelum dianggap siap penuh.
+          </p>
+        </div>
+        <div className="p-4 space-y-4">
+          {integritySummaryQuery.isLoading ? (
+            <div className="text-sm text-slate-500">Memuat integrity finance...</div>
+          ) : !integritySummary ? (
+            <div className="text-sm text-slate-500">Ringkasan integrity finance belum tersedia.</div>
+          ) : (
+            <>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">{integritySummary.overview.headline}</div>
+                    <div className="mt-1 text-xs text-slate-600">{integritySummary.overview.detail}</div>
+                  </div>
+                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getIntegrityStatusTone(integritySummary.overview.status)}`}>
+                    {integritySummary.overview.status}
+                  </span>
+                </div>
+                <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+                    <div className="text-[11px] uppercase tracking-wider text-slate-700">Readiness Score</div>
+                    <div className="mt-1 text-sm font-bold text-slate-900">{integritySummary.overview.readinessScore}%</div>
+                  </div>
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3">
+                    <div className="text-[11px] uppercase tracking-wider text-emerald-700">Checklist Lolos</div>
+                    <div className="mt-1 text-sm font-bold text-emerald-900">
+                      {integritySummary.overview.passedChecks}/{integritySummary.overview.totalChecks}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3">
+                    <div className="text-[11px] uppercase tracking-wider text-amber-700">Issue Aktif</div>
+                    <div className="mt-1 text-sm font-bold text-amber-900">
+                      {integritySummary.overview.totalIssues}
+                    </div>
+                    <div className="mt-1 text-[11px] text-amber-700">
+                      Blocker {integritySummary.overview.blockingIssues} • high {integritySummary.overview.highIssues}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-3">
+                    <div className="text-[11px] uppercase tracking-wider text-rose-700">Exposure</div>
+                    <div className="mt-1 text-sm font-bold text-rose-900">
+                      {formatCurrency(integritySummary.overview.pendingAmount)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-[0.42fr_0.58fr] gap-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Checklist Penutup</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      Penilaian dinamis terhadap backlog penting yang paling sering menghambat kesiapan finance.
+                    </div>
+                  </div>
+                  {integritySummary.checklist.map((item) => (
+                    <div key={item.key} className="rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-semibold text-slate-900">{item.title}</div>
+                        <span
+                          className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${
+                            item.passed
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : getIntegritySeverityTone(item.severity)
+                          }`}
+                        >
+                          {item.passed ? 'PASS' : item.severity}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500">{item.detail}</div>
+                      <div className="mt-2 text-[11px] text-slate-400">
+                        {item.area} • {item.count} item • {formatCurrency(item.amount)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Issue Queue</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        Antrian anomaly dan backlog yang paling perlu ditutup untuk mencapai kesiapan penuh.
+                      </div>
+                    </div>
+                    <div className="text-xs text-slate-500">{integritySummary.issues.length} issue</div>
+                  </div>
+                  {integritySummary.issues.length === 0 ? (
+                    <div className="px-4 py-8 text-sm text-slate-500">Tidak ada issue aktif. Integrity finance sedang bersih.</div>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {integritySummary.issues.map((issue) => (
+                        <div key={issue.key} className="px-4 py-3 flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${getIntegritySeverityTone(issue.severity)}`}>
+                                {issue.severity}
+                              </span>
+                              <span className="text-[11px] font-medium text-slate-500">{issue.area}</span>
+                            </div>
+                            <div className="mt-2 text-sm font-semibold text-slate-900">{issue.title}</div>
+                            <div className="mt-1 text-xs text-slate-500">{issue.detail}</div>
+                            <div className="mt-1 text-[11px] text-slate-400">
+                              {issue.updatedAt ? formatDate(issue.updatedAt) : 'Perlu ditindaklanjuti'}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm font-semibold text-slate-900">{formatCurrency(issue.amount)}</div>
+                            <div className="mt-1 text-[11px] text-slate-400">{issue.count} item</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </>

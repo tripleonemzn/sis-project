@@ -1620,6 +1620,9 @@ export interface FinanceAuditSummary {
 }
 
 export type FinancePerformanceSignalTone = 'POSITIVE' | 'WATCH' | 'RISK';
+export type FinanceIntegrityArea = 'VERIFICATION' | 'TREASURY' | 'APPROVAL' | 'CLOSING' | 'PORTAL' | 'DATA';
+export type FinanceIntegritySeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type FinanceIntegrityStatus = 'READY' | 'WATCH' | 'ACTION_REQUIRED' | 'BLOCKED';
 
 export interface FinancePerformanceSummary {
   filters: {
@@ -1682,6 +1685,46 @@ export interface FinancePerformanceSummary {
     netFlowAmount: number;
     finalizedReconciliationCount: number;
     finalizedClosingCount: number;
+  }>;
+}
+
+export interface FinanceIntegritySummary {
+  filters: {
+    generatedAt: string;
+    limit: number;
+  };
+  overview: {
+    readinessScore: number;
+    status: FinanceIntegrityStatus;
+    headline: string;
+    detail: string;
+    totalIssues: number;
+    blockingIssues: number;
+    highIssues: number;
+    passedChecks: number;
+    totalChecks: number;
+    pendingAmount: number;
+  };
+  checklist: Array<{
+    key: string;
+    title: string;
+    area: FinanceIntegrityArea;
+    passed: boolean;
+    severity: FinanceIntegritySeverity;
+    count: number;
+    amount: number;
+    detail: string;
+    updatedAt?: string | null;
+  }>;
+  issues: Array<{
+    key: string;
+    title: string;
+    area: FinanceIntegrityArea;
+    severity: FinanceIntegritySeverity;
+    detail: string;
+    count: number;
+    amount: number;
+    updatedAt?: string | null;
   }>;
 }
 
@@ -2024,6 +2067,16 @@ export const staffFinanceService = {
   }) {
     const response = await api.get<ApiResponse<FinancePerformanceSummary>>(
       '/payments/performance-summary',
+      { params },
+    );
+    return response.data.data;
+  },
+
+  async getIntegritySummary(params?: {
+    limit?: number;
+  }) {
+    const response = await api.get<ApiResponse<FinanceIntegritySummary>>(
+      '/payments/integrity-summary',
       { params },
     );
     return response.data.data;

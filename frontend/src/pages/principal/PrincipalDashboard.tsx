@@ -16,6 +16,7 @@ import {
   type FinanceClosingPeriod,
   type FinanceClosingPeriodReopenRequest,
   type FinanceGovernanceSummary,
+  type FinanceIntegritySummary,
   type FinancePerformanceSummary,
   type FinancePaymentReversalRequest,
   type FinanceWriteOffRequest,
@@ -546,6 +547,20 @@ function getPrincipalPerformanceSignalTone(level: FinancePerformanceSummary['sig
     return { className: 'bg-amber-50 text-amber-700 border border-amber-200' };
   }
   return { className: 'bg-rose-50 text-rose-700 border border-rose-200' };
+}
+
+function getPrincipalIntegrityStatusTone(level: FinanceIntegritySummary['overview']['status']) {
+  if (level === 'READY') return { className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+  if (level === 'WATCH') return { className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  if (level === 'ACTION_REQUIRED') return { className: 'bg-orange-50 text-orange-700 border border-orange-200' };
+  return { className: 'bg-rose-50 text-rose-700 border border-rose-200' };
+}
+
+function getPrincipalIntegritySeverityTone(level: FinanceIntegritySummary['issues'][number]['severity']) {
+  if (level === 'CRITICAL') return { className: 'bg-rose-50 text-rose-700 border border-rose-200' };
+  if (level === 'HIGH') return { className: 'bg-orange-50 text-orange-700 border border-orange-200' };
+  if (level === 'MEDIUM') return { className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  return { className: 'bg-slate-50 text-slate-700 border border-slate-200' };
 }
 
 function getPrincipalClosingPeriodStatusTone(period: FinanceClosingPeriod) {
@@ -3355,6 +3370,16 @@ const PrincipalFinancePage = () => {
     enabled: isFinancePage,
   });
 
+  const { data: financeIntegrityData, isLoading: isFinanceIntegrityLoading } = useQuery({
+    queryKey: ['principal-finance-integrity'],
+    queryFn: () =>
+      staffFinanceService.getIntegritySummary({
+        limit: 6,
+      }),
+    enabled: isFinancePage,
+    refetchInterval: 45_000,
+  });
+
   const { data: financeClosingPeriodsData, isLoading: isFinanceClosingPeriodsLoading } = useQuery({
     queryKey: ['principal-finance-closing-periods'],
     queryFn: () => staffFinanceService.listClosingPeriods({ limit: 8 }),
@@ -3423,6 +3448,7 @@ const PrincipalFinancePage = () => {
       }),
     onSuccess: (_, payload) => {
       queryClient.invalidateQueries({ queryKey: ['principal-finance-write-offs'] });
+      queryClient.invalidateQueries({ queryKey: ['principal-finance-integrity'] });
       toast.success(payload.approved ? 'Write-off disetujui' : 'Write-off ditolak');
     },
     onError: (error: unknown) => {
@@ -3438,6 +3464,7 @@ const PrincipalFinancePage = () => {
       }),
     onSuccess: (_, payload) => {
       queryClient.invalidateQueries({ queryKey: ['principal-finance-payment-reversals'] });
+      queryClient.invalidateQueries({ queryKey: ['principal-finance-integrity'] });
       toast.success(payload.approved ? 'Reversal pembayaran disetujui' : 'Reversal pembayaran ditolak');
     },
     onError: (error: unknown) => {
@@ -3472,6 +3499,7 @@ const PrincipalFinancePage = () => {
     onSuccess: (_, payload) => {
       queryClient.invalidateQueries({ queryKey: ['principal-finance-closing-periods'] });
       queryClient.invalidateQueries({ queryKey: ['principal-finance-closing-period-approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['principal-finance-integrity'] });
       toast.success(payload.approved ? 'Closing period disetujui' : 'Closing period ditolak');
     },
     onError: (error: unknown) => {
@@ -3490,6 +3518,7 @@ const PrincipalFinancePage = () => {
       queryClient.invalidateQueries({ queryKey: ['principal-finance-closing-periods'] });
       queryClient.invalidateQueries({ queryKey: ['principal-finance-closing-period-reopen-requests'] });
       queryClient.invalidateQueries({ queryKey: ['principal-finance-closing-period-reopen-approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['principal-finance-integrity'] });
       toast.success(payload.approved ? 'Reopen closing period disetujui' : 'Reopen closing period ditolak');
     },
     onError: (error: unknown) => {
@@ -3533,6 +3562,7 @@ const PrincipalFinancePage = () => {
   const financeGovernance = financeGovernanceData || null;
   const financeAudit = financeAuditData || null;
   const financePerformance = financePerformanceData || null;
+  const financeIntegrity = financeIntegrityData || null;
   const financeClosingPeriods = financeClosingPeriodsData?.periods || [];
   const financeClosingPeriodSummary = financeClosingPeriodsData?.summary;
   const pendingPrincipalClosingPeriods = financeClosingPeriodApprovalsData?.periods || [];
@@ -3953,6 +3983,106 @@ const PrincipalFinancePage = () => {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Integrity &amp; Readiness</h3>
+            <p className="mt-1 text-xs text-gray-500">
+              Checklist final untuk memastikan finance tidak hanya lengkap fiturnya, tetapi juga bersih dari backlog dan blocker operasional.
+            </p>
+          </div>
+          {financeIntegrity ? (
+            <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getPrincipalIntegrityStatusTone(financeIntegrity.overview.status).className}`}>
+              {financeIntegrity.overview.status}
+            </span>
+          ) : null}
+        </div>
+
+        {isFinanceIntegrityLoading ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          </div>
+        ) : !financeIntegrity ? (
+          <div className="py-10 text-center text-sm text-gray-500">Ringkasan integrity finance belum tersedia.</div>
+        ) : (
+          <div className="p-4 space-y-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="text-sm font-semibold text-slate-900">{financeIntegrity.overview.headline}</div>
+              <div className="mt-1 text-xs text-slate-600">{financeIntegrity.overview.detail}</div>
+              <div className="mt-3 grid grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
+                <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <div className="text-slate-500">Score</div>
+                  <div className="mt-1 font-semibold text-slate-900">{financeIntegrity.overview.readinessScore}%</div>
+                </div>
+                <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+                  <div className="text-emerald-700">Checklist</div>
+                  <div className="mt-1 font-semibold text-emerald-900">
+                    {financeIntegrity.overview.passedChecks}/{financeIntegrity.overview.totalChecks}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+                  <div className="text-amber-700">Issue</div>
+                  <div className="mt-1 font-semibold text-amber-900">{financeIntegrity.overview.totalIssues} aktif</div>
+                </div>
+                <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2">
+                  <div className="text-rose-700">Exposure</div>
+                  <div className="mt-1 font-semibold text-rose-900">{formatFinanceCurrency(financeIntegrity.overview.pendingAmount)}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-[0.44fr_0.56fr] gap-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                <div className="text-sm font-semibold text-slate-900">Checklist Penutup</div>
+                {financeIntegrity.checklist.map((item) => (
+                  <div key={item.key} className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-semibold text-slate-900">{item.title}</div>
+                      <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${item.passed ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : getPrincipalIntegritySeverityTone(item.severity).className}`}>
+                        {item.passed ? 'PASS' : item.severity}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-xs text-slate-500">{item.detail}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
+                  <h4 className="text-sm font-semibold text-gray-900">Issue Queue</h4>
+                  <span className="text-xs text-gray-500">{financeIntegrity.issues.length} issue</span>
+                </div>
+                {financeIntegrity.issues.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-gray-500">Tidak ada issue aktif. Finance terlihat bersih.</div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {financeIntegrity.issues.map((issue) => (
+                      <div key={issue.key} className="px-4 py-3 flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${getPrincipalIntegritySeverityTone(issue.severity).className}`}>
+                              {issue.severity}
+                            </span>
+                            <span className="text-[11px] font-medium text-gray-500">{issue.area}</span>
+                          </div>
+                          <div className="mt-2 text-sm font-semibold text-gray-900">{issue.title}</div>
+                          <div className="mt-1 text-xs text-gray-500">{issue.detail}</div>
+                          <div className="mt-1 text-xs text-gray-400">{issue.updatedAt ? formatFinanceDate(issue.updatedAt) : 'Perlu ditindaklanjuti'}</div>
+                        </div>
+                        <div className="text-right text-sm font-semibold text-gray-900">
+                          {formatFinanceCurrency(issue.amount)}
+                          <div className="mt-1 text-[11px] text-gray-400">{issue.count} item</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

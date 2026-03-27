@@ -1,6 +1,6 @@
 # Mobile Parity Audit (All Roles)
 
-Generated: 2026-03-27T15:41:35.836Z
+Generated: 2026-03-27T16:10:11.365Z
 
 ## Ringkasan per Role
 
@@ -76,7 +76,7 @@ Generated: 2026-03-27T15:41:35.836Z
 
 ### STAFF
 - Pembayaran (SPP) (`staff-payments`)
-  - `app/(app)/staff/payments.tsx:3078`
+  - `app/(app)/staff/payments.tsx:3250`
 
 ### STUDENT
 - Keuangan (`student-finance`)
@@ -94,7 +94,7 @@ Generated: 2026-03-27T15:41:35.836Z
 - `app/(app)/candidate/application.tsx:448`
 - `app/(app)/parent/finance.tsx:1029`
 - `app/(app)/public/vacancies.tsx:394`
-- `app/(app)/staff/payments.tsx:3078`
+- `app/(app)/staff/payments.tsx:3250`
 - `app/(app)/student/finance.tsx:937`
 - `app/(app)/web-module/[moduleKey].tsx:44`
 

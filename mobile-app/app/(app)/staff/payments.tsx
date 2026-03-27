@@ -36,6 +36,7 @@ import {
   type FinanceInvoiceStatus,
   type FinanceLateFeeMode,
   type FinancePaymentMethod,
+  type StaffFinanceIntegritySummary,
   type StaffFinancePerformanceSummary,
   type FinanceReminderMode,
   type SemesterCode,
@@ -169,6 +170,20 @@ function getPerformanceSignalStyle(tone: StaffFinancePerformanceSummary['signals
   if (tone === 'POSITIVE') return { bg: '#dcfce7', border: '#86efac', text: '#166534' };
   if (tone === 'WATCH') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
   return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+}
+
+function getIntegrityStatusStyle(status: StaffFinanceIntegritySummary['overview']['status']) {
+  if (status === 'READY') return { bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  if (status === 'WATCH') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  if (status === 'ACTION_REQUIRED') return { bg: '#ffedd5', border: '#fdba74', text: '#c2410c' };
+  return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+}
+
+function getIntegritySeverityStyle(severity: StaffFinanceIntegritySummary['issues'][number]['severity']) {
+  if (severity === 'CRITICAL') return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+  if (severity === 'HIGH') return { bg: '#ffedd5', border: '#fdba74', text: '#c2410c' };
+  if (severity === 'MEDIUM') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  return { bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
 }
 
 function formatEffectiveWindow(start?: string | null, end?: string | null) {
@@ -836,6 +851,17 @@ export default function StaffPaymentsScreen() {
     staleTime: 30_000,
   });
 
+  const integritySummaryQuery = useQuery({
+    queryKey: ['mobile-staff-finance-integrity-summary'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () =>
+      staffFinanceApi.getIntegritySummary({
+        limit: 6,
+      }),
+    staleTime: 30_000,
+    refetchInterval: 45_000,
+  });
+
   const closingPeriodApprovalPolicyQuery = useQuery({
     queryKey: ['mobile-staff-finance-closing-period-policy'],
     enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
@@ -879,6 +905,7 @@ export default function StaffPaymentsScreen() {
   const closingPeriodApprovalPolicy = closingPeriodApprovalPolicyQuery.data || null;
   const budgetRealizationSummary = budgetRealizationQuery.data || null;
   const performanceSummary = performanceSummaryQuery.data || null;
+  const integritySummary = integritySummaryQuery.data || null;
   const closedClosingPeriods = useMemo(
     () => closingPeriods.filter((period) => period.status === 'CLOSED'),
     [closingPeriods],
@@ -1398,6 +1425,7 @@ export default function StaffPaymentsScreen() {
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-closing-period-reopen-requests'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-closing-period-policy'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-performance-summary'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-integrity-summary'] });
   };
 
   const saveComponentMutation = useMutation({
@@ -2596,6 +2624,7 @@ export default function StaffPaymentsScreen() {
     closingPeriodApprovalPolicyQuery.isLoading ||
     budgetRealizationQuery.isLoading ||
     performanceSummaryQuery.isLoading ||
+    integritySummaryQuery.isLoading ||
     creditsQuery.isLoading ||
     invoicesQuery.isLoading ||
     studentsQuery.isLoading;
@@ -2620,6 +2649,7 @@ export default function StaffPaymentsScreen() {
             closingPeriodApprovalPolicyQuery.isFetching ||
             budgetRealizationQuery.isFetching ||
             performanceSummaryQuery.isFetching ||
+            integritySummaryQuery.isFetching ||
             creditsQuery.isFetching ||
             invoicesQuery.isFetching ||
             dashboardQuery.isFetching
@@ -2638,6 +2668,7 @@ export default function StaffPaymentsScreen() {
             void closingPeriodApprovalPolicyQuery.refetch();
             void budgetRealizationQuery.refetch();
             void performanceSummaryQuery.refetch();
+            void integritySummaryQuery.refetch();
             void creditsQuery.refetch();
             void invoicesQuery.refetch();
             void dashboardQuery.refetch();
@@ -2865,6 +2896,147 @@ export default function StaffPaymentsScreen() {
             <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>Pengaturan Policy Reminder</Text>
           </Pressable>
         </View>
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#cbd5e1',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Finance Integrity &amp; Readiness</Text>
+        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+          Checklist penutup untuk memastikan backlog verifikasi, approval, treasury, closing, dan portal finance sudah benar-benar bersih.
+        </Text>
+
+        {integritySummaryQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil integrity finance..." />
+        ) : !integritySummary ? (
+          <Text style={{ color: '#64748b', fontSize: 12 }}>Ringkasan integrity finance belum tersedia.</Text>
+        ) : (
+          <>
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                backgroundColor: '#f8fafc',
+                borderRadius: 10,
+                padding: 10,
+                marginBottom: 10,
+              }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#0f172a', fontWeight: '700' }}>{integritySummary.overview.headline}</Text>
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>{integritySummary.overview.detail}</Text>
+                </View>
+                {(() => {
+                  const badge = getIntegrityStatusStyle(integritySummary.overview.status);
+                  return (
+                    <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                      <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{integritySummary.overview.status}</Text>
+                    </View>
+                  );
+                })()}
+              </View>
+
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginTop: 10 }}>
+                {[
+                  { label: 'Score', value: `${integritySummary.overview.readinessScore}%`, subtitle: 'Kesiapan aktual', bg: '#fff', border: '#cbd5e1', text: '#334155' },
+                  { label: 'Checklist', value: `${integritySummary.overview.passedChecks}/${integritySummary.overview.totalChecks}`, subtitle: 'Lolos', bg: '#dcfce7', border: '#86efac', text: '#166534' },
+                  { label: 'Issue', value: String(integritySummary.overview.totalIssues), subtitle: `Blocker ${integritySummary.overview.blockingIssues}`, bg: '#fef3c7', border: '#fcd34d', text: '#92400e' },
+                  { label: 'Exposure', value: formatCurrency(integritySummary.overview.pendingAmount), subtitle: 'Nilai perhatian', bg: '#fee2e2', border: '#fecaca', text: '#991b1b' },
+                ].map((card) => (
+                  <View key={card.label} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                    <View style={{ backgroundColor: card.bg, borderWidth: 1, borderColor: card.border, borderRadius: 10, padding: 10 }}>
+                      <Text style={{ color: card.text, fontSize: 11 }}>{card.label}</Text>
+                      <Text style={{ color: card.text, fontWeight: '700', fontSize: 13, marginTop: 4 }} numberOfLines={1}>
+                        {card.value}
+                      </Text>
+                      <Text style={{ color: card.text, fontSize: 11, marginTop: 3 }} numberOfLines={1}>
+                        {card.subtitle}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                backgroundColor: '#f8fafc',
+                borderRadius: 10,
+                padding: 10,
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Checklist Penutup</Text>
+              {integritySummary.checklist.map((item) => {
+                const badge = item.passed
+                  ? { bg: '#dcfce7', border: '#86efac', text: '#166534', label: 'PASS' }
+                  : { ...getIntegritySeverityStyle(item.severity), label: item.severity };
+                return (
+                  <View key={item.key} style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingVertical: 8 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#0f172a', fontWeight: '700' }}>{item.title}</Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>{item.detail}</Text>
+                      </View>
+                      <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                        <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{badge.label}</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                backgroundColor: '#fff',
+                borderRadius: 10,
+                padding: 10,
+              }}
+            >
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Issue Queue</Text>
+              {integritySummary.issues.length === 0 ? (
+                <Text style={{ color: '#64748b', fontSize: 12 }}>Tidak ada issue aktif. Finance terlihat bersih.</Text>
+              ) : (
+                integritySummary.issues.map((issue) => {
+                  const badge = getIntegritySeverityStyle(issue.severity);
+                  return (
+                    <View key={issue.key} style={{ borderTopWidth: 1, borderTopColor: '#eef2ff', paddingVertical: 8 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                              <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{issue.severity}</Text>
+                            </View>
+                            <Text style={{ color: '#64748b', fontSize: 11 }}>{issue.area}</Text>
+                          </View>
+                          <Text style={{ color: '#0f172a', fontWeight: '700', marginTop: 6 }}>{issue.title}</Text>
+                          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>{issue.detail}</Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={{ color: '#0f172a', fontWeight: '700' }}>{formatCurrency(issue.amount)}</Text>
+                          <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>{issue.count} item</Text>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          </>
+        )}
       </View>
 
       <View

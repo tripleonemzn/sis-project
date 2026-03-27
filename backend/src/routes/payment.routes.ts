@@ -35,6 +35,7 @@ import {
   getFinanceCashSessionApprovalPolicy,
   getFinanceClosingPeriodApprovalPolicy,
   getFinanceAuditSummary,
+  getFinanceIntegritySummary,
   getFinancePerformanceSummary,
   importFinanceBankStatementEntries,
   listFinanceAdjustmentRules,
@@ -143,6 +144,11 @@ router.put('/reminder-policy', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), up
 router.put('/cash-session-policy', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceCashSessionApprovalPolicy);
 router.put('/closing-period-policy', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceClosingPeriodApprovalPolicy);
 router.get('/reports', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceReports);
+router.get(
+  '/integrity-summary',
+  roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']),
+  getFinanceIntegritySummary,
+);
 router.get(
   '/performance-summary',
   roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']),
