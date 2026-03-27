@@ -3516,6 +3516,11 @@ const listFinanceGovernanceSummaryQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(20).optional().default(8),
 });
 
+const listFinanceAuditSummaryQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(180).optional().default(30),
+  limit: z.coerce.number().int().min(1).max(20).optional().default(8),
+});
+
 const listFinanceBankReconciliationsQuerySchema = z.object({
   bankAccountId: z.coerce.number().int().positive().optional(),
   status: z.enum(FINANCE_BANK_RECONCILIATION_STATUSES).optional(),
@@ -7122,6 +7127,8 @@ async function buildFinanceBudgetRealizationSummary(filters: {
 
 type FinanceGovernanceArea = 'COLLECTION' | 'TREASURY' | 'APPROVAL' | 'BUDGET' | 'CLOSING';
 type FinanceGovernanceSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+type FinanceAuditArea = 'POLICY' | 'COLLECTION' | 'TREASURY' | 'APPROVAL';
+type FinanceAuditSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 function getFinanceGovernanceSeverityWeight(severity: FinanceGovernanceSeverity) {
   if (severity === 'CRITICAL') return 4;
@@ -7785,6 +7792,305 @@ async function buildFinanceGovernanceSummary(filters: {
       openReconciliationCount: closingSummary.totalOpenReconciliationCount,
     },
     followUpQueue: sortedFollowUpQueue,
+  };
+}
+
+function normalizeFinanceAuditDuties(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+  }
+
+  const singleValue = String(raw || '').trim();
+  return singleValue ? [singleValue] : [];
+}
+
+function getFinanceAuditArea(entity: string): FinanceAuditArea {
+  const normalized = String(entity || '').trim().toUpperCase();
+
+  if (
+    normalized.includes('WRITE_OFF') ||
+    normalized.includes('PAYMENT_REVERSAL') ||
+    normalized.includes('HEAD_TU_DECISION') ||
+    normalized.includes('PRINCIPAL_DECISION')
+  ) {
+    return 'APPROVAL';
+  }
+
+  if (normalized.includes('POLICY') || normalized.includes('BANK_ACCOUNT')) {
+    return 'POLICY';
+  }
+
+  if (
+    normalized.includes('BANK_RECONCILIATION') ||
+    normalized.includes('BANK_STATEMENT') ||
+    normalized.includes('CASH_SESSION') ||
+    normalized.includes('CLOSING_PERIOD')
+  ) {
+    return 'TREASURY';
+  }
+
+  return 'COLLECTION';
+}
+
+function getFinanceAuditSeverity(log: { entity: string; action: string }): FinanceAuditSeverity {
+  const entity = String(log.entity || '').trim().toUpperCase();
+  const action = String(log.action || '').trim().toUpperCase();
+
+  if (entity.endsWith('_APPLY')) {
+    return 'CRITICAL';
+  }
+
+  if (
+    entity.includes('PRINCIPAL_DECISION') ||
+    entity.includes('HEAD_TU_DECISION') ||
+    entity.includes('POLICY') ||
+    entity === 'FINANCE_REFUND' ||
+    entity === 'FINANCE_LATE_FEE' ||
+    entity === 'FINANCE_BANK_RECONCILIATION_FINALIZE'
+  ) {
+    return 'HIGH';
+  }
+
+  if (
+    entity.includes('PAYMENT_VERIFY') ||
+    entity.includes('PAYMENT_REJECT') ||
+    entity.includes('BANK_RECONCILIATION') ||
+    entity.includes('BANK_STATEMENT_ENTRY') ||
+    entity.includes('INVOICE_INSTALLMENTS') ||
+    entity === 'FINANCE_CASH_SESSION' ||
+    entity === 'FINANCE_CLOSING_PERIOD' ||
+    action === 'DELETE'
+  ) {
+    return 'MEDIUM';
+  }
+
+  return 'LOW';
+}
+
+function getFinanceAuditSeverityWeight(severity: FinanceAuditSeverity) {
+  if (severity === 'CRITICAL') return 4;
+  if (severity === 'HIGH') return 3;
+  if (severity === 'MEDIUM') return 2;
+  return 1;
+}
+
+function getFinanceAuditLabel(entity: string): string {
+  const mapping: Record<string, string> = {
+    FINANCE_REMINDER_POLICY: 'Policy Reminder Finance',
+    FINANCE_CASH_SESSION_APPROVAL_POLICY: 'Policy Approval Settlement Kas',
+    FINANCE_CLOSING_PERIOD_APPROVAL_POLICY: 'Policy Approval Closing Period',
+    FINANCE_BANK_ACCOUNT: 'Rekening Bank Finance',
+    FINANCE_PAYMENT: 'Pencatatan Pembayaran',
+    FINANCE_PAYMENT_VERIFY: 'Verifikasi Pembayaran',
+    FINANCE_PAYMENT_REJECT: 'Penolakan Pembayaran',
+    FINANCE_INVOICE_INSTALLMENTS: 'Penyesuaian Jadwal Cicilan',
+    FINANCE_LATE_FEE: 'Penerapan Denda',
+    FINANCE_REFUND: 'Refund Saldo Kredit',
+    FINANCE_BANK_RECONCILIATION: 'Pembuatan Rekonsiliasi Bank',
+    FINANCE_BANK_STATEMENT_ENTRY: 'Input Mutasi Rekening',
+    FINANCE_BANK_RECONCILIATION_FINALIZE: 'Finalisasi Rekonsiliasi Bank',
+    FINANCE_CASH_SESSION: 'Settlement Kas Harian',
+    FINANCE_CASH_SESSION_HEAD_TU_DECISION: 'Review Head TU Settlement Kas',
+    FINANCE_CASH_SESSION_PRINCIPAL_DECISION: 'Review Kepsek Settlement Kas',
+    FINANCE_CLOSING_PERIOD: 'Closing Period Finance',
+    FINANCE_CLOSING_PERIOD_HEAD_TU_DECISION: 'Review Head TU Closing',
+    FINANCE_CLOSING_PERIOD_PRINCIPAL_DECISION: 'Review Kepsek Closing',
+    FINANCE_WRITE_OFF_REQUEST: 'Pengajuan Write-off',
+    FINANCE_WRITE_OFF_HEAD_TU_DECISION: 'Review Head TU Write-off',
+    FINANCE_WRITE_OFF_PRINCIPAL_DECISION: 'Review Kepsek Write-off',
+    FINANCE_WRITE_OFF_APPLY: 'Penerapan Write-off',
+    FINANCE_PAYMENT_REVERSAL_REQUEST: 'Pengajuan Reversal Pembayaran',
+    FINANCE_PAYMENT_REVERSAL_HEAD_TU_DECISION: 'Review Head TU Reversal',
+    FINANCE_PAYMENT_REVERSAL_PRINCIPAL_DECISION: 'Review Kepsek Reversal',
+    FINANCE_PAYMENT_REVERSAL_APPLY: 'Penerapan Reversal Pembayaran',
+  };
+
+  return mapping[String(entity || '').trim().toUpperCase()] || String(entity || '').trim();
+}
+
+function getFinanceAuditActionLabel(action: string): string {
+  const normalized = String(action || '').trim().toUpperCase();
+  if (normalized === 'CREATE') return 'dibuat';
+  if (normalized === 'UPDATE') return 'diperbarui';
+  if (normalized === 'DELETE') return 'dihapus';
+  return normalized.toLowerCase() || 'diproses';
+}
+
+async function buildFinanceAuditSummary(filters: {
+  days: number;
+  limit: number;
+}) {
+  const windowStart = new Date();
+  windowStart.setDate(windowStart.getDate() - Math.max(1, Math.floor(Number(filters.days || 30))));
+  windowStart.setHours(0, 0, 0, 0);
+
+  const auditRows = ((await (prisma as any).auditLog.findMany({
+    where: {
+      entity: {
+        startsWith: 'FINANCE_',
+      },
+      createdAt: {
+        gte: windowStart,
+      },
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    include: {
+      actor: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          role: true,
+        },
+      },
+    },
+    take: Math.max(filters.limit * 8, 64),
+  })) || []) as Array<any>;
+
+  const categorizedRows = auditRows.map((row) => {
+    const category = getFinanceAuditArea(row.entity);
+    const severity = getFinanceAuditSeverity({ entity: row.entity, action: row.action });
+    const actorDuties = normalizeFinanceAuditDuties(row.actorDuties);
+    const actorName =
+      String(row.actor?.name || '').trim() ||
+      String(row.actor?.username || '').trim() ||
+      `User #${row.actorId}`;
+    const actorLabel =
+      actorDuties.length > 0
+        ? `${actorName} • ${actorDuties.slice(0, 2).join(', ')}`
+        : `${actorName} • ${row.actor?.role || row.actorRole || '-'}`;
+    const label = getFinanceAuditLabel(row.entity);
+    const summary =
+      String(row.reason || '').trim() || `${label} ${getFinanceAuditActionLabel(row.action)}`;
+
+    return {
+      id: Number(row.id),
+      createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : new Date(row.createdAt).toISOString(),
+      action: String(row.action || '').trim().toUpperCase(),
+      entity: String(row.entity || '').trim().toUpperCase(),
+      entityId: row.entityId == null ? null : Number(row.entityId),
+      reason: row.reason ? String(row.reason) : null,
+      category,
+      severity,
+      label,
+      summary,
+      actor: {
+        id: Number(row.actor?.id || row.actorId || 0),
+        name: actorName,
+        username: row.actor?.username ? String(row.actor.username) : null,
+        role: row.actor?.role ? String(row.actor.role) : String(row.actorRole || ''),
+        duties: actorDuties,
+        label: actorLabel,
+      },
+    };
+  });
+
+  const overview = categorizedRows.reduce(
+    (acc, row) => {
+      acc.totalEvents += 1;
+      if (row.severity === 'CRITICAL') acc.criticalCount += 1;
+      if (row.severity === 'HIGH') acc.highCount += 1;
+      if (row.category === 'POLICY') acc.policyChangeCount += 1;
+      if (row.category === 'APPROVAL') acc.approvalActionCount += 1;
+      acc.uniqueActorIds.add(row.actor.id);
+      return acc;
+    },
+    {
+      totalEvents: 0,
+      criticalCount: 0,
+      highCount: 0,
+      policyChangeCount: 0,
+      approvalActionCount: 0,
+      uniqueActorIds: new Set<number>(),
+    },
+  );
+
+  const categorySummary = categorizedRows.reduce(
+    (acc, row) => {
+      if (row.category === 'POLICY') acc.policyCount += 1;
+      if (row.category === 'COLLECTION') acc.collectionCount += 1;
+      if (row.category === 'TREASURY') acc.treasuryCount += 1;
+      if (row.category === 'APPROVAL') acc.approvalCount += 1;
+      return acc;
+    },
+    {
+      policyCount: 0,
+      collectionCount: 0,
+      treasuryCount: 0,
+      approvalCount: 0,
+    },
+  );
+
+  const actorBuckets = new Map<
+    number,
+    {
+      actorId: number;
+      actorName: string;
+      actorRole: string;
+      actorDuties: string[];
+      totalEvents: number;
+      criticalCount: number;
+      approvalCount: number;
+      lastActivityAt: string;
+    }
+  >();
+
+  categorizedRows.forEach((row) => {
+    const current = actorBuckets.get(row.actor.id) || {
+      actorId: row.actor.id,
+      actorName: row.actor.name,
+      actorRole: row.actor.role,
+      actorDuties: row.actor.duties,
+      totalEvents: 0,
+      criticalCount: 0,
+      approvalCount: 0,
+      lastActivityAt: row.createdAt,
+    };
+
+    current.totalEvents += 1;
+    if (row.severity === 'CRITICAL') current.criticalCount += 1;
+    if (row.category === 'APPROVAL') current.approvalCount += 1;
+    if (row.createdAt > current.lastActivityAt) current.lastActivityAt = row.createdAt;
+    actorBuckets.set(row.actor.id, current);
+  });
+
+  const actorSummary = Array.from(actorBuckets.values())
+    .sort((left, right) => {
+      if (right.totalEvents !== left.totalEvents) return right.totalEvents - left.totalEvents;
+      if (right.criticalCount !== left.criticalCount) return right.criticalCount - left.criticalCount;
+      return right.lastActivityAt.localeCompare(left.lastActivityAt);
+    })
+    .slice(0, 5);
+
+  const recentEvents = categorizedRows
+    .sort((left, right) => {
+      const severityDiff =
+        getFinanceAuditSeverityWeight(right.severity) -
+        getFinanceAuditSeverityWeight(left.severity);
+      if (severityDiff !== 0) return severityDiff;
+      return right.createdAt.localeCompare(left.createdAt);
+    })
+    .slice(0, filters.limit);
+
+  return {
+    filters: {
+      days: filters.days,
+      limit: filters.limit,
+      generatedAt: new Date().toISOString(),
+    },
+    overview: {
+      totalEvents: overview.totalEvents,
+      uniqueActors: overview.uniqueActorIds.size,
+      criticalCount: overview.criticalCount,
+      highCount: overview.highCount,
+      policyChangeCount: overview.policyChangeCount,
+      approvalActionCount: overview.approvalActionCount,
+    },
+    categorySummary,
+    actorSummary,
+    recentEvents,
   };
 }
 
@@ -10147,6 +10453,19 @@ export const getFinanceGovernanceSummary = asyncHandler(async (req: Request, res
   res
     .status(200)
     .json(new ApiResponse(200, snapshot, 'Ringkasan governance finance berhasil diambil'));
+});
+
+export const getFinanceAuditSummary = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinanceActor((req as any).user || {}, {
+    allowPrincipalReadOnly: true,
+    allowHeadTuReadOnly: true,
+  });
+
+  const filters = listFinanceAuditSummaryQuerySchema.parse(req.query || {});
+  const snapshot = await buildFinanceAuditSummary(filters);
+  res
+    .status(200)
+    .json(new ApiResponse(200, snapshot, 'Ringkasan audit finance berhasil diambil'));
 });
 
 export const exportFinanceReports = asyncHandler(async (req: Request, res: Response) => {

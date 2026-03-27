@@ -242,6 +242,17 @@ export default function StaffAdminScreen() {
       staffFinanceApi.getGovernanceSummary({
         academicYearId: activeYearQuery.data?.id,
         limit: 6,
+    }),
+    staleTime: 60 * 1000,
+  });
+
+  const headTuAuditQuery = useQuery({
+    queryKey: ['mobile-head-tu-finance-audit', user?.id],
+    enabled: isAuthenticated && user?.role === 'STAFF' && staffDivision === 'HEAD_TU',
+    queryFn: () =>
+      staffFinanceApi.getAuditSummary({
+        days: 30,
+        limit: 6,
       }),
     staleTime: 60 * 1000,
   });
@@ -394,6 +405,7 @@ export default function StaffAdminScreen() {
   );
   const headTuBankReconciliationSummary = headTuBankReconciliationsQuery.data?.summary;
   const headTuGovernance = headTuGovernanceQuery.data || null;
+  const headTuAudit = headTuAuditQuery.data || null;
   const headTuBudgetRealization = headTuBudgetRealizationQuery.data || null;
   const headTuClosingPeriods = useMemo(
     () => headTuClosingPeriodsQuery.data?.periods || [],
@@ -414,6 +426,7 @@ export default function StaffAdminScreen() {
       void headTuCashSessionApprovalsQuery.refetch();
       void headTuBankReconciliationsQuery.refetch();
       void headTuGovernanceQuery.refetch();
+      void headTuAuditQuery.refetch();
       void headTuBudgetRealizationQuery.refetch();
       void headTuClosingPeriodsQuery.refetch();
       void headTuClosingPeriodApprovalsQuery.refetch();
@@ -1028,6 +1041,111 @@ export default function StaffAdminScreen() {
                             </Text>
                           </View>
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatCurrency(item.amount)}</Text>
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
+              </>
+            )}
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <View style={{ marginBottom: 8 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Audit Finance 30 Hari</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                Ringkasan perubahan policy, approval sensitif, dan kontrol treasury terbaru untuk audit Head TU.
+              </Text>
+            </View>
+
+            {headTuAuditQuery.isLoading ? (
+              <QueryStateView type="loading" message="Mengambil audit finance..." />
+            ) : !headTuAudit ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Ringkasan audit finance belum tersedia.</Text>
+            ) : (
+              <>
+                <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <SummaryCard
+                      title="Event Kritis"
+                      value={String(headTuAudit.overview.criticalCount)}
+                      subtitle={`High ${headTuAudit.overview.highCount}`}
+                    />
+                  </View>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <SummaryCard
+                      title="Policy"
+                      value={String(headTuAudit.overview.policyChangeCount)}
+                      subtitle={`${headTuAudit.categorySummary.policyCount} log`}
+                    />
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <SummaryCard
+                      title="Approval"
+                      value={String(headTuAudit.overview.approvalActionCount)}
+                      subtitle={`${headTuAudit.categorySummary.approvalCount} log`}
+                    />
+                  </View>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <SummaryCard
+                      title="Aktor Aktif"
+                      value={String(headTuAudit.overview.uniqueActors)}
+                      subtitle={`${headTuAudit.overview.totalEvents} event`}
+                    />
+                  </View>
+                </View>
+
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Aktor Paling Aktif</Text>
+                {!headTuAudit.actorSummary.length ? (
+                  <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 8 }}>Belum ada aktivitas audit finance pada periode ini.</Text>
+                ) : (
+                  <View style={{ marginBottom: 8 }}>
+                    {headTuAudit.actorSummary.map((actor) => (
+                      <View key={actor.actorId} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{actor.actorName}</Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                          {actor.totalEvents} event • kritis {actor.criticalCount} • approval {actor.approvalCount}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Event Terbaru</Text>
+                {!headTuAudit.recentEvents.length ? (
+                  <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada event audit finance yang tercatat.</Text>
+                ) : (
+                  headTuAudit.recentEvents.map((event) => {
+                    const badge = getGovernanceSeverityStyle(event.severity);
+                    return (
+                      <View key={event.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                              <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                                <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{event.severity}</Text>
+                              </View>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }}>{event.category}</Text>
+                            </View>
+                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{event.label}</Text>
+                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>{event.summary}</Text>
+                            <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                              {event.actor.label} • {formatDate(event.createdAt)}
+                              {event.entityId ? ` • Ref #${event.entityId}` : ''}
+                            </Text>
+                          </View>
+                          <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700' }}>{event.action}</Text>
                         </View>
                       </View>
                     );

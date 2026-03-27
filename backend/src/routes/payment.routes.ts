@@ -29,6 +29,7 @@ import {
   getFinanceReminderPolicy,
   getFinanceCashSessionApprovalPolicy,
   getFinanceClosingPeriodApprovalPolicy,
+  getFinanceAuditSummary,
   listFinanceAdjustmentRules,
   listFinanceBankReconciliations,
   listFinanceCashSessions,
@@ -136,6 +137,11 @@ router.get(
   '/governance-summary',
   roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']),
   getFinanceGovernanceSummary,
+);
+router.get(
+  '/audit-summary',
+  roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']),
+  getFinanceAuditSummary,
 );
 router.get(
   '/reports/export',

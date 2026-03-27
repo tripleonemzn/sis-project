@@ -170,6 +170,17 @@ export default function PrincipalApprovalsScreen() {
       staffFinanceApi.getGovernanceSummary({
         academicYearId: activeYearQuery.data?.id,
         limit: 6,
+    }),
+    staleTime: 60 * 1000,
+  });
+
+  const auditQuery = useQuery({
+    queryKey: ['mobile-principal-finance-audit', user?.id],
+    enabled: isAuthenticated && user?.role === 'PRINCIPAL',
+    queryFn: () =>
+      staffFinanceApi.getAuditSummary({
+        days: 30,
+        limit: 6,
       }),
     staleTime: 60 * 1000,
   });
@@ -273,6 +284,7 @@ export default function PrincipalApprovalsScreen() {
   const financeBankReconciliationSummary = bankReconciliationsQuery.data?.summary;
   const financeBudgetRealization = budgetRealizationQuery.data || null;
   const financeGovernance = governanceQuery.data || null;
+  const financeAudit = auditQuery.data || null;
   const financeClosingPeriods = useMemo(
     () => closingPeriodsQuery.data?.periods || [],
     [closingPeriodsQuery.data],
@@ -424,6 +436,7 @@ export default function PrincipalApprovalsScreen() {
             (cashSessionsQuery.isFetching && !cashSessionsQuery.isLoading) ||
             (cashSessionApprovalsQuery.isFetching && !cashSessionApprovalsQuery.isLoading) ||
             (bankReconciliationsQuery.isFetching && !bankReconciliationsQuery.isLoading) ||
+            (auditQuery.isFetching && !auditQuery.isLoading) ||
             (budgetRealizationQuery.isFetching && !budgetRealizationQuery.isLoading) ||
             (closingPeriodsQuery.isFetching && !closingPeriodsQuery.isLoading) ||
             (closingPeriodApprovalsQuery.isFetching && !closingPeriodApprovalsQuery.isLoading)
@@ -436,6 +449,7 @@ export default function PrincipalApprovalsScreen() {
             void cashSessionApprovalsQuery.refetch();
             void bankReconciliationsQuery.refetch();
             void governanceQuery.refetch();
+            void auditQuery.refetch();
             void budgetRealizationQuery.refetch();
             void closingPeriodsQuery.refetch();
             void closingPeriodApprovalsQuery.refetch();
@@ -767,6 +781,127 @@ export default function PrincipalApprovalsScreen() {
                         </Text>
                       </View>
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatCurrency(item.amount)}</Text>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </>
+        )}
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#d6e2f7',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <View style={{ marginBottom: 8 }}>
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Audit Finance 30 Hari</Text>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+            Ringkasan perubahan policy, approval sensitif, dan kontrol treasury terbaru untuk keputusan Kepala Sekolah.
+          </Text>
+        </View>
+
+        {auditQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil audit finance..." />
+        ) : !financeAudit ? (
+          <Text style={{ color: BRAND_COLORS.textMuted }}>Ringkasan audit finance belum tersedia.</Text>
+        ) : (
+          <>
+            <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, padding: 12 }}>
+                  <Text style={{ color: '#64748b', fontSize: 11 }}>Event Kritis</Text>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 3 }}>
+                    {financeAudit.overview.criticalCount}
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+                    High {financeAudit.overview.highCount}
+                  </Text>
+                </View>
+              </View>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, padding: 12 }}>
+                  <Text style={{ color: '#64748b', fontSize: 11 }}>Policy</Text>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 3 }}>
+                    {financeAudit.overview.policyChangeCount}
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+                    {financeAudit.categorySummary.policyCount} log
+                  </Text>
+                </View>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, padding: 12 }}>
+                  <Text style={{ color: '#64748b', fontSize: 11 }}>Approval</Text>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 3 }}>
+                    {financeAudit.overview.approvalActionCount}
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+                    {financeAudit.categorySummary.approvalCount} log
+                  </Text>
+                </View>
+              </View>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, padding: 12 }}>
+                  <Text style={{ color: '#64748b', fontSize: 11 }}>Aktor Aktif</Text>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 3 }}>
+                    {financeAudit.overview.uniqueActors}
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+                    {financeAudit.overview.totalEvents} event
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Aktor Paling Aktif</Text>
+            {!financeAudit.actorSummary.length ? (
+              <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 8 }}>Belum ada aktivitas audit finance pada periode ini.</Text>
+            ) : (
+              <View style={{ marginBottom: 8 }}>
+                {financeAudit.actorSummary.map((actor) => (
+                  <View key={actor.actorId} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{actor.actorName}</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                      {actor.totalEvents} event • kritis {actor.criticalCount} • approval {actor.approvalCount}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Event Terbaru</Text>
+            {!financeAudit.recentEvents.length ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada event audit finance yang tercatat.</Text>
+            ) : (
+              financeAudit.recentEvents.map((event) => {
+                const badge = getGovernanceSeverityStyle(event.severity);
+                return (
+                  <View key={event.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 10 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                          <View style={{ borderRadius: 999, borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, paddingHorizontal: 8, paddingVertical: 2 }}>
+                            <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{event.severity}</Text>
+                          </View>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }}>{event.category}</Text>
+                        </View>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{event.label}</Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{event.summary}</Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>
+                          {event.actor.label} • {formatDate(event.createdAt)}
+                          {event.entityId ? ` • Ref #${event.entityId}` : ''}
+                        </Text>
+                      </View>
+                      <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700' }}>{event.action}</Text>
                     </View>
                   </View>
                 );

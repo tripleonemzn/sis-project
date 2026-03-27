@@ -1320,6 +1320,8 @@ export type StaffFinanceBudgetRealizationSnapshot = {
 
 export type StaffFinanceGovernanceArea = 'COLLECTION' | 'TREASURY' | 'APPROVAL' | 'BUDGET' | 'CLOSING';
 export type StaffFinanceGovernanceSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type StaffFinanceAuditArea = 'POLICY' | 'COLLECTION' | 'TREASURY' | 'APPROVAL';
+export type StaffFinanceAuditSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 export type StaffFinanceGovernanceFollowUpItem = {
   key: string;
@@ -1393,6 +1395,58 @@ export type StaffFinanceGovernanceSummary = {
     openReconciliationCount: number;
   };
   followUpQueue: StaffFinanceGovernanceFollowUpItem[];
+};
+
+export type StaffFinanceAuditSummary = {
+  filters: {
+    days: number;
+    limit: number;
+    generatedAt: string;
+  };
+  overview: {
+    totalEvents: number;
+    uniqueActors: number;
+    criticalCount: number;
+    highCount: number;
+    policyChangeCount: number;
+    approvalActionCount: number;
+  };
+  categorySummary: {
+    policyCount: number;
+    collectionCount: number;
+    treasuryCount: number;
+    approvalCount: number;
+  };
+  actorSummary: Array<{
+    actorId: number;
+    actorName: string;
+    actorRole: string;
+    actorDuties: string[];
+    totalEvents: number;
+    criticalCount: number;
+    approvalCount: number;
+    lastActivityAt: string;
+  }>;
+  recentEvents: Array<{
+    id: number;
+    createdAt: string;
+    action: string;
+    entity: string;
+    entityId?: number | null;
+    reason?: string | null;
+    category: StaffFinanceAuditArea;
+    severity: StaffFinanceAuditSeverity;
+    label: string;
+    summary: string;
+    actor: {
+      id: number;
+      name: string;
+      username?: string | null;
+      role: string;
+      duties: string[];
+      label: string;
+    };
+  }>;
 };
 
 export const staffFinanceApi = {
@@ -2200,6 +2254,19 @@ export const staffFinanceApi = {
   }) {
     const response = await apiClient.get<ApiResponse<StaffFinanceGovernanceSummary>>(
       '/payments/governance-summary',
+      {
+        params,
+      },
+    );
+    return response.data.data;
+  },
+
+  async getAuditSummary(params?: {
+    days?: number;
+    limit?: number;
+  }) {
+    const response = await apiClient.get<ApiResponse<StaffFinanceAuditSummary>>(
+      '/payments/audit-summary',
       {
         params,
       },

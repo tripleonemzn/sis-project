@@ -3311,6 +3311,16 @@ const PrincipalFinancePage = () => {
     enabled: isFinancePage,
   });
 
+  const { data: financeAuditData, isLoading: isFinanceAuditLoading } = useQuery({
+    queryKey: ['principal-finance-audit'],
+    queryFn: () =>
+      staffFinanceService.getAuditSummary({
+        days: 30,
+        limit: 6,
+      }),
+    enabled: isFinancePage,
+  });
+
   const { data: financeClosingPeriodsData, isLoading: isFinanceClosingPeriodsLoading } = useQuery({
     queryKey: ['principal-finance-closing-periods'],
     queryFn: () => staffFinanceService.listClosingPeriods({ limit: 8 }),
@@ -3454,6 +3464,7 @@ const PrincipalFinancePage = () => {
   const financeBankReconciliationSummary = financeBankReconciliationsData?.summary;
   const financeBudgetRealization = financeBudgetRealizationData || null;
   const financeGovernance = financeGovernanceData || null;
+  const financeAudit = financeAuditData || null;
   const financeClosingPeriods = financeClosingPeriodsData?.periods || [];
   const financeClosingPeriodSummary = financeClosingPeriodsData?.summary;
   const pendingPrincipalClosingPeriods = financeClosingPeriodApprovalsData?.periods || [];
@@ -3762,6 +3773,102 @@ const PrincipalFinancePage = () => {
                       </div>
                       <div className="text-sm font-semibold text-gray-900 whitespace-nowrap">
                         {formatFinanceCurrency(item.amount)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-900">Audit Finance 30 Hari</h3>
+          <p className="mt-1 text-xs text-gray-500">
+            Ringkasan policy, approval sensitif, dan kontrol treasury terbaru untuk keputusan Kepala Sekolah.
+          </p>
+        </div>
+
+        {isFinanceAuditLoading ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          </div>
+        ) : !financeAudit ? (
+          <div className="py-10 text-center text-sm text-gray-500">Ringkasan audit finance belum tersedia.</div>
+        ) : (
+          <div className="p-4 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3">
+                <div className="text-xs uppercase tracking-wider text-rose-700/80">Event Kritis</div>
+                <div className="mt-2 text-lg font-bold text-rose-900">{financeAudit.overview.criticalCount}</div>
+                <div className="mt-1 text-xs text-rose-800/80">High {financeAudit.overview.highCount}</div>
+              </div>
+              <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3">
+                <div className="text-xs uppercase tracking-wider text-sky-700/80">Policy</div>
+                <div className="mt-2 text-lg font-bold text-sky-900">{financeAudit.overview.policyChangeCount}</div>
+                <div className="mt-1 text-xs text-sky-800/80">{financeAudit.categorySummary.policyCount} log policy</div>
+              </div>
+              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+                <div className="text-xs uppercase tracking-wider text-amber-700/80">Approval</div>
+                <div className="mt-2 text-lg font-bold text-amber-900">{financeAudit.overview.approvalActionCount}</div>
+                <div className="mt-1 text-xs text-amber-800/80">{financeAudit.categorySummary.approvalCount} log approval</div>
+              </div>
+              <div className="rounded-xl border border-violet-100 bg-violet-50 px-4 py-3">
+                <div className="text-xs uppercase tracking-wider text-violet-700/80">Aktor Aktif</div>
+                <div className="mt-2 text-lg font-bold text-violet-900">{financeAudit.overview.uniqueActors}</div>
+                <div className="mt-1 text-xs text-violet-800/80">{financeAudit.overview.totalEvents} event tercatat</div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
+                <h4 className="text-sm font-semibold text-gray-900">Aktor Paling Aktif</h4>
+                <span className="text-xs text-gray-500">{financeAudit.actorSummary.length} aktor</span>
+              </div>
+              {financeAudit.actorSummary.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-gray-500">Belum ada aktivitas audit finance pada periode ini.</div>
+              ) : (
+                <div className="px-4 py-3 flex flex-wrap gap-2">
+                  {financeAudit.actorSummary.map((actor) => (
+                    <div key={actor.actorId} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                      <span className="font-semibold text-slate-900">{actor.actorName}</span>
+                      <span className="text-slate-500"> • {actor.totalEvents} event</span>
+                      <span className="text-slate-500"> • kritis {actor.criticalCount}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
+                <h4 className="text-sm font-semibold text-gray-900">Event Terbaru</h4>
+                <span className="text-xs text-gray-500">{financeAudit.filters.days} hari terakhir</span>
+              </div>
+              {financeAudit.recentEvents.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-gray-500">Belum ada event audit finance yang tercatat.</div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {financeAudit.recentEvents.map((event) => (
+                    <div key={event.id} className="px-4 py-3 flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${getPrincipalGovernanceSeverityTone(event.severity).className}`}>
+                            {event.severity}
+                          </span>
+                          <span className="text-[11px] font-medium text-gray-500">{event.category}</span>
+                        </div>
+                        <div className="mt-2 text-sm font-semibold text-gray-900">{event.label}</div>
+                        <div className="mt-1 text-xs text-gray-500">{event.summary}</div>
+                        <div className="mt-1 text-xs text-gray-400">
+                          {event.actor.label} • {formatFinanceDate(event.createdAt)}
+                          {event.entityId ? ` • Ref #${event.entityId}` : ''}
+                        </div>
+                      </div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 whitespace-nowrap">
+                        {event.action}
                       </div>
                     </div>
                   ))}
