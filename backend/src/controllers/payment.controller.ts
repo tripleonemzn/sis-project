@@ -7,6 +7,7 @@ import {
   FinanceInvoiceStatus,
   FinanceLateFeeMode,
   FinancePaymentMethod,
+  FinancePaymentVerificationStatus,
   FinancePaymentSource,
   FinancePaymentReversalStatus,
   FinanceWriteOffStatus,
@@ -112,8 +113,13 @@ function isFinanceBankTrackedMethod(method?: FinancePaymentMethod | null) {
   return (
     method === FinancePaymentMethod.BANK_TRANSFER ||
     method === FinancePaymentMethod.VIRTUAL_ACCOUNT ||
-    method === FinancePaymentMethod.E_WALLET
+    method === FinancePaymentMethod.E_WALLET ||
+    method === FinancePaymentMethod.QRIS
   );
+}
+
+function requiresFinancePaymentVerification(method?: FinancePaymentMethod | null) {
+  return isFinanceBankTrackedMethod(method);
 }
 
 function normalizeFinanceReferenceKey(value?: string | null) {
@@ -131,6 +137,7 @@ function resolveFinancePaymentReversalAvailability(payment: {
   reversedAllocatedAmount?: number | null;
   reversedCreditedAmount?: number | null;
   source?: FinancePaymentSource | null;
+  verificationStatus?: FinancePaymentVerificationStatus | null;
 }) {
   const totalAmount = normalizeFinanceAmount(Number(payment.amount || 0));
   const allocatedAmount = normalizeFinanceAmount(Number(payment.allocatedAmount || 0));
@@ -155,6 +162,8 @@ function resolveFinancePaymentReversalAvailability(payment: {
     isFullyReversed: remainingReversibleAmount <= 0,
     canRequestReversal:
       (payment.source || FinancePaymentSource.DIRECT) === FinancePaymentSource.DIRECT &&
+      (payment.verificationStatus || FinancePaymentVerificationStatus.VERIFIED) ===
+        FinancePaymentVerificationStatus.VERIFIED &&
       remainingReversibleAmount > 0,
   };
 }
@@ -841,6 +850,9 @@ function serializeFinancePaymentRecord(payment: {
   reversedCreditedAmount?: number | null;
   source?: FinancePaymentSource | null;
   method?: FinancePaymentMethod | null;
+  verificationStatus?: FinancePaymentVerificationStatus | null;
+  verificationNote?: string | null;
+  verifiedAt?: Date | null;
   referenceNo?: string | null;
   note?: string | null;
   paidAt?: Date | null;
@@ -859,8 +871,28 @@ function serializeFinancePaymentRecord(payment: {
     accountName: string;
     accountNumber: string;
   } | null;
+  verifiedBy?: {
+    id: number;
+    name: string;
+    role?: string | null;
+  } | null;
+  bankStatementEntries?: Array<{
+    id: number;
+    entryDate: Date;
+    amount: number;
+    direction: FinanceBankStatementDirection;
+    referenceNo?: string | null;
+    status: FinanceBankStatementEntryStatus;
+    reconciliation?: {
+      id: number;
+      reconciliationNo: string;
+    } | null;
+  }> | null;
 }) {
   const reversal = resolveFinancePaymentReversalAvailability(payment);
+  const verificationStatus =
+    payment.verificationStatus || FinancePaymentVerificationStatus.VERIFIED;
+  const matchedStatementEntry = (payment.bankStatementEntries || [])[0] || null;
 
   return {
     id: payment.id,
@@ -878,6 +910,16 @@ function serializeFinancePaymentRecord(payment: {
     canRequestReversal: reversal.canRequestReversal,
     source: payment.source || FinancePaymentSource.DIRECT,
     method: payment.method || null,
+    verificationStatus,
+    verificationNote: payment.verificationNote || null,
+    verifiedAt: payment.verifiedAt || null,
+    verifiedBy: payment.verifiedBy
+      ? {
+          id: payment.verifiedBy.id,
+          name: payment.verifiedBy.name,
+          role: payment.verifiedBy.role || null,
+        }
+      : null,
     referenceNo: payment.referenceNo || null,
     note: payment.note || null,
     invoiceId: payment.invoice?.id || null,
@@ -891,6 +933,22 @@ function serializeFinancePaymentRecord(payment: {
           bankName: payment.bankAccount.bankName,
           accountName: payment.bankAccount.accountName,
           accountNumber: payment.bankAccount.accountNumber,
+        }
+      : null,
+    matchedStatementEntry: matchedStatementEntry
+      ? {
+          id: matchedStatementEntry.id,
+          entryDate: matchedStatementEntry.entryDate,
+          amount: Number(matchedStatementEntry.amount || 0),
+          direction: matchedStatementEntry.direction,
+          referenceNo: matchedStatementEntry.referenceNo || null,
+          status: matchedStatementEntry.status,
+          reconciliation: matchedStatementEntry.reconciliation
+            ? {
+                id: matchedStatementEntry.reconciliation.id,
+                reconciliationNo: matchedStatementEntry.reconciliation.reconciliationNo,
+              }
+            : null,
         }
       : null,
     createdAt: payment.paidAt || payment.createdAt,
@@ -1007,6 +1065,7 @@ type SerializedFinanceBankSystemRefund = ReturnType<typeof serializeFinanceRefun
 type SerializedFinanceBankReconciliationSummary = {
   expectedBankIn: number;
   expectedBankOut: number;
+  pendingVerificationAmount: number;
   expectedClosingBalance: number;
   statementRecordedIn: number;
   statementRecordedOut: number;
@@ -1014,6 +1073,9 @@ type SerializedFinanceBankReconciliationSummary = {
   varianceAmount: number;
   statementGapAmount: number;
   totalPaymentCount: number;
+  verifiedPaymentCount: number;
+  pendingPaymentCount: number;
+  rejectedPaymentCount: number;
   totalRefundCount: number;
   matchedPaymentCount: number;
   matchedRefundCount: number;
@@ -2508,6 +2570,14 @@ async function ensureFinanceBankReconciliationViewer(authUser: { id?: number; ro
   return user;
 }
 
+async function ensureFinancePaymentVerificationViewer(authUser: { id?: number; role?: string }) {
+  const user = await loadFinanceActorContext(authUser);
+  if (!user.isFinanceStaff && !user.isHeadTu && !user.isPrincipal) {
+    throw new ApiError(403, 'Akses finance monitoring dibutuhkan untuk melihat verifikasi pembayaran');
+  }
+  return user;
+}
+
 async function resolveFinanceBankAccountForTransaction(
   db: Prisma.TransactionClient | typeof prisma,
   method: FinancePaymentMethod,
@@ -2540,6 +2610,341 @@ async function resolveFinanceBankAccountForTransaction(
   }
 
   return bankAccount;
+}
+
+async function settleFinanceVerifiedPayment(
+  db: Prisma.TransactionClient | typeof prisma,
+  params: {
+    paymentId: number;
+    actorId: number;
+    verificationStatus?: FinancePaymentVerificationStatus;
+    verificationNote?: string | null;
+    verifiedAt?: Date;
+  },
+) {
+  const payment = await db.financePayment.findUnique({
+    where: { id: params.paymentId },
+    include: {
+      invoice: {
+        include: {
+          student: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              nis: true,
+              nisn: true,
+            },
+          },
+          items: {
+            include: {
+              component: {
+                select: {
+                  periodicity: true,
+                },
+              },
+            },
+          },
+          installments: {
+            select: {
+              id: true,
+              sequence: true,
+              amount: true,
+              dueDate: true,
+            },
+            orderBy: [{ sequence: 'asc' }],
+          },
+        },
+      },
+      bankAccount: {
+        select: {
+          id: true,
+          code: true,
+          bankName: true,
+          accountName: true,
+          accountNumber: true,
+        },
+      },
+      verifiedBy: {
+        select: {
+          id: true,
+          name: true,
+          role: true,
+        },
+      },
+      bankStatementEntries: {
+        select: {
+          id: true,
+          entryDate: true,
+          amount: true,
+          direction: true,
+          referenceNo: true,
+          status: true,
+          reconciliation: {
+            select: {
+              id: true,
+              reconciliationNo: true,
+            },
+          },
+        },
+        orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
+        take: 1,
+      },
+    },
+  });
+
+  if (!payment) {
+    throw new ApiError(404, 'Pembayaran tidak ditemukan');
+  }
+
+  if (payment.invoice.status === 'CANCELLED') {
+    throw new ApiError(400, 'Tagihan sudah dibatalkan sehingga pembayaran tidak bisa diverifikasi');
+  }
+
+  if (
+    payment.verificationStatus === FinancePaymentVerificationStatus.VERIFIED &&
+    (Number(payment.allocatedAmount || 0) > 0 || Number(payment.creditedAmount || 0) > 0)
+  ) {
+    throw new ApiError(400, 'Pembayaran ini sudah diverifikasi');
+  }
+
+  if (payment.verificationStatus === FinancePaymentVerificationStatus.REJECTED) {
+    throw new ApiError(400, 'Pembayaran yang sudah ditolak tidak bisa diverifikasi');
+  }
+
+  const outstanding = Number(payment.invoice.balanceAmount || 0);
+  const allocatedAmount = Math.min(Number(payment.amount || 0), outstanding);
+  const creditedAmount = Math.max(Number(payment.amount || 0) - outstanding, 0);
+
+  const paidAmount = normalizeFinanceAmount(Number(payment.invoice.paidAmount || 0) + allocatedAmount);
+  const writtenOffAmount = inferFinanceWrittenOffAmount({
+    totalAmount: Number(payment.invoice.totalAmount || 0),
+    paidAmount: Number(payment.invoice.paidAmount || 0),
+    balanceAmount: Number(payment.invoice.balanceAmount || 0),
+    writtenOffAmount: payment.invoice.writtenOffAmount,
+    status: payment.invoice.status,
+  });
+  const balanceAmount = calculateFinanceInvoiceBalanceAmount({
+    totalAmount: Number(payment.invoice.totalAmount || 0),
+    paidAmount,
+    writtenOffAmount,
+    status: payment.invoice.status,
+  });
+  const status = calculateFinanceInvoiceStatus({
+    balanceAmount,
+    paidAmount,
+    writtenOffAmount,
+    currentStatus: payment.invoice.status,
+  });
+  const nextDueDate = resolveFinanceInvoiceDueDate({
+    invoiceTotalAmount: Number(payment.invoice.totalAmount || 0),
+    invoicePaidAmount: paidAmount,
+    invoiceBalanceAmount: balanceAmount,
+    invoiceStatus: status,
+    invoiceWrittenOffAmount: writtenOffAmount,
+    invoiceDueDate: payment.invoice.dueDate || null,
+    installments: payment.invoice.installments,
+  });
+
+  const verifiedAt = params.verifiedAt || new Date();
+  const nextVerificationStatus =
+    params.verificationStatus || FinancePaymentVerificationStatus.VERIFIED;
+
+  const updatedPayment = await db.financePayment.update({
+    where: { id: payment.id },
+    data: {
+      allocatedAmount,
+      creditedAmount,
+      verificationStatus: nextVerificationStatus,
+      verificationNote: params.verificationNote?.trim() || null,
+      verifiedAt,
+      verifiedById: params.actorId,
+    },
+    include: {
+      invoice: {
+        select: {
+          id: true,
+          invoiceNo: true,
+          periodKey: true,
+          semester: true,
+        },
+      },
+      bankAccount: {
+        select: {
+          id: true,
+          code: true,
+          bankName: true,
+          accountName: true,
+          accountNumber: true,
+        },
+      },
+      verifiedBy: {
+        select: {
+          id: true,
+          name: true,
+          role: true,
+        },
+      },
+      bankStatementEntries: {
+        select: {
+          id: true,
+          entryDate: true,
+          amount: true,
+          direction: true,
+          referenceNo: true,
+          status: true,
+          reconciliation: {
+            select: {
+              id: true,
+              reconciliationNo: true,
+            },
+          },
+        },
+        orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
+        take: 1,
+      },
+    },
+  });
+
+  const updatedInvoice = await db.financeInvoice.update({
+    where: { id: payment.invoiceId },
+    data: {
+      paidAmount,
+      balanceAmount,
+      status,
+      dueDate: nextDueDate,
+    },
+    include: {
+      student: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          nis: true,
+          nisn: true,
+        },
+      },
+      items: true,
+      payments: {
+        select: {
+          id: true,
+          paymentNo: true,
+          amount: true,
+          allocatedAmount: true,
+          creditedAmount: true,
+          reversedAmount: true,
+          reversedAllocatedAmount: true,
+          reversedCreditedAmount: true,
+          source: true,
+          method: true,
+          verificationStatus: true,
+          verificationNote: true,
+          verifiedAt: true,
+          referenceNo: true,
+          note: true,
+          paidAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
+      },
+      installments: {
+        select: {
+          id: true,
+          sequence: true,
+          amount: true,
+          dueDate: true,
+        },
+        orderBy: [{ sequence: 'asc' }],
+      },
+      writeOffRequests: {
+        include: financeWriteOffRecordInclude,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      },
+    },
+  });
+
+  let creditBalanceSnapshot: {
+    id: number;
+    balanceAmount: number;
+    balanceBefore: number;
+  } | null = null;
+
+  if (creditedAmount > 0) {
+    const existingCreditBalance = await db.financeCreditBalance.findUnique({
+      where: { studentId: payment.studentId },
+      select: {
+        id: true,
+        balanceAmount: true,
+      },
+    });
+
+    const balanceBefore = Number(existingCreditBalance?.balanceAmount || 0);
+    const balanceAfter = balanceBefore + creditedAmount;
+
+    const creditBalance = existingCreditBalance
+      ? await db.financeCreditBalance.update({
+          where: { id: existingCreditBalance.id },
+          data: {
+            balanceAmount: balanceAfter,
+          },
+          select: {
+            id: true,
+            balanceAmount: true,
+          },
+        })
+      : await db.financeCreditBalance.create({
+          data: {
+            studentId: payment.studentId,
+            balanceAmount: balanceAfter,
+          },
+          select: {
+            id: true,
+            balanceAmount: true,
+          },
+        });
+
+    await db.financeCreditTransaction.create({
+      data: {
+        balanceId: creditBalance.id,
+        studentId: payment.studentId,
+        paymentId: payment.id,
+        kind: FinanceCreditTransactionKind.OVERPAYMENT,
+        amount: creditedAmount,
+        balanceBefore,
+        balanceAfter,
+        note: payment.note?.trim() || `Kelebihan bayar dari ${payment.paymentNo}`,
+        createdById: params.actorId,
+      },
+    });
+
+    creditBalanceSnapshot = {
+      id: creditBalance.id,
+      balanceAmount: Number(creditBalance.balanceAmount || 0),
+      balanceBefore,
+    };
+  }
+
+  const primaryPeriodicity = payment.invoice.items[0]?.component?.periodicity;
+  const legacyType: PaymentType = primaryPeriodicity === 'MONTHLY' ? 'MONTHLY' : 'ONE_TIME';
+  const legacyStatus: PaymentStatus = status === 'PAID' ? 'PAID' : 'PARTIAL';
+
+  await db.payment.create({
+    data: {
+      studentId: payment.studentId,
+      amount: Number(payment.amount || 0),
+      status: legacyStatus,
+      type: legacyType,
+    },
+  });
+
+  return {
+    payment: updatedPayment,
+    invoice: updatedInvoice,
+    creditBalance: creditBalanceSnapshot,
+    allocatedAmount,
+    creditedAmount,
+  };
 }
 
 function buildFinanceStudentSearchFilter(search?: string) {
@@ -2750,6 +3155,27 @@ const createFinancePaymentSchema = z.object({
   referenceNo: z.string().trim().max(120).optional(),
   note: z.string().trim().max(500).optional(),
   paidAt: z.coerce.date().optional(),
+});
+
+const listFinancePaymentVerificationsQuerySchema = z.object({
+  verificationStatus: z.nativeEnum(FinancePaymentVerificationStatus).optional(),
+  bankAccountId: z.coerce.number().int().positive().optional(),
+  matchedOnly: z
+    .string()
+    .optional()
+    .transform((value) => {
+      if (value == null || value === '') return undefined;
+      const normalized = value.toLowerCase();
+      if (normalized === 'true' || normalized === '1') return true;
+      if (normalized === 'false' || normalized === '0') return false;
+      return undefined;
+    }),
+  search: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+});
+
+const decideFinancePaymentVerificationSchema = z.object({
+  note: z.string().trim().max(500).optional(),
 });
 
 const financeOptionalDateSchema = z.preprocess(
@@ -3027,6 +3453,9 @@ const financePaymentReversalRecordInclude =
         reversedCreditedAmount: true,
         source: true,
         method: true,
+        verificationStatus: true,
+        verificationNote: true,
+        verifiedAt: true,
         referenceNo: true,
         note: true,
         paidAt: true,
@@ -3400,6 +3829,9 @@ async function loadFinanceBankReconciliationTransactions(
         reversedCreditedAmount: true,
         source: true,
         method: true,
+        verificationStatus: true,
+        verificationNote: true,
+        verifiedAt: true,
         referenceNo: true,
         note: true,
         paidAt: true,
@@ -3413,6 +3845,31 @@ async function loadFinanceBankReconciliationTransactions(
             accountName: true,
             accountNumber: true,
           },
+        },
+        verifiedBy: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+          },
+        },
+        bankStatementEntries: {
+          select: {
+            id: true,
+            entryDate: true,
+            amount: true,
+            direction: true,
+            referenceNo: true,
+            status: true,
+            reconciliation: {
+              select: {
+                id: true,
+                reconciliationNo: true,
+              },
+            },
+          },
+          orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
+          take: 1,
         },
         student: {
           select: {
@@ -3501,6 +3958,9 @@ async function loadFinanceBankReconciliationTransactions(
             reversedCreditedAmount: true,
             source: true,
             method: true,
+            verificationStatus: true,
+            verificationNote: true,
+            verifiedAt: true,
             referenceNo: true,
             note: true,
             paidAt: true,
@@ -3514,6 +3974,31 @@ async function loadFinanceBankReconciliationTransactions(
                 accountName: true,
                 accountNumber: true,
               },
+            },
+            verifiedBy: {
+              select: {
+                id: true,
+                name: true,
+                role: true,
+              },
+            },
+            bankStatementEntries: {
+              select: {
+                id: true,
+                entryDate: true,
+                amount: true,
+                direction: true,
+                referenceNo: true,
+                status: true,
+                reconciliation: {
+                  select: {
+                    id: true,
+                    reconciliationNo: true,
+                  },
+                },
+              },
+              orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
+              take: 1,
             },
             invoice: {
               select: {
@@ -3598,6 +4083,10 @@ async function buildFinanceBankReconciliationSummary(
   );
 
   const systemPayments = paymentRows
+    .filter(
+      (payment: any) =>
+        payment.verificationStatus !== FinancePaymentVerificationStatus.REJECTED,
+    )
     .map((payment: any) => {
       const serialized = serializeFinancePaymentRecord(payment);
       const netBankAmount = normalizeFinanceAmount(
@@ -3629,6 +4118,11 @@ async function buildFinanceBankReconciliationSummary(
   const expectedBankIn = normalizeFinanceAmount(
     systemPayments.reduce((sum: number, payment: any) => sum + Number(payment.netBankAmount || 0), 0),
   );
+  const pendingVerificationAmount = normalizeFinanceAmount(
+    systemPayments
+      .filter((payment: any) => payment.verificationStatus === FinancePaymentVerificationStatus.PENDING)
+      .reduce((sum: number, payment: any) => sum + Number(payment.netBankAmount || 0), 0),
+  );
   const expectedBankOut = normalizeFinanceAmount(
     systemRefunds.reduce((sum: number, refund: any) => sum + Number(refund.amount || 0), 0),
   );
@@ -3648,6 +4142,7 @@ async function buildFinanceBankReconciliationSummary(
   const summary: SerializedFinanceBankReconciliationSummary = {
     expectedBankIn,
     expectedBankOut,
+    pendingVerificationAmount,
     expectedClosingBalance,
     statementRecordedIn: statementIn,
     statementRecordedOut: statementOut,
@@ -3655,6 +4150,15 @@ async function buildFinanceBankReconciliationSummary(
     varianceAmount,
     statementGapAmount,
     totalPaymentCount: systemPayments.length,
+    verifiedPaymentCount: systemPayments.filter(
+      (payment: any) => payment.verificationStatus === FinancePaymentVerificationStatus.VERIFIED,
+    ).length,
+    pendingPaymentCount: systemPayments.filter(
+      (payment: any) => payment.verificationStatus === FinancePaymentVerificationStatus.PENDING,
+    ).length,
+    rejectedPaymentCount: paymentRows.filter(
+      (payment: any) => payment.verificationStatus === FinancePaymentVerificationStatus.REJECTED,
+    ).length,
     totalRefundCount: systemRefunds.length,
     matchedPaymentCount: systemPayments.filter((payment: any) => payment.matched).length,
     matchedRefundCount: systemRefunds.filter((refund: any) => refund.matched).length,
@@ -3768,7 +4272,11 @@ async function resolveFinanceBankStatementAutoMatch(
         .filter((value: any): value is number => Number.isInteger(value)),
     );
     const candidates = paymentRows
-      .filter((payment: any) => !reservedPaymentIds.has(payment.id))
+      .filter(
+        (payment: any) =>
+          !reservedPaymentIds.has(payment.id) &&
+          payment.verificationStatus !== FinancePaymentVerificationStatus.REJECTED,
+      )
       .map((payment: any) => ({
         payment,
         netBankAmount: normalizeFinanceAmount(
@@ -6726,11 +7234,30 @@ export const listFinanceInvoices = asyncHandler(async (req: Request, res: Respon
           reversedCreditedAmount: true,
           source: true,
           method: true,
+          verificationStatus: true,
+          verificationNote: true,
+          verifiedAt: true,
           referenceNo: true,
           note: true,
           paidAt: true,
           createdAt: true,
           updatedAt: true,
+          bankAccount: {
+            select: {
+              id: true,
+              code: true,
+              bankName: true,
+              accountName: true,
+              accountNumber: true,
+            },
+          },
+          verifiedBy: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
         },
         orderBy: [{ paidAt: 'desc' }],
       },
@@ -7053,6 +7580,519 @@ export const dispatchFinanceDueRemindersHandler = asyncHandler(async (req: Reque
     );
 });
 
+export const listFinancePaymentVerifications = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinancePaymentVerificationViewer((req as any).user || {});
+
+  const { verificationStatus, bankAccountId, matchedOnly, search, limit } =
+    listFinancePaymentVerificationsQuerySchema.parse(req.query || {});
+  const normalizedSearch = search?.trim();
+
+  const payments = await prisma.financePayment.findMany({
+    where: {
+      source: FinancePaymentSource.DIRECT,
+      method: {
+        in: [
+          FinancePaymentMethod.BANK_TRANSFER,
+          FinancePaymentMethod.VIRTUAL_ACCOUNT,
+          FinancePaymentMethod.E_WALLET,
+          FinancePaymentMethod.QRIS,
+        ],
+      },
+      ...(verificationStatus ? { verificationStatus } : {}),
+      ...(bankAccountId ? { bankAccountId } : {}),
+      ...(matchedOnly === true
+        ? { bankStatementEntries: { some: {} } }
+        : matchedOnly === false
+          ? { bankStatementEntries: { none: {} } }
+          : {}),
+      ...(normalizedSearch
+        ? {
+            OR: [
+              { paymentNo: { contains: normalizedSearch, mode: 'insensitive' } },
+              { referenceNo: { contains: normalizedSearch, mode: 'insensitive' } },
+              { note: { contains: normalizedSearch, mode: 'insensitive' } },
+              { student: { name: { contains: normalizedSearch, mode: 'insensitive' } } },
+              { student: { nis: { contains: normalizedSearch, mode: 'insensitive' } } },
+              { student: { nisn: { contains: normalizedSearch, mode: 'insensitive' } } },
+              { invoice: { invoiceNo: { contains: normalizedSearch, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
+    take: limit,
+    include: {
+      student: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          nis: true,
+          nisn: true,
+          studentClass: {
+            select: {
+              id: true,
+              name: true,
+              level: true,
+            },
+          },
+        },
+      },
+      invoice: {
+        select: {
+          id: true,
+          invoiceNo: true,
+          periodKey: true,
+          semester: true,
+        },
+      },
+      bankAccount: {
+        select: {
+          id: true,
+          code: true,
+          bankName: true,
+          accountName: true,
+          accountNumber: true,
+        },
+      },
+      verifiedBy: {
+        select: {
+          id: true,
+          name: true,
+          role: true,
+        },
+      },
+      bankStatementEntries: {
+        select: {
+          id: true,
+          entryDate: true,
+          amount: true,
+          direction: true,
+          referenceNo: true,
+          status: true,
+          reconciliation: {
+            select: {
+              id: true,
+              reconciliationNo: true,
+            },
+          },
+        },
+        orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
+        take: 1,
+      },
+    },
+  });
+
+  const rows = payments.map((payment) => ({
+    ...serializeFinancePaymentRecord(payment),
+    student: payment.student,
+  }));
+
+  const summary = rows.reduce(
+    (acc, payment) => {
+      acc.totalPayments += 1;
+      acc.totalAmount += Number(payment.amount || 0);
+
+      if (payment.verificationStatus === FinancePaymentVerificationStatus.PENDING) {
+        acc.pendingCount += 1;
+        acc.pendingAmount += Number(payment.amount || 0);
+      } else if (payment.verificationStatus === FinancePaymentVerificationStatus.VERIFIED) {
+        acc.verifiedCount += 1;
+        acc.verifiedAmount += Number(payment.amount || 0);
+      } else {
+        acc.rejectedCount += 1;
+        acc.rejectedAmount += Number(payment.amount || 0);
+      }
+
+      if (payment.matchedStatementEntry) {
+        acc.matchedCount += 1;
+      } else {
+        acc.unmatchedCount += 1;
+      }
+      return acc;
+    },
+    {
+      totalPayments: 0,
+      totalAmount: 0,
+      pendingCount: 0,
+      pendingAmount: 0,
+      verifiedCount: 0,
+      verifiedAmount: 0,
+      rejectedCount: 0,
+      rejectedAmount: 0,
+      matchedCount: 0,
+      unmatchedCount: 0,
+    },
+  );
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        payments: rows,
+        summary,
+      },
+      'Daftar verifikasi pembayaran finance',
+    ),
+  );
+});
+
+export const verifyFinancePayment = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+
+  const paymentId = Number(req.params.id);
+  if (!Number.isInteger(paymentId) || paymentId <= 0) {
+    throw new ApiError(400, 'ID pembayaran tidak valid');
+  }
+
+  const payload = decideFinancePaymentVerificationSchema.parse(req.body || {});
+
+  const result = await prisma.$transaction(async (tx) => {
+    const before = await tx.financePayment.findUnique({
+      where: { id: paymentId },
+      include: {
+        invoice: {
+          select: {
+            id: true,
+            invoiceNo: true,
+            periodKey: true,
+            semester: true,
+          },
+        },
+        bankAccount: {
+          select: {
+            id: true,
+            code: true,
+            bankName: true,
+            accountName: true,
+            accountNumber: true,
+          },
+        },
+        verifiedBy: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    if (!before) {
+      throw new ApiError(404, 'Pembayaran tidak ditemukan');
+    }
+
+    if (before.verificationStatus === FinancePaymentVerificationStatus.VERIFIED) {
+      throw new ApiError(400, 'Pembayaran ini sudah diverifikasi');
+    }
+
+    if (before.verificationStatus === FinancePaymentVerificationStatus.REJECTED) {
+      throw new ApiError(400, 'Pembayaran yang sudah ditolak tidak bisa diverifikasi');
+    }
+
+    const settled = await settleFinanceVerifiedPayment(tx, {
+      paymentId,
+      actorId: actor.id,
+      verificationStatus: FinancePaymentVerificationStatus.VERIFIED,
+      verificationNote: payload.note || null,
+    });
+
+    return {
+      before,
+      ...settled,
+    };
+  });
+
+  const serializedPayment = serializeFinancePaymentRecord(result.payment);
+  const serializedInvoice = serializeFinanceInvoiceRecord(result.invoice);
+  const creditedAmount = Number(result.creditedAmount || 0);
+
+  await Promise.all([
+    createFinanceNotifications({
+      studentId: result.invoice.student.id,
+      title: 'Pembayaran Berhasil Diverifikasi',
+      message: `Pembayaran ${serializedPayment.paymentNo || '-'} sebesar Rp${Math.round(
+        serializedPayment.amount,
+      ).toLocaleString('id-ID')} untuk invoice ${
+        serializedInvoice.invoiceNo
+      } sudah diverifikasi. Sisa tagihan sekarang Rp${Math.round(serializedInvoice.balanceAmount).toLocaleString(
+        'id-ID',
+      )}.${creditedAmount > 0 ? ` Kelebihan bayar Rp${Math.round(creditedAmount).toLocaleString('id-ID')} masuk ke saldo kredit.` : ''}`,
+      type: 'FINANCE_PAYMENT_RECORDED',
+      data: {
+        module: 'FINANCE',
+        invoiceId: serializedInvoice.id,
+        invoiceNo: serializedInvoice.invoiceNo,
+        paymentId: serializedPayment.id,
+        paymentNo: serializedPayment.paymentNo,
+        paidAmount: serializedPayment.amount,
+        allocatedAmount: serializedPayment.allocatedAmount,
+        creditedAmount,
+        remainingBalance: serializedInvoice.balanceAmount,
+        creditBalanceAmount: Number(result.creditBalance?.balanceAmount || 0),
+        verificationStatus: serializedPayment.verificationStatus,
+      },
+    }),
+    createFinanceInternalNotifications({
+      scopes: ['FINANCE'],
+      title: 'Pembayaran Non-Tunai Diverifikasi',
+      message: `Pembayaran ${serializedPayment.paymentNo || '-'} untuk ${
+        result.invoice.student.name
+      } sudah diverifikasi sebesar Rp${Math.round(serializedPayment.amount).toLocaleString('id-ID')}.`,
+      type: 'FINANCE_PAYMENT_VERIFIED',
+      data: {
+        paymentId: serializedPayment.id,
+        paymentNo: serializedPayment.paymentNo,
+        invoiceId: serializedInvoice.id,
+        invoiceNo: serializedInvoice.invoiceNo,
+        studentId: result.invoice.student.id,
+        studentName: result.invoice.student.name,
+        amount: serializedPayment.amount,
+      },
+    }),
+  ]);
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'UPDATE',
+      'FINANCE_PAYMENT_VERIFY',
+      serializedPayment.id,
+      result.before,
+      {
+        payment: serializedPayment,
+        invoice: {
+          id: serializedInvoice.id,
+          invoiceNo: serializedInvoice.invoiceNo,
+          paidAmount: serializedInvoice.paidAmount,
+          balanceAmount: serializedInvoice.balanceAmount,
+          status: serializedInvoice.status,
+        },
+        creditBalance: result.creditBalance,
+      },
+      'Verifikasi pembayaran non-tunai finance',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat verifikasi pembayaran finance', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        payment: serializedPayment,
+        invoice: serializedInvoice,
+        creditBalance: result.creditBalance,
+      },
+      'Pembayaran berhasil diverifikasi',
+    ),
+  );
+});
+
+export const rejectFinancePayment = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+
+  const paymentId = Number(req.params.id);
+  if (!Number.isInteger(paymentId) || paymentId <= 0) {
+    throw new ApiError(400, 'ID pembayaran tidak valid');
+  }
+
+  const payload = decideFinancePaymentVerificationSchema.parse(req.body || {});
+
+  const result = await prisma.$transaction(async (tx) => {
+    const before = await tx.financePayment.findUnique({
+      where: { id: paymentId },
+      include: {
+        invoice: {
+          select: {
+            id: true,
+            invoiceNo: true,
+            periodKey: true,
+            semester: true,
+          },
+        },
+        student: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nis: true,
+            nisn: true,
+          },
+        },
+        bankAccount: {
+          select: {
+            id: true,
+            code: true,
+            bankName: true,
+            accountName: true,
+            accountNumber: true,
+          },
+        },
+        verifiedBy: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+          },
+        },
+        bankStatementEntries: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    if (!before) {
+      throw new ApiError(404, 'Pembayaran tidak ditemukan');
+    }
+
+    if (before.verificationStatus === FinancePaymentVerificationStatus.VERIFIED) {
+      throw new ApiError(400, 'Pembayaran yang sudah diverifikasi tidak bisa ditolak');
+    }
+
+    if (before.verificationStatus === FinancePaymentVerificationStatus.REJECTED) {
+      throw new ApiError(400, 'Pembayaran ini sudah ditolak');
+    }
+
+    await tx.financeBankStatementEntry.updateMany({
+      where: {
+        matchedPaymentId: paymentId,
+      },
+      data: {
+        matchedPaymentId: null,
+        status: 'UNMATCHED',
+      },
+    });
+
+    const payment = await tx.financePayment.update({
+      where: { id: paymentId },
+      data: {
+        verificationStatus: FinancePaymentVerificationStatus.REJECTED,
+        verificationNote: payload.note || null,
+        verifiedAt: new Date(),
+        verifiedById: actor.id,
+      },
+      include: {
+        invoice: {
+          select: {
+            id: true,
+            invoiceNo: true,
+            periodKey: true,
+            semester: true,
+          },
+        },
+        bankAccount: {
+          select: {
+            id: true,
+            code: true,
+            bankName: true,
+            accountName: true,
+            accountNumber: true,
+          },
+        },
+        verifiedBy: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+          },
+        },
+        bankStatementEntries: {
+          select: {
+            id: true,
+            entryDate: true,
+            amount: true,
+            direction: true,
+            referenceNo: true,
+            status: true,
+            reconciliation: {
+              select: {
+                id: true,
+                reconciliationNo: true,
+              },
+            },
+          },
+          orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
+          take: 1,
+        },
+      },
+    });
+
+    return {
+      before,
+      payment,
+      student: before.student,
+      invoice: before.invoice,
+    };
+  });
+
+  const serializedPayment = serializeFinancePaymentRecord(result.payment);
+
+  await Promise.all([
+    createFinanceNotifications({
+      studentId: result.student.id,
+      title: 'Pembayaran Ditolak',
+      message: `Pembayaran ${serializedPayment.paymentNo || '-'} untuk invoice ${
+        result.invoice?.invoiceNo || '-'
+      } ditolak dan tidak memengaruhi tagihan. Mohon periksa kembali referensi transaksi atau bukti pembayaran.`,
+      type: 'FINANCE_PAYMENT_REJECTED',
+      data: {
+        module: 'FINANCE',
+        paymentId: serializedPayment.id,
+        paymentNo: serializedPayment.paymentNo,
+        invoiceId: result.invoice?.id || null,
+        invoiceNo: result.invoice?.invoiceNo || null,
+        verificationStatus: serializedPayment.verificationStatus,
+        verificationNote: serializedPayment.verificationNote,
+      },
+    }),
+    createFinanceInternalNotifications({
+      scopes: ['FINANCE'],
+      title: 'Pembayaran Non-Tunai Ditolak',
+      message: `Pembayaran ${serializedPayment.paymentNo || '-'} untuk ${
+        result.student.name
+      } ditolak. Jika sebelumnya matched ke mutasi bank, matching dilepas kembali.`,
+      type: 'FINANCE_PAYMENT_REJECTED',
+      data: {
+        paymentId: serializedPayment.id,
+        paymentNo: serializedPayment.paymentNo,
+        studentId: result.student.id,
+        studentName: result.student.name,
+        invoiceId: result.invoice?.id || null,
+        invoiceNo: result.invoice?.invoiceNo || null,
+      },
+    }),
+  ]);
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'UPDATE',
+      'FINANCE_PAYMENT_REJECT',
+      serializedPayment.id,
+      result.before,
+      {
+        payment: serializedPayment,
+        student: result.student,
+        invoice: result.invoice,
+      },
+      'Penolakan pembayaran non-tunai finance',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat penolakan pembayaran finance', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(200, { payment: serializedPayment }, 'Pembayaran berhasil ditolak'),
+  );
+});
+
 export const createFinancePayment = asyncHandler(async (req: Request, res: Response) => {
   const actor = await ensureFinanceActor((req as any).user || {});
 
@@ -7106,11 +8146,8 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
       throw new ApiError(400, 'Tagihan sudah dibatalkan');
     }
 
-    const outstanding = Number(invoice.balanceAmount || 0);
-    const allocatedAmount = Math.min(payload.amount, outstanding);
-    const creditedAmount = Math.max(payload.amount - outstanding, 0);
-
     const paymentNo = makeFinancePaymentNo(invoice.studentId);
+    const requiresVerification = requiresFinancePaymentVerification(payload.method);
 
     const payment = await tx.financePayment.create({
       data: {
@@ -7118,173 +8155,167 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
         studentId: invoice.studentId,
         invoiceId: invoice.id,
         amount: payload.amount,
-        allocatedAmount,
-        creditedAmount,
+        allocatedAmount: 0,
+        creditedAmount: 0,
         method: payload.method,
+        verificationStatus: requiresVerification
+          ? FinancePaymentVerificationStatus.PENDING
+          : FinancePaymentVerificationStatus.VERIFIED,
+        verificationNote: null,
+        verifiedAt: requiresVerification ? null : payload.paidAt || new Date(),
+        verifiedById: requiresVerification ? null : actor.id,
         bankAccountId: bankAccount?.id || null,
         referenceNo: payload.referenceNo?.trim() || null,
         note: payload.note?.trim() || null,
         paidAt: payload.paidAt || new Date(),
         createdById: actor.id,
       },
-    });
-
-    const paidAmount = normalizeFinanceAmount(Number(invoice.paidAmount || 0) + allocatedAmount);
-    const writtenOffAmount = inferFinanceWrittenOffAmount({
-      totalAmount: Number(invoice.totalAmount || 0),
-      paidAmount: Number(invoice.paidAmount || 0),
-      balanceAmount: Number(invoice.balanceAmount || 0),
-      writtenOffAmount: invoice.writtenOffAmount,
-      status: invoice.status,
-    });
-    const balanceAmount = calculateFinanceInvoiceBalanceAmount({
-      totalAmount: Number(invoice.totalAmount || 0),
-      paidAmount,
-      writtenOffAmount,
-      status: invoice.status,
-    });
-    const status = calculateFinanceInvoiceStatus({
-      balanceAmount,
-      paidAmount,
-      writtenOffAmount,
-      currentStatus: invoice.status,
-    });
-    const nextDueDate = resolveFinanceInvoiceDueDate({
-      invoiceTotalAmount: Number(invoice.totalAmount || 0),
-      invoicePaidAmount: paidAmount,
-      invoiceBalanceAmount: balanceAmount,
-      invoiceStatus: status,
-      invoiceWrittenOffAmount: writtenOffAmount,
-      invoiceDueDate: invoice.dueDate || null,
-      installments: invoice.installments,
-    });
-
-    const updatedInvoice = await tx.financeInvoice.update({
-      where: { id: invoice.id },
-      data: {
-        paidAmount,
-        balanceAmount,
-        status,
-        dueDate: nextDueDate,
-      },
       include: {
-        student: {
+        invoice: {
+          select: {
+            id: true,
+            invoiceNo: true,
+            periodKey: true,
+            semester: true,
+          },
+        },
+        bankAccount: {
+          select: {
+            id: true,
+            code: true,
+            bankName: true,
+            accountName: true,
+            accountNumber: true,
+          },
+        },
+        verifiedBy: {
           select: {
             id: true,
             name: true,
-            username: true,
-            nis: true,
-            nisn: true,
+            role: true,
           },
         },
-        items: true,
+        bankStatementEntries: {
+          select: {
+            id: true,
+            entryDate: true,
+            amount: true,
+            direction: true,
+            referenceNo: true,
+            status: true,
+            reconciliation: {
+              select: {
+                id: true,
+                reconciliationNo: true,
+              },
+            },
+          },
+          orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
+          take: 1,
+        },
       },
     });
 
-    let creditBalanceSnapshot: {
-      id: number;
-      balanceAmount: number;
-      balanceBefore: number;
-    } | null = null;
-
-    if (creditedAmount > 0) {
-      const existingCreditBalance = await tx.financeCreditBalance.findUnique({
-        where: { studentId: invoice.studentId },
-        select: {
-          id: true,
-          balanceAmount: true,
-        },
-      });
-
-      const balanceBefore = Number(existingCreditBalance?.balanceAmount || 0);
-      const balanceAfter = balanceBefore + creditedAmount;
-
-      const creditBalance = existingCreditBalance
-        ? await tx.financeCreditBalance.update({
-            where: { id: existingCreditBalance.id },
-            data: {
-              balanceAmount: balanceAfter,
-            },
-            select: {
-              id: true,
-              balanceAmount: true,
-            },
-          })
-        : await tx.financeCreditBalance.create({
-            data: {
-              studentId: invoice.studentId,
-              balanceAmount: balanceAfter,
-            },
-            select: {
-              id: true,
-              balanceAmount: true,
-            },
-          });
-
-      await tx.financeCreditTransaction.create({
-        data: {
-          balanceId: creditBalance.id,
-          studentId: invoice.studentId,
-          paymentId: payment.id,
-          kind: FinanceCreditTransactionKind.OVERPAYMENT,
-          amount: creditedAmount,
-          balanceBefore,
-          balanceAfter,
-          note: payload.note?.trim() || `Kelebihan bayar dari ${paymentNo}`,
-          createdById: actor.id,
-        },
-      });
-
-      creditBalanceSnapshot = {
-        id: creditBalance.id,
-        balanceAmount: Number(creditBalance.balanceAmount || 0),
-        balanceBefore,
+    if (requiresVerification) {
+      return {
+        payment,
+        invoice,
+        creditBalance: null,
+        allocatedAmount: 0,
+        creditedAmount: 0,
+        pendingVerification: true,
       };
     }
 
-    const primaryPeriodicity = invoice.items[0]?.component?.periodicity;
-    const legacyType: PaymentType = primaryPeriodicity === 'MONTHLY' ? 'MONTHLY' : 'ONE_TIME';
-
-    const legacyStatus: PaymentStatus = status === 'PAID' ? 'PAID' : 'PARTIAL';
-
-    await tx.payment.create({
-      data: {
-        studentId: invoice.studentId,
-        amount: payload.amount,
-        status: legacyStatus,
-        type: legacyType,
-      },
+    const settled = await settleFinanceVerifiedPayment(tx, {
+      paymentId: payment.id,
+      actorId: actor.id,
+      verificationStatus: FinancePaymentVerificationStatus.VERIFIED,
+      verificationNote: payload.note || null,
+      verifiedAt: payload.paidAt || new Date(),
     });
 
     return {
-      payment,
-      invoice: updatedInvoice,
-      creditBalance: creditBalanceSnapshot,
+      ...settled,
+      pendingVerification: false,
     };
   });
 
-  const creditedAmount = Number(result.payment.creditedAmount || 0);
+  const serializedPayment = serializeFinancePaymentRecord(result.payment);
 
-  await createFinanceNotifications({
-    studentId: result.invoice.student.id,
-    title: 'Pembayaran Tagihan Berhasil Dicatat',
-    message: `Pembayaran Rp${Math.round(result.payment.amount).toLocaleString('id-ID')} untuk tagihan ${result.invoice.invoiceNo} berhasil dicatat. Sisa tagihan: Rp${Math.round(Number(result.invoice.balanceAmount || 0)).toLocaleString('id-ID')}.${creditedAmount > 0 ? ` Kelebihan bayar Rp${Math.round(creditedAmount).toLocaleString('id-ID')} masuk ke saldo kredit.` : ''}`,
-    type: 'FINANCE_PAYMENT_RECORDED',
-    data: {
-      module: 'FINANCE',
-      invoiceId,
-      invoiceNo: result.invoice.invoiceNo,
-      paymentId: result.payment.id,
-      paymentNo: result.payment.paymentNo,
-      paidAmount: result.payment.amount,
-      allocatedAmount: Number(result.payment.allocatedAmount || 0),
-      creditedAmount,
-      remainingBalance: Number(result.invoice.balanceAmount || 0),
-      creditBalanceAmount: Number(result.creditBalance?.balanceAmount || 0),
-      semester: result.invoice.semester,
-      periodKey: result.invoice.periodKey,
-    },
-  });
+  if (result.pendingVerification) {
+    await Promise.all([
+      createFinanceNotifications({
+        studentId: result.invoice.studentId,
+        title: 'Pembayaran Menunggu Verifikasi',
+        message: `Pembayaran ${serializedPayment.paymentNo || '-'} sebesar Rp${Math.round(
+          serializedPayment.amount,
+        ).toLocaleString('id-ID')} sudah dicatat dan sedang menunggu verifikasi bendahara. Tagihan belum berkurang sebelum verifikasi selesai.`,
+        type: 'FINANCE_PAYMENT_PENDING',
+        data: {
+          module: 'FINANCE',
+          invoiceId,
+          invoiceNo: result.invoice.invoiceNo,
+          paymentId: serializedPayment.id,
+          paymentNo: serializedPayment.paymentNo,
+          paidAmount: serializedPayment.amount,
+          verificationStatus: serializedPayment.verificationStatus,
+          semester: result.invoice.semester,
+          periodKey: result.invoice.periodKey,
+        },
+      }),
+      createFinanceInternalNotifications({
+        scopes: ['FINANCE'],
+        title: 'Pembayaran Non-Tunai Menunggu Verifikasi',
+        message: `Pembayaran ${serializedPayment.paymentNo || '-'} untuk invoice ${
+          result.invoice.invoiceNo
+        } masuk antrean verifikasi.`,
+        type: 'FINANCE_PAYMENT_PENDING',
+        data: {
+          paymentId: serializedPayment.id,
+          paymentNo: serializedPayment.paymentNo,
+          invoiceId,
+          invoiceNo: result.invoice.invoiceNo,
+          amount: serializedPayment.amount,
+          method: serializedPayment.method,
+        },
+      }),
+    ]);
+  } else {
+    const settledInvoice = result.invoice as typeof result.invoice & {
+      student: { id: number; name: string };
+      balanceAmount: number;
+      invoiceNo: string;
+      semester: Semester;
+      periodKey: string;
+    };
+    const creditedAmount = Number(result.creditedAmount || 0);
+    await createFinanceNotifications({
+      studentId: settledInvoice.student.id,
+      title: 'Pembayaran Tagihan Berhasil Dicatat',
+      message: `Pembayaran Rp${Math.round(serializedPayment.amount).toLocaleString('id-ID')} untuk tagihan ${
+        settledInvoice.invoiceNo
+      } berhasil dicatat. Sisa tagihan: Rp${Math.round(Number(settledInvoice.balanceAmount || 0)).toLocaleString(
+        'id-ID',
+      )}.${creditedAmount > 0 ? ` Kelebihan bayar Rp${Math.round(creditedAmount).toLocaleString('id-ID')} masuk ke saldo kredit.` : ''}`,
+      type: 'FINANCE_PAYMENT_RECORDED',
+      data: {
+        module: 'FINANCE',
+        invoiceId,
+        invoiceNo: settledInvoice.invoiceNo,
+        paymentId: serializedPayment.id,
+        paymentNo: serializedPayment.paymentNo,
+        paidAmount: serializedPayment.amount,
+        allocatedAmount: Number(serializedPayment.allocatedAmount || 0),
+        creditedAmount,
+        remainingBalance: Number(settledInvoice.balanceAmount || 0),
+        creditBalanceAmount: Number(result.creditBalance?.balanceAmount || 0),
+        semester: settledInvoice.semester,
+        periodKey: settledInvoice.periodKey,
+        verificationStatus: serializedPayment.verificationStatus,
+      },
+    });
+  }
 
   try {
     await writeAuditLog(
@@ -7293,19 +8324,24 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
       (actor.additionalDuties || []).map((duty) => String(duty)),
       'CREATE',
       'FINANCE_PAYMENT',
-      result.payment.id,
+      serializedPayment.id,
       null,
       {
         invoiceId,
         invoiceNo: result.invoice.invoiceNo,
-        studentId: result.invoice.student.id,
-        paymentNo: result.payment.paymentNo,
-        amount: Number(result.payment.amount || 0),
-        allocatedAmount: Number(result.payment.allocatedAmount || 0),
-        creditedAmount,
+        studentId: 'student' in result.invoice ? result.invoice.student.id : result.invoice.studentId,
+        paymentNo: serializedPayment.paymentNo,
+        amount: Number(serializedPayment.amount || 0),
+        allocatedAmount: Number(serializedPayment.allocatedAmount || 0),
+        creditedAmount: Number(result.creditedAmount || 0),
         creditBalanceAmount: Number(result.creditBalance?.balanceAmount || 0),
+        verificationStatus: serializedPayment.verificationStatus,
       },
-      creditedAmount > 0 ? 'Pembayaran invoice dengan kelebihan bayar menjadi saldo kredit' : 'Pembayaran invoice',
+      result.pendingVerification
+        ? 'Pembayaran non-tunai masuk antrean verifikasi'
+        : Number(result.creditedAmount || 0) > 0
+          ? 'Pembayaran invoice dengan kelebihan bayar menjadi saldo kredit'
+          : 'Pembayaran invoice',
     );
   } catch (auditError) {
     console.warn('[AUDIT] gagal mencatat pembayaran finance', auditError);
@@ -7313,7 +8349,20 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
 
   res
     .status(201)
-    .json(new ApiResponse(201, result, 'Pembayaran tagihan berhasil dicatat'));
+    .json(
+      new ApiResponse(
+        201,
+        {
+          ...result,
+          payment: serializedPayment,
+          invoice:
+            'student' in result.invoice ? serializeFinanceInvoiceRecord(result.invoice as any) : result.invoice,
+        },
+        result.pendingVerification
+          ? 'Pembayaran non-tunai berhasil dicatat dan menunggu verifikasi'
+          : 'Pembayaran tagihan berhasil dicatat',
+      ),
+    );
 });
 
 export const updateFinanceInvoiceInstallments = asyncHandler(async (req: Request, res: Response) => {
@@ -7368,6 +8417,9 @@ export const updateFinanceInvoiceInstallments = asyncHandler(async (req: Request
             reversedCreditedAmount: true,
             source: true,
             method: true,
+            verificationStatus: true,
+            verificationNote: true,
+            verifiedAt: true,
             referenceNo: true,
             note: true,
             paidAt: true,
@@ -8501,6 +9553,31 @@ export const createFinanceBankStatementEntry = asyncHandler(async (req: Request,
                 accountName: true,
                 accountNumber: true,
               },
+            },
+            verifiedBy: {
+              select: {
+                id: true,
+                name: true,
+                role: true,
+              },
+            },
+            bankStatementEntries: {
+              select: {
+                id: true,
+                entryDate: true,
+                amount: true,
+                direction: true,
+                referenceNo: true,
+                status: true,
+                reconciliation: {
+                  select: {
+                    id: true,
+                    reconciliationNo: true,
+                  },
+                },
+              },
+              orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
+              take: 1,
             },
             invoice: {
               select: {

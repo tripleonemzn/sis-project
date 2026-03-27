@@ -16,6 +16,9 @@ import {
   exportFinanceReports,
   applyFinanceInvoiceLateFees,
   createFinancePayment,
+  listFinancePaymentVerifications,
+  verifyFinancePayment,
+  rejectFinancePayment,
   createFinanceRefund,
   createFinanceTariffRule,
   generateFinanceInvoices,
@@ -89,6 +92,9 @@ router.post('/cash-sessions/:id/principal-decision', roleMiddleware(['PRINCIPAL'
 router.post('/invoices/:id/late-fees/apply', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), applyFinanceInvoiceLateFees);
 router.patch('/invoices/:id/installments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceInvoiceInstallments);
 router.post('/invoices/:id/payments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinancePayment);
+router.get('/payment-records', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinancePaymentVerifications);
+router.post('/payment-records/:id/verify', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), verifyFinancePayment);
+router.post('/payment-records/:id/reject', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), rejectFinancePayment);
 router.post('/payment-records/:id/reversals', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinancePaymentReversalRequest);
 router.post('/invoices/:id/write-offs', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceWriteOffRequest);
 router.get('/credits', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceCredits);

@@ -73,6 +73,7 @@ const PAYMENT_METHOD_OPTIONS: Array<{ value: FinancePaymentMethod; label: string
   { value: 'BANK_TRANSFER', label: 'Transfer Bank' },
   { value: 'VIRTUAL_ACCOUNT', label: 'Virtual Account' },
   { value: 'E_WALLET', label: 'E-Wallet' },
+  { value: 'QRIS', label: 'QRIS' },
   { value: 'OTHER', label: 'Lainnya' },
 ];
 
@@ -177,6 +178,21 @@ function getAdjustmentKindLabel(kind: FinanceAdjustmentKind) {
 
 function getPaymentMethodLabel(method?: FinancePaymentMethod | null) {
   return PAYMENT_METHOD_OPTIONS.find((option) => option.value === method)?.label || method || '-';
+}
+
+function isTrackedNonCashPaymentMethod(method?: FinancePaymentMethod | null) {
+  return (
+    method === 'BANK_TRANSFER' ||
+    method === 'VIRTUAL_ACCOUNT' ||
+    method === 'E_WALLET' ||
+    method === 'QRIS'
+  );
+}
+
+function getPaymentVerificationBadge(status?: StaffFinanceInvoice['payments'][number]['verificationStatus']) {
+  if (status === 'PENDING') return { label: 'Menunggu Verifikasi', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  if (status === 'REJECTED') return { label: 'Ditolak', bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+  return { label: 'Terverifikasi', bg: '#dcfce7', border: '#86efac', text: '#166534' };
 }
 
 function getLateFeeModeLabel(mode?: FinanceLateFeeMode | null) {
@@ -420,6 +436,7 @@ export default function StaffPaymentsScreen() {
   const [paymentBankAccountId, setPaymentBankAccountId] = useState<number | ''>('');
   const [paymentReference, setPaymentReference] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
+  const [paymentVerificationSearch, setPaymentVerificationSearch] = useState('');
   const [creditSearch, setCreditSearch] = useState('');
   const [selectedCreditBalance, setSelectedCreditBalance] = useState<StaffFinanceCreditBalanceRow | null>(null);
   const [refundAmount, setRefundAmount] = useState('');
@@ -505,6 +522,17 @@ export default function StaffPaymentsScreen() {
     staleTime: 30_000,
   });
 
+  const paymentVerificationsQuery = useQuery({
+    queryKey: ['mobile-staff-finance-payment-verifications', paymentVerificationSearch],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () =>
+      staffFinanceApi.listPaymentVerifications({
+        limit: 50,
+        search: paymentVerificationSearch.trim() || undefined,
+      }),
+    staleTime: 30_000,
+  });
+
   const majorsQuery = useQuery({
     queryKey: ['mobile-staff-finance-majors'],
     enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
@@ -539,6 +567,15 @@ export default function StaffPaymentsScreen() {
   );
   const bankReconciliationSummary = bankReconciliationsQuery.data?.summary;
   const bankReconciliations = bankReconciliationsQuery.data?.reconciliations || [];
+  const paymentVerificationSummary = paymentVerificationsQuery.data?.summary;
+  const paymentVerificationRows = paymentVerificationsQuery.data?.payments || [];
+  const pendingPaymentVerificationRows = useMemo(
+    () =>
+      paymentVerificationRows.filter(
+        (payment) => payment.verificationStatus === 'PENDING',
+      ),
+    [paymentVerificationRows],
+  );
 
   const reminderPolicy = reminderPolicyQuery.data || null;
   const cashSessionApprovalPolicy = cashSessionApprovalPolicyQuery.data || null;
@@ -979,6 +1016,7 @@ export default function StaffPaymentsScreen() {
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-credits'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-bank-accounts'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-bank-reconciliations'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-payment-verifications'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-cash-sessions'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-write-offs'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-payment-reversals'] });
@@ -1259,8 +1297,12 @@ export default function StaffPaymentsScreen() {
         note: paymentNote || undefined,
       });
     },
-    onSuccess: () => {
-      notifySuccess('Pembayaran berhasil dicatat.');
+    onSuccess: (data) => {
+      notifySuccess(
+        data.payment.verificationStatus === 'PENDING'
+          ? 'Pembayaran non-tunai dicatat dan masuk antrean verifikasi.'
+          : 'Pembayaran berhasil dicatat.',
+      );
       setSelectedInvoice(null);
       setPaymentAmount('');
       setPaymentReference('');
@@ -1270,6 +1312,24 @@ export default function StaffPaymentsScreen() {
       invalidateFinanceQueries();
     },
     onError: (error: unknown) => notifyApiError(error, 'Gagal mencatat pembayaran.'),
+  });
+
+  const verifyPaymentMutation = useMutation({
+    mutationFn: (paymentId: number) => staffFinanceApi.verifyPayment(paymentId),
+    onSuccess: () => {
+      notifySuccess('Pembayaran non-tunai berhasil diverifikasi.');
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal memverifikasi pembayaran.'),
+  });
+
+  const rejectPaymentMutation = useMutation({
+    mutationFn: (paymentId: number) => staffFinanceApi.rejectPayment(paymentId),
+    onSuccess: () => {
+      notifySuccess('Pembayaran non-tunai berhasil ditolak.');
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal menolak pembayaran.'),
   });
 
   const updateInstallmentsMutation = useMutation({
@@ -2032,6 +2092,7 @@ export default function StaffPaymentsScreen() {
     adjustmentsQuery.isLoading ||
     bankAccountsQuery.isLoading ||
     bankReconciliationsQuery.isLoading ||
+    paymentVerificationsQuery.isLoading ||
     cashSessionsQuery.isLoading ||
     creditsQuery.isLoading ||
     invoicesQuery.isLoading ||
@@ -2050,6 +2111,7 @@ export default function StaffPaymentsScreen() {
             adjustmentsQuery.isFetching ||
             bankAccountsQuery.isFetching ||
             bankReconciliationsQuery.isFetching ||
+            paymentVerificationsQuery.isFetching ||
             cashSessionsQuery.isFetching ||
             creditsQuery.isFetching ||
             invoicesQuery.isFetching ||
@@ -2062,6 +2124,7 @@ export default function StaffPaymentsScreen() {
             void adjustmentsQuery.refetch();
             void bankAccountsQuery.refetch();
             void bankReconciliationsQuery.refetch();
+            void paymentVerificationsQuery.refetch();
             void cashSessionsQuery.refetch();
             void creditsQuery.refetch();
             void invoicesQuery.refetch();
@@ -2079,7 +2142,7 @@ export default function StaffPaymentsScreen() {
       </Text>
 
       {isInitialLoading ? <QueryStateView type="loading" message="Mengambil data keuangan..." /> : null}
-      {componentsQuery.isError || tariffsQuery.isError || adjustmentsQuery.isError || creditsQuery.isError || invoicesQuery.isError ? (
+      {componentsQuery.isError || tariffsQuery.isError || adjustmentsQuery.isError || creditsQuery.isError || invoicesQuery.isError || paymentVerificationsQuery.isError ? (
         <QueryStateView
           type="error"
           message="Gagal memuat data keuangan staff."
@@ -2089,6 +2152,7 @@ export default function StaffPaymentsScreen() {
             void adjustmentsQuery.refetch();
             void creditsQuery.refetch();
             void invoicesQuery.refetch();
+            void paymentVerificationsQuery.refetch();
           }}
         />
       ) : null}
@@ -2287,6 +2351,120 @@ export default function StaffPaymentsScreen() {
             <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>Pengaturan Policy Reminder</Text>
           </Pressable>
         </View>
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#fde68a',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Verifikasi Pembayaran Non-Tunai</Text>
+        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+          Transfer, virtual account, e-wallet, dan QRIS harus diverifikasi dulu sebelum tagihan siswa berkurang.
+        </Text>
+
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
+          {[
+            { label: 'Pending', value: paymentVerificationSummary?.pendingCount || 0, bg: '#fef3c7', border: '#fcd34d', text: '#92400e' },
+            { label: 'Verified', value: paymentVerificationSummary?.verifiedCount || 0, bg: '#dcfce7', border: '#86efac', text: '#166534' },
+            { label: 'Rejected', value: paymentVerificationSummary?.rejectedCount || 0, bg: '#fee2e2', border: '#fecaca', text: '#991b1b' },
+            { label: 'Matched', value: paymentVerificationSummary?.matchedCount || 0, bg: '#e0f2fe', border: '#7dd3fc', text: '#075985' },
+          ].map((item) => (
+            <View key={item.label} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+              <View style={{ borderWidth: 1, borderColor: item.border, backgroundColor: item.bg, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 }}>
+                <Text style={{ color: item.text, fontSize: 11 }}>{item.label}</Text>
+                <Text style={{ color: item.text, fontWeight: '700', fontSize: 18, marginTop: 2 }}>{item.value}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        <TextInput
+          value={paymentVerificationSearch}
+          onChangeText={setPaymentVerificationSearch}
+          placeholder="Cari pembayaran, siswa, invoice, referensi"
+          placeholderTextColor="#94a3b8"
+          style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+        />
+
+        {paymentVerificationsQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil antrean verifikasi..." />
+        ) : pendingPaymentVerificationRows.length === 0 ? (
+          <Text style={{ color: '#64748b', fontSize: 12 }}>Belum ada pembayaran non-tunai yang menunggu verifikasi.</Text>
+        ) : (
+          pendingPaymentVerificationRows.slice(0, 8).map((payment) => {
+            const badge = getPaymentVerificationBadge(payment.verificationStatus);
+            return (
+              <View key={`verification-${payment.id}`} style={{ borderTopWidth: 1, borderTopColor: '#fef3c7', paddingVertical: 8 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#0f172a', fontWeight: '700' }}>{payment.student.name} • {payment.paymentNo || '-'}</Text>
+                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                      {payment.student.studentClass?.name || 'Tanpa kelas'} • invoice {payment.invoiceNo || '-'}
+                    </Text>
+                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                      {getPaymentMethodLabel(payment.method)} • {payment.referenceNo || 'Tanpa referensi'}
+                    </Text>
+                    {payment.matchedStatementEntry ? (
+                      <Text style={{ color: '#0369a1', fontSize: 12, marginTop: 4 }}>
+                        Matched mutasi {payment.matchedStatementEntry.referenceNo || 'tanpa referensi'} • {formatCurrency(payment.matchedStatementEntry.amount)}
+                      </Text>
+                    ) : (
+                      <Text style={{ color: '#b45309', fontSize: 12, marginTop: 4 }}>Belum matched ke mutasi bank.</Text>
+                    )}
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ color: '#0f172a', fontWeight: '700' }}>{formatCurrency(payment.amount)}</Text>
+                    <View style={{ marginTop: 4, borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                      <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{badge.label}</Text>
+                    </View>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', marginHorizontal: -4, marginTop: 8 }}>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <Pressable
+                      onPress={() => verifyPaymentMutation.mutate(payment.id)}
+                      disabled={verifyPaymentMutation.isPending || rejectPaymentMutation.isPending}
+                      style={{
+                        backgroundColor: verifyPaymentMutation.isPending ? '#86efac' : '#16a34a',
+                        borderRadius: 10,
+                        paddingVertical: 10,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>
+                        {verifyPaymentMutation.isPending ? 'Memverifikasi...' : 'Verifikasi'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <Pressable
+                      onPress={() => rejectPaymentMutation.mutate(payment.id)}
+                      disabled={verifyPaymentMutation.isPending || rejectPaymentMutation.isPending}
+                      style={{
+                        backgroundColor: '#fff',
+                        borderWidth: 1,
+                        borderColor: '#fca5a5',
+                        borderRadius: 10,
+                        paddingVertical: 10,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#b91c1c', fontWeight: '700' }}>
+                        {rejectPaymentMutation.isPending ? 'Menolak...' : 'Tolak'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            );
+          })
+        )}
       </View>
 
       <View
@@ -3046,6 +3224,9 @@ export default function StaffPaymentsScreen() {
                   Statement masuk {formatCurrency(selectedBankReconciliation.summary.statementRecordedIn)} • keluar{' '}
                   {formatCurrency(selectedBankReconciliation.summary.statementRecordedOut)}
                 </Text>
+                <Text style={{ color: '#0f766e', fontSize: 12, marginBottom: 8 }}>
+                  Pending verifikasi {formatCurrency(selectedBankReconciliation.summary.pendingVerificationAmount)}
+                </Text>
 
                 {selectedBankReconciliation.status === 'OPEN' ? (
                   <>
@@ -3161,6 +3342,11 @@ export default function StaffPaymentsScreen() {
                             <Text style={{ color: '#166534', fontSize: 12, marginTop: 2 }}>
                               Matched ke pembayaran {entry.matchedPayment.paymentNo || '-'}
                             </Text>
+                          ) : null}
+                          {entry.matchedPayment ? (
+                            <Text style={{ color: '#0369a1', fontSize: 12, marginTop: 2 }}>
+                              Status {getPaymentVerificationBadge(entry.matchedPayment.verificationStatus).label}
+                            </Text>
                           ) : entry.matchedRefund ? (
                             <Text style={{ color: '#166534', fontSize: 12, marginTop: 2 }}>
                               Matched ke refund {entry.matchedRefund.refundNo || '-'}
@@ -3199,9 +3385,50 @@ export default function StaffPaymentsScreen() {
                         {payment.referenceNo || 'Tanpa referensi'}
                         {payment.bankAccount ? ` • ${payment.bankAccount.bankName}` : ''}
                       </Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        {getPaymentMethodLabel(payment.method)} • {getPaymentVerificationBadge(payment.verificationStatus).label}
+                      </Text>
                       <Text style={{ color: payment.matched ? '#166534' : '#b45309', fontSize: 12, marginTop: 2 }}>
                         {payment.matched ? 'Matched' : 'Belum matched'} • {formatCurrency(payment.netBankAmount)}
                       </Text>
+                      {payment.verificationStatus === 'PENDING' ? (
+                        <View style={{ flexDirection: 'row', marginHorizontal: -4, marginTop: 8 }}>
+                          <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                            <Pressable
+                              onPress={() => verifyPaymentMutation.mutate(payment.id)}
+                              disabled={verifyPaymentMutation.isPending || rejectPaymentMutation.isPending}
+                              style={{
+                                backgroundColor: verifyPaymentMutation.isPending ? '#86efac' : '#16a34a',
+                                borderRadius: 10,
+                                paddingVertical: 8,
+                                alignItems: 'center',
+                              }}
+                            >
+                              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                                {verifyPaymentMutation.isPending ? 'Memverifikasi...' : 'Verifikasi'}
+                              </Text>
+                            </Pressable>
+                          </View>
+                          <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                            <Pressable
+                              onPress={() => rejectPaymentMutation.mutate(payment.id)}
+                              disabled={verifyPaymentMutation.isPending || rejectPaymentMutation.isPending}
+                              style={{
+                                backgroundColor: '#fff',
+                                borderWidth: 1,
+                                borderColor: '#fca5a5',
+                                borderRadius: 10,
+                                paddingVertical: 8,
+                                alignItems: 'center',
+                              }}
+                            >
+                              <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 12 }}>
+                                {rejectPaymentMutation.isPending ? 'Menolak...' : 'Tolak'}
+                              </Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      ) : null}
                     </View>
                   ))
                 )}
@@ -6104,6 +6331,12 @@ export default function StaffPaymentsScreen() {
                               {formatDate(payment.paidAt)} • {getPaymentMethodLabel(payment.method)} • sumber {payment.source === 'CREDIT_BALANCE' ? 'Saldo Kredit' : 'Pembayaran Langsung'}
                             </Text>
                             <Text style={{ color: '#15803d', fontSize: 11, marginTop: 2 }}>
+                              Status verifikasi {getPaymentVerificationBadge(payment.verificationStatus).label}
+                              {payment.matchedStatementEntry
+                                ? ` • matched ${payment.matchedStatementEntry.referenceNo || payment.matchedStatementEntry.reconciliation?.reconciliationNo || 'mutasi bank'}`
+                                : ''}
+                            </Text>
+                            <Text style={{ color: '#15803d', fontSize: 11, marginTop: 2 }}>
                               Dialokasikan {formatCurrency(payment.allocatedAmount || 0)} • saldo kredit {formatCurrency(payment.creditedAmount || 0)} • sudah direversal {formatCurrency(payment.reversedAmount || 0)}
                             </Text>
                             <Text style={{ color: '#15803d', fontSize: 11, marginTop: 2 }}>
@@ -6498,12 +6731,31 @@ export default function StaffPaymentsScreen() {
                 }}
               >
                 <Text style={{ color: '#166534', fontSize: 12 }}>
-                  Dialokasikan ke invoice: <Text style={{ fontWeight: '700' }}>{formatCurrency(paymentAllocatedAmount)}</Text>
+                  {isTrackedNonCashPaymentMethod(paymentMethod) ? 'Proyeksi alokasi saat diverifikasi' : 'Dialokasikan ke invoice'}:{' '}
+                  <Text style={{ fontWeight: '700' }}>{formatCurrency(paymentAllocatedAmount)}</Text>
                 </Text>
                 <Text style={{ color: '#166534', fontSize: 12, marginTop: 2 }}>
-                  Masuk saldo kredit: <Text style={{ fontWeight: '700' }}>{formatCurrency(paymentCreditedAmount)}</Text>
+                  {isTrackedNonCashPaymentMethod(paymentMethod) ? 'Proyeksi saldo kredit saat diverifikasi' : 'Masuk saldo kredit'}:{' '}
+                  <Text style={{ fontWeight: '700' }}>{formatCurrency(paymentCreditedAmount)}</Text>
                 </Text>
               </View>
+              {isTrackedNonCashPaymentMethod(paymentMethod) ? (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#fde68a',
+                    backgroundColor: '#fffbeb',
+                    borderRadius: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={{ color: '#92400e', fontSize: 12 }}>
+                    Pembayaran non-tunai akan masuk antrean verifikasi dulu. Tagihan baru berkurang setelah bendahara memverifikasi transaksi.
+                  </Text>
+                </View>
+              ) : null}
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
                 <View style={{ flexDirection: 'row', gap: 8 }}>

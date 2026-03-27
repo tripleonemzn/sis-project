@@ -51,6 +51,7 @@ const PAYMENT_METHOD_OPTIONS: Array<{ value: FinancePaymentMethod; label: string
   { value: 'BANK_TRANSFER', label: 'Transfer Bank' },
   { value: 'VIRTUAL_ACCOUNT', label: 'Virtual Account' },
   { value: 'E_WALLET', label: 'E-Wallet' },
+  { value: 'QRIS', label: 'QRIS' },
   { value: 'OTHER', label: 'Lainnya' },
 ];
 
@@ -158,6 +159,34 @@ function getAdjustmentKindLabel(kind: FinanceAdjustmentKind) {
 
 function getPaymentMethodLabel(method?: FinancePaymentMethod | null) {
   return PAYMENT_METHOD_OPTIONS.find((option) => option.value === method)?.label || method || '-';
+}
+
+function isTrackedNonCashPaymentMethod(method?: FinancePaymentMethod | null) {
+  return (
+    method === 'BANK_TRANSFER' ||
+    method === 'VIRTUAL_ACCOUNT' ||
+    method === 'E_WALLET' ||
+    method === 'QRIS'
+  );
+}
+
+function getPaymentVerificationMeta(status?: FinanceInvoice['payments'][number]['verificationStatus']) {
+  if (status === 'PENDING') {
+    return {
+      label: 'Menunggu Verifikasi',
+      className: 'bg-amber-50 text-amber-700 border border-amber-200',
+    };
+  }
+  if (status === 'REJECTED') {
+    return {
+      label: 'Ditolak',
+      className: 'bg-rose-50 text-rose-700 border border-rose-200',
+    };
+  }
+  return {
+    label: 'Terverifikasi',
+    className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  };
 }
 
 function getLateFeeModeLabel(mode?: FinanceLateFeeMode | null) {
@@ -389,6 +418,7 @@ export const StaffFinancePage = () => {
   const [paymentBankAccountId, setPaymentBankAccountId] = useState<number | ''>('');
   const [paymentReference, setPaymentReference] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
+  const [paymentVerificationSearch, setPaymentVerificationSearch] = useState('');
   const [creditSearch, setCreditSearch] = useState('');
   const [selectedCreditBalance, setSelectedCreditBalance] = useState<FinanceCreditBalanceRow | null>(null);
   const [refundAmount, setRefundAmount] = useState('');
@@ -461,6 +491,16 @@ export const StaffFinancePage = () => {
   const bankReconciliationsQuery = useQuery({
     queryKey: ['staff-finance-bank-reconciliations'],
     queryFn: () => staffFinanceService.listBankReconciliations({ limit: 8 }),
+    staleTime: 30_000,
+  });
+
+  const paymentVerificationsQuery = useQuery({
+    queryKey: ['staff-finance-payment-verifications', paymentVerificationSearch],
+    queryFn: () =>
+      staffFinanceService.listPaymentVerifications({
+        limit: 50,
+        search: paymentVerificationSearch.trim() || undefined,
+      }),
     staleTime: 30_000,
   });
 
@@ -569,6 +609,15 @@ export const StaffFinancePage = () => {
   );
   const bankReconciliationSummary = bankReconciliationsQuery.data?.summary;
   const bankReconciliations = bankReconciliationsQuery.data?.reconciliations || [];
+  const paymentVerificationSummary = paymentVerificationsQuery.data?.summary;
+  const paymentVerificationRows = paymentVerificationsQuery.data?.payments || [];
+  const pendingPaymentVerificationRows = useMemo(
+    () =>
+      paymentVerificationRows.filter(
+        (payment) => payment.verificationStatus === 'PENDING',
+      ),
+    [paymentVerificationRows],
+  );
 
   const reminderPolicy = reminderPolicyQuery.data || null;
   const cashSessionApprovalPolicy = cashSessionApprovalPolicyQuery.data || null;
@@ -1197,8 +1246,12 @@ export const StaffFinancePage = () => {
         note: paymentNote || undefined,
       });
     },
-    onSuccess: () => {
-      toast.success('Pembayaran berhasil dicatat');
+    onSuccess: (data) => {
+      toast.success(
+        data.payment.verificationStatus === 'PENDING'
+          ? 'Pembayaran non-tunai dicatat dan masuk antrean verifikasi'
+          : 'Pembayaran berhasil dicatat',
+      );
       setSelectedInvoice(null);
       setPaymentAmount('');
       setPaymentReference('');
@@ -1206,6 +1259,7 @@ export const StaffFinancePage = () => {
       setPaymentMethod('CASH');
       setPaymentBankAccountId('');
       queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-payment-verifications'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-credits'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-cash-sessions'] });
@@ -1214,6 +1268,35 @@ export const StaffFinancePage = () => {
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
       toast.error(apiError?.response?.data?.message || 'Gagal mencatat pembayaran');
+    },
+  });
+
+  const verifyPaymentMutation = useMutation({
+    mutationFn: (paymentId: number) => staffFinanceService.verifyPayment(paymentId),
+    onSuccess: () => {
+      toast.success('Pembayaran non-tunai berhasil diverifikasi');
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-payment-verifications'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-credits'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-bank-reconciliations'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal memverifikasi pembayaran');
+    },
+  });
+
+  const rejectPaymentMutation = useMutation({
+    mutationFn: (paymentId: number) => staffFinanceService.rejectPayment(paymentId),
+    onSuccess: () => {
+      toast.success('Pembayaran non-tunai berhasil ditolak');
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-payment-verifications'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-bank-reconciliations'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal menolak pembayaran');
     },
   });
 
@@ -1365,6 +1448,7 @@ export const StaffFinancePage = () => {
       toast.success('Mutasi statement bank berhasil dicatat');
       resetBankStatementEntryForm();
       queryClient.invalidateQueries({ queryKey: ['staff-finance-bank-reconciliations'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-payment-verifications'] });
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -2751,6 +2835,121 @@ export const StaffFinancePage = () => {
         </div>
       </div>
 
+      <div className="rounded-xl border border-amber-100 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-4 border-b border-amber-100">
+          <div className="text-xs uppercase tracking-wider text-amber-700">Verifikasi Pembayaran Non-Tunai</div>
+          <p className="mt-1 text-sm text-slate-600">
+            Transfer bank, virtual account, e-wallet, dan QRIS sekarang masuk antrean verifikasi sebelum mengurangi tagihan siswa.
+          </p>
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 text-xs">
+            <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+              <div className="text-amber-700">Pending</div>
+              <div className="mt-1 font-semibold text-amber-900">{paymentVerificationSummary?.pendingCount || 0}</div>
+            </div>
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+              <div className="text-emerald-700">Verified</div>
+              <div className="mt-1 font-semibold text-emerald-900">{paymentVerificationSummary?.verifiedCount || 0}</div>
+            </div>
+            <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2">
+              <div className="text-rose-700">Rejected</div>
+              <div className="mt-1 font-semibold text-rose-900">{paymentVerificationSummary?.rejectedCount || 0}</div>
+            </div>
+            <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2">
+              <div className="text-indigo-700">Matched Mutasi</div>
+              <div className="mt-1 font-semibold text-indigo-900">{paymentVerificationSummary?.matchedCount || 0}</div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <div className="text-slate-600">Pending Nominal</div>
+              <div className="mt-1 font-semibold text-slate-900">{formatCurrency(paymentVerificationSummary?.pendingAmount || 0)}</div>
+            </div>
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-3">
+            <input
+              value={paymentVerificationSearch}
+              onChange={(event) => setPaymentVerificationSearch(event.target.value)}
+              placeholder="Cari pembayaran, referensi, siswa, atau invoice"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Pending akan muncul juga di rekonsiliasi bank dan bisa diverifikasi dari dua tempat yang sama.
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {paymentVerificationsQuery.isLoading ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                Memuat antrean verifikasi pembayaran...
+              </div>
+            ) : pendingPaymentVerificationRows.length === 0 ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                Belum ada pembayaran non-tunai yang menunggu verifikasi.
+              </div>
+            ) : (
+              pendingPaymentVerificationRows.slice(0, 8).map((payment) => {
+                const verificationMeta = getPaymentVerificationMeta(payment.verificationStatus);
+                return (
+                  <div key={`payment-verification-${payment.id}`} className="rounded-xl border border-amber-100 bg-amber-50/40 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-slate-900">
+                          {payment.student.name} • {payment.paymentNo || '-'}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {payment.student.studentClass?.name || 'Tanpa kelas'} • invoice {payment.invoiceNo || '-'} • {getPaymentMethodLabel(payment.method)}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          Referensi {payment.referenceNo || 'Tanpa referensi'} • dibayar {formatDate(payment.paidAt)}
+                        </div>
+                        {payment.matchedStatementEntry ? (
+                          <div className="mt-2 rounded-md border border-indigo-100 bg-indigo-50 px-2 py-1 text-[11px] text-indigo-700">
+                            Matched ke mutasi {payment.matchedStatementEntry.referenceNo || 'tanpa referensi'} •{' '}
+                            {formatCurrency(payment.matchedStatementEntry.amount)} •{' '}
+                            {payment.matchedStatementEntry.reconciliation?.reconciliationNo || 'rekonsiliasi aktif'}
+                          </div>
+                        ) : (
+                          <div className="mt-2 rounded-md border border-rose-100 bg-rose-50 px-2 py-1 text-[11px] text-rose-700">
+                            Belum matched ke mutasi statement bank.
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-semibold text-slate-900">{formatCurrency(payment.amount)}</div>
+                        <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${verificationMeta.className}`}>
+                          {verificationMeta.label}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => verifyPaymentMutation.mutate(payment.id)}
+                        disabled={verifyPaymentMutation.isPending || rejectPaymentMutation.isPending}
+                        className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        {verifyPaymentMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                        Verifikasi
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => rejectPaymentMutation.mutate(payment.id)}
+                        disabled={verifyPaymentMutation.isPending || rejectPaymentMutation.isPending}
+                        className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                      >
+                        {rejectPaymentMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                        Tolak
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 xl:grid-cols-[0.85fr_1.15fr] gap-4">
         <div className="rounded-xl border border-blue-100 bg-white shadow-sm overflow-hidden">
           <div className="px-4 py-4 border-b border-blue-100">
@@ -3060,6 +3259,12 @@ export const StaffFinancePage = () => {
                             {formatCurrency(selectedBankReconciliation.summary.statementRecordedIn - selectedBankReconciliation.summary.statementRecordedOut)}
                           </div>
                         </div>
+                        <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2">
+                          <div className="text-sky-700">Pending Verifikasi</div>
+                          <div className="mt-1 font-semibold text-sky-900">
+                            {formatCurrency(selectedBankReconciliation.summary.pendingVerificationAmount)}
+                          </div>
+                        </div>
                         <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
                           <div className="text-amber-700">Variance</div>
                           <div className="mt-1 font-semibold text-amber-900">{formatCurrency(selectedBankReconciliation.summary.varianceAmount)}</div>
@@ -3150,6 +3355,11 @@ export const StaffFinancePage = () => {
                                       <div className="mt-1 text-[11px] text-emerald-700">
                                         Matched ke pembayaran {entry.matchedPayment.paymentNo} • {entry.matchedPayment.referenceNo || 'Tanpa referensi'}
                                       </div>
+                                    ) : null}
+                                    {entry.matchedPayment ? (
+                                      <div className="mt-1 text-[11px] text-sky-700">
+                                        Status pembayaran {getPaymentVerificationMeta(entry.matchedPayment.verificationStatus).label}
+                                      </div>
                                     ) : entry.matchedRefund ? (
                                       <div className="mt-1 text-[11px] text-emerald-700">
                                         Matched ke refund {entry.matchedRefund.refundNo} • {entry.matchedRefund.student.name}
@@ -3188,12 +3398,37 @@ export const StaffFinancePage = () => {
                                         {payment.referenceNo || 'Tanpa referensi'}
                                         {payment.bankAccount ? ` • ${payment.bankAccount.bankName}` : ''}
                                       </div>
+                                      <div className="mt-1 text-[11px] text-slate-500">
+                                        {getPaymentMethodLabel(payment.method)} • {getPaymentVerificationMeta(payment.verificationStatus).label}
+                                      </div>
                                     </div>
                                     <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${payment.matched ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
                                       {payment.matched ? 'Matched' : 'Belum matched'}
                                     </span>
                                   </div>
                                   <div className="mt-1 text-[11px] text-slate-500">{formatCurrency(payment.netBankAmount)}</div>
+                                  {payment.verificationStatus === 'PENDING' ? (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => verifyPaymentMutation.mutate(payment.id)}
+                                        disabled={verifyPaymentMutation.isPending || rejectPaymentMutation.isPending}
+                                        className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                      >
+                                        {verifyPaymentMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                                        Verifikasi
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => rejectPaymentMutation.mutate(payment.id)}
+                                        disabled={verifyPaymentMutation.isPending || rejectPaymentMutation.isPending}
+                                        className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                                      >
+                                        {rejectPaymentMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                                        Tolak
+                                      </button>
+                                    </div>
+                                  ) : null}
                                 </div>
                               ))
                             )}
@@ -5604,6 +5839,12 @@ export const StaffFinancePage = () => {
                               {formatDate(payment.paidAt)} • {getPaymentMethodLabel(payment.method)} • sumber {payment.source === 'CREDIT_BALANCE' ? 'Saldo Kredit' : 'Pembayaran Langsung'}
                             </div>
                             <div className="mt-1 text-[11px] text-emerald-700">
+                              Status verifikasi {getPaymentVerificationMeta(payment.verificationStatus).label}
+                              {payment.matchedStatementEntry
+                                ? ` • matched ${payment.matchedStatementEntry.referenceNo || payment.matchedStatementEntry.reconciliation?.reconciliationNo || 'mutasi bank'}`
+                                : ''}
+                            </div>
+                            <div className="mt-1 text-[11px] text-emerald-700">
                               Dialokasikan {formatCurrency(payment.allocatedAmount || 0)} • saldo kredit {formatCurrency(payment.creditedAmount || 0)} • sudah direversal {formatCurrency(payment.reversedAmount || 0)}
                             </div>
                             <div className="mt-1 text-[11px] text-emerald-700">
@@ -5823,9 +6064,20 @@ export const StaffFinancePage = () => {
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
               />
               <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-800">
-                <div>Dialokasikan ke invoice: <span className="font-semibold">{formatCurrency(paymentAllocatedAmount)}</span></div>
-                <div>Masuk saldo kredit: <span className="font-semibold">{formatCurrency(paymentCreditedAmount)}</span></div>
+                <div>
+                  {isTrackedNonCashPaymentMethod(paymentMethod) ? 'Proyeksi alokasi saat diverifikasi' : 'Dialokasikan ke invoice'}:{' '}
+                  <span className="font-semibold">{formatCurrency(paymentAllocatedAmount)}</span>
+                </div>
+                <div>
+                  {isTrackedNonCashPaymentMethod(paymentMethod) ? 'Proyeksi saldo kredit saat diverifikasi' : 'Masuk saldo kredit'}:{' '}
+                  <span className="font-semibold">{formatCurrency(paymentCreditedAmount)}</span>
+                </div>
               </div>
+              {isTrackedNonCashPaymentMethod(paymentMethod) ? (
+                <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Pembayaran non-tunai akan masuk antrean verifikasi dulu. Tagihan siswa baru berkurang setelah bendahara memverifikasi transaksi ini.
+                </div>
+              ) : null}
               <select
                 value={paymentMethod}
                 onChange={(event) => setPaymentMethod(event.target.value as FinancePaymentMethod)}

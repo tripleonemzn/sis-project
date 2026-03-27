@@ -12,7 +12,8 @@ export type FinanceComponentPeriodicity = 'MONTHLY' | 'ONE_TIME' | 'PERIODIC';
 export type FinanceAdjustmentKind = 'DISCOUNT' | 'SCHOLARSHIP' | 'SURCHARGE';
 export type FinanceInvoiceStatus = 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
 export type FinanceLateFeeMode = 'FIXED' | 'DAILY';
-export type FinancePaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER';
+export type FinancePaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'QRIS' | 'OTHER';
+export type FinancePaymentVerificationStatus = 'PENDING' | 'VERIFIED' | 'REJECTED';
 export type FinancePaymentSource = 'DIRECT' | 'CREDIT_BALANCE';
 export type FinanceCreditTransactionKind = 'OVERPAYMENT' | 'APPLIED_TO_INVOICE' | 'REFUND' | 'PAYMENT_REVERSAL';
 export type FinanceWriteOffStatus =
@@ -248,7 +249,31 @@ export type StaffFinanceInvoice = {
     canRequestReversal: boolean;
     source: FinancePaymentSource;
     method: FinancePaymentMethod;
+    invoiceId?: number | null;
+    invoiceNo?: string | null;
+    periodKey?: string | null;
+    semester?: SemesterCode | null;
+    verificationStatus: FinancePaymentVerificationStatus;
+    verificationNote?: string | null;
+    verifiedAt?: string | null;
+    verifiedBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
     bankAccount?: StaffFinanceBankAccount | null;
+    matchedStatementEntry?: {
+      id: number;
+      entryDate: string;
+      amount: number;
+      direction: FinanceBankStatementDirection;
+      referenceNo?: string | null;
+      status: 'MATCHED' | 'UNMATCHED';
+      reconciliation?: {
+        id: number;
+        reconciliationNo: string;
+      } | null;
+    } | null;
     referenceNo?: string | null;
     note?: string | null;
     paidAt: string;
@@ -751,6 +776,7 @@ export type StaffFinanceBankReconciliation = {
   summary: {
     expectedBankIn: number;
     expectedBankOut: number;
+    pendingVerificationAmount: number;
     expectedClosingBalance: number;
     statementRecordedIn: number;
     statementRecordedOut: number;
@@ -758,6 +784,9 @@ export type StaffFinanceBankReconciliation = {
     varianceAmount: number;
     statementGapAmount: number;
     totalPaymentCount: number;
+    verifiedPaymentCount: number;
+    pendingPaymentCount: number;
+    rejectedPaymentCount: number;
     totalRefundCount: number;
     matchedPaymentCount: number;
     matchedRefundCount: number;
@@ -784,6 +813,37 @@ export type StaffFinanceBankReconciliationListResult = {
     totalUnmatchedPayments: number;
     totalUnmatchedRefunds: number;
     totalUnmatchedStatementEntries: number;
+  };
+};
+
+export type StaffFinancePaymentVerificationRow = StaffFinanceInvoice['payments'][number] & {
+  student: {
+    id: number;
+    name: string;
+    username: string;
+    nis?: string | null;
+    nisn?: string | null;
+    studentClass?: {
+      id: number;
+      name: string;
+      level: string;
+    } | null;
+  };
+};
+
+export type StaffFinancePaymentVerificationListResult = {
+  payments: StaffFinancePaymentVerificationRow[];
+  summary: {
+    totalPayments: number;
+    totalAmount: number;
+    pendingCount: number;
+    pendingAmount: number;
+    verifiedCount: number;
+    verifiedAmount: number;
+    rejectedCount: number;
+    rejectedAmount: number;
+    matchedCount: number;
+    unmatchedCount: number;
   };
 };
 
@@ -1280,18 +1340,59 @@ export const staffFinanceApi = {
         payment: {
           id: number;
           paymentNo: string;
-          amount: number;
-          allocatedAmount: number;
-          creditedAmount: number;
-          method: FinancePaymentMethod;
-        };
+        amount: number;
+        allocatedAmount: number;
+        creditedAmount: number;
+        method: FinancePaymentMethod;
+        verificationStatus: FinancePaymentVerificationStatus;
+      };
+      creditBalance?: {
+        id: number;
+        balanceAmount: number;
+        balanceBefore: number;
+        } | null;
+      }>
+    >(`/payments/invoices/${invoiceId}/payments`, payload);
+    return response.data.data;
+  },
+
+  async listPaymentVerifications(params?: {
+    verificationStatus?: FinancePaymentVerificationStatus;
+    bankAccountId?: number;
+    matchedOnly?: boolean;
+    search?: string;
+    limit?: number;
+  }) {
+    const response = await apiClient.get<ApiResponse<StaffFinancePaymentVerificationListResult>>(
+      '/payments/payment-records',
+      {
+        params,
+      },
+    );
+    return response.data.data;
+  },
+
+  async verifyPayment(paymentId: number, payload?: { note?: string }) {
+    const response = await apiClient.post<
+      ApiResponse<{
+        payment: StaffFinanceInvoice['payments'][number];
+        invoice: StaffFinanceInvoice;
         creditBalance?: {
           id: number;
           balanceAmount: number;
           balanceBefore: number;
         } | null;
       }>
-    >(`/payments/invoices/${invoiceId}/payments`, payload);
+    >(`/payments/payment-records/${paymentId}/verify`, payload || {});
+    return response.data.data;
+  },
+
+  async rejectPayment(paymentId: number, payload?: { note?: string }) {
+    const response = await apiClient.post<
+      ApiResponse<{
+        payment: StaffFinanceInvoice['payments'][number];
+      }>
+    >(`/payments/payment-records/${paymentId}/reject`, payload || {});
     return response.data.data;
   },
 

@@ -86,6 +86,7 @@ model User {
   payments                       Payment[]
   financeInvoices                FinanceInvoice[]                 @relation("FinanceInvoiceStudent")
   financePayments                FinancePayment[]                 @relation("FinancePaymentStudent")
+  verifiedFinancePayments        FinancePayment[]                 @relation("FinancePaymentVerifiedBy")
   financeCreditBalance           FinanceCreditBalance?            @relation("FinanceCreditBalanceStudent")
   financeCreditTransactions      FinanceCreditTransaction[]       @relation("FinanceCreditTransactionStudent")
   financeRefunds                 FinanceRefund[]                  @relation("FinanceRefundStudent")
@@ -1651,6 +1652,10 @@ model FinancePayment {
   reversedCreditedAmount Float     @default(0)
   source      FinancePaymentSource @default(DIRECT)
   method      FinancePaymentMethod @default(OTHER)
+  verificationStatus FinancePaymentVerificationStatus @default(VERIFIED)
+  verificationNote String?
+  verifiedAt  DateTime?
+  verifiedById Int?
   referenceNo String?
   note        String?
   paidAt      DateTime             @default(now())
@@ -1661,6 +1666,7 @@ model FinancePayment {
   invoice     FinanceInvoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   bankAccount FinanceBankAccount?  @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
   createdBy   User?                @relation("FinancePaymentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  verifiedBy  User?                @relation("FinancePaymentVerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
   creditTransactions FinanceCreditTransaction[]
   reversalRequests FinancePaymentReversalRequest[]
   bankStatementEntries FinanceBankStatementEntry[] @relation("FinanceBankStatementEntryPayment")
@@ -1668,6 +1674,8 @@ model FinancePayment {
   @@index([studentId, paidAt])
   @@index([invoiceId, paidAt])
   @@index([bankAccountId, paidAt])
+  @@index([verificationStatus, paidAt])
+  @@index([verifiedById, verifiedAt])
   @@map("finance_payments")
 }
 
@@ -2313,12 +2321,19 @@ enum FinancePaymentMethod {
   BANK_TRANSFER
   VIRTUAL_ACCOUNT
   E_WALLET
+  QRIS
   OTHER
 }
 
 enum FinancePaymentSource {
   DIRECT
   CREDIT_BALANCE
+}
+
+enum FinancePaymentVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
 }
 
 enum FinanceCreditTransactionKind {
