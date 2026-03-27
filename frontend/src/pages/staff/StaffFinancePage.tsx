@@ -12,6 +12,7 @@ import {
   type FinanceClosingPeriodApprovalPolicy,
   type FinanceClosingPeriodType,
   type FinanceBankStatementDirection,
+  type FinanceBudgetProgressStage,
   type FinanceCashSession,
   type FinanceCashSessionApprovalPolicy,
   type FinanceCashSessionApprovalStatus,
@@ -392,6 +393,31 @@ function getClosingPeriodApprovalMeta(status: FinanceClosingPeriod['approvalStat
   return { label: 'Belum Diajukan', className: 'bg-slate-50 text-slate-700 border border-slate-200' };
 }
 
+function getBudgetProgressStageMeta(stage: FinanceBudgetProgressStage) {
+  if (stage === 'RETURNED_BY_FINANCE') {
+    return { label: 'Dikembalikan Keuangan', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
+  }
+  if (stage === 'FINANCE_REVIEW') {
+    return { label: 'Review Keuangan', className: 'bg-sky-50 text-sky-700 border border-sky-200' };
+  }
+  if (stage === 'LPJ_PREPARATION') {
+    return { label: 'Persiapan LPJ', className: 'bg-violet-50 text-violet-700 border border-violet-200' };
+  }
+  if (stage === 'WAITING_LPJ') {
+    return { label: 'Menunggu LPJ', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  }
+  if (stage === 'WAITING_REALIZATION') {
+    return { label: 'Menunggu Realisasi', className: 'bg-orange-50 text-orange-700 border border-orange-200' };
+  }
+  if (stage === 'PENDING_APPROVAL') {
+    return { label: 'Menunggu Persetujuan', className: 'bg-slate-50 text-slate-700 border border-slate-200' };
+  }
+  if (stage === 'REALIZED') {
+    return { label: 'Terealisasi', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+  }
+  return { label: 'Ditolak', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
+}
+
 function getBankReconciliationStatusMeta(status: FinanceBankReconciliation['status']) {
   if (status === 'FINALIZED') {
     return { label: 'Final', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
@@ -564,6 +590,14 @@ export const StaffFinancePage = () => {
     staleTime: 5 * 60 * 1000,
   });
 
+  const activeYearId = useMemo(() => {
+    const payload = yearsQuery.data as
+      | { data?: { academicYears?: AcademicYear[] }; academicYears?: AcademicYear[] }
+      | undefined;
+    const loadedYears = payload?.data?.academicYears || payload?.academicYears || [];
+    return loadedYears.find((year) => year.isActive)?.id || loadedYears[0]?.id || null;
+  }, [yearsQuery.data]);
+
   const majorsQuery = useQuery({
     queryKey: ['staff-finance-majors'],
     queryFn: () => majorService.list({ page: 1, limit: 300 }),
@@ -706,6 +740,16 @@ export const StaffFinancePage = () => {
     staleTime: 30_000,
   });
 
+  const budgetRealizationQuery = useQuery({
+    queryKey: ['staff-finance-budget-realization', activeYearId || 'none'],
+    queryFn: () =>
+      staffFinanceService.getBudgetRealizationSummary({
+        academicYearId: activeYearId || undefined,
+        limit: 10,
+      }),
+    staleTime: 30_000,
+  });
+
   const closingPeriodApprovalPolicyQuery = useQuery({
     queryKey: ['staff-finance-closing-period-policy'],
     queryFn: () => staffFinanceService.getClosingPeriodApprovalPolicy(),
@@ -758,6 +802,7 @@ export const StaffFinancePage = () => {
   const closingPeriodsSummary = closingPeriodsQuery.data?.summary;
   const closingPeriods = closingPeriodsQuery.data?.periods || [];
   const closingPeriodApprovalPolicy = closingPeriodApprovalPolicyQuery.data || null;
+  const budgetRealizationSummary = budgetRealizationQuery.data || null;
 
   useEffect(() => {
     if (bankReconciliationAccountId === '' && activeBankAccounts[0]?.id) {
@@ -4013,6 +4058,234 @@ export const StaffFinancePage = () => {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-4 border-b border-slate-100">
+          <div className="text-xs uppercase tracking-wider text-slate-700">Budget vs Realization</div>
+          <p className="mt-1 text-sm text-slate-600">
+            Kontrol anggaran finance yang menggabungkan pengajuan disetujui, konfirmasi realisasi, progres LPJ, dan actual spent dari LPJ yang selesai diproses.
+            {activeYear?.name ? ` Fokus ${activeYear.name}.` : ''}
+          </p>
+        </div>
+        <div className="p-4 space-y-4">
+          {budgetRealizationQuery.isLoading ? (
+            <div className="text-sm text-slate-500">Memuat ringkasan budget vs realization...</div>
+          ) : !budgetRealizationSummary ? (
+            <div className="text-sm text-slate-500">Ringkasan budget vs realization belum tersedia.</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                  <div className="text-[11px] uppercase tracking-wider text-slate-700">Budget Approved</div>
+                  <div className="mt-1 text-sm font-bold text-slate-900">
+                    {formatCurrency(budgetRealizationSummary.overview.approvedBudgetAmount)}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3">
+                  <div className="text-[11px] uppercase tracking-wider text-emerald-700">Actual Realized</div>
+                  <div className="mt-1 text-sm font-bold text-emerald-900">
+                    {formatCurrency(budgetRealizationSummary.overview.actualRealizedAmount)}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-3">
+                  <div className="text-[11px] uppercase tracking-wider text-sky-700">Realisasi Confirmed</div>
+                  <div className="mt-1 text-sm font-bold text-sky-900">
+                    {formatCurrency(budgetRealizationSummary.overview.realizationConfirmedBudgetAmount)}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-3">
+                  <div className="text-[11px] uppercase tracking-wider text-violet-700">Variance</div>
+                  <div className="mt-1 text-sm font-bold text-violet-900">
+                    {formatCurrency(budgetRealizationSummary.overview.varianceAmount)}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3">
+                  <div className="text-[11px] uppercase tracking-wider text-amber-700">Menunggu LPJ</div>
+                  <div className="mt-1 text-sm font-bold text-amber-900">
+                    {budgetRealizationSummary.overview.stageSummary.waitingLpjCount} budget
+                  </div>
+                  <div className="mt-1 text-[11px] text-amber-700">
+                    {formatCurrency(budgetRealizationSummary.overview.stageSummary.waitingLpjAmount)}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-3">
+                  <div className="text-[11px] uppercase tracking-wider text-rose-700">Review/Return Finance</div>
+                  <div className="mt-1 text-sm font-bold text-rose-900">
+                    {budgetRealizationSummary.overview.stageSummary.financeReviewCount +
+                      budgetRealizationSummary.overview.stageSummary.returnedByFinanceCount}{' '}
+                    budget
+                  </div>
+                  <div className="mt-1 text-[11px] text-rose-700">
+                    {formatCurrency(
+                      budgetRealizationSummary.overview.stageSummary.financeReviewAmount +
+                        budgetRealizationSummary.overview.stageSummary.returnedByFinanceAmount,
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-[0.48fr_0.52fr] gap-4">
+                <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Rekap per Duty</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        Budget approved, actual realized, dan variance per penanggung jawab anggaran.
+                      </div>
+                    </div>
+                    <div className="text-xs text-slate-500">{budgetRealizationSummary.dutyRecap.length} duty</div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Duty</th>
+                          <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Approved</th>
+                          <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Actual</th>
+                          <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Variance</th>
+                          <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Progress</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {budgetRealizationSummary.dutyRecap.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-500">
+                              Belum ada data duty untuk tahun ajaran ini.
+                            </td>
+                          </tr>
+                        ) : (
+                          budgetRealizationSummary.dutyRecap.map((row) => (
+                            <tr key={row.additionalDuty}>
+                              <td className="px-4 py-3 text-sm text-slate-700">
+                                <div className="font-semibold text-slate-900">{row.additionalDutyLabel}</div>
+                                <div className="mt-1 text-[11px] text-slate-500">
+                                  {row.totalRequests} request • {row.approvedCount} approved
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm font-semibold text-slate-900">
+                                {formatCurrency(row.approvedBudgetAmount)}
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm font-semibold text-emerald-700">
+                                {formatCurrency(row.actualRealizedAmount)}
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm font-semibold text-violet-700">
+                                {formatCurrency(row.varianceAmount)}
+                              </td>
+                              <td className="px-4 py-3 text-right text-[11px] text-slate-500">
+                                {row.waitingRealizationCount + row.waitingLpjCount + row.financeReviewCount + row.returnedByFinanceCount} tindak lanjut
+                                <div className="mt-1 text-slate-700">{row.realizationRate.toFixed(1)}%</div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                    <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">Antrian Tindak Lanjut</div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          Budget yang masih tertahan di approval, realisasi, LPJ, atau review finance.
+                        </div>
+                      </div>
+                      <div className="text-xs text-slate-500">{budgetRealizationSummary.followUpQueue.length} item</div>
+                    </div>
+                    <div className="p-4 space-y-3 max-h-[360px] overflow-y-auto">
+                      {budgetRealizationSummary.followUpQueue.length === 0 ? (
+                        <div className="text-sm text-slate-500">Tidak ada antrian tindak lanjut. Semua budget sudah rapi.</div>
+                      ) : (
+                        budgetRealizationSummary.followUpQueue.map((row) => {
+                          const stageMeta = getBudgetProgressStageMeta(row.stage);
+                          return (
+                            <div key={`budget-follow-up-${row.budgetId}`} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-slate-900">{row.title}</div>
+                                  <div className="mt-1 text-[11px] text-slate-500">
+                                    {row.requesterName} • {row.additionalDutyLabel}
+                                  </div>
+                                </div>
+                                <span className={`inline-flex shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${stageMeta.className}`}>
+                                  {stageMeta.label}
+                                </span>
+                              </div>
+                              <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                                <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                                  <div className="text-slate-500">Approved</div>
+                                  <div className="mt-1 font-semibold text-slate-900">{formatCurrency(row.approvedBudgetAmount)}</div>
+                                </div>
+                                <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+                                  <div className="text-emerald-700">Actual</div>
+                                  <div className="mt-1 font-semibold text-emerald-900">{formatCurrency(row.actualRealizedAmount)}</div>
+                                </div>
+                                <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2">
+                                  <div className="text-violet-700">Variance</div>
+                                  <div className="mt-1 font-semibold text-violet-900">{formatCurrency(row.varianceAmount)}</div>
+                                </div>
+                              </div>
+                              <div className="mt-2 text-[11px] text-slate-500">
+                                {row.pendingSince ? `Sejak ${formatDate(row.pendingSince)}` : 'Belum ada tanggal stage'} • {row.daysInStage} hari
+                                {row.latestLpjStatus ? ` • LPJ ${row.latestLpjStatus}` : ''}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                    <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">Realisasi Terbaru</div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          Budget yang sudah selesai diproses finance, untuk memantau actual spent terbaru.
+                        </div>
+                      </div>
+                      <div className="text-xs text-slate-500">{budgetRealizationSummary.recentRealizations.length} item</div>
+                    </div>
+                    <div className="p-4 space-y-3 max-h-[280px] overflow-y-auto">
+                      {budgetRealizationSummary.recentRealizations.length === 0 ? (
+                        <div className="text-sm text-slate-500">Belum ada realisasi selesai dari LPJ finance.</div>
+                      ) : (
+                        budgetRealizationSummary.recentRealizations.map((row) => (
+                          <div key={`budget-realized-${row.budgetId}`} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                            <div className="text-sm font-semibold text-slate-900">{row.title}</div>
+                            <div className="mt-1 text-[11px] text-slate-500">
+                              {row.requesterName} • {row.additionalDutyLabel}
+                            </div>
+                            <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                                <div className="text-slate-500">Approved</div>
+                                <div className="mt-1 font-semibold text-slate-900">{formatCurrency(row.approvedBudgetAmount)}</div>
+                              </div>
+                              <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+                                <div className="text-emerald-700">Actual</div>
+                                <div className="mt-1 font-semibold text-emerald-900">{formatCurrency(row.actualRealizedAmount)}</div>
+                              </div>
+                              <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2">
+                                <div className="text-violet-700">Variance</div>
+                                <div className="mt-1 font-semibold text-violet-900">{formatCurrency(row.varianceAmount)}</div>
+                              </div>
+                            </div>
+                            <div className="mt-2 text-[11px] text-slate-500">
+                              Selesai {row.completedAt ? formatDate(row.completedAt) : '-'} • {row.completedInvoiceCount} invoice LPJ
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

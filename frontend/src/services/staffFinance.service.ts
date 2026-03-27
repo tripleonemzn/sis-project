@@ -1285,6 +1285,112 @@ export interface FinanceReportSnapshot {
   componentReceivableRecap: FinanceComponentReceivableRow[];
 }
 
+export type FinanceBudgetProgressStage =
+  | 'PENDING_APPROVAL'
+  | 'WAITING_REALIZATION'
+  | 'WAITING_LPJ'
+  | 'LPJ_PREPARATION'
+  | 'FINANCE_REVIEW'
+  | 'RETURNED_BY_FINANCE'
+  | 'REALIZED'
+  | 'REJECTED';
+
+export interface FinanceBudgetRealizationDutyRecap {
+  additionalDuty: string;
+  additionalDutyLabel: string;
+  totalRequests: number;
+  pendingApprovalCount: number;
+  approvedCount: number;
+  rejectedCount: number;
+  approvedBudgetAmount: number;
+  realizationConfirmedBudgetAmount: number;
+  actualRealizedAmount: number;
+  varianceAmount: number;
+  realizationRate: number;
+  waitingRealizationCount: number;
+  waitingLpjCount: number;
+  lpjPreparationCount: number;
+  financeReviewCount: number;
+  returnedByFinanceCount: number;
+  realizedCount: number;
+}
+
+export interface FinanceBudgetRealizationQueueRow {
+  budgetId: number;
+  title: string;
+  requesterName: string;
+  additionalDuty: string;
+  additionalDutyLabel: string;
+  stage: FinanceBudgetProgressStage;
+  stageLabel: string;
+  approvalStatus: string;
+  approvedBudgetAmount: number;
+  actualRealizedAmount: number;
+  varianceAmount: number;
+  latestLpjStatus?: string | null;
+  latestLpjTitle?: string | null;
+  realizationConfirmedAt?: string | null;
+  pendingSince?: string | null;
+  daysInStage: number;
+  updatedAt: string;
+}
+
+export interface FinanceBudgetRealizationRecentRow {
+  budgetId: number;
+  title: string;
+  requesterName: string;
+  additionalDuty: string;
+  additionalDutyLabel: string;
+  approvedBudgetAmount: number;
+  actualRealizedAmount: number;
+  varianceAmount: number;
+  completedAt?: string | null;
+  completedInvoiceCount: number;
+}
+
+export interface FinanceBudgetRealizationSnapshot {
+  filters: {
+    academicYearId: number | null;
+    additionalDuty: string | null;
+    generatedAt: string;
+  };
+  overview: {
+    totalRequests: number;
+    pendingApprovalCount: number;
+    approvedCount: number;
+    rejectedCount: number;
+    approvedBudgetAmount: number;
+    realizationConfirmedBudgetAmount: number;
+    actualRealizedAmount: number;
+    varianceAmount: number;
+    realizationRate: number;
+    completionRate: number;
+    totalLpjInvoices: number;
+    completedLpjInvoices: number;
+    processingLpjInvoices: number;
+    returnedLpjInvoices: number;
+    stageSummary: {
+      pendingApprovalCount: number;
+      pendingApprovalAmount: number;
+      waitingRealizationCount: number;
+      waitingRealizationAmount: number;
+      waitingLpjCount: number;
+      waitingLpjAmount: number;
+      lpjPreparationCount: number;
+      lpjPreparationAmount: number;
+      financeReviewCount: number;
+      financeReviewAmount: number;
+      returnedByFinanceCount: number;
+      returnedByFinanceAmount: number;
+      realizedCount: number;
+      realizedAmount: number;
+    };
+  };
+  dutyRecap: FinanceBudgetRealizationDutyRecap[];
+  followUpQueue: FinanceBudgetRealizationQueueRow[];
+  recentRealizations: FinanceBudgetRealizationRecentRow[];
+}
+
 export interface FinanceReportQueryParams {
   academicYearId?: number;
   semester?: SemesterCode;
@@ -1582,6 +1688,18 @@ export const staffFinanceService = {
 
   async listReports(params?: FinanceReportQueryParams) {
     const response = await api.get<ApiResponse<FinanceReportSnapshot>>('/payments/reports', { params });
+    return response.data.data;
+  },
+
+  async getBudgetRealizationSummary(params?: {
+    academicYearId?: number;
+    additionalDuty?: string;
+    limit?: number;
+  }) {
+    const response = await api.get<ApiResponse<FinanceBudgetRealizationSnapshot>>(
+      '/payments/budget-realization',
+      { params },
+    );
     return response.data.data;
   },
 

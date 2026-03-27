@@ -18,6 +18,7 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import {
   type FinanceAdjustmentKind,
   type FinanceBankStatementDirection,
+  type FinanceBudgetProgressStage,
   type FinanceClosingPeriodType,
   type FinanceLedgerBook,
   staffFinanceApi,
@@ -394,6 +395,31 @@ function getClosingPeriodApprovalBadge(status: StaffFinanceClosingPeriod['approv
   return { label: 'Belum Diajukan', bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
 }
 
+function getBudgetProgressStageBadge(stage: FinanceBudgetProgressStage) {
+  if (stage === 'RETURNED_BY_FINANCE') {
+    return { label: 'Dikembalikan Keuangan', bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+  }
+  if (stage === 'FINANCE_REVIEW') {
+    return { label: 'Review Keuangan', bg: '#e0f2fe', border: '#bae6fd', text: '#075985' };
+  }
+  if (stage === 'LPJ_PREPARATION') {
+    return { label: 'Persiapan LPJ', bg: '#f3e8ff', border: '#d8b4fe', text: '#6b21a8' };
+  }
+  if (stage === 'WAITING_LPJ') {
+    return { label: 'Menunggu LPJ', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  }
+  if (stage === 'WAITING_REALIZATION') {
+    return { label: 'Menunggu Realisasi', bg: '#ffedd5', border: '#fdba74', text: '#c2410c' };
+  }
+  if (stage === 'PENDING_APPROVAL') {
+    return { label: 'Menunggu Persetujuan', bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
+  }
+  if (stage === 'REALIZED') {
+    return { label: 'Terealisasi', bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  }
+  return { label: 'Ditolak', bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+}
+
 function getBankReconciliationStatusBadge(status: StaffFinanceBankReconciliation['status']) {
   if (status === 'FINALIZED') {
     return { label: 'Final', bg: '#dcfce7', border: '#86efac', text: '#166534' };
@@ -670,6 +696,17 @@ export default function StaffPaymentsScreen() {
     staleTime: 30_000,
   });
 
+  const budgetRealizationQuery = useQuery({
+    queryKey: ['mobile-staff-finance-budget-realization', activeYearQuery.data?.id || 'none'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () =>
+      staffFinanceApi.getBudgetRealizationSummary({
+        academicYearId: activeYearQuery.data?.id,
+        limit: 10,
+      }),
+    staleTime: 30_000,
+  });
+
   const closingPeriodApprovalPolicyQuery = useQuery({
     queryKey: ['mobile-staff-finance-closing-period-policy'],
     enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
@@ -709,6 +746,7 @@ export default function StaffPaymentsScreen() {
   const closingPeriodsSummary = closingPeriodsQuery.data?.summary;
   const closingPeriods = closingPeriodsQuery.data?.periods || [];
   const closingPeriodApprovalPolicy = closingPeriodApprovalPolicyQuery.data || null;
+  const budgetRealizationSummary = budgetRealizationQuery.data || null;
 
   useEffect(() => {
     if (bankReconciliationAccountId === '' && activeBankAccounts[0]?.id) {
@@ -2308,6 +2346,7 @@ export default function StaffPaymentsScreen() {
     cashSessionsQuery.isLoading ||
     closingPeriodsQuery.isLoading ||
     closingPeriodApprovalPolicyQuery.isLoading ||
+    budgetRealizationQuery.isLoading ||
     creditsQuery.isLoading ||
     invoicesQuery.isLoading ||
     studentsQuery.isLoading;
@@ -2330,6 +2369,7 @@ export default function StaffPaymentsScreen() {
             cashSessionsQuery.isFetching ||
             closingPeriodsQuery.isFetching ||
             closingPeriodApprovalPolicyQuery.isFetching ||
+            budgetRealizationQuery.isFetching ||
             creditsQuery.isFetching ||
             invoicesQuery.isFetching ||
             dashboardQuery.isFetching
@@ -2346,6 +2386,7 @@ export default function StaffPaymentsScreen() {
             void cashSessionsQuery.refetch();
             void closingPeriodsQuery.refetch();
             void closingPeriodApprovalPolicyQuery.refetch();
+            void budgetRealizationQuery.refetch();
             void creditsQuery.refetch();
             void invoicesQuery.refetch();
             void dashboardQuery.refetch();
@@ -2374,6 +2415,7 @@ export default function StaffPaymentsScreen() {
             void invoicesQuery.refetch();
             void paymentVerificationsQuery.refetch();
             void ledgerBooksQuery.refetch();
+            void budgetRealizationQuery.refetch();
           }}
         />
       ) : null}
@@ -4024,6 +4066,207 @@ export default function StaffPaymentsScreen() {
               </View>
             );
           })
+        )}
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#cbd5e1',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Budget vs Realization</Text>
+        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+          Kontrol anggaran finance yang menggabungkan budget approved, konfirmasi realisasi, progres LPJ, dan actual spent dari LPJ yang selesai diproses.
+          {activeYearQuery.data?.name ? ` Fokus ${activeYearQuery.data.name}.` : ''}
+        </Text>
+
+        {budgetRealizationQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil budget vs realization..." />
+        ) : !budgetRealizationSummary ? (
+          <Text style={{ color: '#64748b', fontSize: 12 }}>Ringkasan budget vs realization belum tersedia.</Text>
+        ) : (
+          <>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
+              {[
+                {
+                  label: 'Budget Approved',
+                  value: formatCurrency(budgetRealizationSummary.overview.approvedBudgetAmount),
+                  bg: '#f8fafc',
+                  border: '#cbd5e1',
+                  text: '#334155',
+                },
+                {
+                  label: 'Actual Realized',
+                  value: formatCurrency(budgetRealizationSummary.overview.actualRealizedAmount),
+                  bg: '#dcfce7',
+                  border: '#86efac',
+                  text: '#166534',
+                },
+                {
+                  label: 'Realisasi Confirmed',
+                  value: formatCurrency(budgetRealizationSummary.overview.realizationConfirmedBudgetAmount),
+                  bg: '#e0f2fe',
+                  border: '#bae6fd',
+                  text: '#075985',
+                },
+                {
+                  label: 'Variance',
+                  value: formatCurrency(budgetRealizationSummary.overview.varianceAmount),
+                  bg: '#f3e8ff',
+                  border: '#d8b4fe',
+                  text: '#6b21a8',
+                },
+                {
+                  label: 'Menunggu LPJ',
+                  value: `${budgetRealizationSummary.overview.stageSummary.waitingLpjCount} budget`,
+                  subtitle: formatCurrency(budgetRealizationSummary.overview.stageSummary.waitingLpjAmount),
+                  bg: '#fef3c7',
+                  border: '#fcd34d',
+                  text: '#92400e',
+                },
+                {
+                  label: 'Review/Return Finance',
+                  value: `${budgetRealizationSummary.overview.stageSummary.financeReviewCount + budgetRealizationSummary.overview.stageSummary.returnedByFinanceCount} budget`,
+                  subtitle: formatCurrency(
+                    budgetRealizationSummary.overview.stageSummary.financeReviewAmount +
+                      budgetRealizationSummary.overview.stageSummary.returnedByFinanceAmount,
+                  ),
+                  bg: '#fee2e2',
+                  border: '#fecaca',
+                  text: '#991b1b',
+                },
+              ].map((card) => (
+                <View key={card.label} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                  <View style={{ backgroundColor: card.bg, borderWidth: 1, borderColor: card.border, borderRadius: 10, padding: 10 }}>
+                    <Text style={{ color: card.text, fontSize: 11 }}>{card.label}</Text>
+                    <Text style={{ color: card.text, fontWeight: '700', fontSize: 13, marginTop: 4 }} numberOfLines={1}>
+                      {card.value}
+                    </Text>
+                    {'subtitle' in card && card.subtitle ? (
+                      <Text style={{ color: card.text, fontSize: 11, marginTop: 3 }} numberOfLines={1}>
+                        {card.subtitle}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                backgroundColor: '#fff',
+                borderRadius: 10,
+                padding: 10,
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Rekap per Duty</Text>
+              {budgetRealizationSummary.dutyRecap.length === 0 ? (
+                <Text style={{ color: '#64748b', fontSize: 12 }}>Belum ada data duty untuk tahun ajaran ini.</Text>
+              ) : (
+                budgetRealizationSummary.dutyRecap.map((row) => (
+                  <View key={row.additionalDuty} style={{ borderTopWidth: 1, borderTopColor: '#eef2ff', paddingVertical: 8 }}>
+                    <Text style={{ color: '#0f172a', fontWeight: '700' }}>{row.additionalDutyLabel}</Text>
+                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                      {row.totalRequests} request • {row.approvedCount} approved • {row.realizationRate.toFixed(1)}%
+                    </Text>
+                    <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+                      Approved {formatCurrency(row.approvedBudgetAmount)} • Actual {formatCurrency(row.actualRealizedAmount)}
+                    </Text>
+                    <Text style={{ color: '#6b21a8', fontSize: 12, marginTop: 2 }}>
+                      Variance {formatCurrency(row.varianceAmount)}
+                    </Text>
+                  </View>
+                ))
+              )}
+            </View>
+
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                backgroundColor: '#fff',
+                borderRadius: 10,
+                padding: 10,
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Antrian Tindak Lanjut</Text>
+              {budgetRealizationSummary.followUpQueue.length === 0 ? (
+                <Text style={{ color: '#64748b', fontSize: 12 }}>Tidak ada antrian tindak lanjut. Semua budget sudah rapi.</Text>
+              ) : (
+                budgetRealizationSummary.followUpQueue.map((row) => {
+                  const badge = getBudgetProgressStageBadge(row.stage);
+                  return (
+                    <View key={`budget-follow-up-${row.budgetId}`} style={{ borderTopWidth: 1, borderTopColor: '#eef2ff', paddingVertical: 8 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#0f172a', fontWeight: '700' }}>{row.title}</Text>
+                          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                            {row.requesterName} • {row.additionalDutyLabel}
+                          </Text>
+                        </View>
+                        <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                          <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{badge.label}</Text>
+                        </View>
+                      </View>
+                      <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                        Approved {formatCurrency(row.approvedBudgetAmount)} • Actual {formatCurrency(row.actualRealizedAmount)}
+                      </Text>
+                      <Text style={{ color: '#6b21a8', fontSize: 12, marginTop: 3 }}>
+                        Variance {formatCurrency(row.varianceAmount)}
+                      </Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>
+                        {row.pendingSince ? `Sejak ${formatDate(row.pendingSince)}` : 'Belum ada tanggal stage'} • {row.daysInStage} hari
+                        {row.latestLpjStatus ? ` • LPJ ${row.latestLpjStatus}` : ''}
+                      </Text>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                backgroundColor: '#fff',
+                borderRadius: 10,
+                padding: 10,
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Realisasi Terbaru</Text>
+              {budgetRealizationSummary.recentRealizations.length === 0 ? (
+                <Text style={{ color: '#64748b', fontSize: 12 }}>Belum ada realisasi selesai dari LPJ finance.</Text>
+              ) : (
+                budgetRealizationSummary.recentRealizations.map((row) => (
+                  <View key={`budget-realized-${row.budgetId}`} style={{ borderTopWidth: 1, borderTopColor: '#eef2ff', paddingVertical: 8 }}>
+                    <Text style={{ color: '#0f172a', fontWeight: '700' }}>{row.title}</Text>
+                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                      {row.requesterName} • {row.additionalDutyLabel}
+                    </Text>
+                    <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                      Approved {formatCurrency(row.approvedBudgetAmount)} • Actual {formatCurrency(row.actualRealizedAmount)}
+                    </Text>
+                    <Text style={{ color: '#6b21a8', fontSize: 12, marginTop: 3 }}>
+                      Variance {formatCurrency(row.varianceAmount)}
+                    </Text>
+                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>
+                      Selesai {row.completedAt ? formatDate(row.completedAt) : '-'} • {row.completedInvoiceCount} invoice LPJ
+                    </Text>
+                  </View>
+                ))
+              )}
+            </View>
+          </>
         )}
       </View>
 

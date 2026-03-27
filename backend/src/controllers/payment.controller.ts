@@ -47,6 +47,15 @@ type FinanceLedgerBook = (typeof FINANCE_LEDGER_BOOKS)[number];
 type FinanceBankReconciliationStatus = (typeof FINANCE_BANK_RECONCILIATION_STATUSES)[number];
 type FinanceBankStatementDirection = (typeof FINANCE_BANK_STATEMENT_DIRECTIONS)[number];
 type FinanceBankStatementEntryStatus = (typeof FINANCE_BANK_STATEMENT_ENTRY_STATUSES)[number];
+type FinanceBudgetProgressStage =
+  | 'PENDING_APPROVAL'
+  | 'WAITING_REALIZATION'
+  | 'WAITING_LPJ'
+  | 'LPJ_PREPARATION'
+  | 'FINANCE_REVIEW'
+  | 'RETURNED_BY_FINANCE'
+  | 'REALIZED'
+  | 'REJECTED';
 
 type StatusSummary = Record<PaymentStatus, { count: number; amount: number }>;
 type TypeSummary = Record<PaymentType, { count: number; amount: number }>;
@@ -3496,6 +3505,12 @@ const listFinanceClosingPeriodsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional().default(12),
 });
 
+const listFinanceBudgetRealizationSummaryQuerySchema = z.object({
+  academicYearId: z.coerce.number().int().positive().optional(),
+  additionalDuty: z.string().trim().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(12),
+});
+
 const listFinanceBankReconciliationsQuerySchema = z.object({
   bankAccountId: z.coerce.number().int().positive().optional(),
   status: z.enum(FINANCE_BANK_RECONCILIATION_STATUSES).optional(),
@@ -6596,6 +6611,510 @@ async function buildFinanceReportSnapshot(filters: FinanceReportFilters) {
   };
 }
 
+function humanizeFinanceAdditionalDuty(value?: string | null) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '-';
+  return normalized
+    .split('_')
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function getFinanceBudgetStageMeta(stage: FinanceBudgetProgressStage) {
+  if (stage === 'REALIZED') {
+    return { label: 'Terealisasi', weight: 1 };
+  }
+  if (stage === 'RETURNED_BY_FINANCE') {
+    return { label: 'Dikembalikan Keuangan', weight: 6 };
+  }
+  if (stage === 'FINANCE_REVIEW') {
+    return { label: 'Review Keuangan', weight: 5 };
+  }
+  if (stage === 'LPJ_PREPARATION') {
+    return { label: 'Persiapan LPJ', weight: 4 };
+  }
+  if (stage === 'WAITING_LPJ') {
+    return { label: 'Menunggu LPJ', weight: 3 };
+  }
+  if (stage === 'WAITING_REALIZATION') {
+    return { label: 'Menunggu Konfirmasi Realisasi', weight: 2 };
+  }
+  if (stage === 'REJECTED') {
+    return { label: 'Ditolak', weight: 0 };
+  }
+  return { label: 'Menunggu Persetujuan', weight: 1 };
+}
+
+function resolveFinanceBudgetProgressStage(params: {
+  approvalStatus: string;
+  realizationConfirmedAt?: Date | null;
+  lpjInvoices: Array<{
+    status: string;
+    updatedAt: Date;
+    id: number;
+  }>;
+}) {
+  if (params.approvalStatus === 'REJECTED') {
+    return 'REJECTED' as const;
+  }
+  if (params.approvalStatus !== 'APPROVED') {
+    return 'PENDING_APPROVAL' as const;
+  }
+  if (!params.realizationConfirmedAt) {
+    return 'WAITING_REALIZATION' as const;
+  }
+  if (!params.lpjInvoices.length) {
+    return 'WAITING_LPJ' as const;
+  }
+
+  const invoices = [...params.lpjInvoices].sort(
+    (left, right) => right.updatedAt.getTime() - left.updatedAt.getTime() || right.id - left.id,
+  );
+  const latestInvoice = invoices[0];
+
+  if (invoices.every((invoice) => invoice.status === 'COMPLETED')) {
+    return 'REALIZED' as const;
+  }
+  if (latestInvoice?.status === 'RETURNED_BY_FINANCE') {
+    return 'RETURNED_BY_FINANCE' as const;
+  }
+  if (latestInvoice && ['SENT_TO_FINANCE', 'PROCESSING_FINANCE'].includes(latestInvoice.status)) {
+    return 'FINANCE_REVIEW' as const;
+  }
+  return 'LPJ_PREPARATION' as const;
+}
+
+function resolveFinanceBudgetPendingSince(params: {
+  stage: FinanceBudgetProgressStage;
+  createdAt: Date;
+  updatedAt: Date;
+  realizationConfirmedAt?: Date | null;
+  latestLpjInvoice?: {
+    submittedAt?: Date | null;
+    sentToFinanceAt?: Date | null;
+    financeProcessedAt?: Date | null;
+    financeReturnedAt?: Date | null;
+    updatedAt: Date;
+  } | null;
+}) {
+  if (params.stage === 'WAITING_REALIZATION') {
+    return params.updatedAt || params.createdAt;
+  }
+  if (params.stage === 'WAITING_LPJ') {
+    return params.realizationConfirmedAt || params.updatedAt || params.createdAt;
+  }
+  if (params.stage === 'LPJ_PREPARATION') {
+    return (
+      params.latestLpjInvoice?.submittedAt ||
+      params.latestLpjInvoice?.updatedAt ||
+      params.realizationConfirmedAt ||
+      params.updatedAt ||
+      params.createdAt
+    );
+  }
+  if (params.stage === 'FINANCE_REVIEW') {
+    return (
+      params.latestLpjInvoice?.financeProcessedAt ||
+      params.latestLpjInvoice?.sentToFinanceAt ||
+      params.latestLpjInvoice?.updatedAt ||
+      params.realizationConfirmedAt ||
+      params.updatedAt ||
+      params.createdAt
+    );
+  }
+  if (params.stage === 'RETURNED_BY_FINANCE') {
+    return (
+      params.latestLpjInvoice?.financeReturnedAt ||
+      params.latestLpjInvoice?.updatedAt ||
+      params.realizationConfirmedAt ||
+      params.updatedAt ||
+      params.createdAt
+    );
+  }
+  return params.createdAt;
+}
+
+async function buildFinanceBudgetRealizationSummary(filters: {
+  academicYearId?: number;
+  additionalDuty?: string;
+  limit: number;
+}) {
+  const normalizedDuty = filters.additionalDuty?.trim().toUpperCase() || null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const budgets = await prisma.budgetRequest.findMany({
+    where: {
+      ...(filters.academicYearId ? { academicYearId: filters.academicYearId } : {}),
+      ...(normalizedDuty ? { additionalDuty: normalizedDuty as any } : {}),
+    },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      totalAmount: true,
+      approvalStatus: true,
+      additionalDuty: true,
+      createdAt: true,
+      updatedAt: true,
+      realizationConfirmedAt: true,
+      requester: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      academicYear: {
+        select: {
+          id: true,
+          name: true,
+          isActive: true,
+        },
+      },
+      lpjInvoices: {
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          submittedAt: true,
+          sentToFinanceAt: true,
+          financeProcessedAt: true,
+          financeCompletedAt: true,
+          financeReturnedAt: true,
+          items: {
+            select: {
+              amount: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+  });
+
+  const overview = {
+    totalRequests: budgets.length,
+    pendingApprovalCount: 0,
+    approvedCount: 0,
+    rejectedCount: 0,
+    approvedBudgetAmount: 0,
+    realizationConfirmedBudgetAmount: 0,
+    actualRealizedAmount: 0,
+    varianceAmount: 0,
+    realizationRate: 0,
+    completionRate: 0,
+    totalLpjInvoices: 0,
+    completedLpjInvoices: 0,
+    processingLpjInvoices: 0,
+    returnedLpjInvoices: 0,
+    stageSummary: {
+      pendingApprovalCount: 0,
+      pendingApprovalAmount: 0,
+      waitingRealizationCount: 0,
+      waitingRealizationAmount: 0,
+      waitingLpjCount: 0,
+      waitingLpjAmount: 0,
+      lpjPreparationCount: 0,
+      lpjPreparationAmount: 0,
+      financeReviewCount: 0,
+      financeReviewAmount: 0,
+      returnedByFinanceCount: 0,
+      returnedByFinanceAmount: 0,
+      realizedCount: 0,
+      realizedAmount: 0,
+    },
+  };
+
+  const dutyRecapMap = new Map<
+    string,
+    {
+      additionalDuty: string;
+      additionalDutyLabel: string;
+      totalRequests: number;
+      pendingApprovalCount: number;
+      approvedCount: number;
+      rejectedCount: number;
+      approvedBudgetAmount: number;
+      realizationConfirmedBudgetAmount: number;
+      actualRealizedAmount: number;
+      varianceAmount: number;
+      waitingRealizationCount: number;
+      waitingLpjCount: number;
+      lpjPreparationCount: number;
+      financeReviewCount: number;
+      returnedByFinanceCount: number;
+      realizedCount: number;
+    }
+  >();
+
+  const followUpQueue: Array<{
+    budgetId: number;
+    title: string;
+    requesterName: string;
+    additionalDuty: string;
+    additionalDutyLabel: string;
+    stage: FinanceBudgetProgressStage;
+    stageLabel: string;
+    approvalStatus: string;
+    approvedBudgetAmount: number;
+    actualRealizedAmount: number;
+    varianceAmount: number;
+    latestLpjStatus: string | null;
+    latestLpjTitle: string | null;
+    realizationConfirmedAt: string | null;
+    pendingSince: string | null;
+    daysInStage: number;
+    updatedAt: string;
+  }> = [];
+
+  const recentRealizations: Array<{
+    budgetId: number;
+    title: string;
+    requesterName: string;
+    additionalDuty: string;
+    additionalDutyLabel: string;
+    approvedBudgetAmount: number;
+    actualRealizedAmount: number;
+    varianceAmount: number;
+    completedAt: string | null;
+    completedInvoiceCount: number;
+  }> = [];
+
+  for (const budget of budgets) {
+    const approvedBudgetAmount = Number(budget.totalAmount || 0);
+    const dutyKey = String(budget.additionalDuty || 'UNKNOWN');
+    const dutyLabel = humanizeFinanceAdditionalDuty(dutyKey);
+    const latestLpjInvoice = budget.lpjInvoices[0] || null;
+    const actualRealizedAmount = budget.lpjInvoices.reduce((sum, invoice) => {
+      if (invoice.status !== 'COMPLETED') return sum;
+      return (
+        sum +
+        invoice.items.reduce((itemAcc, item) => itemAcc + Number(item.amount || 0), 0)
+      );
+    }, 0);
+    const completedInvoices = budget.lpjInvoices.filter((invoice) => invoice.status === 'COMPLETED');
+    const progressStage = resolveFinanceBudgetProgressStage({
+      approvalStatus: budget.approvalStatus,
+      realizationConfirmedAt: budget.realizationConfirmedAt,
+      lpjInvoices: budget.lpjInvoices.map((invoice) => ({
+        status: invoice.status,
+        updatedAt: invoice.updatedAt,
+        id: invoice.id,
+      })),
+    });
+    const stageMeta = getFinanceBudgetStageMeta(progressStage);
+    const pendingSinceDate = resolveFinanceBudgetPendingSince({
+      stage: progressStage,
+      createdAt: budget.createdAt,
+      updatedAt: budget.updatedAt,
+      realizationConfirmedAt: budget.realizationConfirmedAt,
+      latestLpjInvoice,
+    });
+    const daysInStage = Math.max(
+      0,
+      Math.floor((today.getTime() - new Date(pendingSinceDate).setHours(0, 0, 0, 0)) / 86_400_000),
+    );
+
+    overview.totalLpjInvoices += budget.lpjInvoices.length;
+    overview.completedLpjInvoices += completedInvoices.length;
+    overview.processingLpjInvoices += budget.lpjInvoices.filter((invoice) =>
+      ['SENT_TO_FINANCE', 'PROCESSING_FINANCE'].includes(invoice.status),
+    ).length;
+    overview.returnedLpjInvoices += budget.lpjInvoices.filter((invoice) => invoice.status === 'RETURNED_BY_FINANCE').length;
+
+    if (budget.approvalStatus === 'PENDING') {
+      overview.pendingApprovalCount += 1;
+    } else if (budget.approvalStatus === 'APPROVED') {
+      overview.approvedCount += 1;
+      overview.approvedBudgetAmount += approvedBudgetAmount;
+      if (budget.realizationConfirmedAt) {
+        overview.realizationConfirmedBudgetAmount += approvedBudgetAmount;
+      }
+    } else if (budget.approvalStatus === 'REJECTED') {
+      overview.rejectedCount += 1;
+    }
+
+    overview.actualRealizedAmount += actualRealizedAmount;
+
+    const dutyRecap =
+      dutyRecapMap.get(dutyKey) ||
+      {
+        additionalDuty: dutyKey,
+        additionalDutyLabel: dutyLabel,
+        totalRequests: 0,
+        pendingApprovalCount: 0,
+        approvedCount: 0,
+        rejectedCount: 0,
+        approvedBudgetAmount: 0,
+        realizationConfirmedBudgetAmount: 0,
+        actualRealizedAmount: 0,
+        varianceAmount: 0,
+        waitingRealizationCount: 0,
+        waitingLpjCount: 0,
+        lpjPreparationCount: 0,
+        financeReviewCount: 0,
+        returnedByFinanceCount: 0,
+        realizedCount: 0,
+      };
+    dutyRecap.totalRequests += 1;
+    if (budget.approvalStatus === 'PENDING') {
+      dutyRecap.pendingApprovalCount += 1;
+    } else if (budget.approvalStatus === 'APPROVED') {
+      dutyRecap.approvedCount += 1;
+      dutyRecap.approvedBudgetAmount += approvedBudgetAmount;
+      if (budget.realizationConfirmedAt) {
+        dutyRecap.realizationConfirmedBudgetAmount += approvedBudgetAmount;
+      }
+    } else if (budget.approvalStatus === 'REJECTED') {
+      dutyRecap.rejectedCount += 1;
+    }
+    dutyRecap.actualRealizedAmount += actualRealizedAmount;
+
+    if (progressStage === 'PENDING_APPROVAL') {
+      overview.stageSummary.pendingApprovalCount += 1;
+      overview.stageSummary.pendingApprovalAmount += approvedBudgetAmount;
+    } else if (progressStage === 'WAITING_REALIZATION') {
+      overview.stageSummary.waitingRealizationCount += 1;
+      overview.stageSummary.waitingRealizationAmount += approvedBudgetAmount;
+      dutyRecap.waitingRealizationCount += 1;
+    } else if (progressStage === 'WAITING_LPJ') {
+      overview.stageSummary.waitingLpjCount += 1;
+      overview.stageSummary.waitingLpjAmount += approvedBudgetAmount;
+      dutyRecap.waitingLpjCount += 1;
+    } else if (progressStage === 'LPJ_PREPARATION') {
+      overview.stageSummary.lpjPreparationCount += 1;
+      overview.stageSummary.lpjPreparationAmount += approvedBudgetAmount;
+      dutyRecap.lpjPreparationCount += 1;
+    } else if (progressStage === 'FINANCE_REVIEW') {
+      overview.stageSummary.financeReviewCount += 1;
+      overview.stageSummary.financeReviewAmount += approvedBudgetAmount;
+      dutyRecap.financeReviewCount += 1;
+    } else if (progressStage === 'RETURNED_BY_FINANCE') {
+      overview.stageSummary.returnedByFinanceCount += 1;
+      overview.stageSummary.returnedByFinanceAmount += approvedBudgetAmount;
+      dutyRecap.returnedByFinanceCount += 1;
+    } else if (progressStage === 'REALIZED') {
+      overview.stageSummary.realizedCount += 1;
+      overview.stageSummary.realizedAmount += approvedBudgetAmount;
+      dutyRecap.realizedCount += 1;
+    }
+
+    dutyRecapMap.set(dutyKey, dutyRecap);
+
+    const varianceAmount = approvedBudgetAmount - actualRealizedAmount;
+
+    if (progressStage !== 'REALIZED' && progressStage !== 'REJECTED') {
+      followUpQueue.push({
+        budgetId: budget.id,
+        title: budget.title || budget.description || `Budget #${budget.id}`,
+        requesterName: budget.requester?.name || '-',
+        additionalDuty: dutyKey,
+        additionalDutyLabel: dutyLabel,
+        stage: progressStage,
+        stageLabel: stageMeta.label,
+        approvalStatus: budget.approvalStatus,
+        approvedBudgetAmount,
+        actualRealizedAmount,
+        varianceAmount,
+        latestLpjStatus: latestLpjInvoice?.status || null,
+        latestLpjTitle: latestLpjInvoice?.title || null,
+        realizationConfirmedAt: toIsoDate(budget.realizationConfirmedAt),
+        pendingSince: toIsoDate(pendingSinceDate),
+        daysInStage,
+        updatedAt: budget.updatedAt.toISOString(),
+      });
+    }
+
+    if (completedInvoices.length > 0) {
+      const latestCompletedAt = [...completedInvoices]
+        .map((invoice) => invoice.financeCompletedAt || invoice.updatedAt)
+        .sort((left, right) => right.getTime() - left.getTime())[0];
+
+      recentRealizations.push({
+        budgetId: budget.id,
+        title: budget.title || budget.description || `Budget #${budget.id}`,
+        requesterName: budget.requester?.name || '-',
+        additionalDuty: dutyKey,
+        additionalDutyLabel: dutyLabel,
+        approvedBudgetAmount,
+        actualRealizedAmount,
+        varianceAmount,
+        completedAt: toIsoDate(latestCompletedAt),
+        completedInvoiceCount: completedInvoices.length,
+      });
+    }
+  }
+
+  const dutyRecap = Array.from(dutyRecapMap.values())
+    .map((row) => ({
+      ...row,
+      varianceAmount: row.approvedBudgetAmount - row.actualRealizedAmount,
+      realizationRate:
+        row.approvedBudgetAmount > 0
+          ? (row.actualRealizedAmount / row.approvedBudgetAmount) * 100
+          : 0,
+    }))
+    .sort(
+      (left, right) =>
+        right.approvedBudgetAmount - left.approvedBudgetAmount ||
+        right.actualRealizedAmount - left.actualRealizedAmount ||
+        left.additionalDutyLabel.localeCompare(right.additionalDutyLabel, 'id-ID', {
+          sensitivity: 'base',
+        }),
+    );
+
+  overview.varianceAmount = overview.approvedBudgetAmount - overview.actualRealizedAmount;
+  overview.realizationRate =
+    overview.approvedBudgetAmount > 0
+      ? (overview.actualRealizedAmount / overview.approvedBudgetAmount) * 100
+      : 0;
+  overview.completionRate =
+    overview.realizationConfirmedBudgetAmount > 0
+      ? (overview.actualRealizedAmount / overview.realizationConfirmedBudgetAmount) * 100
+      : 0;
+
+  const sortedQueue = [...followUpQueue]
+    .sort((left, right) => {
+      const stageDiff =
+        getFinanceBudgetStageMeta(right.stage).weight - getFinanceBudgetStageMeta(left.stage).weight;
+      if (stageDiff !== 0) return stageDiff;
+      if (right.daysInStage !== left.daysInStage) return right.daysInStage - left.daysInStage;
+      if (right.approvedBudgetAmount !== left.approvedBudgetAmount) {
+        return right.approvedBudgetAmount - left.approvedBudgetAmount;
+      }
+      return left.title.localeCompare(right.title, 'id-ID', { sensitivity: 'base' });
+    })
+    .slice(0, filters.limit);
+
+  const sortedRecentRealizations = [...recentRealizations]
+    .sort((left, right) => {
+      if (left.completedAt && right.completedAt && left.completedAt !== right.completedAt) {
+        return right.completedAt.localeCompare(left.completedAt);
+      }
+      if (right.actualRealizedAmount !== left.actualRealizedAmount) {
+        return right.actualRealizedAmount - left.actualRealizedAmount;
+      }
+      return left.title.localeCompare(right.title, 'id-ID', { sensitivity: 'base' });
+    })
+    .slice(0, filters.limit);
+
+  return {
+    filters: {
+      academicYearId: filters.academicYearId || null,
+      additionalDuty: normalizedDuty,
+      generatedAt: new Date().toISOString(),
+    },
+    overview,
+    dutyRecap,
+    followUpQueue: sortedQueue,
+    recentRealizations: sortedRecentRealizations,
+  };
+}
+
 function isDateInsideRange(date: Date, start?: Date | null, end?: Date | null): boolean {
   if (start && date < start) return false;
   if (end && date > end) return false;
@@ -8929,6 +9448,19 @@ export const listFinanceReports = asyncHandler(async (req: Request, res: Respons
 
   const snapshot = await buildFinanceReportSnapshot(filters);
   res.status(200).json(new ApiResponse(200, snapshot, 'Laporan keuangan berhasil diambil'));
+});
+
+export const getFinanceBudgetRealizationSummary = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinanceActor((req as any).user || {}, {
+    allowPrincipalReadOnly: true,
+    allowHeadTuReadOnly: true,
+  });
+
+  const filters = listFinanceBudgetRealizationSummaryQuerySchema.parse(req.query);
+  const snapshot = await buildFinanceBudgetRealizationSummary(filters);
+  res
+    .status(200)
+    .json(new ApiResponse(200, snapshot, 'Ringkasan budget vs realization berhasil diambil'));
 });
 
 export const exportFinanceReports = asyncHandler(async (req: Request, res: Response) => {
