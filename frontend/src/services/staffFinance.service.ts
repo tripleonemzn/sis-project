@@ -8,7 +8,45 @@ export type FinancePaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' 
 export type FinancePaymentSource = 'DIRECT' | 'CREDIT_BALANCE';
 export type FinanceCreditTransactionKind = 'OVERPAYMENT' | 'APPLIED_TO_INVOICE' | 'REFUND';
 export type SemesterCode = 'ODD' | 'EVEN';
-export type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE';
+export type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE' | 'LATE_FEE' | 'ESCALATION';
+
+export interface FinanceReminderPolicy {
+  isActive: boolean;
+  dueSoonDays: number;
+  dueSoonRepeatIntervalDays: number;
+  overdueRepeatIntervalDays: number;
+  lateFeeWarningEnabled: boolean;
+  lateFeeWarningRepeatIntervalDays: number;
+  escalationEnabled: boolean;
+  escalationStartDays: number;
+  escalationRepeatIntervalDays: number;
+  escalationMinOutstandingAmount: number;
+  sendStudentReminder: boolean;
+  sendParentReminder: boolean;
+  escalateToFinanceStaff: boolean;
+  escalateToHeadTu: boolean;
+  escalateToPrincipal: boolean;
+  notes?: string | null;
+  updatedAt: string;
+}
+
+export interface FinanceReminderDispatchResult {
+  checkedInvoices: number;
+  targetedRecipients: number;
+  dueSoonInvoices: number;
+  overdueInvoices: number;
+  lateFeeWarningInvoices: number;
+  escalatedInvoices: number;
+  createdNotifications: number;
+  previewNotifications: number;
+  skippedAlreadyNotified: number;
+  dueSoonDays: number;
+  mode: FinanceReminderMode;
+  preview: boolean;
+  runAt: string;
+  disabledByPolicy: boolean;
+  policy: FinanceReminderPolicy;
+}
 
 export interface FinanceComponent {
   id: number;
@@ -847,21 +885,22 @@ export const staffFinanceService = {
     preview?: boolean;
   }) {
     const response = await api.post<
-      ApiResponse<{
-        checkedInvoices: number;
-        targetedRecipients: number;
-        dueSoonInvoices: number;
-        overdueInvoices: number;
-        createdNotifications: number;
-        previewNotifications: number;
-        skippedAlreadyNotified: number;
-        dueSoonDays: number;
-        mode: FinanceReminderMode;
-        preview: boolean;
-        runAt: string;
-      }>
+      ApiResponse<FinanceReminderDispatchResult>
     >('/payments/reminders/dispatch', payload || {});
     return response.data.data;
+  },
+
+  async getReminderPolicy() {
+    const response = await api.get<ApiResponse<{ policy: FinanceReminderPolicy }>>('/payments/reminder-policy');
+    return response.data.data.policy;
+  },
+
+  async updateReminderPolicy(payload: Partial<Omit<FinanceReminderPolicy, 'updatedAt'>>) {
+    const response = await api.put<ApiResponse<{ policy: FinanceReminderPolicy }>>(
+      '/payments/reminder-policy',
+      payload,
+    );
+    return response.data.data.policy;
   },
 
   async payInvoice(

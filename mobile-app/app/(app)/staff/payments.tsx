@@ -29,6 +29,7 @@ import {
   type StaffFinanceAdjustmentRule,
   type StaffFinanceComponent,
   type StaffFinanceInvoice,
+  type StaffFinanceReminderPolicy,
   type StaffFinanceRefundRecord,
   type StaffFinanceTariffRule,
 } from '../../../src/features/staff/staffFinanceApi';
@@ -310,7 +311,23 @@ export default function StaffPaymentsScreen() {
   const [invoiceStatus, setInvoiceStatus] = useState<'' | FinanceInvoiceStatus>('');
   const [invoiceGradeLevelFilter, setInvoiceGradeLevelFilter] = useState('');
 
+  const [isReminderPolicyModalOpen, setIsReminderPolicyModalOpen] = useState(false);
   const [reminderDueSoonDays, setReminderDueSoonDays] = useState('3');
+  const [reminderPolicyIsActive, setReminderPolicyIsActive] = useState(true);
+  const [reminderDueSoonRepeatIntervalDays, setReminderDueSoonRepeatIntervalDays] = useState('1');
+  const [reminderOverdueRepeatIntervalDays, setReminderOverdueRepeatIntervalDays] = useState('3');
+  const [reminderLateFeeWarningEnabled, setReminderLateFeeWarningEnabled] = useState(true);
+  const [reminderLateFeeWarningRepeatIntervalDays, setReminderLateFeeWarningRepeatIntervalDays] = useState('3');
+  const [reminderEscalationEnabled, setReminderEscalationEnabled] = useState(true);
+  const [reminderEscalationStartDays, setReminderEscalationStartDays] = useState('7');
+  const [reminderEscalationRepeatIntervalDays, setReminderEscalationRepeatIntervalDays] = useState('3');
+  const [reminderEscalationMinOutstandingAmount, setReminderEscalationMinOutstandingAmount] = useState('0');
+  const [reminderSendStudent, setReminderSendStudent] = useState(true);
+  const [reminderSendParent, setReminderSendParent] = useState(true);
+  const [reminderEscalateToFinanceStaff, setReminderEscalateToFinanceStaff] = useState(true);
+  const [reminderEscalateToHeadTu, setReminderEscalateToHeadTu] = useState(true);
+  const [reminderEscalateToPrincipal, setReminderEscalateToPrincipal] = useState(false);
+  const [reminderPolicyNotes, setReminderPolicyNotes] = useState('');
 
   const [selectedInvoice, setSelectedInvoice] = useState<StaffFinanceInvoice | null>(null);
   const [installmentDrafts, setInstallmentDrafts] = useState<
@@ -362,12 +379,26 @@ export default function StaffPaymentsScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const reminderPolicyQuery = useQuery({
+    queryKey: ['mobile-staff-finance-reminder-policy'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => staffFinanceApi.getReminderPolicy(),
+    staleTime: 60_000,
+  });
+
   const academicYears = academicYearsQuery.data?.items || [];
   const majors = majorsQuery.data?.items || [];
   const classLevelOptions = useMemo(
     () => (classLevelsQuery.data || []).map((level) => normalizeClassLevel(level)).filter((value) => value.length > 0),
     [classLevelsQuery.data],
   );
+
+  const reminderPolicy = reminderPolicyQuery.data || null;
+
+  useEffect(() => {
+    if (!reminderPolicy) return;
+    applyReminderPolicyToForm(reminderPolicy);
+  }, [reminderPolicy?.updatedAt]);
 
   const studentLookup = useMemo(() => {
     return new Map((studentsQuery.data || []).map((student) => [student.id, student]));
@@ -572,6 +603,39 @@ export default function StaffPaymentsScreen() {
     resetTariffForm();
   };
 
+  const applyReminderPolicyToForm = (policy: StaffFinanceReminderPolicy) => {
+    setReminderPolicyIsActive(policy.isActive);
+    setReminderDueSoonDays(String(policy.dueSoonDays));
+    setReminderDueSoonRepeatIntervalDays(String(policy.dueSoonRepeatIntervalDays));
+    setReminderOverdueRepeatIntervalDays(String(policy.overdueRepeatIntervalDays));
+    setReminderLateFeeWarningEnabled(policy.lateFeeWarningEnabled);
+    setReminderLateFeeWarningRepeatIntervalDays(String(policy.lateFeeWarningRepeatIntervalDays));
+    setReminderEscalationEnabled(policy.escalationEnabled);
+    setReminderEscalationStartDays(String(policy.escalationStartDays));
+    setReminderEscalationRepeatIntervalDays(String(policy.escalationRepeatIntervalDays));
+    setReminderEscalationMinOutstandingAmount(String(Number(policy.escalationMinOutstandingAmount || 0)));
+    setReminderSendStudent(policy.sendStudentReminder);
+    setReminderSendParent(policy.sendParentReminder);
+    setReminderEscalateToFinanceStaff(policy.escalateToFinanceStaff);
+    setReminderEscalateToHeadTu(policy.escalateToHeadTu);
+    setReminderEscalateToPrincipal(policy.escalateToPrincipal);
+    setReminderPolicyNotes(policy.notes || '');
+  };
+
+  const openReminderPolicyModal = () => {
+    if (reminderPolicy) {
+      applyReminderPolicyToForm(reminderPolicy);
+    }
+    setIsReminderPolicyModalOpen(true);
+  };
+
+  const closeReminderPolicyModal = () => {
+    setIsReminderPolicyModalOpen(false);
+    if (reminderPolicy) {
+      applyReminderPolicyToForm(reminderPolicy);
+    }
+  };
+
   const resetAdjustmentForm = () => {
     setEditingAdjustmentId(null);
     setAdjustmentCode('');
@@ -606,6 +670,7 @@ export default function StaffPaymentsScreen() {
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-invoices'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-credits'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-dashboard'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-reminder-policy'] });
   };
 
   const saveComponentMutation = useMutation({
@@ -801,6 +866,35 @@ export default function StaffPaymentsScreen() {
     onError: (error: unknown) => notifyApiError(error, 'Gagal membuat preview generate.'),
   });
 
+  const saveReminderPolicyMutation = useMutation({
+    mutationFn: () =>
+      staffFinanceApi.updateReminderPolicy({
+        isActive: reminderPolicyIsActive,
+        dueSoonDays: Math.max(0, Number(reminderDueSoonDays || 0)),
+        dueSoonRepeatIntervalDays: Math.max(1, Number(reminderDueSoonRepeatIntervalDays || 1)),
+        overdueRepeatIntervalDays: Math.max(1, Number(reminderOverdueRepeatIntervalDays || 1)),
+        lateFeeWarningEnabled: reminderLateFeeWarningEnabled,
+        lateFeeWarningRepeatIntervalDays: Math.max(1, Number(reminderLateFeeWarningRepeatIntervalDays || 1)),
+        escalationEnabled: reminderEscalationEnabled,
+        escalationStartDays: Math.max(1, Number(reminderEscalationStartDays || 1)),
+        escalationRepeatIntervalDays: Math.max(1, Number(reminderEscalationRepeatIntervalDays || 1)),
+        escalationMinOutstandingAmount: Math.max(0, Number(reminderEscalationMinOutstandingAmount || 0)),
+        sendStudentReminder: reminderSendStudent,
+        sendParentReminder: reminderSendParent,
+        escalateToFinanceStaff: reminderEscalateToFinanceStaff,
+        escalateToHeadTu: reminderEscalateToHeadTu,
+        escalateToPrincipal: reminderEscalateToPrincipal,
+        notes: reminderPolicyNotes.trim() || null,
+      }),
+    onSuccess: (policy) => {
+      notifySuccess('Policy reminder finance berhasil diperbarui.');
+      applyReminderPolicyToForm(policy);
+      setIsReminderPolicyModalOpen(false);
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal memperbarui policy reminder finance.'),
+  });
+
   const dispatchReminderMutation = useMutation({
     mutationFn: (mode: FinanceReminderMode) =>
       staffFinanceApi.dispatchDueReminders({
@@ -808,9 +902,17 @@ export default function StaffPaymentsScreen() {
         dueSoonDays: Math.max(0, Number(reminderDueSoonDays || 0)),
         preview: false,
       }),
-    onSuccess: (result) => {
+    onSuccess: (result, mode) => {
+      const stats = [
+        `${result.dueSoonInvoices} due soon`,
+        `${result.overdueInvoices} overdue`,
+        `${result.lateFeeWarningInvoices} warning denda`,
+        `${result.escalatedInvoices} eskalasi`,
+      ].join(', ');
       notifySuccess(
-        `Reminder terkirim ${result.createdNotifications} notifikasi (${result.dueSoonInvoices} due soon, ${result.overdueInvoices} overdue).`,
+        result.disabledByPolicy && mode === 'ALL'
+          ? 'Policy reminder otomatis sedang nonaktif. Aktifkan dulu dari pengaturan.'
+          : `Reminder terkirim ${result.createdNotifications} notifikasi (${stats}).`,
       );
     },
     onError: (error: unknown) => notifyApiError(error, 'Gagal menjalankan reminder.'),
@@ -935,6 +1037,59 @@ export default function StaffPaymentsScreen() {
     saveAdjustmentMutation.mutate();
   };
 
+  const handleSaveReminderPolicy = () => {
+    const dueSoonDays = Number(reminderDueSoonDays || 0);
+    const dueSoonRepeat = Number(reminderDueSoonRepeatIntervalDays || 0);
+    const overdueRepeat = Number(reminderOverdueRepeatIntervalDays || 0);
+    const lateFeeRepeat = Number(reminderLateFeeWarningRepeatIntervalDays || 0);
+    const escalationStart = Number(reminderEscalationStartDays || 0);
+    const escalationRepeat = Number(reminderEscalationRepeatIntervalDays || 0);
+    const escalationMinOutstanding = Number(reminderEscalationMinOutstandingAmount || 0);
+
+    if (!Number.isFinite(dueSoonDays) || dueSoonDays < 0 || dueSoonDays > 30) {
+      notifyApiError(null, 'Due soon harus 0 - 30 hari.');
+      return;
+    }
+    if (!Number.isFinite(dueSoonRepeat) || dueSoonRepeat < 1 || dueSoonRepeat > 30) {
+      notifyApiError(null, 'Interval due soon harus 1 - 30 hari.');
+      return;
+    }
+    if (!Number.isFinite(overdueRepeat) || overdueRepeat < 1 || overdueRepeat > 30) {
+      notifyApiError(null, 'Interval overdue harus 1 - 30 hari.');
+      return;
+    }
+    if (!Number.isFinite(lateFeeRepeat) || lateFeeRepeat < 1 || lateFeeRepeat > 30) {
+      notifyApiError(null, 'Interval warning denda harus 1 - 30 hari.');
+      return;
+    }
+    if (!Number.isFinite(escalationStart) || escalationStart < 1 || escalationStart > 180) {
+      notifyApiError(null, 'Mulai eskalasi harus 1 - 180 hari.');
+      return;
+    }
+    if (!Number.isFinite(escalationRepeat) || escalationRepeat < 1 || escalationRepeat > 30) {
+      notifyApiError(null, 'Interval eskalasi harus 1 - 30 hari.');
+      return;
+    }
+    if (!Number.isFinite(escalationMinOutstanding) || escalationMinOutstanding < 0) {
+      notifyApiError(null, 'Minimum nominal eskalasi tidak valid.');
+      return;
+    }
+    if (!reminderSendStudent && !reminderSendParent) {
+      notifyApiError(null, 'Pilih minimal satu penerima eksternal: siswa atau orang tua.');
+      return;
+    }
+    if (
+      reminderEscalationEnabled &&
+      !reminderEscalateToFinanceStaff &&
+      !reminderEscalateToHeadTu &&
+      !reminderEscalateToPrincipal
+    ) {
+      notifyApiError(null, 'Pilih minimal satu penerima eskalasi internal.');
+      return;
+    }
+    saveReminderPolicyMutation.mutate();
+  };
+
   const handleGenerate = () => {
     if (!invoicePeriodKey.trim()) {
       notifyApiError(null, 'Period key wajib diisi (contoh 2026-03).');
@@ -977,7 +1132,7 @@ export default function StaffPaymentsScreen() {
 
   const handleManualReminder = (mode: FinanceReminderMode) => {
     const dueSoonDays = Number(reminderDueSoonDays || 0);
-    if (!Number.isFinite(dueSoonDays) || dueSoonDays < 0 || dueSoonDays > 30) {
+    if ((mode === 'ALL' || mode === 'DUE_SOON') && (!Number.isFinite(dueSoonDays) || dueSoonDays < 0 || dueSoonDays > 30)) {
       notifyApiError(null, 'Due soon harus 0 - 30 hari.');
       return;
     }
@@ -1304,6 +1459,46 @@ export default function StaffPaymentsScreen() {
 
         <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 10 }}>
           <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Reminder Jatuh Tempo</Text>
+          <Text style={{ color: '#0f172a', fontSize: 12, lineHeight: 18, marginBottom: 8 }}>
+            Worker reminder mengikuti policy finance yang bisa diubah live untuk due soon, overdue, warning denda, dan eskalasi.
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
+            <View style={{ paddingHorizontal: 4, paddingBottom: 6 }}>
+              <View
+                style={{
+                  backgroundColor: reminderPolicy?.isActive ? '#dcfce7' : '#fee2e2',
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                }}
+              >
+                <Text style={{ color: reminderPolicy?.isActive ? '#166534' : '#991b1b', fontSize: 11, fontWeight: '700' }}>
+                  {reminderPolicy?.isActive ? 'Worker aktif' : 'Worker nonaktif'}
+                </Text>
+              </View>
+            </View>
+            <View style={{ paddingHorizontal: 4, paddingBottom: 6 }}>
+              <View style={{ backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
+                <Text style={{ color: '#0f172a', fontSize: 11 }}>
+                  Due soon {reminderPolicy?.dueSoonDays ?? 3} hari
+                </Text>
+              </View>
+            </View>
+            <View style={{ paddingHorizontal: 4, paddingBottom: 6 }}>
+              <View style={{ backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
+                <Text style={{ color: '#0f172a', fontSize: 11 }}>
+                  Warning denda {reminderPolicy?.lateFeeWarningEnabled ? 'aktif' : 'off'}
+                </Text>
+              </View>
+            </View>
+            <View style={{ paddingHorizontal: 4, paddingBottom: 6 }}>
+              <View style={{ backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
+                <Text style={{ color: '#0f172a', fontSize: 11 }}>
+                  Eskalasi {reminderPolicy?.escalationEnabled ? `mulai ${reminderPolicy?.escalationStartDays ?? 7} hari` : 'off'}
+                </Text>
+              </View>
+            </View>
+          </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
             <Text style={{ color: '#475569', marginRight: 8 }}>Due soon (hari)</Text>
             <TextInput
@@ -1358,6 +1553,58 @@ export default function StaffPaymentsScreen() {
               </Pressable>
             </View>
           </View>
+          <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                disabled={dispatchReminderMutation.isPending}
+                onPress={() => handleManualReminder('LATE_FEE')}
+                style={{
+                  backgroundColor: '#fffbeb',
+                  borderWidth: 1,
+                  borderColor: '#fcd34d',
+                  borderRadius: 10,
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                  opacity: dispatchReminderMutation.isPending ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ color: '#b45309', fontWeight: '700', fontSize: 12 }}>Warning Denda</Text>
+              </Pressable>
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <Pressable
+                disabled={dispatchReminderMutation.isPending}
+                onPress={() => handleManualReminder('ESCALATION')}
+                style={{
+                  backgroundColor: '#f5f3ff',
+                  borderWidth: 1,
+                  borderColor: '#c4b5fd',
+                  borderRadius: 10,
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                  opacity: dispatchReminderMutation.isPending ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ color: '#6d28d9', fontWeight: '700', fontSize: 12 }}>Kirim Eskalasi</Text>
+              </Pressable>
+            </View>
+          </View>
+          <Pressable
+            disabled={reminderPolicyQuery.isLoading}
+            onPress={openReminderPolicyModal}
+            style={{
+              marginTop: 8,
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderRadius: 10,
+              paddingVertical: 10,
+              alignItems: 'center',
+              opacity: reminderPolicyQuery.isLoading ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>Pengaturan Policy Reminder</Text>
+          </Pressable>
         </View>
       </View>
 
@@ -3741,6 +3988,242 @@ export default function StaffPaymentsScreen() {
                       : editingTariffId
                         ? 'Simpan Perubahan'
                         : 'Tambah Tarif'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isReminderPolicyModalOpen} animationType="fade" transparent onRequestClose={closeReminderPolicyModal}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#dbe7fb' }}>
+            <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>
+                  Policy Reminder & Eskalasi Finance
+                </Text>
+                <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                  Worker production memakai policy ini untuk due soon, overdue, warning denda, dan eskalasi.
+                </Text>
+              </View>
+              <Pressable onPress={closeReminderPolicyModal} style={{ borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 999, padding: 8 }}>
+                <Feather name="x" size={16} color="#475569" />
+              </Pressable>
+            </View>
+
+            <ScrollView style={{ maxHeight: 560 }} contentContainerStyle={{ padding: 14 }}>
+              <Pressable
+                onPress={() => setReminderPolicyIsActive((current) => !current)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: reminderPolicyIsActive ? '#86efac' : '#fca5a5',
+                  backgroundColor: reminderPolicyIsActive ? '#f0fdf4' : '#fff1f2',
+                  borderRadius: 10,
+                  padding: 10,
+                  marginBottom: 12,
+                }}
+              >
+                <Text style={{ color: '#0f172a', fontWeight: '700' }}>
+                  Worker reminder otomatis: {reminderPolicyIsActive ? 'Aktif' : 'Nonaktif'}
+                </Text>
+                <Text style={{ color: '#475569', marginTop: 4, fontSize: 12 }}>
+                  Saat nonaktif, worker background berhenti mengirim reminder otomatis. Trigger manual tetap bisa dipakai bendahara.
+                </Text>
+              </Pressable>
+
+              <View style={{ borderWidth: 1, borderColor: '#bfdbfe', backgroundColor: '#eff6ff', borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 8 }}>Reminder siswa & orang tua</Text>
+                <TextInput
+                  keyboardType="numeric"
+                  value={reminderDueSoonDays}
+                  onChangeText={setReminderDueSoonDays}
+                  placeholder="Due soon (hari)"
+                  placeholderTextColor="#94a3b8"
+                  style={{ borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+                />
+                <TextInput
+                  keyboardType="numeric"
+                  value={reminderDueSoonRepeatIntervalDays}
+                  onChangeText={setReminderDueSoonRepeatIntervalDays}
+                  placeholder="Ulang due soon tiap berapa hari"
+                  placeholderTextColor="#94a3b8"
+                  style={{ borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+                />
+                <TextInput
+                  keyboardType="numeric"
+                  value={reminderOverdueRepeatIntervalDays}
+                  onChangeText={setReminderOverdueRepeatIntervalDays}
+                  placeholder="Ulang overdue tiap berapa hari"
+                  placeholderTextColor="#94a3b8"
+                  style={{ borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+                />
+                <TextInput
+                  keyboardType="numeric"
+                  value={reminderLateFeeWarningRepeatIntervalDays}
+                  onChangeText={setReminderLateFeeWarningRepeatIntervalDays}
+                  editable={reminderLateFeeWarningEnabled}
+                  placeholder="Ulang warning denda tiap berapa hari"
+                  placeholderTextColor="#94a3b8"
+                  style={{ borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: reminderLateFeeWarningEnabled ? '#fff' : '#f8fafc' }}
+                />
+
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
+                  {[
+                    {
+                      key: 'student',
+                      active: reminderSendStudent,
+                      label: 'Kirim ke siswa',
+                      onPress: () => setReminderSendStudent((current) => !current),
+                    },
+                    {
+                      key: 'parent',
+                      active: reminderSendParent,
+                      label: 'Kirim ke orang tua',
+                      onPress: () => setReminderSendParent((current) => !current),
+                    },
+                    {
+                      key: 'late-fee',
+                      active: reminderLateFeeWarningEnabled,
+                      label: 'Aktifkan warning denda',
+                      onPress: () => setReminderLateFeeWarningEnabled((current) => !current),
+                    },
+                  ].map((item) => (
+                    <View key={item.key} style={{ width: '50%', paddingHorizontal: 4, paddingBottom: 8 }}>
+                      <Pressable
+                        onPress={item.onPress}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: item.active ? '#1d4ed8' : '#cbd5e1',
+                          backgroundColor: item.active ? '#dbeafe' : '#fff',
+                          borderRadius: 10,
+                          paddingVertical: 10,
+                          paddingHorizontal: 10,
+                        }}
+                      >
+                        <Text style={{ color: item.active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                          {item.label}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              </View>
+
+              <View style={{ borderWidth: 1, borderColor: '#ddd6fe', backgroundColor: '#f5f3ff', borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                <Text style={{ color: '#5b21b6', fontWeight: '700', marginBottom: 8 }}>Eskalasi internal</Text>
+                <TextInput
+                  keyboardType="numeric"
+                  value={reminderEscalationStartDays}
+                  onChangeText={setReminderEscalationStartDays}
+                  editable={reminderEscalationEnabled}
+                  placeholder="Mulai eskalasi setelah berapa hari overdue"
+                  placeholderTextColor="#94a3b8"
+                  style={{ borderWidth: 1, borderColor: '#c4b5fd', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: reminderEscalationEnabled ? '#fff' : '#f8fafc' }}
+                />
+                <TextInput
+                  keyboardType="numeric"
+                  value={reminderEscalationRepeatIntervalDays}
+                  onChangeText={setReminderEscalationRepeatIntervalDays}
+                  editable={reminderEscalationEnabled}
+                  placeholder="Ulang eskalasi tiap berapa hari"
+                  placeholderTextColor="#94a3b8"
+                  style={{ borderWidth: 1, borderColor: '#c4b5fd', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: reminderEscalationEnabled ? '#fff' : '#f8fafc' }}
+                />
+                <TextInput
+                  keyboardType="numeric"
+                  value={reminderEscalationMinOutstandingAmount}
+                  onChangeText={setReminderEscalationMinOutstandingAmount}
+                  editable={reminderEscalationEnabled}
+                  placeholder="Minimum nominal outstanding untuk eskalasi"
+                  placeholderTextColor="#94a3b8"
+                  style={{ borderWidth: 1, borderColor: '#c4b5fd', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: reminderEscalationEnabled ? '#fff' : '#f8fafc' }}
+                />
+
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
+                  {[
+                    {
+                      key: 'escalation',
+                      active: reminderEscalationEnabled,
+                      label: 'Aktifkan eskalasi',
+                      onPress: () => setReminderEscalationEnabled((current) => !current),
+                    },
+                    {
+                      key: 'finance',
+                      active: reminderEscalateToFinanceStaff,
+                      label: 'Tujuan: staff keuangan',
+                      onPress: () => setReminderEscalateToFinanceStaff((current) => !current),
+                    },
+                    {
+                      key: 'head-tu',
+                      active: reminderEscalateToHeadTu,
+                      label: 'Tujuan: Kepala TU',
+                      onPress: () => setReminderEscalateToHeadTu((current) => !current),
+                    },
+                    {
+                      key: 'principal',
+                      active: reminderEscalateToPrincipal,
+                      label: 'Tujuan: Kepala Sekolah',
+                      onPress: () => setReminderEscalateToPrincipal((current) => !current),
+                    },
+                  ].map((item) => (
+                    <View key={item.key} style={{ width: '50%', paddingHorizontal: 4, paddingBottom: 8 }}>
+                      <Pressable
+                        onPress={item.onPress}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: item.active ? '#7c3aed' : '#cbd5e1',
+                          backgroundColor: item.active ? '#ede9fe' : '#fff',
+                          borderRadius: 10,
+                          paddingVertical: 10,
+                          paddingHorizontal: 10,
+                        }}
+                      >
+                        <Text style={{ color: item.active ? '#5b21b6' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                          {item.label}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              </View>
+
+              <TextInput
+                value={reminderPolicyNotes}
+                onChangeText={setReminderPolicyNotes}
+                placeholder="Catatan policy (opsional)"
+                placeholderTextColor="#94a3b8"
+                multiline
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, minHeight: 72, textAlignVertical: 'top', color: '#0f172a', backgroundColor: '#fff' }}
+              />
+              <Text style={{ color: '#64748b', marginTop: 8, fontSize: 12 }}>
+                Update terakhir: {reminderPolicy?.updatedAt ? formatDate(reminderPolicy.updatedAt) : '-'}
+              </Text>
+            </ScrollView>
+
+            <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', padding: 12, flexDirection: 'row' }}>
+              <View style={{ flex: 1, paddingRight: 6 }}>
+                <Pressable
+                  onPress={closeReminderPolicyModal}
+                  style={{ borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, paddingVertical: 10, alignItems: 'center', backgroundColor: '#fff' }}
+                >
+                  <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+                </Pressable>
+              </View>
+              <View style={{ flex: 1, paddingLeft: 6 }}>
+                <Pressable
+                  onPress={handleSaveReminderPolicy}
+                  disabled={saveReminderPolicyMutation.isPending}
+                  style={{
+                    backgroundColor: saveReminderPolicyMutation.isPending ? '#7dd3fc' : '#0284c7',
+                    borderRadius: 10,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>
+                    {saveReminderPolicyMutation.isPending ? 'Menyimpan...' : 'Simpan Policy'}
                   </Text>
                 </Pressable>
               </View>

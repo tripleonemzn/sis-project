@@ -234,7 +234,6 @@ server.listen(Number(PORT), HOST || undefined, () => {
   const financeReminderIntervalMinutes = Number(
     process.env.FINANCE_DUE_REMINDER_INTERVAL_MINUTES || '60',
   );
-  const financeReminderDueSoonDays = Number(process.env.FINANCE_DUE_REMINDER_DUE_SOON_DAYS || '3');
 
   if (
     Number.isFinite(financeReminderIntervalMinutes) &&
@@ -246,7 +245,6 @@ server.listen(Number(PORT), HOST || undefined, () => {
     const runFinanceReminderWorker = async () => {
       try {
         await dispatchFinanceDueReminders({
-          dueSoonDays: financeReminderDueSoonDays,
           mode: 'ALL',
           preview: false,
         });
@@ -262,7 +260,7 @@ server.listen(Number(PORT), HOST || undefined, () => {
     }, intervalMs);
 
     console.log(
-      `[FINANCE_DUE_REMINDER] Worker aktif setiap ${financeReminderIntervalMinutes} menit (due soon ${financeReminderDueSoonDays} hari)`,
+      `[FINANCE_DUE_REMINDER] Worker aktif setiap ${financeReminderIntervalMinutes} menit (policy reminder finance dinamis)`,
     );
   } else if (!shouldRunReminderWorker) {
     console.log(`[FINANCE_DUE_REMINDER] Worker nonaktif pada instance ${appInstance}`);

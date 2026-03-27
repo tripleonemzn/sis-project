@@ -686,7 +686,46 @@ async function createFinanceNotifications(params: {
   await prisma.notification.createMany({ data: rows });
 }
 
-type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE';
+const DEFAULT_FINANCE_REMINDER_POLICY = {
+  isActive: true,
+  dueSoonDays: 3,
+  dueSoonRepeatIntervalDays: 1,
+  overdueRepeatIntervalDays: 3,
+  lateFeeWarningEnabled: true,
+  lateFeeWarningRepeatIntervalDays: 3,
+  escalationEnabled: true,
+  escalationStartDays: 7,
+  escalationRepeatIntervalDays: 3,
+  escalationMinOutstandingAmount: 0,
+  sendStudentReminder: true,
+  sendParentReminder: true,
+  escalateToFinanceStaff: true,
+  escalateToHeadTu: true,
+  escalateToPrincipal: false,
+  notes: null as string | null,
+} as const;
+
+type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE' | 'LATE_FEE' | 'ESCALATION';
+
+type SerializedFinanceReminderPolicy = {
+  isActive: boolean;
+  dueSoonDays: number;
+  dueSoonRepeatIntervalDays: number;
+  overdueRepeatIntervalDays: number;
+  lateFeeWarningEnabled: boolean;
+  lateFeeWarningRepeatIntervalDays: number;
+  escalationEnabled: boolean;
+  escalationStartDays: number;
+  escalationRepeatIntervalDays: number;
+  escalationMinOutstandingAmount: number;
+  sendStudentReminder: boolean;
+  sendParentReminder: boolean;
+  escalateToFinanceStaff: boolean;
+  escalateToHeadTu: boolean;
+  escalateToPrincipal: boolean;
+  notes: string | null;
+  updatedAt: Date;
+};
 
 type DispatchFinanceDueReminderOptions = {
   dueSoonDays?: number;
@@ -695,13 +734,208 @@ type DispatchFinanceDueReminderOptions = {
   now?: Date;
 };
 
+function getFinanceStartOfDay(date: Date) {
+  const nextDate = new Date(date);
+  nextDate.setHours(0, 0, 0, 0);
+  return nextDate;
+}
+
+function normalizeReminderIntervalDays(value: number, fallback: number) {
+  const normalized = Math.trunc(Number(value || 0));
+  if (!Number.isFinite(normalized) || normalized <= 0) return fallback;
+  return Math.min(30, normalized);
+}
+
+function serializeFinanceReminderPolicy(policy: {
+  isActive: boolean;
+  dueSoonDays: number;
+  dueSoonRepeatIntervalDays: number;
+  overdueRepeatIntervalDays: number;
+  lateFeeWarningEnabled: boolean;
+  lateFeeWarningRepeatIntervalDays: number;
+  escalationEnabled: boolean;
+  escalationStartDays: number;
+  escalationRepeatIntervalDays: number;
+  escalationMinOutstandingAmount: number;
+  sendStudentReminder: boolean;
+  sendParentReminder: boolean;
+  escalateToFinanceStaff: boolean;
+  escalateToHeadTu: boolean;
+  escalateToPrincipal: boolean;
+  notes?: string | null;
+  updatedAt: Date;
+}): SerializedFinanceReminderPolicy {
+  return {
+    isActive: Boolean(policy.isActive),
+    dueSoonDays: Math.max(0, Math.min(30, Math.trunc(Number(policy.dueSoonDays || 0)))),
+    dueSoonRepeatIntervalDays: normalizeReminderIntervalDays(policy.dueSoonRepeatIntervalDays, 1),
+    overdueRepeatIntervalDays: normalizeReminderIntervalDays(policy.overdueRepeatIntervalDays, 3),
+    lateFeeWarningEnabled: Boolean(policy.lateFeeWarningEnabled),
+    lateFeeWarningRepeatIntervalDays: normalizeReminderIntervalDays(
+      policy.lateFeeWarningRepeatIntervalDays,
+      3,
+    ),
+    escalationEnabled: Boolean(policy.escalationEnabled),
+    escalationStartDays: Math.max(1, Math.min(180, Math.trunc(Number(policy.escalationStartDays || 0)))),
+    escalationRepeatIntervalDays: normalizeReminderIntervalDays(policy.escalationRepeatIntervalDays, 3),
+    escalationMinOutstandingAmount: normalizeFinanceAmount(
+      Math.max(0, Number(policy.escalationMinOutstandingAmount || 0)),
+    ),
+    sendStudentReminder: Boolean(policy.sendStudentReminder),
+    sendParentReminder: Boolean(policy.sendParentReminder),
+    escalateToFinanceStaff: Boolean(policy.escalateToFinanceStaff),
+    escalateToHeadTu: Boolean(policy.escalateToHeadTu),
+    escalateToPrincipal: Boolean(policy.escalateToPrincipal),
+    notes: policy.notes?.trim() ? policy.notes.trim() : null,
+    updatedAt: policy.updatedAt,
+  };
+}
+
+async function ensureFinanceReminderPolicy() {
+  const policy = await prisma.financeReminderPolicy.upsert({
+    where: { id: 1 },
+    update: {},
+    create: {
+      id: 1,
+      ...DEFAULT_FINANCE_REMINDER_POLICY,
+    },
+  });
+
+  return serializeFinanceReminderPolicy(policy);
+}
+
+async function hasRecentFinanceNotification(params: {
+  userId: number;
+  type: string;
+  since: Date;
+  invoiceNo: string;
+}) {
+  const row = await prisma.notification.findFirst({
+    where: {
+      userId: params.userId,
+      type: params.type,
+      createdAt: { gte: params.since },
+      message: { contains: params.invoiceNo },
+    },
+    select: { id: true },
+  });
+
+  return Boolean(row);
+}
+
+type FinanceEscalationRecipient = {
+  userId: number;
+  role: string;
+  ptkType?: string | null;
+  additionalDuties?: string[] | null;
+};
+
+function resolveFinanceEscalationRoute(recipient: FinanceEscalationRecipient) {
+  const normalizedRole = String(recipient.role || '').toUpperCase();
+  const normalizedPtkType = String(recipient.ptkType || '').toUpperCase();
+  const duties = (recipient.additionalDuties || []).map((duty) => String(duty || '').trim().toUpperCase());
+
+  if (normalizedRole === 'PRINCIPAL') return '/principal/dashboard';
+  if (
+    normalizedRole === 'ADMIN' ||
+    (normalizedRole === 'STAFF' && normalizedPtkType === 'STAFF_KEUANGAN') ||
+    duties.includes('BENDAHARA')
+  ) {
+    return '/staff/finance';
+  }
+  if (normalizedRole === 'STAFF' && (normalizedPtkType === 'KEPALA_TU' || normalizedPtkType === 'KEPALA_TATA_USAHA')) {
+    return '/staff/admin';
+  }
+  return '/notifications';
+}
+
+async function listFinanceEscalationRecipients(
+  policy: SerializedFinanceReminderPolicy,
+): Promise<FinanceEscalationRecipient[]> {
+  const clauses: Prisma.UserWhereInput[] = [];
+
+  if (policy.escalateToFinanceStaff) {
+    clauses.push({ role: 'ADMIN' });
+    clauses.push({ role: 'STAFF', ptkType: 'STAFF_KEUANGAN' });
+    clauses.push({ additionalDuties: { has: 'BENDAHARA' } });
+  }
+
+  if (policy.escalateToHeadTu) {
+    clauses.push({ role: 'STAFF', ptkType: 'KEPALA_TU' });
+    clauses.push({ role: 'STAFF', ptkType: 'KEPALA_TATA_USAHA' });
+  }
+
+  if (policy.escalateToPrincipal) {
+    clauses.push({ role: 'PRINCIPAL' });
+  }
+
+  if (!clauses.length) return [];
+
+  const users = await prisma.user.findMany({
+    where: { OR: clauses },
+    select: {
+      id: true,
+      role: true,
+      ptkType: true,
+      additionalDuties: true,
+    },
+  });
+
+  const uniqueByUserId = new Map<number, FinanceEscalationRecipient>();
+  for (const user of users) {
+    if (!uniqueByUserId.has(user.id)) {
+      uniqueByUserId.set(user.id, {
+        userId: user.id,
+        role: user.role,
+        ptkType: user.ptkType,
+        additionalDuties: (user.additionalDuties || []).map((duty) => String(duty)),
+      });
+    }
+  }
+
+  return Array.from(uniqueByUserId.values());
+}
+
 export async function dispatchFinanceDueReminders(options: DispatchFinanceDueReminderOptions = {}) {
   const now = options.now ? new Date(options.now) : new Date();
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
-  const dueSoonDays = Math.max(0, Math.min(30, Math.trunc(Number(options.dueSoonDays ?? 3))));
+  const todayStart = getFinanceStartOfDay(now);
+  const policy = await ensureFinanceReminderPolicy();
+  const dueSoonDays = Math.max(
+    0,
+    Math.min(30, Math.trunc(Number(options.dueSoonDays ?? policy.dueSoonDays))),
+  );
   const mode: FinanceReminderMode = options.mode || 'ALL';
   const preview = !!options.preview;
+
+  const shouldProcessDueSoon = mode === 'ALL' || mode === 'DUE_SOON';
+  const shouldProcessOverdue = mode === 'ALL' || mode === 'OVERDUE';
+  const shouldProcessLateFee =
+    (mode === 'ALL' || mode === 'LATE_FEE') && policy.lateFeeWarningEnabled;
+  const shouldProcessEscalation = (mode === 'ALL' || mode === 'ESCALATION') && policy.escalationEnabled;
+
+  if (!policy.isActive && mode === 'ALL') {
+    return {
+      checkedInvoices: 0,
+      targetedRecipients: 0,
+      dueSoonInvoices: 0,
+      overdueInvoices: 0,
+      lateFeeWarningInvoices: 0,
+      escalatedInvoices: 0,
+      createdNotifications: 0,
+      previewNotifications: 0,
+      skippedAlreadyNotified: 0,
+      dueSoonDays,
+      mode,
+      preview,
+      runAt: now.toISOString(),
+      disabledByPolicy: true,
+      policy,
+    };
+  }
+
+  const escalationRecipients = shouldProcessEscalation
+    ? await listFinanceEscalationRecipients(policy)
+    : [];
 
   const invoices = await prisma.financeInvoice.findMany({
     where: {
@@ -714,13 +948,45 @@ export async function dispatchFinanceDueReminders(options: DispatchFinanceDueRem
       invoiceNo: true,
       studentId: true,
       dueDate: true,
+      totalAmount: true,
+      paidAmount: true,
       balanceAmount: true,
+      status: true,
       semester: true,
       periodKey: true,
       title: true,
+      installments: {
+        select: {
+          sequence: true,
+          amount: true,
+          dueDate: true,
+        },
+        orderBy: { sequence: 'asc' },
+      },
+      items: {
+        select: {
+          componentId: true,
+          componentCode: true,
+          componentName: true,
+          amount: true,
+          component: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              lateFeeEnabled: true,
+              lateFeeMode: true,
+              lateFeeAmount: true,
+              lateFeeGraceDays: true,
+              lateFeeCapAmount: true,
+            },
+          },
+        },
+      },
       student: {
         select: {
           id: true,
+          name: true,
           role: true,
           parents: {
             select: {
@@ -736,6 +1002,8 @@ export async function dispatchFinanceDueReminders(options: DispatchFinanceDueRem
 
   let dueSoonCount = 0;
   let overdueCount = 0;
+  let lateFeeWarningCount = 0;
+  let escalatedCount = 0;
   let skippedAlreadyNotified = 0;
   let targeted = 0;
   const rows: Prisma.NotificationCreateManyInput[] = [];
@@ -749,62 +1017,228 @@ export async function dispatchFinanceDueReminders(options: DispatchFinanceDueRem
     const isDueSoon = dayDiff >= 0 && dayDiff <= dueSoonDays;
     const isOverdue = dayDiff < 0;
 
-    if (mode === 'DUE_SOON' && !isDueSoon) continue;
-    if (mode === 'OVERDUE' && !isOverdue) continue;
-    if (mode === 'ALL' && !isDueSoon && !isOverdue) continue;
-
-    if (isDueSoon) dueSoonCount += 1;
-    if (isOverdue) overdueCount += 1;
-
-    const recipients = [
-      { userId: invoice.student.id, role: invoice.student.role },
-      ...invoice.student.parents.map((parent) => ({ userId: parent.id, role: parent.role })),
-    ];
-
-    const reminderType = isOverdue ? 'FINANCE_OVERDUE_REMINDER' : 'FINANCE_DUE_SOON_REMINDER';
     const absDays = Math.abs(dayDiff);
-    const title = isOverdue ? 'Tagihan Lewat Jatuh Tempo' : 'Pengingat Jatuh Tempo Tagihan';
-    const message = isOverdue
-      ? `Tagihan ${invoice.invoiceNo} sudah lewat jatuh tempo ${absDays} hari. Sisa tagihan Rp${Math.round(Number(invoice.balanceAmount || 0)).toLocaleString('id-ID')}.`
-      : `Tagihan ${invoice.invoiceNo} akan jatuh tempo ${dayDiff === 0 ? 'hari ini' : `${dayDiff} hari lagi`}. Sisa tagihan Rp${Math.round(Number(invoice.balanceAmount || 0)).toLocaleString('id-ID')}.`;
-
-    for (const recipient of recipients) {
-      targeted += 1;
-
-      const existingToday = await prisma.notification.findFirst({
-        where: {
-          userId: recipient.userId,
-          type: reminderType,
-          createdAt: { gte: todayStart },
-          message: { contains: invoice.invoiceNo },
-        },
-        select: { id: true },
-      });
-
-      if (existingToday) {
-        skippedAlreadyNotified += 1;
-        continue;
+    const externalRecipients = (() => {
+      const recipients: FinanceNotificationRecipient[] = [];
+      if (policy.sendStudentReminder) {
+        recipients.push({ userId: invoice.student.id, role: invoice.student.role });
       }
+      if (policy.sendParentReminder) {
+        recipients.push(
+          ...invoice.student.parents.map((parent) => ({ userId: parent.id, role: parent.role })),
+        );
+      }
+      const uniqueByUserId = new Map<number, FinanceNotificationRecipient>();
+      for (const recipient of recipients) {
+        if (!uniqueByUserId.has(recipient.userId)) {
+          uniqueByUserId.set(recipient.userId, recipient);
+        }
+      }
+      return Array.from(uniqueByUserId.values());
+    })();
 
-      rows.push({
-        userId: recipient.userId,
-        type: reminderType,
-        title,
-        message,
-        data: {
-          module: 'FINANCE',
-          invoiceId: invoice.id,
+    if (shouldProcessDueSoon && isDueSoon) {
+      dueSoonCount += 1;
+      const title = 'Pengingat Jatuh Tempo Tagihan';
+      const message = `Tagihan ${invoice.invoiceNo} akan jatuh tempo ${
+        dayDiff === 0 ? 'hari ini' : `${dayDiff} hari lagi`
+      }. Sisa tagihan Rp${Math.round(Number(invoice.balanceAmount || 0)).toLocaleString('id-ID')}.`;
+      const since = addDays(todayStart, -Math.max(0, policy.dueSoonRepeatIntervalDays - 1));
+
+      for (const recipient of externalRecipients) {
+        targeted += 1;
+        const alreadyNotified = await hasRecentFinanceNotification({
+          userId: recipient.userId,
+          type: 'FINANCE_DUE_SOON_REMINDER',
+          since,
           invoiceNo: invoice.invoiceNo,
-          dueDate: invoice.dueDate,
-          daysUntilDue: dayDiff,
-          daysPastDue: isOverdue ? absDays : 0,
-          semester: invoice.semester,
-          periodKey: invoice.periodKey,
-          route: resolveFinanceRouteByRole(recipient.role, invoice.studentId),
-          studentId: invoice.studentId,
-          title: invoice.title || null,
-        },
-      });
+        });
+        if (alreadyNotified) {
+          skippedAlreadyNotified += 1;
+          continue;
+        }
+        rows.push({
+          userId: recipient.userId,
+          type: 'FINANCE_DUE_SOON_REMINDER',
+          title,
+          message,
+          data: {
+            module: 'FINANCE',
+            invoiceId: invoice.id,
+            invoiceNo: invoice.invoiceNo,
+            dueDate: invoice.dueDate,
+            daysUntilDue: dayDiff,
+            daysPastDue: 0,
+            semester: invoice.semester,
+            periodKey: invoice.periodKey,
+            route: resolveFinanceRouteByRole(recipient.role, invoice.studentId),
+            studentId: invoice.studentId,
+            title: invoice.title || null,
+          },
+        });
+      }
+    }
+
+    if (shouldProcessOverdue && isOverdue) {
+      overdueCount += 1;
+      const title = 'Tagihan Lewat Jatuh Tempo';
+      const message = `Tagihan ${invoice.invoiceNo} sudah lewat jatuh tempo ${absDays} hari. Sisa tagihan Rp${Math.round(
+        Number(invoice.balanceAmount || 0),
+      ).toLocaleString('id-ID')}.`;
+      const since = addDays(todayStart, -Math.max(0, policy.overdueRepeatIntervalDays - 1));
+
+      for (const recipient of externalRecipients) {
+        targeted += 1;
+        const alreadyNotified = await hasRecentFinanceNotification({
+          userId: recipient.userId,
+          type: 'FINANCE_OVERDUE_REMINDER',
+          since,
+          invoiceNo: invoice.invoiceNo,
+        });
+        if (alreadyNotified) {
+          skippedAlreadyNotified += 1;
+          continue;
+        }
+        rows.push({
+          userId: recipient.userId,
+          type: 'FINANCE_OVERDUE_REMINDER',
+          title,
+          message,
+          data: {
+            module: 'FINANCE',
+            invoiceId: invoice.id,
+            invoiceNo: invoice.invoiceNo,
+            dueDate: invoice.dueDate,
+            daysUntilDue: dayDiff,
+            daysPastDue: absDays,
+            semester: invoice.semester,
+            periodKey: invoice.periodKey,
+            route: resolveFinanceRouteByRole(recipient.role, invoice.studentId),
+            studentId: invoice.studentId,
+            title: invoice.title || null,
+          },
+        });
+      }
+    }
+
+    const lateFeeSummary =
+      shouldProcessLateFee || shouldProcessEscalation
+        ? buildFinanceLateFeeSummary(
+            {
+              totalAmount: Number(invoice.totalAmount || 0),
+              paidAmount: Number(invoice.paidAmount || 0),
+              status: invoice.status,
+              dueDate: invoice.dueDate,
+              installments: invoice.installments,
+              items: invoice.items,
+            },
+            now,
+          )
+        : null;
+
+    if (shouldProcessLateFee && lateFeeSummary?.hasPending) {
+      lateFeeWarningCount += 1;
+      const title = 'Peringatan Denda Keterlambatan';
+      const message = `Tagihan ${invoice.invoiceNo} sudah melewati grace period dan berpotensi dikenai denda Rp${Math.round(
+        Number(lateFeeSummary.pendingAmount || 0),
+      ).toLocaleString('id-ID')}. Sisa tagihan Rp${Math.round(Number(invoice.balanceAmount || 0)).toLocaleString('id-ID')}.`;
+      const since = addDays(
+        todayStart,
+        -Math.max(0, policy.lateFeeWarningRepeatIntervalDays - 1),
+      );
+
+      for (const recipient of externalRecipients) {
+        targeted += 1;
+        const alreadyNotified = await hasRecentFinanceNotification({
+          userId: recipient.userId,
+          type: 'FINANCE_LATE_FEE_WARNING',
+          since,
+          invoiceNo: invoice.invoiceNo,
+        });
+        if (alreadyNotified) {
+          skippedAlreadyNotified += 1;
+          continue;
+        }
+        rows.push({
+          userId: recipient.userId,
+          type: 'FINANCE_LATE_FEE_WARNING',
+          title,
+          message,
+          data: {
+            module: 'FINANCE',
+            invoiceId: invoice.id,
+            invoiceNo: invoice.invoiceNo,
+            dueDate: invoice.dueDate,
+            daysUntilDue: dayDiff,
+            daysPastDue: absDays,
+            semester: invoice.semester,
+            periodKey: invoice.periodKey,
+            pendingLateFeeAmount: lateFeeSummary.pendingAmount,
+            calculatedLateFeeAmount: lateFeeSummary.calculatedAmount,
+            route: resolveFinanceRouteByRole(recipient.role, invoice.studentId),
+            studentId: invoice.studentId,
+            title: invoice.title || null,
+          },
+        });
+      }
+    }
+
+    const isEscalationCandidate =
+      shouldProcessEscalation &&
+      isOverdue &&
+      absDays >= policy.escalationStartDays &&
+      Number(invoice.balanceAmount || 0) >= Number(policy.escalationMinOutstandingAmount || 0);
+
+    if (isEscalationCandidate) {
+      escalatedCount += 1;
+      const title = 'Eskalasi Tunggakan Keuangan';
+      const pendingLateFeeAmount = Number(lateFeeSummary?.pendingAmount || 0);
+      const message = `Siswa ${invoice.student.name} memiliki tagihan ${invoice.invoiceNo} overdue ${absDays} hari dengan sisa Rp${Math.round(
+        Number(invoice.balanceAmount || 0),
+      ).toLocaleString('id-ID')}${
+        pendingLateFeeAmount > 0
+          ? ` dan potensi denda Rp${Math.round(pendingLateFeeAmount).toLocaleString('id-ID')}`
+          : ''
+      }.`;
+      const since = addDays(
+        todayStart,
+        -Math.max(0, policy.escalationRepeatIntervalDays - 1),
+      );
+
+      for (const recipient of escalationRecipients) {
+        targeted += 1;
+        const alreadyNotified = await hasRecentFinanceNotification({
+          userId: recipient.userId,
+          type: 'FINANCE_ESCALATION_REMINDER',
+          since,
+          invoiceNo: invoice.invoiceNo,
+        });
+        if (alreadyNotified) {
+          skippedAlreadyNotified += 1;
+          continue;
+        }
+        rows.push({
+          userId: recipient.userId,
+          type: 'FINANCE_ESCALATION_REMINDER',
+          title,
+          message,
+          data: {
+            module: 'FINANCE',
+            invoiceId: invoice.id,
+            invoiceNo: invoice.invoiceNo,
+            dueDate: invoice.dueDate,
+            daysPastDue: absDays,
+            semester: invoice.semester,
+            periodKey: invoice.periodKey,
+            pendingLateFeeAmount,
+            escalationStartDays: policy.escalationStartDays,
+            route: resolveFinanceEscalationRoute(recipient),
+            studentId: invoice.studentId,
+            studentName: invoice.student.name,
+            title: invoice.title || null,
+          },
+        });
+      }
     }
   }
 
@@ -817,6 +1251,8 @@ export async function dispatchFinanceDueReminders(options: DispatchFinanceDueRem
     targetedRecipients: targeted,
     dueSoonInvoices: dueSoonCount,
     overdueInvoices: overdueCount,
+    lateFeeWarningInvoices: lateFeeWarningCount,
+    escalatedInvoices: escalatedCount,
     createdNotifications: preview ? 0 : rows.length,
     previewNotifications: preview ? rows.length : 0,
     skippedAlreadyNotified,
@@ -824,6 +1260,8 @@ export async function dispatchFinanceDueReminders(options: DispatchFinanceDueRem
     mode,
     preview,
     runAt: now.toISOString(),
+    disabledByPolicy: !policy.isActive,
+    policy,
   };
 }
 
@@ -1135,9 +1573,28 @@ const exportFinanceReportQuerySchema = listFinanceReportQuerySchema.extend({
 });
 
 const dispatchFinanceReminderSchema = z.object({
-  dueSoonDays: z.coerce.number().int().min(0).max(30).optional().default(3),
-  mode: z.enum(['ALL', 'DUE_SOON', 'OVERDUE']).optional().default('ALL'),
+  dueSoonDays: z.coerce.number().int().min(0).max(30).optional(),
+  mode: z.enum(['ALL', 'DUE_SOON', 'OVERDUE', 'LATE_FEE', 'ESCALATION']).optional().default('ALL'),
   preview: z.coerce.boolean().optional().default(false),
+});
+
+const updateFinanceReminderPolicySchema = z.object({
+  isActive: z.boolean().optional(),
+  dueSoonDays: z.coerce.number().int().min(0).max(30).optional(),
+  dueSoonRepeatIntervalDays: z.coerce.number().int().min(1).max(30).optional(),
+  overdueRepeatIntervalDays: z.coerce.number().int().min(1).max(30).optional(),
+  lateFeeWarningEnabled: z.boolean().optional(),
+  lateFeeWarningRepeatIntervalDays: z.coerce.number().int().min(1).max(30).optional(),
+  escalationEnabled: z.boolean().optional(),
+  escalationStartDays: z.coerce.number().int().min(1).max(180).optional(),
+  escalationRepeatIntervalDays: z.coerce.number().int().min(1).max(30).optional(),
+  escalationMinOutstandingAmount: z.coerce.number().min(0).optional(),
+  sendStudentReminder: z.boolean().optional(),
+  sendParentReminder: z.boolean().optional(),
+  escalateToFinanceStaff: z.boolean().optional(),
+  escalateToHeadTu: z.boolean().optional(),
+  escalateToPrincipal: z.boolean().optional(),
+  notes: z.string().max(500).nullable().optional(),
 });
 
 type FinanceAgingBucketKey = 'CURRENT' | 'DUE_1_30' | 'DUE_31_60' | 'DUE_61_90' | 'DUE_OVER_90';
@@ -2824,6 +3281,129 @@ export const listFinanceClassLevels = asyncHandler(async (req: Request, res: Res
   });
 
   res.status(200).json(new ApiResponse(200, { levels }, 'Level kelas finance berhasil diambil'));
+});
+
+export const getFinanceReminderPolicy = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinanceActor((req as any).user || {}, { allowPrincipalReadOnly: true });
+
+  const policy = await ensureFinanceReminderPolicy();
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, { policy }, 'Policy reminder finance berhasil diambil'));
+});
+
+export const updateFinanceReminderPolicy = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+  const payload = updateFinanceReminderPolicySchema.parse(req.body || {});
+
+  if (Object.keys(payload).length === 0) {
+    throw new ApiError(400, 'Tidak ada perubahan policy reminder yang dikirim');
+  }
+
+  const policy = serializeFinanceReminderPolicy(
+    await prisma.financeReminderPolicy.upsert({
+      where: { id: 1 },
+      update: {
+        ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
+        ...(payload.dueSoonDays !== undefined ? { dueSoonDays: payload.dueSoonDays } : {}),
+        ...(payload.dueSoonRepeatIntervalDays !== undefined
+          ? { dueSoonRepeatIntervalDays: payload.dueSoonRepeatIntervalDays }
+          : {}),
+        ...(payload.overdueRepeatIntervalDays !== undefined
+          ? { overdueRepeatIntervalDays: payload.overdueRepeatIntervalDays }
+          : {}),
+        ...(payload.lateFeeWarningEnabled !== undefined
+          ? { lateFeeWarningEnabled: payload.lateFeeWarningEnabled }
+          : {}),
+        ...(payload.lateFeeWarningRepeatIntervalDays !== undefined
+          ? { lateFeeWarningRepeatIntervalDays: payload.lateFeeWarningRepeatIntervalDays }
+          : {}),
+        ...(payload.escalationEnabled !== undefined ? { escalationEnabled: payload.escalationEnabled } : {}),
+        ...(payload.escalationStartDays !== undefined
+          ? { escalationStartDays: payload.escalationStartDays }
+          : {}),
+        ...(payload.escalationRepeatIntervalDays !== undefined
+          ? { escalationRepeatIntervalDays: payload.escalationRepeatIntervalDays }
+          : {}),
+        ...(payload.escalationMinOutstandingAmount !== undefined
+          ? { escalationMinOutstandingAmount: normalizeFinanceAmount(payload.escalationMinOutstandingAmount) }
+          : {}),
+        ...(payload.sendStudentReminder !== undefined
+          ? { sendStudentReminder: payload.sendStudentReminder }
+          : {}),
+        ...(payload.sendParentReminder !== undefined ? { sendParentReminder: payload.sendParentReminder } : {}),
+        ...(payload.escalateToFinanceStaff !== undefined
+          ? { escalateToFinanceStaff: payload.escalateToFinanceStaff }
+          : {}),
+        ...(payload.escalateToHeadTu !== undefined ? { escalateToHeadTu: payload.escalateToHeadTu } : {}),
+        ...(payload.escalateToPrincipal !== undefined
+          ? { escalateToPrincipal: payload.escalateToPrincipal }
+          : {}),
+        ...(payload.notes !== undefined ? { notes: payload.notes?.trim() || null } : {}),
+      },
+      create: {
+        id: 1,
+        ...DEFAULT_FINANCE_REMINDER_POLICY,
+        ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
+        ...(payload.dueSoonDays !== undefined ? { dueSoonDays: payload.dueSoonDays } : {}),
+        ...(payload.dueSoonRepeatIntervalDays !== undefined
+          ? { dueSoonRepeatIntervalDays: payload.dueSoonRepeatIntervalDays }
+          : {}),
+        ...(payload.overdueRepeatIntervalDays !== undefined
+          ? { overdueRepeatIntervalDays: payload.overdueRepeatIntervalDays }
+          : {}),
+        ...(payload.lateFeeWarningEnabled !== undefined
+          ? { lateFeeWarningEnabled: payload.lateFeeWarningEnabled }
+          : {}),
+        ...(payload.lateFeeWarningRepeatIntervalDays !== undefined
+          ? { lateFeeWarningRepeatIntervalDays: payload.lateFeeWarningRepeatIntervalDays }
+          : {}),
+        ...(payload.escalationEnabled !== undefined ? { escalationEnabled: payload.escalationEnabled } : {}),
+        ...(payload.escalationStartDays !== undefined
+          ? { escalationStartDays: payload.escalationStartDays }
+          : {}),
+        ...(payload.escalationRepeatIntervalDays !== undefined
+          ? { escalationRepeatIntervalDays: payload.escalationRepeatIntervalDays }
+          : {}),
+        ...(payload.escalationMinOutstandingAmount !== undefined
+          ? { escalationMinOutstandingAmount: normalizeFinanceAmount(payload.escalationMinOutstandingAmount) }
+          : {}),
+        ...(payload.sendStudentReminder !== undefined
+          ? { sendStudentReminder: payload.sendStudentReminder }
+          : {}),
+        ...(payload.sendParentReminder !== undefined ? { sendParentReminder: payload.sendParentReminder } : {}),
+        ...(payload.escalateToFinanceStaff !== undefined
+          ? { escalateToFinanceStaff: payload.escalateToFinanceStaff }
+          : {}),
+        ...(payload.escalateToHeadTu !== undefined ? { escalateToHeadTu: payload.escalateToHeadTu } : {}),
+        ...(payload.escalateToPrincipal !== undefined
+          ? { escalateToPrincipal: payload.escalateToPrincipal }
+          : {}),
+        ...(payload.notes !== undefined ? { notes: payload.notes?.trim() || null } : {}),
+      },
+    }),
+  );
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      (actor.additionalDuties || []).map((duty) => String(duty)),
+      'UPDATE',
+      'FINANCE_REMINDER_POLICY',
+      1,
+      null,
+      policy,
+      'Memperbarui policy reminder dan escalation finance',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat perubahan finance reminder policy', auditError);
+  }
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, { policy }, 'Policy reminder finance berhasil diperbarui'));
 });
 
 export const createFinanceComponent = asyncHandler(async (req: Request, res: Response) => {

@@ -1448,6 +1448,30 @@ model FinanceComponent {
   @@map("finance_components")
 }
 
+model FinanceReminderPolicy {
+  id                            Int      @id @default(1)
+  isActive                      Boolean  @default(true)
+  dueSoonDays                   Int      @default(3)
+  dueSoonRepeatIntervalDays     Int      @default(1)
+  overdueRepeatIntervalDays     Int      @default(3)
+  lateFeeWarningEnabled         Boolean  @default(true)
+  lateFeeWarningRepeatIntervalDays Int   @default(3)
+  escalationEnabled             Boolean  @default(true)
+  escalationStartDays           Int      @default(7)
+  escalationRepeatIntervalDays  Int      @default(3)
+  escalationMinOutstandingAmount Float   @default(0)
+  sendStudentReminder           Boolean  @default(true)
+  sendParentReminder            Boolean  @default(true)
+  escalateToFinanceStaff        Boolean  @default(true)
+  escalateToHeadTu              Boolean  @default(true)
+  escalateToPrincipal           Boolean  @default(false)
+  notes                         String?
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  @@map("finance_reminder_policy")
+}
+
 model FinanceTariffRule {
   id             Int              @id @default(autoincrement())
   componentId    Int

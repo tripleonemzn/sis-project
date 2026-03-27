@@ -10,6 +10,7 @@ import {
   createFinanceRefund,
   createFinanceTariffRule,
   generateFinanceInvoices,
+  getFinanceReminderPolicy,
   listFinanceAdjustmentRules,
   listFinanceComponents,
   listFinanceCredits,
@@ -22,6 +23,7 @@ import {
   updateFinanceInvoiceInstallments,
   updateFinanceAdjustmentRule,
   updateFinanceComponent,
+  updateFinanceReminderPolicy,
   updateFinanceTariffRule,
 } from '../controllers/payment.controller';
 import { authMiddleware } from '../middleware/auth';
@@ -35,6 +37,7 @@ router.get('/parent-overview', roleMiddleware(['PARENT']), listParentPayments);
 router.get('/student-overview', roleMiddleware(['STUDENT']), listStudentPayments);
 router.get('/components', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceComponents);
 router.get('/class-levels', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceClassLevels);
+router.get('/reminder-policy', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), getFinanceReminderPolicy);
 router.post('/components', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceComponent);
 router.patch('/components/:id', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceComponent);
 router.get('/tariffs', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceTariffRules);
@@ -52,6 +55,7 @@ router.post('/invoices/:id/payments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER
 router.get('/credits', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceCredits);
 router.post('/credits/:studentId/refunds', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceRefund);
 router.post('/reminders/dispatch', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), dispatchFinanceDueRemindersHandler);
+router.put('/reminder-policy', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceReminderPolicy);
 router.get('/reports', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceReports);
 router.get(
   '/reports/export',

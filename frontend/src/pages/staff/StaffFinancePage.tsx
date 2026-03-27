@@ -17,6 +17,7 @@ import {
   type FinanceLateFeeMode,
   type FinancePaymentMethod,
   type FinanceReminderMode,
+  type FinanceReminderPolicy,
   type FinanceTariffRule,
   type FinanceReportSnapshot,
   type SemesterCode,
@@ -286,7 +287,23 @@ export const StaffFinancePage = () => {
   const [reportPeriodTo, setReportPeriodTo] = useState('');
   const [reportAsOfDate, setReportAsOfDate] = useState(getTodayInputDate());
   const [exportingKey, setExportingKey] = useState<string | null>(null);
+  const [isReminderPolicyModalOpen, setIsReminderPolicyModalOpen] = useState(false);
   const [reminderDueSoonDays, setReminderDueSoonDays] = useState('3');
+  const [reminderPolicyIsActive, setReminderPolicyIsActive] = useState(true);
+  const [reminderDueSoonRepeatIntervalDays, setReminderDueSoonRepeatIntervalDays] = useState('1');
+  const [reminderOverdueRepeatIntervalDays, setReminderOverdueRepeatIntervalDays] = useState('3');
+  const [reminderLateFeeWarningEnabled, setReminderLateFeeWarningEnabled] = useState(true);
+  const [reminderLateFeeWarningRepeatIntervalDays, setReminderLateFeeWarningRepeatIntervalDays] = useState('3');
+  const [reminderEscalationEnabled, setReminderEscalationEnabled] = useState(true);
+  const [reminderEscalationStartDays, setReminderEscalationStartDays] = useState('7');
+  const [reminderEscalationRepeatIntervalDays, setReminderEscalationRepeatIntervalDays] = useState('3');
+  const [reminderEscalationMinOutstandingAmount, setReminderEscalationMinOutstandingAmount] = useState('0');
+  const [reminderSendStudent, setReminderSendStudent] = useState(true);
+  const [reminderSendParent, setReminderSendParent] = useState(true);
+  const [reminderEscalateToFinanceStaff, setReminderEscalateToFinanceStaff] = useState(true);
+  const [reminderEscalateToHeadTu, setReminderEscalateToHeadTu] = useState(true);
+  const [reminderEscalateToPrincipal, setReminderEscalateToPrincipal] = useState(false);
+  const [reminderPolicyNotes, setReminderPolicyNotes] = useState('');
 
   const [selectedInvoice, setSelectedInvoice] = useState<FinanceInvoice | null>(null);
   const [installmentDrafts, setInstallmentDrafts] = useState<
@@ -366,6 +383,12 @@ export const StaffFinancePage = () => {
       }),
   });
 
+  const reminderPolicyQuery = useQuery({
+    queryKey: ['staff-finance-reminder-policy'],
+    queryFn: () => staffFinanceService.getReminderPolicy(),
+    staleTime: 60_000,
+  });
+
   const years = useMemo<AcademicYear[]>(() => {
     const payload = yearsQuery.data as
       | { data?: { academicYears?: AcademicYear[] }; academicYears?: AcademicYear[] }
@@ -386,6 +409,13 @@ export const StaffFinancePage = () => {
     () => (classLevelsQuery.data || []).map((level) => normalizeClassLevel(level)).filter((value) => value.length > 0),
     [classLevelsQuery.data],
   );
+
+  const reminderPolicy = reminderPolicyQuery.data || null;
+
+  useEffect(() => {
+    if (!reminderPolicy) return;
+    applyReminderPolicyToForm(reminderPolicy);
+  }, [reminderPolicy?.updatedAt]);
 
   const studentLookup = useMemo(() => {
     return new Map(students.map((student) => [student.id, student]));
@@ -558,6 +588,39 @@ export const StaffFinancePage = () => {
   const closeTariffModal = () => {
     setIsTariffModalOpen(false);
     resetTariffForm();
+  };
+
+  const applyReminderPolicyToForm = (policy: FinanceReminderPolicy) => {
+    setReminderPolicyIsActive(policy.isActive);
+    setReminderDueSoonDays(String(policy.dueSoonDays));
+    setReminderDueSoonRepeatIntervalDays(String(policy.dueSoonRepeatIntervalDays));
+    setReminderOverdueRepeatIntervalDays(String(policy.overdueRepeatIntervalDays));
+    setReminderLateFeeWarningEnabled(policy.lateFeeWarningEnabled);
+    setReminderLateFeeWarningRepeatIntervalDays(String(policy.lateFeeWarningRepeatIntervalDays));
+    setReminderEscalationEnabled(policy.escalationEnabled);
+    setReminderEscalationStartDays(String(policy.escalationStartDays));
+    setReminderEscalationRepeatIntervalDays(String(policy.escalationRepeatIntervalDays));
+    setReminderEscalationMinOutstandingAmount(String(Number(policy.escalationMinOutstandingAmount || 0)));
+    setReminderSendStudent(policy.sendStudentReminder);
+    setReminderSendParent(policy.sendParentReminder);
+    setReminderEscalateToFinanceStaff(policy.escalateToFinanceStaff);
+    setReminderEscalateToHeadTu(policy.escalateToHeadTu);
+    setReminderEscalateToPrincipal(policy.escalateToPrincipal);
+    setReminderPolicyNotes(policy.notes || '');
+  };
+
+  const openReminderPolicyModal = () => {
+    if (reminderPolicy) {
+      applyReminderPolicyToForm(reminderPolicy);
+    }
+    setIsReminderPolicyModalOpen(true);
+  };
+
+  const closeReminderPolicyModal = () => {
+    setIsReminderPolicyModalOpen(false);
+    if (reminderPolicy) {
+      applyReminderPolicyToForm(reminderPolicy);
+    }
   };
 
   const resetAdjustmentForm = () => {
@@ -911,6 +974,38 @@ export const StaffFinancePage = () => {
     },
   });
 
+  const saveReminderPolicyMutation = useMutation({
+    mutationFn: () =>
+      staffFinanceService.updateReminderPolicy({
+        isActive: reminderPolicyIsActive,
+        dueSoonDays: Math.max(0, Number(reminderDueSoonDays || 0)),
+        dueSoonRepeatIntervalDays: Math.max(1, Number(reminderDueSoonRepeatIntervalDays || 1)),
+        overdueRepeatIntervalDays: Math.max(1, Number(reminderOverdueRepeatIntervalDays || 1)),
+        lateFeeWarningEnabled: reminderLateFeeWarningEnabled,
+        lateFeeWarningRepeatIntervalDays: Math.max(1, Number(reminderLateFeeWarningRepeatIntervalDays || 1)),
+        escalationEnabled: reminderEscalationEnabled,
+        escalationStartDays: Math.max(1, Number(reminderEscalationStartDays || 1)),
+        escalationRepeatIntervalDays: Math.max(1, Number(reminderEscalationRepeatIntervalDays || 1)),
+        escalationMinOutstandingAmount: Math.max(0, Number(reminderEscalationMinOutstandingAmount || 0)),
+        sendStudentReminder: reminderSendStudent,
+        sendParentReminder: reminderSendParent,
+        escalateToFinanceStaff: reminderEscalateToFinanceStaff,
+        escalateToHeadTu: reminderEscalateToHeadTu,
+        escalateToPrincipal: reminderEscalateToPrincipal,
+        notes: reminderPolicyNotes.trim() || null,
+      }),
+    onSuccess: (policy) => {
+      toast.success('Policy reminder finance berhasil diperbarui');
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-reminder-policy'] });
+      applyReminderPolicyToForm(policy);
+      setIsReminderPolicyModalOpen(false);
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal memperbarui policy reminder finance');
+    },
+  });
+
   const dispatchReminderMutation = useMutation({
     mutationFn: (mode: FinanceReminderMode) =>
       staffFinanceService.dispatchDueReminders({
@@ -918,9 +1013,17 @@ export const StaffFinancePage = () => {
         mode,
         preview: false,
       }),
-    onSuccess: (data) => {
+    onSuccess: (data, mode) => {
+      const stats = [
+        `${data.dueSoonInvoices} due soon`,
+        `${data.overdueInvoices} overdue`,
+        `${data.lateFeeWarningInvoices} warning denda`,
+        `${data.escalatedInvoices} eskalasi`,
+      ].join(', ');
       toast.success(
-        `Reminder jalan: ${data.createdNotifications} notifikasi dibuat (${data.dueSoonInvoices} due soon, ${data.overdueInvoices} overdue)`,
+        data.disabledByPolicy && mode === 'ALL'
+          ? 'Policy reminder otomatis sedang nonaktif. Aktifkan dulu dari pengaturan.'
+          : `Reminder jalan: ${data.createdNotifications} notifikasi dibuat (${stats})`,
       );
     },
     onError: (error: unknown) => {
@@ -999,6 +1102,59 @@ export const StaffFinancePage = () => {
     saveAdjustmentMutation.mutate();
   };
 
+  const handleSaveReminderPolicy = () => {
+    const dueSoonDays = Number(reminderDueSoonDays || 0);
+    const dueSoonRepeat = Number(reminderDueSoonRepeatIntervalDays || 0);
+    const overdueRepeat = Number(reminderOverdueRepeatIntervalDays || 0);
+    const lateFeeRepeat = Number(reminderLateFeeWarningRepeatIntervalDays || 0);
+    const escalationStart = Number(reminderEscalationStartDays || 0);
+    const escalationRepeat = Number(reminderEscalationRepeatIntervalDays || 0);
+    const escalationMinOutstanding = Number(reminderEscalationMinOutstandingAmount || 0);
+
+    if (!Number.isFinite(dueSoonDays) || dueSoonDays < 0 || dueSoonDays > 30) {
+      toast.error('Due soon harus antara 0 sampai 30 hari');
+      return;
+    }
+    if (!Number.isFinite(dueSoonRepeat) || dueSoonRepeat < 1 || dueSoonRepeat > 30) {
+      toast.error('Interval due soon harus antara 1 sampai 30 hari');
+      return;
+    }
+    if (!Number.isFinite(overdueRepeat) || overdueRepeat < 1 || overdueRepeat > 30) {
+      toast.error('Interval overdue harus antara 1 sampai 30 hari');
+      return;
+    }
+    if (!Number.isFinite(lateFeeRepeat) || lateFeeRepeat < 1 || lateFeeRepeat > 30) {
+      toast.error('Interval warning denda harus antara 1 sampai 30 hari');
+      return;
+    }
+    if (!Number.isFinite(escalationStart) || escalationStart < 1 || escalationStart > 180) {
+      toast.error('Mulai eskalasi harus antara 1 sampai 180 hari');
+      return;
+    }
+    if (!Number.isFinite(escalationRepeat) || escalationRepeat < 1 || escalationRepeat > 30) {
+      toast.error('Interval eskalasi harus antara 1 sampai 30 hari');
+      return;
+    }
+    if (!Number.isFinite(escalationMinOutstanding) || escalationMinOutstanding < 0) {
+      toast.error('Minimum nominal eskalasi tidak valid');
+      return;
+    }
+    if (!reminderSendStudent && !reminderSendParent) {
+      toast.error('Pilih minimal satu penerima eksternal: siswa atau orang tua');
+      return;
+    }
+    if (
+      reminderEscalationEnabled &&
+      !reminderEscalateToFinanceStaff &&
+      !reminderEscalateToHeadTu &&
+      !reminderEscalateToPrincipal
+    ) {
+      toast.error('Pilih minimal satu penerima eskalasi internal');
+      return;
+    }
+    saveReminderPolicyMutation.mutate();
+  };
+
   const handleEditComponent = (component: FinanceComponent) => {
     setEditingComponentId(component.id);
     setComponentCode(component.code);
@@ -1050,7 +1206,7 @@ export const StaffFinancePage = () => {
 
   const handleDispatchReminder = (mode: FinanceReminderMode) => {
     const dueSoonDays = Number(reminderDueSoonDays || 0);
-    if (!Number.isFinite(dueSoonDays) || dueSoonDays < 0 || dueSoonDays > 30) {
+    if ((mode === 'ALL' || mode === 'DUE_SOON') && (!Number.isFinite(dueSoonDays) || dueSoonDays < 0 || dueSoonDays > 30)) {
       toast.error('Hari reminder harus antara 0 sampai 30');
       return;
     }
@@ -1423,8 +1579,31 @@ export const StaffFinancePage = () => {
               Reminder Jatuh Tempo
             </div>
             <p className="mt-1 text-sm text-sky-900">
-              Pengingat otomatis tetap berjalan via worker server. Gunakan tombol ini untuk trigger manual saat dibutuhkan.
+              Pengingat otomatis berjalan mengikuti policy finance. Anda bisa atur interval due soon, overdue, warning denda, dan eskalasi tanpa hardcode.
             </p>
+            <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-sky-900">
+              <span
+                className={`rounded-full px-2 py-1 font-semibold ${
+                  reminderPolicy?.isActive
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-rose-100 text-rose-700'
+                }`}
+              >
+                {reminderPolicy?.isActive ? 'Worker reminder aktif' : 'Worker reminder nonaktif'}
+              </span>
+              <span className="rounded-full bg-white px-2 py-1">
+                Due soon {reminderPolicy?.dueSoonDays ?? 3} hari • ulang {reminderPolicy?.dueSoonRepeatIntervalDays ?? 1} hari
+              </span>
+              <span className="rounded-full bg-white px-2 py-1">
+                Overdue ulang {reminderPolicy?.overdueRepeatIntervalDays ?? 3} hari
+              </span>
+              <span className="rounded-full bg-white px-2 py-1">
+                Warning denda {reminderPolicy?.lateFeeWarningEnabled ? 'aktif' : 'nonaktif'}
+              </span>
+              <span className="rounded-full bg-white px-2 py-1">
+                Eskalasi {reminderPolicy?.escalationEnabled ? `mulai ${reminderPolicy?.escalationStartDays ?? 7} hari` : 'nonaktif'}
+              </span>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-xs text-sky-800">Due soon (hari)</label>
@@ -1453,6 +1632,32 @@ export const StaffFinancePage = () => {
             >
               {dispatchReminderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
               Kirim Overdue
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDispatchReminder('LATE_FEE')}
+              disabled={dispatchReminderMutation.isPending}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+            >
+              {dispatchReminderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              Warning Denda
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDispatchReminder('ESCALATION')}
+              disabled={dispatchReminderMutation.isPending}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+            >
+              {dispatchReminderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              Kirim Eskalasi
+            </button>
+            <button
+              type="button"
+              onClick={openReminderPolicyModal}
+              disabled={reminderPolicyQuery.isLoading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+            >
+              Pengaturan Policy
             </button>
           </div>
         </div>
@@ -3283,6 +3488,253 @@ export const StaffFinancePage = () => {
               >
                 {saveTariffMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {editingTariffId ? 'Simpan Perubahan' : 'Tambah Tarif'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isReminderPolicyModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          onClick={closeReminderPolicyModal}
+        >
+          <div
+            className="w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Policy Reminder & Eskalasi Finance</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Worker production akan memakai policy ini untuk reminder due soon, overdue, warning denda, dan eskalasi.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeReminderPolicyModal}
+                className="rounded-lg border border-gray-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="max-h-[75vh] space-y-4 overflow-y-auto px-5 py-4">
+              <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={reminderPolicyIsActive}
+                    onChange={(event) => setReminderPolicyIsActive(event.target.checked)}
+                    className="rounded border-slate-300"
+                  />
+                  Aktifkan worker reminder otomatis
+                </label>
+                <p className="mt-2 text-xs text-slate-500">
+                  Saat nonaktif, worker background tidak akan mengirim reminder otomatis. Trigger manual tetap tersedia untuk staff finance.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                <div className="space-y-3 rounded-lg border border-sky-100 bg-sky-50/70 p-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-sky-900">Reminder Siswa & Orang Tua</h4>
+                    <p className="mt-1 text-xs text-sky-800">
+                      Semua pengingat eksternal membaca pengaturan ini secara live.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Due soon (hari)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={30}
+                        value={reminderDueSoonDays}
+                        onChange={(event) => setReminderDueSoonDays(event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Ulang due soon tiap (hari)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={reminderDueSoonRepeatIntervalDays}
+                        onChange={(event) => setReminderDueSoonRepeatIntervalDays(event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Ulang overdue tiap (hari)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={reminderOverdueRepeatIntervalDays}
+                        onChange={(event) => setReminderOverdueRepeatIntervalDays(event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Ulang warning denda tiap (hari)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={reminderLateFeeWarningRepeatIntervalDays}
+                        onChange={(event) => setReminderLateFeeWarningRepeatIntervalDays(event.target.value)}
+                        disabled={!reminderLateFeeWarningEnabled}
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={reminderSendStudent}
+                        onChange={(event) => setReminderSendStudent(event.target.checked)}
+                        className="rounded border-slate-300"
+                      />
+                      Kirim ke siswa
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={reminderSendParent}
+                        onChange={(event) => setReminderSendParent(event.target.checked)}
+                        className="rounded border-slate-300"
+                      />
+                      Kirim ke orang tua
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={reminderLateFeeWarningEnabled}
+                        onChange={(event) => setReminderLateFeeWarningEnabled(event.target.checked)}
+                        className="rounded border-slate-300"
+                      />
+                      Aktifkan warning denda
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-lg border border-violet-100 bg-violet-50/70 p-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-violet-900">Eskalasi Internal</h4>
+                    <p className="mt-1 text-xs text-violet-800">
+                      Dipakai saat tagihan melewati ambang overdue dan nominal outstanding tertentu.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Mulai eskalasi setelah (hari overdue)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={180}
+                        value={reminderEscalationStartDays}
+                        onChange={(event) => setReminderEscalationStartDays(event.target.value)}
+                        disabled={!reminderEscalationEnabled}
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Ulang eskalasi tiap (hari)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={reminderEscalationRepeatIntervalDays}
+                        onChange={(event) => setReminderEscalationRepeatIntervalDays(event.target.value)}
+                        disabled={!reminderEscalationEnabled}
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="text-xs font-medium text-slate-600">Minimum outstanding untuk eskalasi</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={reminderEscalationMinOutstandingAmount}
+                        onChange={(event) => setReminderEscalationMinOutstandingAmount(event.target.value)}
+                        disabled={!reminderEscalationEnabled}
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={reminderEscalationEnabled}
+                        onChange={(event) => setReminderEscalationEnabled(event.target.checked)}
+                        className="rounded border-slate-300"
+                      />
+                      Aktifkan eskalasi
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={reminderEscalateToFinanceStaff}
+                        onChange={(event) => setReminderEscalateToFinanceStaff(event.target.checked)}
+                        className="rounded border-slate-300"
+                      />
+                      Tujuan: staff keuangan
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={reminderEscalateToHeadTu}
+                        onChange={(event) => setReminderEscalateToHeadTu(event.target.checked)}
+                        className="rounded border-slate-300"
+                      />
+                      Tujuan: Kepala TU
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={reminderEscalateToPrincipal}
+                        onChange={(event) => setReminderEscalateToPrincipal(event.target.checked)}
+                        className="rounded border-slate-300"
+                      />
+                      Tujuan: Kepala Sekolah
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-600">Catatan policy (opsional)</label>
+                <textarea
+                  value={reminderPolicyNotes}
+                  onChange={(event) => setReminderPolicyNotes(event.target.value)}
+                  placeholder="Contoh: Eskalasi principal hanya untuk outstanding besar atau kasus prioritas."
+                  className="mt-1 min-h-24 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+                <div className="mt-2 text-[11px] text-slate-500">
+                  Update terakhir:{' '}
+                  {reminderPolicy?.updatedAt ? formatDate(reminderPolicy.updatedAt) : '-'}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-gray-100 bg-slate-50 px-5 py-3">
+              <button
+                type="button"
+                onClick={closeReminderPolicyModal}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-white"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveReminderPolicy}
+                disabled={saveReminderPolicyMutation.isPending}
+                className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+              >
+                {saveReminderPolicyMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Simpan Policy
               </button>
             </div>
           </div>

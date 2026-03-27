@@ -15,7 +15,45 @@ export type FinanceLateFeeMode = 'FIXED' | 'DAILY';
 export type FinancePaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER';
 export type FinancePaymentSource = 'DIRECT' | 'CREDIT_BALANCE';
 export type FinanceCreditTransactionKind = 'OVERPAYMENT' | 'APPLIED_TO_INVOICE' | 'REFUND';
-export type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE';
+export type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE' | 'LATE_FEE' | 'ESCALATION';
+
+export type StaffFinanceReminderPolicy = {
+  isActive: boolean;
+  dueSoonDays: number;
+  dueSoonRepeatIntervalDays: number;
+  overdueRepeatIntervalDays: number;
+  lateFeeWarningEnabled: boolean;
+  lateFeeWarningRepeatIntervalDays: number;
+  escalationEnabled: boolean;
+  escalationStartDays: number;
+  escalationRepeatIntervalDays: number;
+  escalationMinOutstandingAmount: number;
+  sendStudentReminder: boolean;
+  sendParentReminder: boolean;
+  escalateToFinanceStaff: boolean;
+  escalateToHeadTu: boolean;
+  escalateToPrincipal: boolean;
+  notes?: string | null;
+  updatedAt: string;
+};
+
+export type StaffFinanceReminderDispatchResult = {
+  checkedInvoices: number;
+  targetedRecipients: number;
+  dueSoonInvoices: number;
+  overdueInvoices: number;
+  lateFeeWarningInvoices: number;
+  escalatedInvoices: number;
+  createdNotifications: number;
+  previewNotifications: number;
+  skippedAlreadyNotified: number;
+  dueSoonDays: number;
+  mode: FinanceReminderMode;
+  preview: boolean;
+  runAt: string;
+  disabledByPolicy: boolean;
+  policy: StaffFinanceReminderPolicy;
+};
 
 export type StaffFinanceComponent = {
   id: number;
@@ -810,15 +848,23 @@ export const staffFinanceApi = {
     preview?: boolean;
   }) {
     const response = await apiClient.post<
-      ApiResponse<{
-        checkedInvoices: number;
-        targetedRecipients: number;
-        dueSoonInvoices: number;
-        overdueInvoices: number;
-        createdNotifications: number;
-        skippedAlreadyNotified: number;
-      }>
+      ApiResponse<StaffFinanceReminderDispatchResult>
     >('/payments/reminders/dispatch', payload || {});
     return response.data.data;
+  },
+
+  async getReminderPolicy() {
+    const response = await apiClient.get<ApiResponse<{ policy: StaffFinanceReminderPolicy }>>(
+      '/payments/reminder-policy',
+    );
+    return response.data.data.policy;
+  },
+
+  async updateReminderPolicy(payload: Partial<Omit<StaffFinanceReminderPolicy, 'updatedAt'>>) {
+    const response = await apiClient.put<ApiResponse<{ policy: StaffFinanceReminderPolicy }>>(
+      '/payments/reminder-policy',
+      payload,
+    );
+    return response.data.data.policy;
   },
 };
