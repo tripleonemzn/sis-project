@@ -21,6 +21,8 @@ import {
   type FinanceComponentPeriodicity,
   type FinanceInvoice,
   type FinanceInvoiceStatus,
+  type FinanceLedgerBook,
+  type FinanceLedgerEntry,
   type FinanceLateFeeMode,
   type FinancePaymentMethod,
   type FinanceReminderMode,
@@ -93,6 +95,13 @@ function getTodayInputDate() {
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   const dd = String(now.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function getMonthStartInputDate() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  return `${yyyy}-${mm}-01`;
 }
 
 function getCollectionPriorityBadge(priority: 'MONITOR' | 'TINGGI' | 'KRITIS') {
@@ -186,6 +195,34 @@ function getPaymentVerificationMeta(status?: FinanceInvoice['payments'][number][
   return {
     label: 'Terverifikasi',
     className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  };
+}
+
+function getFinanceLedgerBookMeta(book: FinanceLedgerBook | FinanceLedgerEntry['book']) {
+  if (book === 'CASHBOOK') {
+    return {
+      label: 'Buku Kas',
+      className: 'bg-amber-50 text-amber-700 border border-amber-200',
+    };
+  }
+
+  return {
+    label: 'Buku Bank',
+    className: 'bg-indigo-50 text-indigo-700 border border-indigo-200',
+  };
+}
+
+function getFinanceLedgerDirectionMeta(direction: FinanceLedgerEntry['direction']) {
+  if (direction === 'IN') {
+    return {
+      label: 'Masuk',
+      className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    };
+  }
+
+  return {
+    label: 'Keluar',
+    className: 'bg-rose-50 text-rose-700 border border-rose-200',
   };
 }
 
@@ -419,6 +456,11 @@ export const StaffFinancePage = () => {
   const [paymentReference, setPaymentReference] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
   const [paymentVerificationSearch, setPaymentVerificationSearch] = useState('');
+  const [ledgerBookFilter, setLedgerBookFilter] = useState<FinanceLedgerBook>('ALL');
+  const [ledgerBankAccountId, setLedgerBankAccountId] = useState<number | ''>('');
+  const [ledgerDateFrom, setLedgerDateFrom] = useState(getMonthStartInputDate());
+  const [ledgerDateTo, setLedgerDateTo] = useState(getTodayInputDate());
+  const [ledgerSearch, setLedgerSearch] = useState('');
   const [creditSearch, setCreditSearch] = useState('');
   const [selectedCreditBalance, setSelectedCreditBalance] = useState<FinanceCreditBalanceRow | null>(null);
   const [refundAmount, setRefundAmount] = useState('');
@@ -500,6 +542,30 @@ export const StaffFinancePage = () => {
       staffFinanceService.listPaymentVerifications({
         limit: 50,
         search: paymentVerificationSearch.trim() || undefined,
+      }),
+    staleTime: 30_000,
+  });
+
+  const ledgerBooksQuery = useQuery({
+    queryKey: [
+      'staff-finance-ledger-books',
+      ledgerBookFilter,
+      ledgerBankAccountId === '' ? 'all' : ledgerBankAccountId,
+      ledgerDateFrom || 'none',
+      ledgerDateTo || 'none',
+      ledgerSearch,
+    ],
+    queryFn: () =>
+      staffFinanceService.listLedgerBooks({
+        book: ledgerBookFilter,
+        bankAccountId:
+          ledgerBookFilter === 'CASHBOOK' || ledgerBankAccountId === ''
+            ? undefined
+            : Number(ledgerBankAccountId),
+        dateFrom: ledgerDateFrom || undefined,
+        dateTo: ledgerDateTo || undefined,
+        search: ledgerSearch.trim() || undefined,
+        limit: 150,
       }),
     staleTime: 30_000,
   });
@@ -611,6 +677,10 @@ export const StaffFinancePage = () => {
   const bankReconciliations = bankReconciliationsQuery.data?.reconciliations || [];
   const paymentVerificationSummary = paymentVerificationsQuery.data?.summary;
   const paymentVerificationRows = paymentVerificationsQuery.data?.payments || [];
+  const ledgerSummary = ledgerBooksQuery.data?.summary;
+  const ledgerBookSummaries = ledgerBooksQuery.data?.books || [];
+  const ledgerBankAccountSummaries = ledgerBooksQuery.data?.bankAccounts || [];
+  const ledgerEntries = ledgerBooksQuery.data?.entries || [];
   const pendingPaymentVerificationRows = useMemo(
     () =>
       paymentVerificationRows.filter(
@@ -627,6 +697,12 @@ export const StaffFinancePage = () => {
       setBankReconciliationAccountId(activeBankAccounts[0].id);
     }
   }, [activeBankAccounts, bankReconciliationAccountId]);
+
+  useEffect(() => {
+    if (ledgerBookFilter === 'CASHBOOK' && ledgerBankAccountId !== '') {
+      setLedgerBankAccountId('');
+    }
+  }, [ledgerBankAccountId, ledgerBookFilter]);
 
   useEffect(() => {
     if (paymentMethod !== 'CASH' && paymentBankAccountId === '' && activeBankAccounts[0]?.id) {
@@ -1264,6 +1340,7 @@ export const StaffFinancePage = () => {
       queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-cash-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-bank-reconciliations'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-ledger-books'] });
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -1280,6 +1357,7 @@ export const StaffFinancePage = () => {
       queryClient.invalidateQueries({ queryKey: ['staff-finance-credits'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-bank-reconciliations'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-ledger-books'] });
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -1293,6 +1371,7 @@ export const StaffFinancePage = () => {
       toast.success('Pembayaran non-tunai berhasil ditolak');
       queryClient.invalidateQueries({ queryKey: ['staff-finance-payment-verifications'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-bank-reconciliations'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-ledger-books'] });
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -1363,6 +1442,7 @@ export const StaffFinancePage = () => {
       queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-cash-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-bank-reconciliations'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-ledger-books'] });
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -1393,6 +1473,7 @@ export const StaffFinancePage = () => {
       toast.success(editingBankAccountId ? 'Rekening bank berhasil diperbarui' : 'Rekening bank berhasil ditambahkan');
       resetBankAccountForm();
       queryClient.invalidateQueries({ queryKey: ['staff-finance-bank-accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-ledger-books'] });
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -1406,6 +1487,7 @@ export const StaffFinancePage = () => {
     onSuccess: (_, account) => {
       toast.success(account.isActive ? 'Rekening bank dinonaktifkan' : 'Rekening bank diaktifkan');
       queryClient.invalidateQueries({ queryKey: ['staff-finance-bank-accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-ledger-books'] });
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -1449,6 +1531,7 @@ export const StaffFinancePage = () => {
       resetBankStatementEntryForm();
       queryClient.invalidateQueries({ queryKey: ['staff-finance-bank-reconciliations'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-payment-verifications'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-ledger-books'] });
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -1464,6 +1547,7 @@ export const StaffFinancePage = () => {
     onSuccess: () => {
       toast.success('Rekonsiliasi bank berhasil difinalkan');
       queryClient.invalidateQueries({ queryKey: ['staff-finance-bank-reconciliations'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-ledger-books'] });
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -1574,6 +1658,7 @@ export const StaffFinancePage = () => {
       queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-credits'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-ledger-books'] });
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -1591,6 +1676,7 @@ export const StaffFinancePage = () => {
       queryClient.invalidateQueries({ queryKey: ['staff-finance-credits'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-cash-sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-ledger-books'] });
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -3464,6 +3550,319 @@ export const StaffFinancePage = () => {
                     </>
                   )}
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-4 border-b border-slate-100">
+          <div className="text-xs uppercase tracking-wider text-slate-700">Ledger / Cashbook / Bankbook</div>
+          <p className="mt-1 text-sm text-slate-600">
+            Buku treasury ini membaca transaksi finance live. Buku kas hanya menghitung penerimaan dan refund tunai,
+            sedangkan buku bank menampilkan transaksi non-tunai beserta status verifikasi dan matching mutasi.
+          </p>
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+            <select
+              value={ledgerBookFilter}
+              onChange={(event) => setLedgerBookFilter(event.target.value as FinanceLedgerBook)}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+            >
+              <option value="ALL">Semua buku treasury</option>
+              <option value="CASHBOOK">Buku Kas</option>
+              <option value="BANKBOOK">Buku Bank</option>
+            </select>
+            <select
+              value={ledgerBankAccountId}
+              onChange={(event) =>
+                setLedgerBankAccountId(event.target.value ? Number(event.target.value) : '')
+              }
+              disabled={ledgerBookFilter === 'CASHBOOK'}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+            >
+              <option value="">Semua rekening bank</option>
+              {activeBankAccounts.map((account) => (
+                <option key={`ledger-account-${account.id}`} value={account.id}>
+                  {account.bankName} • {account.accountNumber}
+                </option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={ledgerDateFrom}
+              onChange={(event) => setLedgerDateFrom(event.target.value)}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+            />
+            <input
+              type="date"
+              value={ledgerDateTo}
+              onChange={(event) => setLedgerDateTo(event.target.value)}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+            />
+            <input
+              value={ledgerSearch}
+              onChange={(event) => setLedgerSearch(event.target.value)}
+              placeholder="Cari no transaksi / siswa / invoice / referensi"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+            <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-amber-700">Saldo Awal Kas</div>
+              <div className="mt-1 text-sm font-bold text-amber-900">
+                {formatCurrency(ledgerSummary?.openingCashBalance || 0)}
+              </div>
+            </div>
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-emerald-700">Kas Masuk</div>
+              <div className="mt-1 text-sm font-bold text-emerald-900">
+                {formatCurrency(ledgerSummary?.totalCashIn || 0)}
+              </div>
+            </div>
+            <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-rose-700">Kas Keluar</div>
+              <div className="mt-1 text-sm font-bold text-rose-900">
+                {formatCurrency(ledgerSummary?.totalCashOut || 0)}
+              </div>
+            </div>
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-indigo-700">Saldo Awal Bank</div>
+              <div className="mt-1 text-sm font-bold text-indigo-900">
+                {formatCurrency(ledgerSummary?.openingBankBalance || 0)}
+              </div>
+            </div>
+            <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-sky-700">Pending Verifikasi</div>
+              <div className="mt-1 text-sm font-bold text-sky-900">
+                {formatCurrency(ledgerSummary?.pendingBankVerificationAmount || 0)}
+              </div>
+            </div>
+            <div className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-violet-700">Saldo Akhir Bank</div>
+              <div className="mt-1 text-sm font-bold text-violet-900">
+                {formatCurrency(ledgerSummary?.closingBankBalance || 0)}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-[0.42fr_0.58fr] gap-4">
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="text-sm font-semibold text-slate-900">Ringkasan Buku</div>
+                <div className="mt-3 space-y-3">
+                  {ledgerBooksQuery.isLoading ? (
+                    <div className="text-sm text-slate-500">Memuat snapshot ledger...</div>
+                  ) : ledgerBookSummaries.length === 0 ? (
+                    <div className="text-sm text-slate-500">Belum ada data buku pada rentang yang dipilih.</div>
+                  ) : (
+                    ledgerBookSummaries.map((summary) => {
+                      const bookMeta = getFinanceLedgerBookMeta(summary.book);
+                      return (
+                        <div key={summary.book} className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-semibold text-slate-900">{summary.label}</div>
+                              <div className="mt-1 text-[11px] text-slate-500">
+                                {summary.entryCount} transaksi • saldo awal {formatCurrency(summary.openingBalance)}
+                              </div>
+                            </div>
+                            <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${bookMeta.className}`}>
+                              {bookMeta.label}
+                            </span>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                            <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+                              <div className="text-emerald-700">Masuk</div>
+                              <div className="mt-1 font-semibold text-emerald-900">{formatCurrency(summary.totalIn)}</div>
+                            </div>
+                            <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2">
+                              <div className="text-rose-700">Keluar</div>
+                              <div className="mt-1 font-semibold text-rose-900">{formatCurrency(summary.totalOut)}</div>
+                            </div>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                              <div className="text-slate-700">Saldo akhir</div>
+                              <div className="mt-1 font-semibold text-slate-900">
+                                {formatCurrency(summary.closingBalance)}
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2">
+                              <div className="text-sky-700">
+                                {summary.book === 'BANKBOOK' ? 'Pending / unmatched' : 'Status sinkron'}
+                              </div>
+                              <div className="mt-1 font-semibold text-sky-900">
+                                {summary.book === 'BANKBOOK'
+                                  ? `${formatCurrency(summary.pendingAmount)} / ${formatCurrency(summary.unmatchedAmount)}`
+                                  : 'Live'}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {ledgerBookFilter !== 'CASHBOOK' ? (
+                <div className="rounded-xl border border-indigo-100 bg-white p-4">
+                  <div className="text-sm font-semibold text-slate-900">Ringkasan per Rekening</div>
+                  <div className="mt-3 space-y-3">
+                    {ledgerBooksQuery.isLoading ? (
+                      <div className="text-sm text-slate-500">Memuat ringkasan rekening...</div>
+                    ) : ledgerBankAccountSummaries.length === 0 ? (
+                      <div className="text-sm text-slate-500">Belum ada mutasi buku bank pada filter ini.</div>
+                    ) : (
+                      ledgerBankAccountSummaries.map((summary) => (
+                        <div key={summary.bankAccount.id} className="rounded-lg border border-indigo-100 bg-indigo-50/40 px-3 py-3">
+                          <div className="text-sm font-semibold text-slate-900">
+                            {summary.bankAccount.bankName} • {summary.bankAccount.accountNumber}
+                          </div>
+                          <div className="mt-1 text-[11px] text-slate-500">
+                            Saldo awal {formatCurrency(summary.openingBalance)} • saldo akhir{' '}
+                            {formatCurrency(summary.closingBalance)}
+                          </div>
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                            <div className="rounded-lg border border-emerald-100 bg-white px-3 py-2">
+                              <div className="text-emerald-700">Masuk</div>
+                              <div className="mt-1 font-semibold text-emerald-900">{formatCurrency(summary.totalIn)}</div>
+                            </div>
+                            <div className="rounded-lg border border-rose-100 bg-white px-3 py-2">
+                              <div className="text-rose-700">Keluar</div>
+                              <div className="mt-1 font-semibold text-rose-900">{formatCurrency(summary.totalOut)}</div>
+                            </div>
+                            <div className="rounded-lg border border-sky-100 bg-white px-3 py-2">
+                              <div className="text-sky-700">Pending verifikasi</div>
+                              <div className="mt-1 font-semibold text-sky-900">
+                                {formatCurrency(summary.pendingVerificationAmount)}
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-amber-100 bg-white px-3 py-2">
+                              <div className="text-amber-700">Matched / unmatched</div>
+                              <div className="mt-1 font-semibold text-amber-900">
+                                {formatCurrency(summary.matchedAmount)} / {formatCurrency(summary.unmatchedAmount)}
+                              </div>
+                            </div>
+                          </div>
+                          {summary.latestFinalizedReconciliation ? (
+                            <div className="mt-2 text-[11px] text-slate-500">
+                              Final rekonsiliasi terakhir {summary.latestFinalizedReconciliation.reconciliationNo} •{' '}
+                              {formatDate(summary.latestFinalizedReconciliation.periodEnd)} • closing statement{' '}
+                              {formatCurrency(summary.latestFinalizedReconciliation.statementClosingBalance)}
+                            </div>
+                          ) : (
+                            <div className="mt-2 text-[11px] text-slate-500">
+                              Belum ada rekonsiliasi final untuk rekening ini.
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-100 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Daftar Transaksi Buku</div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    Pembayaran bank yang masih pending tetap ditampilkan, tetapi tidak mengubah running balance sampai diverifikasi.
+                  </div>
+                </div>
+                <div className="text-xs text-slate-500">{ledgerSummary?.totalEntries || 0} transaksi pada filter ini</div>
+              </div>
+              <div className="p-4 space-y-3 max-h-[820px] overflow-y-auto">
+                {ledgerBooksQuery.isLoading ? (
+                  <div className="text-sm text-slate-500">Memuat transaksi treasury...</div>
+                ) : ledgerEntries.length === 0 ? (
+                  <div className="text-sm text-slate-500">Belum ada transaksi treasury pada rentang yang dipilih.</div>
+                ) : (
+                  ledgerEntries.map((entry) => {
+                    const bookMeta = getFinanceLedgerBookMeta(entry.book);
+                    const directionMeta = getFinanceLedgerDirectionMeta(entry.direction);
+                    const verificationMeta = entry.verificationStatus
+                      ? getPaymentVerificationMeta(entry.verificationStatus)
+                      : null;
+                    return (
+                      <div key={entry.id} className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-slate-900">
+                              {entry.transactionNo || (entry.sourceType === 'PAYMENT' ? 'Pembayaran' : 'Refund')}
+                            </div>
+                            <div className="mt-1 text-[11px] text-slate-500">
+                              {formatDate(entry.transactionDate)}
+                              {entry.student?.name ? ` • ${entry.student.name}` : ''}
+                              {entry.invoice?.invoiceNo ? ` • ${entry.invoice.invoiceNo}` : ''}
+                              {entry.bankAccount ? ` • ${entry.bankAccount.bankName}` : ''}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${bookMeta.className}`}>
+                                {bookMeta.label}
+                              </span>
+                              <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${directionMeta.className}`}>
+                                {directionMeta.label}
+                              </span>
+                              {verificationMeta ? (
+                                <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${verificationMeta.className}`}>
+                                  {verificationMeta.label}
+                                </span>
+                              ) : null}
+                              {entry.book === 'BANKBOOK' ? (
+                                <span
+                                  className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${
+                                    entry.matched
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                      : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  }`}
+                                >
+                                  {entry.matched ? 'Sudah matched' : 'Belum matched'}
+                                </span>
+                              ) : null}
+                            </div>
+                            {entry.referenceNo ? (
+                              <div className="mt-2 text-[11px] text-slate-500">Referensi: {entry.referenceNo}</div>
+                            ) : null}
+                            {entry.note ? <div className="mt-1 text-[11px] text-slate-500">{entry.note}</div> : null}
+                            {entry.matchedStatementEntry ? (
+                              <div className="mt-1 text-[11px] text-emerald-700">
+                                Matched ke mutasi {entry.matchedStatementEntry.referenceNo || 'tanpa referensi'}
+                                {entry.matchedStatementEntry.reconciliation
+                                  ? ` • ${entry.matchedStatementEntry.reconciliation.reconciliationNo}`
+                                  : ''}
+                              </div>
+                            ) : entry.book === 'BANKBOOK' && !entry.affectsBalance ? (
+                              <div className="mt-1 text-[11px] text-sky-700">
+                                Transaksi menunggu verifikasi, jadi belum masuk saldo buku bank.
+                              </div>
+                            ) : null}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className={`text-sm font-bold ${entry.direction === 'IN' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                              {entry.direction === 'IN' ? '+' : '-'} {formatCurrency(entry.amount)}
+                            </div>
+                            <div className="mt-1 text-[11px] text-slate-500">
+                              Saldo {entry.book === 'CASHBOOK' ? 'kas' : 'buku bank'}
+                            </div>
+                            <div className="text-xs font-semibold text-slate-900">
+                              {formatCurrency(entry.runningBalance)}
+                            </div>
+                            {entry.book === 'BANKBOOK' && entry.accountRunningBalance != null ? (
+                              <div className="mt-1 text-[11px] text-slate-500">
+                                Saldo rekening {formatCurrency(entry.accountRunningBalance)}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           </div>

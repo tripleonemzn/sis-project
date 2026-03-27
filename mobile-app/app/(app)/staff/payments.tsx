@@ -18,6 +18,7 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import {
   type FinanceAdjustmentKind,
   type FinanceBankStatementDirection,
+  type FinanceLedgerBook,
   staffFinanceApi,
   type StaffFinanceBankAccount,
   type StaffFinanceBankReconciliation,
@@ -34,6 +35,7 @@ import {
   type StaffFinanceAdjustmentRule,
   type StaffFinanceComponent,
   type StaffFinanceInvoice,
+  type StaffFinanceLedgerEntry,
   type StaffFinanceReminderPolicy,
   type StaffFinanceRefundRecord,
   type StaffFinancePaymentReversalRequest,
@@ -109,6 +111,13 @@ function getTodayInputDate() {
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   const dd = String(now.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function getMonthStartInputDate() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  return `${yyyy}-${mm}-01`;
 }
 
 function getStatusBadge(status: FinanceInvoiceStatus) {
@@ -193,6 +202,20 @@ function getPaymentVerificationBadge(status?: StaffFinanceInvoice['payments'][nu
   if (status === 'PENDING') return { label: 'Menunggu Verifikasi', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
   if (status === 'REJECTED') return { label: 'Ditolak', bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
   return { label: 'Terverifikasi', bg: '#dcfce7', border: '#86efac', text: '#166534' };
+}
+
+function getLedgerBookBadge(book: FinanceLedgerBook | StaffFinanceLedgerEntry['book']) {
+  if (book === 'CASHBOOK') {
+    return { label: 'Buku Kas', bg: '#fef3c7', border: '#fde68a', text: '#92400e' };
+  }
+  return { label: 'Buku Bank', bg: '#e0e7ff', border: '#c7d2fe', text: '#3730a3' };
+}
+
+function getLedgerDirectionBadge(direction: StaffFinanceLedgerEntry['direction']) {
+  if (direction === 'IN') {
+    return { label: 'Masuk', bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  }
+  return { label: 'Keluar', bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
 }
 
 function getLateFeeModeLabel(mode?: FinanceLateFeeMode | null) {
@@ -437,6 +460,11 @@ export default function StaffPaymentsScreen() {
   const [paymentReference, setPaymentReference] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
   const [paymentVerificationSearch, setPaymentVerificationSearch] = useState('');
+  const [ledgerBookFilter, setLedgerBookFilter] = useState<FinanceLedgerBook>('ALL');
+  const [ledgerBankAccountId, setLedgerBankAccountId] = useState<number | ''>('');
+  const [ledgerDateFrom, setLedgerDateFrom] = useState(getMonthStartInputDate());
+  const [ledgerDateTo, setLedgerDateTo] = useState(getTodayInputDate());
+  const [ledgerSearch, setLedgerSearch] = useState('');
   const [creditSearch, setCreditSearch] = useState('');
   const [selectedCreditBalance, setSelectedCreditBalance] = useState<StaffFinanceCreditBalanceRow | null>(null);
   const [refundAmount, setRefundAmount] = useState('');
@@ -533,6 +561,31 @@ export default function StaffPaymentsScreen() {
     staleTime: 30_000,
   });
 
+  const ledgerBooksQuery = useQuery({
+    queryKey: [
+      'mobile-staff-finance-ledger-books',
+      ledgerBookFilter,
+      ledgerBankAccountId === '' ? 'all' : ledgerBankAccountId,
+      ledgerDateFrom || 'none',
+      ledgerDateTo || 'none',
+      ledgerSearch,
+    ],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () =>
+      staffFinanceApi.listLedgerBooks({
+        book: ledgerBookFilter,
+        bankAccountId:
+          ledgerBookFilter === 'CASHBOOK' || ledgerBankAccountId === ''
+            ? undefined
+            : Number(ledgerBankAccountId),
+        dateFrom: ledgerDateFrom || undefined,
+        dateTo: ledgerDateTo || undefined,
+        search: ledgerSearch.trim() || undefined,
+        limit: 150,
+      }),
+    staleTime: 30_000,
+  });
+
   const majorsQuery = useQuery({
     queryKey: ['mobile-staff-finance-majors'],
     enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
@@ -569,6 +622,10 @@ export default function StaffPaymentsScreen() {
   const bankReconciliations = bankReconciliationsQuery.data?.reconciliations || [];
   const paymentVerificationSummary = paymentVerificationsQuery.data?.summary;
   const paymentVerificationRows = paymentVerificationsQuery.data?.payments || [];
+  const ledgerSummary = ledgerBooksQuery.data?.summary;
+  const ledgerBookSummaries = ledgerBooksQuery.data?.books || [];
+  const ledgerBankAccountSummaries = ledgerBooksQuery.data?.bankAccounts || [];
+  const ledgerEntries = ledgerBooksQuery.data?.entries || [];
   const pendingPaymentVerificationRows = useMemo(
     () =>
       paymentVerificationRows.filter(
@@ -585,6 +642,12 @@ export default function StaffPaymentsScreen() {
       setBankReconciliationAccountId(activeBankAccounts[0].id);
     }
   }, [activeBankAccounts, bankReconciliationAccountId]);
+
+  useEffect(() => {
+    if (ledgerBookFilter === 'CASHBOOK' && ledgerBankAccountId !== '') {
+      setLedgerBankAccountId('');
+    }
+  }, [ledgerBankAccountId, ledgerBookFilter]);
 
   useEffect(() => {
     if (paymentMethod !== 'CASH' && paymentBankAccountId === '' && activeBankAccounts[0]?.id) {
@@ -1017,6 +1080,7 @@ export default function StaffPaymentsScreen() {
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-bank-accounts'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-bank-reconciliations'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-payment-verifications'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-ledger-books'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-cash-sessions'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-write-offs'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-payment-reversals'] });
@@ -2093,6 +2157,7 @@ export default function StaffPaymentsScreen() {
     bankAccountsQuery.isLoading ||
     bankReconciliationsQuery.isLoading ||
     paymentVerificationsQuery.isLoading ||
+    ledgerBooksQuery.isLoading ||
     cashSessionsQuery.isLoading ||
     creditsQuery.isLoading ||
     invoicesQuery.isLoading ||
@@ -2112,6 +2177,7 @@ export default function StaffPaymentsScreen() {
             bankAccountsQuery.isFetching ||
             bankReconciliationsQuery.isFetching ||
             paymentVerificationsQuery.isFetching ||
+            ledgerBooksQuery.isFetching ||
             cashSessionsQuery.isFetching ||
             creditsQuery.isFetching ||
             invoicesQuery.isFetching ||
@@ -2125,6 +2191,7 @@ export default function StaffPaymentsScreen() {
             void bankAccountsQuery.refetch();
             void bankReconciliationsQuery.refetch();
             void paymentVerificationsQuery.refetch();
+            void ledgerBooksQuery.refetch();
             void cashSessionsQuery.refetch();
             void creditsQuery.refetch();
             void invoicesQuery.refetch();
@@ -2142,7 +2209,7 @@ export default function StaffPaymentsScreen() {
       </Text>
 
       {isInitialLoading ? <QueryStateView type="loading" message="Mengambil data keuangan..." /> : null}
-      {componentsQuery.isError || tariffsQuery.isError || adjustmentsQuery.isError || creditsQuery.isError || invoicesQuery.isError || paymentVerificationsQuery.isError ? (
+      {componentsQuery.isError || tariffsQuery.isError || adjustmentsQuery.isError || creditsQuery.isError || invoicesQuery.isError || paymentVerificationsQuery.isError || ledgerBooksQuery.isError ? (
         <QueryStateView
           type="error"
           message="Gagal memuat data keuangan staff."
@@ -2153,6 +2220,7 @@ export default function StaffPaymentsScreen() {
             void creditsQuery.refetch();
             void invoicesQuery.refetch();
             void paymentVerificationsQuery.refetch();
+            void ledgerBooksQuery.refetch();
           }}
         />
       ) : null}
@@ -3454,6 +3522,355 @@ export default function StaffPaymentsScreen() {
               </View>
             ) : null}
           </View>
+        )}
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#cbd5e1',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Ledger / Cashbook / Bankbook</Text>
+        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+          Buku treasury ini membaca transaksi finance live. Buku bank tetap menampilkan transaksi pending verifikasi,
+          tetapi running balance hanya bergerak setelah transaksi benar-benar terverifikasi.
+        </Text>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {([
+              { value: 'ALL', label: 'Semua buku' },
+              { value: 'CASHBOOK', label: 'Buku Kas' },
+              { value: 'BANKBOOK', label: 'Buku Bank' },
+            ] as Array<{ value: FinanceLedgerBook; label: string }>).map((option) => {
+              const active = ledgerBookFilter === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => setLedgerBookFilter(option.value)}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: active ? '#334155' : '#cbd5e1',
+                    backgroundColor: active ? '#e2e8f0' : '#fff',
+                    borderRadius: 999,
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                  }}
+                >
+                  <Text style={{ color: active ? '#0f172a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              onPress={() => setLedgerBankAccountId('')}
+              disabled={ledgerBookFilter === 'CASHBOOK'}
+              style={{
+                borderWidth: 1,
+                borderColor: ledgerBankAccountId === '' ? '#4f46e5' : '#cbd5e1',
+                backgroundColor: ledgerBankAccountId === '' ? '#eef2ff' : '#fff',
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                opacity: ledgerBookFilter === 'CASHBOOK' ? 0.5 : 1,
+              }}
+            >
+              <Text style={{ color: ledgerBankAccountId === '' ? '#3730a3' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                Semua rekening
+              </Text>
+            </Pressable>
+            {activeBankAccounts.map((account) => {
+              const active = ledgerBankAccountId === account.id;
+              return (
+                <Pressable
+                  key={`ledger-account-${account.id}`}
+                  onPress={() => ledgerBookFilter !== 'CASHBOOK' && setLedgerBankAccountId(account.id)}
+                  disabled={ledgerBookFilter === 'CASHBOOK'}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: active ? '#4f46e5' : '#cbd5e1',
+                    backgroundColor: active ? '#eef2ff' : '#fff',
+                    borderRadius: 999,
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                    opacity: ledgerBookFilter === 'CASHBOOK' ? 0.5 : 1,
+                  }}
+                >
+                  <Text style={{ color: active ? '#3730a3' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                    {account.bankName} • {account.accountNumber}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+
+        <TextInput
+          value={ledgerDateFrom}
+          onChangeText={setLedgerDateFrom}
+          placeholder="Tanggal mulai (YYYY-MM-DD)"
+          placeholderTextColor="#94a3b8"
+          style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+        />
+        <TextInput
+          value={ledgerDateTo}
+          onChangeText={setLedgerDateTo}
+          placeholder="Tanggal akhir (YYYY-MM-DD)"
+          placeholderTextColor="#94a3b8"
+          style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+        />
+        <TextInput
+          value={ledgerSearch}
+          onChangeText={setLedgerSearch}
+          placeholder="Cari transaksi / siswa / invoice / referensi"
+          placeholderTextColor="#94a3b8"
+          style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 10, color: '#0f172a', backgroundColor: '#fff' }}
+        />
+
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
+          {[
+            { label: 'Saldo Awal Kas', value: formatCurrency(ledgerSummary?.openingCashBalance || 0), bg: '#fef3c7', border: '#fde68a', text: '#92400e' },
+            { label: 'Kas Masuk', value: formatCurrency(ledgerSummary?.totalCashIn || 0), bg: '#dcfce7', border: '#86efac', text: '#166534' },
+            { label: 'Kas Keluar', value: formatCurrency(ledgerSummary?.totalCashOut || 0), bg: '#fee2e2', border: '#fecaca', text: '#991b1b' },
+            { label: 'Saldo Awal Bank', value: formatCurrency(ledgerSummary?.openingBankBalance || 0), bg: '#e0e7ff', border: '#c7d2fe', text: '#3730a3' },
+            { label: 'Pending Verifikasi', value: formatCurrency(ledgerSummary?.pendingBankVerificationAmount || 0), bg: '#e0f2fe', border: '#bae6fd', text: '#075985' },
+            { label: 'Saldo Akhir Bank', value: formatCurrency(ledgerSummary?.closingBankBalance || 0), bg: '#f3e8ff', border: '#d8b4fe', text: '#6b21a8' },
+          ].map((card) => (
+            <View key={card.label} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+              <View style={{ backgroundColor: card.bg, borderWidth: 1, borderColor: card.border, borderRadius: 10, padding: 10 }}>
+                <Text style={{ color: card.text, fontSize: 11 }}>{card.label}</Text>
+                <Text style={{ color: card.text, fontWeight: '700', fontSize: 13, marginTop: 4 }} numberOfLines={1}>
+                  {card.value}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Ringkasan Buku</Text>
+        {ledgerBooksQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil snapshot treasury..." />
+        ) : ledgerBookSummaries.length === 0 ? (
+          <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+            Belum ada data buku treasury pada rentang ini.
+          </Text>
+        ) : (
+          ledgerBookSummaries.map((summary) => {
+            const badge = getLedgerBookBadge(summary.book);
+            return (
+              <View
+                key={summary.book}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  backgroundColor: '#f8fafc',
+                  borderRadius: 10,
+                  padding: 10,
+                  marginBottom: 8,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#0f172a', fontWeight: '700' }}>{summary.label}</Text>
+                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                      {summary.entryCount} transaksi • saldo awal {formatCurrency(summary.openingBalance)}
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: badge.border,
+                      backgroundColor: badge.bg,
+                      borderRadius: 999,
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                    }}
+                  >
+                    <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{badge.label}</Text>
+                  </View>
+                </View>
+                <Text style={{ color: '#166534', fontSize: 12, marginTop: 6 }}>
+                  Masuk {formatCurrency(summary.totalIn)} • Keluar {formatCurrency(summary.totalOut)}
+                </Text>
+                <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                  Saldo akhir {formatCurrency(summary.closingBalance)}
+                </Text>
+                {summary.book === 'BANKBOOK' ? (
+                  <Text style={{ color: '#0369a1', fontSize: 12, marginTop: 2 }}>
+                    Pending {formatCurrency(summary.pendingAmount)} • unmatched {formatCurrency(summary.unmatchedAmount)}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })
+        )}
+
+        {ledgerBookFilter !== 'CASHBOOK' ? (
+          <>
+            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Ringkasan per Rekening</Text>
+            {ledgerBooksQuery.isLoading ? null : ledgerBankAccountSummaries.length === 0 ? (
+              <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                Belum ada mutasi buku bank pada filter ini.
+              </Text>
+            ) : (
+              ledgerBankAccountSummaries.map((summary) => (
+                <View
+                  key={summary.bankAccount.id}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#c7d2fe',
+                    backgroundColor: '#eef2ff',
+                    borderRadius: 10,
+                    padding: 10,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={{ color: '#0f172a', fontWeight: '700' }}>
+                    {summary.bankAccount.bankName} • {summary.bankAccount.accountNumber}
+                  </Text>
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                    Saldo awal {formatCurrency(summary.openingBalance)} • saldo akhir {formatCurrency(summary.closingBalance)}
+                  </Text>
+                  <Text style={{ color: '#166534', fontSize: 12, marginTop: 2 }}>
+                    Masuk {formatCurrency(summary.totalIn)} • Keluar {formatCurrency(summary.totalOut)}
+                  </Text>
+                  <Text style={{ color: '#0369a1', fontSize: 12, marginTop: 2 }}>
+                    Pending {formatCurrency(summary.pendingVerificationAmount)} • unmatched {formatCurrency(summary.unmatchedAmount)}
+                  </Text>
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                    {summary.latestFinalizedReconciliation
+                      ? `Rekonsiliasi final ${summary.latestFinalizedReconciliation.reconciliationNo} • ${formatDate(summary.latestFinalizedReconciliation.periodEnd)} • closing ${formatCurrency(summary.latestFinalizedReconciliation.statementClosingBalance)}`
+                      : 'Belum ada rekonsiliasi final untuk rekening ini.'}
+                  </Text>
+                </View>
+              ))
+            )}
+          </>
+        ) : null}
+
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Daftar Transaksi Buku</Text>
+        {ledgerBooksQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil transaksi treasury..." />
+        ) : ledgerEntries.length === 0 ? (
+          <Text style={{ color: '#64748b', fontSize: 12 }}>
+            Belum ada transaksi treasury pada rentang yang dipilih.
+          </Text>
+        ) : (
+          ledgerEntries.map((entry) => {
+            const bookBadge = getLedgerBookBadge(entry.book);
+            const directionBadge = getLedgerDirectionBadge(entry.direction);
+            const verificationBadge = entry.verificationStatus
+              ? getPaymentVerificationBadge(entry.verificationStatus)
+              : null;
+            return (
+              <View
+                key={entry.id}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  backgroundColor: '#f8fafc',
+                  borderRadius: 10,
+                  padding: 10,
+                  marginBottom: 8,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#0f172a', fontWeight: '700' }}>
+                      {entry.transactionNo || (entry.sourceType === 'PAYMENT' ? 'Pembayaran' : 'Refund')}
+                    </Text>
+                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                      {formatDate(entry.transactionDate)}
+                      {entry.student?.name ? ` • ${entry.student.name}` : ''}
+                      {entry.invoice?.invoiceNo ? ` • ${entry.invoice.invoiceNo}` : ''}
+                      {entry.bankAccount ? ` • ${entry.bankAccount.bankName}` : ''}
+                    </Text>
+                  </View>
+                  <Text style={{ color: entry.direction === 'IN' ? '#166534' : '#991b1b', fontWeight: '700' }}>
+                    {entry.direction === 'IN' ? '+' : '-'} {formatCurrency(entry.amount)}
+                  </Text>
+                </View>
+
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8, marginHorizontal: -3 }}>
+                  {[bookBadge, directionBadge, verificationBadge]
+                    .filter(Boolean)
+                    .map((badge) => (
+                      <View key={`${entry.id}-${badge?.label}`} style={{ paddingHorizontal: 3, marginBottom: 6 }}>
+                        <View
+                          style={{
+                            borderWidth: 1,
+                            borderColor: badge!.border,
+                            backgroundColor: badge!.bg,
+                            borderRadius: 999,
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                          }}
+                        >
+                          <Text style={{ color: badge!.text, fontSize: 11, fontWeight: '700' }}>{badge!.label}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  {entry.book === 'BANKBOOK' ? (
+                    <View style={{ paddingHorizontal: 3, marginBottom: 6 }}>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: entry.matched ? '#86efac' : '#fcd34d',
+                          backgroundColor: entry.matched ? '#dcfce7' : '#fef3c7',
+                          borderRadius: 999,
+                          paddingHorizontal: 8,
+                          paddingVertical: 2,
+                        }}
+                      >
+                        <Text style={{ color: entry.matched ? '#166534' : '#92400e', fontSize: 11, fontWeight: '700' }}>
+                          {entry.matched ? 'Sudah matched' : 'Belum matched'}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
+
+                {entry.referenceNo ? (
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>Referensi: {entry.referenceNo}</Text>
+                ) : null}
+                {entry.note ? (
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{entry.note}</Text>
+                ) : null}
+                {entry.matchedStatementEntry ? (
+                  <Text style={{ color: '#166534', fontSize: 12, marginTop: 2 }}>
+                    Matched ke mutasi {entry.matchedStatementEntry.referenceNo || 'tanpa referensi'}
+                    {entry.matchedStatementEntry.reconciliation
+                      ? ` • ${entry.matchedStatementEntry.reconciliation.reconciliationNo}`
+                      : ''}
+                  </Text>
+                ) : entry.book === 'BANKBOOK' && !entry.affectsBalance ? (
+                  <Text style={{ color: '#0369a1', fontSize: 12, marginTop: 2 }}>
+                    Menunggu verifikasi, jadi belum mengubah saldo buku bank.
+                  </Text>
+                ) : null}
+
+                <Text style={{ color: '#334155', fontSize: 12, marginTop: 6 }}>
+                  Saldo {entry.book === 'CASHBOOK' ? 'kas' : 'buku bank'} {formatCurrency(entry.runningBalance)}
+                </Text>
+                {entry.book === 'BANKBOOK' && entry.accountRunningBalance != null ? (
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                    Saldo rekening {formatCurrency(entry.accountRunningBalance)}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })
         )}
       </View>
 

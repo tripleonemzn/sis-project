@@ -33,6 +33,7 @@ export type FinanceCashSessionApprovalStatus =
 export type FinanceCashSessionPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'NONE';
 export type FinanceBankReconciliationStatus = 'OPEN' | 'FINALIZED';
 export type FinanceBankStatementDirection = 'CREDIT' | 'DEBIT';
+export type FinanceLedgerBook = 'ALL' | 'CASHBOOK' | 'BANKBOOK';
 export type SemesterCode = 'ODD' | 'EVEN';
 export type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE' | 'LATE_FEE' | 'ESCALATION';
 
@@ -820,6 +821,115 @@ export interface FinanceBankReconciliationListResult {
   };
 }
 
+export interface FinanceLedgerEntry {
+  id: string;
+  sourceType: 'PAYMENT' | 'REFUND';
+  book: 'CASHBOOK' | 'BANKBOOK';
+  direction: 'IN' | 'OUT';
+  transactionDate: string;
+  transactionNo?: string | null;
+  amount: number;
+  affectsBalance: boolean;
+  runningBalance: number;
+  accountRunningBalance?: number | null;
+  referenceNo?: string | null;
+  note?: string | null;
+  method?: FinancePaymentMethod | null;
+  verificationStatus?: FinancePaymentVerificationStatus | null;
+  matched: boolean;
+  student?: {
+    id: number;
+    name: string;
+    username: string;
+    nis?: string | null;
+    nisn?: string | null;
+    studentClass?: {
+      id: number;
+      name: string;
+      level: string;
+    } | null;
+  } | null;
+  invoice?: {
+    id: number;
+    invoiceNo: string;
+    periodKey?: string | null;
+    semester?: SemesterCode | null;
+  } | null;
+  bankAccount?: FinanceBankAccount | null;
+  matchedStatementEntry?: {
+    id: number;
+    entryDate: string;
+    amount: number;
+    direction: FinanceBankStatementDirection;
+    referenceNo?: string | null;
+    status: 'MATCHED' | 'UNMATCHED';
+    reconciliation?: {
+      id: number;
+      reconciliationNo: string;
+    } | null;
+  } | null;
+}
+
+export interface FinanceLedgerBookSummary {
+  book: 'CASHBOOK' | 'BANKBOOK';
+  label: string;
+  openingBalance: number;
+  totalIn: number;
+  totalOut: number;
+  closingBalance: number;
+  pendingAmount: number;
+  matchedAmount: number;
+  unmatchedAmount: number;
+  entryCount: number;
+}
+
+export interface FinanceLedgerBankAccountSummary {
+  bankAccount: FinanceBankAccount;
+  openingBalance: number;
+  totalIn: number;
+  totalOut: number;
+  closingBalance: number;
+  pendingVerificationAmount: number;
+  matchedAmount: number;
+  unmatchedAmount: number;
+  entryCount: number;
+  latestFinalizedReconciliation?: {
+    id: number;
+    reconciliationNo: string;
+    periodEnd: string;
+    statementClosingBalance: number;
+    finalizedAt?: string | null;
+  } | null;
+}
+
+export interface FinanceLedgerSnapshot {
+  filters: {
+    book: FinanceLedgerBook;
+    bankAccountId?: number | null;
+    dateFrom?: string | null;
+    dateTo?: string | null;
+    search?: string | null;
+    limit: number;
+  };
+  summary: {
+    totalEntries: number;
+    openingCashBalance: number;
+    totalCashIn: number;
+    totalCashOut: number;
+    closingCashBalance: number;
+    openingBankBalance: number;
+    totalBankIn: number;
+    totalBankOut: number;
+    closingBankBalance: number;
+    pendingBankVerificationAmount: number;
+    matchedBankAmount: number;
+    unmatchedBankAmount: number;
+  };
+  books: FinanceLedgerBookSummary[];
+  bankAccounts: FinanceLedgerBankAccountSummary[];
+  entries: FinanceLedgerEntry[];
+}
+
 export type FinancePaymentVerificationRow = FinanceInvoice['payments'][number] & {
   student: {
     id: number;
@@ -1546,6 +1656,20 @@ export const staffFinanceService = {
         params,
       },
     );
+    return response.data.data;
+  },
+
+  async listLedgerBooks(params?: {
+    book?: FinanceLedgerBook;
+    bankAccountId?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    search?: string;
+    limit?: number;
+  }) {
+    const response = await api.get<ApiResponse<FinanceLedgerSnapshot>>('/payments/ledger-books', {
+      params,
+    });
     return response.data.data;
   },
 

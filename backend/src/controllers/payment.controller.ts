@@ -35,10 +35,12 @@ const listStudentPaymentsQuerySchema = z.object({
 
 const PAYMENT_STATUSES: PaymentStatus[] = ['PENDING', 'PAID', 'PARTIAL', 'CANCELLED'];
 const PAYMENT_TYPES: PaymentType[] = ['MONTHLY', 'ONE_TIME'];
+const FINANCE_LEDGER_BOOKS = ['ALL', 'CASHBOOK', 'BANKBOOK'] as const;
 const FINANCE_BANK_RECONCILIATION_STATUSES = ['OPEN', 'FINALIZED'] as const;
 const FINANCE_BANK_STATEMENT_DIRECTIONS = ['CREDIT', 'DEBIT'] as const;
 const FINANCE_BANK_STATEMENT_ENTRY_STATUSES = ['MATCHED', 'UNMATCHED'] as const;
 
+type FinanceLedgerBook = (typeof FINANCE_LEDGER_BOOKS)[number];
 type FinanceBankReconciliationStatus = (typeof FINANCE_BANK_RECONCILIATION_STATUSES)[number];
 type FinanceBankStatementDirection = (typeof FINANCE_BANK_STATEMENT_DIRECTIONS)[number];
 type FinanceBankStatementEntryStatus = (typeof FINANCE_BANK_STATEMENT_ENTRY_STATUSES)[number];
@@ -1112,6 +1114,115 @@ type SerializedFinanceBankReconciliation = {
   statementEntries: SerializedFinanceBankStatementEntry[];
   systemPayments: SerializedFinanceBankSystemPayment[];
   systemRefunds: SerializedFinanceBankSystemRefund[];
+};
+
+type SerializedFinanceLedgerEntry = {
+  id: string;
+  sourceType: 'PAYMENT' | 'REFUND';
+  book: Exclude<FinanceLedgerBook, 'ALL'>;
+  direction: 'IN' | 'OUT';
+  transactionDate: Date;
+  transactionNo: string | null;
+  amount: number;
+  affectsBalance: boolean;
+  runningBalance: number;
+  accountRunningBalance: number | null;
+  referenceNo: string | null;
+  note: string | null;
+  method: FinancePaymentMethod | null;
+  verificationStatus: FinancePaymentVerificationStatus | null;
+  matched: boolean;
+  student: {
+    id: number;
+    name: string;
+    username: string;
+    nis?: string | null;
+    nisn?: string | null;
+    studentClass?: {
+      id: number;
+      name: string;
+      level: string;
+    } | null;
+  } | null;
+  invoice: {
+    id: number;
+    invoiceNo: string;
+    periodKey?: string | null;
+    semester?: Semester | null;
+  } | null;
+  bankAccount: ReturnType<typeof serializeFinanceBankAccount> | null;
+  matchedStatementEntry: {
+    id: number;
+    entryDate: Date;
+    amount: number;
+    direction: FinanceBankStatementDirection;
+    referenceNo: string | null;
+    status: FinanceBankStatementEntryStatus;
+    reconciliation: {
+      id: number;
+      reconciliationNo: string;
+    } | null;
+  } | null;
+};
+
+type SerializedFinanceLedgerBookSummary = {
+  book: Exclude<FinanceLedgerBook, 'ALL'>;
+  label: string;
+  openingBalance: number;
+  totalIn: number;
+  totalOut: number;
+  closingBalance: number;
+  pendingAmount: number;
+  matchedAmount: number;
+  unmatchedAmount: number;
+  entryCount: number;
+};
+
+type SerializedFinanceLedgerBankAccountSummary = {
+  bankAccount: ReturnType<typeof serializeFinanceBankAccount>;
+  openingBalance: number;
+  totalIn: number;
+  totalOut: number;
+  closingBalance: number;
+  pendingVerificationAmount: number;
+  matchedAmount: number;
+  unmatchedAmount: number;
+  entryCount: number;
+  latestFinalizedReconciliation: {
+    id: number;
+    reconciliationNo: string;
+    periodEnd: Date;
+    statementClosingBalance: number;
+    finalizedAt: Date | null;
+  } | null;
+};
+
+type SerializedFinanceLedgerSnapshot = {
+  filters: {
+    book: FinanceLedgerBook;
+    bankAccountId: number | null;
+    dateFrom: Date | null;
+    dateTo: Date | null;
+    search: string | null;
+    limit: number;
+  };
+  summary: {
+    totalEntries: number;
+    openingCashBalance: number;
+    totalCashIn: number;
+    totalCashOut: number;
+    closingCashBalance: number;
+    openingBankBalance: number;
+    totalBankIn: number;
+    totalBankOut: number;
+    closingBankBalance: number;
+    pendingBankVerificationAmount: number;
+    matchedBankAmount: number;
+    unmatchedBankAmount: number;
+  };
+  books: SerializedFinanceLedgerBookSummary[];
+  bankAccounts: SerializedFinanceLedgerBankAccountSummary[];
+  entries: SerializedFinanceLedgerEntry[];
 };
 
 type SerializedFinanceCashSessionSummary = {
@@ -3178,6 +3289,27 @@ const decideFinancePaymentVerificationSchema = z.object({
   note: z.string().trim().max(500).optional(),
 });
 
+const listFinanceLedgerBooksQuerySchema = z
+  .object({
+    book: z.enum(FINANCE_LEDGER_BOOKS).optional().default('ALL'),
+    bankAccountId: z.coerce.number().int().positive().optional(),
+    dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    search: z.string().trim().max(120).optional(),
+    limit: z.coerce.number().int().min(1).max(200).optional().default(120),
+  })
+  .refine(
+    (payload) =>
+      !payload.dateFrom ||
+      !payload.dateTo ||
+      new Date(`${payload.dateTo}T23:59:59.999`).getTime() >=
+        new Date(`${payload.dateFrom}T00:00:00.000`).getTime(),
+    {
+      message: 'Rentang tanggal ledger tidak valid',
+      path: ['dateTo'],
+    },
+  );
+
 const financeOptionalDateSchema = z.preprocess(
   (value) => (value === '' || value === undefined ? null : value),
   z.coerce.date().nullable(),
@@ -4173,6 +4305,881 @@ async function buildFinanceBankReconciliationSummary(
     statementEntries: statementEntryRows.map((entry: any) => serializeFinanceBankStatementEntry(entry)),
     systemPayments: systemPayments.slice(0, 12),
     systemRefunds: systemRefunds.slice(0, 12),
+  };
+}
+
+function serializeFinanceLedgerStudent(student?: {
+  id: number;
+  name: string;
+  username: string;
+  nis?: string | null;
+  nisn?: string | null;
+  studentClass?: {
+    id: number;
+    name: string;
+    level?: string | null;
+  } | null;
+} | null) {
+  if (!student) return null;
+
+  return {
+    id: student.id,
+    name: student.name,
+    username: student.username,
+    nis: student.nis || null,
+    nisn: student.nisn || null,
+    studentClass: student.studentClass
+      ? {
+          id: student.studentClass.id,
+          name: student.studentClass.name,
+          level: String(student.studentClass.level || ''),
+        }
+      : null,
+  };
+}
+
+function serializeFinanceLedgerMatchedStatementEntry(entry?: {
+  id: number;
+  entryDate: Date;
+  amount: number;
+  direction: FinanceBankStatementDirection;
+  referenceNo?: string | null;
+  status: FinanceBankStatementEntryStatus;
+  reconciliation?: {
+    id: number;
+    reconciliationNo: string;
+  } | null;
+} | null) {
+  if (!entry) return null;
+
+  return {
+    id: entry.id,
+    entryDate: entry.entryDate,
+    amount: normalizeFinanceAmount(Number(entry.amount || 0)),
+    direction: entry.direction,
+    referenceNo: entry.referenceNo || null,
+    status: entry.status,
+    reconciliation: entry.reconciliation
+      ? {
+          id: entry.reconciliation.id,
+          reconciliationNo: entry.reconciliation.reconciliationNo,
+        }
+      : null,
+  };
+}
+
+function sortFinanceLedgerEntriesAsc(
+  left: Pick<SerializedFinanceLedgerEntry, 'transactionDate' | 'id'>,
+  right: Pick<SerializedFinanceLedgerEntry, 'transactionDate' | 'id'>,
+) {
+  const leftTime = new Date(left.transactionDate).getTime();
+  const rightTime = new Date(right.transactionDate).getTime();
+  if (leftTime !== rightTime) return leftTime - rightTime;
+  return left.id.localeCompare(right.id);
+}
+
+function applyFinanceLedgerRunningBalances(
+  entries: Array<Omit<SerializedFinanceLedgerEntry, 'runningBalance' | 'accountRunningBalance'>>,
+  openingBalance: number,
+  openingByAccount?: Map<number, number>,
+) {
+  let runningBalance = normalizeFinanceAmount(openingBalance);
+  const accountRunning = new Map<number, number>(
+    Array.from(openingByAccount?.entries() || []).map(([accountId, amount]) => [
+      accountId,
+      normalizeFinanceAmount(amount),
+    ]),
+  );
+
+  return [...entries]
+    .sort(sortFinanceLedgerEntriesAsc)
+    .map((entry) => {
+      const delta = entry.direction === 'IN' ? entry.amount : -entry.amount;
+      if (entry.affectsBalance) {
+        runningBalance = normalizeFinanceAmount(runningBalance + delta);
+      }
+
+      let accountRunningBalance: number | null = null;
+      if (entry.bankAccount?.id) {
+        const current = normalizeFinanceAmount(accountRunning.get(entry.bankAccount.id) || 0);
+        const next = entry.affectsBalance ? normalizeFinanceAmount(current + delta) : current;
+        accountRunning.set(entry.bankAccount.id, next);
+        accountRunningBalance = next;
+      }
+
+      return {
+        ...entry,
+        runningBalance,
+        accountRunningBalance,
+      } satisfies SerializedFinanceLedgerEntry;
+    });
+}
+
+async function buildFinanceLedgerSnapshot(
+  db: Prisma.TransactionClient | typeof prisma,
+  params: {
+    book: FinanceLedgerBook;
+    bankAccountId?: number | null;
+    dateFrom?: Date | null;
+    dateTo?: Date | null;
+    search?: string | null;
+    limit: number;
+  },
+): Promise<SerializedFinanceLedgerSnapshot> {
+  const wantsCash = params.book === 'ALL' || params.book === 'CASHBOOK';
+  const wantsBank = params.book === 'ALL' || params.book === 'BANKBOOK';
+  const normalizedSearch = params.search?.trim() || undefined;
+  const effectiveBankAccountId = wantsBank ? Number(params.bankAccountId || 0) || null : null;
+  const studentSearchWhere = buildFinanceStudentSearchFilter(normalizedSearch);
+
+  const paymentSearchClauses: Prisma.FinancePaymentWhereInput[] = [];
+  const refundSearchClauses: Prisma.FinanceRefundWhereInput[] = [];
+  if (normalizedSearch) {
+    paymentSearchClauses.push({ paymentNo: { contains: normalizedSearch, mode: 'insensitive' } });
+    paymentSearchClauses.push({ referenceNo: { contains: normalizedSearch, mode: 'insensitive' } });
+    paymentSearchClauses.push({ note: { contains: normalizedSearch, mode: 'insensitive' } });
+    paymentSearchClauses.push({ invoice: { invoiceNo: { contains: normalizedSearch, mode: 'insensitive' } } });
+    refundSearchClauses.push({ refundNo: { contains: normalizedSearch, mode: 'insensitive' } });
+    refundSearchClauses.push({ referenceNo: { contains: normalizedSearch, mode: 'insensitive' } });
+    refundSearchClauses.push({ note: { contains: normalizedSearch, mode: 'insensitive' } });
+    if (studentSearchWhere) {
+      paymentSearchClauses.push({ student: studentSearchWhere });
+      refundSearchClauses.push({ student: studentSearchWhere });
+    }
+  }
+
+  const paymentDateWhere =
+    params.dateFrom || params.dateTo
+      ? {
+          paidAt: {
+            ...(params.dateFrom ? { gte: params.dateFrom } : {}),
+            ...(params.dateTo ? { lte: params.dateTo } : {}),
+          },
+        }
+      : {};
+  const refundDateWhere =
+    params.dateFrom || params.dateTo
+      ? {
+          refundedAt: {
+            ...(params.dateFrom ? { gte: params.dateFrom } : {}),
+            ...(params.dateTo ? { lte: params.dateTo } : {}),
+          },
+        }
+      : {};
+
+  const cashPaymentWhere: Prisma.FinancePaymentWhereInput = wantsCash
+    ? {
+        source: FinancePaymentSource.DIRECT,
+        method: FinancePaymentMethod.CASH,
+        ...paymentDateWhere,
+        ...(paymentSearchClauses.length > 0 ? { OR: paymentSearchClauses } : {}),
+      }
+    : { id: -1 };
+  const cashRefundWhere: Prisma.FinanceRefundWhereInput = wantsCash
+    ? {
+        method: FinancePaymentMethod.CASH,
+        ...refundDateWhere,
+        ...(refundSearchClauses.length > 0 ? { OR: refundSearchClauses } : {}),
+      }
+    : { id: -1 };
+  const bankPaymentWhere: Prisma.FinancePaymentWhereInput = wantsBank
+    ? {
+        source: FinancePaymentSource.DIRECT,
+        method: { not: FinancePaymentMethod.CASH },
+        verificationStatus: { not: FinancePaymentVerificationStatus.REJECTED },
+        ...(effectiveBankAccountId ? { bankAccountId: effectiveBankAccountId } : {}),
+        ...paymentDateWhere,
+        ...(paymentSearchClauses.length > 0 ? { OR: paymentSearchClauses } : {}),
+      }
+    : { id: -1 };
+  const bankRefundWhere: Prisma.FinanceRefundWhereInput = wantsBank
+    ? {
+        method: { not: FinancePaymentMethod.CASH },
+        ...(effectiveBankAccountId ? { bankAccountId: effectiveBankAccountId } : {}),
+        ...refundDateWhere,
+        ...(refundSearchClauses.length > 0 ? { OR: refundSearchClauses } : {}),
+      }
+    : { id: -1 };
+
+  const bankOpeningPaymentGroups =
+    wantsBank && params.dateFrom
+      ? ((await (db.financePayment.groupBy({
+          by: ['bankAccountId'],
+          where: {
+            source: FinancePaymentSource.DIRECT,
+            method: { not: FinancePaymentMethod.CASH },
+            verificationStatus: FinancePaymentVerificationStatus.VERIFIED,
+            bankAccountId: effectiveBankAccountId ? effectiveBankAccountId : { not: null },
+            paidAt: { lt: params.dateFrom },
+          },
+          _sum: {
+            amount: true,
+            reversedAmount: true,
+          },
+        }) as any)) as Array<{
+          bankAccountId: number | null;
+          _sum: { amount: number | null; reversedAmount: number | null };
+        }>)
+      : [];
+  const bankOpeningRefundGroups =
+    wantsBank && params.dateFrom
+      ? ((await (db.financeRefund.groupBy({
+          by: ['bankAccountId'],
+          where: {
+            method: { not: FinancePaymentMethod.CASH },
+            bankAccountId: effectiveBankAccountId ? effectiveBankAccountId : { not: null },
+            refundedAt: { lt: params.dateFrom },
+          },
+          _sum: {
+            amount: true,
+          },
+        }) as any)) as Array<{
+          bankAccountId: number | null;
+          _sum: { amount: number | null };
+        }>)
+      : [];
+
+  const [
+    cashOpeningPaymentAggregate,
+    cashOpeningRefundAggregate,
+    cashPayments,
+    cashRefunds,
+    bankPayments,
+    bankRefunds,
+  ] = await Promise.all([
+    wantsCash && params.dateFrom
+      ? db.financePayment.aggregate({
+          where: {
+            source: FinancePaymentSource.DIRECT,
+            method: FinancePaymentMethod.CASH,
+            paidAt: { lt: params.dateFrom },
+          },
+          _sum: {
+            amount: true,
+            reversedAmount: true,
+          },
+        })
+      : Promise.resolve({ _sum: { amount: 0, reversedAmount: 0 } }),
+    wantsCash && params.dateFrom
+      ? db.financeRefund.aggregate({
+          where: {
+            method: FinancePaymentMethod.CASH,
+            refundedAt: { lt: params.dateFrom },
+          },
+          _sum: {
+            amount: true,
+          },
+        })
+      : Promise.resolve({ _sum: { amount: 0 } }),
+    wantsCash
+      ? db.financePayment.findMany({
+          where: cashPaymentWhere,
+          orderBy: [{ paidAt: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true,
+            paymentNo: true,
+            amount: true,
+            allocatedAmount: true,
+            creditedAmount: true,
+            reversedAmount: true,
+            reversedAllocatedAmount: true,
+            reversedCreditedAmount: true,
+            source: true,
+            method: true,
+            verificationStatus: true,
+            verificationNote: true,
+            verifiedAt: true,
+            referenceNo: true,
+            note: true,
+            paidAt: true,
+            createdAt: true,
+            updatedAt: true,
+            student: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                nis: true,
+                nisn: true,
+                studentClass: {
+                  select: {
+                    id: true,
+                    name: true,
+                    level: true,
+                  },
+                },
+              },
+            },
+            invoice: {
+              select: {
+                id: true,
+                invoiceNo: true,
+                periodKey: true,
+                semester: true,
+              },
+            },
+          },
+        })
+      : Promise.resolve([]),
+    wantsCash
+      ? db.financeRefund.findMany({
+          where: cashRefundWhere,
+          orderBy: [{ refundedAt: 'asc' }, { id: 'asc' }],
+          include: {
+            student: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                nis: true,
+                nisn: true,
+                studentClass: {
+                  select: {
+                    id: true,
+                    name: true,
+                    level: true,
+                  },
+                },
+              },
+            },
+            createdBy: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        })
+      : Promise.resolve([]),
+    wantsBank
+      ? db.financePayment.findMany({
+          where: bankPaymentWhere,
+          orderBy: [{ paidAt: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true,
+            paymentNo: true,
+            bankAccountId: true,
+            amount: true,
+            allocatedAmount: true,
+            creditedAmount: true,
+            reversedAmount: true,
+            reversedAllocatedAmount: true,
+            reversedCreditedAmount: true,
+            source: true,
+            method: true,
+            verificationStatus: true,
+            verificationNote: true,
+            verifiedAt: true,
+            referenceNo: true,
+            note: true,
+            paidAt: true,
+            createdAt: true,
+            updatedAt: true,
+            student: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                nis: true,
+                nisn: true,
+                studentClass: {
+                  select: {
+                    id: true,
+                    name: true,
+                    level: true,
+                  },
+                },
+              },
+            },
+            invoice: {
+              select: {
+                id: true,
+                invoiceNo: true,
+                periodKey: true,
+                semester: true,
+              },
+            },
+            verifiedBy: {
+              select: {
+                id: true,
+                name: true,
+                role: true,
+              },
+            },
+            bankStatementEntries: {
+              select: {
+                id: true,
+                entryDate: true,
+                amount: true,
+                direction: true,
+                referenceNo: true,
+                status: true,
+                reconciliation: {
+                  select: {
+                    id: true,
+                    reconciliationNo: true,
+                  },
+                },
+              },
+              orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
+              take: 1,
+            },
+          },
+        })
+      : Promise.resolve([]),
+    wantsBank
+      ? db.financeRefund.findMany({
+          where: bankRefundWhere,
+          orderBy: [{ refundedAt: 'asc' }, { id: 'asc' }],
+          include: {
+            student: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                nis: true,
+                nisn: true,
+                studentClass: {
+                  select: {
+                    id: true,
+                    name: true,
+                    level: true,
+                  },
+                },
+              },
+            },
+            createdBy: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            bankStatementEntries: {
+              select: {
+                id: true,
+                entryDate: true,
+                amount: true,
+                direction: true,
+                referenceNo: true,
+                status: true,
+                reconciliation: {
+                  select: {
+                    id: true,
+                    reconciliationNo: true,
+                  },
+                },
+              },
+              orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
+              take: 1,
+            },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const openingCashBalance = wantsCash
+    ? normalizeFinanceAmount(
+        Number(cashOpeningPaymentAggregate._sum.amount || 0) -
+          Number(cashOpeningPaymentAggregate._sum.reversedAmount || 0) -
+          Number(cashOpeningRefundAggregate._sum.amount || 0),
+      )
+    : 0;
+
+  const openingBankByAccount = new Map<number, number>();
+  for (const row of bankOpeningPaymentGroups) {
+    if (!Number.isInteger(row.bankAccountId)) continue;
+    const current = normalizeFinanceAmount(openingBankByAccount.get(row.bankAccountId!) || 0);
+    const netAmount = normalizeFinanceAmount(
+      Number(row._sum.amount || 0) - Number(row._sum.reversedAmount || 0),
+    );
+    openingBankByAccount.set(row.bankAccountId!, normalizeFinanceAmount(current + netAmount));
+  }
+  for (const row of bankOpeningRefundGroups) {
+    if (!Number.isInteger(row.bankAccountId)) continue;
+    const current = normalizeFinanceAmount(openingBankByAccount.get(row.bankAccountId!) || 0);
+    openingBankByAccount.set(
+      row.bankAccountId!,
+      normalizeFinanceAmount(current - Number(row._sum.amount || 0)),
+    );
+  }
+
+  const openingBankBalance = normalizeFinanceAmount(
+    Array.from(openingBankByAccount.values()).reduce((sum, amount) => sum + Number(amount || 0), 0),
+  );
+
+  const bankAccountIds = Array.from(
+    new Set(
+      [
+        ...Array.from(openingBankByAccount.keys()),
+        ...((bankPayments as any[]).map((payment) => Number(payment.bankAccountId || 0))),
+        ...((bankRefunds as any[]).map((refund) => Number(refund.bankAccountId || 0))),
+        effectiveBankAccountId || 0,
+      ].filter((value) => Number.isInteger(value) && value > 0),
+    ),
+  );
+
+  const [bankAccountRows, latestFinalizedReconciliations] = await Promise.all([
+    bankAccountIds.length
+      ? db.financeBankAccount.findMany({
+          where: {
+            id: { in: bankAccountIds },
+          },
+          select: {
+            id: true,
+            code: true,
+            bankName: true,
+            accountName: true,
+            accountNumber: true,
+            branch: true,
+            notes: true,
+            isActive: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        })
+      : Promise.resolve([]),
+    bankAccountIds.length
+      ? db.financeBankReconciliation.findMany({
+          where: {
+            bankAccountId: { in: bankAccountIds },
+            status: 'FINALIZED',
+            ...(params.dateTo ? { periodEnd: { lte: params.dateTo } } : {}),
+          },
+          orderBy: [{ periodEnd: 'desc' }, { id: 'desc' }],
+          select: {
+            id: true,
+            bankAccountId: true,
+            reconciliationNo: true,
+            periodEnd: true,
+            statementClosingBalance: true,
+            finalizedAt: true,
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const bankAccountMap = new Map(
+    (bankAccountRows as any[]).map((account) => [account.id, serializeFinanceBankAccount(account)]),
+  );
+  const latestFinalizedByAccount = new Map<
+    number,
+    {
+      id: number;
+      reconciliationNo: string;
+      periodEnd: Date;
+      statementClosingBalance: number;
+      finalizedAt: Date | null;
+    }
+  >();
+  for (const row of latestFinalizedReconciliations as any[]) {
+    if (!latestFinalizedByAccount.has(row.bankAccountId)) {
+      latestFinalizedByAccount.set(row.bankAccountId, {
+        id: row.id,
+        reconciliationNo: row.reconciliationNo,
+        periodEnd: row.periodEnd,
+        statementClosingBalance: normalizeFinanceAmount(Number(row.statementClosingBalance || 0)),
+        finalizedAt: row.finalizedAt || null,
+      });
+    }
+  }
+
+  const cashEntryDrafts = [
+    ...(cashPayments as any[])
+      .map((payment) => {
+        const serializedPayment = serializeFinancePaymentRecord(payment);
+        const amount = normalizeFinanceAmount(
+          Math.max(Number(payment.amount || 0) - Number(payment.reversedAmount || 0), 0),
+        );
+        if (amount <= 0) return null;
+        return {
+          id: `CASH-PAYMENT-${payment.id}`,
+          sourceType: 'PAYMENT',
+          book: 'CASHBOOK',
+          direction: 'IN',
+          transactionDate: payment.paidAt || payment.createdAt,
+          transactionNo: serializedPayment.paymentNo || null,
+          amount,
+          affectsBalance: true,
+          referenceNo: serializedPayment.referenceNo || null,
+          note: serializedPayment.note || null,
+          method: serializedPayment.method || FinancePaymentMethod.CASH,
+          verificationStatus: serializedPayment.verificationStatus || FinancePaymentVerificationStatus.VERIFIED,
+          matched: false,
+          student: serializeFinanceLedgerStudent(payment.student),
+          invoice: payment.invoice
+            ? {
+                id: payment.invoice.id,
+                invoiceNo: payment.invoice.invoiceNo,
+                periodKey: payment.invoice.periodKey || null,
+                semester: payment.invoice.semester || null,
+              }
+            : null,
+          bankAccount: null,
+          matchedStatementEntry: null,
+        } satisfies Omit<SerializedFinanceLedgerEntry, 'runningBalance' | 'accountRunningBalance'>;
+      })
+      .filter(Boolean),
+    ...(cashRefunds as any[]).map((refund) => {
+      const serializedRefund = serializeFinanceRefundRecord(refund);
+      return {
+        id: `CASH-REFUND-${refund.id}`,
+        sourceType: 'REFUND',
+        book: 'CASHBOOK',
+        direction: 'OUT',
+        transactionDate: refund.refundedAt || refund.createdAt,
+        transactionNo: serializedRefund.refundNo || null,
+        amount: serializedRefund.amount,
+        affectsBalance: true,
+        referenceNo: serializedRefund.referenceNo || null,
+        note: serializedRefund.note || null,
+        method: serializedRefund.method || FinancePaymentMethod.CASH,
+        verificationStatus: null,
+        matched: false,
+        student: serializeFinanceLedgerStudent(serializedRefund.student),
+        invoice: null,
+        bankAccount: null,
+        matchedStatementEntry: null,
+      } satisfies Omit<SerializedFinanceLedgerEntry, 'runningBalance' | 'accountRunningBalance'>;
+    }),
+  ] as Array<Omit<SerializedFinanceLedgerEntry, 'runningBalance' | 'accountRunningBalance'>>;
+
+  const bankEntryDrafts = [
+    ...(bankPayments as any[])
+      .map((payment) => {
+        const serializedPayment = serializeFinancePaymentRecord(payment);
+        const amount = normalizeFinanceAmount(
+          Math.max(Number(payment.amount || 0) - Number(payment.reversedAmount || 0), 0),
+        );
+        if (amount <= 0) return null;
+        return {
+          id: `BANK-PAYMENT-${payment.id}`,
+          sourceType: 'PAYMENT',
+          book: 'BANKBOOK',
+          direction: 'IN',
+          transactionDate: payment.paidAt || payment.createdAt,
+          transactionNo: serializedPayment.paymentNo || null,
+          amount,
+          affectsBalance: serializedPayment.verificationStatus === FinancePaymentVerificationStatus.VERIFIED,
+          referenceNo: serializedPayment.referenceNo || null,
+          note: serializedPayment.note || null,
+          method: serializedPayment.method || null,
+          verificationStatus: serializedPayment.verificationStatus || FinancePaymentVerificationStatus.VERIFIED,
+          matched: Boolean(serializedPayment.matchedStatementEntry),
+          student: serializeFinanceLedgerStudent(payment.student),
+          invoice: payment.invoice
+            ? {
+                id: payment.invoice.id,
+                invoiceNo: payment.invoice.invoiceNo,
+                periodKey: payment.invoice.periodKey || null,
+                semester: payment.invoice.semester || null,
+              }
+            : null,
+          bankAccount: payment.bankAccountId ? bankAccountMap.get(payment.bankAccountId) || null : null,
+          matchedStatementEntry: serializeFinanceLedgerMatchedStatementEntry(
+            (payment.bankStatementEntries || [])[0] || null,
+          ),
+        } satisfies Omit<SerializedFinanceLedgerEntry, 'runningBalance' | 'accountRunningBalance'>;
+      })
+      .filter(Boolean),
+    ...(bankRefunds as any[]).map((refund) => {
+      const serializedRefund = serializeFinanceRefundRecord(refund);
+      const matchedStatementEntry = serializeFinanceLedgerMatchedStatementEntry(
+        (refund.bankStatementEntries || [])[0] || null,
+      );
+      return {
+        id: `BANK-REFUND-${refund.id}`,
+        sourceType: 'REFUND',
+        book: 'BANKBOOK',
+        direction: 'OUT',
+        transactionDate: refund.refundedAt || refund.createdAt,
+        transactionNo: serializedRefund.refundNo || null,
+        amount: serializedRefund.amount,
+        affectsBalance: true,
+        referenceNo: serializedRefund.referenceNo || null,
+        note: serializedRefund.note || null,
+        method: serializedRefund.method || null,
+        verificationStatus: null,
+        matched: Boolean(matchedStatementEntry),
+        student: serializeFinanceLedgerStudent(serializedRefund.student),
+        invoice: null,
+        bankAccount: refund.bankAccountId ? bankAccountMap.get(refund.bankAccountId) || null : null,
+        matchedStatementEntry,
+      } satisfies Omit<SerializedFinanceLedgerEntry, 'runningBalance' | 'accountRunningBalance'>;
+    }),
+  ] as Array<Omit<SerializedFinanceLedgerEntry, 'runningBalance' | 'accountRunningBalance'>>;
+
+  const cashEntries = applyFinanceLedgerRunningBalances(cashEntryDrafts, openingCashBalance);
+  const bankEntries = applyFinanceLedgerRunningBalances(
+    bankEntryDrafts,
+    openingBankBalance,
+    openingBankByAccount,
+  );
+
+  const totalCashIn = normalizeFinanceAmount(
+    cashEntries
+      .filter((entry) => entry.direction === 'IN')
+      .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+  );
+  const totalCashOut = normalizeFinanceAmount(
+    cashEntries
+      .filter((entry) => entry.direction === 'OUT')
+      .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+  );
+  const totalBankIn = normalizeFinanceAmount(
+    bankEntries
+      .filter((entry) => entry.direction === 'IN' && entry.affectsBalance)
+      .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+  );
+  const totalBankOut = normalizeFinanceAmount(
+    bankEntries
+      .filter((entry) => entry.direction === 'OUT' && entry.affectsBalance)
+      .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+  );
+  const pendingBankVerificationAmount = normalizeFinanceAmount(
+    bankEntries
+      .filter((entry) => entry.direction === 'IN' && !entry.affectsBalance)
+      .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+  );
+  const matchedBankAmount = normalizeFinanceAmount(
+    bankEntries
+      .filter((entry) => entry.affectsBalance && entry.matched)
+      .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+  );
+  const unmatchedBankAmount = normalizeFinanceAmount(
+    bankEntries
+      .filter((entry) => entry.affectsBalance && !entry.matched)
+      .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+  );
+
+  const books: SerializedFinanceLedgerBookSummary[] = [];
+  if (wantsCash) {
+    books.push({
+      book: 'CASHBOOK',
+      label: 'Buku Kas',
+      openingBalance: openingCashBalance,
+      totalIn: totalCashIn,
+      totalOut: totalCashOut,
+      closingBalance: normalizeFinanceAmount(openingCashBalance + totalCashIn - totalCashOut),
+      pendingAmount: 0,
+      matchedAmount: 0,
+      unmatchedAmount: 0,
+      entryCount: cashEntries.length,
+    });
+  }
+  if (wantsBank) {
+    books.push({
+      book: 'BANKBOOK',
+      label: 'Buku Bank',
+      openingBalance: openingBankBalance,
+      totalIn: totalBankIn,
+      totalOut: totalBankOut,
+      closingBalance: normalizeFinanceAmount(openingBankBalance + totalBankIn - totalBankOut),
+      pendingAmount: pendingBankVerificationAmount,
+      matchedAmount: matchedBankAmount,
+      unmatchedAmount: unmatchedBankAmount,
+      entryCount: bankEntries.length,
+    });
+  }
+
+  const bankAccountSummariesMap = new Map<
+    number,
+    Omit<SerializedFinanceLedgerBankAccountSummary, 'bankAccount' | 'latestFinalizedReconciliation'> & {
+      latestFinalizedReconciliation: SerializedFinanceLedgerBankAccountSummary['latestFinalizedReconciliation'];
+    }
+  >();
+  for (const accountId of bankAccountIds) {
+    bankAccountSummariesMap.set(accountId, {
+      openingBalance: normalizeFinanceAmount(openingBankByAccount.get(accountId) || 0),
+      totalIn: 0,
+      totalOut: 0,
+      closingBalance: normalizeFinanceAmount(openingBankByAccount.get(accountId) || 0),
+      pendingVerificationAmount: 0,
+      matchedAmount: 0,
+      unmatchedAmount: 0,
+      entryCount: 0,
+      latestFinalizedReconciliation: latestFinalizedByAccount.get(accountId) || null,
+    });
+  }
+
+  for (const entry of bankEntries) {
+    const accountId = entry.bankAccount?.id;
+    if (!accountId) continue;
+    const summary = bankAccountSummariesMap.get(accountId);
+    if (!summary) continue;
+    summary.entryCount += 1;
+    summary.closingBalance = entry.accountRunningBalance ?? summary.closingBalance;
+    if (entry.direction === 'IN' && entry.affectsBalance) {
+      summary.totalIn = normalizeFinanceAmount(summary.totalIn + entry.amount);
+    }
+    if (entry.direction === 'OUT' && entry.affectsBalance) {
+      summary.totalOut = normalizeFinanceAmount(summary.totalOut + entry.amount);
+    }
+    if (entry.direction === 'IN' && !entry.affectsBalance) {
+      summary.pendingVerificationAmount = normalizeFinanceAmount(
+        summary.pendingVerificationAmount + entry.amount,
+      );
+    }
+    if (entry.affectsBalance) {
+      if (entry.matched) {
+        summary.matchedAmount = normalizeFinanceAmount(summary.matchedAmount + entry.amount);
+      } else {
+        summary.unmatchedAmount = normalizeFinanceAmount(summary.unmatchedAmount + entry.amount);
+      }
+    }
+  }
+
+  const bankAccounts = Array.from(bankAccountSummariesMap.entries())
+    .map(([accountId, summary]) => {
+      const bankAccount = bankAccountMap.get(accountId);
+      if (!bankAccount) return null;
+      return {
+        bankAccount,
+        openingBalance: summary.openingBalance,
+        totalIn: summary.totalIn,
+        totalOut: summary.totalOut,
+        closingBalance: normalizeFinanceAmount(summary.openingBalance + summary.totalIn - summary.totalOut),
+        pendingVerificationAmount: summary.pendingVerificationAmount,
+        matchedAmount: summary.matchedAmount,
+        unmatchedAmount: summary.unmatchedAmount,
+        entryCount: summary.entryCount,
+        latestFinalizedReconciliation: summary.latestFinalizedReconciliation,
+      } satisfies SerializedFinanceLedgerBankAccountSummary;
+    })
+    .filter((summary): summary is SerializedFinanceLedgerBankAccountSummary => Boolean(summary))
+    .sort((left, right) => left.bankAccount.bankName.localeCompare(right.bankAccount.bankName));
+
+  const mergedEntries = [...cashEntries, ...bankEntries].sort((left, right) => {
+    const time = new Date(right.transactionDate).getTime() - new Date(left.transactionDate).getTime();
+    if (time !== 0) return time;
+    return left.id.localeCompare(right.id);
+  });
+
+  return {
+    filters: {
+      book: params.book,
+      bankAccountId: effectiveBankAccountId,
+      dateFrom: params.dateFrom || null,
+      dateTo: params.dateTo || null,
+      search: normalizedSearch || null,
+      limit: params.limit,
+    },
+    summary: {
+      totalEntries: mergedEntries.length,
+      openingCashBalance,
+      totalCashIn,
+      totalCashOut,
+      closingCashBalance: normalizeFinanceAmount(openingCashBalance + totalCashIn - totalCashOut),
+      openingBankBalance,
+      totalBankIn,
+      totalBankOut,
+      closingBankBalance: normalizeFinanceAmount(openingBankBalance + totalBankIn - totalBankOut),
+      pendingBankVerificationAmount,
+      matchedBankAmount,
+      unmatchedBankAmount,
+    },
+    books,
+    bankAccounts,
+    entries: mergedEntries.slice(0, params.limit),
   };
 }
 
@@ -9402,6 +10409,27 @@ export const listFinanceBankReconciliations = asyncHandler(async (req: Request, 
       },
       'Rekonsiliasi bank berhasil diambil',
     ),
+  );
+});
+
+export const listFinanceLedgerBooks = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinanceBankReconciliationViewer((req as any).user || {});
+
+  const { book, bankAccountId, dateFrom, dateTo, search, limit } = listFinanceLedgerBooksQuerySchema.parse(
+    req.query || {},
+  );
+
+  const snapshot = await buildFinanceLedgerSnapshot(prisma, {
+    book,
+    bankAccountId: bankAccountId || null,
+    dateFrom: dateFrom ? parseFinanceDateInput(dateFrom, false) : null,
+    dateTo: dateTo ? parseFinanceDateInput(dateTo, true) : null,
+    search: search?.trim() || null,
+    limit,
+  });
+
+  res.status(200).json(
+    new ApiResponse(200, snapshot, 'Ledger treasury finance berhasil diambil'),
   );
 });
 

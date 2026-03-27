@@ -19,6 +19,7 @@ import {
   listFinancePaymentVerifications,
   verifyFinancePayment,
   rejectFinancePayment,
+  listFinanceLedgerBooks,
   createFinanceRefund,
   createFinanceTariffRule,
   generateFinanceInvoices,
@@ -80,6 +81,7 @@ router.patch('/adjustments/:id', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), 
 router.post('/invoices/preview', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), previewFinanceInvoices);
 router.post('/invoices/generate', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), generateFinanceInvoices);
 router.get('/invoices', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceInvoices);
+router.get('/ledger-books', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceLedgerBooks);
 router.get('/bank-reconciliations', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceBankReconciliations);
 router.post('/bank-reconciliations', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceBankReconciliation);
 router.post('/bank-reconciliations/:id/entries', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceBankStatementEntry);
