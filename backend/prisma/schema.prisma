@@ -8,178 +8,181 @@ datasource db {
 }
 
 model User {
-  id                             Int                              @id @default(autoincrement())
-  username                       String                           @unique
-  password                       String
-  name                           String
-  role                           Role
-  createdAt                      DateTime                         @default(now())
-  updatedAt                      DateTime                         @updatedAt
-  nip                            String?
-  nis                            String?
-  gender                         Gender?
-  email                          String?
-  phone                          String?
-  address                        String?
-  photo                          String?
-  classId                        Int?
-  additionalDuties               AdditionalDuty[]
-  birthDate                      DateTime?
-  birthPlace                     String?
-  nisn                           String?                          @unique
-  studentStatus                  StudentStatus                    @default(ACTIVE)
-  verificationCode               String?
-  verificationExpires            DateTime?
-  verificationMethod             VerificationMethod               @default(NONE)
-  verificationStatus             VerificationStatus               @default(PENDING)
-  appointmentDate                DateTime?
-  appointmentDecree              String?
-  dusun                          String?
-  employeeStatus                 String?
-  institution                    String?
-  motherName                     String?
-  nik                            String?
-  nuptk                          String?
-  postalCode                     String?
-  ptkType                        String?
-  rt                             String?
-  rw                             String?
-  subdistrict                    String?
-  village                        String?
-  childNumber                    Int?
-  fatherIncome                   String?
-  fatherName                     String?
-  fatherOccupation               String?
-  guardianName                   String?
-  guardianOccupation             String?
-  guardianPhone                  String?
-  motherIncome                   String?
-  motherOccupation               String?
-  religion                       String?
-  siblingsCount                  Int?
-  preferences                    Json?
-  examinerMajorId                Int?
-  assignments                    Assignment[]
-  attendances                    AttendanceRecord[]
-  approvedBudgets                BudgetRequest[]                  @relation("BudgetApprover")
-  assignedBudgets                BudgetRequest[]                  @relation("BudgetAssignedApprover")
-  requestedBudgets               BudgetRequest[]                  @relation("BudgetRequester")
-  confirmedBudgetRealizations    BudgetRequest[]                  @relation("BudgetRealizationConfirmer")
-  teacherClasses                 Class[]                          @relation("ClassTeacher")
-  cpTpAnalyses                   CpTpAnalysis[]
-  teachingResourceEntriesAuthored TeachingResourceEntry[]         @relation("TeachingResourceEntryAuthor")
-  teachingResourceEntriesReviewed TeachingResourceEntry[]         @relation("TeachingResourceEntryReviewer")
-  dailyAttendances               DailyAttendance[]
-  ekskulEnrollments              EkstrakurikulerEnrollment[]
-  examAnswers                    ExamAnswer[]
-  createdExamPackets             ExamPacket[]                     @relation("ExamAuthor")
-  proctoringReports              ExamProctoringReport[]
-  proctoredExams                 ExamSchedule[]                   @relation("ExamProctor")
-  examScores                     ExamScore[]
-  assignedSittings               ExamSittingStudent[]
-  proctoredSittings              ExamSitting[]                    @relation("SittingProctor")
-  materials                      Material[]
-  notifications                  Notification[]
-  mobilePushDevices              MobilePushDevice[]
-  auditLogs                      AuditLog[]
-  p5Assessments                  P5Assessment[]
-  payments                       Payment[]
-  financeInvoices                FinanceInvoice[]                 @relation("FinanceInvoiceStudent")
-  financePayments                FinancePayment[]                 @relation("FinancePaymentStudent")
-  verifiedFinancePayments        FinancePayment[]                 @relation("FinancePaymentVerifiedBy")
-  financeCreditBalance           FinanceCreditBalance?            @relation("FinanceCreditBalanceStudent")
-  financeCreditTransactions      FinanceCreditTransaction[]       @relation("FinanceCreditTransactionStudent")
-  financeRefunds                 FinanceRefund[]                  @relation("FinanceRefundStudent")
-  financeWriteOffRequestsAsStudent FinanceWriteOffRequest[]       @relation("FinanceWriteOffStudent")
-  financePaymentReversalRequestsAsStudent FinancePaymentReversalRequest[] @relation("FinancePaymentReversalStudent")
-  createdFinanceInvoices         FinanceInvoice[]                 @relation("FinanceInvoiceCreator")
-  createdFinancePayments         FinancePayment[]                 @relation("FinancePaymentCreator")
-  createdFinanceCreditTransactions FinanceCreditTransaction[]     @relation("FinanceCreditTransactionCreator")
-  createdFinanceRefunds          FinanceRefund[]                  @relation("FinanceRefundCreator")
-  createdFinanceComponents       FinanceComponent[]               @relation("FinanceComponentCreator")
-  createdFinanceTariffRules      FinanceTariffRule[]              @relation("FinanceTariffRuleCreator")
-  financeAdjustmentRules         FinanceAdjustmentRule[]          @relation("FinanceAdjustmentRuleStudent")
-  createdFinanceAdjustmentRules  FinanceAdjustmentRule[]          @relation("FinanceAdjustmentRuleCreator")
-  createdFinanceWriteOffRequests FinanceWriteOffRequest[]         @relation("FinanceWriteOffRequester")
-  headTuDecidedFinanceWriteOffs  FinanceWriteOffRequest[]         @relation("FinanceWriteOffHeadTuDecisionBy")
-  principalDecidedFinanceWriteOffs FinanceWriteOffRequest[]       @relation("FinanceWriteOffPrincipalDecisionBy")
-  appliedFinanceWriteOffs        FinanceWriteOffRequest[]         @relation("FinanceWriteOffAppliedBy")
-  createdFinancePaymentReversalRequests FinancePaymentReversalRequest[]   @relation("FinancePaymentReversalRequester")
-  headTuDecidedFinancePaymentReversals FinancePaymentReversalRequest[]    @relation("FinancePaymentReversalHeadTuDecisionBy")
-  principalDecidedFinancePaymentReversals FinancePaymentReversalRequest[] @relation("FinancePaymentReversalPrincipalDecisionBy")
-  appliedFinancePaymentReversals FinancePaymentReversalRequest[]          @relation("FinancePaymentReversalAppliedBy")
-  openedFinanceCashSessions      FinanceCashSession[]                     @relation("FinanceCashSessionOpenedBy")
-  closedFinanceCashSessions      FinanceCashSession[]                     @relation("FinanceCashSessionClosedBy")
-  headTuReviewedFinanceCashSessions FinanceCashSession[]                  @relation("FinanceCashSessionHeadTuDecisionBy")
-  principalReviewedFinanceCashSessions FinanceCashSession[]               @relation("FinanceCashSessionPrincipalDecisionBy")
-  requestedFinanceClosingPeriods      FinanceClosingPeriod[]              @relation("FinanceClosingPeriodRequestedBy")
-  headTuReviewedFinanceClosingPeriods FinanceClosingPeriod[]              @relation("FinanceClosingPeriodHeadTuDecisionBy")
-  principalReviewedFinanceClosingPeriods FinanceClosingPeriod[]           @relation("FinanceClosingPeriodPrincipalDecisionBy")
-  closedFinanceClosingPeriods         FinanceClosingPeriod[]              @relation("FinanceClosingPeriodClosedBy")
-  reopenedFinanceClosingPeriods       FinanceClosingPeriod[]              @relation("FinanceClosingPeriodReopenedBy")
-  createdFinanceClosingPeriodReopenRequests FinanceClosingPeriodReopenRequest[] @relation("FinanceClosingPeriodReopenRequester")
-  headTuDecidedFinanceClosingPeriodReopenRequests FinanceClosingPeriodReopenRequest[] @relation("FinanceClosingPeriodReopenHeadTuDecisionBy")
+  id                                                 Int                                 @id @default(autoincrement())
+  username                                           String                              @unique
+  password                                           String
+  name                                               String
+  role                                               Role
+  createdAt                                          DateTime                            @default(now())
+  updatedAt                                          DateTime                            @updatedAt
+  nip                                                String?
+  nis                                                String?
+  gender                                             Gender?
+  email                                              String?
+  phone                                              String?
+  address                                            String?
+  photo                                              String?
+  classId                                            Int?
+  additionalDuties                                   AdditionalDuty[]
+  birthDate                                          DateTime?
+  birthPlace                                         String?
+  nisn                                               String?                             @unique
+  studentStatus                                      StudentStatus                       @default(ACTIVE)
+  verificationCode                                   String?
+  verificationExpires                                DateTime?
+  verificationMethod                                 VerificationMethod                  @default(NONE)
+  verificationStatus                                 VerificationStatus                  @default(PENDING)
+  appointmentDate                                    DateTime?
+  appointmentDecree                                  String?
+  dusun                                              String?
+  employeeStatus                                     String?
+  institution                                        String?
+  motherName                                         String?
+  nik                                                String?
+  nuptk                                              String?
+  postalCode                                         String?
+  ptkType                                            String?
+  rt                                                 String?
+  rw                                                 String?
+  subdistrict                                        String?
+  village                                            String?
+  childNumber                                        Int?
+  fatherIncome                                       String?
+  fatherName                                         String?
+  fatherOccupation                                   String?
+  guardianName                                       String?
+  guardianOccupation                                 String?
+  guardianPhone                                      String?
+  motherIncome                                       String?
+  motherOccupation                                   String?
+  religion                                           String?
+  siblingsCount                                      Int?
+  preferences                                        Json?
+  examinerMajorId                                    Int?
+  assignments                                        Assignment[]
+  attendances                                        AttendanceRecord[]
+  approvedBudgets                                    BudgetRequest[]                     @relation("BudgetApprover")
+  assignedBudgets                                    BudgetRequest[]                     @relation("BudgetAssignedApprover")
+  requestedBudgets                                   BudgetRequest[]                     @relation("BudgetRequester")
+  confirmedBudgetRealizations                        BudgetRequest[]                     @relation("BudgetRealizationConfirmer")
+  teacherClasses                                     Class[]                             @relation("ClassTeacher")
+  cpTpAnalyses                                       CpTpAnalysis[]
+  teachingResourceEntriesAuthored                    TeachingResourceEntry[]             @relation("TeachingResourceEntryAuthor")
+  teachingResourceEntriesReviewed                    TeachingResourceEntry[]             @relation("TeachingResourceEntryReviewer")
+  dailyAttendances                                   DailyAttendance[]
+  ekskulEnrollments                                  EkstrakurikulerEnrollment[]
+  examAnswers                                        ExamAnswer[]
+  createdExamPackets                                 ExamPacket[]                        @relation("ExamAuthor")
+  proctoringReports                                  ExamProctoringReport[]
+  proctoredExams                                     ExamSchedule[]                      @relation("ExamProctor")
+  examScores                                         ExamScore[]
+  assignedSittings                                   ExamSittingStudent[]
+  proctoredSittings                                  ExamSitting[]                       @relation("SittingProctor")
+  materials                                          Material[]
+  notifications                                      Notification[]
+  mobilePushDevices                                  MobilePushDevice[]
+  auditLogs                                          AuditLog[]
+  p5Assessments                                      P5Assessment[]
+  payments                                           Payment[]
+  financeInvoices                                    FinanceInvoice[]                    @relation("FinanceInvoiceStudent")
+  financePayments                                    FinancePayment[]                    @relation("FinancePaymentStudent")
+  verifiedFinancePayments                            FinancePayment[]                    @relation("FinancePaymentVerifiedBy")
+  financeCreditBalance                               FinanceCreditBalance?               @relation("FinanceCreditBalanceStudent")
+  financeCreditTransactions                          FinanceCreditTransaction[]          @relation("FinanceCreditTransactionStudent")
+  financeRefunds                                     FinanceRefund[]                     @relation("FinanceRefundStudent")
+  financeWriteOffRequestsAsStudent                   FinanceWriteOffRequest[]            @relation("FinanceWriteOffStudent")
+  financePaymentReversalRequestsAsStudent            FinancePaymentReversalRequest[]     @relation("FinancePaymentReversalStudent")
+  createdFinanceInvoices                             FinanceInvoice[]                    @relation("FinanceInvoiceCreator")
+  createdFinancePayments                             FinancePayment[]                    @relation("FinancePaymentCreator")
+  createdFinanceCreditTransactions                   FinanceCreditTransaction[]          @relation("FinanceCreditTransactionCreator")
+  createdFinanceRefunds                              FinanceRefund[]                     @relation("FinanceRefundCreator")
+  createdFinanceComponents                           FinanceComponent[]                  @relation("FinanceComponentCreator")
+  createdFinanceTariffRules                          FinanceTariffRule[]                 @relation("FinanceTariffRuleCreator")
+  financeAdjustmentRules                             FinanceAdjustmentRule[]             @relation("FinanceAdjustmentRuleStudent")
+  createdFinanceAdjustmentRules                      FinanceAdjustmentRule[]             @relation("FinanceAdjustmentRuleCreator")
+  createdFinanceWriteOffRequests                     FinanceWriteOffRequest[]            @relation("FinanceWriteOffRequester")
+  headTuDecidedFinanceWriteOffs                      FinanceWriteOffRequest[]            @relation("FinanceWriteOffHeadTuDecisionBy")
+  principalDecidedFinanceWriteOffs                   FinanceWriteOffRequest[]            @relation("FinanceWriteOffPrincipalDecisionBy")
+  appliedFinanceWriteOffs                            FinanceWriteOffRequest[]            @relation("FinanceWriteOffAppliedBy")
+  createdFinancePaymentReversalRequests              FinancePaymentReversalRequest[]     @relation("FinancePaymentReversalRequester")
+  headTuDecidedFinancePaymentReversals               FinancePaymentReversalRequest[]     @relation("FinancePaymentReversalHeadTuDecisionBy")
+  principalDecidedFinancePaymentReversals            FinancePaymentReversalRequest[]     @relation("FinancePaymentReversalPrincipalDecisionBy")
+  appliedFinancePaymentReversals                     FinancePaymentReversalRequest[]     @relation("FinancePaymentReversalAppliedBy")
+  openedFinanceCashSessions                          FinanceCashSession[]                @relation("FinanceCashSessionOpenedBy")
+  closedFinanceCashSessions                          FinanceCashSession[]                @relation("FinanceCashSessionClosedBy")
+  headTuReviewedFinanceCashSessions                  FinanceCashSession[]                @relation("FinanceCashSessionHeadTuDecisionBy")
+  principalReviewedFinanceCashSessions               FinanceCashSession[]                @relation("FinanceCashSessionPrincipalDecisionBy")
+  requestedFinanceClosingPeriods                     FinanceClosingPeriod[]              @relation("FinanceClosingPeriodRequestedBy")
+  headTuReviewedFinanceClosingPeriods                FinanceClosingPeriod[]              @relation("FinanceClosingPeriodHeadTuDecisionBy")
+  principalReviewedFinanceClosingPeriods             FinanceClosingPeriod[]              @relation("FinanceClosingPeriodPrincipalDecisionBy")
+  closedFinanceClosingPeriods                        FinanceClosingPeriod[]              @relation("FinanceClosingPeriodClosedBy")
+  reopenedFinanceClosingPeriods                      FinanceClosingPeriod[]              @relation("FinanceClosingPeriodReopenedBy")
+  createdFinanceClosingPeriodReopenRequests          FinanceClosingPeriodReopenRequest[] @relation("FinanceClosingPeriodReopenRequester")
+  headTuDecidedFinanceClosingPeriodReopenRequests    FinanceClosingPeriodReopenRequest[] @relation("FinanceClosingPeriodReopenHeadTuDecisionBy")
   principalDecidedFinanceClosingPeriodReopenRequests FinanceClosingPeriodReopenRequest[] @relation("FinanceClosingPeriodReopenPrincipalDecisionBy")
-  appliedFinanceClosingPeriodReopenRequests FinanceClosingPeriodReopenRequest[] @relation("FinanceClosingPeriodReopenAppliedBy")
-  createdFinanceBankAccounts     FinanceBankAccount[]                     @relation("FinanceBankAccountCreatedBy")
-  createdFinanceBankReconciliations FinanceBankReconciliation[]           @relation("FinanceBankReconciliationCreatedBy")
-  finalizedFinanceBankReconciliations FinanceBankReconciliation[]         @relation("FinanceBankReconciliationFinalizedBy")
-  createdFinanceBankStatementEntries FinanceBankStatementEntry[]          @relation("FinanceBankStatementEntryCreatedBy")
-  pklAssessments                 PklAssessment[]
-  reportNotes                    ReportNote[]
-  achievements                   StudentAchievement[]
-  examSessions                   StudentExamSession[]
-  studentGrades                  StudentGrade[]
-  scoreEntries                   StudentScoreEntry[]
-  submissions                    Submission[]
-  teacherAssignments             TeacherAssignment[]
-  documents                      TeacherDocument[]
-  teachingDevices                TeachingDevice[]
-  trainingSubmissions            TrainingAssignmentSubmission[]
-  trainingClassesTeaching        TrainingClass[]                  @relation("TrainingInstructor")
-  trainingEnrollments            TrainingEnrollment[]
-  trainingExamAnswers            TrainingExamAnswer[]
-  trainingExamScores             TrainingExamScore[]
-  ukkAssessmentsAsExaminer       UkkAssessment[]                  @relation("AssessmentExaminer")
-  ukkAssessmentsAsStudent        UkkAssessment[]                  @relation("StudentUkk")
-  createdUkkSchemes              UkkScheme[]                      @relation("SchemeCreator")
-  studentClass                   Class?                           @relation("StudentClass", fields: [classId], references: [id])
-  examinerMajor                  Major?                           @relation("ExaminerMajor", fields: [examinerMajorId], references: [id])
-  approvedWorkPrograms           WorkProgram[]                    @relation("WorkProgramApprover")
-  ekskulTutorAssignments         EkstrakurikulerTutorAssignment[]
-  ledClasses                     Class[]                          @relation("ClassPresident")
-  assignedWorkPrograms           WorkProgram[]                    @relation("WorkProgramAssignedApprover")
-  workPrograms                   WorkProgram[]                    @relation("WorkProgramOwner")
-  managedMajors                  Major[]                          @relation("MajorHeads")
-  children                       User[]                           @relation("ParentChildren")
-  parents                        User[]                           @relation("ParentChildren")
-  assignedUkkSchemes             UkkScheme[]                      @relation("SchemeAssignedExaminers")
-  behaviors                      StudentBehavior[]
-  bpbkCounselingAsStudent        BpBkCounseling[]                 @relation("BpBkCounselingStudent")
-  bpbkCounselingAsCounselor      BpBkCounseling[]                 @relation("BpBkCounselingCounselor")
-  studentExamRestrictions        StudentExamRestriction[]
-  studentExamProgramRestrictions StudentExamProgramRestriction[]
-  studentPermissions             StudentPermission[]              @relation("StudentPermissions")
-  approvedPermissions            StudentPermission[]              @relation("PermissionApprover")
-  createdQuestionBanks           QuestionBank[]                   @relation("BankAuthor")
-  budgetLpjInvoicesCreated       BudgetLpjInvoice[]               @relation("BudgetLpjInvoiceCreator")
-  libraryBookLoansCreated        LibraryBookLoan[]                @relation("LibraryLoanCreator")
-  libraryBookLoansBorrowed       LibraryBookLoan[]                @relation("LibraryLoanBorrower")
-  officeLettersCreated           OfficeLetter[]                   @relation("OfficeLetterCreator")
-  officeLettersRecipient         OfficeLetter[]                   @relation("OfficeLetterRecipient")
-  managedInventoryRooms          Room[]                           @relation("ManagedInventoryRooms")
-  createdOsisElectionPeriods     OsisElectionPeriod[]             @relation("OsisElectionCreator")
-  osisElectionCandidacies        OsisElectionCandidate[]          @relation("OsisElectionCandidateStudent")
-  osisElectionVotes              OsisElectionVote[]               @relation("OsisElectionVoter")
+  appliedFinanceClosingPeriodReopenRequests          FinanceClosingPeriodReopenRequest[] @relation("FinanceClosingPeriodReopenAppliedBy")
+  createdFinanceBankAccounts                         FinanceBankAccount[]                @relation("FinanceBankAccountCreatedBy")
+  createdFinanceBankReconciliations                  FinanceBankReconciliation[]         @relation("FinanceBankReconciliationCreatedBy")
+  finalizedFinanceBankReconciliations                FinanceBankReconciliation[]         @relation("FinanceBankReconciliationFinalizedBy")
+  createdFinanceBankStatementEntries                 FinanceBankStatementEntry[]         @relation("FinanceBankStatementEntryCreatedBy")
+  pklAssessments                                     PklAssessment[]
+  reportNotes                                        ReportNote[]
+  achievements                                       StudentAchievement[]
+  examSessions                                       StudentExamSession[]
+  studentGrades                                      StudentGrade[]
+  scoreEntries                                       StudentScoreEntry[]
+  submissions                                        Submission[]
+  teacherAssignments                                 TeacherAssignment[]
+  documents                                          TeacherDocument[]
+  teachingDevices                                    TeachingDevice[]
+  trainingSubmissions                                TrainingAssignmentSubmission[]
+  trainingClassesTeaching                            TrainingClass[]                     @relation("TrainingInstructor")
+  trainingEnrollments                                TrainingEnrollment[]
+  trainingExamAnswers                                TrainingExamAnswer[]
+  trainingExamScores                                 TrainingExamScore[]
+  ukkAssessmentsAsExaminer                           UkkAssessment[]                     @relation("AssessmentExaminer")
+  ukkAssessmentsAsStudent                            UkkAssessment[]                     @relation("StudentUkk")
+  createdUkkSchemes                                  UkkScheme[]                         @relation("SchemeCreator")
+  studentClass                                       Class?                              @relation("StudentClass", fields: [classId], references: [id])
+  examinerMajor                                      Major?                              @relation("ExaminerMajor", fields: [examinerMajorId], references: [id])
+  approvedWorkPrograms                               WorkProgram[]                       @relation("WorkProgramApprover")
+  ekskulTutorAssignments                             EkstrakurikulerTutorAssignment[]
+  ledClasses                                         Class[]                             @relation("ClassPresident")
+  assignedWorkPrograms                               WorkProgram[]                       @relation("WorkProgramAssignedApprover")
+  workPrograms                                       WorkProgram[]                       @relation("WorkProgramOwner")
+  managedMajors                                      Major[]                             @relation("MajorHeads")
+  children                                           User[]                              @relation("ParentChildren")
+  parents                                            User[]                              @relation("ParentChildren")
+  assignedUkkSchemes                                 UkkScheme[]                         @relation("SchemeAssignedExaminers")
+  behaviors                                          StudentBehavior[]
+  bpbkCounselingAsStudent                            BpBkCounseling[]                    @relation("BpBkCounselingStudent")
+  bpbkCounselingAsCounselor                          BpBkCounseling[]                    @relation("BpBkCounselingCounselor")
+  studentExamRestrictions                            StudentExamRestriction[]
+  studentExamProgramRestrictions                     StudentExamProgramRestriction[]
+  studentPermissions                                 StudentPermission[]                 @relation("StudentPermissions")
+  academicMemberships                                StudentAcademicMembership[]
+  promotionRunsCreated                               PromotionRun[]                      @relation("PromotionRunCreatedBy")
+  promotionRunItems                                  PromotionRunItem[]                  @relation("PromotionRunStudent")
+  approvedPermissions                                StudentPermission[]                 @relation("PermissionApprover")
+  createdQuestionBanks                               QuestionBank[]                      @relation("BankAuthor")
+  budgetLpjInvoicesCreated                           BudgetLpjInvoice[]                  @relation("BudgetLpjInvoiceCreator")
+  libraryBookLoansCreated                            LibraryBookLoan[]                   @relation("LibraryLoanCreator")
+  libraryBookLoansBorrowed                           LibraryBookLoan[]                   @relation("LibraryLoanBorrower")
+  officeLettersCreated                               OfficeLetter[]                      @relation("OfficeLetterCreator")
+  officeLettersRecipient                             OfficeLetter[]                      @relation("OfficeLetterRecipient")
+  managedInventoryRooms                              Room[]                              @relation("ManagedInventoryRooms")
+  createdOsisElectionPeriods                         OsisElectionPeriod[]                @relation("OsisElectionCreator")
+  osisElectionCandidacies                            OsisElectionCandidate[]             @relation("OsisElectionCandidateStudent")
+  osisElectionVotes                                  OsisElectionVote[]                  @relation("OsisElectionVoter")
   // Internship Relations
-  internships                    Internship[]                     @relation("StudentInternship")
-  guidedInternships              Internship[]                     @relation("TeacherInternship")
-  examinedInternships            Internship[]                     @relation("ExaminerInternship")
-  candidateAdmission            CandidateAdmission?
-  candidateAdmissionAssessments CandidateAdmissionAssessment[]   @relation("CandidateAdmissionAssessments")
-  jobApplicantProfile            JobApplicantProfile?
-  jobApplications                JobApplication[]                @relation("JobApplications")
-  jobApplicationAssessments      JobApplicationAssessment[]      @relation("JobApplicationAssessments")
+  internships                                        Internship[]                        @relation("StudentInternship")
+  guidedInternships                                  Internship[]                        @relation("TeacherInternship")
+  examinedInternships                                Internship[]                        @relation("ExaminerInternship")
+  candidateAdmission                                 CandidateAdmission?
+  candidateAdmissionAssessments                      CandidateAdmissionAssessment[]      @relation("CandidateAdmissionAssessments")
+  jobApplicantProfile                                JobApplicantProfile?
+  jobApplications                                    JobApplication[]                    @relation("JobApplications")
+  jobApplicationAssessments                          JobApplicationAssessment[]          @relation("JobApplicationAssessments")
 
   @@map("users")
 }
@@ -310,40 +313,45 @@ model AcademicYear {
   teachingResourceEntries        TeachingResourceEntry[]
   bpbkCounselings                BpBkCounseling[]
   officeLetters                  OfficeLetter[]
+  sourcePromotionMappings        PromotionClassMapping[]          @relation("PromotionSourceAcademicYear")
+  targetPromotionMappings        PromotionClassMapping[]          @relation("PromotionTargetAcademicYear")
+  sourcePromotionRuns            PromotionRun[]                   @relation("PromotionSourceRuns")
+  targetPromotionRuns            PromotionRun[]                   @relation("PromotionTargetRuns")
+  academicMemberships            StudentAcademicMembership[]
 
   @@map("academic_years")
 }
 
 model ExamProgramConfig {
-  id                     Int                @id @default(autoincrement())
-  academicYearId         Int
-  code                   String
-  baseType               ExamType           @default(FORMATIF)
-  baseTypeCode           String             @default("FORMATIF")
-  gradeComponentType     GradeComponentType @default(FORMATIVE)
-  gradeComponentTypeCode String             @default("FORMATIVE")
-  gradeComponentCode     String             @default("FORMATIVE")
-  gradeComponentLabel    String?
-  gradeEntryMode         GradeEntryMode     @default(SINGLE_SCORE)
-  gradeEntryModeCode     String             @default("SINGLE_SCORE")
-  displayLabel           String
-  shortLabel             String?
-  description            String?
-  fixedSemester          Semester?
-  displayOrder           Int                @default(0)
-  isActive               Boolean            @default(true)
-  showOnTeacherMenu      Boolean            @default(true)
-  showOnStudentMenu      Boolean            @default(true)
-  targetClassLevels      String[]           @default([])
-  allowedSubjectIds      Int[]              @default([])
-  allowedAuthorIds       Int[]              @default([])
-  financeClearanceMode   String             @default("BLOCK_ANY_OUTSTANDING")
-  financeMinOutstandingAmount Float         @default(0)
-  financeMinOverdueInvoices Int             @default(1)
-  financeClearanceNotes  String?
-  createdAt              DateTime           @default(now())
-  updatedAt              DateTime           @updatedAt
-  academicYear           AcademicYear       @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  id                          Int                @id @default(autoincrement())
+  academicYearId              Int
+  code                        String
+  baseType                    ExamType           @default(FORMATIF)
+  baseTypeCode                String             @default("FORMATIF")
+  gradeComponentType          GradeComponentType @default(FORMATIVE)
+  gradeComponentTypeCode      String             @default("FORMATIVE")
+  gradeComponentCode          String             @default("FORMATIVE")
+  gradeComponentLabel         String?
+  gradeEntryMode              GradeEntryMode     @default(SINGLE_SCORE)
+  gradeEntryModeCode          String             @default("SINGLE_SCORE")
+  displayLabel                String
+  shortLabel                  String?
+  description                 String?
+  fixedSemester               Semester?
+  displayOrder                Int                @default(0)
+  isActive                    Boolean            @default(true)
+  showOnTeacherMenu           Boolean            @default(true)
+  showOnStudentMenu           Boolean            @default(true)
+  targetClassLevels           String[]           @default([])
+  allowedSubjectIds           Int[]              @default([])
+  allowedAuthorIds            Int[]              @default([])
+  financeClearanceMode        String             @default("BLOCK_ANY_OUTSTANDING")
+  financeMinOutstandingAmount Float              @default(0)
+  financeMinOverdueInvoices   Int                @default(1)
+  financeClearanceNotes       String?
+  createdAt                   DateTime           @default(now())
+  updatedAt                   DateTime           @updatedAt
+  academicYear                AcademicYear       @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
 
   @@unique([academicYearId, code])
   @@index([academicYearId, displayOrder])
@@ -529,49 +537,144 @@ model AcademicEvent {
 }
 
 model Major {
-  id                 Int                 @id @default(autoincrement())
-  name               String
-  code               String              @unique
-  description        String?
-  classes            Class[]
-  candidateAdmissions CandidateAdmission[]
-  financeTariffRules FinanceTariffRule[]
+  id                     Int                     @id @default(autoincrement())
+  name                   String
+  code                   String                  @unique
+  description            String?
+  classes                Class[]
+  candidateAdmissions    CandidateAdmission[]
+  financeTariffRules     FinanceTariffRule[]
   financeAdjustmentRules FinanceAdjustmentRule[]
-  ukkSchemes         UkkScheme[]
-  examiners          User[]              @relation("ExaminerMajor")
-  workPrograms       WorkProgram[]
-  heads              User[]              @relation("MajorHeads")
+  ukkSchemes             UkkScheme[]
+  examiners              User[]                  @relation("ExaminerMajor")
+  workPrograms           WorkProgram[]
+  heads                  User[]                  @relation("MajorHeads")
 
   @@map("majors")
 }
 
 model Class {
-  id                 Int                 @id @default(autoincrement())
-  name               String
-  level              String
-  majorId            Int
-  academicYearId     Int
-  teacherId          Int?
-  presidentId        Int?
-  assignments        Assignment[]
-  attendances        Attendance[]
-  academicYear       AcademicYear        @relation(fields: [academicYearId], references: [id])
-  major              Major               @relation(fields: [majorId], references: [id])
-  teacher            User?               @relation("ClassTeacher", fields: [teacherId], references: [id])
-  president          User?               @relation("ClassPresident", fields: [presidentId], references: [id])
-  dailyAttendances   DailyAttendance[]
-  examSchedules      ExamSchedule[]
-  materials          Material[]
-  scheduleEntries    ScheduleEntry[]
-  teacherAssignments TeacherAssignment[]
-  students           User[]              @relation("StudentClass")
-  financeTariffRules FinanceTariffRule[]
-  financeAdjustmentRules FinanceAdjustmentRule[]
-  studentBehaviors   StudentBehavior[]
-  bpbkCounselings    BpBkCounseling[]
-  libraryBookLoans   LibraryBookLoan[]
+  id                      Int                         @id @default(autoincrement())
+  name                    String
+  level                   String
+  majorId                 Int
+  academicYearId          Int
+  teacherId               Int?
+  presidentId             Int?
+  assignments             Assignment[]
+  attendances             Attendance[]
+  academicYear            AcademicYear                @relation(fields: [academicYearId], references: [id])
+  major                   Major                       @relation(fields: [majorId], references: [id])
+  teacher                 User?                       @relation("ClassTeacher", fields: [teacherId], references: [id])
+  president               User?                       @relation("ClassPresident", fields: [presidentId], references: [id])
+  dailyAttendances        DailyAttendance[]
+  examSchedules           ExamSchedule[]
+  materials               Material[]
+  scheduleEntries         ScheduleEntry[]
+  teacherAssignments      TeacherAssignment[]
+  students                User[]                      @relation("StudentClass")
+  financeTariffRules      FinanceTariffRule[]
+  financeAdjustmentRules  FinanceAdjustmentRule[]
+  studentBehaviors        StudentBehavior[]
+  bpbkCounselings         BpBkCounseling[]
+  libraryBookLoans        LibraryBookLoan[]
+  academicMemberships     StudentAcademicMembership[]
+  sourcePromotionMappings PromotionClassMapping[]     @relation("PromotionSourceClass")
+  targetPromotionMappings PromotionClassMapping[]     @relation("PromotionTargetClass")
+  sourcePromotionRunItems PromotionRunItem[]          @relation("PromotionSourceRunClass")
+  targetPromotionRunItems PromotionRunItem[]          @relation("PromotionTargetRunClass")
 
   @@map("classes")
+}
+
+model StudentAcademicMembership {
+  id             Int                             @id @default(autoincrement())
+  studentId      Int
+  academicYearId Int
+  classId        Int?
+  status         StudentAcademicMembershipStatus @default(ACTIVE)
+  isCurrent      Boolean                         @default(false)
+  startedAt      DateTime?
+  endedAt        DateTime?
+  promotionRunId Int?
+  createdAt      DateTime                        @default(now())
+  updatedAt      DateTime                        @updatedAt
+  student        User                            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear                    @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  class          Class?                          @relation(fields: [classId], references: [id], onDelete: SetNull)
+  promotionRun   PromotionRun?                   @relation(fields: [promotionRunId], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, academicYearId])
+  @@index([academicYearId, classId])
+  @@index([studentId, isCurrent])
+  @@map("student_academic_memberships")
+}
+
+model PromotionClassMapping {
+  id                   Int             @id @default(autoincrement())
+  sourceAcademicYearId Int
+  targetAcademicYearId Int
+  sourceClassId        Int
+  targetClassId        Int?
+  action               PromotionAction
+  sourceLevel          String
+  targetLevel          String?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  sourceAcademicYear   AcademicYear    @relation("PromotionSourceAcademicYear", fields: [sourceAcademicYearId], references: [id], onDelete: Cascade)
+  targetAcademicYear   AcademicYear    @relation("PromotionTargetAcademicYear", fields: [targetAcademicYearId], references: [id], onDelete: Cascade)
+  sourceClass          Class           @relation("PromotionSourceClass", fields: [sourceClassId], references: [id], onDelete: Cascade)
+  targetClass          Class?          @relation("PromotionTargetClass", fields: [targetClassId], references: [id], onDelete: SetNull)
+
+  @@unique([sourceAcademicYearId, targetAcademicYearId, sourceClassId])
+  @@index([targetAcademicYearId, targetClassId])
+  @@map("promotion_class_mappings")
+}
+
+model PromotionRun {
+  id                   Int                         @id @default(autoincrement())
+  sourceAcademicYearId Int
+  targetAcademicYearId Int
+  createdById          Int?
+  status               PromotionRunStatus          @default(COMMITTED)
+  activateTargetYear   Boolean                     @default(false)
+  totalClasses         Int                         @default(0)
+  totalStudents        Int                         @default(0)
+  promotedStudents     Int                         @default(0)
+  graduatedStudents    Int                         @default(0)
+  summary              Json?
+  committedAt          DateTime?
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+  sourceAcademicYear   AcademicYear                @relation("PromotionSourceRuns", fields: [sourceAcademicYearId], references: [id], onDelete: Cascade)
+  targetAcademicYear   AcademicYear                @relation("PromotionTargetRuns", fields: [targetAcademicYearId], references: [id], onDelete: Cascade)
+  createdBy            User?                       @relation("PromotionRunCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  items                PromotionRunItem[]
+  memberships          StudentAcademicMembership[]
+
+  @@index([sourceAcademicYearId, targetAcademicYearId, createdAt])
+  @@map("promotion_runs")
+}
+
+model PromotionRunItem {
+  id                  Int             @id @default(autoincrement())
+  promotionRunId      Int
+  studentId           Int
+  sourceClassId       Int
+  targetClassId       Int?
+  action              PromotionAction
+  beforeStudentStatus StudentStatus?
+  afterStudentStatus  StudentStatus
+  note                String?
+  createdAt           DateTime        @default(now())
+  promotionRun        PromotionRun    @relation(fields: [promotionRunId], references: [id], onDelete: Cascade)
+  student             User            @relation("PromotionRunStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  sourceClass         Class           @relation("PromotionSourceRunClass", fields: [sourceClassId], references: [id], onDelete: Cascade)
+  targetClass         Class?          @relation("PromotionTargetRunClass", fields: [targetClassId], references: [id], onDelete: SetNull)
+
+  @@index([promotionRunId, action])
+  @@index([studentId, promotionRunId])
+  @@map("promotion_run_items")
 }
 
 model Subject {
@@ -1016,9 +1119,9 @@ model EkstrakurikulerEnrollment {
   gradeSat      String?
   descSat       String?
 
-  ekskul       Ekstrakurikuler @relation(fields: [ekskulId], references: [id])
-  student      User            @relation(fields: [studentId], references: [id])
-  academicYear AcademicYear    @relation(fields: [academicYearId], references: [id])
+  ekskul            Ekstrakurikuler                  @relation(fields: [ekskulId], references: [id])
+  student           User                             @relation(fields: [studentId], references: [id])
+  academicYear      AcademicYear                     @relation(fields: [academicYearId], references: [id])
   attendanceEntries EkstrakurikulerAttendanceEntry[]
 
   @@map("ekstrakurikuler_enrollments")
@@ -1033,9 +1136,9 @@ model EkstrakurikulerTutorAssignment {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  tutor        User            @relation(fields: [tutorId], references: [id])
-  ekskul       Ekstrakurikuler @relation(fields: [ekskulId], references: [id])
-  academicYear AcademicYear    @relation(fields: [academicYearId], references: [id])
+  tutor            User                             @relation(fields: [tutorId], references: [id])
+  ekskul           Ekstrakurikuler                  @relation(fields: [ekskulId], references: [id])
+  academicYear     AcademicYear                     @relation(fields: [academicYearId], references: [id])
   attendanceConfig EkstrakurikulerAttendanceConfig?
   attendanceWeeks  EkstrakurikulerAttendanceWeek[]
 
@@ -1044,24 +1147,24 @@ model EkstrakurikulerTutorAssignment {
 }
 
 model EkstrakurikulerAttendanceConfig {
-  id               Int      @id @default(autoincrement())
-  tutorAssignmentId Int     @unique
-  sessionsPerWeek  Int      @default(1)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  tutorAssignment  EkstrakurikulerTutorAssignment @relation(fields: [tutorAssignmentId], references: [id], onDelete: Cascade)
+  id                Int                            @id @default(autoincrement())
+  tutorAssignmentId Int                            @unique
+  sessionsPerWeek   Int                            @default(1)
+  createdAt         DateTime                       @default(now())
+  updatedAt         DateTime                       @updatedAt
+  tutorAssignment   EkstrakurikulerTutorAssignment @relation(fields: [tutorAssignmentId], references: [id], onDelete: Cascade)
 
   @@map("ekstrakurikuler_attendance_configs")
 }
 
 model EkstrakurikulerAttendanceWeek {
-  id               Int      @id @default(autoincrement())
+  id                Int                              @id @default(autoincrement())
   tutorAssignmentId Int
-  weekKey          String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  tutorAssignment  EkstrakurikulerTutorAssignment @relation(fields: [tutorAssignmentId], references: [id], onDelete: Cascade)
-  entries          EkstrakurikulerAttendanceEntry[]
+  weekKey           String
+  createdAt         DateTime                         @default(now())
+  updatedAt         DateTime                         @updatedAt
+  tutorAssignment   EkstrakurikulerTutorAssignment   @relation(fields: [tutorAssignmentId], references: [id], onDelete: Cascade)
+  entries           EkstrakurikulerAttendanceEntry[]
 
   @@unique([tutorAssignmentId, weekKey], map: "ekskul_attendance_week_unique_scope")
   @@index([tutorAssignmentId], map: "ekskul_attendance_week_assignment_idx")
@@ -1069,14 +1172,14 @@ model EkstrakurikulerAttendanceWeek {
 }
 
 model EkstrakurikulerAttendanceEntry {
-  id           Int      @id @default(autoincrement())
+  id           Int                           @id @default(autoincrement())
   weekId       Int
   enrollmentId Int
   sessionIndex Int
   status       String
   note         String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime                      @default(now())
+  updatedAt    DateTime                      @updatedAt
   week         EkstrakurikulerAttendanceWeek @relation(fields: [weekId], references: [id], onDelete: Cascade)
   enrollment   EkstrakurikulerEnrollment     @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
 
@@ -1300,26 +1403,26 @@ model WorkProgram {
 }
 
 model OfficeLetter {
-  id               Int          @id @default(autoincrement())
-  academicYearId   Int
-  createdById      Int
-  recipientId      Int?
-  type             String
-  letterNumber     String
-  title            String
-  recipientName    String
-  recipientRole    String?
-  recipientClass   String?
-  recipientPrimaryId String?
-  purpose          String?
-  notes            String?
-  payload          Json?
-  printedAt        DateTime?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-  academicYear     AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  createdBy        User         @relation("OfficeLetterCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  recipient        User?        @relation("OfficeLetterRecipient", fields: [recipientId], references: [id], onDelete: SetNull)
+  id                         Int                 @id @default(autoincrement())
+  academicYearId             Int
+  createdById                Int
+  recipientId                Int?
+  type                       String
+  letterNumber               String
+  title                      String
+  recipientName              String
+  recipientRole              String?
+  recipientClass             String?
+  recipientPrimaryId         String?
+  purpose                    String?
+  notes                      String?
+  payload                    Json?
+  printedAt                  DateTime?
+  createdAt                  DateTime            @default(now())
+  updatedAt                  DateTime            @updatedAt
+  academicYear               AcademicYear        @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  createdBy                  User                @relation("OfficeLetterCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  recipient                  User?               @relation("OfficeLetterRecipient", fields: [recipientId], references: [id], onDelete: SetNull)
   candidateAdmissionDecision CandidateAdmission? @relation("CandidateAdmissionDecisionLetter")
 
   @@unique([academicYearId, letterNumber])
@@ -1457,49 +1560,49 @@ model Payment {
 }
 
 model FinanceComponent {
-  id           Int                         @id @default(autoincrement())
-  code         String                      @unique
-  name         String
-  description  String?
-  periodicity  FinanceComponentPeriodicity @default(ONE_TIME)
-  lateFeeEnabled Boolean                   @default(false)
-  lateFeeMode   FinanceLateFeeMode         @default(FIXED)
-  lateFeeAmount Float                      @default(0)
-  lateFeeGraceDays Int                     @default(0)
+  id               Int                         @id @default(autoincrement())
+  code             String                      @unique
+  name             String
+  description      String?
+  periodicity      FinanceComponentPeriodicity @default(ONE_TIME)
+  lateFeeEnabled   Boolean                     @default(false)
+  lateFeeMode      FinanceLateFeeMode          @default(FIXED)
+  lateFeeAmount    Float                       @default(0)
+  lateFeeGraceDays Int                         @default(0)
   lateFeeCapAmount Float?
-  isActive     Boolean                     @default(true)
-  createdById  Int?
-  createdAt    DateTime                    @default(now())
-  updatedAt    DateTime                    @updatedAt
-  createdBy    User?                       @relation("FinanceComponentCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  tariffRules  FinanceTariffRule[]
-  adjustmentRules FinanceAdjustmentRule[]
-  invoiceItems FinanceInvoiceItem[]
+  isActive         Boolean                     @default(true)
+  createdById      Int?
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+  createdBy        User?                       @relation("FinanceComponentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  tariffRules      FinanceTariffRule[]
+  adjustmentRules  FinanceAdjustmentRule[]
+  invoiceItems     FinanceInvoiceItem[]
 
   @@index([isActive])
   @@map("finance_components")
 }
 
 model FinanceReminderPolicy {
-  id                            Int      @id @default(1)
-  isActive                      Boolean  @default(true)
-  dueSoonDays                   Int      @default(3)
-  dueSoonRepeatIntervalDays     Int      @default(1)
-  overdueRepeatIntervalDays     Int      @default(3)
-  lateFeeWarningEnabled         Boolean  @default(true)
-  lateFeeWarningRepeatIntervalDays Int   @default(3)
-  escalationEnabled             Boolean  @default(true)
-  escalationStartDays           Int      @default(7)
-  escalationRepeatIntervalDays  Int      @default(3)
-  escalationMinOutstandingAmount Float   @default(0)
-  sendStudentReminder           Boolean  @default(true)
-  sendParentReminder            Boolean  @default(true)
-  escalateToFinanceStaff        Boolean  @default(true)
-  escalateToHeadTu              Boolean  @default(true)
-  escalateToPrincipal           Boolean  @default(false)
-  notes                         String?
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
+  id                               Int      @id @default(1)
+  isActive                         Boolean  @default(true)
+  dueSoonDays                      Int      @default(3)
+  dueSoonRepeatIntervalDays        Int      @default(1)
+  overdueRepeatIntervalDays        Int      @default(3)
+  lateFeeWarningEnabled            Boolean  @default(true)
+  lateFeeWarningRepeatIntervalDays Int      @default(3)
+  escalationEnabled                Boolean  @default(true)
+  escalationStartDays              Int      @default(7)
+  escalationRepeatIntervalDays     Int      @default(3)
+  escalationMinOutstandingAmount   Float    @default(0)
+  sendStudentReminder              Boolean  @default(true)
+  sendParentReminder               Boolean  @default(true)
+  escalateToFinanceStaff           Boolean  @default(true)
+  escalateToHeadTu                 Boolean  @default(true)
+  escalateToPrincipal              Boolean  @default(false)
+  notes                            String?
+  createdAt                        DateTime @default(now())
+  updatedAt                        DateTime @updatedAt
 
   @@map("finance_reminder_policy")
 }
@@ -1534,20 +1637,20 @@ model FinanceClosingPeriodApprovalPolicy {
 }
 
 model FinanceBankAccount {
-  id            Int                         @id @default(autoincrement())
-  code          String                      @unique
-  bankName      String
-  accountName   String
-  accountNumber String
-  branch        String?
-  notes         String?
-  isActive      Boolean                     @default(true)
-  createdById   Int?
-  createdAt     DateTime                    @default(now())
-  updatedAt     DateTime                    @updatedAt
-  createdBy     User?                       @relation("FinanceBankAccountCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  payments      FinancePayment[]
-  refunds       FinanceRefund[]
+  id              Int                         @id @default(autoincrement())
+  code            String                      @unique
+  bankName        String
+  accountName     String
+  accountNumber   String
+  branch          String?
+  notes           String?
+  isActive        Boolean                     @default(true)
+  createdById     Int?
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+  createdBy       User?                       @relation("FinanceBankAccountCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  payments        FinancePayment[]
+  refunds         FinanceRefund[]
   reconciliations FinanceBankReconciliation[]
 
   @@index([isActive, bankName])
@@ -1618,30 +1721,30 @@ model FinanceAdjustmentRule {
 }
 
 model FinanceInvoice {
-  id             Int                  @id @default(autoincrement())
-  invoiceNo      String               @unique
-  studentId      Int
-  academicYearId Int?
-  semester       Semester
-  periodKey      String
-  title          String?
-  dueDate        DateTime?
-  totalAmount    Float                @default(0)
-  paidAmount     Float                @default(0)
-  writtenOffAmount Float              @default(0)
-  balanceAmount  Float                @default(0)
-  status         FinanceInvoiceStatus @default(UNPAID)
-  createdById    Int?
-  issuedAt       DateTime             @default(now())
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  student        User                 @relation("FinanceInvoiceStudent", fields: [studentId], references: [id], onDelete: Cascade)
-  academicYear   AcademicYear?        @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
-  createdBy      User?                @relation("FinanceInvoiceCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  items          FinanceInvoiceItem[]
-  payments       FinancePayment[]
-  installments   FinanceInvoiceInstallment[]
-  writeOffRequests FinanceWriteOffRequest[]
+  id                      Int                             @id @default(autoincrement())
+  invoiceNo               String                          @unique
+  studentId               Int
+  academicYearId          Int?
+  semester                Semester
+  periodKey               String
+  title                   String?
+  dueDate                 DateTime?
+  totalAmount             Float                           @default(0)
+  paidAmount              Float                           @default(0)
+  writtenOffAmount        Float                           @default(0)
+  balanceAmount           Float                           @default(0)
+  status                  FinanceInvoiceStatus            @default(UNPAID)
+  createdById             Int?
+  issuedAt                DateTime                        @default(now())
+  createdAt               DateTime                        @default(now())
+  updatedAt               DateTime                        @updatedAt
+  student                 User                            @relation("FinanceInvoiceStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear            AcademicYear?                   @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  createdBy               User?                           @relation("FinanceInvoiceCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  items                   FinanceInvoiceItem[]
+  payments                FinancePayment[]
+  installments            FinanceInvoiceInstallment[]
+  writeOffRequests        FinanceWriteOffRequest[]
   paymentReversalRequests FinancePaymentReversalRequest[]
 
   @@unique([studentId, semester, periodKey])
@@ -1669,41 +1772,41 @@ model FinanceInvoiceItem {
 }
 
 model FinancePayment {
-  id          Int                  @id @default(autoincrement())
-  paymentNo   String               @unique
-  studentId   Int
-  invoiceId   Int
-  bankAccountId Int?
-  amount      Float
-  allocatedAmount Float            @default(0)
-  creditedAmount Float             @default(0)
-  reversedAmount Float             @default(0)
-  reversedAllocatedAmount Float    @default(0)
-  reversedCreditedAmount Float     @default(0)
-  source      FinancePaymentSource @default(DIRECT)
-  method      FinancePaymentMethod @default(OTHER)
-  verificationStatus FinancePaymentVerificationStatus @default(VERIFIED)
-  verificationNote String?
-  verifiedAt  DateTime?
-  verifiedById Int?
-  referenceNo String?
-  note        String?
-  proofFileUrl String?
-  proofFileName String?
-  proofMimeType String?
-  proofFileSize Int?
-  paidAt      DateTime             @default(now())
-  createdById Int?
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  student     User                 @relation("FinancePaymentStudent", fields: [studentId], references: [id], onDelete: Cascade)
-  invoice     FinanceInvoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  bankAccount FinanceBankAccount?  @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
-  createdBy   User?                @relation("FinancePaymentCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  verifiedBy  User?                @relation("FinancePaymentVerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
-  creditTransactions FinanceCreditTransaction[]
-  reversalRequests FinancePaymentReversalRequest[]
-  bankStatementEntries FinanceBankStatementEntry[] @relation("FinanceBankStatementEntryPayment")
+  id                      Int                              @id @default(autoincrement())
+  paymentNo               String                           @unique
+  studentId               Int
+  invoiceId               Int
+  bankAccountId           Int?
+  amount                  Float
+  allocatedAmount         Float                            @default(0)
+  creditedAmount          Float                            @default(0)
+  reversedAmount          Float                            @default(0)
+  reversedAllocatedAmount Float                            @default(0)
+  reversedCreditedAmount  Float                            @default(0)
+  source                  FinancePaymentSource             @default(DIRECT)
+  method                  FinancePaymentMethod             @default(OTHER)
+  verificationStatus      FinancePaymentVerificationStatus @default(VERIFIED)
+  verificationNote        String?
+  verifiedAt              DateTime?
+  verifiedById            Int?
+  referenceNo             String?
+  note                    String?
+  proofFileUrl            String?
+  proofFileName           String?
+  proofMimeType           String?
+  proofFileSize           Int?
+  paidAt                  DateTime                         @default(now())
+  createdById             Int?
+  createdAt               DateTime                         @default(now())
+  updatedAt               DateTime                         @updatedAt
+  student                 User                             @relation("FinancePaymentStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  invoice                 FinanceInvoice                   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  bankAccount             FinanceBankAccount?              @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  createdBy               User?                            @relation("FinancePaymentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  verifiedBy              User?                            @relation("FinancePaymentVerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
+  creditTransactions      FinanceCreditTransaction[]
+  reversalRequests        FinancePaymentReversalRequest[]
+  bankStatementEntries    FinanceBankStatementEntry[]      @relation("FinanceBankStatementEntryPayment")
 
   @@index([studentId, paidAt])
   @@index([invoiceId, paidAt])
@@ -1729,36 +1832,36 @@ model FinanceInvoiceInstallment {
 }
 
 model FinanceWriteOffRequest {
-  id                     Int                    @id @default(autoincrement())
-  requestNo              String                 @unique
-  invoiceId              Int
-  studentId              Int
-  requestedAmount        Float
-  approvedAmount         Float?
-  appliedAmount          Float?
-  reason                 String
-  requestedNote          String?
-  status                 FinanceWriteOffStatus  @default(PENDING_HEAD_TU)
-  requestedById          Int
-  headTuApproved         Boolean?
-  headTuDecisionById     Int?
-  headTuDecisionAt       DateTime?
-  headTuDecisionNote     String?
-  principalApproved      Boolean?
-  principalDecisionById  Int?
-  principalDecisionAt    DateTime?
-  principalDecisionNote  String?
-  appliedById            Int?
-  appliedAt              DateTime?
-  applyNote              String?
-  createdAt              DateTime               @default(now())
-  updatedAt              DateTime               @updatedAt
-  invoice                FinanceInvoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  student                User                   @relation("FinanceWriteOffStudent", fields: [studentId], references: [id], onDelete: Cascade)
-  requestedBy            User                   @relation("FinanceWriteOffRequester", fields: [requestedById], references: [id], onDelete: Restrict)
-  headTuDecisionBy       User?                  @relation("FinanceWriteOffHeadTuDecisionBy", fields: [headTuDecisionById], references: [id], onDelete: SetNull)
-  principalDecisionBy    User?                  @relation("FinanceWriteOffPrincipalDecisionBy", fields: [principalDecisionById], references: [id], onDelete: SetNull)
-  appliedBy              User?                  @relation("FinanceWriteOffAppliedBy", fields: [appliedById], references: [id], onDelete: SetNull)
+  id                    Int                   @id @default(autoincrement())
+  requestNo             String                @unique
+  invoiceId             Int
+  studentId             Int
+  requestedAmount       Float
+  approvedAmount        Float?
+  appliedAmount         Float?
+  reason                String
+  requestedNote         String?
+  status                FinanceWriteOffStatus @default(PENDING_HEAD_TU)
+  requestedById         Int
+  headTuApproved        Boolean?
+  headTuDecisionById    Int?
+  headTuDecisionAt      DateTime?
+  headTuDecisionNote    String?
+  principalApproved     Boolean?
+  principalDecisionById Int?
+  principalDecisionAt   DateTime?
+  principalDecisionNote String?
+  appliedById           Int?
+  appliedAt             DateTime?
+  applyNote             String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  invoice               FinanceInvoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  student               User                  @relation("FinanceWriteOffStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  requestedBy           User                  @relation("FinanceWriteOffRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  headTuDecisionBy      User?                 @relation("FinanceWriteOffHeadTuDecisionBy", fields: [headTuDecisionById], references: [id], onDelete: SetNull)
+  principalDecisionBy   User?                 @relation("FinanceWriteOffPrincipalDecisionBy", fields: [principalDecisionById], references: [id], onDelete: SetNull)
+  appliedBy             User?                 @relation("FinanceWriteOffAppliedBy", fields: [appliedById], references: [id], onDelete: SetNull)
 
   @@index([invoiceId, status])
   @@index([studentId, status])
@@ -1767,44 +1870,44 @@ model FinanceWriteOffRequest {
 }
 
 model FinancePaymentReversalRequest {
-  id                         Int                          @id @default(autoincrement())
-  requestNo                  String                       @unique
-  paymentId                  Int
-  invoiceId                  Int
-  studentId                  Int
-  requestedAmount            Float
-  requestedAllocatedAmount   Float                        @default(0)
-  requestedCreditedAmount    Float                        @default(0)
-  approvedAmount             Float?
-  approvedAllocatedAmount    Float?
-  approvedCreditedAmount     Float?
-  appliedAmount              Float?
-  appliedAllocatedAmount     Float?
-  appliedCreditedAmount      Float?
-  reason                     String
-  requestedNote              String?
-  status                     FinancePaymentReversalStatus @default(PENDING_HEAD_TU)
-  requestedById              Int
-  headTuApproved             Boolean?
-  headTuDecisionById         Int?
-  headTuDecisionAt           DateTime?
-  headTuDecisionNote         String?
-  principalApproved          Boolean?
-  principalDecisionById      Int?
-  principalDecisionAt        DateTime?
-  principalDecisionNote      String?
-  appliedById                Int?
-  appliedAt                  DateTime?
-  applyNote                  String?
-  createdAt                  DateTime                     @default(now())
-  updatedAt                  DateTime                     @updatedAt
-  payment                    FinancePayment               @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  invoice                    FinanceInvoice               @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  student                    User                         @relation("FinancePaymentReversalStudent", fields: [studentId], references: [id], onDelete: Cascade)
-  requestedBy                User                         @relation("FinancePaymentReversalRequester", fields: [requestedById], references: [id], onDelete: Restrict)
-  headTuDecisionBy           User?                        @relation("FinancePaymentReversalHeadTuDecisionBy", fields: [headTuDecisionById], references: [id], onDelete: SetNull)
-  principalDecisionBy        User?                        @relation("FinancePaymentReversalPrincipalDecisionBy", fields: [principalDecisionById], references: [id], onDelete: SetNull)
-  appliedBy                  User?                        @relation("FinancePaymentReversalAppliedBy", fields: [appliedById], references: [id], onDelete: SetNull)
+  id                       Int                          @id @default(autoincrement())
+  requestNo                String                       @unique
+  paymentId                Int
+  invoiceId                Int
+  studentId                Int
+  requestedAmount          Float
+  requestedAllocatedAmount Float                        @default(0)
+  requestedCreditedAmount  Float                        @default(0)
+  approvedAmount           Float?
+  approvedAllocatedAmount  Float?
+  approvedCreditedAmount   Float?
+  appliedAmount            Float?
+  appliedAllocatedAmount   Float?
+  appliedCreditedAmount    Float?
+  reason                   String
+  requestedNote            String?
+  status                   FinancePaymentReversalStatus @default(PENDING_HEAD_TU)
+  requestedById            Int
+  headTuApproved           Boolean?
+  headTuDecisionById       Int?
+  headTuDecisionAt         DateTime?
+  headTuDecisionNote       String?
+  principalApproved        Boolean?
+  principalDecisionById    Int?
+  principalDecisionAt      DateTime?
+  principalDecisionNote    String?
+  appliedById              Int?
+  appliedAt                DateTime?
+  applyNote                String?
+  createdAt                DateTime                     @default(now())
+  updatedAt                DateTime                     @updatedAt
+  payment                  FinancePayment               @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice                  FinanceInvoice               @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  student                  User                         @relation("FinancePaymentReversalStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  requestedBy              User                         @relation("FinancePaymentReversalRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  headTuDecisionBy         User?                        @relation("FinancePaymentReversalHeadTuDecisionBy", fields: [headTuDecisionById], references: [id], onDelete: SetNull)
+  principalDecisionBy      User?                        @relation("FinancePaymentReversalPrincipalDecisionBy", fields: [principalDecisionById], references: [id], onDelete: SetNull)
+  appliedBy                User?                        @relation("FinancePaymentReversalAppliedBy", fields: [appliedById], references: [id], onDelete: SetNull)
 
   @@index([paymentId, status])
   @@index([invoiceId, status])
@@ -1814,14 +1917,14 @@ model FinancePaymentReversalRequest {
 }
 
 model FinanceCreditBalance {
-  id          Int                        @id @default(autoincrement())
-  studentId    Int                       @unique
-  balanceAmount Float                    @default(0)
-  createdAt   DateTime                   @default(now())
-  updatedAt   DateTime                   @updatedAt
-  student     User                       @relation("FinanceCreditBalanceStudent", fields: [studentId], references: [id], onDelete: Cascade)
-  transactions FinanceCreditTransaction[]
-  refunds     FinanceRefund[]
+  id            Int                        @id @default(autoincrement())
+  studentId     Int                        @unique
+  balanceAmount Float                      @default(0)
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+  student       User                       @relation("FinanceCreditBalanceStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  transactions  FinanceCreditTransaction[]
+  refunds       FinanceRefund[]
 
   @@index([balanceAmount])
   @@index([updatedAt])
@@ -1854,25 +1957,25 @@ model FinanceCreditTransaction {
 }
 
 model FinanceRefund {
-  id                  Int                  @id @default(autoincrement())
-  refundNo            String               @unique
-  studentId           Int
-  creditBalanceId     Int
-  creditTransactionId Int?                 @unique
-  bankAccountId       Int?
-  amount              Float
-  method              FinancePaymentMethod @default(OTHER)
-  referenceNo         String?
-  note                String?
-  refundedAt          DateTime             @default(now())
-  createdById         Int?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  student             User                 @relation("FinanceRefundStudent", fields: [studentId], references: [id], onDelete: Cascade)
-  creditBalance       FinanceCreditBalance @relation(fields: [creditBalanceId], references: [id], onDelete: Cascade)
-  creditTransaction   FinanceCreditTransaction? @relation(fields: [creditTransactionId], references: [id], onDelete: SetNull)
-  bankAccount         FinanceBankAccount?  @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
-  createdBy           User?                @relation("FinanceRefundCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  id                   Int                         @id @default(autoincrement())
+  refundNo             String                      @unique
+  studentId            Int
+  creditBalanceId      Int
+  creditTransactionId  Int?                        @unique
+  bankAccountId        Int?
+  amount               Float
+  method               FinancePaymentMethod        @default(OTHER)
+  referenceNo          String?
+  note                 String?
+  refundedAt           DateTime                    @default(now())
+  createdById          Int?
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+  student              User                        @relation("FinanceRefundStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  creditBalance        FinanceCreditBalance        @relation(fields: [creditBalanceId], references: [id], onDelete: Cascade)
+  creditTransaction    FinanceCreditTransaction?   @relation(fields: [creditTransactionId], references: [id], onDelete: SetNull)
+  bankAccount          FinanceBankAccount?         @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  createdBy            User?                       @relation("FinanceRefundCreator", fields: [createdById], references: [id], onDelete: SetNull)
   bankStatementEntries FinanceBankStatementEntry[] @relation("FinanceBankStatementEntryRefund")
 
   @@index([studentId, refundedAt])
@@ -1882,39 +1985,39 @@ model FinanceRefund {
 }
 
 model FinanceCashSession {
-  id                    Int                      @id @default(autoincrement())
-  sessionNo             String                   @unique
-  businessDate          DateTime
-  status                FinanceCashSessionStatus @default(OPEN)
-  approvalStatus        FinanceCashSessionApprovalStatus @default(NOT_SUBMITTED)
-  openingBalance        Float                    @default(0)
-  expectedCashIn        Float                    @default(0)
-  expectedCashOut       Float                    @default(0)
-  expectedClosingBalance Float                   @default(0)
-  actualClosingBalance  Float?
-  varianceAmount        Float?
-  totalCashPayments     Int                      @default(0)
-  totalCashRefunds      Int                      @default(0)
-  openedById            Int
-  openedAt              DateTime                 @default(now())
-  openingNote           String?
-  closedById            Int?
-  closedAt              DateTime?
-  closingNote           String?
-  headTuApproved        Boolean?
-  headTuDecisionById    Int?
-  headTuDecisionAt      DateTime?
-  headTuDecisionNote    String?
-  principalApproved     Boolean?
-  principalDecisionById Int?
-  principalDecisionAt   DateTime?
-  principalDecisionNote String?
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
-  openedBy              User                     @relation("FinanceCashSessionOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
-  closedBy              User?                    @relation("FinanceCashSessionClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
-  headTuDecisionBy      User?                    @relation("FinanceCashSessionHeadTuDecisionBy", fields: [headTuDecisionById], references: [id], onDelete: SetNull)
-  principalDecisionBy   User?                    @relation("FinanceCashSessionPrincipalDecisionBy", fields: [principalDecisionById], references: [id], onDelete: SetNull)
+  id                     Int                              @id @default(autoincrement())
+  sessionNo              String                           @unique
+  businessDate           DateTime
+  status                 FinanceCashSessionStatus         @default(OPEN)
+  approvalStatus         FinanceCashSessionApprovalStatus @default(NOT_SUBMITTED)
+  openingBalance         Float                            @default(0)
+  expectedCashIn         Float                            @default(0)
+  expectedCashOut        Float                            @default(0)
+  expectedClosingBalance Float                            @default(0)
+  actualClosingBalance   Float?
+  varianceAmount         Float?
+  totalCashPayments      Int                              @default(0)
+  totalCashRefunds       Int                              @default(0)
+  openedById             Int
+  openedAt               DateTime                         @default(now())
+  openingNote            String?
+  closedById             Int?
+  closedAt               DateTime?
+  closingNote            String?
+  headTuApproved         Boolean?
+  headTuDecisionById     Int?
+  headTuDecisionAt       DateTime?
+  headTuDecisionNote     String?
+  principalApproved      Boolean?
+  principalDecisionById  Int?
+  principalDecisionAt    DateTime?
+  principalDecisionNote  String?
+  createdAt              DateTime                         @default(now())
+  updatedAt              DateTime                         @updatedAt
+  openedBy               User                             @relation("FinanceCashSessionOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
+  closedBy               User?                            @relation("FinanceCashSessionClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  headTuDecisionBy       User?                            @relation("FinanceCashSessionHeadTuDecisionBy", fields: [headTuDecisionById], references: [id], onDelete: SetNull)
+  principalDecisionBy    User?                            @relation("FinanceCashSessionPrincipalDecisionBy", fields: [principalDecisionById], references: [id], onDelete: SetNull)
 
   @@index([openedById, status])
   @@index([businessDate, status])
@@ -2011,24 +2114,24 @@ model FinanceClosingPeriodReopenRequest {
 }
 
 model FinanceBankReconciliation {
-  id                     Int                              @id @default(autoincrement())
-  reconciliationNo       String                           @unique
-  bankAccountId          Int
-  periodStart            DateTime
-  periodEnd              DateTime
-  status                 FinanceBankReconciliationStatus  @default(OPEN)
+  id                      Int                             @id @default(autoincrement())
+  reconciliationNo        String                          @unique
+  bankAccountId           Int
+  periodStart             DateTime
+  periodEnd               DateTime
+  status                  FinanceBankReconciliationStatus @default(OPEN)
   statementOpeningBalance Float                           @default(0)
   statementClosingBalance Float                           @default(0)
-  note                   String?
-  createdById            Int
-  finalizedById          Int?
-  finalizedAt            DateTime?
-  createdAt              DateTime                         @default(now())
-  updatedAt              DateTime                         @updatedAt
-  bankAccount            FinanceBankAccount               @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
-  createdBy              User                             @relation("FinanceBankReconciliationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  finalizedBy            User?                            @relation("FinanceBankReconciliationFinalizedBy", fields: [finalizedById], references: [id], onDelete: SetNull)
-  statementEntries       FinanceBankStatementEntry[]
+  note                    String?
+  createdById             Int
+  finalizedById           Int?
+  finalizedAt             DateTime?
+  createdAt               DateTime                        @default(now())
+  updatedAt               DateTime                        @updatedAt
+  bankAccount             FinanceBankAccount              @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  createdBy               User                            @relation("FinanceBankReconciliationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  finalizedBy             User?                           @relation("FinanceBankReconciliationFinalizedBy", fields: [finalizedById], references: [id], onDelete: SetNull)
+  statementEntries        FinanceBankStatementEntry[]
 
   @@index([bankAccountId, status, periodStart])
   @@index([status, createdAt])
@@ -2036,23 +2139,23 @@ model FinanceBankReconciliation {
 }
 
 model FinanceBankStatementEntry {
-  id               Int                                  @id @default(autoincrement())
+  id               Int                             @id @default(autoincrement())
   reconciliationId Int
   entryDate        DateTime
   direction        FinanceBankStatementDirection
   amount           Float
   referenceNo      String?
   description      String?
-  status           FinanceBankStatementEntryStatus      @default(UNMATCHED)
+  status           FinanceBankStatementEntryStatus @default(UNMATCHED)
   matchedPaymentId Int?
   matchedRefundId  Int?
   createdById      Int?
-  createdAt        DateTime                             @default(now())
-  updatedAt        DateTime                             @updatedAt
-  reconciliation   FinanceBankReconciliation            @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
-  matchedPayment   FinancePayment?                      @relation("FinanceBankStatementEntryPayment", fields: [matchedPaymentId], references: [id], onDelete: SetNull)
-  matchedRefund    FinanceRefund?                       @relation("FinanceBankStatementEntryRefund", fields: [matchedRefundId], references: [id], onDelete: SetNull)
-  createdBy        User?                                @relation("FinanceBankStatementEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime                        @default(now())
+  updatedAt        DateTime                        @updatedAt
+  reconciliation   FinanceBankReconciliation       @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+  matchedPayment   FinancePayment?                 @relation("FinanceBankStatementEntryPayment", fields: [matchedPaymentId], references: [id], onDelete: SetNull)
+  matchedRefund    FinanceRefund?                  @relation("FinanceBankStatementEntryRefund", fields: [matchedRefundId], references: [id], onDelete: SetNull)
+  createdBy        User?                           @relation("FinanceBankStatementEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([reconciliationId, entryDate])
   @@index([matchedPaymentId])
@@ -2183,19 +2286,19 @@ model Notification {
 }
 
 model OsisElectionPeriod {
-  id              Int                  @id @default(autoincrement())
+  id              Int                     @id @default(autoincrement())
   academicYearId  Int
   title           String
   description     String?
   startAt         DateTime
   endAt           DateTime
-  status          OsisElectionStatus   @default(DRAFT)
-  allowQuickCount Boolean              @default(true)
+  status          OsisElectionStatus      @default(DRAFT)
+  allowQuickCount Boolean                 @default(true)
   createdById     Int
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
-  academicYear    AcademicYear         @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  createdBy       User                 @relation("OsisElectionCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  academicYear    AcademicYear            @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  createdBy       User                    @relation("OsisElectionCreator", fields: [createdById], references: [id], onDelete: Cascade)
   candidates      OsisElectionCandidate[]
   votes           OsisElectionVote[]
 
@@ -2225,13 +2328,13 @@ model OsisElectionCandidate {
 }
 
 model OsisElectionVote {
-  id          Int                @id @default(autoincrement())
+  id          Int                   @id @default(autoincrement())
   electionId  Int
   voterId     Int
   candidateId Int
-  createdAt   DateTime           @default(now())
-  election    OsisElectionPeriod @relation(fields: [electionId], references: [id], onDelete: Cascade)
-  voter       User               @relation("OsisElectionVoter", fields: [voterId], references: [id], onDelete: Cascade)
+  createdAt   DateTime              @default(now())
+  election    OsisElectionPeriod    @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  voter       User                  @relation("OsisElectionVoter", fields: [voterId], references: [id], onDelete: Cascade)
   candidate   OsisElectionCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 
   @@unique([electionId, voterId])
@@ -2617,6 +2720,24 @@ enum StudentStatus {
   DROPPED_OUT
 }
 
+enum StudentAcademicMembershipStatus {
+  ACTIVE
+  PROMOTED
+  GRADUATED
+  MOVED
+  DROPPED_OUT
+}
+
+enum PromotionAction {
+  PROMOTE
+  GRADUATE
+}
+
+enum PromotionRunStatus {
+  COMMITTED
+  FAILED
+}
+
 enum ExamCategory {
   ACADEMIC
   ADMISSION_STUDENT
@@ -2930,41 +3051,41 @@ enum JobApplicationAssessmentStageCode {
 }
 
 model CandidateAdmission {
-  id                 Int                      @id @default(autoincrement())
-  userId             Int                      @unique
-  registrationNumber String                   @unique
-  desiredMajorId     Int?
-  previousSchool     String?
-  lastEducation      String?
-  parentName         String?
-  parentPhone        String?
-  domicileCity       String?
-  motivation         String?                  @db.Text
-  submissionNotes    String?                  @db.Text
-  reviewNotes        String?                  @db.Text
-  decisionTitle      String?
-  decisionSummary    String?                  @db.Text
-  decisionNextSteps  String?                  @db.Text
-  decisionPublishedAt DateTime?
-  decisionLetterId   Int?                     @unique
-  decisionLetterIssuedAt DateTime?
-  decisionLetterIssuedCity String?
-  decisionLetterSignerName String?
-  decisionLetterSignerPosition String?
-  decisionLetterOfficialUrl String?
+  id                                 Int                      @id @default(autoincrement())
+  userId                             Int                      @unique
+  registrationNumber                 String                   @unique
+  desiredMajorId                     Int?
+  previousSchool                     String?
+  lastEducation                      String?
+  parentName                         String?
+  parentPhone                        String?
+  domicileCity                       String?
+  motivation                         String?                  @db.Text
+  submissionNotes                    String?                  @db.Text
+  reviewNotes                        String?                  @db.Text
+  decisionTitle                      String?
+  decisionSummary                    String?                  @db.Text
+  decisionNextSteps                  String?                  @db.Text
+  decisionPublishedAt                DateTime?
+  decisionLetterId                   Int?                     @unique
+  decisionLetterIssuedAt             DateTime?
+  decisionLetterIssuedCity           String?
+  decisionLetterSignerName           String?
+  decisionLetterSignerPosition       String?
+  decisionLetterOfficialUrl          String?
   decisionLetterOfficialOriginalName String?
-  decisionLetterOfficialUploadedAt DateTime?
-  status             CandidateAdmissionStatus @default(DRAFT)
-  submittedAt        DateTime?
-  reviewedAt         DateTime?
-  acceptedAt         DateTime?
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
+  decisionLetterOfficialUploadedAt   DateTime?
+  status                             CandidateAdmissionStatus @default(DRAFT)
+  submittedAt                        DateTime?
+  reviewedAt                         DateTime?
+  acceptedAt                         DateTime?
+  createdAt                          DateTime                 @default(now())
+  updatedAt                          DateTime                 @updatedAt
 
-  user         User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  desiredMajor Major?                       @relation(fields: [desiredMajorId], references: [id], onDelete: SetNull)
-  assessments  CandidateAdmissionAssessment[]
-  decisionLetter OfficeLetter? @relation("CandidateAdmissionDecisionLetter", fields: [decisionLetterId], references: [id], onDelete: SetNull)
+  user           User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  desiredMajor   Major?                         @relation(fields: [desiredMajorId], references: [id], onDelete: SetNull)
+  assessments    CandidateAdmissionAssessment[]
+  decisionLetter OfficeLetter?                  @relation("CandidateAdmissionDecisionLetter", fields: [decisionLetterId], references: [id], onDelete: SetNull)
 
   @@index([status, submittedAt])
   @@index([desiredMajorId, status])
@@ -2972,8 +3093,8 @@ model CandidateAdmission {
 }
 
 model JobApplicantProfile {
-  id                Int       @id @default(autoincrement())
-  userId            Int       @unique
+  id                Int      @id @default(autoincrement())
+  userId            Int      @unique
   headline          String?
   phone             String?
   email             String?
@@ -2982,13 +3103,13 @@ model JobApplicantProfile {
   graduationYear    Int?
   schoolName        String?
   major             String?
-  skills            String?   @db.Text
-  experienceSummary String?   @db.Text
+  skills            String?  @db.Text
+  experienceSummary String?  @db.Text
   cvUrl             String?
   portfolioUrl      String?
   linkedinUrl       String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   applications JobApplication[]
@@ -2997,29 +3118,29 @@ model JobApplicantProfile {
 }
 
 model JobApplication {
-  id             Int                  @id @default(autoincrement())
-  applicantId    Int
-  vacancyId      Int
-  profileId      Int?
-  status         JobApplicationStatus @default(SUBMITTED)
-  coverLetter    String?              @db.Text
-  expectedSalary String?
-  source         String?
-  reviewerNotes  String?              @db.Text
+  id                   Int                  @id @default(autoincrement())
+  applicantId          Int
+  vacancyId            Int
+  profileId            Int?
+  status               JobApplicationStatus @default(SUBMITTED)
+  coverLetter          String?              @db.Text
+  expectedSalary       String?
+  source               String?
+  reviewerNotes        String?              @db.Text
   partnerReferenceCode String?
-  partnerHandoffNotes String?         @db.Text
-  partnerDecisionNotes String?        @db.Text
-  appliedAt      DateTime             @default(now())
-  reviewedAt     DateTime?
-  shortlistedAt  DateTime?
-  partnerInterviewAt DateTime?
-  finalizedAt    DateTime?
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  partnerHandoffNotes  String?              @db.Text
+  partnerDecisionNotes String?              @db.Text
+  appliedAt            DateTime             @default(now())
+  reviewedAt           DateTime?
+  shortlistedAt        DateTime?
+  partnerInterviewAt   DateTime?
+  finalizedAt          DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 
-  applicant   User                     @relation("JobApplications", fields: [applicantId], references: [id], onDelete: Cascade)
-  vacancy     JobVacancy               @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
-  profile     JobApplicantProfile?     @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  applicant   User                       @relation("JobApplications", fields: [applicantId], references: [id], onDelete: Cascade)
+  vacancy     JobVacancy                 @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  profile     JobApplicantProfile?       @relation(fields: [profileId], references: [id], onDelete: SetNull)
   assessments JobApplicationAssessment[]
 
   @@unique([applicantId, vacancyId])
@@ -3029,20 +3150,20 @@ model JobApplication {
 }
 
 model CandidateAdmissionAssessment {
-  id           Int                            @id @default(autoincrement())
-  admissionId  Int
+  id            Int                              @id @default(autoincrement())
+  admissionId   Int
   componentCode CandidateAssessmentComponentCode
-  title        String
-  sourceType   SelectionAssessmentSource     @default(MANUAL)
-  score        Float?
-  maxScore     Float                         @default(100)
-  weight       Float                         @default(1)
-  passingScore Float?
-  notes        String?                       @db.Text
-  assessedAt   DateTime?
-  evaluatorId  Int?
-  createdAt    DateTime                      @default(now())
-  updatedAt    DateTime                      @updatedAt
+  title         String
+  sourceType    SelectionAssessmentSource        @default(MANUAL)
+  score         Float?
+  maxScore      Float                            @default(100)
+  weight        Float                            @default(1)
+  passingScore  Float?
+  notes         String?                          @db.Text
+  assessedAt    DateTime?
+  evaluatorId   Int?
+  createdAt     DateTime                         @default(now())
+  updatedAt     DateTime                         @updatedAt
 
   admission CandidateAdmission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
   evaluator User?              @relation("CandidateAdmissionAssessments", fields: [evaluatorId], references: [id], onDelete: SetNull)
@@ -3053,20 +3174,20 @@ model CandidateAdmissionAssessment {
 }
 
 model JobApplicationAssessment {
-  id          Int                           @id @default(autoincrement())
+  id            Int                               @id @default(autoincrement())
   applicationId Int
-  stageCode   JobApplicationAssessmentStageCode
-  title       String
-  sourceType  SelectionAssessmentSource    @default(MANUAL)
-  score       Float?
-  maxScore    Float                        @default(100)
-  weight      Float                        @default(1)
-  passingScore Float?
-  notes       String?                      @db.Text
-  assessedAt  DateTime?
-  evaluatorId Int?
-  createdAt   DateTime                     @default(now())
-  updatedAt   DateTime                     @updatedAt
+  stageCode     JobApplicationAssessmentStageCode
+  title         String
+  sourceType    SelectionAssessmentSource         @default(MANUAL)
+  score         Float?
+  maxScore      Float                             @default(100)
+  weight        Float                             @default(1)
+  passingScore  Float?
+  notes         String?                           @db.Text
+  assessedAt    DateTime?
+  evaluatorId   Int?
+  createdAt     DateTime                          @default(now())
+  updatedAt     DateTime                          @updatedAt
 
   application JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   evaluator   User?          @relation("JobApplicationAssessments", fields: [evaluatorId], references: [id], onDelete: SetNull)
@@ -3108,21 +3229,21 @@ model RoomCategory {
 }
 
 model Room {
-  id          Int      @id @default(autoincrement())
-  categoryId  Int? // Made optional for migration, will be required later
+  id            Int      @id @default(autoincrement())
+  categoryId    Int? // Made optional for migration, will be required later
   managerUserId Int?
-  name        String
+  name          String
   // type        RoomType  // Deprecated, replaced by categoryId
-  capacity    Int?
-  location    String?
-  condition   String? // BAIK, RUSAK_RINGAN, RUSAK_BERAT
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  capacity      Int?
+  location      String?
+  condition     String? // BAIK, RUSAK_RINGAN, RUSAK_BERAT
+  description   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  category RoomCategory?   @relation(fields: [categoryId], references: [id])
-  managerUser User?        @relation("ManagedInventoryRooms", fields: [managerUserId], references: [id], onDelete: SetNull)
-  items    InventoryItem[]
+  category    RoomCategory?   @relation(fields: [categoryId], references: [id])
+  managerUser User?           @relation("ManagedInventoryRooms", fields: [managerUserId], references: [id], onDelete: SetNull)
+  items       InventoryItem[]
 
   @@map("rooms")
 }

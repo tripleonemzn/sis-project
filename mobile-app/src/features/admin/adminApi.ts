@@ -211,6 +211,104 @@ export type AdminAcademicYear = {
   pklEligibleGrades?: string | null;
 };
 
+export type AdminAcademicPromotionAction = 'PROMOTE' | 'GRADUATE';
+
+export type AdminAcademicPromotionWorkspaceClass = {
+  sourceClassId: number;
+  sourceClassName: string;
+  sourceLevel: string;
+  studentCount: number;
+  major: {
+    id: number;
+    code: string;
+    name: string;
+  };
+  action: AdminAcademicPromotionAction;
+  expectedTargetLevel: string | null;
+  targetClassId: number | null;
+  targetClassName: string | null;
+  suggestedTargetClassId: number | null;
+  mappingSource: 'SAVED' | 'SUGGESTED' | 'EMPTY' | 'GRADUATE';
+  targetCurrentStudentCount: number | null;
+  targetOptions: Array<{
+    id: number;
+    name: string;
+    level: string;
+    currentStudentCount: number;
+    major: {
+      id: number;
+      code: string;
+      name: string;
+    };
+  }>;
+  validation: {
+    errors: string[];
+    warnings: string[];
+  };
+};
+
+export type AdminAcademicPromotionWorkspace = {
+  sourceAcademicYear: {
+    id: number;
+    name: string;
+    isActive: boolean;
+  };
+  targetAcademicYear: {
+    id: number;
+    name: string;
+    isActive: boolean;
+  };
+  summary: {
+    totalClasses: number;
+    totalStudents: number;
+    promotableClasses: number;
+    graduatingClasses: number;
+    promotedStudents: number;
+    graduatedStudents: number;
+    configuredPromoteClasses: number;
+  };
+  validation: {
+    readyToCommit: boolean;
+    errors: string[];
+    warnings: string[];
+  };
+  classes: AdminAcademicPromotionWorkspaceClass[];
+  recentRuns: Array<{
+    id: number;
+    status: 'COMMITTED' | 'FAILED';
+    totalClasses: number;
+    totalStudents: number;
+    promotedStudents: number;
+    graduatedStudents: number;
+    activateTargetYear: boolean;
+    committedAt: string | null;
+    createdAt: string;
+    createdBy: {
+      id: number;
+      name: string;
+      username: string;
+    } | null;
+  }>;
+};
+
+export type AdminAcademicPromotionCommitResult = {
+  run: {
+    id: number;
+    sourceAcademicYearId: number;
+    targetAcademicYearId: number;
+    status: 'COMMITTED' | 'FAILED';
+    activateTargetYear: boolean;
+    totalClasses: number;
+    totalStudents: number;
+    promotedStudents: number;
+    graduatedStudents: number;
+    committedAt: string | null;
+    createdAt: string;
+  };
+  summary: AdminAcademicPromotionWorkspace['summary'];
+  validation: AdminAcademicPromotionWorkspace['validation'];
+};
+
 export type AdminTeacherAssignment = {
   id: number;
   teacher?: { id: number; name: string; username: string } | null;
@@ -1406,6 +1504,47 @@ export const adminApi = {
 
   async activateAcademicYear(id: number) {
     const response = await apiClient.post<ApiEnvelope<AdminAcademicYear>>(`/academic-years/${id}/activate`);
+    return response.data?.data;
+  },
+
+  async getAcademicPromotionWorkspace(sourceAcademicYearId: number, targetAcademicYearId: number) {
+    const response = await apiClient.get<ApiEnvelope<AdminAcademicPromotionWorkspace>>(
+      `/academic-years/${sourceAcademicYearId}/promotion-v2`,
+      {
+        params: { targetAcademicYearId },
+      },
+    );
+    return response.data?.data;
+  },
+
+  async saveAcademicPromotionMappings(
+    sourceAcademicYearId: number,
+    payload: {
+      targetAcademicYearId: number;
+      mappings: Array<{
+        sourceClassId: number;
+        targetClassId: number | null;
+      }>;
+    },
+  ) {
+    const response = await apiClient.put<ApiEnvelope<AdminAcademicPromotionWorkspace>>(
+      `/academic-years/${sourceAcademicYearId}/promotion-v2/mappings`,
+      payload,
+    );
+    return response.data?.data;
+  },
+
+  async commitAcademicPromotion(
+    sourceAcademicYearId: number,
+    payload: {
+      targetAcademicYearId: number;
+      activateTargetYear?: boolean;
+    },
+  ) {
+    const response = await apiClient.post<ApiEnvelope<AdminAcademicPromotionCommitResult>>(
+      `/academic-years/${sourceAcademicYearId}/promotion-v2/commit`,
+      payload,
+    );
     return response.data?.data;
   },
 };

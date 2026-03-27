@@ -2,6 +2,12 @@ import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { z } from 'zod';
+import {
+  commitAcademicPromotion,
+  getAcademicPromotionWorkspace,
+  saveAcademicPromotionMappings,
+} from '../services/academicPromotion.service';
+import { writeAuditLog } from '../utils/auditLog';
 
 const academicYearSchema = z.object({
   name: z.string().min(1),
@@ -14,6 +20,22 @@ const academicYearSchema = z.object({
 });
 
 const updateAcademicYearSchema = academicYearSchema.partial();
+const promotionWorkspaceQuerySchema = z.object({
+  targetAcademicYearId: z.coerce.number().int().positive(),
+});
+const savePromotionMappingsSchema = z.object({
+  targetAcademicYearId: z.number().int().positive(),
+  mappings: z.array(
+    z.object({
+      sourceClassId: z.number().int().positive(),
+      targetClassId: z.number().int().positive().nullable(),
+    }),
+  ),
+});
+const commitPromotionSchema = z.object({
+  targetAcademicYearId: z.number().int().positive(),
+  activateTargetYear: z.boolean().optional(),
+});
 const ACTIVE_ACADEMIC_YEAR_CACHE_TTL_MS = 10000;
 let activeAcademicYearCache:
   | {
@@ -355,6 +377,74 @@ export const updatePklConfig = asyncHandler(async (req: Request, res: Response) 
   clearActiveAcademicYearCache();
 
   res.status(200).json(new ApiResponse(200, updatedYear, 'Konfigurasi PKL berhasil diperbarui'));
+});
+
+export const getAcademicPromotionWorkspaceController = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const query = promotionWorkspaceQuerySchema.parse(req.query);
+
+  const workspace = await getAcademicPromotionWorkspace(Number(id), query.targetAcademicYearId);
+
+  res.status(200).json(
+    new ApiResponse(200, workspace, 'Workspace promotion berhasil diambil'),
+  );
+});
+
+export const saveAcademicPromotionMappingsController = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const body = savePromotionMappingsSchema.parse(req.body);
+
+  const workspace = await saveAcademicPromotionMappings({
+    sourceAcademicYearId: Number(id),
+    targetAcademicYearId: body.targetAcademicYearId,
+    mappings: body.mappings,
+  });
+
+  res.status(200).json(
+    new ApiResponse(200, workspace, 'Mapping promotion berhasil disimpan'),
+  );
+});
+
+export const commitAcademicPromotionController = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const body = commitPromotionSchema.parse(req.body);
+  const actor = (req as any).user;
+
+  const result = await commitAcademicPromotion({
+    sourceAcademicYearId: Number(id),
+    targetAcademicYearId: body.targetAcademicYearId,
+    activateTargetYear: body.activateTargetYear,
+    actor,
+  });
+
+  clearActiveAcademicYearCache();
+
+  try {
+    if (actor?.id) {
+      await writeAuditLog(
+        Number(actor.id),
+        String(actor.role || 'ADMIN'),
+        Array.isArray(actor.additionalDuties) ? actor.additionalDuties : null,
+        'COMMIT',
+        'ACADEMIC_PROMOTION',
+        result.run.id,
+        null,
+        {
+          sourceAcademicYearId: Number(id),
+          targetAcademicYearId: body.targetAcademicYearId,
+          activateTargetYear: Boolean(body.activateTargetYear),
+          summary: result.summary,
+        },
+        'Commit promotion kenaikan kelas dan alumni',
+      );
+    }
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat commit academic promotion', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(200, result, 'Promotion berhasil di-commit'),
+  );
 });
 
 export const promoteAcademicYear = asyncHandler(async (req: Request, res: Response) => {

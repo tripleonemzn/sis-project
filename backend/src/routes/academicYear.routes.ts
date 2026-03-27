@@ -7,6 +7,9 @@ import {
   updateAcademicYear,
   deleteAcademicYear,
   activateAcademicYear,
+  getAcademicPromotionWorkspaceController,
+  saveAcademicPromotionMappingsController,
+  commitAcademicPromotionController,
   promoteAcademicYear,
   updatePklConfig,
 } from '../controllers/academicYear.controller';
@@ -33,6 +36,9 @@ router.post('/', createAcademicYear);
 router.put('/:id', updateAcademicYear);
 router.delete('/:id', deleteAcademicYear);
 router.post('/:id/activate', activateAcademicYear);
+router.get('/:id/promotion-v2', getAcademicPromotionWorkspaceController);
+router.put('/:id/promotion-v2/mappings', saveAcademicPromotionMappingsController);
+router.post('/:id/promotion-v2/commit', commitAcademicPromotionController);
 router.post('/:id/promote', promoteAcademicYear);
 
 export default router;

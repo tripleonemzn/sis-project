@@ -10,6 +10,7 @@ import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import {
   adminApi,
+  type AdminAcademicPromotionWorkspaceClass,
   type AdminExamQuestionType,
   type AdminExamType,
   type AdminScheduleDayOfWeek,
@@ -22,6 +23,7 @@ import { notifyApiError, notifyInfo, notifySuccess } from '../../../src/lib/ui/f
 type AcademicSection =
   | 'overview'
   | 'academic-years'
+  | 'promotion'
   | 'academic-calendar'
   | 'teacher-assignments'
   | 'schedule'
@@ -51,6 +53,12 @@ const ACADEMIC_SECTIONS: Array<{
     label: 'Tahun Ajaran',
     description: 'Kelola dan aktifkan tahun ajaran.',
     icon: 'calendar',
+  },
+  {
+    key: 'promotion',
+    label: 'Promotion',
+    description: 'Preview, mapping, dan commit kenaikan kelas/alumni.',
+    icon: 'shuffle',
   },
   {
     key: 'academic-calendar',
@@ -144,6 +152,16 @@ function toDateInput(value?: string | null) {
   const mm = String(date.getMonth() + 1).padStart(2, '0');
   const dd = String(date.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function getPromotionResolvedTargetClassId(
+  row: AdminAcademicPromotionWorkspaceClass,
+  drafts: Record<number, number | null>,
+) {
+  if (Object.prototype.hasOwnProperty.call(drafts, row.sourceClassId)) {
+    return drafts[row.sourceClassId] ?? null;
+  }
+  return row.targetClassId ?? null;
 }
 
 type AcademicEventType =
@@ -568,6 +586,10 @@ export default function AdminAcademicScreen() {
     semester2Start: '',
     semester2End: '',
   });
+  const [promotionSourceAcademicYearId, setPromotionSourceAcademicYearId] = useState('');
+  const [promotionTargetAcademicYearId, setPromotionTargetAcademicYearId] = useState('');
+  const [activateTargetYearAfterCommit, setActivateTargetYearAfterCommit] = useState(true);
+  const [promotionMappingDrafts, setPromotionMappingDrafts] = useState<Record<number, number | null>>({});
   const [calendarAcademicYearId, setCalendarAcademicYearId] = useState('');
   const [calendarSemesterFilter, setCalendarSemesterFilter] = useState<'ALL' | 'ODD' | 'EVEN'>('ALL');
   const [calendarTypeFilter, setCalendarTypeFilter] = useState<'ALL' | AcademicEventType>('ALL');
@@ -677,6 +699,65 @@ export default function AdminAcademicScreen() {
       };
     },
   });
+
+  useEffect(() => {
+    const years = academicQuery.data?.years.items || [];
+    if (years.length === 0) return;
+
+    const activeYear = academicQuery.data?.activeYear || years[0];
+    if (!promotionSourceAcademicYearId) {
+      setPromotionSourceAcademicYearId(String(activeYear.id));
+    }
+    if (!promotionTargetAcademicYearId) {
+      const fallbackTarget = years.find((item) => item.id !== activeYear.id) || years[0];
+      if (fallbackTarget) {
+        setPromotionTargetAcademicYearId(String(fallbackTarget.id));
+      }
+    }
+  }, [
+    academicQuery.data?.activeYear,
+    academicQuery.data?.years.items,
+    promotionSourceAcademicYearId,
+    promotionTargetAcademicYearId,
+  ]);
+
+  const effectivePromotionSourceAcademicYearId = useMemo(() => {
+    const selected = Number(promotionSourceAcademicYearId);
+    return Number.isFinite(selected) && selected > 0 ? selected : null;
+  }, [promotionSourceAcademicYearId]);
+
+  const effectivePromotionTargetAcademicYearId = useMemo(() => {
+    const selected = Number(promotionTargetAcademicYearId);
+    return Number.isFinite(selected) && selected > 0 ? selected : null;
+  }, [promotionTargetAcademicYearId]);
+
+  const promotionSelectionValid =
+    !!effectivePromotionSourceAcademicYearId &&
+    !!effectivePromotionTargetAcademicYearId &&
+    effectivePromotionSourceAcademicYearId !== effectivePromotionTargetAcademicYearId;
+
+  const promotionWorkspaceQuery = useQuery({
+    queryKey: [
+      'mobile-admin-academic-promotion-workspace',
+      effectivePromotionSourceAcademicYearId,
+      effectivePromotionTargetAcademicYearId,
+    ],
+    enabled: promotionSelectionValid,
+    queryFn: async () =>
+      adminApi.getAcademicPromotionWorkspace(
+        effectivePromotionSourceAcademicYearId as number,
+        effectivePromotionTargetAcademicYearId as number,
+      ),
+  });
+
+  useEffect(() => {
+    if (!promotionWorkspaceQuery.data) return;
+    const nextDrafts: Record<number, number | null> = {};
+    promotionWorkspaceQuery.data.classes.forEach((item) => {
+      nextDrafts[item.sourceClassId] = item.targetClassId ?? null;
+    });
+    setPromotionMappingDrafts(nextDrafts);
+  }, [promotionWorkspaceQuery.data]);
 
   const effectiveCalendarAcademicYearId = useMemo(() => {
     const selected = Number(calendarAcademicYearId);
@@ -1327,10 +1408,56 @@ export default function AdminAcademicScreen() {
     mutationFn: async (yearId: number) => adminApi.activateAcademicYear(yearId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-overview'] });
+      await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-promotion-workspace'] });
       notifySuccess('Tahun ajaran berhasil diaktifkan.');
     },
     onError: (error: unknown) => {
       notifyApiError(error, 'Gagal mengaktifkan tahun ajaran.');
+    },
+  });
+
+  const savePromotionMappingsMutation = useMutation({
+    mutationFn: async () => {
+      if (!promotionWorkspaceQuery.data || !effectivePromotionSourceAcademicYearId || !effectivePromotionTargetAcademicYearId) {
+        throw new Error('Workspace promotion belum tersedia.');
+      }
+      return adminApi.saveAcademicPromotionMappings(effectivePromotionSourceAcademicYearId, {
+        targetAcademicYearId: effectivePromotionTargetAcademicYearId,
+        mappings: promotionWorkspaceQuery.data.classes.map((item) => ({
+          sourceClassId: item.sourceClassId,
+          targetClassId:
+            item.action === 'GRADUATE'
+              ? null
+              : getPromotionResolvedTargetClassId(item, promotionMappingDrafts),
+        })),
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-promotion-workspace'] });
+      notifySuccess('Mapping promotion berhasil disimpan.');
+    },
+    onError: (error: unknown) => {
+      notifyApiError(error, 'Gagal menyimpan mapping promotion.');
+    },
+  });
+
+  const commitPromotionMutation = useMutation({
+    mutationFn: async () => {
+      if (!effectivePromotionSourceAcademicYearId || !effectivePromotionTargetAcademicYearId) {
+        throw new Error('Tahun sumber/target promotion belum valid.');
+      }
+      return adminApi.commitAcademicPromotion(effectivePromotionSourceAcademicYearId, {
+        targetAcademicYearId: effectivePromotionTargetAcademicYearId,
+        activateTargetYear: activateTargetYearAfterCommit,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-overview'] });
+      await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-promotion-workspace'] });
+      notifySuccess('Promotion berhasil di-commit.');
+    },
+    onError: (error: unknown) => {
+      notifyApiError(error, 'Gagal commit promotion.');
     },
   });
 
@@ -1347,6 +1474,7 @@ export default function AdminAcademicScreen() {
     onSuccess: async () => {
       resetAcademicYearForm();
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-overview'] });
+      await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-promotion-workspace'] });
       notifySuccess('Tahun ajaran berhasil dibuat.');
     },
     onError: (error: unknown) => {
@@ -1369,6 +1497,7 @@ export default function AdminAcademicScreen() {
     onSuccess: async () => {
       resetAcademicYearForm();
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-overview'] });
+      await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-promotion-workspace'] });
       notifySuccess('Tahun ajaran berhasil diperbarui.');
     },
     onError: (error: unknown) => {
@@ -1381,6 +1510,7 @@ export default function AdminAcademicScreen() {
     onSuccess: async () => {
       resetAcademicYearForm();
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-overview'] });
+      await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-promotion-workspace'] });
       notifySuccess('Tahun ajaran berhasil dihapus.');
     },
     onError: (error: unknown) => {
@@ -1566,6 +1696,40 @@ export default function AdminAcademicScreen() {
       return;
     }
     createAcademicYearMutation.mutate();
+  };
+
+  const resetPromotionDraftsToSuggested = () => {
+    if (!promotionWorkspaceQuery.data) return;
+    const nextDrafts: Record<number, number | null> = {};
+    promotionWorkspaceQuery.data.classes.forEach((item) => {
+      nextDrafts[item.sourceClassId] = item.action === 'GRADUATE' ? null : item.suggestedTargetClassId ?? null;
+    });
+    setPromotionMappingDrafts(nextDrafts);
+  };
+
+  const handleCommitPromotion = () => {
+    if (!promotionWorkspaceQuery.data) {
+      notifyInfo('Workspace promotion belum tersedia.');
+      return;
+    }
+    if (!promotionWorkspaceQuery.data.validation.readyToCommit) {
+      notifyInfo('Masih ada issue blocking. Selesaikan dulu sebelum commit.');
+      return;
+    }
+    Alert.alert(
+      'Commit Promotion',
+      'Perubahan siswa akan ditulis ke data aktif. Lanjutkan commit promotion?',
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Commit',
+          style: 'default',
+          onPress: () => {
+            commitPromotionMutation.mutate();
+          },
+        },
+      ],
+    );
   };
 
   const resetAcademicEventForm = () => {
@@ -2549,6 +2713,358 @@ export default function AdminAcademicScreen() {
                   Belum ada data tahun ajaran.
                 </Text>
               ) : null}
+            </SectionCard>
+          ) : null}
+
+          {shouldShow('promotion') ? (
+            <SectionCard
+              title="Promotion Center"
+              subtitle="Preview, mapping, dan commit kenaikan kelas/alumni dengan kontrak yang sama seperti web."
+            >
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Sumber</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
+                  {(academicQuery.data?.years.items || []).map((item) => (
+                    <SelectChip
+                      key={`promotion-source-${item.id}`}
+                      active={promotionSourceAcademicYearId === String(item.id)}
+                      label={`${item.name}${item.isActive ? ' (Aktif)' : ''}`}
+                      onPress={() => setPromotionSourceAcademicYearId(String(item.id))}
+                    />
+                  ))}
+                </View>
+              </ScrollView>
+
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Target</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
+                  {(academicQuery.data?.years.items || []).map((item) => (
+                    <SelectChip
+                      key={`promotion-target-${item.id}`}
+                      active={promotionTargetAcademicYearId === String(item.id)}
+                      label={`${item.name}${item.isActive ? ' (Aktif)' : ''}`}
+                      onPress={() => setPromotionTargetAcademicYearId(String(item.id))}
+                    />
+                  ))}
+                </View>
+              </ScrollView>
+
+              <Pressable
+                onPress={() => setActivateTargetYearAfterCommit((current) => !current)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: activateTargetYearAfterCommit ? BRAND_COLORS.blue : '#cbd5e1',
+                  backgroundColor: activateTargetYearAfterCommit ? '#eaf1ff' : '#fff',
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  marginBottom: 12,
+                }}
+              >
+                <Text
+                  style={{
+                    color: activateTargetYearAfterCommit ? BRAND_COLORS.blue : BRAND_COLORS.textMuted,
+                    fontWeight: '700',
+                    fontSize: 12,
+                  }}
+                >
+                  {activateTargetYearAfterCommit ? 'Aktifkan tahun target setelah commit: ON' : 'Aktifkan tahun target setelah commit: OFF'}
+                </Text>
+              </Pressable>
+
+              {!promotionSourceAcademicYearId || !promotionTargetAcademicYearId ? (
+                <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center', paddingVertical: 8 }}>
+                  Pilih tahun sumber dan target untuk memuat workspace promotion.
+                </Text>
+              ) : !promotionSelectionValid ? (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#fcd34d',
+                    backgroundColor: '#fffbeb',
+                    borderRadius: 12,
+                    padding: 12,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tahun tidak valid</Text>
+                  <Text style={{ color: '#92400e', fontSize: 12 }}>
+                    Tahun sumber dan target harus berbeda.
+                  </Text>
+                </View>
+              ) : promotionWorkspaceQuery.isLoading ? (
+                <QueryStateView type="loading" message="Memuat workspace promotion..." />
+              ) : promotionWorkspaceQuery.isError || !promotionWorkspaceQuery.data ? (
+                <QueryStateView
+                  type="error"
+                  message="Gagal memuat workspace promotion."
+                  onRetry={() => promotionWorkspaceQuery.refetch()}
+                />
+              ) : (
+                <>
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+                    <StatCard
+                      title="Total Siswa Aktif"
+                      value={String(promotionWorkspaceQuery.data.summary.totalStudents || 0)}
+                      subtitle="Seluruh siswa yang diproses"
+                    />
+                    <StatCard
+                      title="Naik Kelas"
+                      value={String(promotionWorkspaceQuery.data.summary.promotedStudents || 0)}
+                      subtitle="Siswa X dan XI"
+                    />
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+                    <StatCard
+                      title="Menjadi Alumni"
+                      value={String(promotionWorkspaceQuery.data.summary.graduatedStudents || 0)}
+                      subtitle="Siswa XII aktif"
+                    />
+                    <StatCard
+                      title="Mapping Siap"
+                      value={`${promotionWorkspaceQuery.data.summary.configuredPromoteClasses || 0}/${promotionWorkspaceQuery.data.summary.promotableClasses || 0}`}
+                      subtitle="Kelas promotion terpasang"
+                    />
+                  </View>
+
+                  {promotionWorkspaceQuery.data.validation.errors.length > 0 ? (
+                    <View
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#fecaca',
+                        backgroundColor: '#fff1f2',
+                        borderRadius: 12,
+                        padding: 12,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <Text style={{ color: '#b91c1c', fontWeight: '700', marginBottom: 6 }}>Blocking Issues</Text>
+                      {promotionWorkspaceQuery.data.validation.errors.map((item) => (
+                        <Text key={`promotion-global-error-${item}`} style={{ color: '#b91c1c', fontSize: 12, marginBottom: 4 }}>
+                          • {item}
+                        </Text>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {promotionWorkspaceQuery.data.validation.warnings.length > 0 ? (
+                    <View
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#fcd34d',
+                        backgroundColor: '#fffbeb',
+                        borderRadius: 12,
+                        padding: 12,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 6 }}>Peringatan</Text>
+                      {promotionWorkspaceQuery.data.validation.warnings.map((item) => (
+                        <Text key={`promotion-global-warning-${item}`} style={{ color: '#92400e', fontSize: 12, marginBottom: 4 }}>
+                          • {item}
+                        </Text>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                    <Pressable
+                      onPress={resetPromotionDraftsToSuggested}
+                      style={{
+                        flex: 1,
+                        borderWidth: 1,
+                        borderColor: '#cbd5e1',
+                        borderRadius: 10,
+                        paddingVertical: 10,
+                        alignItems: 'center',
+                        backgroundColor: '#fff',
+                      }}
+                    >
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700' }}>Gunakan Saran</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => savePromotionMappingsMutation.mutate()}
+                      disabled={savePromotionMappingsMutation.isPending}
+                      style={{
+                        flex: 1,
+                        backgroundColor: '#0f172a',
+                        borderRadius: 10,
+                        paddingVertical: 10,
+                        alignItems: 'center',
+                        opacity: savePromotionMappingsMutation.isPending ? 0.65 : 1,
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>
+                        {savePromotionMappingsMutation.isPending ? 'Menyimpan...' : 'Simpan Mapping'}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleCommitPromotion}
+                      disabled={commitPromotionMutation.isPending}
+                      style={{
+                        flex: 1,
+                        backgroundColor: BRAND_COLORS.blue,
+                        borderRadius: 10,
+                        paddingVertical: 10,
+                        alignItems: 'center',
+                        opacity: commitPromotionMutation.isPending ? 0.65 : 1,
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>
+                        {commitPromotionMutation.isPending ? 'Commit...' : 'Commit Promotion'}
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  {promotionWorkspaceQuery.data.classes.map((item) => {
+                    const selectedTargetClassId = getPromotionResolvedTargetClassId(item, promotionMappingDrafts);
+                    const suggestedTargetLabel =
+                      item.targetOptions.find((option) => option.id === item.suggestedTargetClassId)?.name || '-';
+
+                    return (
+                      <View
+                        key={`promotion-class-${item.sourceClassId}`}
+                        style={{
+                          borderTopWidth: 1,
+                          borderTopColor: '#eef3ff',
+                          paddingVertical: 10,
+                        }}
+                      >
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.sourceClassName}</Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                          {item.major.code} • {item.studentCount} siswa aktif • {item.action === 'GRADUATE' ? 'Alumni' : `Naik ke ${item.expectedTargetLevel}`}
+                        </Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+                          Source: {item.mappingSource === 'SAVED' ? 'mapping tersimpan' : item.mappingSource === 'SUGGESTED' ? 'saran otomatis' : item.mappingSource === 'GRADUATE' ? 'alumni' : 'belum dipilih'}
+                        </Text>
+
+                        {item.action === 'GRADUATE' ? (
+                          <View
+                            style={{
+                              borderWidth: 1,
+                              borderColor: '#d6e0f2',
+                              borderRadius: 10,
+                              paddingHorizontal: 10,
+                              paddingVertical: 8,
+                              backgroundColor: '#f8fbff',
+                              marginBottom: 8,
+                            }}
+                          >
+                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                              Siswa kelas XII aktif akan diubah menjadi alumni.
+                            </Text>
+                          </View>
+                        ) : (
+                          <>
+                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>
+                              Pilih Kelas Target
+                            </Text>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6 }}>
+                              <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
+                                <SelectChip
+                                  active={!selectedTargetClassId}
+                                  label="Kosongkan"
+                                  onPress={() =>
+                                    setPromotionMappingDrafts((current) => ({
+                                      ...current,
+                                      [item.sourceClassId]: null,
+                                    }))
+                                  }
+                                />
+                                {item.targetOptions.map((option) => (
+                                  <SelectChip
+                                    key={`promotion-option-${item.sourceClassId}-${option.id}`}
+                                    active={selectedTargetClassId === option.id}
+                                    label={`${option.name} (${option.currentStudentCount})`}
+                                    onPress={() =>
+                                      setPromotionMappingDrafts((current) => ({
+                                        ...current,
+                                        [item.sourceClassId]: option.id,
+                                      }))
+                                    }
+                                  />
+                                ))}
+                              </View>
+                            </ScrollView>
+                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+                              Saran: {suggestedTargetLabel}
+                            </Text>
+                          </>
+                        )}
+
+                        {item.validation.errors.map((entry) => (
+                          <View
+                            key={`promotion-class-error-${item.sourceClassId}-${entry}`}
+                            style={{
+                              borderWidth: 1,
+                              borderColor: '#fecaca',
+                              backgroundColor: '#fff1f2',
+                              borderRadius: 10,
+                              paddingHorizontal: 10,
+                              paddingVertical: 8,
+                              marginBottom: 6,
+                            }}
+                          >
+                            <Text style={{ color: '#b91c1c', fontSize: 12 }}>{entry}</Text>
+                          </View>
+                        ))}
+                        {item.validation.warnings.map((entry) => (
+                          <View
+                            key={`promotion-class-warning-${item.sourceClassId}-${entry}`}
+                            style={{
+                              borderWidth: 1,
+                              borderColor: '#fcd34d',
+                              backgroundColor: '#fffbeb',
+                              borderRadius: 10,
+                              paddingHorizontal: 10,
+                              paddingVertical: 8,
+                              marginBottom: 6,
+                            }}
+                          >
+                            <Text style={{ color: '#92400e', fontSize: 12 }}>{entry}</Text>
+                          </View>
+                        ))}
+                        {item.validation.errors.length === 0 && item.validation.warnings.length === 0 ? (
+                          <Text style={{ color: '#15803d', fontSize: 12, fontWeight: '700' }}>Siap</Text>
+                        ) : null}
+                      </View>
+                    );
+                  })}
+
+                  <View style={{ marginTop: 8 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Riwayat Run</Text>
+                    {(promotionWorkspaceQuery.data.recentRuns || []).length === 0 ? (
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                        Belum ada run promotion untuk kombinasi source-target ini.
+                      </Text>
+                    ) : (
+                      promotionWorkspaceQuery.data.recentRuns.map((run) => (
+                        <View
+                          key={`promotion-run-${run.id}`}
+                          style={{
+                            borderWidth: 1,
+                            borderColor: '#d6e0f2',
+                            borderRadius: 12,
+                            padding: 10,
+                            backgroundColor: '#f8fbff',
+                            marginBottom: 8,
+                          }}
+                        >
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                            Run #{run.id} • {run.promotedStudents} naik • {run.graduatedStudents} alumni
+                          </Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                            Commit: {formatDateTime(run.committedAt || run.createdAt)}
+                          </Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                            {run.createdBy ? `Oleh ${run.createdBy.name}` : 'Oleh sistem'}
+                          </Text>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                </>
+              )}
             </SectionCard>
           ) : null}
 
