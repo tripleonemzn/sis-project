@@ -476,12 +476,25 @@ export default function ParentFinanceScreen() {
                             Saldo kredit: {formatCurrency(payment.creditedAmount || 0)}
                           </Text>
                         ) : null}
+                        {Number(payment.reversedAmount || 0) > 0 ? (
+                          <Text style={{ color: '#be123c', fontSize: 12, marginTop: 2 }}>
+                            Direversal: {formatCurrency(payment.reversedAmount || 0)}
+                          </Text>
+                        ) : null}
                         <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
                           Tanggal: {formatDate(payment.createdAt)}
                         </Text>
                         {Number(payment.creditedAmount || 0) > 0 ? (
                           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
                             Dialokasikan: {formatCurrency(payment.allocatedAmount || 0)}
+                          </Text>
+                        ) : null}
+                        {Number(payment.reversedAmount || 0) > 0 ? (
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                            Dikoreksi: alokasi dibalik {formatCurrency(payment.reversedAllocatedAmount || 0)}
+                            {Number(payment.reversedCreditedAmount || 0) > 0
+                              ? ` • saldo kredit dibalik ${formatCurrency(payment.reversedCreditedAmount || 0)}`
+                              : ''}
                           </Text>
                         ) : null}
                       </View>

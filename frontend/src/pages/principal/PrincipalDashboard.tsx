@@ -10,6 +10,7 @@ import {
 } from '../../services/budgetRequest.service';
 import {
   staffFinanceService,
+  type FinancePaymentReversalRequest,
   type FinanceWriteOffRequest,
 } from '../../services/staffFinance.service';
 import { workProgramService, type WorkProgram } from '../../services/workProgram.service';
@@ -3174,6 +3175,12 @@ const PrincipalFinancePage = () => {
     enabled: isFinancePage,
   });
 
+  const { data: financePaymentReversalsData, isLoading: isPaymentReversalsLoading } = useQuery({
+    queryKey: ['principal-finance-payment-reversals'],
+    queryFn: () => staffFinanceService.listPaymentReversals({ pendingFor: 'PRINCIPAL', limit: 50 }),
+    enabled: isFinancePage,
+  });
+
   let budgets: BudgetRequest[] = budgetsData?.data || budgetsData || [];
 
   if (statusFilter !== 'ALL') {
@@ -3223,6 +3230,21 @@ const PrincipalFinancePage = () => {
     },
   });
 
+  const principalPaymentReversalMutation = useMutation({
+    mutationFn: (payload: { requestId: number; approved: boolean }) =>
+      staffFinanceService.decidePaymentReversalAsPrincipal(payload.requestId, {
+        approved: payload.approved,
+      }),
+    onSuccess: (_, payload) => {
+      queryClient.invalidateQueries({ queryKey: ['principal-finance-payment-reversals'] });
+      toast.success(payload.approved ? 'Reversal pembayaran disetujui' : 'Reversal pembayaran ditolak');
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal memproses approval reversal pembayaran');
+    },
+  });
+
   const handleApprove = () => {
     if (!selectedForApprove) return;
     updateStatusMutation.mutate({
@@ -3248,6 +3270,7 @@ const PrincipalFinancePage = () => {
 
   const totalAmount = budgets.reduce((sum, b) => sum + b.totalAmount, 0);
   const pendingPrincipalWriteOffs = financeWriteOffsData?.requests || [];
+  const pendingPrincipalPaymentReversals = financePaymentReversalsData?.requests || [];
 
   return (
     <div className="space-y-6">
@@ -3535,6 +3558,94 @@ const PrincipalFinancePage = () => {
                           type="button"
                           onClick={() => principalWriteOffMutation.mutate({ requestId: request.id, approved: true })}
                           disabled={principalWriteOffMutation.isPending}
+                          className="inline-flex items-center rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                        >
+                          Setujui
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Approval Reversal Pembayaran</h3>
+            <p className="mt-1 text-xs text-gray-500">
+              Review pengajuan reversal pembayaran yang sudah lolos review Kepala TU.
+            </p>
+          </div>
+          <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+            {pendingPrincipalPaymentReversals.length} menunggu
+          </span>
+        </div>
+
+        {isPaymentReversalsLoading ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          </div>
+        ) : pendingPrincipalPaymentReversals.length === 0 ? (
+          <div className="py-10 text-center text-sm text-gray-500">
+            Belum ada pengajuan reversal pembayaran yang menunggu persetujuan Kepala Sekolah.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Pengajuan
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Pembayaran
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Nominal
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Aksi
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {pendingPrincipalPaymentReversals.map((request: FinancePaymentReversalRequest) => (
+                  <tr key={request.id}>
+                    <td className="px-6 py-4 text-sm text-gray-700">
+                      <div className="font-semibold text-gray-900">{request.requestNo}</div>
+                      <div className="text-xs text-gray-500 mt-1">{request.student?.name || '-'} • {request.student?.studentClass?.name || '-'}</div>
+                      <div className="text-xs text-gray-500 mt-1">{request.reason}</div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-700">
+                      <div className="font-medium text-gray-900">{request.payment?.paymentNo || '-'}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Invoice {request.invoice?.invoiceNo || '-'} • sisa reversible {request.payment ? `Rp ${Math.round(request.payment.remainingReversibleAmount).toLocaleString('id-ID')}` : '-'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-right text-gray-700">
+                      <div>Request Rp {Math.round(request.requestedAmount).toLocaleString('id-ID')}</div>
+                      <div className="text-xs text-emerald-700 mt-1">
+                        Alokasi Rp {Math.round(Number(request.approvedAllocatedAmount || request.requestedAllocatedAmount || 0)).toLocaleString('id-ID')} • kredit Rp {Math.round(Number(request.approvedCreditedAmount || request.requestedCreditedAmount || 0)).toLocaleString('id-ID')}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-right">
+                      <div className="inline-flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => principalPaymentReversalMutation.mutate({ requestId: request.id, approved: false })}
+                          disabled={principalPaymentReversalMutation.isPending}
+                          className="inline-flex items-center rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                        >
+                          Tolak
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => principalPaymentReversalMutation.mutate({ requestId: request.id, approved: true })}
+                          disabled={principalPaymentReversalMutation.isPending}
                           className="inline-flex items-center rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
                         >
                           Setujui

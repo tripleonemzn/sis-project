@@ -87,6 +87,9 @@ export type ParentPaymentRecord = {
   amount: number;
   allocatedAmount?: number;
   creditedAmount?: number;
+  reversedAmount?: number;
+  reversedAllocatedAmount?: number;
+  reversedCreditedAmount?: number;
   source?: ParentPaymentSource | null;
   status: ParentPaymentStatus;
   type: ParentPaymentType;

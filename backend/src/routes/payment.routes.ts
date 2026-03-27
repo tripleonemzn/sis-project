@@ -25,11 +25,16 @@ import {
   listParentPayments,
   previewFinanceInvoices,
   applyFinanceWriteOff,
+  applyFinancePaymentReversal,
   updateFinanceInvoiceInstallments,
   updateFinanceAdjustmentRule,
   updateFinanceComponent,
   updateFinanceReminderPolicy,
   updateFinanceTariffRule,
+  createFinancePaymentReversalRequest,
+  decideFinancePaymentReversalAsHeadTu,
+  decideFinancePaymentReversalAsPrincipal,
+  listFinancePaymentReversals,
 } from '../controllers/payment.controller';
 import { authMiddleware } from '../middleware/auth';
 import { roleMiddleware } from '../middleware/role';
@@ -57,9 +62,14 @@ router.get('/invoices', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL'
 router.post('/invoices/:id/late-fees/apply', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), applyFinanceInvoiceLateFees);
 router.patch('/invoices/:id/installments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceInvoiceInstallments);
 router.post('/invoices/:id/payments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinancePayment);
+router.post('/payment-records/:id/reversals', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinancePaymentReversalRequest);
 router.post('/invoices/:id/write-offs', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceWriteOffRequest);
 router.get('/credits', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceCredits);
 router.post('/credits/:studentId/refunds', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceRefund);
+router.get('/reversals', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinancePaymentReversals);
+router.post('/reversals/:id/head-tu-decision', roleMiddleware(['STAFF']), decideFinancePaymentReversalAsHeadTu);
+router.post('/reversals/:id/principal-decision', roleMiddleware(['PRINCIPAL']), decideFinancePaymentReversalAsPrincipal);
+router.post('/reversals/:id/apply', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), applyFinancePaymentReversal);
 router.get('/write-offs', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceWriteOffs);
 router.post('/write-offs/:id/head-tu-decision', roleMiddleware(['STAFF']), decideFinanceWriteOffAsHeadTu);
 router.post('/write-offs/:id/principal-decision', roleMiddleware(['PRINCIPAL']), decideFinanceWriteOffAsPrincipal);

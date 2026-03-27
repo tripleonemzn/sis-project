@@ -31,6 +31,7 @@ import {
   type StaffFinanceInvoice,
   type StaffFinanceReminderPolicy,
   type StaffFinanceRefundRecord,
+  type StaffFinancePaymentReversalRequest,
   type StaffFinanceTariffRule,
   type StaffFinanceWriteOffRequest,
 } from '../../../src/features/staff/staffFinanceApi';
@@ -172,6 +173,7 @@ function getLateFeeModeLabel(mode?: FinanceLateFeeMode | null) {
 function getCreditTransactionLabel(transaction: StaffFinanceCreditTransaction) {
   if (transaction.kind === 'APPLIED_TO_INVOICE') return 'Saldo kredit dipakai ke invoice';
   if (transaction.kind === 'REFUND') return 'Refund saldo kredit';
+  if (transaction.kind === 'PAYMENT_REVERSAL') return 'Reversal mengurangi saldo kredit';
   return 'Kelebihan bayar masuk saldo kredit';
 }
 
@@ -243,6 +245,22 @@ function getInvoicePreviewStatusMeta(status: string) {
 }
 
 function getWriteOffStatusBadge(status: StaffFinanceWriteOffRequest['status']) {
+  if (status === 'PENDING_HEAD_TU') {
+    return { label: 'Menunggu Kepala TU', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  }
+  if (status === 'PENDING_PRINCIPAL') {
+    return { label: 'Menunggu Kepsek', bg: '#e0f2fe', border: '#bae6fd', text: '#075985' };
+  }
+  if (status === 'APPROVED') {
+    return { label: 'Siap diterapkan', bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  }
+  if (status === 'APPLIED') {
+    return { label: 'Sudah diterapkan', bg: '#ede9fe', border: '#c4b5fd', text: '#5b21b6' };
+  }
+  return { label: 'Ditolak', bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+}
+
+function getPaymentReversalStatusBadge(status: StaffFinancePaymentReversalRequest['status']) {
   if (status === 'PENDING_HEAD_TU') {
     return { label: 'Menunggu Kepala TU', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
   }
@@ -365,6 +383,10 @@ export default function StaffPaymentsScreen() {
   const [writeOffAmount, setWriteOffAmount] = useState('');
   const [writeOffReason, setWriteOffReason] = useState('');
   const [writeOffNote, setWriteOffNote] = useState('');
+  const [reversalTargetPayment, setReversalTargetPayment] = useState<StaffFinanceInvoice['payments'][number] | null>(null);
+  const [reversalAmount, setReversalAmount] = useState('');
+  const [reversalReason, setReversalReason] = useState('');
+  const [reversalNote, setReversalNote] = useState('');
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-staff-finance-active-year'],
@@ -527,6 +549,13 @@ export default function StaffPaymentsScreen() {
     staleTime: 60_000,
   });
 
+  const paymentReversalsQuery = useQuery({
+    queryKey: ['mobile-staff-finance-payment-reversals'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => staffFinanceApi.listPaymentReversals({ limit: 100 }),
+    staleTime: 60_000,
+  });
+
   const dashboardQuery = useQuery({
     queryKey: ['mobile-staff-finance-dashboard', activeYearQuery.data?.id || 'none'],
     enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments && Boolean(activeYearQuery.data?.id),
@@ -546,6 +575,8 @@ export default function StaffPaymentsScreen() {
   const recentRefunds = creditsQuery.data?.recentRefunds || [];
   const writeOffSummary = writeOffsQuery.data?.summary;
   const writeOffRequests = writeOffsQuery.data?.requests || [];
+  const paymentReversalSummary = paymentReversalsQuery.data?.summary;
+  const paymentReversalRequests = paymentReversalsQuery.data?.requests || [];
   const paymentPreviewAmount = Number(paymentAmount || 0);
   const paymentAllocatedAmount = Math.min(paymentPreviewAmount, Number(selectedInvoice?.balanceAmount || 0));
   const paymentCreditedAmount = Math.max(paymentPreviewAmount - Number(selectedInvoice?.balanceAmount || 0), 0);
@@ -559,6 +590,13 @@ export default function StaffPaymentsScreen() {
     .reduce((sum, payment) => sum + Number(payment.allocatedAmount || payment.amount || 0), 0);
   const selectedInvoiceCanEditAmounts =
     Number(selectedInvoice?.paidAmount || 0) + Number(selectedInvoice?.writtenOffAmount || 0) <= 0;
+  const selectedInvoicePaymentReversals = useMemo(
+    () =>
+      selectedInvoice
+        ? paymentReversalRequests.filter((request) => request.invoiceId === selectedInvoice.id)
+        : [],
+    [paymentReversalRequests, selectedInvoice],
+  );
 
   useEffect(() => {
     if (invoiceAcademicYearId == null && activeYearQuery.data?.id) {
@@ -701,11 +739,25 @@ export default function StaffPaymentsScreen() {
     setWriteOffNote('');
   };
 
+  const resetReversalForm = () => {
+    setReversalTargetPayment(null);
+    setReversalAmount('');
+    setReversalReason('');
+    setReversalNote('');
+  };
+
   const openWriteOffModal = (invoice: StaffFinanceInvoice) => {
     setWriteOffTargetInvoice(invoice);
     setWriteOffAmount(String(Number(invoice.balanceAmount || 0)));
     setWriteOffReason('');
     setWriteOffNote('');
+  };
+
+  const openReversalModal = (payment: StaffFinanceInvoice['payments'][number]) => {
+    setReversalTargetPayment(payment);
+    setReversalAmount(String(Number(payment.remainingReversibleAmount || 0)));
+    setReversalReason('');
+    setReversalNote('');
   };
 
   const invalidateFinanceQueries = () => {
@@ -715,6 +767,7 @@ export default function StaffPaymentsScreen() {
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-invoices'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-credits'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-write-offs'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-payment-reversals'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-dashboard'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-reminder-policy'] });
   };
@@ -1068,6 +1121,33 @@ export default function StaffPaymentsScreen() {
     onError: (error: unknown) => notifyApiError(error, 'Gagal menerapkan write-off.'),
   });
 
+  const createPaymentReversalMutation = useMutation({
+    mutationFn: () => {
+      if (!reversalTargetPayment) throw new Error('Pembayaran belum dipilih');
+      return staffFinanceApi.createPaymentReversalRequest(reversalTargetPayment.id, {
+        amount: Number(reversalAmount),
+        reason: reversalReason,
+        note: reversalNote || undefined,
+      });
+    },
+    onSuccess: () => {
+      notifySuccess('Pengajuan reversal pembayaran dikirim ke Kepala TU.');
+      resetReversalForm();
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal membuat pengajuan reversal pembayaran.'),
+  });
+
+  const applyPaymentReversalMutation = useMutation({
+    mutationFn: (request: StaffFinancePaymentReversalRequest) => staffFinanceApi.applyPaymentReversal(request.id),
+    onSuccess: (result) => {
+      notifySuccess('Reversal pembayaran berhasil diterapkan.');
+      setSelectedInvoice(result.invoice);
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal menerapkan reversal pembayaran.'),
+  });
+
   const handleSaveComponent = () => {
     if (!componentCode.trim() || !componentName.trim()) {
       notifyApiError(null, 'Kode dan nama komponen wajib diisi.');
@@ -1379,6 +1459,26 @@ export default function StaffPaymentsScreen() {
       return;
     }
     createWriteOffMutation.mutate();
+  };
+
+  const handleSavePaymentReversal = () => {
+    if (!reversalTargetPayment) {
+      notifyApiError(null, 'Pembayaran belum dipilih.');
+      return;
+    }
+    if (Number(reversalAmount) <= 0) {
+      notifyApiError(null, 'Nominal reversal harus lebih dari nol.');
+      return;
+    }
+    if (Number(reversalAmount) > Number(reversalTargetPayment.remainingReversibleAmount || 0)) {
+      notifyApiError(null, 'Nominal reversal melebihi sisa pembayaran yang dapat direversal.');
+      return;
+    }
+    if (reversalReason.trim().length < 5) {
+      notifyApiError(null, 'Alasan reversal minimal 5 karakter.');
+      return;
+    }
+    createPaymentReversalMutation.mutate();
   };
 
   useEffect(() => {
@@ -3692,6 +3792,76 @@ export default function StaffPaymentsScreen() {
             )}
           </View>
 
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 10,
+              padding: 12,
+              marginBottom: 8,
+              backgroundColor: '#fff',
+            }}
+          >
+            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Reversal Pembayaran</Text>
+            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+              Pending Kepala TU {paymentReversalSummary?.pendingHeadTuCount || 0} • pending Kepala Sekolah {paymentReversalSummary?.pendingPrincipalCount || 0} • siap apply {paymentReversalSummary?.approvedCount || 0}
+            </Text>
+            {paymentReversalsQuery.isLoading ? (
+              <Text style={{ color: '#64748b' }}>Memuat pengajuan reversal pembayaran...</Text>
+            ) : paymentReversalRequests.length === 0 ? (
+              <Text style={{ color: '#64748b' }}>Belum ada pengajuan reversal pembayaran.</Text>
+            ) : (
+              paymentReversalRequests.slice(0, 8).map((request) => {
+                const badge = getPaymentReversalStatusBadge(request.status);
+                return (
+                  <View key={request.id} style={{ borderTopWidth: 1, borderTopColor: '#eef2ff', paddingVertical: 8 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#0f172a', fontWeight: '700' }}>{request.requestNo}</Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                          {request.student?.name || '-'} • {request.payment?.paymentNo || '-'}
+                        </Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{request.reason}</Text>
+                        <Text style={{ color: '#047857', fontSize: 11, marginTop: 2 }}>
+                          Request {formatCurrency(request.requestedAmount)} • approved {formatCurrency(request.approvedAmount || 0)} • applied {formatCurrency(request.appliedAmount || 0)}
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: badge.border,
+                          backgroundColor: badge.bg,
+                          borderRadius: 999,
+                          paddingHorizontal: 8,
+                          paddingVertical: 2,
+                        }}
+                      >
+                        <Text style={{ color: badge.text, fontWeight: '700', fontSize: 11 }}>{badge.label}</Text>
+                      </View>
+                    </View>
+                    {request.status === 'APPROVED' ? (
+                      <Pressable
+                        onPress={() => applyPaymentReversalMutation.mutate(request)}
+                        disabled={applyPaymentReversalMutation.isPending}
+                        style={{
+                          marginTop: 8,
+                          backgroundColor: applyPaymentReversalMutation.isPending ? '#a7f3d0' : '#059669',
+                          borderRadius: 8,
+                          paddingVertical: 9,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#fff', fontWeight: '700' }}>
+                          {applyPaymentReversalMutation.isPending ? 'Menerapkan...' : 'Terapkan Reversal'}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                );
+              })
+            )}
+          </View>
+
           {invoices.length === 0 ? (
             <View style={{ borderWidth: 1, borderColor: '#e2e8f0', borderStyle: 'dashed', borderRadius: 10, padding: 14 }}>
               <Text style={{ color: '#64748b', textAlign: 'center' }}>Belum ada tagihan.</Text>
@@ -4472,6 +4642,132 @@ export default function StaffPaymentsScreen() {
               <View
                 style={{
                   borderWidth: 1,
+                  borderColor: '#bbf7d0',
+                  backgroundColor: '#f0fdf4',
+                  borderRadius: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  marginBottom: 8,
+                }}
+              >
+                <Text style={{ color: '#166534', fontSize: 12, fontWeight: '700' }}>Riwayat pembayaran & reversal</Text>
+                <Text style={{ color: '#15803d', fontSize: 11, marginTop: 2 }}>
+                  {(selectedInvoice?.payments || []).length} pembayaran tercatat • {selectedInvoicePaymentReversals.length} pengajuan reversal.
+                </Text>
+                {(selectedInvoice?.payments || []).length === 0 ? (
+                  <Text style={{ color: '#15803d', fontSize: 11, marginTop: 8 }}>Belum ada pembayaran pada invoice ini.</Text>
+                ) : (
+                  (selectedInvoice?.payments || []).map((payment) => {
+                    const paymentRequests = selectedInvoicePaymentReversals.filter((request) => request.paymentId === payment.id);
+                    return (
+                      <View
+                        key={`selected-payment-${payment.id}`}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#bbf7d0',
+                          backgroundColor: '#fff',
+                          borderRadius: 8,
+                          paddingHorizontal: 8,
+                          paddingVertical: 8,
+                          marginTop: 8,
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: '#166534', fontSize: 12, fontWeight: '700' }}>
+                              {payment.paymentNo} • {formatCurrency(payment.amount)}
+                            </Text>
+                            <Text style={{ color: '#15803d', fontSize: 11, marginTop: 2 }}>
+                              {formatDate(payment.paidAt)} • {getPaymentMethodLabel(payment.method)} • sumber {payment.source === 'CREDIT_BALANCE' ? 'Saldo Kredit' : 'Pembayaran Langsung'}
+                            </Text>
+                            <Text style={{ color: '#15803d', fontSize: 11, marginTop: 2 }}>
+                              Dialokasikan {formatCurrency(payment.allocatedAmount || 0)} • saldo kredit {formatCurrency(payment.creditedAmount || 0)} • sudah direversal {formatCurrency(payment.reversedAmount || 0)}
+                            </Text>
+                            <Text style={{ color: '#15803d', fontSize: 11, marginTop: 2 }}>
+                              Sisa reversible {formatCurrency(payment.remainingReversibleAmount || 0)}
+                            </Text>
+                          </View>
+                          <Pressable
+                            onPress={() => openReversalModal(payment)}
+                            disabled={!payment.canRequestReversal || createPaymentReversalMutation.isPending || payment.source !== 'DIRECT'}
+                            style={{
+                              backgroundColor:
+                                !payment.canRequestReversal || createPaymentReversalMutation.isPending || payment.source !== 'DIRECT'
+                                  ? '#bbf7d0'
+                                  : '#16a34a',
+                              borderRadius: 8,
+                              paddingHorizontal: 10,
+                              paddingVertical: 9,
+                            }}
+                          >
+                            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Ajukan</Text>
+                          </Pressable>
+                        </View>
+                        {paymentRequests.map((request) => {
+                          const badge = getPaymentReversalStatusBadge(request.status);
+                          return (
+                            <View
+                              key={`selected-reversal-${request.id}`}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#bbf7d0',
+                                backgroundColor: '#f0fdf4',
+                                borderRadius: 8,
+                                paddingHorizontal: 8,
+                                paddingVertical: 8,
+                                marginTop: 8,
+                              }}
+                            >
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={{ color: '#166534', fontSize: 12, fontWeight: '700' }}>{request.requestNo}</Text>
+                                  <Text style={{ color: '#15803d', fontSize: 11, marginTop: 2 }}>{request.reason}</Text>
+                                  <Text style={{ color: '#15803d', fontSize: 11, marginTop: 2 }}>
+                                    Request {formatCurrency(request.requestedAmount)} • approved {formatCurrency(request.approvedAmount || 0)} • applied {formatCurrency(request.appliedAmount || 0)}
+                                  </Text>
+                                </View>
+                                <View
+                                  style={{
+                                    borderWidth: 1,
+                                    borderColor: badge.border,
+                                    backgroundColor: badge.bg,
+                                    borderRadius: 999,
+                                    paddingHorizontal: 8,
+                                    paddingVertical: 2,
+                                  }}
+                                >
+                                  <Text style={{ color: badge.text, fontWeight: '700', fontSize: 11 }}>{badge.label}</Text>
+                                </View>
+                              </View>
+                              {request.status === 'APPROVED' ? (
+                                <Pressable
+                                  onPress={() => applyPaymentReversalMutation.mutate(request)}
+                                  disabled={applyPaymentReversalMutation.isPending}
+                                  style={{
+                                    marginTop: 8,
+                                    backgroundColor: applyPaymentReversalMutation.isPending ? '#86efac' : '#16a34a',
+                                    borderRadius: 8,
+                                    paddingVertical: 9,
+                                    alignItems: 'center',
+                                  }}
+                                >
+                                  <Text style={{ color: '#fff', fontWeight: '700' }}>
+                                    {applyPaymentReversalMutation.isPending ? 'Menerapkan...' : 'Terapkan Reversal'}
+                                  </Text>
+                                </Pressable>
+                              ) : null}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    );
+                  })
+                )}
+              </View>
+
+              <View
+                style={{
+                  borderWidth: 1,
                   borderColor: '#ddd6fe',
                   backgroundColor: '#f5f3ff',
                   borderRadius: 8,
@@ -4944,6 +5240,87 @@ export default function StaffPaymentsScreen() {
                 >
                   <Text style={{ color: '#fff', fontWeight: '700' }}>
                     {refundMutation.isPending ? 'Memproses...' : 'Simpan Refund'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={Boolean(reversalTargetPayment)} animationType="fade" transparent onRequestClose={resetReversalForm}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#dbe7fb' }}>
+            <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>Ajukan Reversal Pembayaran</Text>
+              <Text style={{ color: '#64748b', marginTop: 2 }}>
+                {reversalTargetPayment?.paymentNo || '-'} • Sisa reversible {formatCurrency(reversalTargetPayment?.remainingReversibleAmount || 0)}
+              </Text>
+            </View>
+
+            <View style={{ padding: 14 }}>
+              <TextInput
+                keyboardType="numeric"
+                value={reversalAmount}
+                onChangeText={setReversalAmount}
+                placeholder="Nominal reversal"
+                placeholderTextColor="#94a3b8"
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+              />
+              <TextInput
+                value={reversalReason}
+                onChangeText={setReversalReason}
+                placeholder="Alasan pengajuan reversal pembayaran"
+                placeholderTextColor="#94a3b8"
+                multiline
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', minHeight: 90, textAlignVertical: 'top', backgroundColor: '#fff' }}
+              />
+              <TextInput
+                value={reversalNote}
+                onChangeText={setReversalNote}
+                placeholder="Catatan internal (opsional)"
+                placeholderTextColor="#94a3b8"
+                multiline
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', minHeight: 72, textAlignVertical: 'top', backgroundColor: '#fff' }}
+              />
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#bbf7d0',
+                  backgroundColor: '#f0fdf4',
+                  borderRadius: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                }}
+              >
+                <Text style={{ color: '#166534', fontSize: 12 }}>
+                  Approval akan berjalan berurutan: Kepala TU, lalu Kepala Sekolah, baru setelah itu bendahara bisa menerapkan reversal ke pembayaran.
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', padding: 12, flexDirection: 'row' }}>
+              <View style={{ flex: 1, paddingRight: 6 }}>
+                <Pressable
+                  onPress={resetReversalForm}
+                  style={{ borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, paddingVertical: 10, alignItems: 'center', backgroundColor: '#fff' }}
+                >
+                  <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+                </Pressable>
+              </View>
+              <View style={{ flex: 1, paddingLeft: 6 }}>
+                <Pressable
+                  disabled={createPaymentReversalMutation.isPending || Number(reversalAmount) <= 0}
+                  onPress={handleSavePaymentReversal}
+                  style={{
+                    backgroundColor: createPaymentReversalMutation.isPending || Number(reversalAmount) <= 0 ? '#86efac' : '#16a34a',
+                    borderRadius: 10,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>
+                    {createPaymentReversalMutation.isPending ? 'Mengirim...' : 'Kirim Pengajuan'}
                   </Text>
                 </Pressable>
               </View>

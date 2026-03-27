@@ -14,6 +14,7 @@ import {
 } from '../../../src/features/staff/staffAdministrationApi';
 import {
   staffFinanceApi,
+  type StaffFinancePaymentReversalRequest,
   type StaffFinanceWriteOffRequest,
   type StaffFinanceReportSnapshot,
 } from '../../../src/features/staff/staffFinanceApi';
@@ -151,6 +152,13 @@ export default function StaffAdminScreen() {
     staleTime: 60 * 1000,
   });
 
+  const headTuPaymentReversalsQuery = useQuery({
+    queryKey: ['mobile-head-tu-finance-payment-reversals', user?.id],
+    enabled: isAuthenticated && user?.role === 'STAFF' && staffDivision === 'HEAD_TU',
+    queryFn: () => staffFinanceApi.listPaymentReversals({ pendingFor: 'HEAD_TU', limit: 20 }),
+    staleTime: 60 * 1000,
+  });
+
   const headTuWriteOffDecisionMutation = useMutation({
     mutationFn: (payload: { requestId: number; approved: boolean }) =>
       staffFinanceApi.decideWriteOffAsHeadTu(payload.requestId, {
@@ -163,6 +171,20 @@ export default function StaffAdminScreen() {
     },
     onError: (error: unknown) => {
       notifyApiError(error, 'Gagal memproses approval write-off.');
+    },
+  });
+
+  const headTuPaymentReversalDecisionMutation = useMutation({
+    mutationFn: (payload: { requestId: number; approved: boolean }) =>
+      staffFinanceApi.decidePaymentReversalAsHeadTu(payload.requestId, {
+        approved: payload.approved,
+      }),
+    onSuccess: (_, payload) => {
+      void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-payment-reversals', user?.id] });
+      notifySuccess(payload.approved ? 'Reversal diteruskan ke Kepala Sekolah.' : 'Pengajuan reversal ditolak.');
+    },
+    onError: (error: unknown) => {
+      notifyApiError(error, 'Gagal memproses approval reversal pembayaran.');
     },
   });
 
@@ -220,11 +242,16 @@ export default function StaffAdminScreen() {
     () => headTuWriteOffsQuery.data?.requests || [],
     [headTuWriteOffsQuery.data],
   );
+  const headTuPendingPaymentReversals = useMemo(
+    () => headTuPaymentReversalsQuery.data?.requests || [],
+    [headTuPaymentReversalsQuery.data],
+  );
 
   const handleRefresh = () => {
     void dataQuery.refetch();
     if (staffDivision === 'HEAD_TU') {
       void headTuWriteOffsQuery.refetch();
+      void headTuPaymentReversalsQuery.refetch();
     }
   };
 
@@ -240,6 +267,23 @@ export default function StaffAdminScreen() {
           text: buttonLabel,
           style: approved ? 'default' : 'destructive',
           onPress: () => headTuWriteOffDecisionMutation.mutate({ requestId: request.id, approved }),
+        },
+      ],
+    );
+  };
+
+  const handleHeadTuPaymentReversalDecision = (request: StaffFinancePaymentReversalRequest, approved: boolean) => {
+    const actionLabel = approved ? 'meneruskan' : 'menolak';
+    const buttonLabel = approved ? 'Ya, Teruskan' : 'Ya, Tolak';
+    Alert.alert(
+      approved ? 'Teruskan ke Kepala Sekolah' : 'Tolak Reversal',
+      `Yakin ingin ${actionLabel} pengajuan "${request.requestNo}" untuk ${request.student?.name || 'siswa ini'}?`,
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: buttonLabel,
+          style: approved ? 'default' : 'destructive',
+          onPress: () => headTuPaymentReversalDecisionMutation.mutate({ requestId: request.id, approved }),
         },
       ],
     );
@@ -355,6 +399,105 @@ export default function StaffAdminScreen() {
               ))
             ) : (
               <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada pengajuan pending saat ini.</Text>
+            )}
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Approval Reversal Pembayaran</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  Review koreksi pembayaran sebelum diteruskan ke Kepala Sekolah.
+                </Text>
+              </View>
+              <View
+                style={{
+                  backgroundColor: '#fff7ed',
+                  borderColor: '#fed7aa',
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                }}
+              >
+                <Text style={{ color: '#c2410c', fontSize: 11, fontWeight: '700' }}>{headTuPendingPaymentReversals.length} menunggu</Text>
+              </View>
+            </View>
+
+            {headTuPaymentReversalsQuery.isLoading ? (
+              <QueryStateView type="loading" message="Mengambil approval reversal pembayaran..." />
+            ) : headTuPaymentReversalsQuery.isError ? (
+              <QueryStateView
+                type="error"
+                message="Gagal memuat approval reversal pembayaran."
+                onRetry={() => headTuPaymentReversalsQuery.refetch()}
+              />
+            ) : headTuPendingPaymentReversals.length === 0 ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada approval reversal pembayaran yang menunggu.</Text>
+            ) : (
+              headTuPendingPaymentReversals.slice(0, 5).map((request) => (
+                <View key={request.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 10 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{request.requestNo}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                    {request.student?.name || '-'} • {request.student?.studentClass?.name || '-'}
+                  </Text>
+                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                    Pembayaran {request.payment?.paymentNo || '-'} • invoice {request.invoice?.invoiceNo || '-'}
+                  </Text>
+                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                    Permintaan{' '}
+                    <Text style={{ color: '#b45309', fontWeight: '700' }}>
+                      {formatCurrency(request.requestedAmount)}
+                    </Text>
+                  </Text>
+                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                    Alokasi {formatCurrency(request.requestedAllocatedAmount || 0)} • kredit {formatCurrency(request.requestedCreditedAmount || 0)}
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{request.reason}</Text>
+
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                    <Pressable
+                      disabled={headTuPaymentReversalDecisionMutation.isPending}
+                      onPress={() => handleHeadTuPaymentReversalDecision(request, false)}
+                      style={{
+                        flex: 1,
+                        backgroundColor: '#fff1f2',
+                        borderWidth: 1,
+                        borderColor: '#fecdd3',
+                        borderRadius: 9,
+                        alignItems: 'center',
+                        paddingVertical: 10,
+                      }}
+                    >
+                      <Text style={{ color: '#be123c', fontWeight: '700' }}>Tolak</Text>
+                    </Pressable>
+                    <Pressable
+                      disabled={headTuPaymentReversalDecisionMutation.isPending}
+                      onPress={() => handleHeadTuPaymentReversalDecision(request, true)}
+                      style={{
+                        flex: 1,
+                        backgroundColor: '#ecfdf5',
+                        borderWidth: 1,
+                        borderColor: '#a7f3d0',
+                        borderRadius: 9,
+                        alignItems: 'center',
+                        paddingVertical: 10,
+                      }}
+                    >
+                      <Text style={{ color: '#047857', fontWeight: '700' }}>Teruskan</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ))
             )}
           </View>
 

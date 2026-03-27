@@ -56,6 +56,9 @@ interface ParentPayment {
   amount: number;
   allocatedAmount?: number;
   creditedAmount?: number;
+  reversedAmount?: number;
+  reversedAllocatedAmount?: number;
+  reversedCreditedAmount?: number;
   source?: ParentPaymentSource | null;
   status: ParentPaymentStatus;
   type: 'MONTHLY' | 'ONE_TIME';
@@ -1209,6 +1212,11 @@ const ParentFinancePage = () => {
                                   Kredit: {formatCurrency(payment.creditedAmount || 0)}
                                 </div>
                               ) : null}
+                              {Number(payment.reversedAmount || 0) > 0 ? (
+                                <div className="mt-1 text-[11px] font-normal text-rose-700">
+                                  Direversal: {formatCurrency(payment.reversedAmount || 0)}
+                                </div>
+                              ) : null}
                             </td>
                             <td className="px-6 py-4 text-sm">
                               <span
@@ -1219,6 +1227,14 @@ const ParentFinancePage = () => {
                               {Number(payment.creditedAmount || 0) > 0 ? (
                                 <div className="mt-1 text-[11px] text-gray-500">
                                   Dialokasikan: {formatCurrency(payment.allocatedAmount || 0)}
+                                </div>
+                              ) : null}
+                              {Number(payment.reversedAmount || 0) > 0 ? (
+                                <div className="mt-1 text-[11px] text-rose-600">
+                                  Dikoreksi: alokasi dibalik {formatCurrency(payment.reversedAllocatedAmount || 0)}
+                                  {Number(payment.reversedCreditedAmount || 0) > 0
+                                    ? ` • saldo kredit dibalik ${formatCurrency(payment.reversedCreditedAmount || 0)}`
+                                    : ''}
                                 </div>
                               ) : null}
                             </td>

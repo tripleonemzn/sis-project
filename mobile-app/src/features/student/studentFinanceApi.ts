@@ -57,6 +57,9 @@ export type StudentFinanceOverview = {
     amount: number;
     allocatedAmount?: number;
     creditedAmount?: number;
+    reversedAmount?: number;
+    reversedAllocatedAmount?: number;
+    reversedCreditedAmount?: number;
     source?: StudentPaymentSource | null;
     status: StudentPaymentStatus;
     type: StudentPaymentType;

@@ -90,6 +90,7 @@ model User {
   financeCreditTransactions      FinanceCreditTransaction[]       @relation("FinanceCreditTransactionStudent")
   financeRefunds                 FinanceRefund[]                  @relation("FinanceRefundStudent")
   financeWriteOffRequestsAsStudent FinanceWriteOffRequest[]       @relation("FinanceWriteOffStudent")
+  financePaymentReversalRequestsAsStudent FinancePaymentReversalRequest[] @relation("FinancePaymentReversalStudent")
   createdFinanceInvoices         FinanceInvoice[]                 @relation("FinanceInvoiceCreator")
   createdFinancePayments         FinancePayment[]                 @relation("FinancePaymentCreator")
   createdFinanceCreditTransactions FinanceCreditTransaction[]     @relation("FinanceCreditTransactionCreator")
@@ -102,6 +103,10 @@ model User {
   headTuDecidedFinanceWriteOffs  FinanceWriteOffRequest[]         @relation("FinanceWriteOffHeadTuDecisionBy")
   principalDecidedFinanceWriteOffs FinanceWriteOffRequest[]       @relation("FinanceWriteOffPrincipalDecisionBy")
   appliedFinanceWriteOffs        FinanceWriteOffRequest[]         @relation("FinanceWriteOffAppliedBy")
+  createdFinancePaymentReversalRequests FinancePaymentReversalRequest[]   @relation("FinancePaymentReversalRequester")
+  headTuDecidedFinancePaymentReversals FinancePaymentReversalRequest[]    @relation("FinancePaymentReversalHeadTuDecisionBy")
+  principalDecidedFinancePaymentReversals FinancePaymentReversalRequest[] @relation("FinancePaymentReversalPrincipalDecisionBy")
+  appliedFinancePaymentReversals FinancePaymentReversalRequest[]          @relation("FinancePaymentReversalAppliedBy")
   pklAssessments                 PklAssessment[]
   reportNotes                    ReportNote[]
   achievements                   StudentAchievement[]
@@ -1565,6 +1570,7 @@ model FinanceInvoice {
   payments       FinancePayment[]
   installments   FinanceInvoiceInstallment[]
   writeOffRequests FinanceWriteOffRequest[]
+  paymentReversalRequests FinancePaymentReversalRequest[]
 
   @@unique([studentId, semester, periodKey])
   @@index([studentId, status])
@@ -1598,6 +1604,9 @@ model FinancePayment {
   amount      Float
   allocatedAmount Float            @default(0)
   creditedAmount Float             @default(0)
+  reversedAmount Float             @default(0)
+  reversedAllocatedAmount Float    @default(0)
+  reversedCreditedAmount Float     @default(0)
   source      FinancePaymentSource @default(DIRECT)
   method      FinancePaymentMethod @default(OTHER)
   referenceNo String?
@@ -1610,6 +1619,7 @@ model FinancePayment {
   invoice     FinanceInvoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   createdBy   User?                @relation("FinancePaymentCreator", fields: [createdById], references: [id], onDelete: SetNull)
   creditTransactions FinanceCreditTransaction[]
+  reversalRequests FinancePaymentReversalRequest[]
 
   @@index([studentId, paidAt])
   @@index([invoiceId, paidAt])
@@ -1667,6 +1677,53 @@ model FinanceWriteOffRequest {
   @@index([studentId, status])
   @@index([status, createdAt])
   @@map("finance_write_off_requests")
+}
+
+model FinancePaymentReversalRequest {
+  id                         Int                          @id @default(autoincrement())
+  requestNo                  String                       @unique
+  paymentId                  Int
+  invoiceId                  Int
+  studentId                  Int
+  requestedAmount            Float
+  requestedAllocatedAmount   Float                        @default(0)
+  requestedCreditedAmount    Float                        @default(0)
+  approvedAmount             Float?
+  approvedAllocatedAmount    Float?
+  approvedCreditedAmount     Float?
+  appliedAmount              Float?
+  appliedAllocatedAmount     Float?
+  appliedCreditedAmount      Float?
+  reason                     String
+  requestedNote              String?
+  status                     FinancePaymentReversalStatus @default(PENDING_HEAD_TU)
+  requestedById              Int
+  headTuApproved             Boolean?
+  headTuDecisionById         Int?
+  headTuDecisionAt           DateTime?
+  headTuDecisionNote         String?
+  principalApproved          Boolean?
+  principalDecisionById      Int?
+  principalDecisionAt        DateTime?
+  principalDecisionNote      String?
+  appliedById                Int?
+  appliedAt                  DateTime?
+  applyNote                  String?
+  createdAt                  DateTime                     @default(now())
+  updatedAt                  DateTime                     @updatedAt
+  payment                    FinancePayment               @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice                    FinanceInvoice               @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  student                    User                         @relation("FinancePaymentReversalStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  requestedBy                User                         @relation("FinancePaymentReversalRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  headTuDecisionBy           User?                        @relation("FinancePaymentReversalHeadTuDecisionBy", fields: [headTuDecisionById], references: [id], onDelete: SetNull)
+  principalDecisionBy        User?                        @relation("FinancePaymentReversalPrincipalDecisionBy", fields: [principalDecisionById], references: [id], onDelete: SetNull)
+  appliedBy                  User?                        @relation("FinancePaymentReversalAppliedBy", fields: [appliedById], references: [id], onDelete: SetNull)
+
+  @@index([paymentId, status])
+  @@index([invoiceId, status])
+  @@index([studentId, status])
+  @@index([status, createdAt])
+  @@map("finance_payment_reversal_requests")
 }
 
 model FinanceCreditBalance {
@@ -2126,9 +2183,18 @@ enum FinanceCreditTransactionKind {
   OVERPAYMENT
   APPLIED_TO_INVOICE
   REFUND
+  PAYMENT_REVERSAL
 }
 
 enum FinanceWriteOffStatus {
+  PENDING_HEAD_TU
+  PENDING_PRINCIPAL
+  APPROVED
+  REJECTED
+  APPLIED
+}
+
+enum FinancePaymentReversalStatus {
   PENDING_HEAD_TU
   PENDING_PRINCIPAL
   APPROVED

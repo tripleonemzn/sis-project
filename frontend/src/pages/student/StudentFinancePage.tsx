@@ -274,6 +274,11 @@ export default function StudentFinancePage() {
                           Kredit: {formatCurrency(payment.creditedAmount || 0)}
                         </div>
                       ) : null}
+                      {Number(payment.reversedAmount || 0) > 0 ? (
+                        <div className="text-[11px] font-normal text-rose-700 mt-1">
+                          Direversal: {formatCurrency(payment.reversedAmount || 0)}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-5 py-3 text-sm">
                       <span
@@ -284,6 +289,14 @@ export default function StudentFinancePage() {
                       {Number(payment.creditedAmount || 0) > 0 ? (
                         <div className="mt-1 text-[11px] text-gray-500">
                           Dialokasikan ke invoice {formatCurrency(payment.allocatedAmount || 0)}
+                        </div>
+                      ) : null}
+                      {Number(payment.reversedAmount || 0) > 0 ? (
+                        <div className="mt-1 text-[11px] text-rose-600">
+                          Pembayaran ini sudah dikoreksi. Alokasi dibalik {formatCurrency(payment.reversedAllocatedAmount || 0)}
+                          {Number(payment.reversedCreditedAmount || 0) > 0
+                            ? ` • saldo kredit dibalik ${formatCurrency(payment.reversedCreditedAmount || 0)}`
+                            : ''}
                         </div>
                       ) : null}
                     </td>

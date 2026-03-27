@@ -14,7 +14,7 @@ export type FinanceInvoiceStatus = 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
 export type FinanceLateFeeMode = 'FIXED' | 'DAILY';
 export type FinancePaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER';
 export type FinancePaymentSource = 'DIRECT' | 'CREDIT_BALANCE';
-export type FinanceCreditTransactionKind = 'OVERPAYMENT' | 'APPLIED_TO_INVOICE' | 'REFUND';
+export type FinanceCreditTransactionKind = 'OVERPAYMENT' | 'APPLIED_TO_INVOICE' | 'REFUND' | 'PAYMENT_REVERSAL';
 export type FinanceWriteOffStatus =
   | 'PENDING_HEAD_TU'
   | 'PENDING_PRINCIPAL'
@@ -22,6 +22,13 @@ export type FinanceWriteOffStatus =
   | 'REJECTED'
   | 'APPLIED';
 export type FinanceWriteOffPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'FINANCE_APPLY' | 'NONE';
+export type FinancePaymentReversalStatus =
+  | 'PENDING_HEAD_TU'
+  | 'PENDING_PRINCIPAL'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'APPLIED';
+export type FinancePaymentReversalPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'FINANCE_APPLY' | 'NONE';
 export type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE' | 'LATE_FEE' | 'ESCALATION';
 
 export type StaffFinanceReminderPolicy = {
@@ -198,9 +205,18 @@ export type StaffFinanceInvoice = {
     amount: number;
     allocatedAmount: number;
     creditedAmount: number;
+    reversedAmount: number;
+    reversedAllocatedAmount: number;
+    reversedCreditedAmount: number;
+    remainingReversibleAmount: number;
+    remainingAllocatedAmount: number;
+    remainingCreditedAmount: number;
+    isFullyReversed: boolean;
+    canRequestReversal: boolean;
     source: FinancePaymentSource;
     method: FinancePaymentMethod;
     referenceNo?: string | null;
+    note?: string | null;
     paidAt: string;
   }>;
   installments: Array<{
@@ -344,6 +360,125 @@ export type StaffFinanceWriteOffListResult = {
     totalAppliedAmount: number;
   };
   requests: StaffFinanceWriteOffRequest[];
+};
+
+export type StaffFinancePaymentReversalRequest = {
+  id: number;
+  requestNo: string;
+  paymentId: number;
+  invoiceId: number;
+  studentId: number;
+  requestedAmount: number;
+  requestedAllocatedAmount: number;
+  requestedCreditedAmount: number;
+  approvedAmount?: number | null;
+  approvedAllocatedAmount?: number | null;
+  approvedCreditedAmount?: number | null;
+  appliedAmount?: number | null;
+  appliedAllocatedAmount?: number | null;
+  appliedCreditedAmount?: number | null;
+  reason: string;
+  requestedNote?: string | null;
+  status: FinancePaymentReversalStatus;
+  pendingActor: FinancePaymentReversalPendingActor;
+  remainingEligibleAmount: number;
+  createdAt: string;
+  updatedAt: string;
+  headTuDecision: {
+    approved?: boolean | null;
+    decidedAt?: string | null;
+    note?: string | null;
+    by?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+  };
+  principalDecision: {
+    approved?: boolean | null;
+    decidedAt?: string | null;
+    note?: string | null;
+    by?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+  };
+  application: {
+    appliedAt?: string | null;
+    note?: string | null;
+    by?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+  };
+  requestedBy?: {
+    id: number;
+    name: string;
+    role?: string | null;
+  } | null;
+  student?: {
+    id: number;
+    name: string;
+    username: string;
+    nis?: string | null;
+    nisn?: string | null;
+    studentClass?: {
+      id: number;
+      name: string;
+      level: string;
+    } | null;
+  } | null;
+  payment?: {
+    id: number;
+    paymentNo?: string | null;
+    amount: number;
+    allocatedAmount: number;
+    creditedAmount: number;
+    reversedAmount: number;
+    reversedAllocatedAmount: number;
+    reversedCreditedAmount: number;
+    remainingReversibleAmount: number;
+    remainingAllocatedAmount: number;
+    remainingCreditedAmount: number;
+    isFullyReversed: boolean;
+    canRequestReversal: boolean;
+    source: FinancePaymentSource;
+    method: FinancePaymentMethod;
+    referenceNo?: string | null;
+    note?: string | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+  invoice?: {
+    id: number;
+    invoiceNo: string;
+    periodKey: string;
+    semester: SemesterCode;
+    title?: string | null;
+    dueDate?: string | null;
+    totalAmount: number;
+    paidAmount: number;
+    writtenOffAmount: number;
+    balanceAmount: number;
+    status: FinanceInvoiceStatus;
+  } | null;
+};
+
+export type StaffFinancePaymentReversalListResult = {
+  summary: {
+    totalRequests: number;
+    pendingHeadTuCount: number;
+    pendingPrincipalCount: number;
+    approvedCount: number;
+    rejectedCount: number;
+    appliedCount: number;
+    totalRequestedAmount: number;
+    totalApprovedAmount: number;
+    totalAppliedAmount: number;
+  };
+  requests: StaffFinancePaymentReversalRequest[];
 };
 
 export type StaffFinanceCreditTransaction = {
@@ -996,6 +1131,80 @@ export const staffFinanceApi = {
     const response = await apiClient.post<
       ApiResponse<{ request: StaffFinanceWriteOffRequest; invoice: StaffFinanceInvoice }>
     >(`/payments/write-offs/${requestId}/apply`, payload || {});
+    return response.data.data;
+  },
+
+  async listPaymentReversals(params?: {
+    paymentId?: number;
+    invoiceId?: number;
+    studentId?: number;
+    status?: FinancePaymentReversalStatus;
+    pendingFor?: 'HEAD_TU' | 'PRINCIPAL' | 'FINANCE_APPLY';
+    search?: string;
+    limit?: number;
+  }) {
+    const response = await apiClient.get<ApiResponse<StaffFinancePaymentReversalListResult>>('/payments/reversals', {
+      params,
+    });
+    return response.data.data;
+  },
+
+  async createPaymentReversalRequest(
+    paymentId: number,
+    payload: {
+      amount: number;
+      reason: string;
+      note?: string;
+    },
+  ) {
+    const response = await apiClient.post<ApiResponse<{ request: StaffFinancePaymentReversalRequest }>>(
+      `/payments/payment-records/${paymentId}/reversals`,
+      payload,
+    );
+    return response.data.data.request;
+  },
+
+  async decidePaymentReversalAsHeadTu(
+    requestId: number,
+    payload: {
+      approved: boolean;
+      note?: string;
+    },
+  ) {
+    const response = await apiClient.post<ApiResponse<{ request: StaffFinancePaymentReversalRequest }>>(
+      `/payments/reversals/${requestId}/head-tu-decision`,
+      payload,
+    );
+    return response.data.data.request;
+  },
+
+  async decidePaymentReversalAsPrincipal(
+    requestId: number,
+    payload: {
+      approved: boolean;
+      note?: string;
+    },
+  ) {
+    const response = await apiClient.post<ApiResponse<{ request: StaffFinancePaymentReversalRequest }>>(
+      `/payments/reversals/${requestId}/principal-decision`,
+      payload,
+    );
+    return response.data.data.request;
+  },
+
+  async applyPaymentReversal(
+    requestId: number,
+    payload?: {
+      note?: string;
+    },
+  ) {
+    const response = await apiClient.post<
+      ApiResponse<{
+        request: StaffFinancePaymentReversalRequest;
+        payment: StaffFinanceInvoice['payments'][number];
+        invoice: StaffFinanceInvoice;
+      }>
+    >(`/payments/reversals/${requestId}/apply`, payload || {});
     return response.data.data;
   },
 

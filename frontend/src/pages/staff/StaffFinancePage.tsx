@@ -9,6 +9,7 @@ import {
   type FinanceCreditBalanceRow,
   type FinanceCreditTransaction,
   type FinanceRefundRecord,
+  type FinancePaymentReversalRequest,
   staffFinanceService,
   type FinanceComponent,
   type FinanceComponentPeriodicity,
@@ -160,6 +161,7 @@ function getLateFeeModeLabel(mode?: FinanceLateFeeMode | null) {
 function getCreditTransactionLabel(transaction: FinanceCreditTransaction) {
   if (transaction.kind === 'APPLIED_TO_INVOICE') return 'Saldo kredit dipakai ke invoice';
   if (transaction.kind === 'REFUND') return 'Refund saldo kredit';
+  if (transaction.kind === 'PAYMENT_REVERSAL') return 'Reversal mengurangi saldo kredit';
   return 'Kelebihan bayar masuk saldo kredit';
 }
 
@@ -221,6 +223,22 @@ function getInvoicePreviewStatusMeta(status: string) {
 }
 
 function getWriteOffStatusMeta(status: FinanceWriteOffRequest['status']) {
+  if (status === 'PENDING_HEAD_TU') {
+    return { label: 'Menunggu Kepala TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  }
+  if (status === 'PENDING_PRINCIPAL') {
+    return { label: 'Menunggu Kepala Sekolah', className: 'bg-sky-50 text-sky-700 border border-sky-200' };
+  }
+  if (status === 'APPROVED') {
+    return { label: 'Siap Diterapkan', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+  }
+  if (status === 'APPLIED') {
+    return { label: 'Sudah Diterapkan', className: 'bg-violet-50 text-violet-700 border border-violet-200' };
+  }
+  return { label: 'Ditolak', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
+}
+
+function getPaymentReversalStatusMeta(status: FinancePaymentReversalRequest['status']) {
   if (status === 'PENDING_HEAD_TU') {
     return { label: 'Menunggu Kepala TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
   }
@@ -341,6 +359,10 @@ export const StaffFinancePage = () => {
   const [writeOffAmount, setWriteOffAmount] = useState('');
   const [writeOffReason, setWriteOffReason] = useState('');
   const [writeOffNote, setWriteOffNote] = useState('');
+  const [reversalTargetPayment, setReversalTargetPayment] = useState<FinanceInvoice['payments'][number] | null>(null);
+  const [reversalAmount, setReversalAmount] = useState('');
+  const [reversalReason, setReversalReason] = useState('');
+  const [reversalNote, setReversalNote] = useState('');
 
   const yearsQuery = useQuery({
     queryKey: ['staff-finance-academic-years'],
@@ -407,6 +429,12 @@ export const StaffFinancePage = () => {
   const writeOffsQuery = useQuery({
     queryKey: ['staff-finance-write-offs'],
     queryFn: () => staffFinanceService.listWriteOffs({ limit: 100 }),
+    staleTime: 60_000,
+  });
+
+  const paymentReversalsQuery = useQuery({
+    queryKey: ['staff-finance-payment-reversals'],
+    queryFn: () => staffFinanceService.listPaymentReversals({ limit: 100 }),
     staleTime: 60_000,
   });
 
@@ -536,6 +564,8 @@ export const StaffFinancePage = () => {
   const recentRefunds = creditsQuery.data?.recentRefunds || [];
   const writeOffSummary = writeOffsQuery.data?.summary;
   const writeOffRequests = writeOffsQuery.data?.requests || [];
+  const paymentReversalSummary = paymentReversalsQuery.data?.summary;
+  const paymentReversalRequests = paymentReversalsQuery.data?.requests || [];
   const paymentPreviewAmount = Number(paymentAmount || 0);
   const paymentAllocatedAmount = Math.min(paymentPreviewAmount, Number(selectedInvoice?.balanceAmount || 0));
   const paymentCreditedAmount = Math.max(paymentPreviewAmount - Number(selectedInvoice?.balanceAmount || 0), 0);
@@ -549,6 +579,13 @@ export const StaffFinancePage = () => {
     .reduce((sum, payment) => sum + Number(payment.allocatedAmount || payment.amount || 0), 0);
   const selectedInvoiceCanEditAmounts =
     Number(selectedInvoice?.paidAmount || 0) + Number(selectedInvoice?.writtenOffAmount || 0) <= 0;
+  const selectedInvoicePaymentReversals = useMemo(
+    () =>
+      selectedInvoice
+        ? paymentReversalRequests.filter((request) => request.invoiceId === selectedInvoice.id)
+        : [],
+    [paymentReversalRequests, selectedInvoice],
+  );
   const overdueCount = useMemo(() => {
     const today = Date.now();
     return invoices.filter((invoice) => {
@@ -687,11 +724,25 @@ export const StaffFinancePage = () => {
     setWriteOffNote('');
   };
 
+  const resetReversalForm = () => {
+    setReversalTargetPayment(null);
+    setReversalAmount('');
+    setReversalReason('');
+    setReversalNote('');
+  };
+
   const openWriteOffModal = (invoice: FinanceInvoice) => {
     setWriteOffTargetInvoice(invoice);
     setWriteOffAmount(String(Number(invoice.balanceAmount || 0)));
     setWriteOffReason('');
     setWriteOffNote('');
+  };
+
+  const openReversalModal = (payment: FinanceInvoice['payments'][number]) => {
+    setReversalTargetPayment(payment);
+    setReversalAmount(String(Number(payment.remainingReversibleAmount || 0)));
+    setReversalReason('');
+    setReversalNote('');
   };
 
   const saveComponentMutation = useMutation({
@@ -1062,6 +1113,47 @@ export const StaffFinancePage = () => {
     },
   });
 
+  const createPaymentReversalMutation = useMutation({
+    mutationFn: () => {
+      if (!reversalTargetPayment) {
+        throw new Error('Pembayaran belum dipilih');
+      }
+      return staffFinanceService.createPaymentReversalRequest(reversalTargetPayment.id, {
+        amount: Number(reversalAmount),
+        reason: reversalReason,
+        note: reversalNote || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success('Pengajuan reversal pembayaran berhasil dikirim ke Kepala TU');
+      resetReversalForm();
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-payment-reversals'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-credits'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal membuat pengajuan reversal pembayaran');
+    },
+  });
+
+  const applyPaymentReversalMutation = useMutation({
+    mutationFn: (request: FinancePaymentReversalRequest) => staffFinanceService.applyPaymentReversal(request.id),
+    onSuccess: (result) => {
+      toast.success('Reversal pembayaran berhasil diterapkan');
+      setSelectedInvoice(result.invoice);
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-payment-reversals'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-credits'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal menerapkan reversal pembayaran');
+    },
+  });
+
   const saveReminderPolicyMutation = useMutation({
     mutationFn: () =>
       staffFinanceService.updateReminderPolicy({
@@ -1426,6 +1518,26 @@ export const StaffFinancePage = () => {
       return;
     }
     createWriteOffMutation.mutate();
+  };
+
+  const handleSavePaymentReversal = () => {
+    if (!reversalTargetPayment) {
+      toast.error('Pembayaran belum dipilih');
+      return;
+    }
+    if (Number(reversalAmount) <= 0) {
+      toast.error('Nominal reversal harus lebih dari nol');
+      return;
+    }
+    if (Number(reversalAmount) > Number(reversalTargetPayment.remainingReversibleAmount || 0)) {
+      toast.error('Nominal reversal melebihi sisa pembayaran yang dapat direversal');
+      return;
+    }
+    if (reversalReason.trim().length < 5) {
+      toast.error('Alasan reversal minimal 5 karakter');
+      return;
+    }
+    createPaymentReversalMutation.mutate();
   };
 
   useEffect(() => {
@@ -2763,6 +2875,120 @@ export const StaffFinancePage = () => {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Reversal Pembayaran</h3>
+            <p className="mt-1 text-xs text-gray-500">
+              Monitor koreksi pembayaran, approval, dan penerapan reversal pembayaran langsung.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs lg:grid-cols-4">
+            <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+              <div className="text-amber-700">Pending Kepala TU</div>
+              <div className="mt-1 font-semibold text-amber-900">{paymentReversalSummary?.pendingHeadTuCount || 0}</div>
+            </div>
+            <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2">
+              <div className="text-sky-700">Pending Kepala Sekolah</div>
+              <div className="mt-1 font-semibold text-sky-900">{paymentReversalSummary?.pendingPrincipalCount || 0}</div>
+            </div>
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+              <div className="text-emerald-700">Siap Apply</div>
+              <div className="mt-1 font-semibold text-emerald-900">{paymentReversalSummary?.approvedCount || 0}</div>
+            </div>
+            <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2">
+              <div className="text-violet-700">Sudah Diterapkan</div>
+              <div className="mt-1 font-semibold text-violet-900">{paymentReversalSummary?.appliedCount || 0}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pengajuan</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pembayaran</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Nominal</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {paymentReversalsQuery.isLoading ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
+                    Memuat pengajuan reversal pembayaran...
+                  </td>
+                </tr>
+              ) : paymentReversalRequests.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
+                    Belum ada pengajuan reversal pembayaran.
+                  </td>
+                </tr>
+              ) : (
+                paymentReversalRequests.slice(0, 12).map((request) => {
+                  const status = getPaymentReversalStatusMeta(request.status);
+                  return (
+                    <tr key={request.id}>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        <div className="font-semibold text-gray-900">{request.requestNo}</div>
+                        <div className="text-xs text-gray-500">{request.student?.name || '-'}</div>
+                        <div className="mt-1 text-[11px] text-gray-500">{request.reason}</div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        <div className="font-medium text-gray-900">{request.payment?.paymentNo || '-'}</div>
+                        <div className="text-xs text-gray-500">
+                          Invoice {request.invoice?.invoiceNo || '-'} • tersisa {formatCurrency(request.payment?.remainingReversibleAmount || 0)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm text-gray-700">
+                        <div>{formatCurrency(request.requestedAmount)}</div>
+                        <div className="text-xs text-emerald-700">
+                          Approved {formatCurrency(request.approvedAmount || 0)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${status.className}`}>
+                          {status.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {request.status === 'APPROVED' ? (
+                            <button
+                              type="button"
+                              onClick={() => applyPaymentReversalMutation.mutate(request)}
+                              disabled={applyPaymentReversalMutation.isPending}
+                              className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
+                            >
+                              {applyPaymentReversalMutation.isPending ? 'Menerapkan...' : 'Terapkan'}
+                            </button>
+                          ) : null}
+                          {request.invoiceId ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const invoice = invoices.find((item) => item.id === request.invoiceId);
+                                if (invoice) setSelectedInvoice(invoice);
+                              }}
+                              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                            >
+                              Buka Invoice
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
           <h3 className="text-sm font-semibold text-gray-900">Daftar Tagihan</h3>
           <div className="flex gap-3">
@@ -4005,6 +4231,77 @@ export const StaffFinancePage = () => {
                   <span className="font-semibold">{formatCurrency(selectedInvoiceCreditAppliedAmount)}</span>
                 </div>
               ) : null}
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2 text-xs text-emerald-900">
+                <div className="font-semibold">Riwayat pembayaran & reversal</div>
+                <div className="mt-1 text-[11px] text-emerald-700">
+                  {(selectedInvoice.payments || []).length} pembayaran tercatat • {selectedInvoicePaymentReversals.length} pengajuan reversal.
+                </div>
+                {(selectedInvoice.payments || []).length === 0 ? (
+                  <div className="mt-2 text-[11px] text-emerald-700">Belum ada pembayaran pada invoice ini.</div>
+                ) : (
+                  (selectedInvoice.payments || []).map((payment) => {
+                    const paymentRequests = selectedInvoicePaymentReversals.filter((request) => request.paymentId === payment.id);
+                    return (
+                      <div key={`selected-payment-${payment.id}`} className="mt-2 rounded-md border border-emerald-200 bg-white/80 px-2 py-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-medium text-emerald-900">
+                              {payment.paymentNo} • {formatCurrency(payment.amount)}
+                            </div>
+                            <div className="mt-1 text-[11px] text-emerald-700">
+                              {formatDate(payment.paidAt)} • {getPaymentMethodLabel(payment.method)} • sumber {payment.source === 'CREDIT_BALANCE' ? 'Saldo Kredit' : 'Pembayaran Langsung'}
+                            </div>
+                            <div className="mt-1 text-[11px] text-emerald-700">
+                              Dialokasikan {formatCurrency(payment.allocatedAmount || 0)} • saldo kredit {formatCurrency(payment.creditedAmount || 0)} • sudah direversal {formatCurrency(payment.reversedAmount || 0)}
+                            </div>
+                            <div className="mt-1 text-[11px] text-emerald-700">
+                              Sisa reversible {formatCurrency(payment.remainingReversibleAmount || 0)}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => openReversalModal(payment)}
+                            disabled={!payment.canRequestReversal || createPaymentReversalMutation.isPending || payment.source !== 'DIRECT'}
+                            className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                          >
+                            Ajukan Reversal
+                          </button>
+                        </div>
+                        {paymentRequests.map((request) => {
+                          const status = getPaymentReversalStatusMeta(request.status);
+                          return (
+                            <div key={`selected-reversal-${request.id}`} className="mt-2 rounded-md border border-emerald-100 bg-emerald-50/60 px-2 py-2">
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <div className="font-medium text-emerald-900">{request.requestNo}</div>
+                                  <div className="mt-1 text-[11px] text-emerald-700">{request.reason}</div>
+                                </div>
+                                <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${status.className}`}>
+                                  {status.label}
+                                </span>
+                              </div>
+                              <div className="mt-1 text-[11px] text-emerald-700">
+                                Request {formatCurrency(request.requestedAmount)} • approved {formatCurrency(request.approvedAmount || 0)} • applied {formatCurrency(request.appliedAmount || 0)}
+                              </div>
+                              {request.status === 'APPROVED' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => applyPaymentReversalMutation.mutate(request)}
+                                  disabled={applyPaymentReversalMutation.isPending}
+                                  className="mt-2 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                >
+                                  {applyPaymentReversalMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                                  Terapkan Reversal
+                                </button>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
               <div className="rounded-lg border border-violet-100 bg-violet-50/50 px-3 py-2 text-xs text-violet-900">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -4292,6 +4589,68 @@ export const StaffFinancePage = () => {
           </div>
         </div>
       )}
+
+      {reversalTargetPayment ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          onClick={resetReversalForm}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h3 className="text-base font-semibold text-gray-900">Ajukan Reversal Pembayaran</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                {reversalTargetPayment.paymentNo} • Sisa reversible {formatCurrency(reversalTargetPayment.remainingReversibleAmount || 0)}
+              </p>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <input
+                type="number"
+                min={0}
+                value={reversalAmount}
+                onChange={(event) => setReversalAmount(event.target.value)}
+                placeholder="Nominal reversal"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
+              />
+              <textarea
+                value={reversalReason}
+                onChange={(event) => setReversalReason(event.target.value)}
+                placeholder="Alasan pengajuan reversal pembayaran"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-h-24"
+              />
+              <textarea
+                value={reversalNote}
+                onChange={(event) => setReversalNote(event.target.value)}
+                placeholder="Catatan internal (opsional)"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-h-20"
+              />
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                Approval berjalan berurutan: Kepala TU, lalu Kepala Sekolah, lalu bendahara menerapkan reversal ke pembayaran.
+              </div>
+            </div>
+            <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={resetReversalForm}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-xs font-medium text-gray-700"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePaymentReversal}
+                disabled={createPaymentReversalMutation.isPending || Number(reversalAmount) <= 0}
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 inline-flex items-center gap-2"
+              >
+                {createPaymentReversalMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                Kirim Pengajuan
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {writeOffTargetInvoice ? (
         <div

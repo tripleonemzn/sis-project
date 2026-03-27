@@ -6,6 +6,7 @@ import {
   FinanceLateFeeMode,
   FinancePaymentMethod,
   FinancePaymentSource,
+  FinancePaymentReversalStatus,
   FinanceWriteOffStatus,
   PaymentStatus,
   PaymentType,
@@ -78,6 +79,48 @@ function makeFinanceRefundNo(studentId: number): string {
   const ts = Date.now().toString().slice(-7);
   const rand = Math.floor(Math.random() * 900 + 100).toString();
   return `REF-${studentId}-${ts}${rand}`;
+}
+
+function makeFinancePaymentReversalNo(studentId: number): string {
+  const ts = Date.now().toString().slice(-7);
+  const rand = Math.floor(Math.random() * 900 + 100).toString();
+  return `RVP-${studentId}-${ts}${rand}`;
+}
+
+function resolveFinancePaymentReversalAvailability(payment: {
+  amount: number;
+  allocatedAmount?: number | null;
+  creditedAmount?: number | null;
+  reversedAmount?: number | null;
+  reversedAllocatedAmount?: number | null;
+  reversedCreditedAmount?: number | null;
+  source?: FinancePaymentSource | null;
+}) {
+  const totalAmount = normalizeFinanceAmount(Number(payment.amount || 0));
+  const allocatedAmount = normalizeFinanceAmount(Number(payment.allocatedAmount || 0));
+  const creditedAmount = normalizeFinanceAmount(Number(payment.creditedAmount || 0));
+  const reversedAmount = normalizeFinanceAmount(Number(payment.reversedAmount || 0));
+  const reversedAllocatedAmount = normalizeFinanceAmount(Number(payment.reversedAllocatedAmount || 0));
+  const reversedCreditedAmount = normalizeFinanceAmount(Number(payment.reversedCreditedAmount || 0));
+  const remainingReversibleAmount = normalizeFinanceAmount(Math.max(totalAmount - reversedAmount, 0));
+  const remainingAllocatedAmount = normalizeFinanceAmount(Math.max(allocatedAmount - reversedAllocatedAmount, 0));
+  const remainingCreditedAmount = normalizeFinanceAmount(Math.max(creditedAmount - reversedCreditedAmount, 0));
+
+  return {
+    totalAmount,
+    allocatedAmount,
+    creditedAmount,
+    reversedAmount,
+    reversedAllocatedAmount,
+    reversedCreditedAmount,
+    remainingReversibleAmount,
+    remainingAllocatedAmount,
+    remainingCreditedAmount,
+    isFullyReversed: remainingReversibleAmount <= 0,
+    canRequestReversal:
+      (payment.source || FinancePaymentSource.DIRECT) === FinancePaymentSource.DIRECT &&
+      remainingReversibleAmount > 0,
+  };
 }
 
 function makeFinanceWriteOffNo(studentId: number): string {
@@ -414,10 +457,16 @@ function serializeFinanceInvoiceRecord<
       amount: number;
       allocatedAmount: number;
       creditedAmount: number;
+      reversedAmount?: number | null;
+      reversedAllocatedAmount?: number | null;
+      reversedCreditedAmount?: number | null;
       source?: FinancePaymentSource | null;
       method: FinancePaymentMethod;
       referenceNo?: string | null;
+      note?: string | null;
       paidAt: Date;
+      createdAt?: Date;
+      updatedAt?: Date;
     }>;
     items?: Array<FinanceLateFeeInvoiceItemLike>;
     writeOffRequests?: Array<{
@@ -520,11 +569,12 @@ function serializeFinanceInvoiceRecord<
     lateFeeSummary: invoice.items ? buildFinanceLateFeeSummary(invoice, options?.asOfDate) : undefined,
     installments,
     payments: (invoice.payments || []).map((payment) => ({
-      ...payment,
-      amount: Number(payment.amount || 0),
-      allocatedAmount: Number(payment.allocatedAmount || 0),
-      creditedAmount: Number(payment.creditedAmount || 0),
-      source: payment.source || FinancePaymentSource.DIRECT,
+      ...serializeFinancePaymentRecord({
+        ...payment,
+        createdAt: payment.createdAt || payment.paidAt,
+        updatedAt: payment.updatedAt || payment.paidAt,
+      }),
+      paidAt: payment.paidAt,
     })),
     writeOffRequests: (invoice.writeOffRequests || []).map((request) =>
       serializeFinanceWriteOffRecord(request),
@@ -722,9 +772,13 @@ function serializeFinancePaymentRecord(payment: {
   amount: number;
   allocatedAmount?: number | null;
   creditedAmount?: number | null;
+  reversedAmount?: number | null;
+  reversedAllocatedAmount?: number | null;
+  reversedCreditedAmount?: number | null;
   source?: FinancePaymentSource | null;
   method?: FinancePaymentMethod | null;
   referenceNo?: string | null;
+  note?: string | null;
   paidAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -735,15 +789,26 @@ function serializeFinancePaymentRecord(payment: {
     semester?: Semester | null;
   } | null;
 }) {
+  const reversal = resolveFinancePaymentReversalAvailability(payment);
+
   return {
     id: payment.id,
     paymentNo: payment.paymentNo || null,
     amount: Number(payment.amount || 0),
     allocatedAmount: Number(payment.allocatedAmount || 0),
     creditedAmount: Number(payment.creditedAmount || 0),
+    reversedAmount: reversal.reversedAmount,
+    reversedAllocatedAmount: reversal.reversedAllocatedAmount,
+    reversedCreditedAmount: reversal.reversedCreditedAmount,
+    remainingReversibleAmount: reversal.remainingReversibleAmount,
+    remainingAllocatedAmount: reversal.remainingAllocatedAmount,
+    remainingCreditedAmount: reversal.remainingCreditedAmount,
+    isFullyReversed: reversal.isFullyReversed,
+    canRequestReversal: reversal.canRequestReversal,
     source: payment.source || FinancePaymentSource.DIRECT,
     method: payment.method || null,
     referenceNo: payment.referenceNo || null,
+    note: payment.note || null,
     invoiceId: payment.invoice?.id || null,
     invoiceNo: payment.invoice?.invoiceNo || null,
     periodKey: payment.invoice?.periodKey || null,
@@ -790,6 +855,178 @@ function serializeFinanceRefundRecord(refund: {
     createdAt: refund.createdAt,
     student: refund.student,
     createdBy: refund.createdBy || null,
+  };
+}
+
+type FinancePaymentReversalPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'FINANCE_APPLY' | 'NONE';
+
+function getFinancePaymentReversalPendingActor(
+  status: FinancePaymentReversalStatus,
+): FinancePaymentReversalPendingActor {
+  if (status === FinancePaymentReversalStatus.PENDING_HEAD_TU) return 'HEAD_TU';
+  if (status === FinancePaymentReversalStatus.PENDING_PRINCIPAL) return 'PRINCIPAL';
+  if (status === FinancePaymentReversalStatus.APPROVED) return 'FINANCE_APPLY';
+  return 'NONE';
+}
+
+function serializeFinancePaymentReversalRecord<
+  T extends {
+    id: number;
+    requestNo: string;
+    paymentId: number;
+    invoiceId: number;
+    studentId: number;
+    requestedAmount: number;
+    requestedAllocatedAmount?: number | null;
+    requestedCreditedAmount?: number | null;
+    approvedAmount?: number | null;
+    approvedAllocatedAmount?: number | null;
+    approvedCreditedAmount?: number | null;
+    appliedAmount?: number | null;
+    appliedAllocatedAmount?: number | null;
+    appliedCreditedAmount?: number | null;
+    reason: string;
+    requestedNote?: string | null;
+    status: FinancePaymentReversalStatus;
+    headTuApproved?: boolean | null;
+    headTuDecisionAt?: Date | null;
+    headTuDecisionNote?: string | null;
+    principalApproved?: boolean | null;
+    principalDecisionAt?: Date | null;
+    principalDecisionNote?: string | null;
+    appliedAt?: Date | null;
+    applyNote?: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    payment?: {
+      id: number;
+      paymentNo?: string | null;
+      amount: number;
+      allocatedAmount?: number | null;
+      creditedAmount?: number | null;
+      reversedAmount?: number | null;
+      reversedAllocatedAmount?: number | null;
+      reversedCreditedAmount?: number | null;
+      source?: FinancePaymentSource | null;
+      method?: FinancePaymentMethod | null;
+      referenceNo?: string | null;
+      note?: string | null;
+      paidAt?: Date | null;
+      createdAt: Date;
+      updatedAt: Date;
+    } | null;
+    invoice?: {
+      id: number;
+      invoiceNo: string;
+      periodKey: string;
+      semester: Semester;
+      title?: string | null;
+      dueDate?: Date | null;
+      totalAmount: number;
+      paidAmount: number;
+      writtenOffAmount?: number | null;
+      balanceAmount: number;
+      status: FinanceInvoiceStatus;
+    } | null;
+    student?: {
+      id: number;
+      name: string;
+      username: string;
+      nis?: string | null;
+      nisn?: string | null;
+      studentClass?: {
+        id: number;
+        name: string;
+        level?: string | null;
+      } | null;
+    } | null;
+    requestedBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+    headTuDecisionBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+    principalDecisionBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+    appliedBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+  },
+>(request: T) {
+  const payment = request.payment ? serializeFinancePaymentRecord(request.payment) : null;
+
+  return {
+    id: request.id,
+    requestNo: request.requestNo,
+    paymentId: request.paymentId,
+    invoiceId: request.invoiceId,
+    studentId: request.studentId,
+    requestedAmount: Number(request.requestedAmount || 0),
+    requestedAllocatedAmount: Number(request.requestedAllocatedAmount || 0),
+    requestedCreditedAmount: Number(request.requestedCreditedAmount || 0),
+    approvedAmount:
+      request.approvedAmount == null ? null : Number(request.approvedAmount || 0),
+    approvedAllocatedAmount:
+      request.approvedAllocatedAmount == null ? null : Number(request.approvedAllocatedAmount || 0),
+    approvedCreditedAmount:
+      request.approvedCreditedAmount == null ? null : Number(request.approvedCreditedAmount || 0),
+    appliedAmount:
+      request.appliedAmount == null ? null : Number(request.appliedAmount || 0),
+    appliedAllocatedAmount:
+      request.appliedAllocatedAmount == null ? null : Number(request.appliedAllocatedAmount || 0),
+    appliedCreditedAmount:
+      request.appliedCreditedAmount == null ? null : Number(request.appliedCreditedAmount || 0),
+    reason: request.reason,
+    requestedNote: request.requestedNote || null,
+    status: request.status,
+    pendingActor: getFinancePaymentReversalPendingActor(request.status),
+    remainingEligibleAmount: payment?.remainingReversibleAmount || 0,
+    createdAt: request.createdAt,
+    updatedAt: request.updatedAt,
+    headTuDecision: {
+      approved: request.headTuApproved ?? null,
+      decidedAt: request.headTuDecisionAt || null,
+      note: request.headTuDecisionNote || null,
+      by: request.headTuDecisionBy || null,
+    },
+    principalDecision: {
+      approved: request.principalApproved ?? null,
+      decidedAt: request.principalDecisionAt || null,
+      note: request.principalDecisionNote || null,
+      by: request.principalDecisionBy || null,
+    },
+    application: {
+      appliedAt: request.appliedAt || null,
+      note: request.applyNote || null,
+      by: request.appliedBy || null,
+    },
+    requestedBy: request.requestedBy || null,
+    student: request.student || null,
+    payment,
+    invoice: request.invoice
+      ? {
+          ...request.invoice,
+          totalAmount: Number(request.invoice.totalAmount || 0),
+          paidAmount: Number(request.invoice.paidAmount || 0),
+          writtenOffAmount: inferFinanceWrittenOffAmount({
+            totalAmount: Number(request.invoice.totalAmount || 0),
+            paidAmount: Number(request.invoice.paidAmount || 0),
+            balanceAmount: Number(request.invoice.balanceAmount || 0),
+            writtenOffAmount: request.invoice.writtenOffAmount,
+            status: request.invoice.status,
+          }),
+          balanceAmount: Number(request.invoice.balanceAmount || 0),
+        }
+      : null,
   };
 }
 
@@ -1752,7 +1989,7 @@ async function ensureFinanceActor(
 async function ensureFinanceHeadTuActor(authUser: { id?: number; role?: string }) {
   const user = await loadFinanceActorContext(authUser);
   if (!user.isHeadTu) {
-    throw new ApiError(403, 'Akses Kepala TU dibutuhkan untuk persetujuan write-off');
+    throw new ApiError(403, 'Akses Kepala TU dibutuhkan untuk persetujuan finance');
   }
   return user;
 }
@@ -1760,7 +1997,7 @@ async function ensureFinanceHeadTuActor(authUser: { id?: number; role?: string }
 async function ensureFinancePrincipalActor(authUser: { id?: number; role?: string }) {
   const user = await loadFinanceActorContext(authUser);
   if (!user.isPrincipal) {
-    throw new ApiError(403, 'Akses kepala sekolah dibutuhkan untuk persetujuan write-off');
+    throw new ApiError(403, 'Akses kepala sekolah dibutuhkan untuk persetujuan finance');
   }
   return user;
 }
@@ -1769,6 +2006,14 @@ async function ensureFinanceWriteOffViewer(authUser: { id?: number; role?: strin
   const user = await loadFinanceActorContext(authUser);
   if (!user.isFinanceStaff && !user.isHeadTu && !user.isPrincipal) {
     throw new ApiError(403, 'Akses finance monitoring dibutuhkan untuk melihat write-off');
+  }
+  return user;
+}
+
+async function ensureFinancePaymentReversalViewer(authUser: { id?: number; role?: string }) {
+  const user = await loadFinanceActorContext(authUser);
+  if (!user.isFinanceStaff && !user.isHeadTu && !user.isPrincipal) {
+    throw new ApiError(403, 'Akses finance monitoring dibutuhkan untuk melihat reversal pembayaran');
   }
   return user;
 }
@@ -2048,6 +2293,31 @@ const applyFinanceWriteOffSchema = z.object({
   note: z.string().trim().max(500).optional(),
 });
 
+const listFinancePaymentReversalsQuerySchema = z.object({
+  paymentId: z.coerce.number().int().positive().optional(),
+  invoiceId: z.coerce.number().int().positive().optional(),
+  studentId: z.coerce.number().int().positive().optional(),
+  status: z.nativeEnum(FinancePaymentReversalStatus).optional(),
+  pendingFor: z.enum(['HEAD_TU', 'PRINCIPAL', 'FINANCE_APPLY']).optional(),
+  search: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional().default(100),
+});
+
+const createFinancePaymentReversalSchema = z.object({
+  amount: z.coerce.number().positive(),
+  reason: z.string().trim().min(5).max(500),
+  note: z.string().trim().max(500).optional(),
+});
+
+const decideFinancePaymentReversalSchema = z.object({
+  approved: z.boolean(),
+  note: z.string().trim().max(500).optional(),
+});
+
+const applyFinancePaymentReversalSchema = z.object({
+  note: z.string().trim().max(500).optional(),
+});
+
 const applyFinanceLateFeeSchema = z.object({
   note: z.string().trim().max(500).optional(),
   appliedAt: z.coerce.date().optional(),
@@ -2114,6 +2384,88 @@ const financeWriteOffRecordInclude = Prisma.validator<Prisma.FinanceWriteOffRequ
     },
   },
 });
+
+const financePaymentReversalRecordInclude =
+  Prisma.validator<Prisma.FinancePaymentReversalRequestInclude>()({
+    payment: {
+      select: {
+        id: true,
+        paymentNo: true,
+        amount: true,
+        allocatedAmount: true,
+        creditedAmount: true,
+        reversedAmount: true,
+        reversedAllocatedAmount: true,
+        reversedCreditedAmount: true,
+        source: true,
+        method: true,
+        referenceNo: true,
+        note: true,
+        paidAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    },
+    invoice: {
+      select: {
+        id: true,
+        invoiceNo: true,
+        periodKey: true,
+        semester: true,
+        title: true,
+        dueDate: true,
+        totalAmount: true,
+        paidAmount: true,
+        writtenOffAmount: true,
+        balanceAmount: true,
+        status: true,
+      },
+    },
+    student: {
+      select: {
+        id: true,
+        name: true,
+        username: true,
+        nis: true,
+        nisn: true,
+        studentClass: {
+          select: {
+            id: true,
+            name: true,
+            level: true,
+          },
+        },
+      },
+    },
+    requestedBy: {
+      select: {
+        id: true,
+        name: true,
+        role: true,
+      },
+    },
+    headTuDecisionBy: {
+      select: {
+        id: true,
+        name: true,
+        role: true,
+      },
+    },
+    principalDecisionBy: {
+      select: {
+        id: true,
+        name: true,
+        role: true,
+      },
+    },
+    appliedBy: {
+      select: {
+        id: true,
+        name: true,
+        role: true,
+      },
+    },
+  });
 
 const PERIOD_KEY_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -4765,10 +5117,16 @@ export const listFinanceInvoices = asyncHandler(async (req: Request, res: Respon
           amount: true,
           allocatedAmount: true,
           creditedAmount: true,
+          reversedAmount: true,
+          reversedAllocatedAmount: true,
+          reversedCreditedAmount: true,
           source: true,
           method: true,
           referenceNo: true,
+          note: true,
           paidAt: true,
+          createdAt: true,
+          updatedAt: true,
         },
         orderBy: [{ paidAt: 'desc' }],
       },
@@ -5394,10 +5752,16 @@ export const updateFinanceInvoiceInstallments = asyncHandler(async (req: Request
             amount: true,
             allocatedAmount: true,
             creditedAmount: true,
+            reversedAmount: true,
+            reversedAllocatedAmount: true,
+            reversedCreditedAmount: true,
             source: true,
             method: true,
             referenceNo: true,
+            note: true,
             paidAt: true,
+            createdAt: true,
+            updatedAt: true,
           },
           orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
         },
@@ -5556,10 +5920,16 @@ export const updateFinanceInvoiceInstallments = asyncHandler(async (req: Request
             amount: true,
             allocatedAmount: true,
             creditedAmount: true,
+            reversedAmount: true,
+            reversedAllocatedAmount: true,
+            reversedCreditedAmount: true,
             source: true,
             method: true,
             referenceNo: true,
+            note: true,
             paidAt: true,
+            createdAt: true,
+            updatedAt: true,
           },
           orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
         },
@@ -5694,10 +6064,16 @@ export const applyFinanceInvoiceLateFees = asyncHandler(async (req: Request, res
             amount: true,
             allocatedAmount: true,
             creditedAmount: true,
+            reversedAmount: true,
+            reversedAllocatedAmount: true,
+            reversedCreditedAmount: true,
             source: true,
             method: true,
             referenceNo: true,
+            note: true,
             paidAt: true,
+            createdAt: true,
+            updatedAt: true,
           },
           orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
         },
@@ -5833,10 +6209,16 @@ export const applyFinanceInvoiceLateFees = asyncHandler(async (req: Request, res
             amount: true,
             allocatedAmount: true,
             creditedAmount: true,
+            reversedAmount: true,
+            reversedAllocatedAmount: true,
+            reversedCreditedAmount: true,
             source: true,
             method: true,
             referenceNo: true,
+            note: true,
             paidAt: true,
+            createdAt: true,
+            updatedAt: true,
           },
           orderBy: [{ paidAt: 'desc' }],
         },
@@ -6795,10 +7177,16 @@ export const applyFinanceWriteOff = asyncHandler(async (req: Request, res: Respo
             amount: true,
             allocatedAmount: true,
             creditedAmount: true,
+            reversedAmount: true,
+            reversedAllocatedAmount: true,
+            reversedCreditedAmount: true,
             source: true,
             method: true,
             referenceNo: true,
+            note: true,
             paidAt: true,
+            createdAt: true,
+            updatedAt: true,
           },
           orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
         },
@@ -6926,10 +7314,16 @@ export const applyFinanceWriteOff = asyncHandler(async (req: Request, res: Respo
             amount: true,
             allocatedAmount: true,
             creditedAmount: true,
+            reversedAmount: true,
+            reversedAllocatedAmount: true,
+            reversedCreditedAmount: true,
             source: true,
             method: true,
             referenceNo: true,
+            note: true,
             paidAt: true,
+            createdAt: true,
+            updatedAt: true,
           },
           orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
         },
@@ -7048,6 +7442,966 @@ export const applyFinanceWriteOff = asyncHandler(async (req: Request, res: Respo
   );
 });
 
+export const listFinancePaymentReversals = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinancePaymentReversalViewer((req as any).user || {});
+
+  const { paymentId, invoiceId, studentId, status, pendingFor, search, limit } =
+    listFinancePaymentReversalsQuerySchema.parse(req.query);
+  const normalizedSearch = search?.trim();
+
+  const statusWhere =
+    status != null
+      ? { status }
+      : pendingFor === 'HEAD_TU'
+        ? { status: FinancePaymentReversalStatus.PENDING_HEAD_TU }
+        : pendingFor === 'PRINCIPAL'
+          ? { status: FinancePaymentReversalStatus.PENDING_PRINCIPAL }
+          : pendingFor === 'FINANCE_APPLY'
+            ? { status: FinancePaymentReversalStatus.APPROVED }
+            : {};
+
+  const where: Prisma.FinancePaymentReversalRequestWhereInput = {
+    ...(paymentId ? { paymentId } : {}),
+    ...(invoiceId ? { invoiceId } : {}),
+    ...(studentId ? { studentId } : {}),
+    ...statusWhere,
+    ...(normalizedSearch
+      ? {
+          OR: [
+            { requestNo: { contains: normalizedSearch, mode: 'insensitive' } },
+            { reason: { contains: normalizedSearch, mode: 'insensitive' } },
+            { payment: { paymentNo: { contains: normalizedSearch, mode: 'insensitive' } } },
+            { invoice: { invoiceNo: { contains: normalizedSearch, mode: 'insensitive' } } },
+            { student: { name: { contains: normalizedSearch, mode: 'insensitive' } } },
+            { student: { username: { contains: normalizedSearch, mode: 'insensitive' } } },
+            { student: { nis: { contains: normalizedSearch, mode: 'insensitive' } } },
+            { student: { nisn: { contains: normalizedSearch, mode: 'insensitive' } } },
+          ],
+        }
+      : {}),
+  };
+
+  const [requests, groupedSummary] = await Promise.all([
+    prisma.financePaymentReversalRequest.findMany({
+      where,
+      include: financePaymentReversalRecordInclude,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+    }),
+    prisma.financePaymentReversalRequest.groupBy({
+      by: ['status'],
+      where,
+      _count: { _all: true },
+      _sum: {
+        requestedAmount: true,
+        approvedAmount: true,
+        appliedAmount: true,
+      },
+    }),
+  ]);
+
+  const summary = groupedSummary.reduce(
+    (acc, row) => {
+      acc.totalRequests += row._count._all;
+      acc.totalRequestedAmount += Number(row._sum.requestedAmount || 0);
+      acc.totalApprovedAmount += Number(row._sum.approvedAmount || 0);
+      acc.totalAppliedAmount += Number(row._sum.appliedAmount || 0);
+
+      if (row.status === FinancePaymentReversalStatus.PENDING_HEAD_TU) acc.pendingHeadTuCount += row._count._all;
+      if (row.status === FinancePaymentReversalStatus.PENDING_PRINCIPAL) acc.pendingPrincipalCount += row._count._all;
+      if (row.status === FinancePaymentReversalStatus.APPROVED) acc.approvedCount += row._count._all;
+      if (row.status === FinancePaymentReversalStatus.REJECTED) acc.rejectedCount += row._count._all;
+      if (row.status === FinancePaymentReversalStatus.APPLIED) acc.appliedCount += row._count._all;
+
+      return acc;
+    },
+    {
+      totalRequests: 0,
+      pendingHeadTuCount: 0,
+      pendingPrincipalCount: 0,
+      approvedCount: 0,
+      rejectedCount: 0,
+      appliedCount: 0,
+      totalRequestedAmount: 0,
+      totalApprovedAmount: 0,
+      totalAppliedAmount: 0,
+    },
+  );
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        summary: {
+          ...summary,
+          totalRequestedAmount: normalizeFinanceAmount(summary.totalRequestedAmount),
+          totalApprovedAmount: normalizeFinanceAmount(summary.totalApprovedAmount),
+          totalAppliedAmount: normalizeFinanceAmount(summary.totalAppliedAmount),
+        },
+        requests: requests.map((request) => serializeFinancePaymentReversalRecord(request)),
+      },
+      'Daftar reversal pembayaran berhasil diambil',
+    ),
+  );
+});
+
+export const createFinancePaymentReversalRequest = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+
+  const paymentId = Number(req.params.id);
+  if (!Number.isInteger(paymentId) || paymentId <= 0) {
+    throw new ApiError(400, 'ID pembayaran tidak valid');
+  }
+
+  const payload = createFinancePaymentReversalSchema.parse(req.body || {});
+
+  const result = await prisma.$transaction(async (tx) => {
+    const [payment, activeRequest] = await Promise.all([
+      tx.financePayment.findUnique({
+        where: { id: paymentId },
+        include: {
+          invoice: {
+            select: {
+              id: true,
+              invoiceNo: true,
+              periodKey: true,
+              semester: true,
+              title: true,
+              dueDate: true,
+              totalAmount: true,
+              paidAmount: true,
+              writtenOffAmount: true,
+              balanceAmount: true,
+              status: true,
+            },
+          },
+          student: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              nis: true,
+              nisn: true,
+              studentClass: {
+                select: {
+                  id: true,
+                  name: true,
+                  level: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      tx.financePaymentReversalRequest.findFirst({
+        where: {
+          paymentId,
+          status: {
+            in: [
+              FinancePaymentReversalStatus.PENDING_HEAD_TU,
+              FinancePaymentReversalStatus.PENDING_PRINCIPAL,
+              FinancePaymentReversalStatus.APPROVED,
+            ],
+          },
+        },
+        select: {
+          id: true,
+          requestNo: true,
+        },
+      }),
+    ]);
+
+    if (!payment) {
+      throw new ApiError(404, 'Pembayaran tidak ditemukan');
+    }
+
+    if (payment.source !== FinancePaymentSource.DIRECT) {
+      throw new ApiError(400, 'Reversal hanya tersedia untuk pembayaran langsung');
+    }
+
+    if (payment.invoice.status === FinanceInvoiceStatus.CANCELLED) {
+      throw new ApiError(400, 'Invoice yang dibatalkan tidak dapat diajukan reversal');
+    }
+
+    if (activeRequest) {
+      throw new ApiError(
+        400,
+        `Masih ada pengajuan reversal aktif (${activeRequest.requestNo}) untuk pembayaran ini`,
+      );
+    }
+
+    const availability = resolveFinancePaymentReversalAvailability(payment);
+    if (availability.remainingReversibleAmount <= 0) {
+      throw new ApiError(400, 'Pembayaran ini sudah tidak memiliki nominal yang bisa direversal');
+    }
+
+    const requestedAmount = normalizeFinanceAmount(Number(payload.amount || 0));
+    if (requestedAmount > availability.remainingReversibleAmount) {
+      throw new ApiError(
+        400,
+        `Nominal reversal melebihi sisa pembayaran yang dapat direversal (maksimal Rp${Math.round(
+          availability.remainingReversibleAmount,
+        ).toLocaleString('id-ID')})`,
+      );
+    }
+
+    const requestedCreditedAmount = normalizeFinanceAmount(
+      Math.min(requestedAmount, availability.remainingCreditedAmount),
+    );
+    const requestedAllocatedAmount = normalizeFinanceAmount(
+      Math.max(requestedAmount - requestedCreditedAmount, 0),
+    );
+
+    if (requestedAllocatedAmount > Number(payment.invoice.paidAmount || 0)) {
+      throw new ApiError(400, 'Alokasi pembayaran aktif di invoice tidak cukup untuk direversal');
+    }
+
+    const request = await tx.financePaymentReversalRequest.create({
+      data: {
+        requestNo: makeFinancePaymentReversalNo(payment.studentId),
+        paymentId: payment.id,
+        invoiceId: payment.invoiceId,
+        studentId: payment.studentId,
+        requestedAmount,
+        requestedAllocatedAmount,
+        requestedCreditedAmount,
+        reason: payload.reason.trim(),
+        requestedNote: payload.note?.trim() || null,
+        requestedById: actor.id,
+      },
+      include: financePaymentReversalRecordInclude,
+    });
+
+    return request;
+  });
+
+  const serializedRequest = serializeFinancePaymentReversalRecord(result);
+
+  await createFinanceInternalNotifications({
+    scopes: ['HEAD_TU'],
+    title: 'Pengajuan Reversal Pembayaran Baru',
+    message: `Pembayaran ${serializedRequest.payment?.paymentNo || '-'} untuk ${
+      serializedRequest.student?.name || 'siswa'
+    } diajukan reversal sebesar Rp${Math.round(serializedRequest.requestedAmount).toLocaleString('id-ID')}.`,
+    type: 'FINANCE_PAYMENT_REVERSAL_REQUESTED',
+    data: {
+      requestId: serializedRequest.id,
+      requestNo: serializedRequest.requestNo,
+      paymentId: serializedRequest.paymentId,
+      paymentNo: serializedRequest.payment?.paymentNo || null,
+      invoiceId: serializedRequest.invoiceId,
+      invoiceNo: serializedRequest.invoice?.invoiceNo || null,
+      studentId: serializedRequest.studentId,
+      studentName: serializedRequest.student?.name || null,
+      requestedAmount: serializedRequest.requestedAmount,
+      requestedAllocatedAmount: serializedRequest.requestedAllocatedAmount,
+      requestedCreditedAmount: serializedRequest.requestedCreditedAmount,
+      reason: serializedRequest.reason,
+    },
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'CREATE',
+      'FINANCE_PAYMENT_REVERSAL_REQUEST',
+      serializedRequest.id,
+      null,
+      {
+        requestNo: serializedRequest.requestNo,
+        paymentId: serializedRequest.paymentId,
+        paymentNo: serializedRequest.payment?.paymentNo || null,
+        invoiceId: serializedRequest.invoiceId,
+        invoiceNo: serializedRequest.invoice?.invoiceNo || null,
+        studentId: serializedRequest.studentId,
+        requestedAmount: serializedRequest.requestedAmount,
+        requestedAllocatedAmount: serializedRequest.requestedAllocatedAmount,
+        requestedCreditedAmount: serializedRequest.requestedCreditedAmount,
+        reason: serializedRequest.reason,
+      },
+      'Pengajuan reversal pembayaran siswa',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat pengajuan reversal pembayaran finance', auditError);
+  }
+
+  res.status(201).json(
+    new ApiResponse(201, { request: serializedRequest }, 'Pengajuan reversal pembayaran berhasil dibuat'),
+  );
+});
+
+export const decideFinancePaymentReversalAsHeadTu = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceHeadTuActor((req as any).user || {});
+
+  const requestId = Number(req.params.id);
+  if (!Number.isInteger(requestId) || requestId <= 0) {
+    throw new ApiError(400, 'ID pengajuan reversal tidak valid');
+  }
+
+  const payload = decideFinancePaymentReversalSchema.parse(req.body || {});
+
+  const before = await prisma.financePaymentReversalRequest.findUnique({
+    where: { id: requestId },
+    include: financePaymentReversalRecordInclude,
+  });
+
+  if (!before) {
+    throw new ApiError(404, 'Pengajuan reversal pembayaran tidak ditemukan');
+  }
+
+  if (before.status !== FinancePaymentReversalStatus.PENDING_HEAD_TU) {
+    throw new ApiError(400, 'Pengajuan reversal ini tidak sedang menunggu persetujuan Kepala TU');
+  }
+
+  const paymentRemainingAmount = before.payment
+    ? resolveFinancePaymentReversalAvailability(before.payment).remainingReversibleAmount
+    : 0;
+  if (payload.approved && paymentRemainingAmount < Number(before.requestedAmount || 0)) {
+    throw new ApiError(400, 'Sisa pembayaran yang dapat direversal berubah dan tidak lagi mencukupi');
+  }
+
+  const updated = await prisma.financePaymentReversalRequest.update({
+    where: { id: requestId },
+    data: {
+      status: payload.approved
+        ? FinancePaymentReversalStatus.PENDING_PRINCIPAL
+        : FinancePaymentReversalStatus.REJECTED,
+      approvedAmount: payload.approved ? before.requestedAmount : null,
+      approvedAllocatedAmount: payload.approved ? before.requestedAllocatedAmount : null,
+      approvedCreditedAmount: payload.approved ? before.requestedCreditedAmount : null,
+      headTuApproved: payload.approved,
+      headTuDecisionById: actor.id,
+      headTuDecisionAt: new Date(),
+      headTuDecisionNote: payload.note?.trim() || null,
+    },
+    include: financePaymentReversalRecordInclude,
+  });
+
+  const serializedRequest = serializeFinancePaymentReversalRecord(updated);
+
+  await createFinanceInternalNotifications({
+    scopes: payload.approved ? ['PRINCIPAL', 'FINANCE'] : ['FINANCE'],
+    title: payload.approved ? 'Reversal Disetujui Kepala TU' : 'Reversal Ditolak Kepala TU',
+    message: payload.approved
+      ? `Pengajuan ${serializedRequest.requestNo} untuk pembayaran ${
+          serializedRequest.payment?.paymentNo || '-'
+        } disetujui Kepala TU dan diteruskan ke Kepala Sekolah.`
+      : `Pengajuan ${serializedRequest.requestNo} untuk pembayaran ${
+          serializedRequest.payment?.paymentNo || '-'
+        } ditolak oleh Kepala TU.`,
+    type: payload.approved
+      ? 'FINANCE_PAYMENT_REVERSAL_HEAD_TU_APPROVED'
+      : 'FINANCE_PAYMENT_REVERSAL_HEAD_TU_REJECTED',
+    data: {
+      requestId: serializedRequest.id,
+      requestNo: serializedRequest.requestNo,
+      paymentId: serializedRequest.paymentId,
+      paymentNo: serializedRequest.payment?.paymentNo || null,
+      invoiceId: serializedRequest.invoiceId,
+      invoiceNo: serializedRequest.invoice?.invoiceNo || null,
+      studentId: serializedRequest.studentId,
+      studentName: serializedRequest.student?.name || null,
+      approvedAmount: serializedRequest.approvedAmount,
+      note: payload.note?.trim() || null,
+    },
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'UPDATE',
+      'FINANCE_PAYMENT_REVERSAL_HEAD_TU_DECISION',
+      serializedRequest.id,
+      before,
+      serializedRequest,
+      payload.approved
+        ? 'Persetujuan reversal pembayaran oleh Kepala TU'
+        : 'Penolakan reversal pembayaran oleh Kepala TU',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat keputusan reversal pembayaran Head TU', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      { request: serializedRequest },
+      payload.approved
+        ? 'Reversal pembayaran diteruskan ke persetujuan Kepala Sekolah'
+        : 'Reversal pembayaran ditolak Kepala TU',
+    ),
+  );
+});
+
+export const decideFinancePaymentReversalAsPrincipal = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinancePrincipalActor((req as any).user || {});
+
+  const requestId = Number(req.params.id);
+  if (!Number.isInteger(requestId) || requestId <= 0) {
+    throw new ApiError(400, 'ID pengajuan reversal tidak valid');
+  }
+
+  const payload = decideFinancePaymentReversalSchema.parse(req.body || {});
+
+  const before = await prisma.financePaymentReversalRequest.findUnique({
+    where: { id: requestId },
+    include: financePaymentReversalRecordInclude,
+  });
+
+  if (!before) {
+    throw new ApiError(404, 'Pengajuan reversal pembayaran tidak ditemukan');
+  }
+
+  if (before.status !== FinancePaymentReversalStatus.PENDING_PRINCIPAL) {
+    throw new ApiError(400, 'Pengajuan reversal ini tidak sedang menunggu persetujuan Kepala Sekolah');
+  }
+
+  const paymentRemainingAmount = before.payment
+    ? resolveFinancePaymentReversalAvailability(before.payment).remainingReversibleAmount
+    : 0;
+  if (payload.approved && paymentRemainingAmount < Number(before.approvedAmount || before.requestedAmount || 0)) {
+    throw new ApiError(400, 'Sisa pembayaran yang dapat direversal berubah dan tidak lagi mencukupi');
+  }
+
+  const updated = await prisma.financePaymentReversalRequest.update({
+    where: { id: requestId },
+    data: {
+      status: payload.approved ? FinancePaymentReversalStatus.APPROVED : FinancePaymentReversalStatus.REJECTED,
+      principalApproved: payload.approved,
+      principalDecisionById: actor.id,
+      principalDecisionAt: new Date(),
+      principalDecisionNote: payload.note?.trim() || null,
+    },
+    include: financePaymentReversalRecordInclude,
+  });
+
+  const serializedRequest = serializeFinancePaymentReversalRecord(updated);
+
+  await createFinanceInternalNotifications({
+    scopes: ['FINANCE', 'HEAD_TU'],
+    title: payload.approved ? 'Reversal Disetujui Kepala Sekolah' : 'Reversal Ditolak Kepala Sekolah',
+    message: payload.approved
+      ? `Pengajuan ${serializedRequest.requestNo} disetujui Kepala Sekolah dan siap diterapkan oleh bendahara.`
+      : `Pengajuan ${serializedRequest.requestNo} ditolak oleh Kepala Sekolah.`,
+    type: payload.approved
+      ? 'FINANCE_PAYMENT_REVERSAL_PRINCIPAL_APPROVED'
+      : 'FINANCE_PAYMENT_REVERSAL_PRINCIPAL_REJECTED',
+    data: {
+      requestId: serializedRequest.id,
+      requestNo: serializedRequest.requestNo,
+      paymentId: serializedRequest.paymentId,
+      paymentNo: serializedRequest.payment?.paymentNo || null,
+      invoiceId: serializedRequest.invoiceId,
+      invoiceNo: serializedRequest.invoice?.invoiceNo || null,
+      studentId: serializedRequest.studentId,
+      studentName: serializedRequest.student?.name || null,
+      approvedAmount: serializedRequest.approvedAmount,
+      note: payload.note?.trim() || null,
+    },
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'UPDATE',
+      'FINANCE_PAYMENT_REVERSAL_PRINCIPAL_DECISION',
+      serializedRequest.id,
+      before,
+      serializedRequest,
+      payload.approved
+        ? 'Persetujuan reversal pembayaran oleh Kepala Sekolah'
+        : 'Penolakan reversal pembayaran oleh Kepala Sekolah',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat keputusan reversal pembayaran Kepala Sekolah', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      { request: serializedRequest },
+      payload.approved
+        ? 'Reversal pembayaran disetujui Kepala Sekolah'
+        : 'Reversal pembayaran ditolak Kepala Sekolah',
+    ),
+  );
+});
+
+export const applyFinancePaymentReversal = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+
+  const requestId = Number(req.params.id);
+  if (!Number.isInteger(requestId) || requestId <= 0) {
+    throw new ApiError(400, 'ID pengajuan reversal tidak valid');
+  }
+
+  const payload = applyFinancePaymentReversalSchema.parse(req.body || {});
+
+  const before = await prisma.financePaymentReversalRequest.findUnique({
+    where: { id: requestId },
+    include: financePaymentReversalRecordInclude,
+  });
+
+  if (!before) {
+    throw new ApiError(404, 'Pengajuan reversal pembayaran tidak ditemukan');
+  }
+
+  if (before.status !== FinancePaymentReversalStatus.APPROVED) {
+    throw new ApiError(400, 'Pengajuan reversal pembayaran ini belum siap diterapkan');
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const payment = await tx.financePayment.findUnique({
+      where: { id: before.paymentId },
+      include: {
+        invoice: {
+          include: {
+            student: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                nis: true,
+                nisn: true,
+                studentClass: {
+                  select: {
+                    id: true,
+                    name: true,
+                    level: true,
+                  },
+                },
+              },
+            },
+            items: {
+              select: {
+                id: true,
+                componentId: true,
+                componentCode: true,
+                componentName: true,
+                amount: true,
+                notes: true,
+                component: {
+                  select: {
+                    id: true,
+                    code: true,
+                    name: true,
+                    lateFeeEnabled: true,
+                    lateFeeMode: true,
+                    lateFeeAmount: true,
+                    lateFeeGraceDays: true,
+                    lateFeeCapAmount: true,
+                  },
+                },
+              },
+            },
+            payments: {
+              select: {
+                id: true,
+                paymentNo: true,
+                amount: true,
+                allocatedAmount: true,
+                creditedAmount: true,
+                reversedAmount: true,
+                reversedAllocatedAmount: true,
+                reversedCreditedAmount: true,
+                source: true,
+                method: true,
+                referenceNo: true,
+                note: true,
+                paidAt: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+              orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
+            },
+            installments: {
+              select: {
+                id: true,
+                sequence: true,
+                amount: true,
+                dueDate: true,
+              },
+              orderBy: [{ sequence: 'asc' }],
+            },
+            writeOffRequests: {
+              include: financeWriteOffRecordInclude,
+              orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            },
+          },
+        },
+      },
+    });
+
+    if (!payment) {
+      throw new ApiError(404, 'Pembayaran tidak ditemukan');
+    }
+
+    if (payment.source !== FinancePaymentSource.DIRECT) {
+      throw new ApiError(400, 'Reversal hanya tersedia untuk pembayaran langsung');
+    }
+
+    if (payment.invoice.status === FinanceInvoiceStatus.CANCELLED) {
+      throw new ApiError(400, 'Invoice yang dibatalkan tidak dapat diterapkan reversal');
+    }
+
+    const availability = resolveFinancePaymentReversalAvailability(payment);
+    const approvedAmount = normalizeFinanceAmount(
+      Number(before.approvedAmount || before.requestedAmount || 0),
+    );
+    const approvedAllocatedAmount = normalizeFinanceAmount(
+      Number(before.approvedAllocatedAmount || before.requestedAllocatedAmount || 0),
+    );
+    const approvedCreditedAmount = normalizeFinanceAmount(
+      Number(before.approvedCreditedAmount || before.requestedCreditedAmount || 0),
+    );
+
+    if (approvedAmount <= 0) {
+      throw new ApiError(400, 'Nominal reversal yang disetujui tidak valid');
+    }
+
+    if (approvedAmount > availability.remainingReversibleAmount) {
+      throw new ApiError(400, 'Sisa pembayaran yang dapat direversal sudah berubah');
+    }
+
+    if (approvedAllocatedAmount > availability.remainingAllocatedAmount) {
+      throw new ApiError(400, 'Alokasi pembayaran yang dapat direversal sudah berubah');
+    }
+
+    if (approvedCreditedAmount > availability.remainingCreditedAmount) {
+      throw new ApiError(400, 'Porsi saldo kredit dari pembayaran ini sudah tidak tersedia penuh');
+    }
+
+    let creditBalanceSnapshot: {
+      id: number;
+      balanceBefore: number;
+      balanceAfter: number;
+    } | null = null;
+
+    if (approvedCreditedAmount > 0) {
+      const creditBalance = await tx.financeCreditBalance.findUnique({
+        where: { studentId: payment.studentId },
+        select: {
+          id: true,
+          balanceAmount: true,
+        },
+      });
+
+      const balanceBefore = Number(creditBalance?.balanceAmount || 0);
+      if (!creditBalance || balanceBefore < approvedCreditedAmount) {
+        throw new ApiError(
+          400,
+          'Saldo kredit siswa sudah terpakai atau direfund, sehingga reversal tidak bisa diterapkan penuh',
+        );
+      }
+
+      const balanceAfter = normalizeFinanceAmount(Math.max(balanceBefore - approvedCreditedAmount, 0));
+
+      await tx.financeCreditBalance.update({
+        where: { id: creditBalance.id },
+        data: {
+          balanceAmount: balanceAfter,
+        },
+      });
+
+      await tx.financeCreditTransaction.create({
+        data: {
+          balanceId: creditBalance.id,
+          studentId: payment.studentId,
+          paymentId: payment.id,
+          kind: FinanceCreditTransactionKind.PAYMENT_REVERSAL,
+          amount: approvedCreditedAmount,
+          balanceBefore,
+          balanceAfter,
+          note:
+            payload.note?.trim() ||
+            `Reversal pembayaran ${payment.paymentNo} mengurangi saldo kredit`,
+          createdById: actor.id,
+        },
+      });
+
+      creditBalanceSnapshot = {
+        id: creditBalance.id,
+        balanceBefore,
+        balanceAfter,
+      };
+    }
+
+    const nextPayment = await tx.financePayment.update({
+      where: { id: payment.id },
+      data: {
+        reversedAmount: normalizeFinanceAmount(Number(payment.reversedAmount || 0) + approvedAmount),
+        reversedAllocatedAmount: normalizeFinanceAmount(
+          Number(payment.reversedAllocatedAmount || 0) + approvedAllocatedAmount,
+        ),
+        reversedCreditedAmount: normalizeFinanceAmount(
+          Number(payment.reversedCreditedAmount || 0) + approvedCreditedAmount,
+        ),
+      },
+      select: {
+        id: true,
+        paymentNo: true,
+        amount: true,
+        allocatedAmount: true,
+        creditedAmount: true,
+        reversedAmount: true,
+        reversedAllocatedAmount: true,
+        reversedCreditedAmount: true,
+        source: true,
+        method: true,
+        referenceNo: true,
+        note: true,
+        paidAt: true,
+        createdAt: true,
+        updatedAt: true,
+        invoice: {
+          select: {
+            id: true,
+            invoiceNo: true,
+            periodKey: true,
+            semester: true,
+          },
+        },
+      },
+    });
+
+    const currentWrittenOffAmount = inferFinanceWrittenOffAmount({
+      totalAmount: Number(payment.invoice.totalAmount || 0),
+      paidAmount: Number(payment.invoice.paidAmount || 0),
+      balanceAmount: Number(payment.invoice.balanceAmount || 0),
+      writtenOffAmount: payment.invoice.writtenOffAmount,
+      status: payment.invoice.status,
+    });
+    const nextPaidAmount = normalizeFinanceAmount(
+      Math.max(Number(payment.invoice.paidAmount || 0) - approvedAllocatedAmount, 0),
+    );
+    const nextBalanceAmount = calculateFinanceInvoiceBalanceAmount({
+      totalAmount: Number(payment.invoice.totalAmount || 0),
+      paidAmount: nextPaidAmount,
+      writtenOffAmount: currentWrittenOffAmount,
+      status: payment.invoice.status,
+    });
+    const nextStatus = calculateFinanceInvoiceStatus({
+      balanceAmount: nextBalanceAmount,
+      paidAmount: nextPaidAmount,
+      writtenOffAmount: currentWrittenOffAmount,
+      currentStatus: payment.invoice.status,
+    });
+    const nextDueDate = resolveFinanceInvoiceDueDate({
+      invoiceTotalAmount: Number(payment.invoice.totalAmount || 0),
+      invoicePaidAmount: nextPaidAmount,
+      invoiceBalanceAmount: nextBalanceAmount,
+      invoiceStatus: nextStatus,
+      invoiceWrittenOffAmount: currentWrittenOffAmount,
+      invoiceDueDate: payment.invoice.dueDate || null,
+      installments: payment.invoice.installments,
+    });
+
+    const updatedInvoice = await tx.financeInvoice.update({
+      where: { id: payment.invoice.id },
+      data: {
+        paidAmount: nextPaidAmount,
+        balanceAmount: nextBalanceAmount,
+        status: nextStatus,
+        dueDate: nextDueDate,
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nis: true,
+            nisn: true,
+            studentClass: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+            },
+          },
+        },
+        items: {
+          select: {
+            id: true,
+            componentId: true,
+            componentCode: true,
+            componentName: true,
+            amount: true,
+            notes: true,
+            component: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                lateFeeEnabled: true,
+                lateFeeMode: true,
+                lateFeeAmount: true,
+                lateFeeGraceDays: true,
+                lateFeeCapAmount: true,
+              },
+            },
+          },
+        },
+        payments: {
+          select: {
+            id: true,
+            paymentNo: true,
+            amount: true,
+            allocatedAmount: true,
+            creditedAmount: true,
+            reversedAmount: true,
+            reversedAllocatedAmount: true,
+            reversedCreditedAmount: true,
+            source: true,
+            method: true,
+            referenceNo: true,
+            note: true,
+            paidAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
+        },
+        installments: {
+          select: {
+            id: true,
+            sequence: true,
+            amount: true,
+            dueDate: true,
+          },
+          orderBy: [{ sequence: 'asc' }],
+        },
+        writeOffRequests: {
+          include: financeWriteOffRecordInclude,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        },
+      },
+    });
+
+    const updatedRequest = await tx.financePaymentReversalRequest.update({
+      where: { id: before.id },
+      data: {
+        status: FinancePaymentReversalStatus.APPLIED,
+        appliedAmount: approvedAmount,
+        appliedAllocatedAmount: approvedAllocatedAmount,
+        appliedCreditedAmount: approvedCreditedAmount,
+        appliedById: actor.id,
+        appliedAt: new Date(),
+        applyNote: payload.note?.trim() || null,
+      },
+      include: financePaymentReversalRecordInclude,
+    });
+
+    return {
+      request: updatedRequest,
+      payment: nextPayment,
+      invoice: updatedInvoice,
+      creditBalance: creditBalanceSnapshot,
+      appliedAmount: approvedAmount,
+      appliedAllocatedAmount: approvedAllocatedAmount,
+      appliedCreditedAmount: approvedCreditedAmount,
+    };
+  });
+
+  const serializedRequest = serializeFinancePaymentReversalRecord(result.request);
+  const serializedPayment = serializeFinancePaymentRecord(result.payment);
+  const serializedInvoice = serializeFinanceInvoiceRecord(result.invoice);
+
+  await Promise.all([
+    createFinanceInternalNotifications({
+      scopes: ['HEAD_TU', 'PRINCIPAL'],
+      title: 'Reversal Pembayaran Sudah Diterapkan',
+      message: `Pengajuan ${serializedRequest.requestNo} sudah diterapkan ke pembayaran ${
+        serializedRequest.payment?.paymentNo || '-'
+      } sebesar Rp${Math.round(result.appliedAmount).toLocaleString('id-ID')}.`,
+      type: 'FINANCE_PAYMENT_REVERSAL_APPLIED',
+      data: {
+        requestId: serializedRequest.id,
+        requestNo: serializedRequest.requestNo,
+        paymentId: serializedRequest.paymentId,
+        paymentNo: serializedRequest.payment?.paymentNo || null,
+        invoiceId: serializedRequest.invoiceId,
+        invoiceNo: serializedRequest.invoice?.invoiceNo || null,
+        studentId: serializedRequest.studentId,
+        studentName: serializedRequest.student?.name || null,
+        appliedAmount: result.appliedAmount,
+        appliedAllocatedAmount: result.appliedAllocatedAmount,
+        appliedCreditedAmount: result.appliedCreditedAmount,
+        remainingBalance: serializedInvoice.balanceAmount,
+      },
+    }),
+    createFinanceNotifications({
+      studentId: serializedRequest.studentId,
+      title: 'Penyesuaian Pembayaran Diterapkan',
+      message: `Pembayaran ${serializedRequest.payment?.paymentNo || '-'} sebesar Rp${Math.round(
+        result.appliedAmount,
+      ).toLocaleString('id-ID')} direversal. Sisa tagihan invoice ${
+        serializedRequest.invoice?.invoiceNo || '-'
+      } sekarang Rp${Math.round(serializedInvoice.balanceAmount).toLocaleString('id-ID')}.`,
+      type: 'FINANCE_PAYMENT_REVERSAL_APPLIED',
+      data: {
+        requestId: serializedRequest.id,
+        requestNo: serializedRequest.requestNo,
+        paymentId: serializedRequest.paymentId,
+        paymentNo: serializedRequest.payment?.paymentNo || null,
+        invoiceId: serializedRequest.invoiceId,
+        invoiceNo: serializedRequest.invoice?.invoiceNo || null,
+        appliedAmount: result.appliedAmount,
+        appliedAllocatedAmount: result.appliedAllocatedAmount,
+        appliedCreditedAmount: result.appliedCreditedAmount,
+        remainingBalance: serializedInvoice.balanceAmount,
+        creditBalanceAmount: Number(result.creditBalance?.balanceAfter || 0),
+      },
+    }),
+  ]);
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'UPDATE',
+      'FINANCE_PAYMENT_REVERSAL_APPLY',
+      serializedRequest.id,
+      before,
+      {
+        request: serializedRequest,
+        payment: serializedPayment,
+        invoice: {
+          id: serializedInvoice.id,
+          invoiceNo: serializedInvoice.invoiceNo,
+          paidAmount: serializedInvoice.paidAmount,
+          balanceAmount: serializedInvoice.balanceAmount,
+          status: serializedInvoice.status,
+        },
+        creditBalance: result.creditBalance,
+      },
+      'Penerapan reversal pembayaran siswa',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat penerapan reversal pembayaran finance', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        request: serializedRequest,
+        payment: serializedPayment,
+        invoice: serializedInvoice,
+      },
+      'Reversal pembayaran berhasil diterapkan',
+    ),
+  );
+});
+
 type FinancePortalInvoiceRecord = {
   id: number;
   invoiceNo: string;
@@ -7089,9 +8443,13 @@ type FinancePortalInvoiceRecord = {
     amount: number;
     allocatedAmount: number;
     creditedAmount: number;
+    reversedAmount?: number | null;
+    reversedAllocatedAmount?: number | null;
+    reversedCreditedAmount?: number | null;
     source: FinancePaymentSource;
     method: FinancePaymentMethod;
     referenceNo: string | null;
+    note?: string | null;
     paidAt: Date;
     createdAt: Date;
     updatedAt: Date;
@@ -7339,9 +8697,13 @@ export const listParentPayments = asyncHandler(async (req: Request, res: Respons
                 amount: true,
                 allocatedAmount: true,
                 creditedAmount: true,
+                reversedAmount: true,
+                reversedAllocatedAmount: true,
+                reversedCreditedAmount: true,
                 source: true,
                 method: true,
                 referenceNo: true,
+                note: true,
                 paidAt: true,
                 createdAt: true,
                 updatedAt: true,
@@ -7644,9 +9006,13 @@ export const listStudentPayments = asyncHandler(async (req: Request, res: Respon
             amount: true,
             allocatedAmount: true,
             creditedAmount: true,
+            reversedAmount: true,
+            reversedAllocatedAmount: true,
+            reversedCreditedAmount: true,
             source: true,
             method: true,
             referenceNo: true,
+            note: true,
             paidAt: true,
             createdAt: true,
             updatedAt: true,
