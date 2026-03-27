@@ -24,6 +24,10 @@ export interface FinanceComponent {
   isActive: boolean;
 }
 
+export interface FinanceClassLevelListResult {
+  levels: string[];
+}
+
 export interface FinanceTariffRule {
   id: number;
   componentId: number;
@@ -541,6 +545,13 @@ interface ApiResponse<T> {
 }
 
 export const staffFinanceService = {
+  async listClassLevels(params?: { academicYearId?: number }) {
+    const response = await api.get<ApiResponse<FinanceClassLevelListResult>>('/payments/class-levels', {
+      params,
+    });
+    return response.data.data.levels || [];
+  },
+
   async listComponents(params?: { isActive?: boolean; search?: string }) {
     const response = await api.get<ApiResponse<{ components: FinanceComponent[] }>>('/payments/components', {
       params,

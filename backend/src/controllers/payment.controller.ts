@@ -894,6 +894,10 @@ const listFinanceComponentsQuerySchema = z.object({
   search: z.string().optional(),
 });
 
+const listFinanceClassLevelsQuerySchema = z.object({
+  academicYearId: z.coerce.number().int().positive().optional(),
+});
+
 const financeComponentSchemaFields = {
   code: z.string().min(2).max(40),
   name: z.string().min(2).max(120),
@@ -1979,6 +1983,35 @@ function normalizeFinanceComparableText(value?: string | null) {
   return String(value || '').trim().toUpperCase();
 }
 
+function normalizeFinanceClassLevel(value?: string | null) {
+  const normalized = normalizeFinanceComparableText(value).replace(/^KELAS\s+/i, '').trim();
+  if (!normalized) return '';
+  const tokenMatch = normalized.match(/\b(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I|12|11|10|9|8|7|6|5|4|3|2|1)\b/);
+  return (tokenMatch?.[1] || normalized.split(/\s+/)[0] || '').trim();
+}
+
+function getFinanceClassLevelSortRank(level: string) {
+  const normalized = normalizeFinanceClassLevel(level);
+  const rankMap: Record<string, number> = {
+    I: 1,
+    II: 2,
+    III: 3,
+    IV: 4,
+    V: 5,
+    VI: 6,
+    VII: 7,
+    VIII: 8,
+    IX: 9,
+    X: 10,
+    XI: 11,
+    XII: 12,
+  };
+  if (rankMap[normalized] != null) return rankMap[normalized];
+  const numericValue = Number(normalized);
+  if (Number.isFinite(numericValue) && numericValue > 0) return numericValue;
+  return Number.MAX_SAFE_INTEGER;
+}
+
 type FinanceAdjustmentRuleCandidate = {
   id: number;
   code: string;
@@ -2761,6 +2794,36 @@ export const listFinanceComponents = asyncHandler(async (req: Request, res: Resp
   });
 
   res.status(200).json(new ApiResponse(200, { components }, 'Komponen keuangan berhasil diambil'));
+});
+
+export const listFinanceClassLevels = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinanceActor((req as any).user || {}, { allowPrincipalReadOnly: true });
+
+  const { academicYearId } = listFinanceClassLevelsQuerySchema.parse(req.query);
+
+  const classes = await prisma.class.findMany({
+    where: {
+      ...(academicYearId ? { academicYearId } : {}),
+    },
+    select: {
+      level: true,
+      name: true,
+    },
+  });
+
+  const levels = Array.from(
+    new Set(
+      classes
+        .map((classRow) => normalizeFinanceClassLevel(classRow.level || classRow.name))
+        .filter((level) => level.length > 0),
+    ),
+  ).sort((a, b) => {
+    const rankDiff = getFinanceClassLevelSortRank(a) - getFinanceClassLevelSortRank(b);
+    if (rankDiff !== 0) return rankDiff;
+    return a.localeCompare(b, 'id-ID', { numeric: true });
+  });
+
+  res.status(200).json(new ApiResponse(200, { levels }, 'Level kelas finance berhasil diambil'));
 });
 
 export const createFinanceComponent = asyncHandler(async (req: Request, res: Response) => {

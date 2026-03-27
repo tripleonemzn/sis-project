@@ -121,9 +121,14 @@ function formatEffectiveWindow(start?: string | null, end?: string | null) {
 }
 
 function normalizeClassLevel(raw?: string | null) {
-  return String(raw || '')
+  const normalized = String(raw || '')
     .trim()
-    .toUpperCase();
+    .toUpperCase()
+    .replace(/^KELAS\s+/i, '')
+    .trim();
+  if (!normalized) return '';
+  const tokenMatch = normalized.match(/\b(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I|12|11|10|9|8|7|6|5|4|3|2|1)\b/);
+  return (tokenMatch?.[1] || normalized.split(/\s+/)[0] || '').trim();
 }
 
 function getClassLevelLabel(level?: string | null) {
@@ -256,6 +261,7 @@ export default function StaffPaymentsScreen() {
   const [componentLateFeeGraceDays, setComponentLateFeeGraceDays] = useState('0');
   const [componentLateFeeCapAmount, setComponentLateFeeCapAmount] = useState('');
   const [editingComponentId, setEditingComponentId] = useState<number | null>(null);
+  const [isComponentModalOpen, setIsComponentModalOpen] = useState(false);
 
   const [tariffComponentId, setTariffComponentId] = useState<number | null>(null);
   const [tariffAcademicYearId, setTariffAcademicYearId] = useState<number | null>(null);
@@ -267,6 +273,7 @@ export default function StaffPaymentsScreen() {
   const [tariffEffectiveEnd, setTariffEffectiveEnd] = useState('');
   const [tariffNotes, setTariffNotes] = useState('');
   const [editingTariffId, setEditingTariffId] = useState<number | null>(null);
+  const [isTariffModalOpen, setIsTariffModalOpen] = useState(false);
 
   const [adjustmentCode, setAdjustmentCode] = useState('');
   const [adjustmentName, setAdjustmentName] = useState('');
@@ -341,10 +348,10 @@ export default function StaffPaymentsScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const classesQuery = useQuery({
-    queryKey: ['mobile-staff-finance-classes'],
+  const classLevelsQuery = useQuery({
+    queryKey: ['mobile-staff-finance-class-levels'],
     enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
-    queryFn: () => adminApi.listClasses({ page: 1, limit: 500 }),
+    queryFn: () => staffFinanceApi.listClassLevels(),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -356,18 +363,10 @@ export default function StaffPaymentsScreen() {
   });
 
   const academicYears = academicYearsQuery.data?.items || [];
-  const masterClasses = classesQuery.data?.items || [];
   const majors = majorsQuery.data?.items || [];
   const classLevelOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          masterClasses
-            .map((classItem) => normalizeClassLevel(classItem.level || classItem.name))
-            .filter((value) => value.length > 0),
-        ),
-      ).sort((a, b) => a.localeCompare(b, 'id-ID', { numeric: true })),
-    [masterClasses],
+    () => (classLevelsQuery.data || []).map((level) => normalizeClassLevel(level)).filter((value) => value.length > 0),
+    [classLevelsQuery.data],
   );
 
   const studentLookup = useMemo(() => {
@@ -540,6 +539,16 @@ export default function StaffPaymentsScreen() {
     setComponentLateFeeCapAmount('');
   };
 
+  const openCreateComponentModal = () => {
+    resetComponentForm();
+    setIsComponentModalOpen(true);
+  };
+
+  const closeComponentModal = () => {
+    setIsComponentModalOpen(false);
+    resetComponentForm();
+  };
+
   const resetTariffForm = () => {
     setEditingTariffId(null);
     setTariffComponentId(null);
@@ -551,6 +560,16 @@ export default function StaffPaymentsScreen() {
     setTariffEffectiveStart('');
     setTariffEffectiveEnd('');
     setTariffNotes('');
+  };
+
+  const openCreateTariffModal = () => {
+    resetTariffForm();
+    setIsTariffModalOpen(true);
+  };
+
+  const closeTariffModal = () => {
+    setIsTariffModalOpen(false);
+    resetTariffForm();
   };
 
   const resetAdjustmentForm = () => {
@@ -622,7 +641,7 @@ export default function StaffPaymentsScreen() {
           }),
     onSuccess: () => {
       notifySuccess(editingComponentId ? 'Komponen diperbarui.' : 'Komponen ditambahkan.');
-      resetComponentForm();
+      closeComponentModal();
       invalidateFinanceQueries();
     },
     onError: (error: unknown) => notifyApiError(error, 'Gagal menyimpan komponen.'),
@@ -666,7 +685,7 @@ export default function StaffPaymentsScreen() {
           }),
     onSuccess: () => {
       notifySuccess(editingTariffId ? 'Tarif diperbarui.' : 'Tarif ditambahkan.');
-      resetTariffForm();
+      closeTariffModal();
       invalidateFinanceQueries();
     },
     onError: (error: unknown) => notifyApiError(error, 'Gagal menyimpan tarif.'),
@@ -989,6 +1008,36 @@ export default function StaffPaymentsScreen() {
     setRefundMethod('BANK_TRANSFER');
     setRefundReference('');
     setRefundNote('');
+  };
+
+  const handleEditComponent = (component: StaffFinanceComponent) => {
+    setEditingComponentId(component.id);
+    setComponentCode(component.code);
+    setComponentName(component.name);
+    setComponentDescription(component.description || '');
+    setComponentPeriodicity(component.periodicity);
+    setComponentLateFeeEnabled(component.lateFeeEnabled);
+    setComponentLateFeeMode(component.lateFeeMode);
+    setComponentLateFeeAmount(String(Number(component.lateFeeAmount || 0)));
+    setComponentLateFeeGraceDays(String(Number(component.lateFeeGraceDays || 0)));
+    setComponentLateFeeCapAmount(
+      component.lateFeeCapAmount == null ? '' : String(Number(component.lateFeeCapAmount || 0)),
+    );
+    setIsComponentModalOpen(true);
+  };
+
+  const handleEditTariff = (tariff: StaffFinanceTariffRule) => {
+    setEditingTariffId(tariff.id);
+    setTariffComponentId(tariff.componentId);
+    setTariffAcademicYearId(tariff.academicYearId || null);
+    setTariffMajorId(tariff.majorId || null);
+    setTariffSemester(tariff.semester || '');
+    setTariffGradeLevel(tariff.gradeLevel || tariff.class?.level || '');
+    setTariffAmount(String(Number(tariff.amount || 0)));
+    setTariffEffectiveStart(tariff.effectiveStart ? String(tariff.effectiveStart).slice(0, 10) : '');
+    setTariffEffectiveEnd(tariff.effectiveEnd ? String(tariff.effectiveEnd).slice(0, 10) : '');
+    setTariffNotes(tariff.notes || '');
+    setIsTariffModalOpen(true);
   };
 
   const handleEditAdjustment = (adjustment: StaffFinanceAdjustmentRule) => {
@@ -1706,168 +1755,19 @@ export default function StaffPaymentsScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Master Komponen</Text>
-          <TextInput
-            value={componentCode}
-            onChangeText={setComponentCode}
-            placeholder="Kode komponen"
-            placeholderTextColor="#94a3b8"
-            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
-          />
-          <TextInput
-            value={componentName}
-            onChangeText={setComponentName}
-            placeholder="Nama komponen"
-            placeholderTextColor="#94a3b8"
-            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
-          />
-          <TextInput
-            value={componentDescription}
-            onChangeText={setComponentDescription}
-            placeholder="Deskripsi (opsional)"
-            placeholderTextColor="#94a3b8"
-            multiline
-            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', minHeight: 72, textAlignVertical: 'top', backgroundColor: '#fff' }}
-          />
-
-          <ScrollView horizontal style={{ marginBottom: 8 }} showsHorizontalScrollIndicator={false}>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              {PERIODICITY_OPTIONS.map((option) => {
-                const active = componentPeriodicity === option.value;
-                return (
-                  <Pressable
-                    key={option.value}
-                    onPress={() => setComponentPeriodicity(option.value)}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: active ? '#1d4ed8' : '#dbeafe',
-                      backgroundColor: active ? '#e9f1ff' : '#fff',
-                      borderRadius: 999,
-                      paddingHorizontal: 12,
-                      paddingVertical: 7,
-                    }}
-                  >
-                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
-
-          <View
-            style={{
-              borderWidth: 1,
-              borderColor: '#cbd5e1',
-              backgroundColor: '#f8fafc',
-              borderRadius: 10,
-              padding: 10,
-              marginBottom: 8,
-            }}
-          >
-            <Pressable
-              onPress={() => setComponentLateFeeEnabled((current) => !current)}
-              style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}
-            >
-              <Text style={{ color: '#334155', fontWeight: '700', flex: 1, paddingRight: 8 }}>
-                Aktifkan denda keterlambatan
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Master Komponen</Text>
+              <Text style={{ color: '#64748b', fontSize: 12 }}>
+                Tambah atau edit komponen dibuka lewat popup agar daftar hasil tetap fokus.
               </Text>
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: componentLateFeeEnabled ? '#f59e0b' : '#cbd5e1',
-                  backgroundColor: componentLateFeeEnabled ? '#fef3c7' : '#fff',
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                }}
-              >
-                <Text style={{ color: componentLateFeeEnabled ? '#92400e' : '#64748b', fontWeight: '700', fontSize: 12 }}>
-                  {componentLateFeeEnabled ? 'Aktif' : 'Off'}
-                </Text>
-              </View>
-            </Pressable>
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                {LATE_FEE_MODE_OPTIONS.map((option) => {
-                  const active = componentLateFeeMode === option.value;
-                  return (
-                    <Pressable
-                      key={option.value}
-                      onPress={() => setComponentLateFeeMode(option.value)}
-                      disabled={!componentLateFeeEnabled}
-                      style={{
-                        borderWidth: 1,
-                        borderColor: active ? '#d97706' : '#fde68a',
-                        backgroundColor: active ? '#fff7ed' : '#fff',
-                        borderRadius: 999,
-                        paddingHorizontal: 12,
-                        paddingVertical: 7,
-                        opacity: componentLateFeeEnabled ? 1 : 0.5,
-                      }}
-                    >
-                      <Text style={{ color: active ? '#9a3412' : '#92400e', fontWeight: '700', fontSize: 12 }}>
-                        {option.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </ScrollView>
-
-            <TextInput
-              keyboardType="numeric"
-              value={componentLateFeeAmount}
-              onChangeText={setComponentLateFeeAmount}
-              editable={componentLateFeeEnabled}
-              placeholder="Nominal denda"
-              placeholderTextColor="#94a3b8"
-              style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: componentLateFeeEnabled ? '#fff' : '#f8fafc' }}
-            />
-            <TextInput
-              keyboardType="numeric"
-              value={componentLateFeeGraceDays}
-              onChangeText={setComponentLateFeeGraceDays}
-              editable={componentLateFeeEnabled}
-              placeholder="Grace period (hari)"
-              placeholderTextColor="#94a3b8"
-              style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: componentLateFeeEnabled ? '#fff' : '#f8fafc' }}
-            />
-            <TextInput
-              keyboardType="numeric"
-              value={componentLateFeeCapAmount}
-              onChangeText={setComponentLateFeeCapAmount}
-              editable={componentLateFeeEnabled}
-              placeholder="Maksimum denda per termin (opsional)"
-              placeholderTextColor="#94a3b8"
-              style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, color: '#0f172a', backgroundColor: componentLateFeeEnabled ? '#fff' : '#f8fafc' }}
-            />
-          </View>
-
-          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
-            <View style={{ flex: 1, paddingHorizontal: 4 }}>
-              <Pressable
-                onPress={handleSaveComponent}
-                disabled={saveComponentMutation.isPending}
-                style={{ backgroundColor: '#2563eb', borderRadius: 10, paddingVertical: 10, alignItems: 'center', opacity: saveComponentMutation.isPending ? 0.6 : 1 }}
-              >
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
-                  {editingComponentId ? 'Simpan Perubahan' : 'Tambah Komponen'}
-                </Text>
-              </Pressable>
             </View>
-            {editingComponentId ? (
-              <View style={{ width: 120, paddingHorizontal: 4 }}>
-                <Pressable
-                  onPress={resetComponentForm}
-                  style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
-                >
-                  <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
-                </Pressable>
-              </View>
-            ) : null}
+            <Pressable
+              onPress={openCreateComponentModal}
+              style={{ backgroundColor: '#2563eb', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Tambah Komponen</Text>
+            </Pressable>
           </View>
 
           {(components || []).map((component: StaffFinanceComponent) => (
@@ -1913,22 +1813,7 @@ export default function StaffPaymentsScreen() {
               <View style={{ flexDirection: 'row', marginHorizontal: -4, marginTop: 8 }}>
                 <View style={{ flex: 1, paddingHorizontal: 4 }}>
                   <Pressable
-                    onPress={() => {
-                      setEditingComponentId(component.id);
-                      setComponentCode(component.code);
-                      setComponentName(component.name);
-                      setComponentDescription(component.description || '');
-                      setComponentPeriodicity(component.periodicity);
-                      setComponentLateFeeEnabled(component.lateFeeEnabled);
-                      setComponentLateFeeMode(component.lateFeeMode);
-                      setComponentLateFeeAmount(String(Number(component.lateFeeAmount || 0)));
-                      setComponentLateFeeGraceDays(String(Number(component.lateFeeGraceDays || 0)));
-                      setComponentLateFeeCapAmount(
-                        component.lateFeeCapAmount == null
-                          ? ''
-                          : String(Number(component.lateFeeCapAmount || 0)),
-                      );
-                    }}
+                    onPress={() => handleEditComponent(component)}
                     style={{ borderWidth: 1, borderColor: '#bfdbfe', backgroundColor: '#eff6ff', borderRadius: 8, paddingVertical: 8, alignItems: 'center' }}
                   >
                     <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Edit</Text>
@@ -1973,262 +1858,19 @@ export default function StaffPaymentsScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Rule Tarif</Text>
-
-          <Text style={{ color: '#475569', marginBottom: 4 }}>Komponen</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              {components.map((component) => {
-                const active = tariffComponentId === component.id;
-                return (
-                  <Pressable
-                    key={component.id}
-                    onPress={() => setTariffComponentId(component.id)}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: active ? '#1d4ed8' : '#dbeafe',
-                      backgroundColor: active ? '#e9f1ff' : '#fff',
-                      borderRadius: 999,
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                    }}
-                  >
-                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
-                      {component.name}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Rule Tarif</Text>
+              <Text style={{ color: '#64748b', fontSize: 12 }}>
+                Form tambah tarif dibuka lewat popup, dan level kelas diambil dari master kelas admin tanpa rombel.
+              </Text>
             </View>
-          </ScrollView>
-
-          <Text style={{ color: '#475569', marginBottom: 4 }}>Tahun ajaran (opsional)</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Pressable
-                onPress={() => setTariffAcademicYearId(null)}
-                style={{
-                  borderWidth: 1,
-                  borderColor: tariffAcademicYearId === null ? '#1d4ed8' : '#dbeafe',
-                  backgroundColor: tariffAcademicYearId === null ? '#e9f1ff' : '#fff',
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                }}
-              >
-                <Text style={{ color: tariffAcademicYearId === null ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
-                  Semua tahun
-                </Text>
-              </Pressable>
-              {academicYears.map((year) => {
-                const active = tariffAcademicYearId === year.id;
-                return (
-                  <Pressable
-                    key={year.id}
-                    onPress={() => setTariffAcademicYearId(year.id)}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: active ? '#1d4ed8' : '#dbeafe',
-                      backgroundColor: active ? '#e9f1ff' : '#fff',
-                      borderRadius: 999,
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                    }}
-                  >
-                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
-                      {year.name}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
-
-          <Text style={{ color: '#475569', marginBottom: 4 }}>Kelas (opsional)</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Pressable
-                onPress={() => setTariffGradeLevel('')}
-                style={{
-                  borderWidth: 1,
-                  borderColor: tariffGradeLevel === '' ? '#1d4ed8' : '#dbeafe',
-                  backgroundColor: tariffGradeLevel === '' ? '#e9f1ff' : '#fff',
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                }}
-              >
-                <Text style={{ color: tariffGradeLevel === '' ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
-                  Semua kelas
-                </Text>
-              </Pressable>
-              {classLevelOptions.map((level) => {
-                const active = tariffGradeLevel === level;
-                return (
-                  <Pressable
-                    key={level}
-                    onPress={() => setTariffGradeLevel(level)}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: active ? '#1d4ed8' : '#dbeafe',
-                      backgroundColor: active ? '#e9f1ff' : '#fff',
-                      borderRadius: 999,
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                    }}
-                  >
-                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
-                      {getClassLevelLabel(level)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
-
-          <Text style={{ color: '#475569', marginBottom: 4 }}>Jurusan (opsional)</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Pressable
-                onPress={() => setTariffMajorId(null)}
-                style={{
-                  borderWidth: 1,
-                  borderColor: tariffMajorId === null ? '#1d4ed8' : '#dbeafe',
-                  backgroundColor: tariffMajorId === null ? '#e9f1ff' : '#fff',
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                }}
-              >
-                <Text style={{ color: tariffMajorId === null ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
-                  Semua jurusan
-                </Text>
-              </Pressable>
-              {majors.map((major) => {
-                const active = tariffMajorId === major.id;
-                return (
-                  <Pressable
-                    key={major.id}
-                    onPress={() => setTariffMajorId(major.id)}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: active ? '#1d4ed8' : '#dbeafe',
-                      backgroundColor: active ? '#e9f1ff' : '#fff',
-                      borderRadius: 999,
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                    }}
-                  >
-                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
-                      {major.name}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
-
-          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
-            <View style={{ flex: 1, paddingHorizontal: 4 }}>
-              <Pressable
-                onPress={() => setTariffSemester('')}
-                style={{
-                  borderWidth: 1,
-                  borderColor: tariffSemester === '' ? '#1d4ed8' : '#dbeafe',
-                  backgroundColor: tariffSemester === '' ? '#e9f1ff' : '#fff',
-                  borderRadius: 8,
-                  paddingVertical: 8,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: tariffSemester === '' ? '#1e3a8a' : '#475569', fontWeight: '700' }}>Semua</Text>
-              </Pressable>
-            </View>
-            <View style={{ flex: 1, paddingHorizontal: 4 }}>
-              <Pressable
-                onPress={() => setTariffSemester('ODD')}
-                style={{
-                  borderWidth: 1,
-                  borderColor: tariffSemester === 'ODD' ? '#1d4ed8' : '#dbeafe',
-                  backgroundColor: tariffSemester === 'ODD' ? '#e9f1ff' : '#fff',
-                  borderRadius: 8,
-                  paddingVertical: 8,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: tariffSemester === 'ODD' ? '#1e3a8a' : '#475569', fontWeight: '700' }}>Ganjil</Text>
-              </Pressable>
-            </View>
-            <View style={{ flex: 1, paddingHorizontal: 4 }}>
-              <Pressable
-                onPress={() => setTariffSemester('EVEN')}
-                style={{
-                  borderWidth: 1,
-                  borderColor: tariffSemester === 'EVEN' ? '#1d4ed8' : '#dbeafe',
-                  backgroundColor: tariffSemester === 'EVEN' ? '#e9f1ff' : '#fff',
-                  borderRadius: 8,
-                  paddingVertical: 8,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: tariffSemester === 'EVEN' ? '#1e3a8a' : '#475569', fontWeight: '700' }}>Genap</Text>
-              </Pressable>
-            </View>
-          </View>
-
-          <TextInput
-            value={tariffEffectiveStart}
-            onChangeText={setTariffEffectiveStart}
-            placeholder="Efektif mulai (YYYY-MM-DD, opsional)"
-            placeholderTextColor="#94a3b8"
-            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
-          />
-          <TextInput
-            value={tariffEffectiveEnd}
-            onChangeText={setTariffEffectiveEnd}
-            placeholder="Efektif sampai (YYYY-MM-DD, opsional)"
-            placeholderTextColor="#94a3b8"
-            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
-          />
-          <TextInput
-            keyboardType="numeric"
-            value={tariffAmount}
-            onChangeText={setTariffAmount}
-            placeholder="Nominal tarif"
-            placeholderTextColor="#94a3b8"
-            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
-          />
-          <TextInput
-            value={tariffNotes}
-            onChangeText={setTariffNotes}
-            placeholder="Catatan (opsional)"
-            placeholderTextColor="#94a3b8"
-            multiline
-            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', minHeight: 64, textAlignVertical: 'top', backgroundColor: '#fff' }}
-          />
-
-          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
-            <View style={{ flex: 1, paddingHorizontal: 4 }}>
-              <Pressable
-                onPress={handleSaveTariff}
-                disabled={saveTariffMutation.isPending}
-                style={{ backgroundColor: '#059669', borderRadius: 10, paddingVertical: 10, alignItems: 'center', opacity: saveTariffMutation.isPending ? 0.6 : 1 }}
-              >
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
-                  {editingTariffId ? 'Simpan Perubahan' : 'Tambah Tarif'}
-                </Text>
-              </Pressable>
-            </View>
-            {editingTariffId ? (
-              <View style={{ width: 120, paddingHorizontal: 4 }}>
-                <Pressable
-                  onPress={resetTariffForm}
-                  style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
-                >
-                  <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
-                </Pressable>
-              </View>
-            ) : null}
+            <Pressable
+              onPress={openCreateTariffModal}
+              style={{ backgroundColor: '#059669', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Tambah Tarif</Text>
+            </Pressable>
           </View>
 
           {tariffs.map((tariff: StaffFinanceTariffRule) => (
@@ -2259,18 +1901,7 @@ export default function StaffPaymentsScreen() {
               <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
                 <View style={{ flex: 1, paddingHorizontal: 4 }}>
                   <Pressable
-                    onPress={() => {
-                      setEditingTariffId(tariff.id);
-                      setTariffComponentId(tariff.componentId);
-                      setTariffAcademicYearId(tariff.academicYearId || null);
-                      setTariffMajorId(tariff.majorId || null);
-                      setTariffSemester(tariff.semester || '');
-                      setTariffGradeLevel(tariff.gradeLevel || tariff.class?.level || '');
-                      setTariffAmount(String(Number(tariff.amount || 0)));
-                      setTariffEffectiveStart(tariff.effectiveStart ? String(tariff.effectiveStart).slice(0, 10) : '');
-                      setTariffEffectiveEnd(tariff.effectiveEnd ? String(tariff.effectiveEnd).slice(0, 10) : '');
-                      setTariffNotes(tariff.notes || '');
-                    }}
+                    onPress={() => handleEditTariff(tariff)}
                     style={{ borderWidth: 1, borderColor: '#bfdbfe', backgroundColor: '#eff6ff', borderRadius: 8, paddingVertical: 8, alignItems: 'center' }}
                   >
                     <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Edit</Text>
@@ -3631,6 +3262,492 @@ export default function StaffPaymentsScreen() {
           ) : null}
         </View>
       ) : null}
+
+      <Modal visible={isComponentModalOpen} animationType="fade" transparent onRequestClose={closeComponentModal}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#dbe7fb' }}>
+            <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>
+                  {editingComponentId ? 'Edit Master Komponen' : 'Tambah Master Komponen'}
+                </Text>
+                <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                  Setelah disimpan, hasilnya langsung muncul di daftar komponen.
+                </Text>
+              </View>
+              <Pressable onPress={closeComponentModal} style={{ borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 999, padding: 8 }}>
+                <Feather name="x" size={16} color="#475569" />
+              </Pressable>
+            </View>
+
+            <ScrollView style={{ maxHeight: 560 }} contentContainerStyle={{ padding: 14 }}>
+              <TextInput
+                value={componentCode}
+                onChangeText={setComponentCode}
+                placeholder="Kode komponen"
+                placeholderTextColor="#94a3b8"
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+              />
+              <TextInput
+                value={componentName}
+                onChangeText={setComponentName}
+                placeholder="Nama komponen"
+                placeholderTextColor="#94a3b8"
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+              />
+              <TextInput
+                value={componentDescription}
+                onChangeText={setComponentDescription}
+                placeholder="Deskripsi (opsional)"
+                placeholderTextColor="#94a3b8"
+                multiline
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', minHeight: 72, textAlignVertical: 'top', backgroundColor: '#fff' }}
+              />
+
+              <ScrollView horizontal style={{ marginBottom: 8 }} showsHorizontalScrollIndicator={false}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {PERIODICITY_OPTIONS.map((option) => {
+                    const active = componentPeriodicity === option.value;
+                    return (
+                      <Pressable
+                        key={option.value}
+                        onPress={() => setComponentPeriodicity(option.value)}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: active ? '#1d4ed8' : '#dbeafe',
+                          backgroundColor: active ? '#e9f1ff' : '#fff',
+                          borderRadius: 999,
+                          paddingHorizontal: 12,
+                          paddingVertical: 7,
+                        }}
+                      >
+                        <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  backgroundColor: '#f8fafc',
+                  borderRadius: 10,
+                  padding: 10,
+                }}
+              >
+                <Pressable
+                  onPress={() => setComponentLateFeeEnabled((current) => !current)}
+                  style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}
+                >
+                  <Text style={{ color: '#334155', fontWeight: '700', flex: 1, paddingRight: 8 }}>
+                    Aktifkan denda keterlambatan
+                  </Text>
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: componentLateFeeEnabled ? '#f59e0b' : '#cbd5e1',
+                      backgroundColor: componentLateFeeEnabled ? '#fef3c7' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
+                    }}
+                  >
+                    <Text style={{ color: componentLateFeeEnabled ? '#92400e' : '#64748b', fontWeight: '700', fontSize: 12 }}>
+                      {componentLateFeeEnabled ? 'Aktif' : 'Off'}
+                    </Text>
+                  </View>
+                </Pressable>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {LATE_FEE_MODE_OPTIONS.map((option) => {
+                      const active = componentLateFeeMode === option.value;
+                      return (
+                        <Pressable
+                          key={option.value}
+                          onPress={() => setComponentLateFeeMode(option.value)}
+                          disabled={!componentLateFeeEnabled}
+                          style={{
+                            borderWidth: 1,
+                            borderColor: active ? '#d97706' : '#fde68a',
+                            backgroundColor: active ? '#fff7ed' : '#fff',
+                            borderRadius: 999,
+                            paddingHorizontal: 12,
+                            paddingVertical: 7,
+                            opacity: componentLateFeeEnabled ? 1 : 0.5,
+                          }}
+                        >
+                          <Text style={{ color: active ? '#9a3412' : '#92400e', fontWeight: '700', fontSize: 12 }}>
+                            {option.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+
+                <TextInput
+                  keyboardType="numeric"
+                  value={componentLateFeeAmount}
+                  onChangeText={setComponentLateFeeAmount}
+                  editable={componentLateFeeEnabled}
+                  placeholder="Nominal denda"
+                  placeholderTextColor="#94a3b8"
+                  style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: componentLateFeeEnabled ? '#fff' : '#f8fafc' }}
+                />
+                <TextInput
+                  keyboardType="numeric"
+                  value={componentLateFeeGraceDays}
+                  onChangeText={setComponentLateFeeGraceDays}
+                  editable={componentLateFeeEnabled}
+                  placeholder="Grace period (hari)"
+                  placeholderTextColor="#94a3b8"
+                  style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: componentLateFeeEnabled ? '#fff' : '#f8fafc' }}
+                />
+                <TextInput
+                  keyboardType="numeric"
+                  value={componentLateFeeCapAmount}
+                  onChangeText={setComponentLateFeeCapAmount}
+                  editable={componentLateFeeEnabled}
+                  placeholder="Maksimum denda per termin (opsional)"
+                  placeholderTextColor="#94a3b8"
+                  style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, color: '#0f172a', backgroundColor: componentLateFeeEnabled ? '#fff' : '#f8fafc' }}
+                />
+              </View>
+            </ScrollView>
+
+            <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', padding: 12, flexDirection: 'row' }}>
+              <View style={{ flex: 1, paddingRight: 6 }}>
+                <Pressable
+                  onPress={closeComponentModal}
+                  style={{ borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, paddingVertical: 10, alignItems: 'center', backgroundColor: '#fff' }}
+                >
+                  <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+                </Pressable>
+              </View>
+              <View style={{ flex: 1, paddingLeft: 6 }}>
+                <Pressable
+                  onPress={handleSaveComponent}
+                  disabled={saveComponentMutation.isPending}
+                  style={{
+                    backgroundColor: saveComponentMutation.isPending ? '#93c5fd' : '#2563eb',
+                    borderRadius: 10,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>
+                    {saveComponentMutation.isPending
+                      ? 'Menyimpan...'
+                      : editingComponentId
+                        ? 'Simpan Perubahan'
+                        : 'Tambah Komponen'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isTariffModalOpen} animationType="fade" transparent onRequestClose={closeTariffModal}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#dbe7fb' }}>
+            <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>
+                  {editingTariffId ? 'Edit Rule Tarif' : 'Tambah Rule Tarif'}
+                </Text>
+                <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                  Level kelas diambil dari master kelas admin tanpa rombel.
+                </Text>
+              </View>
+              <Pressable onPress={closeTariffModal} style={{ borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 999, padding: 8 }}>
+                <Feather name="x" size={16} color="#475569" />
+              </Pressable>
+            </View>
+
+            <ScrollView style={{ maxHeight: 560 }} contentContainerStyle={{ padding: 14 }}>
+              <Text style={{ color: '#475569', marginBottom: 4 }}>Komponen</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {components.map((component) => {
+                    const active = tariffComponentId === component.id;
+                    return (
+                      <Pressable
+                        key={component.id}
+                        onPress={() => setTariffComponentId(component.id)}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: active ? '#1d4ed8' : '#dbeafe',
+                          backgroundColor: active ? '#e9f1ff' : '#fff',
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                        }}
+                      >
+                        <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                          {component.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+
+              <Text style={{ color: '#475569', marginBottom: 4 }}>Tahun ajaran (opsional)</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Pressable
+                    onPress={() => setTariffAcademicYearId(null)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: tariffAcademicYearId === null ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: tariffAcademicYearId === null ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: tariffAcademicYearId === null ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      Semua tahun
+                    </Text>
+                  </Pressable>
+                  {academicYears.map((year) => {
+                    const active = tariffAcademicYearId === year.id;
+                    return (
+                      <Pressable
+                        key={year.id}
+                        onPress={() => setTariffAcademicYearId(year.id)}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: active ? '#1d4ed8' : '#dbeafe',
+                          backgroundColor: active ? '#e9f1ff' : '#fff',
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                        }}
+                      >
+                        <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                          {year.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+
+              <Text style={{ color: '#475569', marginBottom: 4 }}>Kelas (opsional)</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Pressable
+                    onPress={() => setTariffGradeLevel('')}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: tariffGradeLevel === '' ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: tariffGradeLevel === '' ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: tariffGradeLevel === '' ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      Semua kelas
+                    </Text>
+                  </Pressable>
+                  {classLevelOptions.map((level) => {
+                    const active = tariffGradeLevel === level;
+                    return (
+                      <Pressable
+                        key={level}
+                        onPress={() => setTariffGradeLevel(level)}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: active ? '#1d4ed8' : '#dbeafe',
+                          backgroundColor: active ? '#e9f1ff' : '#fff',
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                        }}
+                      >
+                        <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                          {getClassLevelLabel(level)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                  {classLevelsQuery.isLoading && classLevelOptions.length === 0 ? (
+                    <View style={{ borderWidth: 1, borderColor: '#dbeafe', backgroundColor: '#f8fafc', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
+                      <Text style={{ color: '#64748b', fontWeight: '700', fontSize: 12 }}>Memuat level kelas...</Text>
+                    </View>
+                  ) : null}
+                  {!classLevelsQuery.isLoading && classLevelOptions.length === 0 ? (
+                    <View style={{ borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#f8fafc', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
+                      <Text style={{ color: '#64748b', fontWeight: '700', fontSize: 12 }}>Belum ada level kelas admin</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </ScrollView>
+
+              <Text style={{ color: '#475569', marginBottom: 4 }}>Jurusan (opsional)</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Pressable
+                    onPress={() => setTariffMajorId(null)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: tariffMajorId === null ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: tariffMajorId === null ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: tariffMajorId === null ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      Semua jurusan
+                    </Text>
+                  </Pressable>
+                  {majors.map((major) => {
+                    const active = tariffMajorId === major.id;
+                    return (
+                      <Pressable
+                        key={major.id}
+                        onPress={() => setTariffMajorId(major.id)}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: active ? '#1d4ed8' : '#dbeafe',
+                          backgroundColor: active ? '#e9f1ff' : '#fff',
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                        }}
+                      >
+                        <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                          {major.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+
+              <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+                <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                  <Pressable
+                    onPress={() => setTariffSemester('')}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: tariffSemester === '' ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: tariffSemester === '' ? '#e9f1ff' : '#fff',
+                      borderRadius: 8,
+                      paddingVertical: 8,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: tariffSemester === '' ? '#1e3a8a' : '#475569', fontWeight: '700' }}>Semua</Text>
+                  </Pressable>
+                </View>
+                <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                  <Pressable
+                    onPress={() => setTariffSemester('ODD')}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: tariffSemester === 'ODD' ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: tariffSemester === 'ODD' ? '#e9f1ff' : '#fff',
+                      borderRadius: 8,
+                      paddingVertical: 8,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: tariffSemester === 'ODD' ? '#1e3a8a' : '#475569', fontWeight: '700' }}>Ganjil</Text>
+                  </Pressable>
+                </View>
+                <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                  <Pressable
+                    onPress={() => setTariffSemester('EVEN')}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: tariffSemester === 'EVEN' ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: tariffSemester === 'EVEN' ? '#e9f1ff' : '#fff',
+                      borderRadius: 8,
+                      paddingVertical: 8,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: tariffSemester === 'EVEN' ? '#1e3a8a' : '#475569', fontWeight: '700' }}>Genap</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <TextInput
+                value={tariffEffectiveStart}
+                onChangeText={setTariffEffectiveStart}
+                placeholder="Efektif mulai (YYYY-MM-DD, opsional)"
+                placeholderTextColor="#94a3b8"
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+              />
+              <TextInput
+                value={tariffEffectiveEnd}
+                onChangeText={setTariffEffectiveEnd}
+                placeholder="Efektif sampai (YYYY-MM-DD, opsional)"
+                placeholderTextColor="#94a3b8"
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+              />
+              <TextInput
+                keyboardType="numeric"
+                value={tariffAmount}
+                onChangeText={setTariffAmount}
+                placeholder="Nominal tarif"
+                placeholderTextColor="#94a3b8"
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+              />
+              <TextInput
+                value={tariffNotes}
+                onChangeText={setTariffNotes}
+                placeholder="Catatan (opsional)"
+                placeholderTextColor="#94a3b8"
+                multiline
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', minHeight: 64, textAlignVertical: 'top', backgroundColor: '#fff' }}
+              />
+            </ScrollView>
+
+            <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', padding: 12, flexDirection: 'row' }}>
+              <View style={{ flex: 1, paddingRight: 6 }}>
+                <Pressable
+                  onPress={closeTariffModal}
+                  style={{ borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, paddingVertical: 10, alignItems: 'center', backgroundColor: '#fff' }}
+                >
+                  <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+                </Pressable>
+              </View>
+              <View style={{ flex: 1, paddingLeft: 6 }}>
+                <Pressable
+                  onPress={handleSaveTariff}
+                  disabled={saveTariffMutation.isPending}
+                  style={{
+                    backgroundColor: saveTariffMutation.isPending ? '#6ee7b7' : '#059669',
+                    borderRadius: 10,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>
+                    {saveTariffMutation.isPending
+                      ? 'Menyimpan...'
+                      : editingTariffId
+                        ? 'Simpan Perubahan'
+                        : 'Tambah Tarif'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={Boolean(selectedInvoice)} animationType="fade" transparent onRequestClose={() => setSelectedInvoice(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 }}>

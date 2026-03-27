@@ -31,6 +31,10 @@ export type StaffFinanceComponent = {
   isActive: boolean;
 };
 
+export type StaffFinanceClassLevelListResult = {
+  levels: string[];
+};
+
 export type StaffFinanceTariffRule = {
   id: number;
   componentId: number;
@@ -452,6 +456,16 @@ export type StaffFinanceReportSnapshot = {
 };
 
 export const staffFinanceApi = {
+  async listClassLevels(params?: { academicYearId?: number }) {
+    const response = await apiClient.get<ApiResponse<StaffFinanceClassLevelListResult>>(
+      '/payments/class-levels',
+      {
+        params,
+      },
+    );
+    return response.data.data.levels || [];
+  },
+
   async listComponents(params?: { isActive?: boolean; search?: string }) {
     const response = await apiClient.get<ApiResponse<{ components: StaffFinanceComponent[] }>>(
       '/payments/components',

@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BellRing, Download, Loader2, Pencil, Plus, Power, ReceiptText, WalletCards, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { academicYearService, type AcademicYear } from '../../services/academicYear.service';
-import { classService, type Class as SchoolClass } from '../../services/class.service';
 import {
   type FinanceAdjustmentKind,
   type FinanceAdjustmentRule,
@@ -110,9 +109,14 @@ function formatEffectiveWindow(start?: string | null, end?: string | null) {
 }
 
 function normalizeClassLevel(raw?: string | null) {
-  return String(raw || '')
+  const normalized = String(raw || '')
     .trim()
-    .toUpperCase();
+    .toUpperCase()
+    .replace(/^KELAS\s+/i, '')
+    .trim();
+  if (!normalized) return '';
+  const tokenMatch = normalized.match(/\b(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I|12|11|10|9|8|7|6|5|4|3|2|1)\b/);
+  return (tokenMatch?.[1] || normalized.split(/\s+/)[0] || '').trim();
 }
 
 function getClassLevelLabel(level?: string | null) {
@@ -227,6 +231,7 @@ export const StaffFinancePage = () => {
   const [componentLateFeeGraceDays, setComponentLateFeeGraceDays] = useState('0');
   const [componentLateFeeCapAmount, setComponentLateFeeCapAmount] = useState('');
   const [editingComponentId, setEditingComponentId] = useState<number | null>(null);
+  const [isComponentModalOpen, setIsComponentModalOpen] = useState(false);
 
   const [tariffComponentId, setTariffComponentId] = useState<number | ''>('');
   const [tariffAcademicYearId, setTariffAcademicYearId] = useState<number | ''>('');
@@ -238,6 +243,7 @@ export const StaffFinancePage = () => {
   const [tariffEffectiveEnd, setTariffEffectiveEnd] = useState('');
   const [tariffNotes, setTariffNotes] = useState('');
   const [editingTariffId, setEditingTariffId] = useState<number | null>(null);
+  const [isTariffModalOpen, setIsTariffModalOpen] = useState(false);
 
   const [adjustmentCode, setAdjustmentCode] = useState('');
   const [adjustmentName, setAdjustmentName] = useState('');
@@ -310,9 +316,9 @@ export const StaffFinancePage = () => {
     staleTime: 5 * 60 * 1000,
   });
 
-  const classesQuery = useQuery({
-    queryKey: ['staff-finance-master-classes'],
-    queryFn: () => classService.list({ page: 1, limit: 500 }),
+  const classLevelsQuery = useQuery({
+    queryKey: ['staff-finance-class-levels'],
+    queryFn: () => staffFinanceService.listClassLevels(),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -375,23 +381,10 @@ export const StaffFinancePage = () => {
   }, [majorsQuery.data]);
 
   const students = useMemo<User[]>(() => studentsQuery.data?.data || [], [studentsQuery.data?.data]);
-  const masterClasses = useMemo<SchoolClass[]>(() => {
-    const payload = classesQuery.data as
-      | { data?: { classes?: SchoolClass[] }; classes?: SchoolClass[] }
-      | undefined;
-    return payload?.data?.classes || payload?.classes || [];
-  }, [classesQuery.data]);
 
   const classLevelOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          masterClasses
-            .map((classItem) => normalizeClassLevel(classItem.level || classItem.name))
-            .filter((value) => value.length > 0),
-        ),
-      ).sort((a, b) => a.localeCompare(b, 'id-ID', { numeric: true })),
-    [masterClasses],
+    () => (classLevelsQuery.data || []).map((level) => normalizeClassLevel(level)).filter((value) => value.length > 0),
+    [classLevelsQuery.data],
   );
 
   const studentLookup = useMemo(() => {
@@ -534,6 +527,16 @@ export const StaffFinancePage = () => {
     setComponentLateFeeCapAmount('');
   };
 
+  const openCreateComponentModal = () => {
+    resetComponentForm();
+    setIsComponentModalOpen(true);
+  };
+
+  const closeComponentModal = () => {
+    setIsComponentModalOpen(false);
+    resetComponentForm();
+  };
+
   const resetTariffForm = () => {
     setEditingTariffId(null);
     setTariffComponentId('');
@@ -545,6 +548,16 @@ export const StaffFinancePage = () => {
     setTariffEffectiveStart('');
     setTariffEffectiveEnd('');
     setTariffNotes('');
+  };
+
+  const openCreateTariffModal = () => {
+    resetTariffForm();
+    setIsTariffModalOpen(true);
+  };
+
+  const closeTariffModal = () => {
+    setIsTariffModalOpen(false);
+    resetTariffForm();
   };
 
   const resetAdjustmentForm = () => {
@@ -607,7 +620,7 @@ export const StaffFinancePage = () => {
           }),
     onSuccess: () => {
       toast.success(editingComponentId ? 'Komponen berhasil diperbarui' : 'Komponen berhasil ditambahkan');
-      resetComponentForm();
+      closeComponentModal();
       queryClient.invalidateQueries({ queryKey: ['staff-finance-components'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-tariffs'] });
     },
@@ -659,7 +672,7 @@ export const StaffFinancePage = () => {
           }),
     onSuccess: () => {
       toast.success(editingTariffId ? 'Tarif berhasil diperbarui' : 'Tarif berhasil ditambahkan');
-      resetTariffForm();
+      closeTariffModal();
       queryClient.invalidateQueries({ queryKey: ['staff-finance-tariffs'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
@@ -999,6 +1012,7 @@ export const StaffFinancePage = () => {
     setComponentLateFeeCapAmount(
       component.lateFeeCapAmount == null ? '' : String(Number(component.lateFeeCapAmount || 0)),
     );
+    setIsComponentModalOpen(true);
   };
 
   const handleEditTariff = (tariff: FinanceTariffRule) => {
@@ -1012,6 +1026,7 @@ export const StaffFinancePage = () => {
     setTariffEffectiveStart(tariff.effectiveStart ? String(tariff.effectiveStart).slice(0, 10) : '');
     setTariffEffectiveEnd(tariff.effectiveEnd ? String(tariff.effectiveEnd).slice(0, 10) : '');
     setTariffNotes(tariff.notes || '');
+    setIsTariffModalOpen(true);
   };
 
   const handleEditAdjustment = (adjustment: FinanceAdjustmentRule) => {
@@ -1445,111 +1460,24 @@ export const StaffFinancePage = () => {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-4">
-          <div className="flex items-center gap-2">
-            <Plus className="w-4 h-4 text-blue-600" />
-            <h3 className="text-sm font-semibold text-gray-900">Master Komponen Biaya</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input
-              value={componentCode}
-              onChange={(event) => setComponentCode(event.target.value)}
-              placeholder="Kode komponen (contoh: SPP_BULANAN)"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
-            <input
-              value={componentName}
-              onChange={(event) => setComponentName(event.target.value)}
-              placeholder="Nama komponen"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
-            <select
-              value={componentPeriodicity}
-              onChange={(event) => setComponentPeriodicity(event.target.value as FinanceComponentPeriodicity)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            >
-              {PERIODICITY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="flex items-center gap-2">
+              <Plus className="w-4 h-4 text-blue-600" />
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Master Komponen Biaya</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Penambahan komponen dilakukan lewat popup agar tabel hasil tetap rapi dan fokus.
+                </p>
+              </div>
+            </div>
             <button
               type="button"
-              onClick={handleSaveComponent}
-              disabled={saveComponentMutation.isPending}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 text-white text-sm font-semibold px-4 py-2 hover:bg-blue-700 disabled:opacity-50"
+              onClick={openCreateComponentModal}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
             >
-              {saveComponentMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-              {editingComponentId ? 'Simpan Perubahan' : 'Tambah Komponen'}
+              <Plus className="h-4 w-4" />
+              Tambah Komponen
             </button>
-            {editingComponentId ? (
-              <button
-                type="button"
-                onClick={resetComponentForm}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-semibold px-4 py-2 hover:bg-gray-50"
-              >
-                <X className="w-4 h-4" />
-                Batal Edit
-              </button>
-            ) : null}
-          </div>
-          <textarea
-            value={componentDescription}
-            onChange={(event) => setComponentDescription(event.target.value)}
-            placeholder="Deskripsi komponen (opsional)"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-20 w-full"
-          />
-          <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-3">
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <input
-                type="checkbox"
-                checked={componentLateFeeEnabled}
-                onChange={(event) => setComponentLateFeeEnabled(event.target.checked)}
-                className="rounded border-slate-300"
-              />
-              Aktifkan denda keterlambatan untuk komponen ini
-            </label>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <select
-                value={componentLateFeeMode}
-                onChange={(event) => setComponentLateFeeMode(event.target.value as FinanceLateFeeMode)}
-                disabled={!componentLateFeeEnabled}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-slate-100"
-              >
-                {LATE_FEE_MODE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="number"
-                min={0}
-                value={componentLateFeeAmount}
-                onChange={(event) => setComponentLateFeeAmount(event.target.value)}
-                disabled={!componentLateFeeEnabled}
-                placeholder="Nominal denda"
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-slate-100"
-              />
-              <input
-                type="number"
-                min={0}
-                value={componentLateFeeGraceDays}
-                onChange={(event) => setComponentLateFeeGraceDays(event.target.value)}
-                disabled={!componentLateFeeEnabled}
-                placeholder="Grace period (hari)"
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-slate-100"
-              />
-            </div>
-            <input
-              type="number"
-              min={0}
-              value={componentLateFeeCapAmount}
-              onChange={(event) => setComponentLateFeeCapAmount(event.target.value)}
-              disabled={!componentLateFeeEnabled}
-              placeholder="Maksimum denda per termin (opsional)"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full disabled:bg-slate-100"
-            />
           </div>
           <div className="border border-gray-100 rounded-lg overflow-hidden">
             <table className="min-w-full divide-y divide-gray-200">
@@ -1645,117 +1573,25 @@ export const StaffFinancePage = () => {
         </div>
 
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-4">
-          <div className="flex items-center gap-2">
-            <WalletCards className="w-4 h-4 text-emerald-600" />
-            <h3 className="text-sm font-semibold text-gray-900">Rule Tarif Dinamis</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            <select
-              value={tariffComponentId === '' ? '' : String(tariffComponentId)}
-              onChange={(event) => setTariffComponentId(event.target.value ? Number(event.target.value) : '')}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="">Pilih komponen</option>
-              {components.map((component) => (
-                <option key={component.id} value={component.id}>
-                  {component.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={tariffAcademicYearId === '' ? '' : String(tariffAcademicYearId)}
-              onChange={(event) =>
-                setTariffAcademicYearId(event.target.value ? Number(event.target.value) : '')
-              }
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="">Semua tahun ajaran</option>
-              {years.map((year) => (
-                <option key={year.id} value={year.id}>
-                  {year.name}
-                  {year.isActive ? ' (Aktif)' : ''}
-                </option>
-              ))}
-            </select>
-            <select
-              value={tariffGradeLevel}
-              onChange={(event) => setTariffGradeLevel(event.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="">Semua kelas</option>
-              {classLevelOptions.map((level) => (
-                <option key={level} value={level}>
-                  {getClassLevelLabel(level)}
-                </option>
-              ))}
-            </select>
-            <select
-              value={tariffMajorId === '' ? '' : String(tariffMajorId)}
-              onChange={(event) => setTariffMajorId(event.target.value ? Number(event.target.value) : '')}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="">Semua jurusan</option>
-              {majors.map((major) => (
-                <option key={major.id} value={major.id}>
-                  {major.name}
-                </option>
-              ))}
-            </select>
-            <input
-              type="number"
-              min={0}
-              value={tariffAmount}
-              onChange={(event) => setTariffAmount(event.target.value)}
-              placeholder="Nominal tarif"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
-            <select
-              value={tariffSemester}
-              onChange={(event) => setTariffSemester(event.target.value as SemesterCode | '')}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="">Semua semester</option>
-              <option value="ODD">Ganjil</option>
-              <option value="EVEN">Genap</option>
-            </select>
-            <input
-              type="date"
-              value={tariffEffectiveStart}
-              onChange={(event) => setTariffEffectiveStart(event.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
-            <input
-              type="date"
-              value={tariffEffectiveEnd}
-              onChange={(event) => setTariffEffectiveEnd(event.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="flex items-center gap-2">
+              <WalletCards className="w-4 h-4 text-emerald-600" />
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Rule Tarif Dinamis</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Penambahan tarif dibuka lewat popup, lalu hasilnya langsung tampil di tabel berikut.
+                </p>
+              </div>
+            </div>
             <button
               type="button"
-              onClick={handleSaveTariff}
-              disabled={saveTariffMutation.isPending}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold px-4 py-2 hover:bg-emerald-700 disabled:opacity-50"
+              onClick={openCreateTariffModal}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
             >
-              {saveTariffMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-              {editingTariffId ? 'Simpan Perubahan' : 'Tambah Tarif'}
+              <Plus className="h-4 w-4" />
+              Tambah Tarif
             </button>
-            {editingTariffId ? (
-              <button
-                type="button"
-                onClick={resetTariffForm}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-semibold px-4 py-2 hover:bg-gray-50"
-              >
-                <X className="w-4 h-4" />
-                Batal Edit
-              </button>
-            ) : null}
           </div>
-          <textarea
-            value={tariffNotes}
-            onChange={(event) => setTariffNotes(event.target.value)}
-            placeholder="Catatan tarif (opsional)"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-20 w-full"
-          />
           <div className="border border-gray-100 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -3173,6 +3009,285 @@ export const StaffFinancePage = () => {
           )}
         </div>
       </div>
+
+      {isComponentModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          onClick={closeComponentModal}
+        >
+          <div
+            className="w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">
+                  {editingComponentId ? 'Edit Master Komponen Biaya' : 'Tambah Master Komponen Biaya'}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Setelah disimpan, komponen akan langsung muncul pada tabel utama.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeComponentModal}
+                className="rounded-lg border border-gray-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="max-h-[75vh] space-y-4 overflow-y-auto px-5 py-4">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <input
+                  value={componentCode}
+                  onChange={(event) => setComponentCode(event.target.value)}
+                  placeholder="Kode komponen (contoh: SPP_BULANAN)"
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <input
+                  value={componentName}
+                  onChange={(event) => setComponentName(event.target.value)}
+                  placeholder="Nama komponen"
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <select
+                  value={componentPeriodicity}
+                  onChange={(event) => setComponentPeriodicity(event.target.value as FinanceComponentPeriodicity)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                >
+                  {PERIODICITY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <textarea
+                value={componentDescription}
+                onChange={(event) => setComponentDescription(event.target.value)}
+                placeholder="Deskripsi komponen (opsional)"
+                className="min-h-20 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+              <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={componentLateFeeEnabled}
+                    onChange={(event) => setComponentLateFeeEnabled(event.target.checked)}
+                    className="rounded border-slate-300"
+                  />
+                  Aktifkan denda keterlambatan untuk komponen ini
+                </label>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  <select
+                    value={componentLateFeeMode}
+                    onChange={(event) => setComponentLateFeeMode(event.target.value as FinanceLateFeeMode)}
+                    disabled={!componentLateFeeEnabled}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-slate-100"
+                  >
+                    {LATE_FEE_MODE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={0}
+                    value={componentLateFeeAmount}
+                    onChange={(event) => setComponentLateFeeAmount(event.target.value)}
+                    disabled={!componentLateFeeEnabled}
+                    placeholder="Nominal denda"
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-slate-100"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    value={componentLateFeeGraceDays}
+                    onChange={(event) => setComponentLateFeeGraceDays(event.target.value)}
+                    disabled={!componentLateFeeEnabled}
+                    placeholder="Grace period (hari)"
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-slate-100"
+                  />
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  value={componentLateFeeCapAmount}
+                  onChange={(event) => setComponentLateFeeCapAmount(event.target.value)}
+                  disabled={!componentLateFeeEnabled}
+                  placeholder="Maksimum denda per termin (opsional)"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-gray-100 bg-slate-50 px-5 py-3">
+              <button
+                type="button"
+                onClick={closeComponentModal}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-white"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveComponent}
+                disabled={saveComponentMutation.isPending}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {saveComponentMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {editingComponentId ? 'Simpan Perubahan' : 'Tambah Komponen'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isTariffModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          onClick={closeTariffModal}
+        >
+          <div
+            className="w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">
+                  {editingTariffId ? 'Edit Rule Tarif Dinamis' : 'Tambah Rule Tarif Dinamis'}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Level kelas diambil dari master kelas admin tanpa membawa rombel.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeTariffModal}
+                className="rounded-lg border border-gray-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="max-h-[75vh] space-y-4 overflow-y-auto px-5 py-4">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <select
+                  value={tariffComponentId === '' ? '' : String(tariffComponentId)}
+                  onChange={(event) => setTariffComponentId(event.target.value ? Number(event.target.value) : '')}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">Pilih komponen</option>
+                  {components.map((component) => (
+                    <option key={component.id} value={component.id}>
+                      {component.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={tariffAcademicYearId === '' ? '' : String(tariffAcademicYearId)}
+                  onChange={(event) => setTariffAcademicYearId(event.target.value ? Number(event.target.value) : '')}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">Semua tahun ajaran</option>
+                  {years.map((year) => (
+                    <option key={year.id} value={year.id}>
+                      {year.name}
+                      {year.isActive ? ' (Aktif)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={tariffGradeLevel}
+                  onChange={(event) => setTariffGradeLevel(event.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">Semua kelas</option>
+                  {classLevelsQuery.isLoading && classLevelOptions.length === 0 ? (
+                    <option value="" disabled>
+                      Memuat level kelas...
+                    </option>
+                  ) : null}
+                  {!classLevelsQuery.isLoading && classLevelOptions.length === 0 ? (
+                    <option value="" disabled>
+                      Belum ada level kelas admin
+                    </option>
+                  ) : null}
+                  {classLevelOptions.map((level) => (
+                    <option key={level} value={level}>
+                      {getClassLevelLabel(level)}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={tariffMajorId === '' ? '' : String(tariffMajorId)}
+                  onChange={(event) => setTariffMajorId(event.target.value ? Number(event.target.value) : '')}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">Semua jurusan</option>
+                  {majors.map((major) => (
+                    <option key={major.id} value={major.id}>
+                      {major.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min={0}
+                  value={tariffAmount}
+                  onChange={(event) => setTariffAmount(event.target.value)}
+                  placeholder="Nominal tarif"
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <select
+                  value={tariffSemester}
+                  onChange={(event) => setTariffSemester(event.target.value as SemesterCode | '')}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">Semua semester</option>
+                  <option value="ODD">Ganjil</option>
+                  <option value="EVEN">Genap</option>
+                </select>
+                <input
+                  type="date"
+                  value={tariffEffectiveStart}
+                  onChange={(event) => setTariffEffectiveStart(event.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <input
+                  type="date"
+                  value={tariffEffectiveEnd}
+                  onChange={(event) => setTariffEffectiveEnd(event.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <textarea
+                value={tariffNotes}
+                onChange={(event) => setTariffNotes(event.target.value)}
+                placeholder="Catatan tarif (opsional)"
+                className="min-h-20 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="flex justify-end gap-3 border-t border-gray-100 bg-slate-50 px-5 py-3">
+              <button
+                type="button"
+                onClick={closeTariffModal}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-white"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveTariff}
+                disabled={saveTariffMutation.isPending}
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {saveTariffMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {editingTariffId ? 'Simpan Perubahan' : 'Tambah Tarif'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {selectedInvoice && (
         <div

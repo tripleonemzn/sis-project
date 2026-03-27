@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   createFinanceAdjustmentRule,
   createFinanceComponent,
+  listFinanceClassLevels,
   dispatchFinanceDueRemindersHandler,
   exportFinanceReports,
   applyFinanceInvoiceLateFees,
@@ -33,6 +34,7 @@ router.use(authMiddleware);
 router.get('/parent-overview', roleMiddleware(['PARENT']), listParentPayments);
 router.get('/student-overview', roleMiddleware(['STUDENT']), listStudentPayments);
 router.get('/components', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceComponents);
+router.get('/class-levels', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceClassLevels);
 router.post('/components', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceComponent);
 router.patch('/components/:id', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceComponent);
 router.get('/tariffs', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceTariffRules);
