@@ -167,6 +167,13 @@ export default function StaffAdminScreen() {
     staleTime: 60 * 1000,
   });
 
+  const headTuCashSessionApprovalsQuery = useQuery({
+    queryKey: ['mobile-head-tu-finance-cash-session-approvals', user?.id],
+    enabled: isAuthenticated && user?.role === 'STAFF' && staffDivision === 'HEAD_TU',
+    queryFn: () => staffFinanceApi.listCashSessions({ pendingFor: 'HEAD_TU', limit: 20 }),
+    staleTime: 60 * 1000,
+  });
+
   const headTuWriteOffDecisionMutation = useMutation({
     mutationFn: (payload: { requestId: number; approved: boolean }) =>
       staffFinanceApi.decideWriteOffAsHeadTu(payload.requestId, {
@@ -193,6 +200,22 @@ export default function StaffAdminScreen() {
     },
     onError: (error: unknown) => {
       notifyApiError(error, 'Gagal memproses approval reversal pembayaran.');
+    },
+  });
+
+  const headTuCashSessionDecisionMutation = useMutation({
+    mutationFn: (payload: { sessionId: number; approved: boolean }) =>
+      staffFinanceApi.decideCashSessionAsHeadTu(payload.sessionId, {
+        approved: payload.approved,
+        note: payload.approved ? undefined : 'Settlement kas ditolak oleh Kepala TU',
+      }),
+    onSuccess: (_, payload) => {
+      void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-cash-session-approvals', user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-cash-sessions', user?.id] });
+      notifySuccess(payload.approved ? 'Settlement kas diproses oleh Head TU.' : 'Settlement kas ditolak.');
+    },
+    onError: (error: unknown) => {
+      notifyApiError(error, 'Gagal memproses approval settlement kas.');
     },
   });
 
@@ -258,6 +281,10 @@ export default function StaffAdminScreen() {
     () => headTuCashSessionsQuery.data?.sessions || [],
     [headTuCashSessionsQuery.data],
   );
+  const headTuPendingCashSessionApprovals = useMemo(
+    () => headTuCashSessionApprovalsQuery.data?.sessions || [],
+    [headTuCashSessionApprovalsQuery.data],
+  );
   const headTuCashSummary = headTuCashSessionsQuery.data?.summary;
 
   const handleRefresh = () => {
@@ -266,6 +293,7 @@ export default function StaffAdminScreen() {
       void headTuWriteOffsQuery.refetch();
       void headTuPaymentReversalsQuery.refetch();
       void headTuCashSessionsQuery.refetch();
+      void headTuCashSessionApprovalsQuery.refetch();
     }
   };
 
@@ -298,6 +326,22 @@ export default function StaffAdminScreen() {
           text: buttonLabel,
           style: approved ? 'default' : 'destructive',
           onPress: () => headTuPaymentReversalDecisionMutation.mutate({ requestId: request.id, approved }),
+        },
+      ],
+    );
+  };
+
+  const handleHeadTuCashSessionDecision = (session: StaffFinanceCashSession, approved: boolean) => {
+    const actionLabel = approved ? 'memproses' : 'menolak';
+    Alert.alert(
+      approved ? 'Proses Settlement Kas' : 'Tolak Settlement Kas',
+      `Yakin ingin ${actionLabel} settlement "${session.sessionNo}"?`,
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: approved ? 'Ya, Proses' : 'Ya, Tolak',
+          style: approved ? 'default' : 'destructive',
+          onPress: () => headTuCashSessionDecisionMutation.mutate({ sessionId: session.id, approved }),
         },
       ],
     );
@@ -989,6 +1033,9 @@ export default function StaffAdminScreen() {
                 <Text style={{ color: '#c2410c', fontSize: 11, fontWeight: '700' }}>{headTuCashSummary?.openCount || 0} terbuka</Text>
               </View>
             </View>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+              Pending review {headTuCashSummary?.pendingHeadTuCount || 0} • pending Kepsek {headTuCashSummary?.pendingPrincipalCount || 0}
+            </Text>
             {headTuCashSessionsQuery.isLoading ? (
               <QueryStateView type="loading" message="Mengambil settlement kas..." />
             ) : headTuCashSessions.length === 0 ? (
@@ -1008,6 +1055,106 @@ export default function StaffAdminScreen() {
                       Selisih {formatCurrency(session.varianceAmount)}
                     </Text>
                   ) : null}
+                  <Text style={{ color: '#1d4ed8', fontSize: 12, marginTop: 2 }}>
+                    {session.approvalStatus === 'PENDING_HEAD_TU'
+                      ? 'Menunggu review Head TU'
+                      : session.approvalStatus === 'PENDING_PRINCIPAL'
+                        ? 'Menunggu Kepala Sekolah'
+                        : session.approvalStatus === 'REJECTED'
+                          ? 'Ditolak'
+                          : session.approvalStatus === 'AUTO_APPROVED'
+                            ? 'Auto approved'
+                            : 'Disetujui'}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Approval Settlement Kas</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  Review settlement kas dengan selisih sebelum final atau diteruskan ke Kepala Sekolah.
+                </Text>
+              </View>
+              <View
+                style={{
+                  backgroundColor: '#fff7ed',
+                  borderColor: '#fed7aa',
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                }}
+              >
+                <Text style={{ color: '#c2410c', fontSize: 11, fontWeight: '700' }}>{headTuPendingCashSessionApprovals.length} menunggu</Text>
+              </View>
+            </View>
+
+            {headTuCashSessionApprovalsQuery.isLoading ? (
+              <QueryStateView type="loading" message="Mengambil approval settlement kas..." />
+            ) : headTuPendingCashSessionApprovals.length === 0 ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada settlement kas yang menunggu review.</Text>
+            ) : (
+              headTuPendingCashSessionApprovals.map((session) => (
+                <View key={session.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 10 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{session.sessionNo}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                    {formatDate(session.businessDate)} • {session.openedBy?.name || '-'}
+                  </Text>
+                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                    Expected {formatCurrency(session.expectedClosingBalance)} • aktual {session.actualClosingBalance == null ? '-' : formatCurrency(session.actualClosingBalance)}
+                  </Text>
+                  <Text style={{ color: Number(session.varianceAmount || 0) === 0 ? '#166534' : '#b91c1c', fontSize: 12, marginTop: 3 }}>
+                    Selisih {formatCurrency(session.varianceAmount || 0)}
+                  </Text>
+                  {session.closingNote ? (
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{session.closingNote}</Text>
+                  ) : null}
+
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                    <Pressable
+                      disabled={headTuCashSessionDecisionMutation.isPending}
+                      onPress={() => handleHeadTuCashSessionDecision(session, false)}
+                      style={{
+                        flex: 1,
+                        backgroundColor: '#fff1f2',
+                        borderWidth: 1,
+                        borderColor: '#fecdd3',
+                        borderRadius: 10,
+                        paddingVertical: 10,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#be123c', fontWeight: '700' }}>Tolak</Text>
+                    </Pressable>
+                    <Pressable
+                      disabled={headTuCashSessionDecisionMutation.isPending}
+                      onPress={() => handleHeadTuCashSessionDecision(session, true)}
+                      style={{
+                        flex: 1,
+                        backgroundColor: '#ecfdf5',
+                        borderWidth: 1,
+                        borderColor: '#a7f3d0',
+                        borderRadius: 10,
+                        paddingVertical: 10,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#047857', fontWeight: '700' }}>Proses</Text>
+                    </Pressable>
+                  </View>
                 </View>
               ))
             )}

@@ -19,6 +19,7 @@ import {
   type FinanceAdjustmentKind,
   staffFinanceApi,
   type StaffFinanceCashSession,
+  type StaffFinanceCashSessionApprovalPolicy,
   type FinanceComponentPeriodicity,
   type StaffFinanceCreditBalanceRow,
   type StaffFinanceCreditTransaction,
@@ -292,6 +293,25 @@ function getCashSessionStatusBadge(status: StaffFinanceCashSession['status']) {
   return { label: 'Sudah Ditutup', bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
 }
 
+function getCashSessionApprovalBadge(status: StaffFinanceCashSession['approvalStatus']) {
+  if (status === 'PENDING_HEAD_TU') {
+    return { label: 'Menunggu Head TU', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  }
+  if (status === 'PENDING_PRINCIPAL') {
+    return { label: 'Menunggu Kepsek', bg: '#e0f2fe', border: '#7dd3fc', text: '#075985' };
+  }
+  if (status === 'REJECTED') {
+    return { label: 'Ditolak', bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+  }
+  if (status === 'AUTO_APPROVED') {
+    return { label: 'Auto Approved', bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  }
+  if (status === 'APPROVED') {
+    return { label: 'Disetujui', bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  }
+  return { label: 'Belum Diajukan', bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
+}
+
 export default function StaffPaymentsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -408,6 +428,10 @@ export default function StaffPaymentsScreen() {
   const [cashSessionOpeningNote, setCashSessionOpeningNote] = useState('');
   const [cashSessionActualClosingBalance, setCashSessionActualClosingBalance] = useState('');
   const [cashSessionClosingNote, setCashSessionClosingNote] = useState('');
+  const [cashSessionZeroVarianceAutoApproved, setCashSessionZeroVarianceAutoApproved] = useState(true);
+  const [cashSessionRequireVarianceNote, setCashSessionRequireVarianceNote] = useState(true);
+  const [cashSessionPrincipalApprovalThresholdAmount, setCashSessionPrincipalApprovalThresholdAmount] = useState('100000');
+  const [cashSessionApprovalPolicyNotes, setCashSessionApprovalPolicyNotes] = useState('');
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-staff-finance-active-year'],
@@ -450,6 +474,13 @@ export default function StaffPaymentsScreen() {
     staleTime: 60_000,
   });
 
+  const cashSessionApprovalPolicyQuery = useQuery({
+    queryKey: ['mobile-staff-finance-cash-session-policy'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => staffFinanceApi.getCashSessionApprovalPolicy(),
+    staleTime: 60_000,
+  });
+
   const academicYears = academicYearsQuery.data?.items || [];
   const majors = majorsQuery.data?.items || [];
   const classLevelOptions = useMemo(
@@ -458,11 +489,17 @@ export default function StaffPaymentsScreen() {
   );
 
   const reminderPolicy = reminderPolicyQuery.data || null;
+  const cashSessionApprovalPolicy = cashSessionApprovalPolicyQuery.data || null;
 
   useEffect(() => {
     if (!reminderPolicy) return;
     applyReminderPolicyToForm(reminderPolicy);
   }, [reminderPolicy?.updatedAt]);
+
+  useEffect(() => {
+    if (!cashSessionApprovalPolicy) return;
+    applyCashSessionApprovalPolicyToForm(cashSessionApprovalPolicy);
+  }, [cashSessionApprovalPolicy?.updatedAt]);
 
   const studentLookup = useMemo(() => {
     return new Map((studentsQuery.data || []).map((student) => [student.id, student]));
@@ -733,6 +770,13 @@ export default function StaffPaymentsScreen() {
     setReminderPolicyNotes(policy.notes || '');
   };
 
+  const applyCashSessionApprovalPolicyToForm = (policy: StaffFinanceCashSessionApprovalPolicy) => {
+    setCashSessionZeroVarianceAutoApproved(policy.zeroVarianceAutoApproved);
+    setCashSessionRequireVarianceNote(policy.requireVarianceNote);
+    setCashSessionPrincipalApprovalThresholdAmount(String(Number(policy.principalApprovalThresholdAmount || 0)));
+    setCashSessionApprovalPolicyNotes(policy.notes || '');
+  };
+
   const openReminderPolicyModal = () => {
     if (reminderPolicy) {
       applyReminderPolicyToForm(reminderPolicy);
@@ -813,6 +857,7 @@ export default function StaffPaymentsScreen() {
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-payment-reversals'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-dashboard'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-reminder-policy'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-cash-session-policy'] });
   };
 
   const saveComponentMutation = useMutation({
@@ -1037,6 +1082,22 @@ export default function StaffPaymentsScreen() {
     onError: (error: unknown) => notifyApiError(error, 'Gagal memperbarui policy reminder finance.'),
   });
 
+  const saveCashSessionApprovalPolicyMutation = useMutation({
+    mutationFn: () =>
+      staffFinanceApi.updateCashSessionApprovalPolicy({
+        zeroVarianceAutoApproved: cashSessionZeroVarianceAutoApproved,
+        requireVarianceNote: cashSessionRequireVarianceNote,
+        principalApprovalThresholdAmount: Math.max(0, Number(cashSessionPrincipalApprovalThresholdAmount || 0)),
+        notes: cashSessionApprovalPolicyNotes.trim() || null,
+      }),
+    onSuccess: (policy) => {
+      notifySuccess('Policy approval settlement kas berhasil diperbarui.');
+      applyCashSessionApprovalPolicyToForm(policy);
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal memperbarui policy approval settlement kas.'),
+  });
+
   const dispatchReminderMutation = useMutation({
     mutationFn: (mode: FinanceReminderMode) =>
       staffFinanceApi.dispatchDueReminders({
@@ -1154,8 +1215,14 @@ export default function StaffPaymentsScreen() {
         actualClosingBalance: Number(cashSessionActualClosingBalance || 0),
         note: cashSessionClosingNote.trim() || undefined,
       }),
-    onSuccess: () => {
-      notifySuccess('Sesi kas harian berhasil ditutup.');
+    onSuccess: (session) => {
+      notifySuccess(
+        session.approvalStatus === 'PENDING_HEAD_TU'
+          ? 'Sesi kas ditutup dan menunggu review Head TU.'
+          : session.approvalStatus === 'AUTO_APPROVED'
+            ? 'Sesi kas ditutup dan auto-approved.'
+            : 'Sesi kas harian berhasil ditutup.',
+      );
       setCashSessionActualClosingBalance('');
       setCashSessionClosingNote('');
       invalidateFinanceQueries();
@@ -1390,6 +1457,15 @@ export default function StaffPaymentsScreen() {
     const actualClosingBalance = Number(cashSessionActualClosingBalance || 0);
     if (!Number.isFinite(actualClosingBalance) || actualClosingBalance < 0) {
       notifyApiError(null, 'Saldo aktual penutupan tidak valid.');
+      return;
+    }
+    const projectedVariance = actualClosingBalance - Number(session.expectedClosingBalance || 0);
+    if (
+      cashSessionRequireVarianceNote &&
+      Math.abs(projectedVariance) > 0.009 &&
+      !cashSessionClosingNote.trim()
+    ) {
+      notifyApiError(null, 'Catatan closing wajib diisi saat ada selisih settlement kas.');
       return;
     }
     closeCashSessionMutation.mutate(session);
@@ -1948,6 +2024,18 @@ export default function StaffPaymentsScreen() {
               </Text>
             </View>
           </View>
+          <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <View style={{ backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 10, padding: 10 }}>
+              <Text style={{ color: '#1d4ed8', fontSize: 11 }}>Pending Head TU</Text>
+              <Text style={{ color: '#1e3a8a', fontWeight: '700', fontSize: 18 }}>{cashSessionSummary?.pendingHeadTuCount || 0}</Text>
+            </View>
+          </View>
+          <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <View style={{ backgroundColor: '#f5f3ff', borderWidth: 1, borderColor: '#c4b5fd', borderRadius: 10, padding: 10 }}>
+              <Text style={{ color: '#7c3aed', fontSize: 11 }}>Pending Kepsek</Text>
+              <Text style={{ color: '#5b21b6', fontWeight: '700', fontSize: 18 }}>{cashSessionSummary?.pendingPrincipalCount || 0}</Text>
+            </View>
+          </View>
         </View>
 
         {!activeCashSession ? (
@@ -2019,19 +2107,35 @@ export default function StaffPaymentsScreen() {
                   {formatDate(activeCashSession.businessDate)} • dibuka {formatDate(activeCashSession.openedAt)}
                 </Text>
               </View>
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: getCashSessionStatusBadge(activeCashSession.status).border,
-                  backgroundColor: getCashSessionStatusBadge(activeCashSession.status).bg,
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                }}
-              >
-                <Text style={{ color: getCashSessionStatusBadge(activeCashSession.status).text, fontSize: 11, fontWeight: '700' }}>
-                  {getCashSessionStatusBadge(activeCashSession.status).label}
-                </Text>
+              <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: getCashSessionStatusBadge(activeCashSession.status).border,
+                    backgroundColor: getCashSessionStatusBadge(activeCashSession.status).bg,
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                  }}
+                >
+                  <Text style={{ color: getCashSessionStatusBadge(activeCashSession.status).text, fontSize: 11, fontWeight: '700' }}>
+                    {getCashSessionStatusBadge(activeCashSession.status).label}
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: getCashSessionApprovalBadge(activeCashSession.approvalStatus).border,
+                    backgroundColor: getCashSessionApprovalBadge(activeCashSession.approvalStatus).bg,
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                  }}
+                >
+                  <Text style={{ color: getCashSessionApprovalBadge(activeCashSession.approvalStatus).text, fontSize: 11, fontWeight: '700' }}>
+                    {getCashSessionApprovalBadge(activeCashSession.approvalStatus).label}
+                  </Text>
+                </View>
               </View>
             </View>
             <Text style={{ color: '#475569', fontSize: 12, marginBottom: 2 }}>
@@ -2044,6 +2148,10 @@ export default function StaffPaymentsScreen() {
             <Text style={{ color: '#475569', fontSize: 12, marginBottom: 8 }}>
               Expected closing <Text style={{ color: '#0f172a', fontWeight: '700' }}>{formatCurrency(activeCashSession.expectedClosingBalance)}</Text> •{' '}
               {activeCashSession.totalCashPayments} pembayaran • {activeCashSession.totalCashRefunds} refund
+            </Text>
+            <Text style={{ color: '#0f172a', fontSize: 12, marginBottom: 8 }}>
+              Zero variance {cashSessionZeroVarianceAutoApproved ? 'auto-approved' : 'direview Head TU'} • eskalasi kepsek{' '}
+              <Text style={{ fontWeight: '700' }}>{formatCurrency(Number(cashSessionPrincipalApprovalThresholdAmount || 0))}</Text>
             </Text>
             <TextInput
               keyboardType="numeric"
@@ -2078,6 +2186,69 @@ export default function StaffPaymentsScreen() {
             </Pressable>
           </View>
         )}
+
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#bfdbfe',
+            borderRadius: 10,
+            padding: 10,
+            backgroundColor: '#eff6ff',
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ color: '#1d4ed8', fontWeight: '700', marginBottom: 8 }}>Policy Approval Settlement</Text>
+          <Text style={{ color: '#475569', fontSize: 12, marginBottom: 8 }}>
+            Workflow review settlement dibaca live dari policy yang sama di web dan mobile.
+          </Text>
+          <Pressable
+            onPress={() => setCashSessionZeroVarianceAutoApproved((value) => !value)}
+            style={{ marginBottom: 8 }}
+          >
+            <Text style={{ color: '#0f172a', fontSize: 12 }}>
+              {cashSessionZeroVarianceAutoApproved ? 'Aktif' : 'Nonaktif'} • auto-approve jika selisih nol
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setCashSessionRequireVarianceNote((value) => !value)}
+            style={{ marginBottom: 8 }}
+          >
+            <Text style={{ color: '#0f172a', fontSize: 12 }}>
+              {cashSessionRequireVarianceNote ? 'Aktif' : 'Nonaktif'} • wajib catatan saat ada selisih
+            </Text>
+          </Pressable>
+          <TextInput
+            keyboardType="numeric"
+            value={cashSessionPrincipalApprovalThresholdAmount}
+            onChangeText={setCashSessionPrincipalApprovalThresholdAmount}
+            placeholder="Threshold eskalasi ke Kepala Sekolah"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <TextInput
+            value={cashSessionApprovalPolicyNotes}
+            onChangeText={setCashSessionApprovalPolicyNotes}
+            placeholder="Catatan policy approval settlement"
+            placeholderTextColor="#94a3b8"
+            multiline
+            style={{ borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, minHeight: 72, textAlignVertical: 'top', color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <Pressable
+            onPress={() => saveCashSessionApprovalPolicyMutation.mutate()}
+            disabled={saveCashSessionApprovalPolicyMutation.isPending || cashSessionApprovalPolicyQuery.isLoading}
+            style={{
+              marginTop: 10,
+              backgroundColor: saveCashSessionApprovalPolicyMutation.isPending ? '#93c5fd' : '#2563eb',
+              borderRadius: 10,
+              paddingVertical: 10,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>
+              {saveCashSessionApprovalPolicyMutation.isPending ? 'Menyimpan policy...' : 'Simpan Policy Approval'}
+            </Text>
+          </Pressable>
+        </View>
 
         <View
           style={{
@@ -2136,6 +2307,7 @@ export default function StaffPaymentsScreen() {
           ) : (
             cashSessions.slice(0, 4).map((session) => {
               const badge = getCashSessionStatusBadge(session.status);
+              const approvalBadge = getCashSessionApprovalBadge(session.approvalStatus);
               return (
                 <View key={session.id} style={{ borderTopWidth: 1, borderTopColor: '#eef2ff', paddingVertical: 8 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
@@ -2149,18 +2321,42 @@ export default function StaffPaymentsScreen() {
                           Selisih {formatCurrency(session.varianceAmount)}
                         </Text>
                       ) : null}
+                      {session.headTuDecision.note ? (
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                          Review Head TU: {session.headTuDecision.note}
+                        </Text>
+                      ) : null}
+                      {session.principalDecision.note ? (
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                          Review Kepsek: {session.principalDecision.note}
+                        </Text>
+                      ) : null}
                     </View>
-                    <View
-                      style={{
-                        borderWidth: 1,
-                        borderColor: badge.border,
-                        backgroundColor: badge.bg,
-                        borderRadius: 999,
-                        paddingHorizontal: 8,
-                        paddingVertical: 2,
-                      }}
-                    >
-                      <Text style={{ color: badge.text, fontWeight: '700', fontSize: 11 }}>{badge.label}</Text>
+                    <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: badge.border,
+                          backgroundColor: badge.bg,
+                          borderRadius: 999,
+                          paddingHorizontal: 8,
+                          paddingVertical: 2,
+                        }}
+                      >
+                        <Text style={{ color: badge.text, fontWeight: '700', fontSize: 11 }}>{badge.label}</Text>
+                      </View>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: approvalBadge.border,
+                          backgroundColor: approvalBadge.bg,
+                          borderRadius: 999,
+                          paddingHorizontal: 8,
+                          paddingVertical: 2,
+                        }}
+                      >
+                        <Text style={{ color: approvalBadge.text, fontWeight: '700', fontSize: 11 }}>{approvalBadge.label}</Text>
+                      </View>
                     </View>
                   </View>
                 </View>

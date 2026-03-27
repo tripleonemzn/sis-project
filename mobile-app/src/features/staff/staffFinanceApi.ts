@@ -30,6 +30,14 @@ export type FinancePaymentReversalStatus =
   | 'APPLIED';
 export type FinancePaymentReversalPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'FINANCE_APPLY' | 'NONE';
 export type FinanceCashSessionStatus = 'OPEN' | 'CLOSED';
+export type FinanceCashSessionApprovalStatus =
+  | 'NOT_SUBMITTED'
+  | 'PENDING_HEAD_TU'
+  | 'PENDING_PRINCIPAL'
+  | 'APPROVED'
+  | 'AUTO_APPROVED'
+  | 'REJECTED';
+export type FinanceCashSessionPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'NONE';
 export type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE' | 'LATE_FEE' | 'ESCALATION';
 
 export type StaffFinanceReminderPolicy = {
@@ -68,6 +76,14 @@ export type StaffFinanceReminderDispatchResult = {
   runAt: string;
   disabledByPolicy: boolean;
   policy: StaffFinanceReminderPolicy;
+};
+
+export type StaffFinanceCashSessionApprovalPolicy = {
+  zeroVarianceAutoApproved: boolean;
+  requireVarianceNote: boolean;
+  principalApprovalThresholdAmount: number;
+  notes?: string | null;
+  updatedAt: string;
 };
 
 export type StaffFinanceComponent = {
@@ -574,6 +590,8 @@ export type StaffFinanceCashSession = {
   sessionNo: string;
   businessDate: string;
   status: FinanceCashSessionStatus;
+  approvalStatus: FinanceCashSessionApprovalStatus;
+  pendingActor: FinanceCashSessionPendingActor;
   openingBalance: number;
   expectedCashIn: number;
   expectedCashOut: number;
@@ -586,6 +604,26 @@ export type StaffFinanceCashSession = {
   closedAt?: string | null;
   openingNote?: string | null;
   closingNote?: string | null;
+  headTuDecision: {
+    approved: boolean | null;
+    decidedAt?: string | null;
+    note?: string | null;
+    by?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+  };
+  principalDecision: {
+    approved: boolean | null;
+    decidedAt?: string | null;
+    note?: string | null;
+    by?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+  };
   openedBy?: {
     id: number;
     name: string;
@@ -632,6 +670,10 @@ export type StaffFinanceCashSessionListResult = {
     totalSessions: number;
     openCount: number;
     closedCount: number;
+    pendingHeadTuCount: number;
+    pendingPrincipalCount: number;
+    approvedCount: number;
+    rejectedCount: number;
     totalExpectedCashIn: number;
     totalExpectedCashOut: number;
     totalExpectedClosingBalance: number;
@@ -1113,6 +1155,8 @@ export const staffFinanceApi = {
   async listCashSessions(params?: {
     openedById?: number;
     status?: FinanceCashSessionStatus;
+    approvalStatus?: FinanceCashSessionApprovalStatus;
+    pendingFor?: 'HEAD_TU' | 'PRINCIPAL';
     businessDate?: string;
     mine?: boolean;
     limit?: number;
@@ -1144,6 +1188,39 @@ export const staffFinanceApi = {
   ) {
     const response = await apiClient.post<ApiResponse<{ session: StaffFinanceCashSession }>>(
       `/payments/cash-sessions/${sessionId}/close`,
+      payload,
+    );
+    return response.data.data.session;
+  },
+
+  async getCashSessionApprovalPolicy() {
+    const response = await apiClient.get<ApiResponse<{ policy: StaffFinanceCashSessionApprovalPolicy }>>(
+      '/payments/cash-session-policy',
+    );
+    return response.data.data.policy;
+  },
+
+  async updateCashSessionApprovalPolicy(
+    payload: Partial<Omit<StaffFinanceCashSessionApprovalPolicy, 'updatedAt'>>,
+  ) {
+    const response = await apiClient.put<ApiResponse<{ policy: StaffFinanceCashSessionApprovalPolicy }>>(
+      '/payments/cash-session-policy',
+      payload,
+    );
+    return response.data.data.policy;
+  },
+
+  async decideCashSessionAsHeadTu(sessionId: number, payload: { approved: boolean; note?: string }) {
+    const response = await apiClient.post<ApiResponse<{ session: StaffFinanceCashSession }>>(
+      `/payments/cash-sessions/${sessionId}/head-tu-decision`,
+      payload,
+    );
+    return response.data.data.session;
+  },
+
+  async decideCashSessionAsPrincipal(sessionId: number, payload: { approved: boolean; note?: string }) {
+    const response = await apiClient.post<ApiResponse<{ session: StaffFinanceCashSession }>>(
+      `/payments/cash-sessions/${sessionId}/principal-decision`,
       payload,
     );
     return response.data.data.session;

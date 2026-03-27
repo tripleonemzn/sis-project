@@ -7,6 +7,8 @@ import {
   type FinanceAdjustmentKind,
   type FinanceAdjustmentRule,
   type FinanceCashSession,
+  type FinanceCashSessionApprovalPolicy,
+  type FinanceCashSessionApprovalStatus,
   type FinanceCreditBalanceRow,
   type FinanceCreditTransaction,
   type FinanceRefundRecord,
@@ -262,6 +264,25 @@ function getCashSessionStatusMeta(status: FinanceCashSession['status']) {
   return { label: 'Sudah Ditutup', className: 'bg-slate-50 text-slate-700 border border-slate-200' };
 }
 
+function getCashSessionApprovalMeta(status: FinanceCashSessionApprovalStatus) {
+  if (status === 'PENDING_HEAD_TU') {
+    return { label: 'Menunggu Head TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  }
+  if (status === 'PENDING_PRINCIPAL') {
+    return { label: 'Menunggu Kepsek', className: 'bg-sky-50 text-sky-700 border border-sky-200' };
+  }
+  if (status === 'APPROVED') {
+    return { label: 'Disetujui', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+  }
+  if (status === 'AUTO_APPROVED') {
+    return { label: 'Auto Approved', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+  }
+  if (status === 'REJECTED') {
+    return { label: 'Ditolak', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
+  }
+  return { label: 'Belum Diajukan', className: 'bg-slate-50 text-slate-700 border border-slate-200' };
+}
+
 export const StaffFinancePage = () => {
   const queryClient = useQueryClient();
 
@@ -376,6 +397,10 @@ export const StaffFinancePage = () => {
   const [cashSessionOpeningNote, setCashSessionOpeningNote] = useState('');
   const [cashSessionActualClosingBalance, setCashSessionActualClosingBalance] = useState('');
   const [cashSessionClosingNote, setCashSessionClosingNote] = useState('');
+  const [cashSessionZeroVarianceAutoApproved, setCashSessionZeroVarianceAutoApproved] = useState(true);
+  const [cashSessionRequireVarianceNote, setCashSessionRequireVarianceNote] = useState(true);
+  const [cashSessionPrincipalApprovalThresholdAmount, setCashSessionPrincipalApprovalThresholdAmount] = useState('100000');
+  const [cashSessionApprovalPolicyNotes, setCashSessionApprovalPolicyNotes] = useState('');
 
   const yearsQuery = useQuery({
     queryKey: ['staff-finance-academic-years'],
@@ -467,6 +492,12 @@ export const StaffFinancePage = () => {
     staleTime: 60_000,
   });
 
+  const cashSessionApprovalPolicyQuery = useQuery({
+    queryKey: ['staff-finance-cash-session-policy'],
+    queryFn: () => staffFinanceService.getCashSessionApprovalPolicy(),
+    staleTime: 60_000,
+  });
+
   const years = useMemo<AcademicYear[]>(() => {
     const payload = yearsQuery.data as
       | { data?: { academicYears?: AcademicYear[] }; academicYears?: AcademicYear[] }
@@ -489,11 +520,17 @@ export const StaffFinancePage = () => {
   );
 
   const reminderPolicy = reminderPolicyQuery.data || null;
+  const cashSessionApprovalPolicy = cashSessionApprovalPolicyQuery.data || null;
 
   useEffect(() => {
     if (!reminderPolicy) return;
     applyReminderPolicyToForm(reminderPolicy);
   }, [reminderPolicy?.updatedAt]);
+
+  useEffect(() => {
+    if (!cashSessionApprovalPolicy) return;
+    applyCashSessionApprovalPolicyToForm(cashSessionApprovalPolicy);
+  }, [cashSessionApprovalPolicy?.updatedAt]);
 
   const studentLookup = useMemo(() => {
     return new Map(students.map((student) => [student.id, student]));
@@ -704,6 +741,13 @@ export const StaffFinancePage = () => {
     setReminderEscalateToHeadTu(policy.escalateToHeadTu);
     setReminderEscalateToPrincipal(policy.escalateToPrincipal);
     setReminderPolicyNotes(policy.notes || '');
+  };
+
+  const applyCashSessionApprovalPolicyToForm = (policy: FinanceCashSessionApprovalPolicy) => {
+    setCashSessionZeroVarianceAutoApproved(policy.zeroVarianceAutoApproved);
+    setCashSessionRequireVarianceNote(policy.requireVarianceNote);
+    setCashSessionPrincipalApprovalThresholdAmount(String(Number(policy.principalApprovalThresholdAmount || 0)));
+    setCashSessionApprovalPolicyNotes(policy.notes || '');
   };
 
   const openReminderPolicyModal = () => {
@@ -1138,8 +1182,14 @@ export const StaffFinancePage = () => {
         actualClosingBalance: Number(cashSessionActualClosingBalance || 0),
         note: cashSessionClosingNote.trim() || undefined,
       }),
-    onSuccess: () => {
-      toast.success('Sesi kas harian berhasil ditutup');
+    onSuccess: (session) => {
+      const approvalLabel =
+        session.approvalStatus === 'PENDING_HEAD_TU'
+          ? 'dan menunggu review Head TU'
+          : session.approvalStatus === 'AUTO_APPROVED'
+            ? 'dan auto-approved'
+            : '';
+      toast.success(`Sesi kas harian berhasil ditutup ${approvalLabel}`.trim());
       resetCashSessionCloseForm(null);
       queryClient.invalidateQueries({ queryKey: ['staff-finance-cash-sessions'] });
     },
@@ -1267,6 +1317,28 @@ export const StaffFinancePage = () => {
     },
   });
 
+  const saveCashSessionApprovalPolicyMutation = useMutation({
+    mutationFn: () =>
+      staffFinanceService.updateCashSessionApprovalPolicy({
+        zeroVarianceAutoApproved: cashSessionZeroVarianceAutoApproved,
+        requireVarianceNote: cashSessionRequireVarianceNote,
+        principalApprovalThresholdAmount: Math.max(
+          0,
+          Number(cashSessionPrincipalApprovalThresholdAmount || 0),
+        ),
+        notes: cashSessionApprovalPolicyNotes.trim() || null,
+      }),
+    onSuccess: (policy) => {
+      toast.success('Policy approval settlement kas berhasil diperbarui');
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-cash-session-policy'] });
+      applyCashSessionApprovalPolicyToForm(policy);
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal memperbarui policy approval settlement kas');
+    },
+  });
+
   const dispatchReminderMutation = useMutation({
     mutationFn: (mode: FinanceReminderMode) =>
       staffFinanceService.dispatchDueReminders({
@@ -1310,6 +1382,15 @@ export const StaffFinancePage = () => {
     const actualClosingBalance = Number(cashSessionActualClosingBalance || 0);
     if (!Number.isFinite(actualClosingBalance) || actualClosingBalance < 0) {
       toast.error('Saldo aktual penutupan tidak valid');
+      return;
+    }
+    const projectedVariance = actualClosingBalance - Number(session.expectedClosingBalance || 0);
+    if (
+      cashSessionRequireVarianceNote &&
+      Math.abs(projectedVariance) > 0.009 &&
+      !cashSessionClosingNote.trim()
+    ) {
+      toast.error('Catatan closing wajib diisi saat ada selisih settlement kas');
       return;
     }
     closeCashSessionMutation.mutate(session);
@@ -1995,7 +2076,7 @@ export const StaffFinancePage = () => {
                 Sesi kas membaca transaksi tunai yang dicatat petugas dalam rentang sesi, jadi settlement harian tetap akurat tanpa mengubah alur pembayaran yang sudah berjalan.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs lg:min-w-[280px]">
+            <div className="grid grid-cols-2 gap-2 text-xs lg:min-w-[320px]">
               <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
                 <div className="text-amber-700">Sesi terbuka</div>
                 <div className="mt-1 font-semibold text-amber-900">{cashSessionSummary?.openCount || 0}</div>
@@ -2015,6 +2096,14 @@ export const StaffFinancePage = () => {
                 <div className="mt-1 font-semibold text-rose-900">
                   {formatCurrency(cashSessionSummary?.totalExpectedCashOut || 0)}
                 </div>
+              </div>
+              <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2">
+                <div className="text-sky-700">Pending Head TU</div>
+                <div className="mt-1 font-semibold text-sky-900">{cashSessionSummary?.pendingHeadTuCount || 0}</div>
+              </div>
+              <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2">
+                <div className="text-violet-700">Pending Kepsek</div>
+                <div className="mt-1 font-semibold text-violet-900">{cashSessionSummary?.pendingPrincipalCount || 0}</div>
               </div>
             </div>
           </div>
@@ -2069,13 +2158,22 @@ export const StaffFinancePage = () => {
                         {formatDate(activeCashSession.businessDate)} • dibuka {formatDate(activeCashSession.openedAt)}
                       </div>
                     </div>
-                    <span
-                      className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${getCashSessionStatusMeta(
-                        activeCashSession.status,
-                      ).className}`}
-                    >
-                      {getCashSessionStatusMeta(activeCashSession.status).label}
-                    </span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${getCashSessionStatusMeta(
+                          activeCashSession.status,
+                        ).className}`}
+                      >
+                        {getCashSessionStatusMeta(activeCashSession.status).label}
+                      </span>
+                      <span
+                        className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${getCashSessionApprovalMeta(
+                          activeCashSession.approvalStatus,
+                        ).className}`}
+                      >
+                        {getCashSessionApprovalMeta(activeCashSession.approvalStatus).label}
+                      </span>
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
@@ -2107,6 +2205,14 @@ export const StaffFinancePage = () => {
                     {activeCashSession.totalCashPayments} pembayaran tunai • {activeCashSession.totalCashRefunds} refund tunai
                     {activeCashSession.openingNote ? ` • catatan: ${activeCashSession.openingNote}` : ''}
                   </div>
+                  <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-3 text-xs text-sky-900">
+                    Zero variance {cashSessionZeroVarianceAutoApproved ? 'auto-approved' : 'tetap direview Head TU'} •
+                    eskalasi ke Kepala Sekolah mulai{' '}
+                    <span className="font-semibold">
+                      {formatCurrency(Number(cashSessionPrincipalApprovalThresholdAmount || 0))}
+                    </span>
+                    {cashSessionRequireVarianceNote ? ' • catatan selisih wajib diisi' : ''}
+                  </div>
                   <input
                     type="number"
                     min={0}
@@ -2133,6 +2239,57 @@ export const StaffFinancePage = () => {
                   </button>
                 </>
               )}
+
+              <div className="rounded-xl border border-sky-100 bg-sky-50 p-4 space-y-3">
+                <div>
+                  <div className="text-sm font-semibold text-sky-900">Policy Approval Settlement</div>
+                  <p className="mt-1 text-xs text-sky-800">
+                    Workflow review settlement dibaca live dari policy ini di web dan mobile.
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-sky-900">
+                  <input
+                    type="checkbox"
+                    checked={cashSessionZeroVarianceAutoApproved}
+                    onChange={(event) => setCashSessionZeroVarianceAutoApproved(event.target.checked)}
+                  />
+                  Auto-approve jika selisih nol
+                </label>
+                <label className="flex items-center gap-2 text-xs text-sky-900">
+                  <input
+                    type="checkbox"
+                    checked={cashSessionRequireVarianceNote}
+                    onChange={(event) => setCashSessionRequireVarianceNote(event.target.checked)}
+                  />
+                  Wajib catatan saat ada selisih
+                </label>
+                <div>
+                  <label className="text-xs font-medium text-sky-900">Threshold eskalasi ke Kepala Sekolah</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={cashSessionPrincipalApprovalThresholdAmount}
+                    onChange={(event) => setCashSessionPrincipalApprovalThresholdAmount(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm"
+                  />
+                </div>
+                <textarea
+                  value={cashSessionApprovalPolicyNotes}
+                  onChange={(event) => setCashSessionApprovalPolicyNotes(event.target.value)}
+                  placeholder="Catatan policy approval settlement"
+                  rows={3}
+                  className="w-full rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => saveCashSessionApprovalPolicyMutation.mutate()}
+                  disabled={saveCashSessionApprovalPolicyMutation.isPending || cashSessionApprovalPolicyQuery.isLoading}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-800 disabled:opacity-50"
+                >
+                  {saveCashSessionApprovalPolicyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Simpan Policy Approval
+                </button>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -2208,6 +2365,7 @@ export const StaffFinancePage = () => {
                   ) : (
                     cashSessions.slice(0, 6).map((session) => {
                       const status = getCashSessionStatusMeta(session.status);
+                      const approval = getCashSessionApprovalMeta(session.approvalStatus);
                       return (
                         <div key={session.id} className="px-4 py-3">
                           <div className="flex items-start justify-between gap-3">
@@ -2225,10 +2383,25 @@ export const StaffFinancePage = () => {
                                   Selisih {formatCurrency(session.varianceAmount)}
                                 </div>
                               ) : null}
+                              {session.headTuDecision.note ? (
+                                <div className="mt-1 text-[11px] text-slate-500">
+                                  Review Head TU: {session.headTuDecision.note}
+                                </div>
+                              ) : null}
+                              {session.principalDecision.note ? (
+                                <div className="mt-1 text-[11px] text-slate-500">
+                                  Review Kepala Sekolah: {session.principalDecision.note}
+                                </div>
+                              ) : null}
                             </div>
-                            <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${status.className}`}>
-                              {status.label}
-                            </span>
+                            <div className="flex flex-col items-end gap-1">
+                              <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${status.className}`}>
+                                {status.label}
+                              </span>
+                              <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${approval.className}`}>
+                                {approval.label}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       );

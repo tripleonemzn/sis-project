@@ -3187,6 +3187,12 @@ const PrincipalFinancePage = () => {
     enabled: isFinancePage,
   });
 
+  const { data: financeCashSessionApprovalsData, isLoading: isFinanceCashSessionApprovalsLoading } = useQuery({
+    queryKey: ['principal-finance-cash-session-approvals'],
+    queryFn: () => staffFinanceService.listCashSessions({ pendingFor: 'PRINCIPAL', limit: 20 }),
+    enabled: isFinancePage,
+  });
+
   let budgets: BudgetRequest[] = budgetsData?.data || budgetsData || [];
 
   if (statusFilter !== 'ALL') {
@@ -3251,6 +3257,23 @@ const PrincipalFinancePage = () => {
     },
   });
 
+  const principalCashSessionDecisionMutation = useMutation({
+    mutationFn: (payload: { sessionId: number; approved: boolean }) =>
+      staffFinanceService.decideCashSessionAsPrincipal(payload.sessionId, {
+        approved: payload.approved,
+        note: payload.approved ? undefined : 'Settlement kas ditolak oleh Kepala Sekolah',
+      }),
+    onSuccess: (_, payload) => {
+      queryClient.invalidateQueries({ queryKey: ['principal-finance-cash-session-approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['principal-finance-cash-sessions'] });
+      toast.success(payload.approved ? 'Settlement kas disetujui' : 'Settlement kas ditolak');
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal memproses settlement kas');
+    },
+  });
+
   const handleApprove = () => {
     if (!selectedForApprove) return;
     updateStatusMutation.mutate({
@@ -3278,6 +3301,7 @@ const PrincipalFinancePage = () => {
   const pendingPrincipalWriteOffs = financeWriteOffsData?.requests || [];
   const pendingPrincipalPaymentReversals = financePaymentReversalsData?.requests || [];
   const financeCashSessions = financeCashSessionsData?.sessions || [];
+  const pendingPrincipalCashSessions = financeCashSessionApprovalsData?.sessions || [];
   const financeCashSessionSummary = financeCashSessionsData?.summary;
 
   return (
@@ -3511,6 +3535,14 @@ const PrincipalFinancePage = () => {
                 Rp {Math.round(financeCashSessionSummary?.totalVarianceAmount || 0).toLocaleString('id-ID')}
               </div>
             </div>
+            <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2">
+              <div className="text-sky-700">Pending Head TU</div>
+              <div className="mt-1 font-semibold text-sky-900">{financeCashSessionSummary?.pendingHeadTuCount || 0}</div>
+            </div>
+            <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2">
+              <div className="text-violet-700">Pending Kepsek</div>
+              <div className="mt-1 font-semibold text-violet-900">{financeCashSessionSummary?.pendingPrincipalCount || 0}</div>
+            </div>
           </div>
         </div>
 
@@ -3539,6 +3571,9 @@ const PrincipalFinancePage = () => {
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Selisih
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Approval
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -3563,6 +3598,130 @@ const PrincipalFinancePage = () => {
                       {session.varianceAmount == null
                         ? '-'
                         : `Rp ${Math.round(session.varianceAmount).toLocaleString('id-ID')}`}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-700">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${
+                          session.approvalStatus === 'PENDING_PRINCIPAL'
+                            ? 'bg-sky-50 text-sky-700 border border-sky-200'
+                            : session.approvalStatus === 'PENDING_HEAD_TU'
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                              : session.approvalStatus === 'REJECTED'
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        }`}
+                      >
+                        {session.approvalStatus === 'PENDING_PRINCIPAL'
+                          ? 'Menunggu Kepsek'
+                          : session.approvalStatus === 'PENDING_HEAD_TU'
+                            ? 'Menunggu Head TU'
+                            : session.approvalStatus === 'REJECTED'
+                              ? 'Ditolak'
+                              : session.approvalStatus === 'AUTO_APPROVED'
+                                ? 'Auto Approved'
+                                : 'Disetujui'}
+                      </span>
+                      {session.principalDecision.note ? (
+                        <div className="mt-1 text-xs text-gray-500">{session.principalDecision.note}</div>
+                      ) : session.headTuDecision.note ? (
+                        <div className="mt-1 text-xs text-gray-500">{session.headTuDecision.note}</div>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Approval Settlement Kas</h3>
+            <p className="mt-1 text-xs text-gray-500">
+              Review settlement kas yang sudah lolos Head TU dan masuk ambang eskalasi Kepala Sekolah.
+            </p>
+          </div>
+          <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+            {pendingPrincipalCashSessions.length} menunggu
+          </span>
+        </div>
+
+        {isFinanceCashSessionApprovalsLoading ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          </div>
+        ) : pendingPrincipalCashSessions.length === 0 ? (
+          <div className="py-10 text-center text-sm text-gray-500">
+            Belum ada settlement kas yang menunggu persetujuan Kepala Sekolah.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Sesi
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Expected
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Aktual
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Selisih
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Aksi
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {pendingPrincipalCashSessions.map((session: FinanceCashSession) => (
+                  <tr key={session.id}>
+                    <td className="px-6 py-4 text-sm text-gray-700">
+                      <div className="font-semibold text-gray-900">{session.sessionNo}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {new Date(session.businessDate).toLocaleDateString('id-ID')} • {session.openedBy?.name || '-'}
+                      </div>
+                      {session.headTuDecision.note ? (
+                        <div className="text-xs text-gray-500 mt-1">Review Head TU: {session.headTuDecision.note}</div>
+                      ) : null}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-right text-gray-700">
+                      Rp {Math.round(session.expectedClosingBalance || 0).toLocaleString('id-ID')}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-right text-gray-700">
+                      {session.actualClosingBalance == null
+                        ? '-'
+                        : `Rp ${Math.round(session.actualClosingBalance).toLocaleString('id-ID')}`}
+                    </td>
+                    <td className={`px-6 py-4 text-sm text-right font-semibold ${Number(session.varianceAmount || 0) === 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {session.varianceAmount == null
+                        ? '-'
+                        : `Rp ${Math.round(session.varianceAmount).toLocaleString('id-ID')}`}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-right">
+                      <div className="inline-flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => principalCashSessionDecisionMutation.mutate({ sessionId: session.id, approved: false })}
+                          disabled={principalCashSessionDecisionMutation.isPending}
+                          className="inline-flex items-center rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                        >
+                          Tolak
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => principalCashSessionDecisionMutation.mutate({ sessionId: session.id, approved: true })}
+                          disabled={principalCashSessionDecisionMutation.isPending}
+                          className="inline-flex items-center rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                        >
+                          Setujui
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

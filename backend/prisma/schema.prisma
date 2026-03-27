@@ -109,6 +109,8 @@ model User {
   appliedFinancePaymentReversals FinancePaymentReversalRequest[]          @relation("FinancePaymentReversalAppliedBy")
   openedFinanceCashSessions      FinanceCashSession[]                     @relation("FinanceCashSessionOpenedBy")
   closedFinanceCashSessions      FinanceCashSession[]                     @relation("FinanceCashSessionClosedBy")
+  headTuReviewedFinanceCashSessions FinanceCashSession[]                  @relation("FinanceCashSessionHeadTuDecisionBy")
+  principalReviewedFinanceCashSessions FinanceCashSession[]               @relation("FinanceCashSessionPrincipalDecisionBy")
   pklAssessments                 PklAssessment[]
   reportNotes                    ReportNote[]
   achievements                   StudentAchievement[]
@@ -1484,6 +1486,18 @@ model FinanceReminderPolicy {
   @@map("finance_reminder_policy")
 }
 
+model FinanceCashSessionApprovalPolicy {
+  id                               Int      @id @default(1)
+  zeroVarianceAutoApproved         Boolean  @default(true)
+  requireVarianceNote              Boolean  @default(true)
+  principalApprovalThresholdAmount Float    @default(100000)
+  notes                            String?
+  createdAt                        DateTime @default(now())
+  updatedAt                        DateTime @updatedAt
+
+  @@map("finance_cash_session_approval_policy")
+}
+
 model FinanceTariffRule {
   id             Int              @id @default(autoincrement())
   componentId    Int
@@ -1797,6 +1811,7 @@ model FinanceCashSession {
   sessionNo             String                   @unique
   businessDate          DateTime
   status                FinanceCashSessionStatus @default(OPEN)
+  approvalStatus        FinanceCashSessionApprovalStatus @default(NOT_SUBMITTED)
   openingBalance        Float                    @default(0)
   expectedCashIn        Float                    @default(0)
   expectedCashOut       Float                    @default(0)
@@ -1811,14 +1826,25 @@ model FinanceCashSession {
   closedById            Int?
   closedAt              DateTime?
   closingNote           String?
+  headTuApproved        Boolean?
+  headTuDecisionById    Int?
+  headTuDecisionAt      DateTime?
+  headTuDecisionNote    String?
+  principalApproved     Boolean?
+  principalDecisionById Int?
+  principalDecisionAt   DateTime?
+  principalDecisionNote String?
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
   openedBy              User                     @relation("FinanceCashSessionOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
   closedBy              User?                    @relation("FinanceCashSessionClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  headTuDecisionBy      User?                    @relation("FinanceCashSessionHeadTuDecisionBy", fields: [headTuDecisionById], references: [id], onDelete: SetNull)
+  principalDecisionBy   User?                    @relation("FinanceCashSessionPrincipalDecisionBy", fields: [principalDecisionById], references: [id], onDelete: SetNull)
 
   @@index([openedById, status])
   @@index([businessDate, status])
   @@index([status, openedAt])
+  @@index([approvalStatus, closedAt])
   @@map("finance_cash_sessions")
 }
 
@@ -2237,6 +2263,15 @@ enum FinancePaymentReversalStatus {
 enum FinanceCashSessionStatus {
   OPEN
   CLOSED
+}
+
+enum FinanceCashSessionApprovalStatus {
+  NOT_SUBMITTED
+  PENDING_HEAD_TU
+  PENDING_PRINCIPAL
+  APPROVED
+  AUTO_APPROVED
+  REJECTED
 }
 
 enum Gender {

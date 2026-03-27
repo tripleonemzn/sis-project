@@ -1,5 +1,6 @@
 import {
   FinanceAdjustmentKind,
+  FinanceCashSessionApprovalStatus,
   FinanceCashSessionStatus,
   FinanceCreditTransactionKind,
   FinanceComponentPeriodicity,
@@ -138,6 +139,10 @@ function makeFinanceWriteOffNo(studentId: number): string {
 
 function normalizeFinanceAmount(value: number): number {
   return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function isFinanceNonZeroAmount(value: number | null | undefined) {
+  return Math.abs(Number(value || 0)) > 0.009;
 }
 
 function getFinanceEndOfDay(date: Date) {
@@ -929,6 +934,8 @@ type SerializedFinanceCashSession = {
   sessionNo: string;
   businessDate: Date;
   status: FinanceCashSessionStatus;
+  approvalStatus: FinanceCashSessionApprovalStatus;
+  pendingActor: FinanceCashSessionPendingActor;
   openingBalance: number;
   expectedCashIn: number;
   expectedCashOut: number;
@@ -941,6 +948,26 @@ type SerializedFinanceCashSession = {
   closedAt: Date | null;
   openingNote: string | null;
   closingNote: string | null;
+  headTuDecision: {
+    approved: boolean | null;
+    decidedAt: Date | null;
+    note: string | null;
+    by: {
+      id: number;
+      name: string;
+      role: string | null;
+    } | null;
+  };
+  principalDecision: {
+    approved: boolean | null;
+    decidedAt: Date | null;
+    note: string | null;
+    by: {
+      id: number;
+      name: string;
+      role: string | null;
+    } | null;
+  };
   openedBy: {
     id: number;
     name: string;
@@ -961,6 +988,7 @@ function serializeFinanceCashSessionRecord(
     sessionNo: string;
     businessDate: Date;
     status: FinanceCashSessionStatus;
+    approvalStatus?: FinanceCashSessionApprovalStatus | null;
     openingBalance: number;
     expectedCashIn?: number | null;
     expectedCashOut?: number | null;
@@ -973,12 +1001,28 @@ function serializeFinanceCashSessionRecord(
     closedAt?: Date | null;
     openingNote?: string | null;
     closingNote?: string | null;
+    headTuApproved?: boolean | null;
+    headTuDecisionAt?: Date | null;
+    headTuDecisionNote?: string | null;
+    principalApproved?: boolean | null;
+    principalDecisionAt?: Date | null;
+    principalDecisionNote?: string | null;
     openedBy?: {
       id: number;
       name: string;
       role?: string | null;
     } | null;
     closedBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+    headTuDecisionBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+    principalDecisionBy?: {
       id: number;
       name: string;
       role?: string | null;
@@ -1003,6 +1047,10 @@ function serializeFinanceCashSessionRecord(
     sessionNo: session.sessionNo,
     businessDate: session.businessDate,
     status: session.status,
+    approvalStatus: session.approvalStatus || FinanceCashSessionApprovalStatus.NOT_SUBMITTED,
+    pendingActor: getFinanceCashSessionPendingActor(
+      session.approvalStatus || FinanceCashSessionApprovalStatus.NOT_SUBMITTED,
+    ),
     openingBalance: Number(session.openingBalance || 0),
     expectedCashIn: normalizeFinanceAmount(resolvedSummary.expectedCashIn),
     expectedCashOut: normalizeFinanceAmount(resolvedSummary.expectedCashOut),
@@ -1017,6 +1065,30 @@ function serializeFinanceCashSessionRecord(
     closedAt: session.closedAt || null,
     openingNote: session.openingNote || null,
     closingNote: session.closingNote || null,
+    headTuDecision: {
+      approved: session.headTuApproved ?? null,
+      decidedAt: session.headTuDecisionAt || null,
+      note: session.headTuDecisionNote || null,
+      by: session.headTuDecisionBy
+        ? {
+            id: session.headTuDecisionBy.id,
+            name: session.headTuDecisionBy.name,
+            role: session.headTuDecisionBy.role || null,
+          }
+        : null,
+    },
+    principalDecision: {
+      approved: session.principalApproved ?? null,
+      decidedAt: session.principalDecisionAt || null,
+      note: session.principalDecisionNote || null,
+      by: session.principalDecisionBy
+        ? {
+            id: session.principalDecisionBy.id,
+            name: session.principalDecisionBy.name,
+            role: session.principalDecisionBy.role || null,
+          }
+        : null,
+    },
     openedBy: session.openedBy
       ? {
           id: session.openedBy.id,
@@ -1443,7 +1515,15 @@ const DEFAULT_FINANCE_REMINDER_POLICY = {
   notes: null as string | null,
 } as const;
 
+const DEFAULT_FINANCE_CASH_SESSION_APPROVAL_POLICY = {
+  zeroVarianceAutoApproved: true,
+  requireVarianceNote: true,
+  principalApprovalThresholdAmount: 100000,
+  notes: null as string | null,
+} as const;
+
 type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE' | 'LATE_FEE' | 'ESCALATION';
+type FinanceCashSessionPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'NONE';
 
 type SerializedFinanceReminderPolicy = {
   isActive: boolean;
@@ -1470,6 +1550,14 @@ type DispatchFinanceDueReminderOptions = {
   mode?: FinanceReminderMode;
   preview?: boolean;
   now?: Date;
+};
+
+type SerializedFinanceCashSessionApprovalPolicy = {
+  zeroVarianceAutoApproved: boolean;
+  requireVarianceNote: boolean;
+  principalApprovalThresholdAmount: number;
+  notes: string | null;
+  updatedAt: Date;
 };
 
 function getFinanceStartOfDay(date: Date) {
@@ -1540,6 +1628,56 @@ async function ensureFinanceReminderPolicy() {
   });
 
   return serializeFinanceReminderPolicy(policy);
+}
+
+function serializeFinanceCashSessionApprovalPolicy(policy: {
+  zeroVarianceAutoApproved: boolean;
+  requireVarianceNote: boolean;
+  principalApprovalThresholdAmount: number;
+  notes?: string | null;
+  updatedAt: Date;
+}): SerializedFinanceCashSessionApprovalPolicy {
+  return {
+    zeroVarianceAutoApproved: Boolean(policy.zeroVarianceAutoApproved),
+    requireVarianceNote: Boolean(policy.requireVarianceNote),
+    principalApprovalThresholdAmount: normalizeFinanceAmount(
+      Math.max(0, Number(policy.principalApprovalThresholdAmount || 0)),
+    ),
+    notes: policy.notes?.trim() ? policy.notes.trim() : null,
+    updatedAt: policy.updatedAt,
+  };
+}
+
+async function ensureFinanceCashSessionApprovalPolicy() {
+  const policy = await prisma.financeCashSessionApprovalPolicy.upsert({
+    where: { id: 1 },
+    update: {},
+    create: {
+      id: 1,
+      ...DEFAULT_FINANCE_CASH_SESSION_APPROVAL_POLICY,
+    },
+  });
+
+  return serializeFinanceCashSessionApprovalPolicy(policy);
+}
+
+function getFinanceCashSessionPendingActor(
+  approvalStatus: FinanceCashSessionApprovalStatus,
+): FinanceCashSessionPendingActor {
+  if (approvalStatus === FinanceCashSessionApprovalStatus.PENDING_HEAD_TU) return 'HEAD_TU';
+  if (approvalStatus === FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL) return 'PRINCIPAL';
+  return 'NONE';
+}
+
+function resolveFinanceCashSessionCloseApprovalStatus(
+  policy: SerializedFinanceCashSessionApprovalPolicy,
+  varianceAmount: number,
+): FinanceCashSessionApprovalStatus {
+  if (!isFinanceNonZeroAmount(varianceAmount) && policy.zeroVarianceAutoApproved) {
+    return FinanceCashSessionApprovalStatus.AUTO_APPROVED;
+  }
+
+  return FinanceCashSessionApprovalStatus.PENDING_HEAD_TU;
 }
 
 async function hasRecentFinanceNotification(params: {
@@ -2438,6 +2576,8 @@ const listFinanceCreditsQuerySchema = z.object({
 const listFinanceCashSessionsQuerySchema = z.object({
   openedById: z.coerce.number().int().positive().optional(),
   status: z.nativeEnum(FinanceCashSessionStatus).optional(),
+  approvalStatus: z.nativeEnum(FinanceCashSessionApprovalStatus).optional(),
+  pendingFor: z.enum(['HEAD_TU', 'PRINCIPAL']).optional(),
   businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   mine: z
     .string()
@@ -2460,6 +2600,18 @@ const openFinanceCashSessionSchema = z.object({
 
 const closeFinanceCashSessionSchema = z.object({
   actualClosingBalance: z.coerce.number().min(0),
+  note: z.string().trim().max(500).optional(),
+});
+
+const updateFinanceCashSessionApprovalPolicySchema = z.object({
+  zeroVarianceAutoApproved: z.boolean().optional(),
+  requireVarianceNote: z.boolean().optional(),
+  principalApprovalThresholdAmount: z.coerce.number().min(0).optional(),
+  notes: z.string().trim().max(500).optional(),
+});
+
+const decideFinanceCashSessionSchema = z.object({
+  approved: z.boolean(),
   note: z.string().trim().max(500).optional(),
 });
 
@@ -2690,6 +2842,20 @@ const financeCashSessionRecordInclude = Prisma.validator<Prisma.FinanceCashSessi
     },
   },
   closedBy: {
+    select: {
+      id: true,
+      name: true,
+      role: true,
+    },
+  },
+  headTuDecisionBy: {
+    select: {
+      id: true,
+      name: true,
+      role: true,
+    },
+  },
+  principalDecisionBy: {
     select: {
       id: true,
       name: true,
@@ -4726,6 +4892,88 @@ export const updateFinanceReminderPolicy = asyncHandler(async (req: Request, res
   res
     .status(200)
     .json(new ApiResponse(200, { policy }, 'Policy reminder finance berhasil diperbarui'));
+});
+
+export const getFinanceCashSessionApprovalPolicy = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinanceActor((req as any).user || {}, {
+    allowPrincipalReadOnly: true,
+    allowHeadTuReadOnly: true,
+  });
+
+  const policy = await ensureFinanceCashSessionApprovalPolicy();
+
+  res.status(200).json(
+    new ApiResponse(200, { policy }, 'Policy approval settlement kas berhasil diambil'),
+  );
+});
+
+export const updateFinanceCashSessionApprovalPolicy = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+  const payload = updateFinanceCashSessionApprovalPolicySchema.parse(req.body || {});
+
+  if (Object.keys(payload).length === 0) {
+    throw new ApiError(400, 'Tidak ada perubahan policy approval settlement yang dikirim');
+  }
+
+  const policy = serializeFinanceCashSessionApprovalPolicy(
+    await prisma.financeCashSessionApprovalPolicy.upsert({
+      where: { id: 1 },
+      update: {
+        ...(payload.zeroVarianceAutoApproved !== undefined
+          ? { zeroVarianceAutoApproved: payload.zeroVarianceAutoApproved }
+          : {}),
+        ...(payload.requireVarianceNote !== undefined
+          ? { requireVarianceNote: payload.requireVarianceNote }
+          : {}),
+        ...(payload.principalApprovalThresholdAmount !== undefined
+          ? {
+              principalApprovalThresholdAmount: normalizeFinanceAmount(
+                payload.principalApprovalThresholdAmount,
+              ),
+            }
+          : {}),
+        ...(payload.notes !== undefined ? { notes: payload.notes?.trim() || null } : {}),
+      },
+      create: {
+        id: 1,
+        ...DEFAULT_FINANCE_CASH_SESSION_APPROVAL_POLICY,
+        ...(payload.zeroVarianceAutoApproved !== undefined
+          ? { zeroVarianceAutoApproved: payload.zeroVarianceAutoApproved }
+          : {}),
+        ...(payload.requireVarianceNote !== undefined
+          ? { requireVarianceNote: payload.requireVarianceNote }
+          : {}),
+        ...(payload.principalApprovalThresholdAmount !== undefined
+          ? {
+              principalApprovalThresholdAmount: normalizeFinanceAmount(
+                payload.principalApprovalThresholdAmount,
+              ),
+            }
+          : {}),
+        ...(payload.notes !== undefined ? { notes: payload.notes?.trim() || null } : {}),
+      },
+    }),
+  );
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      (actor.additionalDuties || []).map((duty) => String(duty)),
+      'UPDATE',
+      'FINANCE_CASH_SESSION_APPROVAL_POLICY',
+      1,
+      null,
+      policy,
+      'Memperbarui policy approval settlement kas harian',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat perubahan policy approval settlement kas', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(200, { policy }, 'Policy approval settlement kas berhasil diperbarui'),
+  );
 });
 
 export const createFinanceComponent = asyncHandler(async (req: Request, res: Response) => {
@@ -7044,13 +7292,23 @@ export const createFinanceRefund = asyncHandler(async (req: Request, res: Respon
 export const listFinanceCashSessions = asyncHandler(async (req: Request, res: Response) => {
   const actor = await ensureFinanceCashSessionViewer((req as any).user || {});
 
-  const { openedById, status, businessDate, mine, limit } = listFinanceCashSessionsQuerySchema.parse(req.query);
+  const { openedById, status, approvalStatus, pendingFor, businessDate, mine, limit } =
+    listFinanceCashSessionsQuerySchema.parse(req.query);
   const effectiveMine = mine ?? (!actor.isHeadTu && !actor.isPrincipal ? true : undefined);
   const dateFilter = businessDate ? normalizeFinanceBusinessDateInput(businessDate) : null;
+  const approvalWhere =
+    approvalStatus != null
+      ? { approvalStatus }
+      : pendingFor === 'HEAD_TU'
+        ? { approvalStatus: FinanceCashSessionApprovalStatus.PENDING_HEAD_TU }
+        : pendingFor === 'PRINCIPAL'
+          ? { approvalStatus: FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL }
+          : {};
 
   const where: Prisma.FinanceCashSessionWhereInput = {
     ...(openedById ? { openedById } : {}),
     ...(status ? { status } : {}),
+    ...approvalWhere,
     ...(effectiveMine ? { openedById: actor.id } : {}),
     ...(dateFilter
       ? {
@@ -7100,12 +7358,27 @@ export const listFinanceCashSessions = asyncHandler(async (req: Request, res: Re
       } else {
         acc.closedCount += 1;
       }
+      if (session.approvalStatus === FinanceCashSessionApprovalStatus.PENDING_HEAD_TU) acc.pendingHeadTuCount += 1;
+      if (session.approvalStatus === FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL) {
+        acc.pendingPrincipalCount += 1;
+      }
+      if (
+        session.approvalStatus === FinanceCashSessionApprovalStatus.APPROVED ||
+        session.approvalStatus === FinanceCashSessionApprovalStatus.AUTO_APPROVED
+      ) {
+        acc.approvedCount += 1;
+      }
+      if (session.approvalStatus === FinanceCashSessionApprovalStatus.REJECTED) acc.rejectedCount += 1;
       return acc;
     },
     {
       totalSessions: 0,
       openCount: 0,
       closedCount: 0,
+      pendingHeadTuCount: 0,
+      pendingPrincipalCount: 0,
+      approvedCount: 0,
+      rejectedCount: 0,
       totalExpectedCashIn: 0,
       totalExpectedCashOut: 0,
       totalExpectedClosingBalance: 0,
@@ -7157,6 +7430,7 @@ export const openFinanceCashSession = asyncHandler(async (req: Request, res: Res
     data: {
       sessionNo: makeFinanceCashSessionNo(actor.id),
       businessDate,
+      approvalStatus: FinanceCashSessionApprovalStatus.NOT_SUBMITTED,
       openingBalance: normalizeFinanceAmount(Number(payload.openingBalance || 0)),
       expectedClosingBalance: normalizeFinanceAmount(Number(payload.openingBalance || 0)),
       openingNote: payload.note?.trim() || null,
@@ -7203,6 +7477,7 @@ export const openFinanceCashSession = asyncHandler(async (req: Request, res: Res
 
 export const closeFinanceCashSession = asyncHandler(async (req: Request, res: Response) => {
   const actor = await ensureFinanceActor((req as any).user || {});
+  const approvalPolicy = await ensureFinanceCashSessionApprovalPolicy();
 
   const sessionId = Number(req.params.id);
   if (!Number.isInteger(sessionId) || sessionId <= 0) {
@@ -7237,11 +7512,19 @@ export const closeFinanceCashSession = asyncHandler(async (req: Request, res: Re
 
     const actualClosingBalance = normalizeFinanceAmount(Number(payload.actualClosingBalance || 0));
     const varianceAmount = normalizeFinanceAmount(actualClosingBalance - liveSummary.expectedClosingBalance);
+    const closingNote = payload.note?.trim() || null;
+
+    if (approvalPolicy.requireVarianceNote && isFinanceNonZeroAmount(varianceAmount) && !closingNote) {
+      throw new ApiError(400, 'Catatan closing wajib diisi saat ada selisih settlement kas');
+    }
+
+    const approvalStatus = resolveFinanceCashSessionCloseApprovalStatus(approvalPolicy, varianceAmount);
 
     const updated = await tx.financeCashSession.update({
       where: { id: before.id },
       data: {
         status: FinanceCashSessionStatus.CLOSED,
+        approvalStatus,
         expectedCashIn: liveSummary.expectedCashIn,
         expectedCashOut: liveSummary.expectedCashOut,
         expectedClosingBalance: liveSummary.expectedClosingBalance,
@@ -7251,7 +7534,15 @@ export const closeFinanceCashSession = asyncHandler(async (req: Request, res: Re
         totalCashRefunds: liveSummary.totalCashRefunds,
         closedById: actor.id,
         closedAt,
-        closingNote: payload.note?.trim() || null,
+        closingNote,
+        headTuApproved: null,
+        headTuDecisionById: null,
+        headTuDecisionAt: null,
+        headTuDecisionNote: null,
+        principalApproved: null,
+        principalDecisionById: null,
+        principalDecisionAt: null,
+        principalDecisionNote: null,
       },
       include: financeCashSessionRecordInclude,
     });
@@ -7259,22 +7550,24 @@ export const closeFinanceCashSession = asyncHandler(async (req: Request, res: Re
     return {
       session: serializeFinanceCashSessionRecord(updated, liveSummary),
       varianceAmount,
+      approvalStatus,
     };
   });
 
-  if (Math.abs(Number(result.varianceAmount || 0)) > 0.009) {
+  if (result.approvalStatus === FinanceCashSessionApprovalStatus.PENDING_HEAD_TU) {
     await createFinanceInternalNotifications({
       scopes: ['HEAD_TU'],
-      title: 'Variance Settlement Kas Harian',
+      title: 'Review Settlement Kas Harian',
       message: `Sesi kas ${result.session.sessionNo} ditutup dengan selisih ${Math.round(
         Number(result.varianceAmount || 0),
-      ).toLocaleString('id-ID')} rupiah.`,
-      type: 'FINANCE_CASH_SESSION_VARIANCE',
+      ).toLocaleString('id-ID')} rupiah dan menunggu review Kepala TU.`,
+      type: 'FINANCE_CASH_SESSION_REVIEW_REQUESTED',
       data: {
         module: 'FINANCE',
         sessionId: result.session.id,
         sessionNo: result.session.sessionNo,
         businessDate: result.session.businessDate,
+        approvalStatus: result.approvalStatus,
         varianceAmount: result.varianceAmount,
         expectedClosingBalance: result.session.expectedClosingBalance,
         actualClosingBalance: result.session.actualClosingBalance,
@@ -7300,6 +7593,228 @@ export const closeFinanceCashSession = asyncHandler(async (req: Request, res: Re
 
   res.status(200).json(
     new ApiResponse(200, { session: result.session }, 'Sesi kas harian berhasil ditutup'),
+  );
+});
+
+export const decideFinanceCashSessionAsHeadTu = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceHeadTuActor((req as any).user || {});
+  const policy = await ensureFinanceCashSessionApprovalPolicy();
+
+  const sessionId = Number(req.params.id);
+  if (!Number.isInteger(sessionId) || sessionId <= 0) {
+    throw new ApiError(400, 'ID sesi kas tidak valid');
+  }
+
+  const payload = decideFinanceCashSessionSchema.parse(req.body || {});
+  if (!payload.approved && !payload.note?.trim()) {
+    throw new ApiError(400, 'Catatan keputusan wajib diisi saat menolak settlement kas');
+  }
+
+  const before = await prisma.financeCashSession.findUnique({
+    where: { id: sessionId },
+    include: financeCashSessionRecordInclude,
+  });
+
+  if (!before) {
+    throw new ApiError(404, 'Sesi kas tidak ditemukan');
+  }
+
+  if (before.status !== FinanceCashSessionStatus.CLOSED) {
+    throw new ApiError(400, 'Sesi kas ini belum ditutup');
+  }
+
+  if (before.approvalStatus !== FinanceCashSessionApprovalStatus.PENDING_HEAD_TU) {
+    throw new ApiError(400, 'Sesi kas ini tidak sedang menunggu review Kepala TU');
+  }
+
+  const varianceAbs = Math.abs(Number(before.varianceAmount || 0));
+  const nextApprovalStatus = payload.approved
+    ? !isFinanceNonZeroAmount(before.varianceAmount) || varianceAbs < Number(policy.principalApprovalThresholdAmount || 0)
+      ? FinanceCashSessionApprovalStatus.APPROVED
+      : FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL
+    : FinanceCashSessionApprovalStatus.REJECTED;
+
+  const updated = await prisma.financeCashSession.update({
+    where: { id: sessionId },
+    data: {
+      approvalStatus: nextApprovalStatus,
+      headTuApproved: payload.approved,
+      headTuDecisionById: actor.id,
+      headTuDecisionAt: new Date(),
+      headTuDecisionNote: payload.note?.trim() || null,
+      ...(payload.approved
+        ? {}
+        : {
+            principalApproved: null,
+            principalDecisionById: null,
+            principalDecisionAt: null,
+            principalDecisionNote: null,
+          }),
+    },
+    include: financeCashSessionRecordInclude,
+  });
+
+  const serializedSession = serializeFinanceCashSessionRecord(updated);
+
+  await createFinanceInternalNotifications({
+    scopes:
+      nextApprovalStatus === FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL
+        ? ['PRINCIPAL', 'FINANCE']
+        : ['FINANCE'],
+    title:
+      nextApprovalStatus === FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL
+        ? 'Settlement Kas Diteruskan ke Kepala Sekolah'
+        : payload.approved
+          ? 'Settlement Kas Disetujui Kepala TU'
+          : 'Settlement Kas Ditolak Kepala TU',
+    message:
+      nextApprovalStatus === FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL
+        ? `Settlement kas ${serializedSession.sessionNo} diteruskan ke Kepala Sekolah karena selisih mencapai Rp${Math.round(
+            Number(serializedSession.varianceAmount || 0),
+          ).toLocaleString('id-ID')}.`
+        : payload.approved
+          ? `Settlement kas ${serializedSession.sessionNo} disetujui oleh Kepala TU.`
+          : `Settlement kas ${serializedSession.sessionNo} ditolak oleh Kepala TU.`,
+    type:
+      nextApprovalStatus === FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL
+        ? 'FINANCE_CASH_SESSION_HEAD_TU_ESCALATED'
+        : payload.approved
+          ? 'FINANCE_CASH_SESSION_HEAD_TU_APPROVED'
+          : 'FINANCE_CASH_SESSION_HEAD_TU_REJECTED',
+    data: {
+      module: 'FINANCE',
+      sessionId: serializedSession.id,
+      sessionNo: serializedSession.sessionNo,
+      businessDate: serializedSession.businessDate,
+      varianceAmount: serializedSession.varianceAmount,
+      approvalStatus: serializedSession.approvalStatus,
+      note: payload.note?.trim() || null,
+    },
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'UPDATE',
+      'FINANCE_CASH_SESSION_HEAD_TU_DECISION',
+      before.id,
+      before,
+      serializedSession,
+      payload.approved
+        ? nextApprovalStatus === FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL
+          ? 'Kepala TU meneruskan settlement kas ke Kepala Sekolah'
+          : 'Kepala TU menyetujui settlement kas'
+        : 'Kepala TU menolak settlement kas',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat keputusan settlement kas oleh Head TU', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      { session: serializedSession },
+      nextApprovalStatus === FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL
+        ? 'Settlement kas diteruskan ke Kepala Sekolah'
+        : payload.approved
+          ? 'Settlement kas disetujui Kepala TU'
+          : 'Settlement kas ditolak Kepala TU',
+    ),
+  );
+});
+
+export const decideFinanceCashSessionAsPrincipal = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinancePrincipalActor((req as any).user || {});
+
+  const sessionId = Number(req.params.id);
+  if (!Number.isInteger(sessionId) || sessionId <= 0) {
+    throw new ApiError(400, 'ID sesi kas tidak valid');
+  }
+
+  const payload = decideFinanceCashSessionSchema.parse(req.body || {});
+  if (!payload.approved && !payload.note?.trim()) {
+    throw new ApiError(400, 'Catatan keputusan wajib diisi saat menolak settlement kas');
+  }
+
+  const before = await prisma.financeCashSession.findUnique({
+    where: { id: sessionId },
+    include: financeCashSessionRecordInclude,
+  });
+
+  if (!before) {
+    throw new ApiError(404, 'Sesi kas tidak ditemukan');
+  }
+
+  if (before.status !== FinanceCashSessionStatus.CLOSED) {
+    throw new ApiError(400, 'Sesi kas ini belum ditutup');
+  }
+
+  if (before.approvalStatus !== FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL) {
+    throw new ApiError(400, 'Sesi kas ini tidak sedang menunggu keputusan Kepala Sekolah');
+  }
+
+  const updated = await prisma.financeCashSession.update({
+    where: { id: sessionId },
+    data: {
+      approvalStatus: payload.approved
+        ? FinanceCashSessionApprovalStatus.APPROVED
+        : FinanceCashSessionApprovalStatus.REJECTED,
+      principalApproved: payload.approved,
+      principalDecisionById: actor.id,
+      principalDecisionAt: new Date(),
+      principalDecisionNote: payload.note?.trim() || null,
+    },
+    include: financeCashSessionRecordInclude,
+  });
+
+  const serializedSession = serializeFinanceCashSessionRecord(updated);
+
+  await createFinanceInternalNotifications({
+    scopes: ['FINANCE', 'HEAD_TU'],
+    title: payload.approved
+      ? 'Settlement Kas Disetujui Kepala Sekolah'
+      : 'Settlement Kas Ditolak Kepala Sekolah',
+    message: payload.approved
+      ? `Settlement kas ${serializedSession.sessionNo} disetujui oleh Kepala Sekolah.`
+      : `Settlement kas ${serializedSession.sessionNo} ditolak oleh Kepala Sekolah.`,
+    type: payload.approved
+      ? 'FINANCE_CASH_SESSION_PRINCIPAL_APPROVED'
+      : 'FINANCE_CASH_SESSION_PRINCIPAL_REJECTED',
+    data: {
+      module: 'FINANCE',
+      sessionId: serializedSession.id,
+      sessionNo: serializedSession.sessionNo,
+      businessDate: serializedSession.businessDate,
+      varianceAmount: serializedSession.varianceAmount,
+      approvalStatus: serializedSession.approvalStatus,
+      note: payload.note?.trim() || null,
+    },
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'UPDATE',
+      'FINANCE_CASH_SESSION_PRINCIPAL_DECISION',
+      before.id,
+      before,
+      serializedSession,
+      payload.approved ? 'Kepala Sekolah menyetujui settlement kas' : 'Kepala Sekolah menolak settlement kas',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat keputusan settlement kas oleh principal', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      { session: serializedSession },
+      payload.approved ? 'Settlement kas disetujui Kepala Sekolah' : 'Settlement kas ditolak Kepala Sekolah',
+    ),
   );
 });
 

@@ -22,6 +22,14 @@ export type FinancePaymentReversalStatus =
   | 'APPLIED';
 export type FinancePaymentReversalPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'FINANCE_APPLY' | 'NONE';
 export type FinanceCashSessionStatus = 'OPEN' | 'CLOSED';
+export type FinanceCashSessionApprovalStatus =
+  | 'NOT_SUBMITTED'
+  | 'PENDING_HEAD_TU'
+  | 'PENDING_PRINCIPAL'
+  | 'APPROVED'
+  | 'AUTO_APPROVED'
+  | 'REJECTED';
+export type FinanceCashSessionPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'NONE';
 export type SemesterCode = 'ODD' | 'EVEN';
 export type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE' | 'LATE_FEE' | 'ESCALATION';
 
@@ -61,6 +69,14 @@ export interface FinanceReminderDispatchResult {
   runAt: string;
   disabledByPolicy: boolean;
   policy: FinanceReminderPolicy;
+}
+
+export interface FinanceCashSessionApprovalPolicy {
+  zeroVarianceAutoApproved: boolean;
+  requireVarianceNote: boolean;
+  principalApprovalThresholdAmount: number;
+  notes?: string | null;
+  updatedAt: string;
 }
 
 export interface FinanceComponent {
@@ -578,6 +594,8 @@ export interface FinanceCashSession {
   sessionNo: string;
   businessDate: string;
   status: FinanceCashSessionStatus;
+  approvalStatus: FinanceCashSessionApprovalStatus;
+  pendingActor: FinanceCashSessionPendingActor;
   openingBalance: number;
   expectedCashIn: number;
   expectedCashOut: number;
@@ -590,6 +608,26 @@ export interface FinanceCashSession {
   closedAt?: string | null;
   openingNote?: string | null;
   closingNote?: string | null;
+  headTuDecision: {
+    approved: boolean | null;
+    decidedAt?: string | null;
+    note?: string | null;
+    by?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+  };
+  principalDecision: {
+    approved: boolean | null;
+    decidedAt?: string | null;
+    note?: string | null;
+    by?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+  };
   openedBy?: {
     id: number;
     name: string;
@@ -636,6 +674,10 @@ export interface FinanceCashSessionListResult {
     totalSessions: number;
     openCount: number;
     closedCount: number;
+    pendingHeadTuCount: number;
+    pendingPrincipalCount: number;
+    approvedCount: number;
+    rejectedCount: number;
     totalExpectedCashIn: number;
     totalExpectedCashOut: number;
     totalExpectedClosingBalance: number;
@@ -1249,6 +1291,8 @@ export const staffFinanceService = {
   async listCashSessions(params?: {
     openedById?: number;
     status?: FinanceCashSessionStatus;
+    approvalStatus?: FinanceCashSessionApprovalStatus;
+    pendingFor?: 'HEAD_TU' | 'PRINCIPAL';
     businessDate?: string;
     mine?: boolean;
     limit?: number;
@@ -1280,6 +1324,39 @@ export const staffFinanceService = {
   ) {
     const response = await api.post<ApiResponse<{ session: FinanceCashSession }>>(
       `/payments/cash-sessions/${sessionId}/close`,
+      payload,
+    );
+    return response.data.data.session;
+  },
+
+  async getCashSessionApprovalPolicy() {
+    const response = await api.get<ApiResponse<{ policy: FinanceCashSessionApprovalPolicy }>>(
+      '/payments/cash-session-policy',
+    );
+    return response.data.data.policy;
+  },
+
+  async updateCashSessionApprovalPolicy(
+    payload: Partial<Omit<FinanceCashSessionApprovalPolicy, 'updatedAt'>>,
+  ) {
+    const response = await api.put<ApiResponse<{ policy: FinanceCashSessionApprovalPolicy }>>(
+      '/payments/cash-session-policy',
+      payload,
+    );
+    return response.data.data.policy;
+  },
+
+  async decideCashSessionAsHeadTu(sessionId: number, payload: { approved: boolean; note?: string }) {
+    const response = await api.post<ApiResponse<{ session: FinanceCashSession }>>(
+      `/payments/cash-sessions/${sessionId}/head-tu-decision`,
+      payload,
+    );
+    return response.data.data.session;
+  },
+
+  async decideCashSessionAsPrincipal(sessionId: number, payload: { approved: boolean; note?: string }) {
+    const response = await api.post<ApiResponse<{ session: FinanceCashSession }>>(
+      `/payments/cash-sessions/${sessionId}/principal-decision`,
       payload,
     );
     return response.data.data.session;

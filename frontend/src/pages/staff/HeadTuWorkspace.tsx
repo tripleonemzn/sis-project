@@ -69,6 +69,26 @@ function formatDateTime(value?: string | null) {
   });
 }
 
+function formatCurrency(value: number) {
+  return `Rp ${Math.round(value || 0).toLocaleString('id-ID')}`;
+}
+
+function getCashSessionApprovalTone(session: FinanceCashSession) {
+  if (session.approvalStatus === 'PENDING_HEAD_TU') {
+    return { label: 'Menunggu Review', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  }
+  if (session.approvalStatus === 'PENDING_PRINCIPAL') {
+    return { label: 'Ke Kepala Sekolah', className: 'bg-sky-50 text-sky-700 border border-sky-200' };
+  }
+  if (session.approvalStatus === 'REJECTED') {
+    return { label: 'Ditolak', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
+  }
+  if (session.approvalStatus === 'AUTO_APPROVED') {
+    return { label: 'Auto Approved', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+  }
+  return { label: 'Disetujui', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+}
+
 function escapeHtml(value: string) {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -270,6 +290,14 @@ const HeadTuWorkspace = () => {
     refetchOnWindowFocus: false,
   });
 
+  const financeCashSessionApprovalsQuery = useQuery({
+    queryKey: ['head-tu-finance-cash-session-approvals'],
+    queryFn: () => staffFinanceService.listCashSessions({ pendingFor: 'HEAD_TU', limit: 20 }),
+    enabled: isFinancePage || isDashboardPage,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
   const headTuWriteOffDecisionMutation = useMutation({
     mutationFn: (payload: { requestId: number; approved: boolean }) =>
       staffFinanceService.decideWriteOffAsHeadTu(payload.requestId, {
@@ -298,6 +326,27 @@ const HeadTuWorkspace = () => {
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
       toast.error(apiError?.response?.data?.message || 'Gagal memproses approval reversal pembayaran');
+    },
+  });
+
+  const headTuCashSessionDecisionMutation = useMutation({
+    mutationFn: (payload: { sessionId: number; approved: boolean }) =>
+      staffFinanceService.decideCashSessionAsHeadTu(payload.sessionId, {
+        approved: payload.approved,
+        note: payload.approved ? undefined : 'Settlement kas ditolak oleh Kepala TU',
+      }),
+    onSuccess: (_, payload) => {
+      queryClient.invalidateQueries({ queryKey: ['head-tu-finance-cash-session-approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['head-tu-finance-cash-sessions'] });
+      toast.success(
+        payload.approved
+          ? 'Settlement kas diproses oleh Head TU'
+          : 'Settlement kas ditolak oleh Head TU',
+      );
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal memproses settlement kas');
     },
   });
 
@@ -391,6 +440,7 @@ const HeadTuWorkspace = () => {
   const pendingHeadTuWriteOffs = financeWriteOffsQuery.data?.requests || [];
   const pendingHeadTuPaymentReversals = financePaymentReversalsQuery.data?.requests || [];
   const financeCashSessions = financeCashSessionsQuery.data?.sessions || [];
+  const pendingHeadTuCashSessions = financeCashSessionApprovalsQuery.data?.sessions || [];
   const financeCashSessionSummary = financeCashSessionsQuery.data?.summary;
   const officeSummary = officeSummaryQuery.data;
   const examCardDetails = examCardsQuery.data || [];
@@ -1888,6 +1938,14 @@ const HeadTuWorkspace = () => {
                 <div className="text-rose-700">Total selisih</div>
                 <div className="mt-1 font-semibold text-rose-900">Rp {Math.round(financeCashSessionSummary?.totalVarianceAmount || 0).toLocaleString('id-ID')}</div>
               </div>
+              <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2">
+                <div className="text-sky-700">Pending review</div>
+                <div className="mt-1 font-semibold text-sky-900">{financeCashSessionSummary?.pendingHeadTuCount || 0}</div>
+              </div>
+              <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2">
+                <div className="text-violet-700">Pending Kepsek</div>
+                <div className="mt-1 font-semibold text-violet-900">{financeCashSessionSummary?.pendingPrincipalCount || 0}</div>
+              </div>
             </div>
           </div>
           {financeCashSessionsQuery.isLoading ? (
@@ -1905,6 +1963,7 @@ const HeadTuWorkspace = () => {
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Expected Closing</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aktual</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Selisih</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Approval</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -1931,6 +1990,96 @@ const HeadTuWorkspace = () => {
                         {session.varianceAmount == null
                           ? '-'
                           : `Rp ${Math.round(session.varianceAmount).toLocaleString('id-ID')}`}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-700">
+                        <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${getCashSessionApprovalTone(session).className}`}>
+                          {getCashSessionApprovalTone(session).label}
+                        </span>
+                        {session.headTuDecision.note ? (
+                          <div className="mt-1 text-xs text-gray-500">{session.headTuDecision.note}</div>
+                        ) : null}
+                        {session.principalDecision.note ? (
+                          <div className="mt-1 text-xs text-gray-500">{session.principalDecision.note}</div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Approval Settlement Kas</h3>
+              <p className="mt-1 text-xs text-gray-500">
+                Review settlement kas dengan selisih sebelum disetujui final atau diteruskan ke Kepala Sekolah.
+              </p>
+            </div>
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+              {pendingHeadTuCashSessions.length} menunggu
+            </span>
+          </div>
+          {financeCashSessionApprovalsQuery.isLoading ? (
+            <div className="py-10 flex items-center justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+            </div>
+          ) : pendingHeadTuCashSessions.length === 0 ? (
+            <div className="py-10 text-center text-sm text-gray-500">Tidak ada settlement kas yang menunggu review.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sesi</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Expected</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aktual</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Selisih</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {pendingHeadTuCashSessions.map((session: FinanceCashSession) => (
+                    <tr key={session.id}>
+                      <td className="px-6 py-4 text-sm text-gray-700">
+                        <div className="font-semibold text-gray-900">{session.sessionNo}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {formatDate(session.businessDate)} • {session.openedBy?.name || '-'}
+                        </div>
+                        {session.closingNote ? (
+                          <div className="text-xs text-gray-500 mt-1">{session.closingNote}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-right text-gray-700">
+                        {formatCurrency(session.expectedClosingBalance)}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-right text-gray-700">
+                        {session.actualClosingBalance == null ? '-' : formatCurrency(session.actualClosingBalance)}
+                      </td>
+                      <td className={`px-6 py-4 text-sm text-right font-semibold ${Number(session.varianceAmount || 0) === 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                        {session.varianceAmount == null ? '-' : formatCurrency(session.varianceAmount)}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-right">
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => headTuCashSessionDecisionMutation.mutate({ sessionId: session.id, approved: false })}
+                            disabled={headTuCashSessionDecisionMutation.isPending}
+                            className="inline-flex items-center rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                          >
+                            Tolak
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => headTuCashSessionDecisionMutation.mutate({ sessionId: session.id, approved: true })}
+                            disabled={headTuCashSessionDecisionMutation.isPending}
+                            className="inline-flex items-center rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                          >
+                            Proses
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
