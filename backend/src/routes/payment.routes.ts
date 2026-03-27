@@ -15,6 +15,7 @@ import {
   generateFinanceInvoices,
   getFinanceReminderPolicy,
   listFinanceAdjustmentRules,
+  listFinanceCashSessions,
   listFinanceComponents,
   listFinanceCredits,
   listFinanceInvoices,
@@ -26,6 +27,8 @@ import {
   previewFinanceInvoices,
   applyFinanceWriteOff,
   applyFinancePaymentReversal,
+  closeFinanceCashSession,
+  openFinanceCashSession,
   updateFinanceInvoiceInstallments,
   updateFinanceAdjustmentRule,
   updateFinanceComponent,
@@ -59,6 +62,9 @@ router.patch('/adjustments/:id', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), 
 router.post('/invoices/preview', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), previewFinanceInvoices);
 router.post('/invoices/generate', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), generateFinanceInvoices);
 router.get('/invoices', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceInvoices);
+router.get('/cash-sessions', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceCashSessions);
+router.post('/cash-sessions/open', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), openFinanceCashSession);
+router.post('/cash-sessions/:id/close', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), closeFinanceCashSession);
 router.post('/invoices/:id/late-fees/apply', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), applyFinanceInvoiceLateFees);
 router.patch('/invoices/:id/installments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceInvoiceInstallments);
 router.post('/invoices/:id/payments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinancePayment);

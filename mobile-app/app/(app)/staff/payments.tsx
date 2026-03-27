@@ -18,6 +18,7 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import {
   type FinanceAdjustmentKind,
   staffFinanceApi,
+  type StaffFinanceCashSession,
   type FinanceComponentPeriodicity,
   type StaffFinanceCreditBalanceRow,
   type StaffFinanceCreditTransaction,
@@ -95,6 +96,14 @@ function formatDate(value?: string | null) {
     month: 'short',
     year: 'numeric',
   });
+}
+
+function getTodayInputDate() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function getStatusBadge(status: FinanceInvoiceStatus) {
@@ -276,6 +285,13 @@ function getPaymentReversalStatusBadge(status: StaffFinancePaymentReversalReques
   return { label: 'Ditolak', bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
 }
 
+function getCashSessionStatusBadge(status: StaffFinanceCashSession['status']) {
+  if (status === 'OPEN') {
+    return { label: 'Masih Dibuka', bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  }
+  return { label: 'Sudah Ditutup', bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
+}
+
 export default function StaffPaymentsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -387,6 +403,11 @@ export default function StaffPaymentsScreen() {
   const [reversalAmount, setReversalAmount] = useState('');
   const [reversalReason, setReversalReason] = useState('');
   const [reversalNote, setReversalNote] = useState('');
+  const [cashSessionBusinessDate, setCashSessionBusinessDate] = useState(getTodayInputDate());
+  const [cashSessionOpeningBalance, setCashSessionOpeningBalance] = useState('0');
+  const [cashSessionOpeningNote, setCashSessionOpeningNote] = useState('');
+  const [cashSessionActualClosingBalance, setCashSessionActualClosingBalance] = useState('');
+  const [cashSessionClosingNote, setCashSessionClosingNote] = useState('');
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-staff-finance-active-year'],
@@ -542,6 +563,17 @@ export default function StaffPaymentsScreen() {
       }),
   });
 
+  const cashSessionsQuery = useQuery({
+    queryKey: ['mobile-staff-finance-cash-sessions'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () =>
+      staffFinanceApi.listCashSessions({
+        mine: true,
+        limit: 10,
+      }),
+    staleTime: 30_000,
+  });
+
   const writeOffsQuery = useQuery({
     queryKey: ['mobile-staff-finance-write-offs'],
     enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
@@ -573,6 +605,9 @@ export default function StaffPaymentsScreen() {
   const creditSummary = creditsQuery.data?.summary;
   const creditBalances = creditsQuery.data?.balances || [];
   const recentRefunds = creditsQuery.data?.recentRefunds || [];
+  const cashSessionSummary = cashSessionsQuery.data?.summary;
+  const cashSessions = cashSessionsQuery.data?.sessions || [];
+  const activeCashSession = cashSessionsQuery.data?.activeSession || null;
   const writeOffSummary = writeOffsQuery.data?.summary;
   const writeOffRequests = writeOffsQuery.data?.requests || [];
   const paymentReversalSummary = paymentReversalsQuery.data?.summary;
@@ -625,6 +660,13 @@ export default function StaffPaymentsScreen() {
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5);
   }, [invoices]);
+
+  useEffect(() => {
+    setCashSessionActualClosingBalance(
+      activeCashSession ? String(Number(activeCashSession.expectedClosingBalance || 0)) : '',
+    );
+    setCashSessionClosingNote('');
+  }, [activeCashSession?.id, activeCashSession?.expectedClosingBalance]);
 
   const resetComponentForm = () => {
     setEditingComponentId(null);
@@ -766,6 +808,7 @@ export default function StaffPaymentsScreen() {
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-adjustments'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-invoices'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-credits'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-cash-sessions'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-write-offs'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-payment-reversals'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-dashboard'] });
@@ -1088,6 +1131,38 @@ export default function StaffPaymentsScreen() {
     onError: (error: unknown) => notifyApiError(error, 'Gagal mencatat refund saldo kredit.'),
   });
 
+  const openCashSessionMutation = useMutation({
+    mutationFn: () =>
+      staffFinanceApi.openCashSession({
+        businessDate: cashSessionBusinessDate,
+        openingBalance: Number(cashSessionOpeningBalance || 0),
+        note: cashSessionOpeningNote.trim() || undefined,
+      }),
+    onSuccess: () => {
+      notifySuccess('Sesi kas harian berhasil dibuka.');
+      setCashSessionBusinessDate(getTodayInputDate());
+      setCashSessionOpeningBalance('0');
+      setCashSessionOpeningNote('');
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal membuka sesi kas harian.'),
+  });
+
+  const closeCashSessionMutation = useMutation({
+    mutationFn: (session: StaffFinanceCashSession) =>
+      staffFinanceApi.closeCashSession(session.id, {
+        actualClosingBalance: Number(cashSessionActualClosingBalance || 0),
+        note: cashSessionClosingNote.trim() || undefined,
+      }),
+    onSuccess: () => {
+      notifySuccess('Sesi kas harian berhasil ditutup.');
+      setCashSessionActualClosingBalance('');
+      setCashSessionClosingNote('');
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal menutup sesi kas harian.'),
+  });
+
   const createWriteOffMutation = useMutation({
     mutationFn: () => {
       if (!writeOffTargetInvoice) throw new Error('Tagihan belum dipilih');
@@ -1296,6 +1371,28 @@ export default function StaffPaymentsScreen() {
       return;
     }
     dispatchReminderMutation.mutate(mode);
+  };
+
+  const handleOpenCashSession = () => {
+    const openingBalance = Number(cashSessionOpeningBalance || 0);
+    if (!cashSessionBusinessDate) {
+      notifyApiError(null, 'Tanggal bisnis sesi kas wajib diisi.');
+      return;
+    }
+    if (!Number.isFinite(openingBalance) || openingBalance < 0) {
+      notifyApiError(null, 'Saldo awal sesi kas tidak valid.');
+      return;
+    }
+    openCashSessionMutation.mutate();
+  };
+
+  const handleCloseCashSession = (session: StaffFinanceCashSession) => {
+    const actualClosingBalance = Number(cashSessionActualClosingBalance || 0);
+    if (!Number.isFinite(actualClosingBalance) || actualClosingBalance < 0) {
+      notifyApiError(null, 'Saldo aktual penutupan tidak valid.');
+      return;
+    }
+    closeCashSessionMutation.mutate(session);
   };
 
   const startPaying = (invoice: StaffFinanceInvoice) => {
@@ -1804,6 +1901,272 @@ export default function StaffPaymentsScreen() {
           >
             <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>Pengaturan Policy Reminder</Text>
           </Pressable>
+        </View>
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#fcd34d',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Cashier Closing Harian</Text>
+        <Text style={{ color: '#475569', fontSize: 12, lineHeight: 18, marginBottom: 10 }}>
+          Settlement kas membaca pembayaran tunai, refund tunai, dan koreksi reversal tunai dalam rentang sesi yang sama.
+        </Text>
+
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
+          <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <View style={{ backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fde68a', borderRadius: 10, padding: 10 }}>
+              <Text style={{ color: '#b45309', fontSize: 11 }}>Sesi terbuka</Text>
+              <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 18 }}>{cashSessionSummary?.openCount || 0}</Text>
+            </View>
+          </View>
+          <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <View style={{ backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, padding: 10 }}>
+              <Text style={{ color: '#475569', fontSize: 11 }}>Sesi ditutup</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 18 }}>{cashSessionSummary?.closedCount || 0}</Text>
+            </View>
+          </View>
+          <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <View style={{ backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#86efac', borderRadius: 10, padding: 10 }}>
+              <Text style={{ color: '#166534', fontSize: 11 }}>Kas masuk</Text>
+              <Text style={{ color: '#14532d', fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
+                {formatCurrency(cashSessionSummary?.totalExpectedCashIn || 0)}
+              </Text>
+            </View>
+          </View>
+          <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <View style={{ backgroundColor: '#fff1f2', borderWidth: 1, borderColor: '#fda4af', borderRadius: 10, padding: 10 }}>
+              <Text style={{ color: '#be123c', fontSize: 11 }}>Kas keluar</Text>
+              <Text style={{ color: '#9f1239', fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
+                {formatCurrency(cashSessionSummary?.totalExpectedCashOut || 0)}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {!activeCashSession ? (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#fde68a',
+              backgroundColor: '#fffbeb',
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 10,
+            }}
+          >
+            <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 8 }}>Buka sesi kas baru</Text>
+            <TextInput
+              value={cashSessionBusinessDate}
+              onChangeText={setCashSessionBusinessDate}
+              placeholder="Tanggal bisnis (YYYY-MM-DD)"
+              placeholderTextColor="#94a3b8"
+              style={{ borderWidth: 1, borderColor: '#fcd34d', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+            />
+            <TextInput
+              keyboardType="numeric"
+              value={cashSessionOpeningBalance}
+              onChangeText={setCashSessionOpeningBalance}
+              placeholder="Saldo awal kas"
+              placeholderTextColor="#94a3b8"
+              style={{ borderWidth: 1, borderColor: '#fcd34d', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+            />
+            <TextInput
+              value={cashSessionOpeningNote}
+              onChangeText={setCashSessionOpeningNote}
+              placeholder="Catatan pembukaan sesi (opsional)"
+              placeholderTextColor="#94a3b8"
+              multiline
+              style={{ borderWidth: 1, borderColor: '#fcd34d', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, minHeight: 72, textAlignVertical: 'top', color: '#0f172a', backgroundColor: '#fff' }}
+            />
+            <Pressable
+              onPress={handleOpenCashSession}
+              disabled={openCashSessionMutation.isPending}
+              style={{
+                marginTop: 10,
+                backgroundColor: openCashSessionMutation.isPending ? '#fdba74' : '#d97706',
+                borderRadius: 10,
+                paddingVertical: 10,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>
+                {openCashSessionMutation.isPending ? 'Membuka sesi...' : 'Buka Sesi Kas'}
+              </Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#fde68a',
+              backgroundColor: '#fffbeb',
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 10,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#92400e', fontWeight: '700' }}>{activeCashSession.sessionNo}</Text>
+                <Text style={{ color: '#92400e', fontSize: 12, marginTop: 2 }}>
+                  {formatDate(activeCashSession.businessDate)} • dibuka {formatDate(activeCashSession.openedAt)}
+                </Text>
+              </View>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: getCashSessionStatusBadge(activeCashSession.status).border,
+                  backgroundColor: getCashSessionStatusBadge(activeCashSession.status).bg,
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                }}
+              >
+                <Text style={{ color: getCashSessionStatusBadge(activeCashSession.status).text, fontSize: 11, fontWeight: '700' }}>
+                  {getCashSessionStatusBadge(activeCashSession.status).label}
+                </Text>
+              </View>
+            </View>
+            <Text style={{ color: '#475569', fontSize: 12, marginBottom: 2 }}>
+              Saldo awal <Text style={{ color: '#0f172a', fontWeight: '700' }}>{formatCurrency(activeCashSession.openingBalance)}</Text>
+            </Text>
+            <Text style={{ color: '#475569', fontSize: 12, marginBottom: 2 }}>
+              Kas masuk <Text style={{ color: '#166534', fontWeight: '700' }}>{formatCurrency(activeCashSession.expectedCashIn)}</Text> • kas keluar{' '}
+              <Text style={{ color: '#be123c', fontWeight: '700' }}>{formatCurrency(activeCashSession.expectedCashOut)}</Text>
+            </Text>
+            <Text style={{ color: '#475569', fontSize: 12, marginBottom: 8 }}>
+              Expected closing <Text style={{ color: '#0f172a', fontWeight: '700' }}>{formatCurrency(activeCashSession.expectedClosingBalance)}</Text> •{' '}
+              {activeCashSession.totalCashPayments} pembayaran • {activeCashSession.totalCashRefunds} refund
+            </Text>
+            <TextInput
+              keyboardType="numeric"
+              value={cashSessionActualClosingBalance}
+              onChangeText={setCashSessionActualClosingBalance}
+              placeholder="Saldo aktual saat tutup sesi"
+              placeholderTextColor="#94a3b8"
+              style={{ borderWidth: 1, borderColor: '#fcd34d', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+            />
+            <TextInput
+              value={cashSessionClosingNote}
+              onChangeText={setCashSessionClosingNote}
+              placeholder="Catatan closing / settlement"
+              placeholderTextColor="#94a3b8"
+              multiline
+              style={{ borderWidth: 1, borderColor: '#fcd34d', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, minHeight: 72, textAlignVertical: 'top', color: '#0f172a', backgroundColor: '#fff' }}
+            />
+            <Pressable
+              onPress={() => handleCloseCashSession(activeCashSession)}
+              disabled={closeCashSessionMutation.isPending}
+              style={{
+                marginTop: 10,
+                backgroundColor: closeCashSessionMutation.isPending ? '#94a3b8' : '#0f172a',
+                borderRadius: 10,
+                paddingVertical: 10,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>
+                {closeCashSessionMutation.isPending ? 'Menutup sesi...' : 'Tutup Sesi Kas'}
+              </Text>
+            </Pressable>
+          </View>
+        )}
+
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#e2e8f0',
+            borderRadius: 10,
+            padding: 10,
+            backgroundColor: '#fff',
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Aktivitas tunai sesi</Text>
+          {(activeCashSession || cashSessions[0])?.recentCashPayments?.length ? (
+            (activeCashSession || cashSessions[0])?.recentCashPayments.map((payment) => (
+              <View key={`cash-payment-${payment.id}`} style={{ borderTopWidth: 1, borderTopColor: '#eef2ff', paddingVertical: 8 }}>
+                <Text style={{ color: '#166534', fontWeight: '700' }}>{payment.paymentNo || 'Pembayaran tunai'}</Text>
+                <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                  {payment.student?.name || '-'} • {payment.invoice?.invoiceNo || '-'} • {formatDate(payment.paidAt)}
+                </Text>
+                <Text style={{ color: '#166534', fontSize: 12, marginTop: 2 }}>
+                  Net {formatCurrency(payment.netCashAmount)}
+                  {payment.reversedAmount > 0 ? ` • reversal ${formatCurrency(payment.reversedAmount)}` : ''}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <Text style={{ color: '#64748b', fontSize: 12 }}>Belum ada pembayaran tunai di sesi ini.</Text>
+          )}
+          {(activeCashSession || cashSessions[0])?.recentCashRefunds?.length ? (
+            (activeCashSession || cashSessions[0])?.recentCashRefunds.map((refund) => (
+              <View key={`cash-refund-${refund.id}`} style={{ borderTopWidth: 1, borderTopColor: '#eef2ff', paddingVertical: 8 }}>
+                <Text style={{ color: '#be123c', fontWeight: '700' }}>{refund.refundNo}</Text>
+                <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                  {refund.student.name} • {refund.student.studentClass?.name || '-'} • {formatDate(refund.refundedAt)}
+                </Text>
+                <Text style={{ color: '#be123c', fontSize: 12, marginTop: 2 }}>{formatCurrency(refund.amount)}</Text>
+              </View>
+            ))
+          ) : null}
+        </View>
+
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#e2e8f0',
+            borderRadius: 10,
+            padding: 10,
+            backgroundColor: '#fff',
+          }}
+        >
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Riwayat sesi kas</Text>
+          {cashSessionsQuery.isLoading ? (
+            <Text style={{ color: '#64748b', fontSize: 12 }}>Memuat sesi kas...</Text>
+          ) : cashSessions.length === 0 ? (
+            <Text style={{ color: '#64748b', fontSize: 12 }}>Belum ada sesi kas tercatat.</Text>
+          ) : (
+            cashSessions.slice(0, 4).map((session) => {
+              const badge = getCashSessionStatusBadge(session.status);
+              return (
+                <View key={session.id} style={{ borderTopWidth: 1, borderTopColor: '#eef2ff', paddingVertical: 8 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#0f172a', fontWeight: '700' }}>{session.sessionNo}</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        {formatDate(session.businessDate)} • expected {formatCurrency(session.expectedClosingBalance)}
+                      </Text>
+                      {session.varianceAmount != null ? (
+                        <Text style={{ color: Number(session.varianceAmount) === 0 ? '#166534' : '#be123c', fontSize: 12, marginTop: 2 }}>
+                          Selisih {formatCurrency(session.varianceAmount)}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View
+                      style={{
+                        borderWidth: 1,
+                        borderColor: badge.border,
+                        backgroundColor: badge.bg,
+                        borderRadius: 999,
+                        paddingHorizontal: 8,
+                        paddingVertical: 2,
+                      }}
+                    >
+                      <Text style={{ color: badge.text, fontWeight: '700', fontSize: 11 }}>{badge.label}</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })
+          )}
         </View>
       </View>
 

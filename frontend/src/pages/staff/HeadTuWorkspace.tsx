@@ -24,6 +24,7 @@ import { userService } from '../../services/user.service';
 import { permissionService, type StudentPermission } from '../../services/permission.service';
 import {
   staffFinanceService,
+  type FinanceCashSession,
   type FinancePaymentReversalRequest,
   type FinanceReportSnapshot,
   type FinanceWriteOffRequest,
@@ -261,6 +262,14 @@ const HeadTuWorkspace = () => {
     refetchOnWindowFocus: false,
   });
 
+  const financeCashSessionsQuery = useQuery({
+    queryKey: ['head-tu-finance-cash-sessions'],
+    queryFn: () => staffFinanceService.listCashSessions({ mine: false, limit: 8 }),
+    enabled: isFinancePage || isDashboardPage,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
   const headTuWriteOffDecisionMutation = useMutation({
     mutationFn: (payload: { requestId: number; approved: boolean }) =>
       staffFinanceService.decideWriteOffAsHeadTu(payload.requestId, {
@@ -381,6 +390,8 @@ const HeadTuWorkspace = () => {
   const financeSnapshot = financeSnapshotQuery.data as FinanceReportSnapshot | undefined;
   const pendingHeadTuWriteOffs = financeWriteOffsQuery.data?.requests || [];
   const pendingHeadTuPaymentReversals = financePaymentReversalsQuery.data?.requests || [];
+  const financeCashSessions = financeCashSessionsQuery.data?.sessions || [];
+  const financeCashSessionSummary = financeCashSessionsQuery.data?.summary;
   const officeSummary = officeSummaryQuery.data;
   const examCardDetails = examCardsQuery.data || [];
   const officeLetters = officeLettersQuery.data?.letters || [];
@@ -1854,6 +1865,73 @@ const HeadTuWorkspace = () => {
                       <td className="px-6 py-4 text-sm text-gray-600 text-right">{row.invoiceCount.toLocaleString('id-ID')}</td>
                       <td className="px-6 py-4 text-sm text-gray-600 text-right">Rp {row.totalOutstanding.toLocaleString('id-ID')}</td>
                       <td className="px-6 py-4 text-sm text-gray-600 text-right">{row.overdueCount.toLocaleString('id-ID')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Settlement Kas Harian</h3>
+              <p className="mt-1 text-xs text-gray-500">Monitoring read-only sesi kas bendahara, termasuk expected closing dan selisih settlement.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+                <div className="text-amber-700">Sesi terbuka</div>
+                <div className="mt-1 font-semibold text-amber-900">{financeCashSessionSummary?.openCount || 0}</div>
+              </div>
+              <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2">
+                <div className="text-rose-700">Total selisih</div>
+                <div className="mt-1 font-semibold text-rose-900">Rp {Math.round(financeCashSessionSummary?.totalVarianceAmount || 0).toLocaleString('id-ID')}</div>
+              </div>
+            </div>
+          </div>
+          {financeCashSessionsQuery.isLoading ? (
+            <div className="py-10 flex items-center justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+            </div>
+          ) : financeCashSessions.length === 0 ? (
+            <div className="py-10 text-center text-sm text-gray-500">Belum ada sesi kas harian yang tercatat.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sesi</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Expected Closing</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aktual</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Selisih</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {financeCashSessions.map((session: FinanceCashSession) => (
+                    <tr key={session.id}>
+                      <td className="px-6 py-4 text-sm text-gray-700">
+                        <div className="font-semibold text-gray-900">{session.sessionNo}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {formatDate(session.businessDate)} • {session.openedBy?.name || '-'}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {session.status === 'OPEN' ? 'Masih dibuka' : `Ditutup ${formatDateTime(session.closedAt)}`}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-right text-gray-700">
+                        Rp {Math.round(session.expectedClosingBalance || 0).toLocaleString('id-ID')}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-right text-gray-700">
+                        {session.actualClosingBalance == null
+                          ? '-'
+                          : `Rp ${Math.round(session.actualClosingBalance).toLocaleString('id-ID')}`}
+                      </td>
+                      <td className={`px-6 py-4 text-sm text-right font-semibold ${Number(session.varianceAmount || 0) === 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                        {session.varianceAmount == null
+                          ? '-'
+                          : `Rp ${Math.round(session.varianceAmount).toLocaleString('id-ID')}`}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

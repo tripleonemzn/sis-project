@@ -107,6 +107,8 @@ model User {
   headTuDecidedFinancePaymentReversals FinancePaymentReversalRequest[]    @relation("FinancePaymentReversalHeadTuDecisionBy")
   principalDecidedFinancePaymentReversals FinancePaymentReversalRequest[] @relation("FinancePaymentReversalPrincipalDecisionBy")
   appliedFinancePaymentReversals FinancePaymentReversalRequest[]          @relation("FinancePaymentReversalAppliedBy")
+  openedFinanceCashSessions      FinanceCashSession[]                     @relation("FinanceCashSessionOpenedBy")
+  closedFinanceCashSessions      FinanceCashSession[]                     @relation("FinanceCashSessionClosedBy")
   pklAssessments                 PklAssessment[]
   reportNotes                    ReportNote[]
   achievements                   StudentAchievement[]
@@ -1790,6 +1792,36 @@ model FinanceRefund {
   @@map("finance_refunds")
 }
 
+model FinanceCashSession {
+  id                    Int                      @id @default(autoincrement())
+  sessionNo             String                   @unique
+  businessDate          DateTime
+  status                FinanceCashSessionStatus @default(OPEN)
+  openingBalance        Float                    @default(0)
+  expectedCashIn        Float                    @default(0)
+  expectedCashOut       Float                    @default(0)
+  expectedClosingBalance Float                   @default(0)
+  actualClosingBalance  Float?
+  varianceAmount        Float?
+  totalCashPayments     Int                      @default(0)
+  totalCashRefunds      Int                      @default(0)
+  openedById            Int
+  openedAt              DateTime                 @default(now())
+  openingNote           String?
+  closedById            Int?
+  closedAt              DateTime?
+  closingNote           String?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  openedBy              User                     @relation("FinanceCashSessionOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
+  closedBy              User?                    @relation("FinanceCashSessionClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+
+  @@index([openedById, status])
+  @@index([businessDate, status])
+  @@index([status, openedAt])
+  @@map("finance_cash_sessions")
+}
+
 model ExamPacket {
   id                     Int            @id @default(autoincrement())
   title                  String
@@ -2200,6 +2232,11 @@ enum FinancePaymentReversalStatus {
   APPROVED
   REJECTED
   APPLIED
+}
+
+enum FinanceCashSessionStatus {
+  OPEN
+  CLOSED
 }
 
 enum Gender {

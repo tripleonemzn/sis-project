@@ -20,6 +20,7 @@ import { PrincipalBudgetRequest, PrincipalBudgetRequestStatus } from '../../../s
 import { usePrincipalApprovalsQuery } from '../../../src/features/principal/usePrincipalApprovalsQuery';
 import {
   staffFinanceApi,
+  type StaffFinanceCashSession,
   type StaffFinancePaymentReversalRequest,
   type StaffFinanceWriteOffRequest,
 } from '../../../src/features/staff/staffFinanceApi';
@@ -69,6 +70,13 @@ export default function PrincipalApprovalsScreen() {
     staleTime: 60 * 1000,
   });
 
+  const cashSessionsQuery = useQuery({
+    queryKey: ['mobile-principal-cash-sessions', user?.id],
+    enabled: isAuthenticated && user?.role === 'PRINCIPAL',
+    queryFn: () => staffFinanceApi.listCashSessions({ mine: false, limit: 8 }),
+    staleTime: 60 * 1000,
+  });
+
   const decisionMutation = useMutation({
     mutationFn: (payload: { id: number; status: 'APPROVED' | 'REJECTED' }) =>
       principalApi.updateBudgetRequestStatus(payload),
@@ -112,6 +120,8 @@ export default function PrincipalApprovalsScreen() {
   });
 
   const approvals = useMemo(() => approvalsQuery.data?.approvals || [], [approvalsQuery.data?.approvals]);
+  const financeCashSessions = useMemo(() => cashSessionsQuery.data?.sessions || [], [cashSessionsQuery.data]);
+  const financeCashSummary = cashSessionsQuery.data?.summary;
   const filteredApprovals = useMemo(() => {
     const query = search.trim().toLowerCase();
     return approvals.filter((item) => {
@@ -218,12 +228,14 @@ export default function PrincipalApprovalsScreen() {
           refreshing={
             (approvalsQuery.isFetching && !approvalsQuery.isLoading) ||
             (writeOffsQuery.isFetching && !writeOffsQuery.isLoading) ||
-            (paymentReversalsQuery.isFetching && !paymentReversalsQuery.isLoading)
+            (paymentReversalsQuery.isFetching && !paymentReversalsQuery.isLoading) ||
+            (cashSessionsQuery.isFetching && !cashSessionsQuery.isLoading)
           }
           onRefresh={() => {
             void approvalsQuery.refetch();
             void writeOffsQuery.refetch();
             void paymentReversalsQuery.refetch();
+            void cashSessionsQuery.refetch();
           }}
         />
       }
@@ -415,6 +427,81 @@ export default function PrincipalApprovalsScreen() {
           </View>
         )
       ) : null}
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#d6e2f7',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Settlement Kas Harian</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+              Monitoring sesi kas bendahara untuk expected closing dan selisih settlement harian.
+            </Text>
+          </View>
+          <View
+            style={{
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: '#bfdbfe',
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              backgroundColor: '#eff6ff',
+            }}
+          >
+            <Text style={{ color: '#1d4ed8', fontSize: 11, fontWeight: '700' }}>{financeCashSummary?.openCount || 0} terbuka</Text>
+          </View>
+        </View>
+
+        {cashSessionsQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil settlement kas..." />
+        ) : financeCashSessions.length > 0 ? (
+          <View>
+            {financeCashSessions.slice(0, 4).map((session: StaffFinanceCashSession) => (
+              <View
+                key={session.id}
+                style={{
+                  borderTopWidth: 1,
+                  borderTopColor: '#eef3ff',
+                  paddingVertical: 10,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{session.sessionNo}</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  {new Date(session.businessDate).toLocaleDateString('id-ID')} • {session.openedBy?.name || '-'} • {session.status === 'OPEN' ? 'Masih dibuka' : 'Sudah ditutup'}
+                </Text>
+                <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                  Expected {formatCurrency(session.expectedClosingBalance)} • aktual {session.actualClosingBalance == null ? '-' : formatCurrency(session.actualClosingBalance)}
+                </Text>
+                {session.varianceAmount != null ? (
+                  <Text style={{ color: Number(session.varianceAmount) === 0 ? '#166534' : '#b91c1c', fontSize: 12, marginTop: 3 }}>
+                    Selisih {formatCurrency(session.varianceAmount)}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        ) : (
+          <View
+            style={{
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderStyle: 'dashed',
+              backgroundColor: '#fff',
+              padding: 14,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada sesi kas harian yang tercatat.</Text>
+          </View>
+        )}
+      </View>
 
       <View
         style={{

@@ -21,6 +21,7 @@ export type FinancePaymentReversalStatus =
   | 'REJECTED'
   | 'APPLIED';
 export type FinancePaymentReversalPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'FINANCE_APPLY' | 'NONE';
+export type FinanceCashSessionStatus = 'OPEN' | 'CLOSED';
 export type SemesterCode = 'ODD' | 'EVEN';
 export type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE' | 'LATE_FEE' | 'ESCALATION';
 
@@ -570,6 +571,76 @@ export interface FinanceCreditBalanceListResult {
   };
   balances: FinanceCreditBalanceRow[];
   recentRefunds: FinanceRefundRecord[];
+}
+
+export interface FinanceCashSession {
+  id: number;
+  sessionNo: string;
+  businessDate: string;
+  status: FinanceCashSessionStatus;
+  openingBalance: number;
+  expectedCashIn: number;
+  expectedCashOut: number;
+  expectedClosingBalance: number;
+  actualClosingBalance?: number | null;
+  varianceAmount?: number | null;
+  totalCashPayments: number;
+  totalCashRefunds: number;
+  openedAt: string;
+  closedAt?: string | null;
+  openingNote?: string | null;
+  closingNote?: string | null;
+  openedBy?: {
+    id: number;
+    name: string;
+    role?: string | null;
+  } | null;
+  closedBy?: {
+    id: number;
+    name: string;
+    role?: string | null;
+  } | null;
+  recentCashPayments: Array<{
+    id: number;
+    paymentNo?: string | null;
+    amount: number;
+    netCashAmount: number;
+    reversedAmount: number;
+    paidAt?: string | null;
+    student?: {
+      id: number;
+      name: string;
+      username: string;
+      nis?: string | null;
+      nisn?: string | null;
+      studentClass?: {
+        id: number;
+        name: string;
+        level: string;
+      } | null;
+    } | null;
+    invoice?: {
+      id: number;
+      invoiceNo: string;
+      periodKey: string;
+      semester: SemesterCode;
+    } | null;
+  }>;
+  recentCashRefunds: FinanceRefundRecord[];
+}
+
+export interface FinanceCashSessionListResult {
+  activeSession: FinanceCashSession | null;
+  sessions: FinanceCashSession[];
+  summary: {
+    totalSessions: number;
+    openCount: number;
+    closedCount: number;
+    totalExpectedCashIn: number;
+    totalExpectedCashOut: number;
+    totalExpectedClosingBalance: number;
+    totalVarianceAmount: number;
+  };
 }
 
 export type FinanceInvoiceGenerationDetailStatus =
@@ -1173,6 +1244,45 @@ export const staffFinanceService = {
       params,
     });
     return response.data.data;
+  },
+
+  async listCashSessions(params?: {
+    openedById?: number;
+    status?: FinanceCashSessionStatus;
+    businessDate?: string;
+    mine?: boolean;
+    limit?: number;
+  }) {
+    const response = await api.get<ApiResponse<FinanceCashSessionListResult>>('/payments/cash-sessions', {
+      params,
+    });
+    return response.data.data;
+  },
+
+  async openCashSession(payload?: {
+    businessDate?: string;
+    openingBalance?: number;
+    note?: string;
+  }) {
+    const response = await api.post<ApiResponse<{ session: FinanceCashSession }>>(
+      '/payments/cash-sessions/open',
+      payload || {},
+    );
+    return response.data.data.session;
+  },
+
+  async closeCashSession(
+    sessionId: number,
+    payload: {
+      actualClosingBalance: number;
+      note?: string;
+    },
+  ) {
+    const response = await api.post<ApiResponse<{ session: FinanceCashSession }>>(
+      `/payments/cash-sessions/${sessionId}/close`,
+      payload,
+    );
+    return response.data.data.session;
   },
 
   async createRefund(

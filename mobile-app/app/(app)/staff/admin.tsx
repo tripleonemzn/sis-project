@@ -14,6 +14,7 @@ import {
 } from '../../../src/features/staff/staffAdministrationApi';
 import {
   staffFinanceApi,
+  type StaffFinanceCashSession,
   type StaffFinancePaymentReversalRequest,
   type StaffFinanceWriteOffRequest,
   type StaffFinanceReportSnapshot,
@@ -159,6 +160,13 @@ export default function StaffAdminScreen() {
     staleTime: 60 * 1000,
   });
 
+  const headTuCashSessionsQuery = useQuery({
+    queryKey: ['mobile-head-tu-finance-cash-sessions', user?.id],
+    enabled: isAuthenticated && user?.role === 'STAFF' && staffDivision === 'HEAD_TU',
+    queryFn: () => staffFinanceApi.listCashSessions({ mine: false, limit: 8 }),
+    staleTime: 60 * 1000,
+  });
+
   const headTuWriteOffDecisionMutation = useMutation({
     mutationFn: (payload: { requestId: number; approved: boolean }) =>
       staffFinanceApi.decideWriteOffAsHeadTu(payload.requestId, {
@@ -246,12 +254,18 @@ export default function StaffAdminScreen() {
     () => headTuPaymentReversalsQuery.data?.requests || [],
     [headTuPaymentReversalsQuery.data],
   );
+  const headTuCashSessions = useMemo(
+    () => headTuCashSessionsQuery.data?.sessions || [],
+    [headTuCashSessionsQuery.data],
+  );
+  const headTuCashSummary = headTuCashSessionsQuery.data?.summary;
 
   const handleRefresh = () => {
     void dataQuery.refetch();
     if (staffDivision === 'HEAD_TU') {
       void headTuWriteOffsQuery.refetch();
       void headTuPaymentReversalsQuery.refetch();
+      void headTuCashSessionsQuery.refetch();
     }
   };
 
@@ -943,6 +957,60 @@ export default function StaffAdminScreen() {
             <Text style={{ color: '#475569' }}>
               Staff keuangan: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{headTuFinanceStaff}</Text>
             </Text>
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Settlement Kas Harian</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  Monitoring read-only sesi kas bendahara untuk expected closing dan selisih settlement.
+                </Text>
+              </View>
+              <View
+                style={{
+                  backgroundColor: '#fff7ed',
+                  borderColor: '#fed7aa',
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                }}
+              >
+                <Text style={{ color: '#c2410c', fontSize: 11, fontWeight: '700' }}>{headTuCashSummary?.openCount || 0} terbuka</Text>
+              </View>
+            </View>
+            {headTuCashSessionsQuery.isLoading ? (
+              <QueryStateView type="loading" message="Mengambil settlement kas..." />
+            ) : headTuCashSessions.length === 0 ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada sesi kas harian yang tercatat.</Text>
+            ) : (
+              headTuCashSessions.slice(0, 4).map((session: StaffFinanceCashSession) => (
+                <View key={session.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{session.sessionNo}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                    {formatDate(session.businessDate)} • {session.openedBy?.name || '-'} • {session.status === 'OPEN' ? 'Masih dibuka' : 'Sudah ditutup'}
+                  </Text>
+                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+                    Expected {formatCurrency(session.expectedClosingBalance)} • aktual {session.actualClosingBalance == null ? '-' : formatCurrency(session.actualClosingBalance)}
+                  </Text>
+                  {session.varianceAmount != null ? (
+                    <Text style={{ color: Number(session.varianceAmount) === 0 ? '#166534' : '#b91c1c', fontSize: 12, marginTop: 2 }}>
+                      Selisih {formatCurrency(session.varianceAmount)}
+                    </Text>
+                  ) : null}
+                </View>
+              ))
+            )}
           </View>
 
           <View

@@ -6,6 +6,7 @@ import { academicYearService, type AcademicYear } from '../../services/academicY
 import {
   type FinanceAdjustmentKind,
   type FinanceAdjustmentRule,
+  type FinanceCashSession,
   type FinanceCreditBalanceRow,
   type FinanceCreditTransaction,
   type FinanceRefundRecord,
@@ -254,6 +255,13 @@ function getPaymentReversalStatusMeta(status: FinancePaymentReversalRequest['sta
   return { label: 'Ditolak', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
 }
 
+function getCashSessionStatusMeta(status: FinanceCashSession['status']) {
+  if (status === 'OPEN') {
+    return { label: 'Masih Dibuka', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+  }
+  return { label: 'Sudah Ditutup', className: 'bg-slate-50 text-slate-700 border border-slate-200' };
+}
+
 export const StaffFinancePage = () => {
   const queryClient = useQueryClient();
 
@@ -363,6 +371,11 @@ export const StaffFinancePage = () => {
   const [reversalAmount, setReversalAmount] = useState('');
   const [reversalReason, setReversalReason] = useState('');
   const [reversalNote, setReversalNote] = useState('');
+  const [cashSessionBusinessDate, setCashSessionBusinessDate] = useState(getTodayInputDate());
+  const [cashSessionOpeningBalance, setCashSessionOpeningBalance] = useState('0');
+  const [cashSessionOpeningNote, setCashSessionOpeningNote] = useState('');
+  const [cashSessionActualClosingBalance, setCashSessionActualClosingBalance] = useState('');
+  const [cashSessionClosingNote, setCashSessionClosingNote] = useState('');
 
   const yearsQuery = useQuery({
     queryKey: ['staff-finance-academic-years'],
@@ -424,6 +437,16 @@ export const StaffFinancePage = () => {
         limit: 50,
         search: creditSearch.trim() || undefined,
       }),
+  });
+
+  const cashSessionsQuery = useQuery({
+    queryKey: ['staff-finance-cash-sessions'],
+    queryFn: () =>
+      staffFinanceService.listCashSessions({
+        mine: true,
+        limit: 10,
+      }),
+    staleTime: 30_000,
   });
 
   const writeOffsQuery = useQuery({
@@ -562,6 +585,9 @@ export const StaffFinancePage = () => {
   const creditSummary = creditsQuery.data?.summary;
   const creditBalances = creditsQuery.data?.balances || [];
   const recentRefunds = creditsQuery.data?.recentRefunds || [];
+  const cashSessionSummary = cashSessionsQuery.data?.summary;
+  const cashSessions = cashSessionsQuery.data?.sessions || [];
+  const activeCashSession = cashSessionsQuery.data?.activeSession || null;
   const writeOffSummary = writeOffsQuery.data?.summary;
   const writeOffRequests = writeOffsQuery.data?.requests || [];
   const paymentReversalSummary = paymentReversalsQuery.data?.summary;
@@ -610,6 +636,10 @@ export const StaffFinancePage = () => {
   }, [invoices]);
 
   const reportSnapshot = reportsQuery.data as FinanceReportSnapshot | undefined;
+
+  useEffect(() => {
+    resetCashSessionCloseForm(activeCashSession);
+  }, [activeCashSession?.id, activeCashSession?.expectedClosingBalance]);
 
   const resetComponentForm = () => {
     setEditingComponentId(null);
@@ -729,6 +759,19 @@ export const StaffFinancePage = () => {
     setReversalAmount('');
     setReversalReason('');
     setReversalNote('');
+  };
+
+  const resetCashSessionOpenForm = () => {
+    setCashSessionBusinessDate(getTodayInputDate());
+    setCashSessionOpeningBalance('0');
+    setCashSessionOpeningNote('');
+  };
+
+  const resetCashSessionCloseForm = (session?: FinanceCashSession | null) => {
+    setCashSessionActualClosingBalance(
+      session ? String(Number(session.expectedClosingBalance || 0)) : '',
+    );
+    setCashSessionClosingNote('');
   };
 
   const openWriteOffModal = (invoice: FinanceInvoice) => {
@@ -995,6 +1038,7 @@ export const StaffFinancePage = () => {
       queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-credits'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-cash-sessions'] });
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -1062,10 +1106,46 @@ export const StaffFinancePage = () => {
       queryClient.invalidateQueries({ queryKey: ['staff-finance-credits'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-cash-sessions'] });
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
       toast.error(apiError?.response?.data?.message || 'Gagal mencatat refund saldo kredit');
+    },
+  });
+
+  const openCashSessionMutation = useMutation({
+    mutationFn: () =>
+      staffFinanceService.openCashSession({
+        businessDate: cashSessionBusinessDate,
+        openingBalance: Number(cashSessionOpeningBalance || 0),
+        note: cashSessionOpeningNote.trim() || undefined,
+      }),
+    onSuccess: () => {
+      toast.success('Sesi kas harian berhasil dibuka');
+      resetCashSessionOpenForm();
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-cash-sessions'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal membuka sesi kas harian');
+    },
+  });
+
+  const closeCashSessionMutation = useMutation({
+    mutationFn: (session: FinanceCashSession) =>
+      staffFinanceService.closeCashSession(session.id, {
+        actualClosingBalance: Number(cashSessionActualClosingBalance || 0),
+        note: cashSessionClosingNote.trim() || undefined,
+      }),
+    onSuccess: () => {
+      toast.success('Sesi kas harian berhasil ditutup');
+      resetCashSessionCloseForm(null);
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-cash-sessions'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal menutup sesi kas harian');
     },
   });
 
@@ -1147,6 +1227,7 @@ export const StaffFinancePage = () => {
       queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-credits'] });
       queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-cash-sessions'] });
     },
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
@@ -1211,6 +1292,28 @@ export const StaffFinancePage = () => {
       toast.error(apiError?.response?.data?.message || 'Gagal menjalankan reminder jatuh tempo');
     },
   });
+
+  const handleOpenCashSession = () => {
+    const openingBalance = Number(cashSessionOpeningBalance || 0);
+    if (!cashSessionBusinessDate) {
+      toast.error('Tanggal bisnis sesi kas wajib diisi');
+      return;
+    }
+    if (!Number.isFinite(openingBalance) || openingBalance < 0) {
+      toast.error('Saldo awal sesi kas tidak valid');
+      return;
+    }
+    openCashSessionMutation.mutate();
+  };
+
+  const handleCloseCashSession = (session: FinanceCashSession) => {
+    const actualClosingBalance = Number(cashSessionActualClosingBalance || 0);
+    if (!Number.isFinite(actualClosingBalance) || actualClosingBalance < 0) {
+      toast.error('Saldo aktual penutupan tidak valid');
+      return;
+    }
+    closeCashSessionMutation.mutate(session);
+  };
 
   const startPaying = (invoice: FinanceInvoice) => {
     setSelectedInvoice(invoice);
@@ -1879,6 +1982,284 @@ export const StaffFinancePage = () => {
             >
               Pengaturan Policy
             </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_0.8fr] gap-4">
+        <div className="rounded-xl border border-amber-100 bg-white shadow-sm overflow-hidden">
+          <div className="px-4 py-4 border-b border-amber-50 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="text-xs uppercase tracking-wider text-amber-700">Cashier Closing Harian</div>
+              <p className="mt-1 text-sm text-slate-600">
+                Sesi kas membaca transaksi tunai yang dicatat petugas dalam rentang sesi, jadi settlement harian tetap akurat tanpa mengubah alur pembayaran yang sudah berjalan.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs lg:min-w-[280px]">
+              <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+                <div className="text-amber-700">Sesi terbuka</div>
+                <div className="mt-1 font-semibold text-amber-900">{cashSessionSummary?.openCount || 0}</div>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <div className="text-slate-700">Sesi ditutup</div>
+                <div className="mt-1 font-semibold text-slate-900">{cashSessionSummary?.closedCount || 0}</div>
+              </div>
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+                <div className="text-emerald-700">Kas masuk</div>
+                <div className="mt-1 font-semibold text-emerald-900">
+                  {formatCurrency(cashSessionSummary?.totalExpectedCashIn || 0)}
+                </div>
+              </div>
+              <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2">
+                <div className="text-rose-700">Kas keluar</div>
+                <div className="mt-1 font-semibold text-rose-900">
+                  {formatCurrency(cashSessionSummary?.totalExpectedCashOut || 0)}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-[0.95fr_1.05fr] gap-4 p-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+              {!activeCashSession ? (
+                <>
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Buka Sesi Kas</div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Gunakan saat shift kasir dimulai. Semua pembayaran tunai dan refund tunai setelah sesi dibuka akan masuk ke ringkasan settlement.
+                    </p>
+                  </div>
+                  <input
+                    type="date"
+                    value={cashSessionBusinessDate}
+                    onChange={(event) => setCashSessionBusinessDate(event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    value={cashSessionOpeningBalance}
+                    onChange={(event) => setCashSessionOpeningBalance(event.target.value)}
+                    placeholder="Saldo awal kas"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                  <textarea
+                    value={cashSessionOpeningNote}
+                    onChange={(event) => setCashSessionOpeningNote(event.target.value)}
+                    placeholder="Catatan pembukaan sesi (opsional)"
+                    rows={3}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleOpenCashSession}
+                    disabled={openCashSessionMutation.isPending}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    {openCashSessionMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    Buka Sesi Hari Ini
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">{activeCashSession.sessionNo}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {formatDate(activeCashSession.businessDate)} • dibuka {formatDate(activeCashSession.openedAt)}
+                      </div>
+                    </div>
+                    <span
+                      className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${getCashSessionStatusMeta(
+                        activeCashSession.status,
+                      ).className}`}
+                    >
+                      {getCashSessionStatusMeta(activeCashSession.status).label}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      <div className="text-slate-500">Saldo awal</div>
+                      <div className="mt-1 font-semibold text-slate-900">
+                        {formatCurrency(activeCashSession.openingBalance)}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-emerald-100 bg-white px-3 py-2">
+                      <div className="text-emerald-700">Expected closing</div>
+                      <div className="mt-1 font-semibold text-emerald-900">
+                        {formatCurrency(activeCashSession.expectedClosingBalance)}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-emerald-100 bg-white px-3 py-2">
+                      <div className="text-emerald-700">Kas masuk</div>
+                      <div className="mt-1 font-semibold text-emerald-900">
+                        {formatCurrency(activeCashSession.expectedCashIn)}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-rose-100 bg-white px-3 py-2">
+                      <div className="text-rose-700">Kas keluar</div>
+                      <div className="mt-1 font-semibold text-rose-900">
+                        {formatCurrency(activeCashSession.expectedCashOut)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-dashed border-amber-200 bg-white px-3 py-3 text-xs text-slate-600">
+                    {activeCashSession.totalCashPayments} pembayaran tunai • {activeCashSession.totalCashRefunds} refund tunai
+                    {activeCashSession.openingNote ? ` • catatan: ${activeCashSession.openingNote}` : ''}
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    value={cashSessionActualClosingBalance}
+                    onChange={(event) => setCashSessionActualClosingBalance(event.target.value)}
+                    placeholder="Saldo kas aktual saat tutup"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                  <textarea
+                    value={cashSessionClosingNote}
+                    onChange={(event) => setCashSessionClosingNote(event.target.value)}
+                    placeholder="Catatan closing / settlement"
+                    rows={3}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleCloseCashSession(activeCashSession)}
+                    disabled={closeCashSessionMutation.isPending}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {closeCashSessionMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    Tutup Sesi Kas
+                  </button>
+                </>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <div className="rounded-xl border border-gray-100 bg-white">
+                <div className="px-4 py-3 border-b border-gray-100">
+                  <div className="text-sm font-semibold text-gray-900">Aktivitas Tunai Dalam Sesi</div>
+                  <p className="mt-1 text-xs text-slate-500">Pembayaran tunai bersih dan refund tunai terbaru pada sesi aktif atau sesi terakhir.</p>
+                </div>
+                <div className="p-4 space-y-3">
+                  {cashSessionsQuery.isLoading ? (
+                    <div className="text-sm text-slate-500">Memuat settlement kas...</div>
+                  ) : (activeCashSession || cashSessions[0]) ? (
+                    <>
+                      {((activeCashSession || cashSessions[0])?.recentCashPayments || []).length === 0 ? (
+                        <div className="rounded-lg border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-500">
+                          Belum ada pembayaran tunai yang masuk ke sesi ini.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {(activeCashSession || cashSessions[0])?.recentCashPayments.map((payment) => (
+                            <div key={`cash-payment-${payment.id}`} className="rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-emerald-900">{payment.paymentNo || 'Pembayaran tunai'}</div>
+                                  <div className="mt-1 text-[11px] text-emerald-800">
+                                    {payment.student?.name || '-'} • {payment.invoice?.invoiceNo || '-'} • {formatDate(payment.paidAt)}
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-sm font-bold text-emerald-900">{formatCurrency(payment.netCashAmount)}</div>
+                                  {payment.reversedAmount > 0 ? (
+                                    <div className="mt-1 text-[11px] text-rose-700">reversal {formatCurrency(payment.reversedAmount)}</div>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {((activeCashSession || cashSessions[0])?.recentCashRefunds || []).length > 0 ? (
+                        <div className="space-y-2">
+                          {(activeCashSession || cashSessions[0])?.recentCashRefunds.map((refund) => (
+                            <div key={`cash-refund-${refund.id}`} className="rounded-lg border border-rose-100 bg-rose-50/60 px-3 py-2">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-rose-900">{refund.refundNo}</div>
+                                  <div className="mt-1 text-[11px] text-rose-800">
+                                    {refund.student.name} • {refund.student.studentClass?.name || '-'} • {formatDate(refund.refundedAt)}
+                                  </div>
+                                </div>
+                                <div className="text-sm font-bold text-rose-900">{formatCurrency(refund.amount)}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <div className="text-sm text-slate-500">Belum ada sesi kas harian.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100">
+                  <div className="text-sm font-semibold text-gray-900">Riwayat Sesi Kas</div>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {cashSessionsQuery.isLoading ? (
+                    <div className="px-4 py-6 text-sm text-slate-500">Memuat riwayat sesi...</div>
+                  ) : cashSessions.length === 0 ? (
+                    <div className="px-4 py-6 text-sm text-slate-500">Belum ada sesi kas yang tercatat.</div>
+                  ) : (
+                    cashSessions.slice(0, 6).map((session) => {
+                      const status = getCashSessionStatusMeta(session.status);
+                      return (
+                        <div key={session.id} className="px-4 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-slate-900">{session.sessionNo}</div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                {formatDate(session.businessDate)} • dibuka {formatDate(session.openedAt)}
+                                {session.closedAt ? ` • ditutup ${formatDate(session.closedAt)}` : ''}
+                              </div>
+                              <div className="mt-1 text-[11px] text-slate-500">
+                                Kas masuk {formatCurrency(session.expectedCashIn)} • kas keluar {formatCurrency(session.expectedCashOut)} • expected close {formatCurrency(session.expectedClosingBalance)}
+                              </div>
+                              {session.varianceAmount != null ? (
+                                <div className={`mt-1 text-[11px] ${Number(session.varianceAmount) === 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                  Selisih {formatCurrency(session.varianceAmount)}
+                                </div>
+                              ) : null}
+                            </div>
+                            <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${status.className}`}>
+                              {status.label}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+          <div className="px-4 py-4 border-b border-slate-100">
+            <div className="text-xs uppercase tracking-wider text-slate-600">Kontrol Settlement</div>
+            <p className="mt-1 text-sm text-slate-600">
+              Closing tunai ini menyatu dengan pembayaran, refund, dan reversal tunai sehingga operasional kas harian bendahara tetap sinkron.
+            </p>
+          </div>
+          <div className="p-4 space-y-3 text-sm text-slate-600">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+              Pembayaran tunai baru akan langsung menambah expected cash pada sesi yang sedang aktif.
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+              Refund tunai akan mengurangi expected cash out dan ikut tercatat pada riwayat sesi yang sama.
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+              Jika ada reversal pada pembayaran tunai, net kas masuk sesi ikut terkoreksi sehingga angka closing tidak misleading.
+            </div>
+            <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-3 text-amber-900">
+              Head TU dan Kepala Sekolah bisa membaca settlement ini melalui endpoint finance yang sama, jadi monitoring lintas web/mobile tetap konsisten.
+            </div>
           </div>
         </div>
       </div>

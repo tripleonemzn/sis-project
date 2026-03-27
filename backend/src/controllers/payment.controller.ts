@@ -1,5 +1,6 @@
 import {
   FinanceAdjustmentKind,
+  FinanceCashSessionStatus,
   FinanceCreditTransactionKind,
   FinanceComponentPeriodicity,
   FinanceInvoiceStatus,
@@ -87,6 +88,12 @@ function makeFinancePaymentReversalNo(studentId: number): string {
   return `RVP-${studentId}-${ts}${rand}`;
 }
 
+function makeFinanceCashSessionNo(userId: number): string {
+  const ts = Date.now().toString().slice(-7);
+  const rand = Math.floor(Math.random() * 900 + 100).toString();
+  return `CSH-${userId}-${ts}${rand}`;
+}
+
 function resolveFinancePaymentReversalAvailability(payment: {
   amount: number;
   allocatedAmount?: number | null;
@@ -131,6 +138,30 @@ function makeFinanceWriteOffNo(studentId: number): string {
 
 function normalizeFinanceAmount(value: number): number {
   return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function getFinanceEndOfDay(date: Date) {
+  const nextDate = new Date(date);
+  nextDate.setHours(23, 59, 59, 999);
+  return nextDate;
+}
+
+function normalizeFinanceBusinessDateInput(value?: string | Date | null) {
+  if (value instanceof Date) {
+    return getFinanceStartOfDay(value);
+  }
+
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return getFinanceStartOfDay(new Date());
+  }
+
+  const parsed = new Date(`${raw}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new ApiError(400, 'Tanggal bisnis sesi kas tidak valid');
+  }
+
+  return getFinanceStartOfDay(parsed);
 }
 
 function inferFinanceWrittenOffAmount(params: {
@@ -855,6 +886,153 @@ function serializeFinanceRefundRecord(refund: {
     createdAt: refund.createdAt,
     student: refund.student,
     createdBy: refund.createdBy || null,
+  };
+}
+
+type SerializedFinanceCashSessionSummary = {
+  expectedCashIn: number;
+  expectedCashOut: number;
+  expectedClosingBalance: number;
+  totalCashPayments: number;
+  totalCashRefunds: number;
+  recentCashPayments: Array<{
+    id: number;
+    paymentNo: string | null;
+    amount: number;
+    netCashAmount: number;
+    reversedAmount: number;
+    paidAt: Date | null;
+    student: {
+      id: number;
+      name: string;
+      username: string;
+      nis?: string | null;
+      nisn?: string | null;
+      studentClass?: {
+        id: number;
+        name: string;
+        level?: string | null;
+      } | null;
+    } | null;
+    invoice: {
+      id: number;
+      invoiceNo: string;
+      periodKey: string;
+      semester: Semester;
+    } | null;
+  }>;
+  recentCashRefunds: Array<ReturnType<typeof serializeFinanceRefundRecord>>;
+};
+
+type SerializedFinanceCashSession = {
+  id: number;
+  sessionNo: string;
+  businessDate: Date;
+  status: FinanceCashSessionStatus;
+  openingBalance: number;
+  expectedCashIn: number;
+  expectedCashOut: number;
+  expectedClosingBalance: number;
+  actualClosingBalance: number | null;
+  varianceAmount: number | null;
+  totalCashPayments: number;
+  totalCashRefunds: number;
+  openedAt: Date;
+  closedAt: Date | null;
+  openingNote: string | null;
+  closingNote: string | null;
+  openedBy: {
+    id: number;
+    name: string;
+    role: string | null;
+  } | null;
+  closedBy: {
+    id: number;
+    name: string;
+    role: string | null;
+  } | null;
+  recentCashPayments: SerializedFinanceCashSessionSummary['recentCashPayments'];
+  recentCashRefunds: SerializedFinanceCashSessionSummary['recentCashRefunds'];
+};
+
+function serializeFinanceCashSessionRecord(
+  session: {
+    id: number;
+    sessionNo: string;
+    businessDate: Date;
+    status: FinanceCashSessionStatus;
+    openingBalance: number;
+    expectedCashIn?: number | null;
+    expectedCashOut?: number | null;
+    expectedClosingBalance?: number | null;
+    actualClosingBalance?: number | null;
+    varianceAmount?: number | null;
+    totalCashPayments?: number | null;
+    totalCashRefunds?: number | null;
+    openedAt: Date;
+    closedAt?: Date | null;
+    openingNote?: string | null;
+    closingNote?: string | null;
+    openedBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+    closedBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+  },
+  summary?: SerializedFinanceCashSessionSummary | null,
+): SerializedFinanceCashSession {
+  const resolvedSummary =
+    summary ||
+    ({
+      expectedCashIn: Number(session.expectedCashIn || 0),
+      expectedCashOut: Number(session.expectedCashOut || 0),
+      expectedClosingBalance: Number(session.expectedClosingBalance || 0),
+      totalCashPayments: Number(session.totalCashPayments || 0),
+      totalCashRefunds: Number(session.totalCashRefunds || 0),
+      recentCashPayments: [],
+      recentCashRefunds: [],
+    } satisfies SerializedFinanceCashSessionSummary);
+
+  return {
+    id: session.id,
+    sessionNo: session.sessionNo,
+    businessDate: session.businessDate,
+    status: session.status,
+    openingBalance: Number(session.openingBalance || 0),
+    expectedCashIn: normalizeFinanceAmount(resolvedSummary.expectedCashIn),
+    expectedCashOut: normalizeFinanceAmount(resolvedSummary.expectedCashOut),
+    expectedClosingBalance: normalizeFinanceAmount(resolvedSummary.expectedClosingBalance),
+    actualClosingBalance:
+      session.actualClosingBalance == null ? null : normalizeFinanceAmount(Number(session.actualClosingBalance || 0)),
+    varianceAmount:
+      session.varianceAmount == null ? null : normalizeFinanceAmount(Number(session.varianceAmount || 0)),
+    totalCashPayments: Number(resolvedSummary.totalCashPayments || 0),
+    totalCashRefunds: Number(resolvedSummary.totalCashRefunds || 0),
+    openedAt: session.openedAt,
+    closedAt: session.closedAt || null,
+    openingNote: session.openingNote || null,
+    closingNote: session.closingNote || null,
+    openedBy: session.openedBy
+      ? {
+          id: session.openedBy.id,
+          name: session.openedBy.name,
+          role: session.openedBy.role || null,
+        }
+      : null,
+    closedBy: session.closedBy
+      ? {
+          id: session.closedBy.id,
+          name: session.closedBy.name,
+          role: session.closedBy.role || null,
+        }
+      : null,
+    recentCashPayments: resolvedSummary.recentCashPayments,
+    recentCashRefunds: resolvedSummary.recentCashRefunds,
   };
 }
 
@@ -2018,6 +2196,14 @@ async function ensureFinancePaymentReversalViewer(authUser: { id?: number; role?
   return user;
 }
 
+async function ensureFinanceCashSessionViewer(authUser: { id?: number; role?: string }) {
+  const user = await loadFinanceActorContext(authUser);
+  if (!user.isFinanceStaff && !user.isHeadTu && !user.isPrincipal) {
+    throw new ApiError(403, 'Akses finance monitoring dibutuhkan untuk melihat settlement kas harian');
+  }
+  return user;
+}
+
 function buildFinanceStudentSearchFilter(search?: string) {
   const normalizedSearch = search?.trim();
   if (!normalizedSearch) return undefined;
@@ -2249,6 +2435,34 @@ const listFinanceCreditsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
 });
 
+const listFinanceCashSessionsQuerySchema = z.object({
+  openedById: z.coerce.number().int().positive().optional(),
+  status: z.nativeEnum(FinanceCashSessionStatus).optional(),
+  businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  mine: z
+    .string()
+    .optional()
+    .transform((value) => {
+      if (value == null || value === '') return undefined;
+      const normalized = value.toLowerCase();
+      if (normalized === 'true' || normalized === '1') return true;
+      if (normalized === 'false' || normalized === '0') return false;
+      return undefined;
+    }),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(12),
+});
+
+const openFinanceCashSessionSchema = z.object({
+  businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  openingBalance: z.coerce.number().min(0).optional().default(0),
+  note: z.string().trim().max(500).optional(),
+});
+
+const closeFinanceCashSessionSchema = z.object({
+  actualClosingBalance: z.coerce.number().min(0),
+  note: z.string().trim().max(500).optional(),
+});
+
 const createFinanceRefundSchema = z.object({
   amount: z.coerce.number().positive(),
   method: z.nativeEnum(FinancePaymentMethod).default('OTHER'),
@@ -2466,6 +2680,166 @@ const financePaymentReversalRecordInclude =
       },
     },
   });
+
+const financeCashSessionRecordInclude = Prisma.validator<Prisma.FinanceCashSessionInclude>()({
+  openedBy: {
+    select: {
+      id: true,
+      name: true,
+      role: true,
+    },
+  },
+  closedBy: {
+    select: {
+      id: true,
+      name: true,
+      role: true,
+    },
+  },
+});
+
+async function buildFinanceCashSessionSummary(
+  db: Prisma.TransactionClient | typeof prisma,
+  session: {
+    id: number;
+    openedById: number;
+    openingBalance: number;
+    openedAt: Date;
+    closedAt?: Date | null;
+  },
+): Promise<SerializedFinanceCashSessionSummary> {
+  const periodEnd = session.closedAt || new Date();
+  const paymentWhere: Prisma.FinancePaymentWhereInput = {
+    createdById: session.openedById,
+    method: FinancePaymentMethod.CASH,
+    source: FinancePaymentSource.DIRECT,
+    paidAt: {
+      gte: session.openedAt,
+      lte: periodEnd,
+    },
+  };
+  const refundWhere: Prisma.FinanceRefundWhereInput = {
+    createdById: session.openedById,
+    method: FinancePaymentMethod.CASH,
+    refundedAt: {
+      gte: session.openedAt,
+      lte: periodEnd,
+    },
+  };
+
+  const [paymentAggregate, refundAggregate, recentPayments, recentRefunds] = await Promise.all([
+    db.financePayment.aggregate({
+      where: paymentWhere,
+      _count: { _all: true },
+      _sum: {
+        amount: true,
+        reversedAmount: true,
+      },
+    }),
+    db.financeRefund.aggregate({
+      where: refundWhere,
+      _count: { _all: true },
+      _sum: {
+        amount: true,
+      },
+    }),
+    db.financePayment.findMany({
+      where: paymentWhere,
+      orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
+      take: 8,
+      select: {
+        id: true,
+        paymentNo: true,
+        amount: true,
+        reversedAmount: true,
+        paidAt: true,
+        student: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nis: true,
+            nisn: true,
+            studentClass: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+            },
+          },
+        },
+        invoice: {
+          select: {
+            id: true,
+            invoiceNo: true,
+            periodKey: true,
+            semester: true,
+          },
+        },
+      },
+    }),
+    db.financeRefund.findMany({
+      where: refundWhere,
+      orderBy: [{ refundedAt: 'desc' }, { id: 'desc' }],
+      take: 8,
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nis: true,
+            nisn: true,
+            studentClass: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+            },
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  const grossCashIn = normalizeFinanceAmount(Number(paymentAggregate._sum.amount || 0));
+  const reversedCashIn = normalizeFinanceAmount(Number(paymentAggregate._sum.reversedAmount || 0));
+  const expectedCashIn = normalizeFinanceAmount(Math.max(grossCashIn - reversedCashIn, 0));
+  const expectedCashOut = normalizeFinanceAmount(Number(refundAggregate._sum.amount || 0));
+  const expectedClosingBalance = normalizeFinanceAmount(
+    Number(session.openingBalance || 0) + expectedCashIn - expectedCashOut,
+  );
+
+  return {
+    expectedCashIn,
+    expectedCashOut,
+    expectedClosingBalance,
+    totalCashPayments: paymentAggregate._count._all,
+    totalCashRefunds: refundAggregate._count._all,
+    recentCashPayments: recentPayments.map((payment) => {
+      const reversedAmount = normalizeFinanceAmount(Number(payment.reversedAmount || 0));
+      return {
+        id: payment.id,
+        paymentNo: payment.paymentNo || null,
+        amount: Number(payment.amount || 0),
+        netCashAmount: normalizeFinanceAmount(Math.max(Number(payment.amount || 0) - reversedAmount, 0)),
+        reversedAmount,
+        paidAt: payment.paidAt || null,
+        student: payment.student || null,
+        invoice: payment.invoice || null,
+      };
+    }),
+    recentCashRefunds: recentRefunds.map((refund) => serializeFinanceRefundRecord(refund)),
+  };
+}
 
 const PERIOD_KEY_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -6664,6 +7038,268 @@ export const createFinanceRefund = asyncHandler(async (req: Request, res: Respon
       },
       'Refund saldo kredit berhasil dicatat',
     ),
+  );
+});
+
+export const listFinanceCashSessions = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceCashSessionViewer((req as any).user || {});
+
+  const { openedById, status, businessDate, mine, limit } = listFinanceCashSessionsQuerySchema.parse(req.query);
+  const effectiveMine = mine ?? (!actor.isHeadTu && !actor.isPrincipal ? true : undefined);
+  const dateFilter = businessDate ? normalizeFinanceBusinessDateInput(businessDate) : null;
+
+  const where: Prisma.FinanceCashSessionWhereInput = {
+    ...(openedById ? { openedById } : {}),
+    ...(status ? { status } : {}),
+    ...(effectiveMine ? { openedById: actor.id } : {}),
+    ...(dateFilter
+      ? {
+          businessDate: {
+            gte: dateFilter,
+            lte: getFinanceEndOfDay(dateFilter),
+          },
+        }
+      : {}),
+  };
+
+  const sessions = await prisma.financeCashSession.findMany({
+    where,
+    include: financeCashSessionRecordInclude,
+    orderBy: [{ status: 'asc' }, { openedAt: 'desc' }, { id: 'desc' }],
+    take: limit,
+  });
+
+  const serializedSessions = await Promise.all(
+    sessions.map(async (session) => {
+      const liveSummary = await buildFinanceCashSessionSummary(prisma, session);
+      const resolvedSummary =
+        session.status === FinanceCashSessionStatus.OPEN
+          ? liveSummary
+          : {
+              ...liveSummary,
+              expectedCashIn: Number(session.expectedCashIn || 0),
+              expectedCashOut: Number(session.expectedCashOut || 0),
+              expectedClosingBalance: Number(session.expectedClosingBalance || 0),
+              totalCashPayments: Number(session.totalCashPayments || 0),
+              totalCashRefunds: Number(session.totalCashRefunds || 0),
+            };
+
+      return serializeFinanceCashSessionRecord(session, resolvedSummary);
+    }),
+  );
+
+  const summary = serializedSessions.reduce(
+    (acc, session) => {
+      acc.totalSessions += 1;
+      acc.totalExpectedCashIn += session.expectedCashIn;
+      acc.totalExpectedCashOut += session.expectedCashOut;
+      acc.totalExpectedClosingBalance += session.expectedClosingBalance;
+      acc.totalVarianceAmount += Number(session.varianceAmount || 0);
+      if (session.status === FinanceCashSessionStatus.OPEN) {
+        acc.openCount += 1;
+      } else {
+        acc.closedCount += 1;
+      }
+      return acc;
+    },
+    {
+      totalSessions: 0,
+      openCount: 0,
+      closedCount: 0,
+      totalExpectedCashIn: 0,
+      totalExpectedCashOut: 0,
+      totalExpectedClosingBalance: 0,
+      totalVarianceAmount: 0,
+    },
+  );
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        activeSession:
+          serializedSessions.find((session) => session.status === FinanceCashSessionStatus.OPEN) || null,
+        sessions: serializedSessions,
+        summary: {
+          ...summary,
+          totalExpectedCashIn: normalizeFinanceAmount(summary.totalExpectedCashIn),
+          totalExpectedCashOut: normalizeFinanceAmount(summary.totalExpectedCashOut),
+          totalExpectedClosingBalance: normalizeFinanceAmount(summary.totalExpectedClosingBalance),
+          totalVarianceAmount: normalizeFinanceAmount(summary.totalVarianceAmount),
+        },
+      },
+      'Settlement kas harian berhasil diambil',
+    ),
+  );
+});
+
+export const openFinanceCashSession = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+  const payload = openFinanceCashSessionSchema.parse(req.body || {});
+
+  const existingOpen = await prisma.financeCashSession.findFirst({
+    where: {
+      openedById: actor.id,
+      status: FinanceCashSessionStatus.OPEN,
+    },
+    select: {
+      id: true,
+      sessionNo: true,
+    },
+  });
+
+  if (existingOpen) {
+    throw new ApiError(400, `Masih ada sesi kas terbuka (${existingOpen.sessionNo}) yang belum ditutup`);
+  }
+
+  const businessDate = normalizeFinanceBusinessDateInput(payload.businessDate);
+  const session = await prisma.financeCashSession.create({
+    data: {
+      sessionNo: makeFinanceCashSessionNo(actor.id),
+      businessDate,
+      openingBalance: normalizeFinanceAmount(Number(payload.openingBalance || 0)),
+      expectedClosingBalance: normalizeFinanceAmount(Number(payload.openingBalance || 0)),
+      openingNote: payload.note?.trim() || null,
+      openedById: actor.id,
+    },
+    include: financeCashSessionRecordInclude,
+  });
+
+  const serializedSession = serializeFinanceCashSessionRecord(session, {
+    expectedCashIn: 0,
+    expectedCashOut: 0,
+    expectedClosingBalance: Number(session.openingBalance || 0),
+    totalCashPayments: 0,
+    totalCashRefunds: 0,
+    recentCashPayments: [],
+    recentCashRefunds: [],
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'CREATE',
+      'FINANCE_CASH_SESSION',
+      session.id,
+      null,
+      {
+        sessionNo: session.sessionNo,
+        businessDate: businessDate.toISOString(),
+        openingBalance: Number(session.openingBalance || 0),
+        openingNote: session.openingNote || null,
+      },
+      'Pembukaan sesi kas harian bendahara',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat pembukaan sesi kas finance', auditError);
+  }
+
+  res.status(201).json(
+    new ApiResponse(201, { session: serializedSession }, 'Sesi kas harian berhasil dibuka'),
+  );
+});
+
+export const closeFinanceCashSession = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+
+  const sessionId = Number(req.params.id);
+  if (!Number.isInteger(sessionId) || sessionId <= 0) {
+    throw new ApiError(400, 'ID sesi kas tidak valid');
+  }
+
+  const payload = closeFinanceCashSessionSchema.parse(req.body || {});
+  const before = await prisma.financeCashSession.findUnique({
+    where: { id: sessionId },
+    include: financeCashSessionRecordInclude,
+  });
+
+  if (!before) {
+    throw new ApiError(404, 'Sesi kas tidak ditemukan');
+  }
+
+  if (before.status !== FinanceCashSessionStatus.OPEN) {
+    throw new ApiError(400, 'Sesi kas ini sudah ditutup');
+  }
+
+  if (before.openedById !== actor.id && actor.role !== 'ADMIN') {
+    throw new ApiError(403, 'Hanya petugas pembuka sesi atau admin yang boleh menutup sesi kas ini');
+  }
+
+  const closedAt = new Date();
+
+  const result = await prisma.$transaction(async (tx) => {
+    const liveSummary = await buildFinanceCashSessionSummary(tx, {
+      ...before,
+      closedAt,
+    });
+
+    const actualClosingBalance = normalizeFinanceAmount(Number(payload.actualClosingBalance || 0));
+    const varianceAmount = normalizeFinanceAmount(actualClosingBalance - liveSummary.expectedClosingBalance);
+
+    const updated = await tx.financeCashSession.update({
+      where: { id: before.id },
+      data: {
+        status: FinanceCashSessionStatus.CLOSED,
+        expectedCashIn: liveSummary.expectedCashIn,
+        expectedCashOut: liveSummary.expectedCashOut,
+        expectedClosingBalance: liveSummary.expectedClosingBalance,
+        actualClosingBalance,
+        varianceAmount,
+        totalCashPayments: liveSummary.totalCashPayments,
+        totalCashRefunds: liveSummary.totalCashRefunds,
+        closedById: actor.id,
+        closedAt,
+        closingNote: payload.note?.trim() || null,
+      },
+      include: financeCashSessionRecordInclude,
+    });
+
+    return {
+      session: serializeFinanceCashSessionRecord(updated, liveSummary),
+      varianceAmount,
+    };
+  });
+
+  if (Math.abs(Number(result.varianceAmount || 0)) > 0.009) {
+    await createFinanceInternalNotifications({
+      scopes: ['HEAD_TU'],
+      title: 'Variance Settlement Kas Harian',
+      message: `Sesi kas ${result.session.sessionNo} ditutup dengan selisih ${Math.round(
+        Number(result.varianceAmount || 0),
+      ).toLocaleString('id-ID')} rupiah.`,
+      type: 'FINANCE_CASH_SESSION_VARIANCE',
+      data: {
+        module: 'FINANCE',
+        sessionId: result.session.id,
+        sessionNo: result.session.sessionNo,
+        businessDate: result.session.businessDate,
+        varianceAmount: result.varianceAmount,
+        expectedClosingBalance: result.session.expectedClosingBalance,
+        actualClosingBalance: result.session.actualClosingBalance,
+      },
+    });
+  }
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'UPDATE',
+      'FINANCE_CASH_SESSION',
+      before.id,
+      before,
+      result.session,
+      'Penutupan settlement kas harian bendahara',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat penutupan sesi kas finance', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(200, { session: result.session }, 'Sesi kas harian berhasil ditutup'),
   );
 });
 
