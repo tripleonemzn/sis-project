@@ -10,6 +10,7 @@ import {
   type FinanceBankReconciliation,
   type FinanceClosingPeriod,
   type FinanceClosingPeriodApprovalPolicy,
+  type FinanceClosingPeriodReopenRequest,
   type FinanceClosingPeriodType,
   type FinanceBankStatementDirection,
   type FinanceBudgetProgressStage,
@@ -393,6 +394,19 @@ function getClosingPeriodApprovalMeta(status: FinanceClosingPeriod['approvalStat
   return { label: 'Belum Diajukan', className: 'bg-slate-50 text-slate-700 border border-slate-200' };
 }
 
+function getClosingPeriodReopenStatusMeta(status: FinanceClosingPeriodReopenRequest['status']) {
+  if (status === 'PENDING_HEAD_TU') {
+    return { label: 'Menunggu Head TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  }
+  if (status === 'PENDING_PRINCIPAL') {
+    return { label: 'Menunggu Kepsek', className: 'bg-sky-50 text-sky-700 border border-sky-200' };
+  }
+  if (status === 'APPLIED') {
+    return { label: 'Direopen', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+  }
+  return { label: 'Ditolak', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
+}
+
 function getBudgetProgressStageMeta(stage: FinanceBudgetProgressStage) {
   if (stage === 'RETURNED_BY_FINANCE') {
     return { label: 'Dikembalikan Keuangan', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
@@ -557,12 +571,18 @@ export const StaffFinancePage = () => {
   const [closingPeriodLabel, setClosingPeriodLabel] = useState('');
   const [closingPeriodNote, setClosingPeriodNote] = useState('');
   const [closingPeriodRequireHeadTuApproval, setClosingPeriodRequireHeadTuApproval] = useState(true);
+  const [closingPeriodRequireHeadTuReopenApproval, setClosingPeriodRequireHeadTuReopenApproval] = useState(true);
+  const [closingPeriodRequirePrincipalReopenApproval, setClosingPeriodRequirePrincipalReopenApproval] =
+    useState(true);
   const [closingPeriodPrincipalApprovalThresholdAmount, setClosingPeriodPrincipalApprovalThresholdAmount] = useState('100000');
   const [closingPeriodEscalateIfPendingVerification, setClosingPeriodEscalateIfPendingVerification] = useState(true);
   const [closingPeriodEscalateIfUnmatchedBankEntries, setClosingPeriodEscalateIfUnmatchedBankEntries] = useState(true);
   const [closingPeriodEscalateIfOpenCashSession, setClosingPeriodEscalateIfOpenCashSession] = useState(true);
   const [closingPeriodEscalateIfOpenReconciliation, setClosingPeriodEscalateIfOpenReconciliation] = useState(true);
   const [closingPeriodPolicyNotes, setClosingPeriodPolicyNotes] = useState('');
+  const [closingPeriodReopenTargetId, setClosingPeriodReopenTargetId] = useState<number | ''>('');
+  const [closingPeriodReopenReason, setClosingPeriodReopenReason] = useState('');
+  const [closingPeriodReopenNote, setClosingPeriodReopenNote] = useState('');
   const [editingBankAccountId, setEditingBankAccountId] = useState<number | null>(null);
   const [bankAccountCode, setBankAccountCode] = useState('');
   const [bankAccountBankName, setBankAccountBankName] = useState('');
@@ -740,6 +760,12 @@ export const StaffFinancePage = () => {
     staleTime: 30_000,
   });
 
+  const closingPeriodReopenRequestsQuery = useQuery({
+    queryKey: ['staff-finance-closing-period-reopen-requests'],
+    queryFn: () => staffFinanceService.listClosingPeriodReopenRequests({ limit: 12 }),
+    staleTime: 30_000,
+  });
+
   const budgetRealizationQuery = useQuery({
     queryKey: ['staff-finance-budget-realization', activeYearId || 'none'],
     queryFn: () =>
@@ -801,8 +827,14 @@ export const StaffFinancePage = () => {
   const cashSessionApprovalPolicy = cashSessionApprovalPolicyQuery.data || null;
   const closingPeriodsSummary = closingPeriodsQuery.data?.summary;
   const closingPeriods = closingPeriodsQuery.data?.periods || [];
+  const closingPeriodReopenRequests = closingPeriodReopenRequestsQuery.data?.requests || [];
+  const closingPeriodReopenSummary = closingPeriodReopenRequestsQuery.data?.summary;
   const closingPeriodApprovalPolicy = closingPeriodApprovalPolicyQuery.data || null;
   const budgetRealizationSummary = budgetRealizationQuery.data || null;
+  const closedClosingPeriods = useMemo(
+    () => closingPeriods.filter((period) => period.status === 'CLOSED'),
+    [closingPeriods],
+  );
 
   useEffect(() => {
     if (bankReconciliationAccountId === '' && activeBankAccounts[0]?.id) {
@@ -815,6 +847,22 @@ export const StaffFinancePage = () => {
       setLedgerBankAccountId('');
     }
   }, [ledgerBankAccountId, ledgerBookFilter]);
+
+  useEffect(() => {
+    if (closedClosingPeriods.length === 0) {
+      if (closingPeriodReopenTargetId !== '') {
+        setClosingPeriodReopenTargetId('');
+      }
+      return;
+    }
+
+    if (
+      closingPeriodReopenTargetId === '' ||
+      !closedClosingPeriods.some((period) => period.id === Number(closingPeriodReopenTargetId))
+    ) {
+      setClosingPeriodReopenTargetId(closedClosingPeriods[0].id);
+    }
+  }, [closedClosingPeriods, closingPeriodReopenTargetId]);
 
   useEffect(() => {
     if (paymentMethod !== 'CASH' && paymentBankAccountId === '' && activeBankAccounts[0]?.id) {
@@ -1086,6 +1134,8 @@ export const StaffFinancePage = () => {
 
   const applyClosingPeriodApprovalPolicyToForm = (policy: FinanceClosingPeriodApprovalPolicy) => {
     setClosingPeriodRequireHeadTuApproval(policy.requireHeadTuApproval);
+    setClosingPeriodRequireHeadTuReopenApproval(policy.requireHeadTuReopenApproval);
+    setClosingPeriodRequirePrincipalReopenApproval(policy.requirePrincipalReopenApproval);
     setClosingPeriodPrincipalApprovalThresholdAmount(
       String(Number(policy.principalApprovalThresholdAmount || 0)),
     );
@@ -1871,6 +1921,8 @@ export const StaffFinancePage = () => {
     mutationFn: () =>
       staffFinanceService.updateClosingPeriodApprovalPolicy({
         requireHeadTuApproval: closingPeriodRequireHeadTuApproval,
+        requireHeadTuReopenApproval: closingPeriodRequireHeadTuReopenApproval,
+        requirePrincipalReopenApproval: closingPeriodRequirePrincipalReopenApproval,
         principalApprovalThresholdAmount: Math.max(
           0,
           Number(closingPeriodPrincipalApprovalThresholdAmount || 0),
@@ -1889,6 +1941,31 @@ export const StaffFinancePage = () => {
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
       toast.error(apiError?.response?.data?.message || 'Gagal memperbarui policy closing period');
+    },
+  });
+
+  const createClosingPeriodReopenRequestMutation = useMutation({
+    mutationFn: () => {
+      if (closingPeriodReopenTargetId === '') {
+        throw new Error('Closing period belum dipilih');
+      }
+      return staffFinanceService.createClosingPeriodReopenRequest(Number(closingPeriodReopenTargetId), {
+        reason: closingPeriodReopenReason.trim(),
+        note: closingPeriodReopenNote.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success('Request reopen closing period berhasil diajukan');
+      setClosingPeriodReopenReason('');
+      setClosingPeriodReopenNote('');
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-closing-periods'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-closing-period-reopen-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-ledger-books'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal mengajukan reopen closing period');
     },
   });
 
@@ -2048,6 +2125,18 @@ export const StaffFinancePage = () => {
       return;
     }
     createClosingPeriodMutation.mutate();
+  };
+
+  const handleCreateClosingPeriodReopenRequest = () => {
+    if (closingPeriodReopenTargetId === '') {
+      toast.error('Pilih closing period yang ingin direopen');
+      return;
+    }
+    if (closingPeriodReopenReason.trim().length < 5) {
+      toast.error('Alasan reopen closing period minimal 5 karakter');
+      return;
+    }
+    createClosingPeriodReopenRequestMutation.mutate();
   };
 
   const startPaying = (invoice: FinanceInvoice) => {
@@ -4441,6 +4530,37 @@ export const StaffFinancePage = () => {
                   </label>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={closingPeriodRequireHeadTuReopenApproval}
+                        onChange={(event) => setClosingPeriodRequireHeadTuReopenApproval(event.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <div>
+                        <div className="text-sm font-medium text-slate-900">Reopen wajib review Head TU</div>
+                        <div className="text-xs text-slate-500">
+                          Mengontrol apakah unlock period harus lebih dulu lewat review Kepala TU.
+                        </div>
+                      </div>
+                    </label>
+                    <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={closingPeriodRequirePrincipalReopenApproval}
+                        onChange={(event) => setClosingPeriodRequirePrincipalReopenApproval(event.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <div>
+                        <div className="text-sm font-medium text-slate-900">Reopen wajib approval Kepsek</div>
+                        <div className="text-xs text-slate-500">
+                          Jika aktif, reopen baru benar-benar membuka lock setelah Kepala Sekolah menyetujui.
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
                       <div className="text-xs uppercase tracking-wider text-slate-500">Threshold Eskalasi Kepsek</div>
                       <input
@@ -4507,6 +4627,65 @@ export const StaffFinancePage = () => {
                       {saveClosingPeriodApprovalPolicyMutation.isPending ? 'Menyimpan...' : 'Simpan Policy'}
                     </button>
                   </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Ajukan Reopen Closing</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      Dipakai saat periode yang sudah locked perlu dibuka kembali untuk koreksi yang sah.
+                    </div>
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {closingPeriodReopenSummary?.pendingHeadTuCount || 0} Head TU •{' '}
+                    {closingPeriodReopenSummary?.pendingPrincipalCount || 0} Kepsek
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <select
+                    value={closingPeriodReopenTargetId === '' ? '' : String(closingPeriodReopenTargetId)}
+                    onChange={(event) =>
+                      setClosingPeriodReopenTargetId(
+                        event.target.value ? Number(event.target.value) : '',
+                      )
+                    }
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                  >
+                    <option value="">Pilih closing period locked</option>
+                    {closedClosingPeriods.map((period) => (
+                      <option key={`closing-reopen-period-${period.id}`} value={String(period.id)}>
+                        {period.label} • {period.periodNo}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={closingPeriodReopenReason}
+                    onChange={(event) => setClosingPeriodReopenReason(event.target.value)}
+                    placeholder="Alasan reopen"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                  />
+                </div>
+                <textarea
+                  value={closingPeriodReopenNote}
+                  onChange={(event) => setClosingPeriodReopenNote(event.target.value)}
+                  rows={3}
+                  placeholder="Catatan tambahan, misalnya jenis koreksi atau transaksi yang perlu diperbaiki."
+                  className="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                />
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-xs text-slate-500">
+                    Workflow mengikuti policy reopen yang aktif dan seluruh jejak approval tetap tercatat.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCreateClosingPeriodReopenRequest}
+                    disabled={createClosingPeriodReopenRequestMutation.isPending || closedClosingPeriods.length === 0}
+                    className="inline-flex items-center rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    {createClosingPeriodReopenRequestMutation.isPending ? 'Mengirim...' : 'Ajukan Reopen'}
+                  </button>
                 </div>
               </div>
             </div>
@@ -4619,10 +4798,72 @@ export const StaffFinancePage = () => {
                             Locked {formatDate(period.closedAt)}{period.closedBy?.name ? ` oleh ${period.closedBy.name}` : ''}
                           </div>
                         ) : null}
+                        {period.reopenedAt ? (
+                          <div className="mt-1 text-[11px] text-amber-700">
+                            Direopen {formatDate(period.reopenedAt)}
+                            {period.reopenedBy?.name ? ` oleh ${period.reopenedBy.name}` : ''}
+                            {period.reopenNote ? ` • ${period.reopenNote}` : ''}
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })
                 )}
+
+                <div className="pt-3 border-t border-slate-100">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Riwayat Reopen Closing</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        Semua unlock period tercatat di sini agar bendahara bisa menelusuri approval dan alasan reopen.
+                      </div>
+                    </div>
+                    <div className="text-xs text-slate-500">{closingPeriodReopenRequests.length} request</div>
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    {closingPeriodReopenRequestsQuery.isLoading ? (
+                      <div className="text-sm text-slate-500">Memuat request reopen...</div>
+                    ) : closingPeriodReopenRequests.length === 0 ? (
+                      <div className="text-sm text-slate-500">Belum ada request reopen closing period.</div>
+                    ) : (
+                      closingPeriodReopenRequests.map((request) => {
+                        const statusMeta = getClosingPeriodReopenStatusMeta(request.status);
+                        return (
+                          <div key={request.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-sm font-semibold text-slate-900">{request.closingPeriod.label}</div>
+                                <div className="mt-1 text-[11px] text-slate-500">
+                                  {request.requestNo} • {request.closingPeriod.periodNo}
+                                  {request.requestedBy?.name ? ` • ${request.requestedBy.name}` : ''}
+                                </div>
+                              </div>
+                              <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${statusMeta.className}`}>
+                                {statusMeta.label}
+                              </span>
+                            </div>
+                            <div className="mt-2 text-xs text-slate-700">{request.reason}</div>
+                            {request.requestedNote ? (
+                              <div className="mt-1 text-[11px] text-slate-500">{request.requestedNote}</div>
+                            ) : null}
+                            {request.headTuDecision.note ? (
+                              <div className="mt-1 text-[11px] text-slate-500">Head TU: {request.headTuDecision.note}</div>
+                            ) : null}
+                            {request.principalDecision.note ? (
+                              <div className="mt-1 text-[11px] text-slate-500">Kepsek: {request.principalDecision.note}</div>
+                            ) : null}
+                            {request.application.reopenedAt ? (
+                              <div className="mt-1 text-[11px] text-emerald-700">
+                                Direopen {formatDate(request.application.reopenedAt)}
+                                {request.application.by?.name ? ` oleh ${request.application.by.name}` : ''}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

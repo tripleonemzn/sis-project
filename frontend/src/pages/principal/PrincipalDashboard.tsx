@@ -14,6 +14,7 @@ import {
   type FinanceBudgetProgressStage,
   type FinanceCashSession,
   type FinanceClosingPeriod,
+  type FinanceClosingPeriodReopenRequest,
   type FinanceGovernanceSummary,
   type FinancePaymentReversalRequest,
   type FinanceWriteOffRequest,
@@ -560,6 +561,19 @@ function getPrincipalClosingPeriodApprovalTone(period: FinanceClosingPeriod) {
     return { label: 'Ditolak', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
   }
   return { label: 'Belum Diajukan', className: 'bg-slate-50 text-slate-700 border border-slate-200' };
+}
+
+function getPrincipalClosingPeriodReopenTone(request: FinanceClosingPeriodReopenRequest) {
+  if (request.status === 'PENDING_HEAD_TU') {
+    return { label: 'Menunggu Head TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  }
+  if (request.status === 'PENDING_PRINCIPAL') {
+    return { label: 'Menunggu Kepsek', className: 'bg-sky-50 text-sky-700 border border-sky-200' };
+  }
+  if (request.status === 'APPLIED') {
+    return { label: 'Direopen', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+  }
+  return { label: 'Ditolak', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
 }
 
 function getPrincipalBudgetProgressTone(stage: FinanceBudgetProgressStage) {
@@ -3333,6 +3347,21 @@ const PrincipalFinancePage = () => {
     enabled: isFinancePage,
   });
 
+  const { data: financeClosingPeriodReopenRequestsData } = useQuery({
+    queryKey: ['principal-finance-closing-period-reopen-requests'],
+    queryFn: () => staffFinanceService.listClosingPeriodReopenRequests({ limit: 8 }),
+    enabled: isFinancePage,
+  });
+
+  const {
+    data: financeClosingPeriodReopenApprovalsData,
+    isLoading: isFinanceClosingPeriodReopenApprovalsLoading,
+  } = useQuery({
+    queryKey: ['principal-finance-closing-period-reopen-approvals'],
+    queryFn: () => staffFinanceService.listClosingPeriodReopenRequests({ pendingFor: 'PRINCIPAL', limit: 20 }),
+    enabled: isFinancePage,
+  });
+
   let budgets: BudgetRequest[] = budgetsData?.data || budgetsData || [];
 
   if (statusFilter !== 'ALL') {
@@ -3431,6 +3460,24 @@ const PrincipalFinancePage = () => {
     },
   });
 
+  const principalClosingPeriodReopenDecisionMutation = useMutation({
+    mutationFn: (payload: { requestId: number; approved: boolean }) =>
+      staffFinanceService.decideClosingPeriodReopenAsPrincipal(payload.requestId, {
+        approved: payload.approved,
+        note: payload.approved ? undefined : 'Reopen closing period ditolak oleh Kepala Sekolah',
+      }),
+    onSuccess: (_, payload) => {
+      queryClient.invalidateQueries({ queryKey: ['principal-finance-closing-periods'] });
+      queryClient.invalidateQueries({ queryKey: ['principal-finance-closing-period-reopen-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['principal-finance-closing-period-reopen-approvals'] });
+      toast.success(payload.approved ? 'Reopen closing period disetujui' : 'Reopen closing period ditolak');
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal memproses approval reopen closing period');
+    },
+  });
+
   const handleApprove = () => {
     if (!selectedForApprove) return;
     updateStatusMutation.mutate({
@@ -3468,6 +3515,9 @@ const PrincipalFinancePage = () => {
   const financeClosingPeriods = financeClosingPeriodsData?.periods || [];
   const financeClosingPeriodSummary = financeClosingPeriodsData?.summary;
   const pendingPrincipalClosingPeriods = financeClosingPeriodApprovalsData?.periods || [];
+  const financeClosingPeriodReopenRequests = financeClosingPeriodReopenRequestsData?.requests || [];
+  const financeClosingPeriodReopenSummary = financeClosingPeriodReopenRequestsData?.summary;
+  const pendingPrincipalClosingPeriodReopens = financeClosingPeriodReopenApprovalsData?.requests || [];
 
   return (
     <div className="space-y-6">
@@ -4348,6 +4398,13 @@ const PrincipalFinancePage = () => {
                           {period.closedBy?.name ? ` oleh ${period.closedBy.name}` : ''}
                         </div>
                       ) : null}
+                      {period.reopenedAt ? (
+                        <div className="mt-1 text-xs text-amber-700">
+                          Direopen {formatFinanceDate(period.reopenedAt)}
+                          {period.reopenedBy?.name ? ` oleh ${period.reopenedBy.name}` : ''}
+                          {period.reopenNote ? ` • ${period.reopenNote}` : ''}
+                        </div>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -4355,6 +4412,99 @@ const PrincipalFinancePage = () => {
             </table>
           </div>
         )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Approval Reopen Closing Period</h3>
+            <p className="mt-1 text-xs text-gray-500">
+              Review unlock periode yang sudah lolos Head TU sebelum period lock benar-benar dibuka kembali.
+            </p>
+          </div>
+          <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+            {pendingPrincipalClosingPeriodReopens.length} menunggu
+          </span>
+        </div>
+
+        {isFinanceClosingPeriodReopenApprovalsLoading ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          </div>
+        ) : pendingPrincipalClosingPeriodReopens.length === 0 ? (
+          <div className="py-10 text-center text-sm text-gray-500">
+            Belum ada request reopen closing period yang menunggu persetujuan Kepala Sekolah.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Periode</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Alasan</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {pendingPrincipalClosingPeriodReopens.map((request: FinanceClosingPeriodReopenRequest) => (
+                  <tr key={request.id}>
+                    <td className="px-6 py-4 text-sm text-gray-700">
+                      <div className="font-semibold text-gray-900">{request.closingPeriod.label}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {request.requestNo} • {request.closingPeriod.periodNo}
+                      </div>
+                      {request.headTuDecision.note ? (
+                        <div className="text-xs text-gray-500 mt-1">Review Head TU: {request.headTuDecision.note}</div>
+                      ) : null}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-700">
+                      <div>{request.reason}</div>
+                      {request.requestedNote ? (
+                        <div className="text-xs text-gray-500 mt-1">{request.requestedNote}</div>
+                      ) : null}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-700">
+                      <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${getPrincipalClosingPeriodReopenTone(request).className}`}>
+                        {getPrincipalClosingPeriodReopenTone(request).label}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-right">
+                      <div className="inline-flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            principalClosingPeriodReopenDecisionMutation.mutate({ requestId: request.id, approved: false })
+                          }
+                          disabled={principalClosingPeriodReopenDecisionMutation.isPending}
+                          className="inline-flex items-center rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                        >
+                          Tolak
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            principalClosingPeriodReopenDecisionMutation.mutate({ requestId: request.id, approved: true })
+                          }
+                          disabled={principalClosingPeriodReopenDecisionMutation.isPending}
+                          className="inline-flex items-center rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                        >
+                          Setujui
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {financeClosingPeriodReopenRequests.length > 0 ? (
+          <div className="border-t border-gray-100 px-6 py-3 text-xs text-gray-500">
+            Total reopen tercatat {financeClosingPeriodReopenSummary?.totalRequests || 0} request,{' '}
+            {financeClosingPeriodReopenSummary?.appliedCount || 0} sudah direopen.
+          </div>
+        ) : null}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

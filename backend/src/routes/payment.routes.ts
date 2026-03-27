@@ -5,6 +5,7 @@ import {
   createFinanceBankReconciliation,
   createFinanceBankStatementEntry,
   createFinanceClosingPeriod,
+  createFinanceClosingPeriodReopenRequest,
   createFinanceComponent,
   listFinanceClassLevels,
   listFinanceBankAccounts,
@@ -14,6 +15,8 @@ import {
   decideFinanceCashSessionAsPrincipal,
   decideFinanceClosingPeriodAsHeadTu,
   decideFinanceClosingPeriodAsPrincipal,
+  decideFinanceClosingPeriodReopenAsHeadTu,
+  decideFinanceClosingPeriodReopenAsPrincipal,
   dispatchFinanceDueRemindersHandler,
   decideFinanceWriteOffAsHeadTu,
   decideFinanceWriteOffAsPrincipal,
@@ -36,6 +39,7 @@ import {
   listFinanceBankReconciliations,
   listFinanceCashSessions,
   listFinanceClosingPeriods,
+  listFinanceClosingPeriodReopenRequests,
   listFinanceComponents,
   listFinanceCredits,
   listFinanceInvoices,
@@ -102,6 +106,7 @@ router.post('/bank-reconciliations/:id/entries', roleMiddleware(['STAFF', 'ADMIN
 router.post('/bank-reconciliations/:id/finalize', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), finalizeFinanceBankReconciliation);
 router.get('/cash-sessions', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceCashSessions);
 router.get('/closing-periods', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceClosingPeriods);
+router.get('/closing-period-reopen-requests', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceClosingPeriodReopenRequests);
 router.post('/cash-sessions/open', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), openFinanceCashSession);
 router.post('/cash-sessions/:id/close', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), closeFinanceCashSession);
 router.post('/cash-sessions/:id/head-tu-decision', roleMiddleware(['STAFF']), decideFinanceCashSessionAsHeadTu);
@@ -109,6 +114,9 @@ router.post('/cash-sessions/:id/principal-decision', roleMiddleware(['PRINCIPAL'
 router.post('/closing-periods', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceClosingPeriod);
 router.post('/closing-periods/:id/head-tu-decision', roleMiddleware(['STAFF']), decideFinanceClosingPeriodAsHeadTu);
 router.post('/closing-periods/:id/principal-decision', roleMiddleware(['PRINCIPAL']), decideFinanceClosingPeriodAsPrincipal);
+router.post('/closing-periods/:id/reopen-requests', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceClosingPeriodReopenRequest);
+router.post('/closing-period-reopen-requests/:id/head-tu-decision', roleMiddleware(['STAFF']), decideFinanceClosingPeriodReopenAsHeadTu);
+router.post('/closing-period-reopen-requests/:id/principal-decision', roleMiddleware(['PRINCIPAL']), decideFinanceClosingPeriodReopenAsPrincipal);
 router.post('/invoices/:id/late-fees/apply', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), applyFinanceInvoiceLateFees);
 router.patch('/invoices/:id/installments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceInvoiceInstallments);
 router.post('/invoices/:id/payments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinancePayment);

@@ -28,6 +28,7 @@ import {
   type FinanceBudgetProgressStage,
   type FinanceCashSession,
   type FinanceClosingPeriod,
+  type FinanceClosingPeriodReopenRequest,
   type FinanceGovernanceSummary,
   type FinancePaymentReversalRequest,
   type FinanceReportSnapshot,
@@ -117,6 +118,19 @@ function getClosingPeriodApprovalTone(period: FinanceClosingPeriod) {
     return { label: 'Ditolak', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
   }
   return { label: 'Belum Diajukan', className: 'bg-slate-50 text-slate-700 border border-slate-200' };
+}
+
+function getClosingPeriodReopenTone(request: FinanceClosingPeriodReopenRequest) {
+  if (request.status === 'PENDING_HEAD_TU') {
+    return { label: 'Menunggu Review', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  }
+  if (request.status === 'PENDING_PRINCIPAL') {
+    return { label: 'Ke Kepala Sekolah', className: 'bg-sky-50 text-sky-700 border border-sky-200' };
+  }
+  if (request.status === 'APPLIED') {
+    return { label: 'Direopen', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+  }
+  return { label: 'Ditolak', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
 }
 
 function getBudgetProgressTone(stage: FinanceBudgetProgressStage) {
@@ -439,6 +453,22 @@ const HeadTuWorkspace = () => {
     refetchOnWindowFocus: false,
   });
 
+  const financeClosingPeriodReopenRequestsQuery = useQuery({
+    queryKey: ['head-tu-finance-closing-period-reopen-requests'],
+    queryFn: () => staffFinanceService.listClosingPeriodReopenRequests({ limit: 8 }),
+    enabled: isFinancePage || isDashboardPage,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const financeClosingPeriodReopenApprovalsQuery = useQuery({
+    queryKey: ['head-tu-finance-closing-period-reopen-approvals'],
+    queryFn: () => staffFinanceService.listClosingPeriodReopenRequests({ pendingFor: 'HEAD_TU', limit: 20 }),
+    enabled: isFinancePage || isDashboardPage,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
   const headTuWriteOffDecisionMutation = useMutation({
     mutationFn: (payload: { requestId: number; approved: boolean }) =>
       staffFinanceService.decideWriteOffAsHeadTu(payload.requestId, {
@@ -509,6 +539,28 @@ const HeadTuWorkspace = () => {
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
       toast.error(apiError?.response?.data?.message || 'Gagal memproses closing period');
+    },
+  });
+
+  const headTuClosingPeriodReopenDecisionMutation = useMutation({
+    mutationFn: (payload: { requestId: number; approved: boolean }) =>
+      staffFinanceService.decideClosingPeriodReopenAsHeadTu(payload.requestId, {
+        approved: payload.approved,
+        note: payload.approved ? undefined : 'Reopen closing period ditolak oleh Kepala TU',
+      }),
+    onSuccess: (_, payload) => {
+      queryClient.invalidateQueries({ queryKey: ['head-tu-finance-closing-periods'] });
+      queryClient.invalidateQueries({ queryKey: ['head-tu-finance-closing-period-reopen-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['head-tu-finance-closing-period-reopen-approvals'] });
+      toast.success(
+        payload.approved
+          ? 'Reopen closing period diproses oleh Head TU'
+          : 'Reopen closing period ditolak oleh Head TU',
+      );
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal memproses reopen closing period');
     },
   });
 
@@ -612,6 +664,9 @@ const HeadTuWorkspace = () => {
   const financeClosingPeriods = financeClosingPeriodsQuery.data?.periods || [];
   const financeClosingPeriodSummary = financeClosingPeriodsQuery.data?.summary;
   const pendingHeadTuClosingPeriods = financeClosingPeriodApprovalsQuery.data?.periods || [];
+  const financeClosingPeriodReopenRequests = financeClosingPeriodReopenRequestsQuery.data?.requests || [];
+  const financeClosingPeriodReopenSummary = financeClosingPeriodReopenRequestsQuery.data?.summary;
+  const pendingHeadTuClosingPeriodReopens = financeClosingPeriodReopenApprovalsQuery.data?.requests || [];
   const officeSummary = officeSummaryQuery.data;
   const examCardDetails = examCardsQuery.data || [];
   const officeLetters = officeLettersQuery.data?.letters || [];
@@ -2787,6 +2842,96 @@ const HeadTuWorkspace = () => {
               </table>
             </div>
           )}
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Approval Reopen Closing Period</h3>
+              <p className="mt-1 text-xs text-gray-500">
+                Review unlock period yang sudah locked sebelum diteruskan ke Kepala Sekolah atau ditolak.
+              </p>
+            </div>
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+              {pendingHeadTuClosingPeriodReopens.length} menunggu
+            </span>
+          </div>
+          {financeClosingPeriodReopenApprovalsQuery.isLoading ? (
+            <div className="py-10 flex items-center justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+            </div>
+          ) : pendingHeadTuClosingPeriodReopens.length === 0 ? (
+            <div className="py-10 text-center text-sm text-gray-500">Tidak ada request reopen yang menunggu review.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Periode</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Alasan</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {pendingHeadTuClosingPeriodReopens.map((request: FinanceClosingPeriodReopenRequest) => (
+                    <tr key={request.id}>
+                      <td className="px-6 py-4 text-sm text-gray-700">
+                        <div className="font-semibold text-gray-900">{request.closingPeriod.label}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {request.requestNo} • {request.closingPeriod.periodNo}
+                        </div>
+                        {request.requestedBy?.name ? (
+                          <div className="text-xs text-gray-500 mt-1">Diajukan {request.requestedBy.name}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-700">
+                        <div>{request.reason}</div>
+                        {request.requestedNote ? (
+                          <div className="text-xs text-gray-500 mt-1">{request.requestedNote}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-700">
+                        <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${getClosingPeriodReopenTone(request).className}`}>
+                          {getClosingPeriodReopenTone(request).label}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-right">
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              headTuClosingPeriodReopenDecisionMutation.mutate({ requestId: request.id, approved: false })
+                            }
+                            disabled={headTuClosingPeriodReopenDecisionMutation.isPending}
+                            className="inline-flex items-center rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                          >
+                            Tolak
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              headTuClosingPeriodReopenDecisionMutation.mutate({ requestId: request.id, approved: true })
+                            }
+                            disabled={headTuClosingPeriodReopenDecisionMutation.isPending}
+                            className="inline-flex items-center rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                          >
+                            Proses
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {financeClosingPeriodReopenRequests.length > 0 ? (
+            <div className="border-t border-gray-100 px-6 py-3 text-xs text-gray-500">
+              Riwayat reopen tercatat: {financeClosingPeriodReopenSummary?.totalRequests || 0} request,{' '}
+              {financeClosingPeriodReopenSummary?.appliedCount || 0} sudah direopen.
+            </div>
+          ) : null}
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

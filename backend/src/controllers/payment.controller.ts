@@ -1,6 +1,7 @@
 import {
   FinanceAdjustmentKind,
   FinanceClosingPeriodApprovalStatus,
+  FinanceClosingPeriodReopenStatus,
   FinanceClosingPeriodStatus,
   FinanceClosingPeriodType,
   FinanceCashSessionApprovalStatus,
@@ -131,6 +132,12 @@ function makeFinanceCashSessionNo(userId: number): string {
   const ts = Date.now().toString().slice(-7);
   const rand = Math.floor(Math.random() * 900 + 100).toString();
   return `CSH-${userId}-${ts}${rand}`;
+}
+
+function makeFinanceClosingPeriodReopenNo(closingPeriodId: number): string {
+  const ts = Date.now().toString().slice(-7);
+  const rand = Math.floor(Math.random() * 900 + 100).toString();
+  return `RCP-${closingPeriodId}-${ts}${rand}`;
 }
 
 function makeFinanceBankReconciliationNo(bankAccountId: number): string {
@@ -1924,6 +1931,8 @@ const DEFAULT_FINANCE_CASH_SESSION_APPROVAL_POLICY = {
 
 const DEFAULT_FINANCE_CLOSING_PERIOD_APPROVAL_POLICY = {
   requireHeadTuApproval: true,
+  requireHeadTuReopenApproval: true,
+  requirePrincipalReopenApproval: true,
   principalApprovalThresholdAmount: 100000,
   escalateIfPendingVerification: true,
   escalateIfUnmatchedBankEntries: true,
@@ -1935,6 +1944,7 @@ const DEFAULT_FINANCE_CLOSING_PERIOD_APPROVAL_POLICY = {
 type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE' | 'LATE_FEE' | 'ESCALATION';
 type FinanceCashSessionPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'NONE';
 type FinanceClosingPeriodPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'NONE';
+type FinanceClosingPeriodReopenPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'NONE';
 
 type SerializedFinanceReminderPolicy = {
   isActive: boolean;
@@ -1973,6 +1983,8 @@ type SerializedFinanceCashSessionApprovalPolicy = {
 
 type SerializedFinanceClosingPeriodApprovalPolicy = {
   requireHeadTuApproval: boolean;
+  requireHeadTuReopenApproval: boolean;
+  requirePrincipalReopenApproval: boolean;
   principalApprovalThresholdAmount: number;
   escalateIfPendingVerification: boolean;
   escalateIfUnmatchedBankEntries: boolean;
@@ -2014,6 +2026,8 @@ type SerializedFinanceClosingPeriod = {
   closingNote: string | null;
   requestedAt: Date | null;
   closedAt: Date | null;
+  reopenedAt: Date | null;
+  reopenNote: string | null;
   requestedBy: { id: number; name: string; role: string } | null;
   headTuApproved: boolean | null;
   headTuDecisionAt: Date | null;
@@ -2024,6 +2038,39 @@ type SerializedFinanceClosingPeriod = {
   principalDecisionNote: string | null;
   principalDecisionBy: { id: number; name: string; role: string } | null;
   closedBy: { id: number; name: string; role: string } | null;
+  reopenedBy: { id: number; name: string; role: string } | null;
+};
+
+type SerializedFinanceClosingPeriodReopenRequest = {
+  id: number;
+  requestNo: string;
+  status: FinanceClosingPeriodReopenStatus;
+  pendingActor: FinanceClosingPeriodReopenPendingActor;
+  reason: string;
+  requestedNote: string | null;
+  requestedAt: Date;
+  closingPeriod: Pick<
+    SerializedFinanceClosingPeriod,
+    'id' | 'periodNo' | 'periodType' | 'periodYear' | 'periodMonth' | 'label' | 'periodStart' | 'periodEnd' | 'summary'
+  >;
+  requestedBy: { id: number; name: string; role: string } | null;
+  headTuDecision: {
+    approved: boolean | null;
+    decidedAt: Date | null;
+    note: string | null;
+    by: { id: number; name: string; role: string } | null;
+  };
+  principalDecision: {
+    approved: boolean | null;
+    decidedAt: Date | null;
+    note: string | null;
+    by: { id: number; name: string; role: string } | null;
+  };
+  application: {
+    reopenedAt: Date | null;
+    note: string | null;
+    by: { id: number; name: string; role: string } | null;
+  };
 };
 
 function getFinanceStartOfDay(date: Date) {
@@ -2129,6 +2176,8 @@ async function ensureFinanceCashSessionApprovalPolicy() {
 
 function serializeFinanceClosingPeriodApprovalPolicy(policy: {
   requireHeadTuApproval: boolean;
+  requireHeadTuReopenApproval: boolean;
+  requirePrincipalReopenApproval: boolean;
   principalApprovalThresholdAmount: number;
   escalateIfPendingVerification: boolean;
   escalateIfUnmatchedBankEntries: boolean;
@@ -2139,6 +2188,8 @@ function serializeFinanceClosingPeriodApprovalPolicy(policy: {
 }): SerializedFinanceClosingPeriodApprovalPolicy {
   return {
     requireHeadTuApproval: Boolean(policy.requireHeadTuApproval),
+    requireHeadTuReopenApproval: Boolean(policy.requireHeadTuReopenApproval),
+    requirePrincipalReopenApproval: Boolean(policy.requirePrincipalReopenApproval),
     principalApprovalThresholdAmount: normalizeFinanceAmount(
       Math.max(0, Number(policy.principalApprovalThresholdAmount || 0)),
     ),
@@ -2177,6 +2228,14 @@ function getFinanceClosingPeriodPendingActor(
 ): FinanceClosingPeriodPendingActor {
   if (approvalStatus === FinanceClosingPeriodApprovalStatus.PENDING_HEAD_TU) return 'HEAD_TU';
   if (approvalStatus === FinanceClosingPeriodApprovalStatus.PENDING_PRINCIPAL) return 'PRINCIPAL';
+  return 'NONE';
+}
+
+function getFinanceClosingPeriodReopenPendingActor(
+  status: FinanceClosingPeriodReopenStatus,
+): FinanceClosingPeriodReopenPendingActor {
+  if (status === FinanceClosingPeriodReopenStatus.PENDING_HEAD_TU) return 'HEAD_TU';
+  if (status === FinanceClosingPeriodReopenStatus.PENDING_PRINCIPAL) return 'PRINCIPAL';
   return 'NONE';
 }
 
@@ -2865,6 +2924,14 @@ async function ensureFinancePaymentVerificationViewer(authUser: { id?: number; r
   const user = await loadFinanceActorContext(authUser);
   if (!user.isFinanceStaff && !user.isHeadTu && !user.isPrincipal) {
     throw new ApiError(403, 'Akses finance monitoring dibutuhkan untuk melihat verifikasi pembayaran');
+  }
+  return user;
+}
+
+async function ensureFinanceClosingPeriodReopenViewer(authUser: { id?: number; role?: string }) {
+  const user = await loadFinanceActorContext(authUser);
+  if (!user.isFinanceStaff && !user.isHeadTu && !user.isPrincipal) {
+    throw new ApiError(403, 'Akses finance monitoring dibutuhkan untuk melihat reopen closing period');
   }
   return user;
 }
@@ -3634,6 +3701,13 @@ const listFinanceClosingPeriodsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional().default(12),
 });
 
+const listFinanceClosingPeriodReopenRequestsQuerySchema = z.object({
+  closingPeriodId: z.coerce.number().int().positive().optional(),
+  status: z.nativeEnum(FinanceClosingPeriodReopenStatus).optional(),
+  pendingFor: z.enum(['HEAD_TU', 'PRINCIPAL']).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+});
+
 const listFinanceBudgetRealizationSummaryQuerySchema = z.object({
   academicYearId: z.coerce.number().int().positive().optional(),
   additionalDuty: z.string().trim().min(1).optional(),
@@ -3716,6 +3790,8 @@ const updateFinanceCashSessionApprovalPolicySchema = z.object({
 
 const updateFinanceClosingPeriodApprovalPolicySchema = z.object({
   requireHeadTuApproval: z.boolean().optional(),
+  requireHeadTuReopenApproval: z.boolean().optional(),
+  requirePrincipalReopenApproval: z.boolean().optional(),
   principalApprovalThresholdAmount: z.coerce.number().min(0).optional(),
   escalateIfPendingVerification: z.boolean().optional(),
   escalateIfUnmatchedBankEntries: z.boolean().optional(),
@@ -3755,6 +3831,16 @@ const createFinanceClosingPeriodSchema = z
   });
 
 const decideFinanceClosingPeriodSchema = z.object({
+  approved: z.boolean(),
+  note: z.string().trim().max(500).optional(),
+});
+
+const createFinanceClosingPeriodReopenRequestSchema = z.object({
+  reason: z.string().trim().min(5).max(500),
+  note: z.string().trim().max(500).optional(),
+});
+
+const decideFinanceClosingPeriodReopenSchema = z.object({
   approved: z.boolean(),
   note: z.string().trim().max(500).optional(),
 });
@@ -4041,7 +4127,49 @@ const financeClosingPeriodRecordInclude = Prisma.validator<Prisma.FinanceClosing
       role: true,
     },
   },
+  reopenedBy: {
+    select: {
+      id: true,
+      name: true,
+      role: true,
+    },
+  },
 });
+
+const financeClosingPeriodReopenRequestInclude =
+  Prisma.validator<Prisma.FinanceClosingPeriodReopenRequestInclude>()({
+    closingPeriod: {
+      include: financeClosingPeriodRecordInclude,
+    },
+    requestedBy: {
+      select: {
+        id: true,
+        name: true,
+        role: true,
+      },
+    },
+    headTuDecisionBy: {
+      select: {
+        id: true,
+        name: true,
+        role: true,
+      },
+    },
+    principalDecisionBy: {
+      select: {
+        id: true,
+        name: true,
+        role: true,
+      },
+    },
+    reopenedBy: {
+      select: {
+        id: true,
+        name: true,
+        role: true,
+      },
+    },
+  });
 
 const financeBankReconciliationRecordInclude = {
   bankAccount: {
@@ -5646,6 +5774,8 @@ function serializeFinanceClosingPeriodRecord<
     closingNote?: string | null;
     requestedAt?: Date | null;
     closedAt?: Date | null;
+    reopenedAt?: Date | null;
+    reopenNote?: string | null;
     requestedBy?: { id: number; name: string; role: string } | null;
     headTuApproved?: boolean | null;
     headTuDecisionAt?: Date | null;
@@ -5656,6 +5786,7 @@ function serializeFinanceClosingPeriodRecord<
     principalDecisionNote?: string | null;
     principalDecisionBy?: { id: number; name: string; role: string } | null;
     closedBy?: { id: number; name: string; role: string } | null;
+    reopenedBy?: { id: number; name: string; role: string } | null;
   },
 >(period: T): SerializedFinanceClosingPeriod {
   return {
@@ -5674,6 +5805,8 @@ function serializeFinanceClosingPeriodRecord<
     closingNote: period.closingNote?.trim() || null,
     requestedAt: period.requestedAt || null,
     closedAt: period.closedAt || null,
+    reopenedAt: period.reopenedAt || null,
+    reopenNote: period.reopenNote?.trim() || null,
     requestedBy: period.requestedBy || null,
     headTuApproved: period.headTuApproved ?? null,
     headTuDecisionAt: period.headTuDecisionAt || null,
@@ -5684,6 +5817,71 @@ function serializeFinanceClosingPeriodRecord<
     principalDecisionNote: period.principalDecisionNote?.trim() || null,
     principalDecisionBy: period.principalDecisionBy || null,
     closedBy: period.closedBy || null,
+    reopenedBy: period.reopenedBy || null,
+  };
+}
+
+function serializeFinanceClosingPeriodReopenRequest<
+  T extends {
+    id: number;
+    requestNo: string;
+    status: FinanceClosingPeriodReopenStatus;
+    reason: string;
+    requestedNote?: string | null;
+    requestedAt: Date;
+    closingPeriod: Parameters<typeof serializeFinanceClosingPeriodRecord>[0];
+    requestedBy?: { id: number; name: string; role: string } | null;
+    headTuApproved?: boolean | null;
+    headTuDecisionAt?: Date | null;
+    headTuDecisionNote?: string | null;
+    headTuDecisionBy?: { id: number; name: string; role: string } | null;
+    principalApproved?: boolean | null;
+    principalDecisionAt?: Date | null;
+    principalDecisionNote?: string | null;
+    principalDecisionBy?: { id: number; name: string; role: string } | null;
+    reopenedAt?: Date | null;
+    reopenNote?: string | null;
+    reopenedBy?: { id: number; name: string; role: string } | null;
+  },
+>(request: T): SerializedFinanceClosingPeriodReopenRequest {
+  const closingPeriod = serializeFinanceClosingPeriodRecord(request.closingPeriod);
+  return {
+    id: request.id,
+    requestNo: request.requestNo,
+    status: request.status,
+    pendingActor: getFinanceClosingPeriodReopenPendingActor(request.status),
+    reason: request.reason.trim(),
+    requestedNote: request.requestedNote?.trim() || null,
+    requestedAt: request.requestedAt,
+    closingPeriod: {
+      id: closingPeriod.id,
+      periodNo: closingPeriod.periodNo,
+      periodType: closingPeriod.periodType,
+      periodYear: closingPeriod.periodYear,
+      periodMonth: closingPeriod.periodMonth,
+      label: closingPeriod.label,
+      periodStart: closingPeriod.periodStart,
+      periodEnd: closingPeriod.periodEnd,
+      summary: closingPeriod.summary,
+    },
+    requestedBy: request.requestedBy || null,
+    headTuDecision: {
+      approved: request.headTuApproved ?? null,
+      decidedAt: request.headTuDecisionAt || null,
+      note: request.headTuDecisionNote?.trim() || null,
+      by: request.headTuDecisionBy || null,
+    },
+    principalDecision: {
+      approved: request.principalApproved ?? null,
+      decidedAt: request.principalDecisionAt || null,
+      note: request.principalDecisionNote?.trim() || null,
+      by: request.principalDecisionBy || null,
+    },
+    application: {
+      reopenedAt: request.reopenedAt || null,
+      note: request.reopenNote?.trim() || null,
+      by: request.reopenedBy || null,
+    },
   };
 }
 
@@ -5844,6 +6042,62 @@ async function assertFinanceClosingPeriodRangeUnlocked(
       `${actionLabel} tidak diizinkan karena rentang periode bertabrakan dengan ${closedPeriod.label} (${closedPeriod.periodNo}) yang sudah ditutup`,
     );
   }
+}
+
+async function reopenFinanceClosingPeriodRecord(
+  db: Prisma.TransactionClient | typeof prisma,
+  period: {
+    id: number;
+    periodStart: Date;
+    periodEnd: Date;
+  },
+  params: {
+    actorId: number;
+    reopenNote?: string | null;
+  },
+) {
+  const refreshedSummary = await buildFinanceClosingPeriodSummary(db, {
+    periodStart: period.periodStart,
+    periodEnd: period.periodEnd,
+  });
+  const reopenedAt = new Date();
+
+  return db.financeClosingPeriod.update({
+    where: { id: period.id },
+    data: {
+      status: FinanceClosingPeriodStatus.OPEN,
+      approvalStatus: FinanceClosingPeriodApprovalStatus.NOT_SUBMITTED,
+      cashOpeningBalance: refreshedSummary.cashOpeningBalance,
+      cashClosingBalance: refreshedSummary.cashClosingBalance,
+      bankOpeningBalance: refreshedSummary.bankOpeningBalance,
+      bankClosingBalance: refreshedSummary.bankClosingBalance,
+      totalCashIn: refreshedSummary.totalCashIn,
+      totalCashOut: refreshedSummary.totalCashOut,
+      totalBankIn: refreshedSummary.totalBankIn,
+      totalBankOut: refreshedSummary.totalBankOut,
+      outstandingAmount: refreshedSummary.outstandingAmount,
+      pendingVerificationAmount: refreshedSummary.pendingVerificationAmount,
+      unmatchedBankAmount: refreshedSummary.unmatchedBankAmount,
+      openCashSessionCount: refreshedSummary.openCashSessionCount,
+      openReconciliationCount: refreshedSummary.openReconciliationCount,
+      requestedById: null,
+      requestedAt: null,
+      headTuApproved: null,
+      headTuDecisionById: null,
+      headTuDecisionAt: null,
+      headTuDecisionNote: null,
+      principalApproved: null,
+      principalDecisionById: null,
+      principalDecisionAt: null,
+      principalDecisionNote: null,
+      closedById: null,
+      closedAt: null,
+      reopenedById: params.actorId,
+      reopenedAt,
+      reopenNote: params.reopenNote?.trim() || null,
+    },
+    include: financeClosingPeriodRecordInclude,
+  });
 }
 
 async function serializeFinanceBankReconciliationRecord(
@@ -9654,6 +9908,12 @@ export const updateFinanceClosingPeriodApprovalPolicy = asyncHandler(async (req:
         ...(payload.requireHeadTuApproval !== undefined
           ? { requireHeadTuApproval: payload.requireHeadTuApproval }
           : {}),
+        ...(payload.requireHeadTuReopenApproval !== undefined
+          ? { requireHeadTuReopenApproval: payload.requireHeadTuReopenApproval }
+          : {}),
+        ...(payload.requirePrincipalReopenApproval !== undefined
+          ? { requirePrincipalReopenApproval: payload.requirePrincipalReopenApproval }
+          : {}),
         ...(payload.principalApprovalThresholdAmount !== undefined
           ? {
               principalApprovalThresholdAmount: normalizeFinanceAmount(
@@ -9680,6 +9940,12 @@ export const updateFinanceClosingPeriodApprovalPolicy = asyncHandler(async (req:
         ...DEFAULT_FINANCE_CLOSING_PERIOD_APPROVAL_POLICY,
         ...(payload.requireHeadTuApproval !== undefined
           ? { requireHeadTuApproval: payload.requireHeadTuApproval }
+          : {}),
+        ...(payload.requireHeadTuReopenApproval !== undefined
+          ? { requireHeadTuReopenApproval: payload.requireHeadTuReopenApproval }
+          : {}),
+        ...(payload.requirePrincipalReopenApproval !== undefined
+          ? { requirePrincipalReopenApproval: payload.requirePrincipalReopenApproval }
           : {}),
         ...(payload.principalApprovalThresholdAmount !== undefined
           ? {
@@ -14092,6 +14358,9 @@ export const createFinanceClosingPeriod = asyncHandler(async (req: Request, res:
     principalDecisionNote: null,
     closedById: nextStatus === FinanceClosingPeriodStatus.CLOSED ? actor.id : null,
     closedAt: nextStatus === FinanceClosingPeriodStatus.CLOSED ? requestedAt : null,
+    reopenedById: null,
+    reopenedAt: null,
+    reopenNote: null,
   } as const;
 
   const saved = existing
@@ -14426,6 +14695,471 @@ export const decideFinanceClosingPeriodAsPrincipal = asyncHandler(async (req: Re
     ),
   );
 });
+
+export const listFinanceClosingPeriodReopenRequests = asyncHandler(
+  async (req: Request, res: Response) => {
+    await ensureFinanceClosingPeriodReopenViewer((req as any).user || {});
+
+    const { closingPeriodId, status, pendingFor, limit } =
+      listFinanceClosingPeriodReopenRequestsQuerySchema.parse(req.query || {});
+
+    const where: Prisma.FinanceClosingPeriodReopenRequestWhereInput = {
+      ...(closingPeriodId ? { closingPeriodId } : {}),
+      ...(status
+        ? { status }
+        : pendingFor === 'HEAD_TU'
+          ? { status: FinanceClosingPeriodReopenStatus.PENDING_HEAD_TU }
+          : pendingFor === 'PRINCIPAL'
+            ? { status: FinanceClosingPeriodReopenStatus.PENDING_PRINCIPAL }
+            : {}),
+    };
+
+    const [requests, groupedSummary] = await Promise.all([
+      prisma.financeClosingPeriodReopenRequest.findMany({
+        where,
+        include: financeClosingPeriodReopenRequestInclude,
+        orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
+        take: limit,
+      }),
+      prisma.financeClosingPeriodReopenRequest.groupBy({
+        by: ['status'],
+        where,
+        _count: { _all: true },
+      }),
+    ]);
+
+    const summary = groupedSummary.reduce(
+      (acc, row) => {
+        acc.totalRequests += row._count._all;
+        if (row.status === FinanceClosingPeriodReopenStatus.PENDING_HEAD_TU) acc.pendingHeadTuCount += row._count._all;
+        if (row.status === FinanceClosingPeriodReopenStatus.PENDING_PRINCIPAL)
+          acc.pendingPrincipalCount += row._count._all;
+        if (row.status === FinanceClosingPeriodReopenStatus.APPLIED) acc.appliedCount += row._count._all;
+        if (row.status === FinanceClosingPeriodReopenStatus.REJECTED) acc.rejectedCount += row._count._all;
+        return acc;
+      },
+      {
+        totalRequests: 0,
+        pendingHeadTuCount: 0,
+        pendingPrincipalCount: 0,
+        appliedCount: 0,
+        rejectedCount: 0,
+      },
+    );
+
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          requests: requests.map((row) => serializeFinanceClosingPeriodReopenRequest(row)),
+          summary,
+        },
+        'Request reopen closing period berhasil diambil',
+      ),
+    );
+  },
+);
+
+export const createFinanceClosingPeriodReopenRequest = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+  const approvalPolicy = await ensureFinanceClosingPeriodApprovalPolicy();
+
+  const periodId = Number(req.params.id);
+  if (!Number.isInteger(periodId) || periodId <= 0) {
+    throw new ApiError(400, 'ID closing period tidak valid');
+  }
+
+  const payload = createFinanceClosingPeriodReopenRequestSchema.parse(req.body || {});
+  const period = await prisma.financeClosingPeriod.findUnique({
+    where: { id: periodId },
+    include: financeClosingPeriodRecordInclude,
+  });
+
+  if (!period) {
+    throw new ApiError(404, 'Closing period tidak ditemukan');
+  }
+
+  if (period.status !== FinanceClosingPeriodStatus.CLOSED) {
+    throw new ApiError(400, 'Hanya closing period yang sudah locked yang dapat diajukan reopen');
+  }
+
+  const existingPending = await prisma.financeClosingPeriodReopenRequest.findFirst({
+    where: {
+      closingPeriodId: period.id,
+      status: {
+        in: [
+          FinanceClosingPeriodReopenStatus.PENDING_HEAD_TU,
+          FinanceClosingPeriodReopenStatus.PENDING_PRINCIPAL,
+        ],
+      },
+    },
+    select: {
+      id: true,
+      requestNo: true,
+    },
+  });
+
+  if (existingPending) {
+    throw new ApiError(400, `Masih ada request reopen aktif (${existingPending.requestNo}) untuk periode ini`);
+  }
+
+  const requestedAt = new Date();
+  const nextStatus = approvalPolicy.requireHeadTuReopenApproval
+    ? FinanceClosingPeriodReopenStatus.PENDING_HEAD_TU
+    : approvalPolicy.requirePrincipalReopenApproval
+      ? FinanceClosingPeriodReopenStatus.PENDING_PRINCIPAL
+      : FinanceClosingPeriodReopenStatus.APPLIED;
+
+  const result = await prisma.$transaction(async (tx) => {
+    const created = await tx.financeClosingPeriodReopenRequest.create({
+      data: {
+        requestNo: makeFinanceClosingPeriodReopenNo(period.id),
+        closingPeriodId: period.id,
+        reason: payload.reason.trim(),
+        requestedNote: payload.note?.trim() || null,
+        status: nextStatus,
+        requestedById: actor.id,
+        requestedAt,
+        reopenedById: nextStatus === FinanceClosingPeriodReopenStatus.APPLIED ? actor.id : null,
+        reopenedAt: nextStatus === FinanceClosingPeriodReopenStatus.APPLIED ? requestedAt : null,
+        reopenNote:
+          nextStatus === FinanceClosingPeriodReopenStatus.APPLIED ? payload.note?.trim() || null : null,
+      },
+      include: financeClosingPeriodReopenRequestInclude,
+    });
+
+    let updatedPeriod = period;
+    if (nextStatus === FinanceClosingPeriodReopenStatus.APPLIED) {
+      updatedPeriod = await reopenFinanceClosingPeriodRecord(tx, period, {
+        actorId: actor.id,
+        reopenNote: payload.note?.trim() || payload.reason.trim(),
+      });
+    }
+
+    return { request: created, period: updatedPeriod };
+  });
+
+  const serializedRequest = serializeFinanceClosingPeriodReopenRequest(result.request);
+
+  if (nextStatus === FinanceClosingPeriodReopenStatus.PENDING_HEAD_TU) {
+    await createFinanceInternalNotifications({
+      scopes: ['HEAD_TU'],
+      title: 'Review Reopen Closing Period',
+      message: `${period.label} diajukan untuk reopen dan menunggu review Kepala TU.`,
+      type: 'FINANCE_CLOSING_PERIOD_REOPEN_HEAD_TU_REVIEW',
+      data: {
+        module: 'FINANCE',
+        closingPeriodId: period.id,
+        reopenRequestId: serializedRequest.id,
+        requestNo: serializedRequest.requestNo,
+        periodNo: period.periodNo,
+      },
+    });
+  } else if (nextStatus === FinanceClosingPeriodReopenStatus.PENDING_PRINCIPAL) {
+    await createFinanceInternalNotifications({
+      scopes: ['PRINCIPAL', 'FINANCE'],
+      title: 'Review Reopen Closing Period',
+      message: `${period.label} diajukan untuk reopen dan menunggu keputusan Kepala Sekolah.`,
+      type: 'FINANCE_CLOSING_PERIOD_REOPEN_PRINCIPAL_REVIEW',
+      data: {
+        module: 'FINANCE',
+        closingPeriodId: period.id,
+        reopenRequestId: serializedRequest.id,
+        requestNo: serializedRequest.requestNo,
+        periodNo: period.periodNo,
+      },
+    });
+  } else {
+    await createFinanceInternalNotifications({
+      scopes: ['FINANCE', 'HEAD_TU', 'PRINCIPAL'],
+      title: 'Closing Period Direopen',
+      message: `${period.label} berhasil direopen tanpa eskalasi tambahan sesuai policy.`,
+      type: 'FINANCE_CLOSING_PERIOD_REOPENED',
+      data: {
+        module: 'FINANCE',
+        closingPeriodId: period.id,
+        reopenRequestId: serializedRequest.id,
+        requestNo: serializedRequest.requestNo,
+        periodNo: period.periodNo,
+      },
+    });
+  }
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'CREATE',
+      'FINANCE_CLOSING_PERIOD_REOPEN_REQUEST',
+      serializedRequest.id,
+      null,
+      serializedRequest,
+      nextStatus === FinanceClosingPeriodReopenStatus.APPLIED
+        ? 'Closing period direopen otomatis sesuai policy'
+        : 'Pengajuan reopen closing period',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat request reopen closing period', auditError);
+  }
+
+  res.status(201).json(
+    new ApiResponse(
+      201,
+      { request: serializedRequest },
+      nextStatus === FinanceClosingPeriodReopenStatus.APPLIED
+        ? 'Closing period berhasil direopen'
+        : 'Request reopen closing period berhasil diajukan',
+    ),
+  );
+});
+
+export const decideFinanceClosingPeriodReopenAsHeadTu = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceHeadTuActor((req as any).user || {});
+  const approvalPolicy = await ensureFinanceClosingPeriodApprovalPolicy();
+
+  const requestId = Number(req.params.id);
+  if (!Number.isInteger(requestId) || requestId <= 0) {
+    throw new ApiError(400, 'ID request reopen tidak valid');
+  }
+
+  const payload = decideFinanceClosingPeriodReopenSchema.parse(req.body || {});
+  if (!payload.approved && !payload.note?.trim()) {
+    throw new ApiError(400, 'Catatan keputusan wajib diisi saat menolak reopen closing period');
+  }
+
+  const before = await prisma.financeClosingPeriodReopenRequest.findUnique({
+    where: { id: requestId },
+    include: financeClosingPeriodReopenRequestInclude,
+  });
+
+  if (!before) {
+    throw new ApiError(404, 'Request reopen closing period tidak ditemukan');
+  }
+
+  if (before.status !== FinanceClosingPeriodReopenStatus.PENDING_HEAD_TU) {
+    throw new ApiError(400, 'Request reopen ini tidak sedang menunggu keputusan Kepala TU');
+  }
+
+  const decisionAt = new Date();
+  const nextStatus = payload.approved
+    ? approvalPolicy.requirePrincipalReopenApproval
+      ? FinanceClosingPeriodReopenStatus.PENDING_PRINCIPAL
+      : FinanceClosingPeriodReopenStatus.APPLIED
+    : FinanceClosingPeriodReopenStatus.REJECTED;
+
+  const result = await prisma.$transaction(async (tx) => {
+    const updatedRequest = await tx.financeClosingPeriodReopenRequest.update({
+      where: { id: before.id },
+      data: {
+        status: nextStatus,
+        headTuApproved: payload.approved,
+        headTuDecisionById: actor.id,
+        headTuDecisionAt: decisionAt,
+        headTuDecisionNote: payload.note?.trim() || null,
+        ...(payload.approved && nextStatus === FinanceClosingPeriodReopenStatus.APPLIED
+          ? {
+              reopenedById: actor.id,
+              reopenedAt: decisionAt,
+              reopenNote: payload.note?.trim() || before.requestedNote || before.reason,
+            }
+          : {}),
+      },
+      include: financeClosingPeriodReopenRequestInclude,
+    });
+
+    if (payload.approved && nextStatus === FinanceClosingPeriodReopenStatus.APPLIED) {
+      await reopenFinanceClosingPeriodRecord(tx, before.closingPeriod, {
+        actorId: actor.id,
+        reopenNote: payload.note?.trim() || before.requestedNote || before.reason,
+      });
+    }
+
+    return updatedRequest;
+  });
+
+  const serialized = serializeFinanceClosingPeriodReopenRequest(result);
+
+  await createFinanceInternalNotifications({
+    scopes:
+      nextStatus === FinanceClosingPeriodReopenStatus.PENDING_PRINCIPAL
+        ? ['PRINCIPAL', 'FINANCE']
+        : ['FINANCE'],
+    title:
+      nextStatus === FinanceClosingPeriodReopenStatus.PENDING_PRINCIPAL
+        ? 'Reopen Closing Period Diteruskan'
+        : payload.approved
+          ? 'Reopen Closing Period Disetujui Kepala TU'
+          : 'Reopen Closing Period Ditolak Kepala TU',
+    message:
+      nextStatus === FinanceClosingPeriodReopenStatus.PENDING_PRINCIPAL
+        ? `${before.closingPeriod.label} diteruskan ke Kepala Sekolah untuk finalisasi reopen.`
+        : payload.approved
+          ? `${before.closingPeriod.label} direopen oleh Kepala TU.`
+          : `${before.closingPeriod.label} ditolak untuk direopen oleh Kepala TU.`,
+    type:
+      nextStatus === FinanceClosingPeriodReopenStatus.PENDING_PRINCIPAL
+        ? 'FINANCE_CLOSING_PERIOD_REOPEN_HEAD_TU_ESCALATED'
+        : payload.approved
+          ? 'FINANCE_CLOSING_PERIOD_REOPEN_HEAD_TU_APPROVED'
+          : 'FINANCE_CLOSING_PERIOD_REOPEN_HEAD_TU_REJECTED',
+    data: {
+      module: 'FINANCE',
+      closingPeriodId: before.closingPeriodId,
+      reopenRequestId: serialized.id,
+      requestNo: serialized.requestNo,
+      status: serialized.status,
+      note: payload.note?.trim() || null,
+    },
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'UPDATE',
+      'FINANCE_CLOSING_PERIOD_REOPEN_HEAD_TU_DECISION',
+      serialized.id,
+      serializeFinanceClosingPeriodReopenRequest(before),
+      serialized,
+      payload.approved
+        ? nextStatus === FinanceClosingPeriodReopenStatus.PENDING_PRINCIPAL
+          ? 'Kepala TU meneruskan reopen closing period ke Kepala Sekolah'
+          : 'Kepala TU menyetujui reopen closing period'
+        : 'Kepala TU menolak reopen closing period',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat keputusan reopen closing period oleh Head TU', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      { request: serialized },
+      nextStatus === FinanceClosingPeriodReopenStatus.PENDING_PRINCIPAL
+        ? 'Request reopen closing period diteruskan ke Kepala Sekolah'
+        : payload.approved
+          ? 'Request reopen closing period disetujui Kepala TU'
+          : 'Request reopen closing period ditolak Kepala TU',
+    ),
+  );
+});
+
+export const decideFinanceClosingPeriodReopenAsPrincipal = asyncHandler(
+  async (req: Request, res: Response) => {
+    const actor = await ensureFinancePrincipalActor((req as any).user || {});
+
+    const requestId = Number(req.params.id);
+    if (!Number.isInteger(requestId) || requestId <= 0) {
+      throw new ApiError(400, 'ID request reopen tidak valid');
+    }
+
+    const payload = decideFinanceClosingPeriodReopenSchema.parse(req.body || {});
+    if (!payload.approved && !payload.note?.trim()) {
+      throw new ApiError(400, 'Catatan keputusan wajib diisi saat menolak reopen closing period');
+    }
+
+    const before = await prisma.financeClosingPeriodReopenRequest.findUnique({
+      where: { id: requestId },
+      include: financeClosingPeriodReopenRequestInclude,
+    });
+
+    if (!before) {
+      throw new ApiError(404, 'Request reopen closing period tidak ditemukan');
+    }
+
+    if (before.status !== FinanceClosingPeriodReopenStatus.PENDING_PRINCIPAL) {
+      throw new ApiError(400, 'Request reopen ini tidak sedang menunggu keputusan Kepala Sekolah');
+    }
+
+    const decisionAt = new Date();
+    const nextStatus = payload.approved
+      ? FinanceClosingPeriodReopenStatus.APPLIED
+      : FinanceClosingPeriodReopenStatus.REJECTED;
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedRequest = await tx.financeClosingPeriodReopenRequest.update({
+        where: { id: before.id },
+        data: {
+          status: nextStatus,
+          principalApproved: payload.approved,
+          principalDecisionById: actor.id,
+          principalDecisionAt: decisionAt,
+          principalDecisionNote: payload.note?.trim() || null,
+          ...(payload.approved
+            ? {
+                reopenedById: actor.id,
+                reopenedAt: decisionAt,
+                reopenNote: payload.note?.trim() || before.requestedNote || before.reason,
+              }
+            : {}),
+        },
+        include: financeClosingPeriodReopenRequestInclude,
+      });
+
+      if (payload.approved) {
+        await reopenFinanceClosingPeriodRecord(tx, before.closingPeriod, {
+          actorId: actor.id,
+          reopenNote: payload.note?.trim() || before.requestedNote || before.reason,
+        });
+      }
+
+      return updatedRequest;
+    });
+
+    const serialized = serializeFinanceClosingPeriodReopenRequest(result);
+
+    await createFinanceInternalNotifications({
+      scopes: ['FINANCE', 'HEAD_TU'],
+      title: payload.approved
+        ? 'Reopen Closing Period Disetujui Kepala Sekolah'
+        : 'Reopen Closing Period Ditolak Kepala Sekolah',
+      message: payload.approved
+        ? `${before.closingPeriod.label} direopen oleh Kepala Sekolah dan period lock dilepas.`
+        : `${before.closingPeriod.label} ditolak untuk direopen oleh Kepala Sekolah.`,
+      type: payload.approved
+        ? 'FINANCE_CLOSING_PERIOD_REOPEN_PRINCIPAL_APPROVED'
+        : 'FINANCE_CLOSING_PERIOD_REOPEN_PRINCIPAL_REJECTED',
+      data: {
+        module: 'FINANCE',
+        closingPeriodId: before.closingPeriodId,
+        reopenRequestId: serialized.id,
+        requestNo: serialized.requestNo,
+        status: serialized.status,
+        note: payload.note?.trim() || null,
+      },
+    });
+
+    try {
+      await writeAuditLog(
+        actor.id,
+        actor.role,
+        actor.additionalDuties,
+        'UPDATE',
+        'FINANCE_CLOSING_PERIOD_REOPEN_PRINCIPAL_DECISION',
+        serialized.id,
+        serializeFinanceClosingPeriodReopenRequest(before),
+        serialized,
+        payload.approved
+          ? 'Kepala Sekolah menyetujui reopen closing period'
+          : 'Kepala Sekolah menolak reopen closing period',
+      );
+    } catch (auditError) {
+      console.warn('[AUDIT] gagal mencatat keputusan reopen closing period oleh Kepala Sekolah', auditError);
+    }
+
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        { request: serialized },
+        payload.approved
+          ? 'Request reopen closing period disetujui Kepala Sekolah'
+          : 'Request reopen closing period ditolak Kepala Sekolah',
+      ),
+    );
+  },
+);
 
 export const listFinanceWriteOffs = asyncHandler(async (req: Request, res: Response) => {
   await ensureFinanceWriteOffViewer((req as any).user || {});

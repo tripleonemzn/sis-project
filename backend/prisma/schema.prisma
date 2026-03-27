@@ -116,6 +116,11 @@ model User {
   headTuReviewedFinanceClosingPeriods FinanceClosingPeriod[]              @relation("FinanceClosingPeriodHeadTuDecisionBy")
   principalReviewedFinanceClosingPeriods FinanceClosingPeriod[]           @relation("FinanceClosingPeriodPrincipalDecisionBy")
   closedFinanceClosingPeriods         FinanceClosingPeriod[]              @relation("FinanceClosingPeriodClosedBy")
+  reopenedFinanceClosingPeriods       FinanceClosingPeriod[]              @relation("FinanceClosingPeriodReopenedBy")
+  createdFinanceClosingPeriodReopenRequests FinanceClosingPeriodReopenRequest[] @relation("FinanceClosingPeriodReopenRequester")
+  headTuDecidedFinanceClosingPeriodReopenRequests FinanceClosingPeriodReopenRequest[] @relation("FinanceClosingPeriodReopenHeadTuDecisionBy")
+  principalDecidedFinanceClosingPeriodReopenRequests FinanceClosingPeriodReopenRequest[] @relation("FinanceClosingPeriodReopenPrincipalDecisionBy")
+  appliedFinanceClosingPeriodReopenRequests FinanceClosingPeriodReopenRequest[] @relation("FinanceClosingPeriodReopenAppliedBy")
   createdFinanceBankAccounts     FinanceBankAccount[]                     @relation("FinanceBankAccountCreatedBy")
   createdFinanceBankReconciliations FinanceBankReconciliation[]           @relation("FinanceBankReconciliationCreatedBy")
   finalizedFinanceBankReconciliations FinanceBankReconciliation[]         @relation("FinanceBankReconciliationFinalizedBy")
@@ -1514,6 +1519,8 @@ model FinanceCashSessionApprovalPolicy {
 model FinanceClosingPeriodApprovalPolicy {
   id                               Int      @id @default(1)
   requireHeadTuApproval            Boolean  @default(true)
+  requireHeadTuReopenApproval      Boolean  @default(true)
+  requirePrincipalReopenApproval   Boolean  @default(true)
   principalApprovalThresholdAmount Float    @default(100000)
   escalateIfPendingVerification    Boolean  @default(true)
   escalateIfUnmatchedBankEntries   Boolean  @default(true)
@@ -1953,16 +1960,54 @@ model FinanceClosingPeriod {
   principalDecisionNote     String?
   closedById                Int?
   closedAt                  DateTime?
+  reopenedById              Int?
+  reopenedAt                DateTime?
+  reopenNote                String?
   createdAt                 DateTime                            @default(now())
   updatedAt                 DateTime                            @updatedAt
   requestedBy               User?                               @relation("FinanceClosingPeriodRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
   headTuDecisionBy          User?                               @relation("FinanceClosingPeriodHeadTuDecisionBy", fields: [headTuDecisionById], references: [id], onDelete: SetNull)
   principalDecisionBy       User?                               @relation("FinanceClosingPeriodPrincipalDecisionBy", fields: [principalDecisionById], references: [id], onDelete: SetNull)
   closedBy                  User?                               @relation("FinanceClosingPeriodClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  reopenedBy                User?                               @relation("FinanceClosingPeriodReopenedBy", fields: [reopenedById], references: [id], onDelete: SetNull)
+  reopenRequests            FinanceClosingPeriodReopenRequest[]
 
   @@index([periodType, periodYear, periodMonth])
   @@index([status, approvalStatus, periodEnd])
   @@map("finance_closing_periods")
+}
+
+model FinanceClosingPeriodReopenRequest {
+  id                    Int                              @id @default(autoincrement())
+  requestNo             String                           @unique
+  closingPeriodId       Int
+  reason                String
+  requestedNote         String?
+  status                FinanceClosingPeriodReopenStatus @default(PENDING_HEAD_TU)
+  requestedById         Int
+  requestedAt           DateTime                         @default(now())
+  headTuApproved        Boolean?
+  headTuDecisionById    Int?
+  headTuDecisionAt      DateTime?
+  headTuDecisionNote    String?
+  principalApproved     Boolean?
+  principalDecisionById Int?
+  principalDecisionAt   DateTime?
+  principalDecisionNote String?
+  reopenedById          Int?
+  reopenedAt            DateTime?
+  reopenNote            String?
+  createdAt             DateTime                         @default(now())
+  updatedAt             DateTime                         @updatedAt
+  closingPeriod         FinanceClosingPeriod             @relation(fields: [closingPeriodId], references: [id], onDelete: Cascade)
+  requestedBy           User                             @relation("FinanceClosingPeriodReopenRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  headTuDecisionBy      User?                            @relation("FinanceClosingPeriodReopenHeadTuDecisionBy", fields: [headTuDecisionById], references: [id], onDelete: SetNull)
+  principalDecisionBy   User?                            @relation("FinanceClosingPeriodReopenPrincipalDecisionBy", fields: [principalDecisionById], references: [id], onDelete: SetNull)
+  reopenedBy            User?                            @relation("FinanceClosingPeriodReopenAppliedBy", fields: [reopenedById], references: [id], onDelete: SetNull)
+
+  @@index([closingPeriodId, status])
+  @@index([status, requestedAt])
+  @@map("finance_closing_period_reopen_requests")
 }
 
 model FinanceBankReconciliation {
@@ -2465,6 +2510,13 @@ enum FinanceClosingPeriodApprovalStatus {
   PENDING_HEAD_TU
   PENDING_PRINCIPAL
   APPROVED
+  REJECTED
+}
+
+enum FinanceClosingPeriodReopenStatus {
+  PENDING_HEAD_TU
+  PENDING_PRINCIPAL
+  APPLIED
   REJECTED
 }
 

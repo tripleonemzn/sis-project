@@ -48,6 +48,12 @@ export type FinanceClosingPeriodApprovalStatus =
   | 'APPROVED'
   | 'REJECTED';
 export type FinanceClosingPeriodPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'NONE';
+export type FinanceClosingPeriodReopenStatus =
+  | 'PENDING_HEAD_TU'
+  | 'PENDING_PRINCIPAL'
+  | 'APPLIED'
+  | 'REJECTED';
+export type FinanceClosingPeriodReopenPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'NONE';
 export type FinanceBankReconciliationStatus = 'OPEN' | 'FINALIZED';
 export type FinanceBankStatementDirection = 'CREDIT' | 'DEBIT';
 export type FinanceLedgerBook = 'ALL' | 'CASHBOOK' | 'BANKBOOK';
@@ -101,6 +107,8 @@ export type StaffFinanceCashSessionApprovalPolicy = {
 
 export type StaffFinanceClosingPeriodApprovalPolicy = {
   requireHeadTuApproval: boolean;
+  requireHeadTuReopenApproval: boolean;
+  requirePrincipalReopenApproval: boolean;
   principalApprovalThresholdAmount: number;
   escalateIfPendingVerification: boolean;
   escalateIfUnmatchedBankEntries: boolean;
@@ -788,6 +796,8 @@ export type StaffFinanceClosingPeriod = {
   closingNote?: string | null;
   requestedAt?: string | null;
   closedAt?: string | null;
+  reopenedAt?: string | null;
+  reopenNote?: string | null;
   requestedBy?: {
     id: number;
     name: string;
@@ -814,6 +824,11 @@ export type StaffFinanceClosingPeriod = {
     name: string;
     role: string;
   } | null;
+  reopenedBy?: {
+    id: number;
+    name: string;
+    role: string;
+  } | null;
 };
 
 export type StaffFinanceClosingPeriodListResult = {
@@ -828,6 +843,65 @@ export type StaffFinanceClosingPeriodListResult = {
     totalOutstandingAmount: number;
     totalPendingVerificationAmount: number;
     totalUnmatchedBankAmount: number;
+  };
+};
+
+export type StaffFinanceClosingPeriodReopenRequest = {
+  id: number;
+  requestNo: string;
+  status: FinanceClosingPeriodReopenStatus;
+  pendingActor: FinanceClosingPeriodReopenPendingActor;
+  reason: string;
+  requestedNote?: string | null;
+  requestedAt: string;
+  closingPeriod: Pick<
+    StaffFinanceClosingPeriod,
+    'id' | 'periodNo' | 'periodType' | 'periodYear' | 'periodMonth' | 'label' | 'periodStart' | 'periodEnd' | 'summary'
+  >;
+  requestedBy?: {
+    id: number;
+    name: string;
+    role: string;
+  } | null;
+  headTuDecision: {
+    approved?: boolean | null;
+    decidedAt?: string | null;
+    note?: string | null;
+    by?: {
+      id: number;
+      name: string;
+      role: string;
+    } | null;
+  };
+  principalDecision: {
+    approved?: boolean | null;
+    decidedAt?: string | null;
+    note?: string | null;
+    by?: {
+      id: number;
+      name: string;
+      role: string;
+    } | null;
+  };
+  application: {
+    reopenedAt?: string | null;
+    note?: string | null;
+    by?: {
+      id: number;
+      name: string;
+      role: string;
+    } | null;
+  };
+};
+
+export type StaffFinanceClosingPeriodReopenRequestListResult = {
+  requests: StaffFinanceClosingPeriodReopenRequest[];
+  summary: {
+    totalRequests: number;
+    pendingHeadTuCount: number;
+    pendingPrincipalCount: number;
+    appliedCount: number;
+    rejectedCount: number;
   };
 };
 
@@ -2031,6 +2105,19 @@ export const staffFinanceApi = {
     return response.data.data;
   },
 
+  async listClosingPeriodReopenRequests(params?: {
+    closingPeriodId?: number;
+    status?: FinanceClosingPeriodReopenStatus;
+    pendingFor?: 'HEAD_TU' | 'PRINCIPAL';
+    limit?: number;
+  }) {
+    const response = await apiClient.get<ApiResponse<StaffFinanceClosingPeriodReopenRequestListResult>>(
+      '/payments/closing-period-reopen-requests',
+      { params },
+    );
+    return response.data.data;
+  },
+
   async createClosingPeriod(payload: {
     periodType: FinanceClosingPeriodType;
     periodYear: number;
@@ -2044,6 +2131,14 @@ export const staffFinanceApi = {
     return response.data.data;
   },
 
+  async createClosingPeriodReopenRequest(periodId: number, payload: { reason: string; note?: string }) {
+    const response = await apiClient.post<ApiResponse<{ request: StaffFinanceClosingPeriodReopenRequest }>>(
+      `/payments/closing-periods/${periodId}/reopen-requests`,
+      payload,
+    );
+    return response.data.data.request;
+  },
+
   async decideClosingPeriodAsHeadTu(periodId: number, payload: { approved: boolean; note?: string }) {
     const response = await apiClient.post<ApiResponse<{ period: StaffFinanceClosingPeriod }>>(
       `/payments/closing-periods/${periodId}/head-tu-decision`,
@@ -2052,12 +2147,28 @@ export const staffFinanceApi = {
     return response.data.data.period;
   },
 
+  async decideClosingPeriodReopenAsHeadTu(requestId: number, payload: { approved: boolean; note?: string }) {
+    const response = await apiClient.post<ApiResponse<{ request: StaffFinanceClosingPeriodReopenRequest }>>(
+      `/payments/closing-period-reopen-requests/${requestId}/head-tu-decision`,
+      payload,
+    );
+    return response.data.data.request;
+  },
+
   async decideClosingPeriodAsPrincipal(periodId: number, payload: { approved: boolean; note?: string }) {
     const response = await apiClient.post<ApiResponse<{ period: StaffFinanceClosingPeriod }>>(
       `/payments/closing-periods/${periodId}/principal-decision`,
       payload,
     );
     return response.data.data.period;
+  },
+
+  async decideClosingPeriodReopenAsPrincipal(requestId: number, payload: { approved: boolean; note?: string }) {
+    const response = await apiClient.post<ApiResponse<{ request: StaffFinanceClosingPeriodReopenRequest }>>(
+      `/payments/closing-period-reopen-requests/${requestId}/principal-decision`,
+      payload,
+    );
+    return response.data.data.request;
   },
 
   async createRefund(

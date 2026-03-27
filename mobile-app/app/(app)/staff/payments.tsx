@@ -29,6 +29,7 @@ import {
   type StaffFinanceCashSessionApprovalPolicy,
   type StaffFinanceClosingPeriod,
   type StaffFinanceClosingPeriodApprovalPolicy,
+  type StaffFinanceClosingPeriodReopenRequest,
   type FinanceComponentPeriodicity,
   type StaffFinanceCreditBalanceRow,
   type StaffFinanceCreditTransaction,
@@ -404,6 +405,19 @@ function getClosingPeriodApprovalBadge(status: StaffFinanceClosingPeriod['approv
   return { label: 'Belum Diajukan', bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
 }
 
+function getClosingPeriodReopenBadge(status: StaffFinanceClosingPeriodReopenRequest['status']) {
+  if (status === 'PENDING_HEAD_TU') {
+    return { label: 'Menunggu Head TU', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  }
+  if (status === 'PENDING_PRINCIPAL') {
+    return { label: 'Menunggu Kepsek', bg: '#e0f2fe', border: '#7dd3fc', text: '#075985' };
+  }
+  if (status === 'APPLIED') {
+    return { label: 'Direopen', bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  }
+  return { label: 'Ditolak', bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+}
+
 function getBudgetProgressStageBadge(stage: FinanceBudgetProgressStage) {
   if (stage === 'RETURNED_BY_FINANCE') {
     return { label: 'Dikembalikan Keuangan', bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
@@ -570,6 +584,10 @@ export default function StaffPaymentsScreen() {
   const [closingPeriodLabel, setClosingPeriodLabel] = useState('');
   const [closingPeriodNote, setClosingPeriodNote] = useState('');
   const [closingPeriodRequireHeadTuApproval, setClosingPeriodRequireHeadTuApproval] = useState(true);
+  const [closingPeriodRequireHeadTuReopenApproval, setClosingPeriodRequireHeadTuReopenApproval] =
+    useState(true);
+  const [closingPeriodRequirePrincipalReopenApproval, setClosingPeriodRequirePrincipalReopenApproval] =
+    useState(true);
   const [closingPeriodPrincipalApprovalThresholdAmount, setClosingPeriodPrincipalApprovalThresholdAmount] =
     useState('100000');
   const [closingPeriodEscalateIfPendingVerification, setClosingPeriodEscalateIfPendingVerification] =
@@ -580,6 +598,9 @@ export default function StaffPaymentsScreen() {
   const [closingPeriodEscalateIfOpenReconciliation, setClosingPeriodEscalateIfOpenReconciliation] =
     useState(true);
   const [closingPeriodPolicyNotes, setClosingPeriodPolicyNotes] = useState('');
+  const [closingPeriodReopenTargetId, setClosingPeriodReopenTargetId] = useState<number | ''>('');
+  const [closingPeriodReopenReason, setClosingPeriodReopenReason] = useState('');
+  const [closingPeriodReopenNote, setClosingPeriodReopenNote] = useState('');
   const [editingBankAccountId, setEditingBankAccountId] = useState<number | null>(null);
   const [bankAccountCode, setBankAccountCode] = useState('');
   const [bankAccountBankName, setBankAccountBankName] = useState('');
@@ -705,6 +726,13 @@ export default function StaffPaymentsScreen() {
     staleTime: 30_000,
   });
 
+  const closingPeriodReopenRequestsQuery = useQuery({
+    queryKey: ['mobile-staff-finance-closing-period-reopen-requests'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => staffFinanceApi.listClosingPeriodReopenRequests({ limit: 12 }),
+    staleTime: 30_000,
+  });
+
   const budgetRealizationQuery = useQuery({
     queryKey: ['mobile-staff-finance-budget-realization', activeYearQuery.data?.id || 'none'],
     enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
@@ -754,8 +782,14 @@ export default function StaffPaymentsScreen() {
   const cashSessionApprovalPolicy = cashSessionApprovalPolicyQuery.data || null;
   const closingPeriodsSummary = closingPeriodsQuery.data?.summary;
   const closingPeriods = closingPeriodsQuery.data?.periods || [];
+  const closingPeriodReopenRequests = closingPeriodReopenRequestsQuery.data?.requests || [];
+  const closingPeriodReopenSummary = closingPeriodReopenRequestsQuery.data?.summary;
   const closingPeriodApprovalPolicy = closingPeriodApprovalPolicyQuery.data || null;
   const budgetRealizationSummary = budgetRealizationQuery.data || null;
+  const closedClosingPeriods = useMemo(
+    () => closingPeriods.filter((period) => period.status === 'CLOSED'),
+    [closingPeriods],
+  );
 
   useEffect(() => {
     if (bankReconciliationAccountId === '' && activeBankAccounts[0]?.id) {
@@ -777,6 +811,21 @@ export default function StaffPaymentsScreen() {
       setPaymentBankAccountId('');
     }
   }, [activeBankAccounts, paymentBankAccountId, paymentMethod]);
+
+  useEffect(() => {
+    if (closedClosingPeriods.length === 0) {
+      if (closingPeriodReopenTargetId !== '') {
+        setClosingPeriodReopenTargetId('');
+      }
+      return;
+    }
+    if (
+      closingPeriodReopenTargetId === '' ||
+      !closedClosingPeriods.some((period) => period.id === Number(closingPeriodReopenTargetId))
+    ) {
+      setClosingPeriodReopenTargetId(closedClosingPeriods[0].id);
+    }
+  }, [closedClosingPeriods, closingPeriodReopenTargetId]);
 
   useEffect(() => {
     if (refundMethod !== 'CASH' && refundBankAccountId === '' && activeBankAccounts[0]?.id) {
@@ -1097,6 +1146,8 @@ export default function StaffPaymentsScreen() {
 
   const applyClosingPeriodApprovalPolicyToForm = (policy: StaffFinanceClosingPeriodApprovalPolicy) => {
     setClosingPeriodRequireHeadTuApproval(policy.requireHeadTuApproval);
+    setClosingPeriodRequireHeadTuReopenApproval(policy.requireHeadTuReopenApproval);
+    setClosingPeriodRequirePrincipalReopenApproval(policy.requirePrincipalReopenApproval);
     setClosingPeriodPrincipalApprovalThresholdAmount(
       String(Number(policy.principalApprovalThresholdAmount || 0)),
     );
@@ -1225,6 +1276,7 @@ export default function StaffPaymentsScreen() {
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-reminder-policy'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-cash-session-policy'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-closing-periods'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-closing-period-reopen-requests'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-closing-period-policy'] });
   };
 
@@ -1470,6 +1522,8 @@ export default function StaffPaymentsScreen() {
     mutationFn: () =>
       staffFinanceApi.updateClosingPeriodApprovalPolicy({
         requireHeadTuApproval: closingPeriodRequireHeadTuApproval,
+        requireHeadTuReopenApproval: closingPeriodRequireHeadTuReopenApproval,
+        requirePrincipalReopenApproval: closingPeriodRequirePrincipalReopenApproval,
         principalApprovalThresholdAmount: Math.max(
           0,
           Number(closingPeriodPrincipalApprovalThresholdAmount || 0),
@@ -1486,6 +1540,25 @@ export default function StaffPaymentsScreen() {
       invalidateFinanceQueries();
     },
     onError: (error: unknown) => notifyApiError(error, 'Gagal memperbarui policy approval closing period.'),
+  });
+
+  const createClosingPeriodReopenRequestMutation = useMutation({
+    mutationFn: () => {
+      if (closingPeriodReopenTargetId === '') {
+        throw new Error('Closing period belum dipilih');
+      }
+      return staffFinanceApi.createClosingPeriodReopenRequest(Number(closingPeriodReopenTargetId), {
+        reason: closingPeriodReopenReason.trim(),
+        note: closingPeriodReopenNote.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      notifySuccess('Request reopen closing period berhasil diajukan.');
+      setClosingPeriodReopenReason('');
+      setClosingPeriodReopenNote('');
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal mengajukan reopen closing period.'),
   });
 
   const createClosingPeriodMutation = useMutation({
@@ -2065,6 +2138,18 @@ export default function StaffPaymentsScreen() {
       return;
     }
     createClosingPeriodMutation.mutate();
+  };
+
+  const handleCreateClosingPeriodReopenRequest = () => {
+    if (closingPeriodReopenTargetId === '') {
+      notifyApiError(null, 'Pilih closing period yang ingin direopen.');
+      return;
+    }
+    if (closingPeriodReopenReason.trim().length < 5) {
+      notifyApiError(null, 'Alasan reopen closing period minimal 5 karakter.');
+      return;
+    }
+    createClosingPeriodReopenRequestMutation.mutate();
   };
 
   const startPaying = (invoice: StaffFinanceInvoice) => {
@@ -4467,6 +4552,16 @@ export default function StaffPaymentsScreen() {
               title: 'Wajib review Head TU',
             },
             {
+              checked: closingPeriodRequireHeadTuReopenApproval,
+              onPress: () => setClosingPeriodRequireHeadTuReopenApproval((value) => !value),
+              title: 'Reopen wajib review Head TU',
+            },
+            {
+              checked: closingPeriodRequirePrincipalReopenApproval,
+              onPress: () => setClosingPeriodRequirePrincipalReopenApproval((value) => !value),
+              title: 'Reopen wajib approval Kepsek',
+            },
+            {
               checked: closingPeriodEscalateIfPendingVerification,
               onPress: () => setClosingPeriodEscalateIfPendingVerification((value) => !value),
               title: 'Eskalasi jika masih ada payment pending',
@@ -4550,6 +4645,85 @@ export default function StaffPaymentsScreen() {
           >
             <Text style={{ color: '#fff', fontWeight: '700' }}>
               {saveClosingPeriodApprovalPolicyMutation.isPending ? 'Menyimpan policy...' : 'Simpan Policy Approval'}
+            </Text>
+          </Pressable>
+        </View>
+
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#e2e8f0',
+            backgroundColor: '#f8fafc',
+            borderRadius: 10,
+            padding: 10,
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Ajukan Reopen Closing</Text>
+          <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+            Unlock period yang sudah locked hanya untuk koreksi sah, dan tetap lewat jejak approval.
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {closedClosingPeriods.length === 0 ? (
+                <Text style={{ color: '#64748b', fontSize: 12 }}>Belum ada closing period locked.</Text>
+              ) : (
+                closedClosingPeriods.map((period) => {
+                  const active = closingPeriodReopenTargetId === period.id;
+                  return (
+                    <Pressable
+                      key={`mobile-closing-reopen-${period.id}`}
+                      onPress={() => setClosingPeriodReopenTargetId(period.id)}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: active ? '#d97706' : '#cbd5e1',
+                        backgroundColor: active ? '#fff7ed' : '#fff',
+                        borderRadius: 999,
+                        paddingHorizontal: 12,
+                        paddingVertical: 7,
+                      }}
+                    >
+                      <Text style={{ color: active ? '#9a3412' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                        {period.periodNo}
+                      </Text>
+                    </Pressable>
+                  );
+                })
+              )}
+            </View>
+          </ScrollView>
+          <TextInput
+            value={closingPeriodReopenReason}
+            onChangeText={setClosingPeriodReopenReason}
+            placeholder="Alasan reopen"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <TextInput
+            value={closingPeriodReopenNote}
+            onChangeText={setClosingPeriodReopenNote}
+            placeholder="Catatan tambahan reopen"
+            placeholderTextColor="#94a3b8"
+            multiline
+            textAlignVertical="top"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, minHeight: 80, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <Pressable
+            onPress={handleCreateClosingPeriodReopenRequest}
+            disabled={createClosingPeriodReopenRequestMutation.isPending || closedClosingPeriods.length === 0}
+            style={{
+              marginTop: 10,
+              backgroundColor:
+                createClosingPeriodReopenRequestMutation.isPending || closedClosingPeriods.length === 0
+                  ? '#fdba74'
+                  : '#d97706',
+              borderRadius: 10,
+              paddingVertical: 11,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>
+              {createClosingPeriodReopenRequestMutation.isPending ? 'Mengirim request...' : 'Ajukan Reopen'}
             </Text>
           </Pressable>
         </View>
@@ -4640,6 +4814,67 @@ export default function StaffPaymentsScreen() {
                   <Text style={{ color: '#166534', fontSize: 12, marginTop: 3 }}>
                     Locked {formatDate(period.closedAt)}
                     {period.closedBy?.name ? ` oleh ${period.closedBy.name}` : ''}
+                  </Text>
+                ) : null}
+                {period.reopenedAt ? (
+                  <Text style={{ color: '#b45309', fontSize: 12, marginTop: 3 }}>
+                    Direopen {formatDate(period.reopenedAt)}
+                    {period.reopenedBy?.name ? ` oleh ${period.reopenedBy.name}` : ''}
+                    {period.reopenNote ? ` • ${period.reopenNote}` : ''}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })
+        )}
+
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginTop: 6, marginBottom: 6 }}>Riwayat Reopen Closing</Text>
+        {closingPeriodReopenRequestsQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil request reopen..." />
+        ) : closingPeriodReopenRequests.length === 0 ? (
+          <Text style={{ color: '#64748b', fontSize: 12 }}>
+            Belum ada request reopen closing period.
+          </Text>
+        ) : (
+          closingPeriodReopenRequests.map((request) => {
+            const badge = getClosingPeriodReopenBadge(request.status);
+            return (
+              <View
+                key={request.id}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  backgroundColor: '#f8fafc',
+                  borderRadius: 10,
+                  padding: 10,
+                  marginBottom: 8,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#0f172a', fontWeight: '700' }}>{request.closingPeriod.label}</Text>
+                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                      {request.requestNo} • {request.closingPeriod.periodNo}
+                    </Text>
+                  </View>
+                  <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                    <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{badge.label}</Text>
+                  </View>
+                </View>
+                <Text style={{ color: '#334155', fontSize: 12, marginTop: 6 }}>{request.reason}</Text>
+                {request.requestedNote ? (
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{request.requestedNote}</Text>
+                ) : null}
+                {request.headTuDecision.note ? (
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>Head TU: {request.headTuDecision.note}</Text>
+                ) : null}
+                {request.principalDecision.note ? (
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>Kepsek: {request.principalDecision.note}</Text>
+                ) : null}
+                {request.application.reopenedAt ? (
+                  <Text style={{ color: '#166534', fontSize: 12, marginTop: 2 }}>
+                    Direopen {formatDate(request.application.reopenedAt)}
+                    {request.application.by?.name ? ` oleh ${request.application.by.name}` : ''}
                   </Text>
                 ) : null}
               </View>
