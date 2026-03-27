@@ -18,12 +18,15 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import {
   type FinanceAdjustmentKind,
   type FinanceBankStatementDirection,
+  type FinanceClosingPeriodType,
   type FinanceLedgerBook,
   staffFinanceApi,
   type StaffFinanceBankAccount,
   type StaffFinanceBankReconciliation,
   type StaffFinanceCashSession,
   type StaffFinanceCashSessionApprovalPolicy,
+  type StaffFinanceClosingPeriod,
+  type StaffFinanceClosingPeriodApprovalPolicy,
   type FinanceComponentPeriodicity,
   type StaffFinanceCreditBalanceRow,
   type StaffFinanceCreditTransaction,
@@ -84,6 +87,11 @@ const LATE_FEE_MODE_OPTIONS: Array<{ value: FinanceLateFeeMode; label: string }>
   { value: 'DAILY', label: 'Harian per termin overdue' },
 ];
 
+const CLOSING_PERIOD_TYPE_OPTIONS: Array<{ value: FinanceClosingPeriodType; label: string }> = [
+  { value: 'MONTHLY', label: 'Bulanan' },
+  { value: 'YEARLY', label: 'Tahunan' },
+];
+
 type FinanceTab = 'dashboard' | 'components' | 'tariffs' | 'adjustments' | 'invoices';
 
 function formatCurrency(value: number) {
@@ -118,6 +126,12 @@ function getMonthStartInputDate() {
   const yyyy = now.getFullYear();
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   return `${yyyy}-${mm}-01`;
+}
+
+function getFinanceMonthLabel(month: number) {
+  return new Date(2026, Math.max(0, month - 1), 1).toLocaleDateString('id-ID', {
+    month: 'long',
+  });
 }
 
 function getStatusBadge(status: FinanceInvoiceStatus) {
@@ -354,6 +368,32 @@ function getCashSessionApprovalBadge(status: StaffFinanceCashSession['approvalSt
   return { label: 'Belum Diajukan', bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
 }
 
+function getClosingPeriodStatusBadge(status: StaffFinanceClosingPeriod['status']) {
+  if (status === 'CLOSED') {
+    return { label: 'Terkunci', bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  }
+  if (status === 'CLOSING_REVIEW') {
+    return { label: 'Review Closing', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  }
+  return { label: 'Terbuka', bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
+}
+
+function getClosingPeriodApprovalBadge(status: StaffFinanceClosingPeriod['approvalStatus']) {
+  if (status === 'PENDING_HEAD_TU') {
+    return { label: 'Menunggu Head TU', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  }
+  if (status === 'PENDING_PRINCIPAL') {
+    return { label: 'Menunggu Kepsek', bg: '#e0f2fe', border: '#7dd3fc', text: '#075985' };
+  }
+  if (status === 'APPROVED') {
+    return { label: 'Disetujui', bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  }
+  if (status === 'REJECTED') {
+    return { label: 'Ditolak', bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+  }
+  return { label: 'Belum Diajukan', bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
+}
+
 function getBankReconciliationStatusBadge(status: StaffFinanceBankReconciliation['status']) {
   if (status === 'FINALIZED') {
     return { label: 'Final', bg: '#dcfce7', border: '#86efac', text: '#166534' };
@@ -489,6 +529,22 @@ export default function StaffPaymentsScreen() {
   const [cashSessionRequireVarianceNote, setCashSessionRequireVarianceNote] = useState(true);
   const [cashSessionPrincipalApprovalThresholdAmount, setCashSessionPrincipalApprovalThresholdAmount] = useState('100000');
   const [cashSessionApprovalPolicyNotes, setCashSessionApprovalPolicyNotes] = useState('');
+  const [closingPeriodType, setClosingPeriodType] = useState<FinanceClosingPeriodType>('MONTHLY');
+  const [closingPeriodYear, setClosingPeriodYear] = useState(String(new Date().getFullYear()));
+  const [closingPeriodMonth, setClosingPeriodMonth] = useState(String(new Date().getMonth() + 1));
+  const [closingPeriodLabel, setClosingPeriodLabel] = useState('');
+  const [closingPeriodNote, setClosingPeriodNote] = useState('');
+  const [closingPeriodRequireHeadTuApproval, setClosingPeriodRequireHeadTuApproval] = useState(true);
+  const [closingPeriodPrincipalApprovalThresholdAmount, setClosingPeriodPrincipalApprovalThresholdAmount] =
+    useState('100000');
+  const [closingPeriodEscalateIfPendingVerification, setClosingPeriodEscalateIfPendingVerification] =
+    useState(true);
+  const [closingPeriodEscalateIfUnmatchedBankEntries, setClosingPeriodEscalateIfUnmatchedBankEntries] =
+    useState(true);
+  const [closingPeriodEscalateIfOpenCashSession, setClosingPeriodEscalateIfOpenCashSession] = useState(true);
+  const [closingPeriodEscalateIfOpenReconciliation, setClosingPeriodEscalateIfOpenReconciliation] =
+    useState(true);
+  const [closingPeriodPolicyNotes, setClosingPeriodPolicyNotes] = useState('');
   const [editingBankAccountId, setEditingBankAccountId] = useState<number | null>(null);
   const [bankAccountCode, setBankAccountCode] = useState('');
   const [bankAccountBankName, setBankAccountBankName] = useState('');
@@ -607,6 +663,20 @@ export default function StaffPaymentsScreen() {
     staleTime: 60_000,
   });
 
+  const closingPeriodsQuery = useQuery({
+    queryKey: ['mobile-staff-finance-closing-periods'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => staffFinanceApi.listClosingPeriods({ limit: 12 }),
+    staleTime: 30_000,
+  });
+
+  const closingPeriodApprovalPolicyQuery = useQuery({
+    queryKey: ['mobile-staff-finance-closing-period-policy'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => staffFinanceApi.getClosingPeriodApprovalPolicy(),
+    staleTime: 60_000,
+  });
+
   const academicYears = academicYearsQuery.data?.items || [];
   const majors = majorsQuery.data?.items || [];
   const classLevelOptions = useMemo(
@@ -636,6 +706,9 @@ export default function StaffPaymentsScreen() {
 
   const reminderPolicy = reminderPolicyQuery.data || null;
   const cashSessionApprovalPolicy = cashSessionApprovalPolicyQuery.data || null;
+  const closingPeriodsSummary = closingPeriodsQuery.data?.summary;
+  const closingPeriods = closingPeriodsQuery.data?.periods || [];
+  const closingPeriodApprovalPolicy = closingPeriodApprovalPolicyQuery.data || null;
 
   useEffect(() => {
     if (bankReconciliationAccountId === '' && activeBankAccounts[0]?.id) {
@@ -689,6 +762,11 @@ export default function StaffPaymentsScreen() {
     if (!cashSessionApprovalPolicy) return;
     applyCashSessionApprovalPolicyToForm(cashSessionApprovalPolicy);
   }, [cashSessionApprovalPolicy?.updatedAt]);
+
+  useEffect(() => {
+    if (!closingPeriodApprovalPolicy) return;
+    applyClosingPeriodApprovalPolicyToForm(closingPeriodApprovalPolicy);
+  }, [closingPeriodApprovalPolicy?.updatedAt]);
 
   const studentLookup = useMemo(() => {
     return new Map((studentsQuery.data || []).map((student) => [student.id, student]));
@@ -970,6 +1048,18 @@ export default function StaffPaymentsScreen() {
     setCashSessionApprovalPolicyNotes(policy.notes || '');
   };
 
+  const applyClosingPeriodApprovalPolicyToForm = (policy: StaffFinanceClosingPeriodApprovalPolicy) => {
+    setClosingPeriodRequireHeadTuApproval(policy.requireHeadTuApproval);
+    setClosingPeriodPrincipalApprovalThresholdAmount(
+      String(Number(policy.principalApprovalThresholdAmount || 0)),
+    );
+    setClosingPeriodEscalateIfPendingVerification(policy.escalateIfPendingVerification);
+    setClosingPeriodEscalateIfUnmatchedBankEntries(policy.escalateIfUnmatchedBankEntries);
+    setClosingPeriodEscalateIfOpenCashSession(policy.escalateIfOpenCashSession);
+    setClosingPeriodEscalateIfOpenReconciliation(policy.escalateIfOpenReconciliation);
+    setClosingPeriodPolicyNotes(policy.notes || '');
+  };
+
   const openReminderPolicyModal = () => {
     if (reminderPolicy) {
       applyReminderPolicyToForm(reminderPolicy);
@@ -1087,6 +1177,8 @@ export default function StaffPaymentsScreen() {
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-dashboard'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-reminder-policy'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-cash-session-policy'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-closing-periods'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-closing-period-policy'] });
   };
 
   const saveComponentMutation = useMutation({
@@ -1325,6 +1417,46 @@ export default function StaffPaymentsScreen() {
       invalidateFinanceQueries();
     },
     onError: (error: unknown) => notifyApiError(error, 'Gagal memperbarui policy approval settlement kas.'),
+  });
+
+  const saveClosingPeriodApprovalPolicyMutation = useMutation({
+    mutationFn: () =>
+      staffFinanceApi.updateClosingPeriodApprovalPolicy({
+        requireHeadTuApproval: closingPeriodRequireHeadTuApproval,
+        principalApprovalThresholdAmount: Math.max(
+          0,
+          Number(closingPeriodPrincipalApprovalThresholdAmount || 0),
+        ),
+        escalateIfPendingVerification: closingPeriodEscalateIfPendingVerification,
+        escalateIfUnmatchedBankEntries: closingPeriodEscalateIfUnmatchedBankEntries,
+        escalateIfOpenCashSession: closingPeriodEscalateIfOpenCashSession,
+        escalateIfOpenReconciliation: closingPeriodEscalateIfOpenReconciliation,
+        notes: closingPeriodPolicyNotes.trim() || null,
+      }),
+    onSuccess: (policy) => {
+      notifySuccess('Policy approval closing period berhasil diperbarui.');
+      applyClosingPeriodApprovalPolicyToForm(policy);
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal memperbarui policy approval closing period.'),
+  });
+
+  const createClosingPeriodMutation = useMutation({
+    mutationFn: () =>
+      staffFinanceApi.createClosingPeriod({
+        periodType: closingPeriodType,
+        periodYear: Number(closingPeriodYear || 0),
+        periodMonth: closingPeriodType === 'MONTHLY' ? Number(closingPeriodMonth || 0) : undefined,
+        label: closingPeriodLabel.trim() || undefined,
+        note: closingPeriodNote.trim() || undefined,
+      }),
+    onSuccess: () => {
+      notifySuccess('Closing period berhasil diajukan.');
+      setClosingPeriodLabel('');
+      setClosingPeriodNote('');
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal mengajukan closing period.'),
   });
 
   const dispatchReminderMutation = useMutation({
@@ -1873,6 +2005,21 @@ export default function StaffPaymentsScreen() {
     finalizeBankReconciliationMutation.mutate(reconciliation);
   };
 
+  const handleCreateClosingPeriod = () => {
+    if (Number(closingPeriodYear || 0) < 2020) {
+      notifyApiError(null, 'Tahun closing period tidak valid.');
+      return;
+    }
+    if (
+      closingPeriodType === 'MONTHLY' &&
+      (Number(closingPeriodMonth || 0) < 1 || Number(closingPeriodMonth || 0) > 12)
+    ) {
+      notifyApiError(null, 'Bulan closing period tidak valid.');
+      return;
+    }
+    createClosingPeriodMutation.mutate();
+  };
+
   const startPaying = (invoice: StaffFinanceInvoice) => {
     setSelectedInvoice(invoice);
     setPaymentAmount(String(Number(invoice.balanceAmount || 0)));
@@ -2159,6 +2306,8 @@ export default function StaffPaymentsScreen() {
     paymentVerificationsQuery.isLoading ||
     ledgerBooksQuery.isLoading ||
     cashSessionsQuery.isLoading ||
+    closingPeriodsQuery.isLoading ||
+    closingPeriodApprovalPolicyQuery.isLoading ||
     creditsQuery.isLoading ||
     invoicesQuery.isLoading ||
     studentsQuery.isLoading;
@@ -2179,6 +2328,8 @@ export default function StaffPaymentsScreen() {
             paymentVerificationsQuery.isFetching ||
             ledgerBooksQuery.isFetching ||
             cashSessionsQuery.isFetching ||
+            closingPeriodsQuery.isFetching ||
+            closingPeriodApprovalPolicyQuery.isFetching ||
             creditsQuery.isFetching ||
             invoicesQuery.isFetching ||
             dashboardQuery.isFetching
@@ -2193,6 +2344,8 @@ export default function StaffPaymentsScreen() {
             void paymentVerificationsQuery.refetch();
             void ledgerBooksQuery.refetch();
             void cashSessionsQuery.refetch();
+            void closingPeriodsQuery.refetch();
+            void closingPeriodApprovalPolicyQuery.refetch();
             void creditsQuery.refetch();
             void invoicesQuery.refetch();
             void dashboardQuery.refetch();
@@ -3866,6 +4019,354 @@ export default function StaffPaymentsScreen() {
                 {entry.book === 'BANKBOOK' && entry.accountRunningBalance != null ? (
                   <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
                     Saldo rekening {formatCurrency(entry.accountRunningBalance)}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })
+        )}
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#cbd5e1',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Closing Period Finance</Text>
+        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+          Ajukan closing bulanan atau tahunan dengan snapshot kas, bank, outstanding, dan lock periode untuk seluruh transaksi finance.
+        </Text>
+
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
+          {[
+            { label: 'Total Period', value: String(closingPeriodsSummary?.totalPeriods || 0), bg: '#f8fafc', border: '#cbd5e1', text: '#334155' },
+            { label: 'Masih Terbuka', value: String(closingPeriodsSummary?.openCount || 0), bg: '#e0f2fe', border: '#bae6fd', text: '#075985' },
+            { label: 'Review Closing', value: String(closingPeriodsSummary?.reviewCount || 0), bg: '#fef3c7', border: '#fde68a', text: '#92400e' },
+            { label: 'Sudah Locked', value: String(closingPeriodsSummary?.closedCount || 0), bg: '#dcfce7', border: '#86efac', text: '#166534' },
+            { label: 'Pending Verifikasi', value: formatCurrency(closingPeriodsSummary?.totalPendingVerificationAmount || 0), bg: '#fee2e2', border: '#fecaca', text: '#991b1b' },
+            { label: 'Unmatched Bank', value: formatCurrency(closingPeriodsSummary?.totalUnmatchedBankAmount || 0), bg: '#f3e8ff', border: '#d8b4fe', text: '#6b21a8' },
+          ].map((card) => (
+            <View key={card.label} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+              <View style={{ backgroundColor: card.bg, borderWidth: 1, borderColor: card.border, borderRadius: 10, padding: 10 }}>
+                <Text style={{ color: card.text, fontSize: 11 }}>{card.label}</Text>
+                <Text style={{ color: card.text, fontWeight: '700', fontSize: 13, marginTop: 4 }} numberOfLines={1}>
+                  {card.value}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#e2e8f0',
+            backgroundColor: '#f8fafc',
+            borderRadius: 10,
+            padding: 10,
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Ajukan Closing Period</Text>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {CLOSING_PERIOD_TYPE_OPTIONS.map((option) => {
+                const active = closingPeriodType === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setClosingPeriodType(option.value)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#1d4ed8' : '#cbd5e1',
+                      backgroundColor: active ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 12,
+                      paddingVertical: 7,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <TextInput
+            value={closingPeriodYear}
+            onChangeText={setClosingPeriodYear}
+            placeholder="Tahun closing"
+            placeholderTextColor="#94a3b8"
+            keyboardType="number-pad"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          {closingPeriodType === 'MONTHLY' ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => {
+                  const active = closingPeriodMonth === String(month);
+                  return (
+                    <Pressable
+                      key={`closing-period-month-${month}`}
+                      onPress={() => setClosingPeriodMonth(String(month))}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: active ? '#1d4ed8' : '#cbd5e1',
+                        backgroundColor: active ? '#e9f1ff' : '#fff',
+                        borderRadius: 999,
+                        paddingHorizontal: 12,
+                        paddingVertical: 7,
+                      }}
+                    >
+                      <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                        {getFinanceMonthLabel(month)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          ) : (
+            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+              Closing tahunan akan memakai seluruh periode Januari-Desember.
+            </Text>
+          )}
+          <TextInput
+            value={closingPeriodLabel}
+            onChangeText={setClosingPeriodLabel}
+            placeholder="Label closing opsional"
+            placeholderTextColor="#94a3b8"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <TextInput
+            value={closingPeriodNote}
+            onChangeText={setClosingPeriodNote}
+            placeholder="Catatan closing"
+            placeholderTextColor="#94a3b8"
+            multiline
+            textAlignVertical="top"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, minHeight: 88, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>
+            Setelah disetujui, transaksi pada periode ini akan terkunci sesuai policy approval closing.
+          </Text>
+          <Pressable
+            onPress={handleCreateClosingPeriod}
+            disabled={createClosingPeriodMutation.isPending}
+            style={{
+              marginTop: 10,
+              backgroundColor: createClosingPeriodMutation.isPending ? '#94a3b8' : '#0f172a',
+              borderRadius: 10,
+              paddingVertical: 11,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>
+              {createClosingPeriodMutation.isPending ? 'Mengajukan closing...' : 'Ajukan Closing'}
+            </Text>
+          </Pressable>
+        </View>
+
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: '#e2e8f0',
+            backgroundColor: '#fff',
+            borderRadius: 10,
+            padding: 10,
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Policy Approval Closing</Text>
+
+          {[
+            {
+              checked: closingPeriodRequireHeadTuApproval,
+              onPress: () => setClosingPeriodRequireHeadTuApproval((value) => !value),
+              title: 'Wajib review Head TU',
+            },
+            {
+              checked: closingPeriodEscalateIfPendingVerification,
+              onPress: () => setClosingPeriodEscalateIfPendingVerification((value) => !value),
+              title: 'Eskalasi jika masih ada payment pending',
+            },
+            {
+              checked: closingPeriodEscalateIfUnmatchedBankEntries,
+              onPress: () => setClosingPeriodEscalateIfUnmatchedBankEntries((value) => !value),
+              title: 'Eskalasi jika mutasi bank belum matched',
+            },
+            {
+              checked: closingPeriodEscalateIfOpenCashSession,
+              onPress: () => setClosingPeriodEscalateIfOpenCashSession((value) => !value),
+              title: 'Eskalasi jika sesi kas masih terbuka',
+            },
+            {
+              checked: closingPeriodEscalateIfOpenReconciliation,
+              onPress: () => setClosingPeriodEscalateIfOpenReconciliation((value) => !value),
+              title: 'Eskalasi jika rekonsiliasi bank belum final',
+            },
+          ].map((item) => (
+            <Pressable
+              key={item.title}
+              onPress={item.onPress}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 10,
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                backgroundColor: '#f8fafc',
+                borderRadius: 10,
+                padding: 10,
+                marginBottom: 8,
+              }}
+            >
+              <View
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: 5,
+                  borderWidth: 1,
+                  borderColor: item.checked ? '#2563eb' : '#94a3b8',
+                  backgroundColor: item.checked ? '#2563eb' : '#fff',
+                  marginTop: 1,
+                }}
+              />
+              <Text style={{ color: '#334155', flex: 1 }}>{item.title}</Text>
+            </Pressable>
+          ))}
+
+          <TextInput
+            value={closingPeriodPrincipalApprovalThresholdAmount}
+            onChangeText={setClosingPeriodPrincipalApprovalThresholdAmount}
+            placeholder="Threshold eskalasi Kepala Sekolah"
+            placeholderTextColor="#94a3b8"
+            keyboardType="number-pad"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <TextInput
+            value={closingPeriodPolicyNotes}
+            onChangeText={setClosingPeriodPolicyNotes}
+            placeholder="Catatan policy approval closing"
+            placeholderTextColor="#94a3b8"
+            multiline
+            textAlignVertical="top"
+            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, minHeight: 80, color: '#0f172a', backgroundColor: '#fff' }}
+          />
+          <Pressable
+            onPress={() => saveClosingPeriodApprovalPolicyMutation.mutate()}
+            disabled={saveClosingPeriodApprovalPolicyMutation.isPending || closingPeriodApprovalPolicyQuery.isLoading}
+            style={{
+              marginTop: 10,
+              backgroundColor:
+                saveClosingPeriodApprovalPolicyMutation.isPending || closingPeriodApprovalPolicyQuery.isLoading
+                  ? '#93c5fd'
+                  : '#2563eb',
+              borderRadius: 10,
+              paddingVertical: 11,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>
+              {saveClosingPeriodApprovalPolicyMutation.isPending ? 'Menyimpan policy...' : 'Simpan Policy Approval'}
+            </Text>
+          </Pressable>
+        </View>
+
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Riwayat Closing Period</Text>
+        {closingPeriodsQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil closing period..." />
+        ) : closingPeriods.length === 0 ? (
+          <Text style={{ color: '#64748b', fontSize: 12 }}>
+            Belum ada closing period yang diajukan.
+          </Text>
+        ) : (
+          closingPeriods.map((period) => {
+            const statusBadge = getClosingPeriodStatusBadge(period.status);
+            const approvalBadge = getClosingPeriodApprovalBadge(period.approvalStatus);
+            return (
+              <View
+                key={period.id}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  backgroundColor: '#f8fafc',
+                  borderRadius: 10,
+                  padding: 10,
+                  marginBottom: 8,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#0f172a', fontWeight: '700' }}>{period.label}</Text>
+                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                      {period.periodNo} • {formatDate(period.periodStart)} - {formatDate(period.periodEnd)}
+                    </Text>
+                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                      {period.requestedBy?.name ? `Diajukan ${period.requestedBy.name}` : 'Snapshot closing finance'}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                    {[statusBadge, approvalBadge].map((badge) => (
+                      <View
+                        key={`${period.id}-${badge.label}`}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: badge.border,
+                          backgroundColor: badge.bg,
+                          borderRadius: 999,
+                          paddingHorizontal: 8,
+                          paddingVertical: 2,
+                        }}
+                      >
+                        <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{badge.label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+
+                <Text style={{ color: '#334155', fontSize: 12, marginTop: 8 }}>
+                  Outstanding {formatCurrency(period.summary.outstandingAmount)} • pending verifikasi{' '}
+                  {formatCurrency(period.summary.pendingVerificationAmount)}
+                </Text>
+                <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                  Unmatched bank {formatCurrency(period.summary.unmatchedBankAmount)} • sesi kas/rekon terbuka{' '}
+                  {period.summary.openCashSessionCount}/{period.summary.openReconciliationCount}
+                </Text>
+                <Text style={{ color: '#166534', fontSize: 12, marginTop: 2 }}>
+                  Saldo kas {formatCurrency(period.summary.cashClosingBalance)} • saldo bank {formatCurrency(period.summary.bankClosingBalance)}
+                </Text>
+                <Text style={{ color: '#4338ca', fontSize: 12, marginTop: 2 }}>
+                  Cash in/out {formatCurrency(period.summary.totalCashIn)} / {formatCurrency(period.summary.totalCashOut)}
+                </Text>
+                <Text style={{ color: '#4338ca', fontSize: 12, marginTop: 2 }}>
+                  Bank in/out {formatCurrency(period.summary.totalBankIn)} / {formatCurrency(period.summary.totalBankOut)}
+                </Text>
+                {period.closingNote ? (
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>{period.closingNote}</Text>
+                ) : null}
+                {period.headTuDecisionNote ? (
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>
+                    Review Head TU: {period.headTuDecisionNote}
+                  </Text>
+                ) : null}
+                {period.principalDecisionNote ? (
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>
+                    Keputusan Kepsek: {period.principalDecisionNote}
+                  </Text>
+                ) : null}
+                {period.closedAt ? (
+                  <Text style={{ color: '#166534', fontSize: 12, marginTop: 3 }}>
+                    Locked {formatDate(period.closedAt)}
+                    {period.closedBy?.name ? ` oleh ${period.closedBy.name}` : ''}
                   </Text>
                 ) : null}
               </View>

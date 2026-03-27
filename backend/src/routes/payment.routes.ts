@@ -4,12 +4,15 @@ import {
   createFinanceBankAccount,
   createFinanceBankReconciliation,
   createFinanceBankStatementEntry,
+  createFinanceClosingPeriod,
   createFinanceComponent,
   listFinanceClassLevels,
   listFinanceBankAccounts,
   createFinanceWriteOffRequest,
   decideFinanceCashSessionAsHeadTu,
   decideFinanceCashSessionAsPrincipal,
+  decideFinanceClosingPeriodAsHeadTu,
+  decideFinanceClosingPeriodAsPrincipal,
   dispatchFinanceDueRemindersHandler,
   decideFinanceWriteOffAsHeadTu,
   decideFinanceWriteOffAsPrincipal,
@@ -25,9 +28,11 @@ import {
   generateFinanceInvoices,
   getFinanceReminderPolicy,
   getFinanceCashSessionApprovalPolicy,
+  getFinanceClosingPeriodApprovalPolicy,
   listFinanceAdjustmentRules,
   listFinanceBankReconciliations,
   listFinanceCashSessions,
+  listFinanceClosingPeriods,
   listFinanceComponents,
   listFinanceCredits,
   listFinanceInvoices,
@@ -45,6 +50,7 @@ import {
   updateFinanceInvoiceInstallments,
   updateFinanceBankAccount,
   updateFinanceCashSessionApprovalPolicy,
+  updateFinanceClosingPeriodApprovalPolicy,
   updateFinanceAdjustmentRule,
   updateFinanceComponent,
   updateFinanceReminderPolicy,
@@ -68,6 +74,7 @@ router.get('/class-levels', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCI
 router.get('/bank-accounts', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceBankAccounts);
 router.get('/reminder-policy', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), getFinanceReminderPolicy);
 router.get('/cash-session-policy', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), getFinanceCashSessionApprovalPolicy);
+router.get('/closing-period-policy', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), getFinanceClosingPeriodApprovalPolicy);
 router.post('/components', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceComponent);
 router.patch('/components/:id', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceComponent);
 router.post('/bank-accounts', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceBankAccount);
@@ -87,10 +94,14 @@ router.post('/bank-reconciliations', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER'
 router.post('/bank-reconciliations/:id/entries', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceBankStatementEntry);
 router.post('/bank-reconciliations/:id/finalize', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), finalizeFinanceBankReconciliation);
 router.get('/cash-sessions', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceCashSessions);
+router.get('/closing-periods', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceClosingPeriods);
 router.post('/cash-sessions/open', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), openFinanceCashSession);
 router.post('/cash-sessions/:id/close', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), closeFinanceCashSession);
 router.post('/cash-sessions/:id/head-tu-decision', roleMiddleware(['STAFF']), decideFinanceCashSessionAsHeadTu);
 router.post('/cash-sessions/:id/principal-decision', roleMiddleware(['PRINCIPAL']), decideFinanceCashSessionAsPrincipal);
+router.post('/closing-periods', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceClosingPeriod);
+router.post('/closing-periods/:id/head-tu-decision', roleMiddleware(['STAFF']), decideFinanceClosingPeriodAsHeadTu);
+router.post('/closing-periods/:id/principal-decision', roleMiddleware(['PRINCIPAL']), decideFinanceClosingPeriodAsPrincipal);
 router.post('/invoices/:id/late-fees/apply', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), applyFinanceInvoiceLateFees);
 router.patch('/invoices/:id/installments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceInvoiceInstallments);
 router.post('/invoices/:id/payments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinancePayment);
@@ -112,6 +123,7 @@ router.post('/write-offs/:id/apply', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER'
 router.post('/reminders/dispatch', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), dispatchFinanceDueRemindersHandler);
 router.put('/reminder-policy', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceReminderPolicy);
 router.put('/cash-session-policy', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceCashSessionApprovalPolicy);
+router.put('/closing-period-policy', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceClosingPeriodApprovalPolicy);
 router.get('/reports', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceReports);
 router.get(
   '/reports/export',

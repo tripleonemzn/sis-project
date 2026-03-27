@@ -39,6 +39,15 @@ export type FinanceCashSessionApprovalStatus =
   | 'AUTO_APPROVED'
   | 'REJECTED';
 export type FinanceCashSessionPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'NONE';
+export type FinanceClosingPeriodType = 'MONTHLY' | 'YEARLY';
+export type FinanceClosingPeriodStatus = 'OPEN' | 'CLOSING_REVIEW' | 'CLOSED';
+export type FinanceClosingPeriodApprovalStatus =
+  | 'NOT_SUBMITTED'
+  | 'PENDING_HEAD_TU'
+  | 'PENDING_PRINCIPAL'
+  | 'APPROVED'
+  | 'REJECTED';
+export type FinanceClosingPeriodPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'NONE';
 export type FinanceBankReconciliationStatus = 'OPEN' | 'FINALIZED';
 export type FinanceBankStatementDirection = 'CREDIT' | 'DEBIT';
 export type FinanceLedgerBook = 'ALL' | 'CASHBOOK' | 'BANKBOOK';
@@ -86,6 +95,17 @@ export type StaffFinanceCashSessionApprovalPolicy = {
   zeroVarianceAutoApproved: boolean;
   requireVarianceNote: boolean;
   principalApprovalThresholdAmount: number;
+  notes?: string | null;
+  updatedAt: string;
+};
+
+export type StaffFinanceClosingPeriodApprovalPolicy = {
+  requireHeadTuApproval: boolean;
+  principalApprovalThresholdAmount: number;
+  escalateIfPendingVerification: boolean;
+  escalateIfUnmatchedBankEntries: boolean;
+  escalateIfOpenCashSession: boolean;
+  escalateIfOpenReconciliation: boolean;
   notes?: string | null;
   updatedAt: string;
 };
@@ -722,6 +742,81 @@ export type StaffFinanceCashSessionListResult = {
     totalExpectedCashOut: number;
     totalExpectedClosingBalance: number;
     totalVarianceAmount: number;
+  };
+};
+
+export type StaffFinanceClosingPeriodSummary = {
+  cashOpeningBalance: number;
+  cashClosingBalance: number;
+  bankOpeningBalance: number;
+  bankClosingBalance: number;
+  totalCashIn: number;
+  totalCashOut: number;
+  totalBankIn: number;
+  totalBankOut: number;
+  outstandingAmount: number;
+  pendingVerificationAmount: number;
+  unmatchedBankAmount: number;
+  openCashSessionCount: number;
+  openReconciliationCount: number;
+};
+
+export type StaffFinanceClosingPeriod = {
+  id: number;
+  periodNo: string;
+  periodType: FinanceClosingPeriodType;
+  periodYear: number;
+  periodMonth?: number | null;
+  label: string;
+  periodStart: string;
+  periodEnd: string;
+  status: FinanceClosingPeriodStatus;
+  approvalStatus: FinanceClosingPeriodApprovalStatus;
+  pendingActor: FinanceClosingPeriodPendingActor;
+  summary: StaffFinanceClosingPeriodSummary;
+  closingNote?: string | null;
+  requestedAt?: string | null;
+  closedAt?: string | null;
+  requestedBy?: {
+    id: number;
+    name: string;
+    role: string;
+  } | null;
+  headTuApproved?: boolean | null;
+  headTuDecisionAt?: string | null;
+  headTuDecisionNote?: string | null;
+  headTuDecisionBy?: {
+    id: number;
+    name: string;
+    role: string;
+  } | null;
+  principalApproved?: boolean | null;
+  principalDecisionAt?: string | null;
+  principalDecisionNote?: string | null;
+  principalDecisionBy?: {
+    id: number;
+    name: string;
+    role: string;
+  } | null;
+  closedBy?: {
+    id: number;
+    name: string;
+    role: string;
+  } | null;
+};
+
+export type StaffFinanceClosingPeriodListResult = {
+  periods: StaffFinanceClosingPeriod[];
+  summary: {
+    totalPeriods: number;
+    openCount: number;
+    reviewCount: number;
+    closedCount: number;
+    pendingHeadTuCount: number;
+    pendingPrincipalCount: number;
+    totalOutstandingAmount: number;
+    totalPendingVerificationAmount: number;
+    totalUnmatchedBankAmount: number;
   };
 };
 
@@ -1631,11 +1726,28 @@ export const staffFinanceApi = {
     return response.data.data.policy;
   },
 
+  async getClosingPeriodApprovalPolicy() {
+    const response = await apiClient.get<ApiResponse<{ policy: StaffFinanceClosingPeriodApprovalPolicy }>>(
+      '/payments/closing-period-policy',
+    );
+    return response.data.data.policy;
+  },
+
   async updateCashSessionApprovalPolicy(
     payload: Partial<Omit<StaffFinanceCashSessionApprovalPolicy, 'updatedAt'>>,
   ) {
     const response = await apiClient.put<ApiResponse<{ policy: StaffFinanceCashSessionApprovalPolicy }>>(
       '/payments/cash-session-policy',
+      payload,
+    );
+    return response.data.data.policy;
+  },
+
+  async updateClosingPeriodApprovalPolicy(
+    payload: Partial<Omit<StaffFinanceClosingPeriodApprovalPolicy, 'updatedAt'>>,
+  ) {
+    const response = await apiClient.put<ApiResponse<{ policy: StaffFinanceClosingPeriodApprovalPolicy }>>(
+      '/payments/closing-period-policy',
       payload,
     );
     return response.data.data.policy;
@@ -1655,6 +1767,49 @@ export const staffFinanceApi = {
       payload,
     );
     return response.data.data.session;
+  },
+
+  async listClosingPeriods(params?: {
+    periodType?: FinanceClosingPeriodType;
+    periodYear?: number;
+    status?: FinanceClosingPeriodStatus;
+    approvalStatus?: FinanceClosingPeriodApprovalStatus;
+    pendingFor?: 'HEAD_TU' | 'PRINCIPAL';
+    limit?: number;
+  }) {
+    const response = await apiClient.get<ApiResponse<StaffFinanceClosingPeriodListResult>>('/payments/closing-periods', {
+      params,
+    });
+    return response.data.data;
+  },
+
+  async createClosingPeriod(payload: {
+    periodType: FinanceClosingPeriodType;
+    periodYear: number;
+    periodMonth?: number;
+    label?: string;
+    note?: string;
+  }) {
+    const response = await apiClient.post<
+      ApiResponse<{ period: StaffFinanceClosingPeriod; policy: StaffFinanceClosingPeriodApprovalPolicy }>
+    >('/payments/closing-periods', payload);
+    return response.data.data;
+  },
+
+  async decideClosingPeriodAsHeadTu(periodId: number, payload: { approved: boolean; note?: string }) {
+    const response = await apiClient.post<ApiResponse<{ period: StaffFinanceClosingPeriod }>>(
+      `/payments/closing-periods/${periodId}/head-tu-decision`,
+      payload,
+    );
+    return response.data.data.period;
+  },
+
+  async decideClosingPeriodAsPrincipal(periodId: number, payload: { approved: boolean; note?: string }) {
+    const response = await apiClient.post<ApiResponse<{ period: StaffFinanceClosingPeriod }>>(
+      `/payments/closing-periods/${periodId}/principal-decision`,
+      payload,
+    );
+    return response.data.data.period;
   },
 
   async createRefund(

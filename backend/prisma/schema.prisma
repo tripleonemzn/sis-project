@@ -112,6 +112,10 @@ model User {
   closedFinanceCashSessions      FinanceCashSession[]                     @relation("FinanceCashSessionClosedBy")
   headTuReviewedFinanceCashSessions FinanceCashSession[]                  @relation("FinanceCashSessionHeadTuDecisionBy")
   principalReviewedFinanceCashSessions FinanceCashSession[]               @relation("FinanceCashSessionPrincipalDecisionBy")
+  requestedFinanceClosingPeriods      FinanceClosingPeriod[]              @relation("FinanceClosingPeriodRequestedBy")
+  headTuReviewedFinanceClosingPeriods FinanceClosingPeriod[]              @relation("FinanceClosingPeriodHeadTuDecisionBy")
+  principalReviewedFinanceClosingPeriods FinanceClosingPeriod[]           @relation("FinanceClosingPeriodPrincipalDecisionBy")
+  closedFinanceClosingPeriods         FinanceClosingPeriod[]              @relation("FinanceClosingPeriodClosedBy")
   createdFinanceBankAccounts     FinanceBankAccount[]                     @relation("FinanceBankAccountCreatedBy")
   createdFinanceBankReconciliations FinanceBankReconciliation[]           @relation("FinanceBankReconciliationCreatedBy")
   finalizedFinanceBankReconciliations FinanceBankReconciliation[]         @relation("FinanceBankReconciliationFinalizedBy")
@@ -1503,6 +1507,21 @@ model FinanceCashSessionApprovalPolicy {
   @@map("finance_cash_session_approval_policy")
 }
 
+model FinanceClosingPeriodApprovalPolicy {
+  id                               Int      @id @default(1)
+  requireHeadTuApproval            Boolean  @default(true)
+  principalApprovalThresholdAmount Float    @default(100000)
+  escalateIfPendingVerification    Boolean  @default(true)
+  escalateIfUnmatchedBankEntries   Boolean  @default(true)
+  escalateIfOpenCashSession        Boolean  @default(true)
+  escalateIfOpenReconciliation     Boolean  @default(true)
+  notes                            String?
+  createdAt                        DateTime @default(now())
+  updatedAt                        DateTime @updatedAt
+
+  @@map("finance_closing_period_approval_policy")
+}
+
 model FinanceBankAccount {
   id            Int                         @id @default(autoincrement())
   code          String                      @unique
@@ -1887,6 +1906,55 @@ model FinanceCashSession {
   @@index([status, openedAt])
   @@index([approvalStatus, closedAt])
   @@map("finance_cash_sessions")
+}
+
+model FinanceClosingPeriod {
+  id                        Int                                 @id @default(autoincrement())
+  periodNo                  String                              @unique
+  periodType                FinanceClosingPeriodType
+  periodYear                Int
+  periodMonth               Int?
+  label                     String
+  periodStart               DateTime
+  periodEnd                 DateTime
+  status                    FinanceClosingPeriodStatus          @default(OPEN)
+  approvalStatus            FinanceClosingPeriodApprovalStatus  @default(NOT_SUBMITTED)
+  cashOpeningBalance        Float                               @default(0)
+  cashClosingBalance        Float                               @default(0)
+  bankOpeningBalance        Float                               @default(0)
+  bankClosingBalance        Float                               @default(0)
+  totalCashIn               Float                               @default(0)
+  totalCashOut              Float                               @default(0)
+  totalBankIn               Float                               @default(0)
+  totalBankOut              Float                               @default(0)
+  outstandingAmount         Float                               @default(0)
+  pendingVerificationAmount Float                               @default(0)
+  unmatchedBankAmount       Float                               @default(0)
+  openCashSessionCount      Int                                 @default(0)
+  openReconciliationCount   Int                                 @default(0)
+  closingNote               String?
+  requestedById             Int?
+  requestedAt               DateTime?
+  headTuApproved            Boolean?
+  headTuDecisionById        Int?
+  headTuDecisionAt          DateTime?
+  headTuDecisionNote        String?
+  principalApproved         Boolean?
+  principalDecisionById     Int?
+  principalDecisionAt       DateTime?
+  principalDecisionNote     String?
+  closedById                Int?
+  closedAt                  DateTime?
+  createdAt                 DateTime                            @default(now())
+  updatedAt                 DateTime                            @updatedAt
+  requestedBy               User?                               @relation("FinanceClosingPeriodRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  headTuDecisionBy          User?                               @relation("FinanceClosingPeriodHeadTuDecisionBy", fields: [headTuDecisionById], references: [id], onDelete: SetNull)
+  principalDecisionBy       User?                               @relation("FinanceClosingPeriodPrincipalDecisionBy", fields: [principalDecisionById], references: [id], onDelete: SetNull)
+  closedBy                  User?                               @relation("FinanceClosingPeriodClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+
+  @@index([periodType, periodYear, periodMonth])
+  @@index([status, approvalStatus, periodEnd])
+  @@map("finance_closing_periods")
 }
 
 model FinanceBankReconciliation {
@@ -2370,6 +2438,25 @@ enum FinanceCashSessionApprovalStatus {
   PENDING_PRINCIPAL
   APPROVED
   AUTO_APPROVED
+  REJECTED
+}
+
+enum FinanceClosingPeriodType {
+  MONTHLY
+  YEARLY
+}
+
+enum FinanceClosingPeriodStatus {
+  OPEN
+  CLOSING_REVIEW
+  CLOSED
+}
+
+enum FinanceClosingPeriodApprovalStatus {
+  NOT_SUBMITTED
+  PENDING_HEAD_TU
+  PENDING_PRINCIPAL
+  APPROVED
   REJECTED
 }
 

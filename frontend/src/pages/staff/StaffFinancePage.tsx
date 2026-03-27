@@ -8,6 +8,9 @@ import {
   type FinanceAdjustmentRule,
   type FinanceBankAccount,
   type FinanceBankReconciliation,
+  type FinanceClosingPeriod,
+  type FinanceClosingPeriodApprovalPolicy,
+  type FinanceClosingPeriodType,
   type FinanceBankStatementDirection,
   type FinanceCashSession,
   type FinanceCashSessionApprovalPolicy,
@@ -62,6 +65,11 @@ const LATE_FEE_MODE_OPTIONS: Array<{ value: FinanceLateFeeMode; label: string }>
   { value: 'DAILY', label: 'Harian per termin overdue' },
 ];
 
+const CLOSING_PERIOD_TYPE_OPTIONS: Array<{ value: FinanceClosingPeriodType; label: string }> = [
+  { value: 'MONTHLY', label: 'Bulanan' },
+  { value: 'YEARLY', label: 'Tahunan' },
+];
+
 const STATUS_OPTIONS: Array<{ value: '' | FinanceInvoiceStatus; label: string }> = [
   { value: '', label: 'Semua Status' },
   { value: 'UNPAID', label: 'Belum Bayar' },
@@ -102,6 +110,12 @@ function getMonthStartInputDate() {
   const yyyy = now.getFullYear();
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   return `${yyyy}-${mm}-01`;
+}
+
+function getFinanceMonthLabel(month: number) {
+  return new Date(2026, Math.max(0, month - 1), 1).toLocaleDateString('id-ID', {
+    month: 'long',
+  });
 }
 
 function getCollectionPriorityBadge(priority: 'MONITOR' | 'TINGGI' | 'KRITIS') {
@@ -352,6 +366,32 @@ function getCashSessionApprovalMeta(status: FinanceCashSessionApprovalStatus) {
   return { label: 'Belum Diajukan', className: 'bg-slate-50 text-slate-700 border border-slate-200' };
 }
 
+function getClosingPeriodStatusMeta(status: FinanceClosingPeriod['status']) {
+  if (status === 'CLOSED') {
+    return { label: 'Terkunci', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+  }
+  if (status === 'CLOSING_REVIEW') {
+    return { label: 'Review Closing', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  }
+  return { label: 'Terbuka', className: 'bg-slate-50 text-slate-700 border border-slate-200' };
+}
+
+function getClosingPeriodApprovalMeta(status: FinanceClosingPeriod['approvalStatus']) {
+  if (status === 'PENDING_HEAD_TU') {
+    return { label: 'Menunggu Head TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  }
+  if (status === 'PENDING_PRINCIPAL') {
+    return { label: 'Menunggu Kepsek', className: 'bg-sky-50 text-sky-700 border border-sky-200' };
+  }
+  if (status === 'APPROVED') {
+    return { label: 'Disetujui', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+  }
+  if (status === 'REJECTED') {
+    return { label: 'Ditolak', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
+  }
+  return { label: 'Belum Diajukan', className: 'bg-slate-50 text-slate-700 border border-slate-200' };
+}
+
 function getBankReconciliationStatusMeta(status: FinanceBankReconciliation['status']) {
   if (status === 'FINALIZED') {
     return { label: 'Final', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
@@ -485,6 +525,18 @@ export const StaffFinancePage = () => {
   const [cashSessionRequireVarianceNote, setCashSessionRequireVarianceNote] = useState(true);
   const [cashSessionPrincipalApprovalThresholdAmount, setCashSessionPrincipalApprovalThresholdAmount] = useState('100000');
   const [cashSessionApprovalPolicyNotes, setCashSessionApprovalPolicyNotes] = useState('');
+  const [closingPeriodType, setClosingPeriodType] = useState<FinanceClosingPeriodType>('MONTHLY');
+  const [closingPeriodYear, setClosingPeriodYear] = useState(String(new Date().getFullYear()));
+  const [closingPeriodMonth, setClosingPeriodMonth] = useState(String(new Date().getMonth() + 1));
+  const [closingPeriodLabel, setClosingPeriodLabel] = useState('');
+  const [closingPeriodNote, setClosingPeriodNote] = useState('');
+  const [closingPeriodRequireHeadTuApproval, setClosingPeriodRequireHeadTuApproval] = useState(true);
+  const [closingPeriodPrincipalApprovalThresholdAmount, setClosingPeriodPrincipalApprovalThresholdAmount] = useState('100000');
+  const [closingPeriodEscalateIfPendingVerification, setClosingPeriodEscalateIfPendingVerification] = useState(true);
+  const [closingPeriodEscalateIfUnmatchedBankEntries, setClosingPeriodEscalateIfUnmatchedBankEntries] = useState(true);
+  const [closingPeriodEscalateIfOpenCashSession, setClosingPeriodEscalateIfOpenCashSession] = useState(true);
+  const [closingPeriodEscalateIfOpenReconciliation, setClosingPeriodEscalateIfOpenReconciliation] = useState(true);
+  const [closingPeriodPolicyNotes, setClosingPeriodPolicyNotes] = useState('');
   const [editingBankAccountId, setEditingBankAccountId] = useState<number | null>(null);
   const [bankAccountCode, setBankAccountCode] = useState('');
   const [bankAccountBankName, setBankAccountBankName] = useState('');
@@ -648,6 +700,18 @@ export const StaffFinancePage = () => {
     staleTime: 60_000,
   });
 
+  const closingPeriodsQuery = useQuery({
+    queryKey: ['staff-finance-closing-periods'],
+    queryFn: () => staffFinanceService.listClosingPeriods({ limit: 12 }),
+    staleTime: 30_000,
+  });
+
+  const closingPeriodApprovalPolicyQuery = useQuery({
+    queryKey: ['staff-finance-closing-period-policy'],
+    queryFn: () => staffFinanceService.getClosingPeriodApprovalPolicy(),
+    staleTime: 60_000,
+  });
+
   const years = useMemo<AcademicYear[]>(() => {
     const payload = yearsQuery.data as
       | { data?: { academicYears?: AcademicYear[] }; academicYears?: AcademicYear[] }
@@ -691,6 +755,9 @@ export const StaffFinancePage = () => {
 
   const reminderPolicy = reminderPolicyQuery.data || null;
   const cashSessionApprovalPolicy = cashSessionApprovalPolicyQuery.data || null;
+  const closingPeriodsSummary = closingPeriodsQuery.data?.summary;
+  const closingPeriods = closingPeriodsQuery.data?.periods || [];
+  const closingPeriodApprovalPolicy = closingPeriodApprovalPolicyQuery.data || null;
 
   useEffect(() => {
     if (bankReconciliationAccountId === '' && activeBankAccounts[0]?.id) {
@@ -744,6 +811,11 @@ export const StaffFinancePage = () => {
     if (!cashSessionApprovalPolicy) return;
     applyCashSessionApprovalPolicyToForm(cashSessionApprovalPolicy);
   }, [cashSessionApprovalPolicy?.updatedAt]);
+
+  useEffect(() => {
+    if (!closingPeriodApprovalPolicy) return;
+    applyClosingPeriodApprovalPolicyToForm(closingPeriodApprovalPolicy);
+  }, [closingPeriodApprovalPolicy?.updatedAt]);
 
   const studentLookup = useMemo(() => {
     return new Map(students.map((student) => [student.id, student]));
@@ -965,6 +1037,18 @@ export const StaffFinancePage = () => {
     setCashSessionRequireVarianceNote(policy.requireVarianceNote);
     setCashSessionPrincipalApprovalThresholdAmount(String(Number(policy.principalApprovalThresholdAmount || 0)));
     setCashSessionApprovalPolicyNotes(policy.notes || '');
+  };
+
+  const applyClosingPeriodApprovalPolicyToForm = (policy: FinanceClosingPeriodApprovalPolicy) => {
+    setClosingPeriodRequireHeadTuApproval(policy.requireHeadTuApproval);
+    setClosingPeriodPrincipalApprovalThresholdAmount(
+      String(Number(policy.principalApprovalThresholdAmount || 0)),
+    );
+    setClosingPeriodEscalateIfPendingVerification(policy.escalateIfPendingVerification);
+    setClosingPeriodEscalateIfUnmatchedBankEntries(policy.escalateIfUnmatchedBankEntries);
+    setClosingPeriodEscalateIfOpenCashSession(policy.escalateIfOpenCashSession);
+    setClosingPeriodEscalateIfOpenReconciliation(policy.escalateIfOpenReconciliation);
+    setClosingPeriodPolicyNotes(policy.notes || '');
   };
 
   const openReminderPolicyModal = () => {
@@ -1738,6 +1822,57 @@ export const StaffFinancePage = () => {
     },
   });
 
+  const saveClosingPeriodApprovalPolicyMutation = useMutation({
+    mutationFn: () =>
+      staffFinanceService.updateClosingPeriodApprovalPolicy({
+        requireHeadTuApproval: closingPeriodRequireHeadTuApproval,
+        principalApprovalThresholdAmount: Math.max(
+          0,
+          Number(closingPeriodPrincipalApprovalThresholdAmount || 0),
+        ),
+        escalateIfPendingVerification: closingPeriodEscalateIfPendingVerification,
+        escalateIfUnmatchedBankEntries: closingPeriodEscalateIfUnmatchedBankEntries,
+        escalateIfOpenCashSession: closingPeriodEscalateIfOpenCashSession,
+        escalateIfOpenReconciliation: closingPeriodEscalateIfOpenReconciliation,
+        notes: closingPeriodPolicyNotes.trim() || null,
+      }),
+    onSuccess: (policy) => {
+      toast.success('Policy approval closing period berhasil diperbarui');
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-closing-period-policy'] });
+      applyClosingPeriodApprovalPolicyToForm(policy);
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal memperbarui policy closing period');
+    },
+  });
+
+  const createClosingPeriodMutation = useMutation({
+    mutationFn: () =>
+      staffFinanceService.createClosingPeriod({
+        periodType: closingPeriodType,
+        periodYear: Number(closingPeriodYear || 0),
+        periodMonth: closingPeriodType === 'MONTHLY' ? Number(closingPeriodMonth || 0) : undefined,
+        label: closingPeriodLabel.trim() || undefined,
+        note: closingPeriodNote.trim() || undefined,
+      }),
+    onSuccess: () => {
+      toast.success('Closing period berhasil diajukan');
+      setClosingPeriodLabel('');
+      setClosingPeriodNote('');
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-closing-periods'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-ledger-books'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-cash-sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-bank-reconciliations'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-payment-verifications'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal mengajukan closing period');
+    },
+  });
+
   const dispatchReminderMutation = useMutation({
     mutationFn: (mode: FinanceReminderMode) =>
       staffFinanceService.dispatchDueReminders({
@@ -1856,6 +1991,18 @@ export const StaffFinancePage = () => {
       return;
     }
     finalizeBankReconciliationMutation.mutate(reconciliation);
+  };
+
+  const handleCreateClosingPeriod = () => {
+    if (Number(closingPeriodYear || 0) < 2020) {
+      toast.error('Tahun closing period tidak valid');
+      return;
+    }
+    if (closingPeriodType === 'MONTHLY' && (Number(closingPeriodMonth || 0) < 1 || Number(closingPeriodMonth || 0) > 12)) {
+      toast.error('Bulan closing period tidak valid');
+      return;
+    }
+    createClosingPeriodMutation.mutate();
   };
 
   const startPaying = (invoice: FinanceInvoice) => {
@@ -3859,6 +4006,328 @@ export const StaffFinancePage = () => {
                             ) : null}
                           </div>
                         </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-4 border-b border-slate-100">
+          <div className="text-xs uppercase tracking-wider text-slate-700">Closing Period Finance</div>
+          <p className="mt-1 text-sm text-slate-600">
+            Ajukan closing bulanan atau tahunan dengan snapshot kas, bank, outstanding, dan kontrol lock periode yang akan dibaca seluruh modul finance.
+          </p>
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-slate-700">Total Period</div>
+              <div className="mt-1 text-sm font-bold text-slate-900">
+                {closingPeriodsSummary?.totalPeriods || 0}
+              </div>
+            </div>
+            <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-sky-700">Masih Terbuka</div>
+              <div className="mt-1 text-sm font-bold text-sky-900">
+                {closingPeriodsSummary?.openCount || 0}
+              </div>
+            </div>
+            <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-amber-700">Review Closing</div>
+              <div className="mt-1 text-sm font-bold text-amber-900">
+                {closingPeriodsSummary?.reviewCount || 0}
+              </div>
+            </div>
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-emerald-700">Sudah Locked</div>
+              <div className="mt-1 text-sm font-bold text-emerald-900">
+                {closingPeriodsSummary?.closedCount || 0}
+              </div>
+            </div>
+            <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-rose-700">Pending Verifikasi</div>
+              <div className="mt-1 text-sm font-bold text-rose-900">
+                {formatCurrency(closingPeriodsSummary?.totalPendingVerificationAmount || 0)}
+              </div>
+            </div>
+            <div className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-violet-700">Unmatched Bank</div>
+              <div className="mt-1 text-sm font-bold text-violet-900">
+                {formatCurrency(closingPeriodsSummary?.totalUnmatchedBankAmount || 0)}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-[0.42fr_0.58fr] gap-4">
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="text-sm font-semibold text-slate-900">Ajukan Closing Period</div>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <select
+                    value={closingPeriodType}
+                    onChange={(event) => setClosingPeriodType(event.target.value as FinanceClosingPeriodType)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                  >
+                    {CLOSING_PERIOD_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={closingPeriodYear}
+                    onChange={(event) => setClosingPeriodYear(event.target.value)}
+                    placeholder="Tahun closing"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                  />
+                  {closingPeriodType === 'MONTHLY' ? (
+                    <select
+                      value={closingPeriodMonth}
+                      onChange={(event) => setClosingPeriodMonth(event.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                    >
+                      {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                        <option key={`closing-period-month-${month}`} value={String(month)}>
+                          {getFinanceMonthLabel(month)}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                      Closing tahunan akan memakai seluruh periode Januari-Desember.
+                    </div>
+                  )}
+                  <input
+                    value={closingPeriodLabel}
+                    onChange={(event) => setClosingPeriodLabel(event.target.value)}
+                    placeholder="Label closing opsional"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                  />
+                </div>
+                <textarea
+                  value={closingPeriodNote}
+                  onChange={(event) => setClosingPeriodNote(event.target.value)}
+                  rows={3}
+                  placeholder="Catatan closing, misalnya kondisi verifikasi transfer atau alasan percepatan lock periode."
+                  className="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                />
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-xs text-slate-500">
+                    Setelah disetujui, transaksi pada periode ini akan terkunci sesuai policy approval closing.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCreateClosingPeriod}
+                    disabled={createClosingPeriodMutation.isPending}
+                    className="inline-flex items-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {createClosingPeriodMutation.isPending ? 'Mengajukan...' : 'Ajukan Closing'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="text-sm font-semibold text-slate-900">Policy Approval Closing</div>
+                <div className="mt-3 space-y-3">
+                  <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                    <input
+                      type="checkbox"
+                      checked={closingPeriodRequireHeadTuApproval}
+                      onChange={(event) => setClosingPeriodRequireHeadTuApproval(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">Wajib review Head TU</div>
+                      <div className="text-xs text-slate-500">
+                        Jika aktif, semua closing period minimal akan masuk review Kepala TU sebelum bisa ditutup.
+                      </div>
+                    </div>
+                  </label>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                      <div className="text-xs uppercase tracking-wider text-slate-500">Threshold Eskalasi Kepsek</div>
+                      <input
+                        value={closingPeriodPrincipalApprovalThresholdAmount}
+                        onChange={(event) => setClosingPeriodPrincipalApprovalThresholdAmount(event.target.value)}
+                        placeholder="Nominal eskalasi"
+                        className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <textarea
+                      value={closingPeriodPolicyNotes}
+                      onChange={(event) => setClosingPeriodPolicyNotes(event.target.value)}
+                      rows={3}
+                      placeholder="Catatan policy approval closing"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {[
+                      {
+                        checked: closingPeriodEscalateIfPendingVerification,
+                        onChange: setClosingPeriodEscalateIfPendingVerification,
+                        title: 'Eskalasi jika masih ada payment pending',
+                      },
+                      {
+                        checked: closingPeriodEscalateIfUnmatchedBankEntries,
+                        onChange: setClosingPeriodEscalateIfUnmatchedBankEntries,
+                        title: 'Eskalasi jika mutasi bank belum matched',
+                      },
+                      {
+                        checked: closingPeriodEscalateIfOpenCashSession,
+                        onChange: setClosingPeriodEscalateIfOpenCashSession,
+                        title: 'Eskalasi jika masih ada sesi kas terbuka',
+                      },
+                      {
+                        checked: closingPeriodEscalateIfOpenReconciliation,
+                        onChange: setClosingPeriodEscalateIfOpenReconciliation,
+                        title: 'Eskalasi jika rekonsiliasi bank belum final',
+                      },
+                    ].map((item) => (
+                      <label
+                        key={item.title}
+                        className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={item.checked}
+                          onChange={(event) => item.onChange(event.target.checked)}
+                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-slate-700">{item.title}</span>
+                      </label>
+                    ))}
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => saveClosingPeriodApprovalPolicyMutation.mutate()}
+                      disabled={saveClosingPeriodApprovalPolicyMutation.isPending || closingPeriodApprovalPolicyQuery.isLoading}
+                      className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {saveClosingPeriodApprovalPolicyMutation.isPending ? 'Menyimpan...' : 'Simpan Policy'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Riwayat Closing Period</div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    Snapshot terbaru untuk memonitor lock periode, outstanding, dan eskalasi approval.
+                  </div>
+                </div>
+                <div className="text-xs text-slate-500">{closingPeriods.length} periode</div>
+              </div>
+              <div className="p-4 space-y-3 max-h-[720px] overflow-y-auto">
+                {closingPeriodsQuery.isLoading ? (
+                  <div className="text-sm text-slate-500">Memuat closing period...</div>
+                ) : closingPeriods.length === 0 ? (
+                  <div className="text-sm text-slate-500">Belum ada closing period yang diajukan.</div>
+                ) : (
+                  closingPeriods.map((period) => {
+                    const statusMeta = getClosingPeriodStatusMeta(period.status);
+                    const approvalMeta = getClosingPeriodApprovalMeta(period.approvalStatus);
+                    return (
+                      <div key={period.id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-slate-900">{period.label}</div>
+                            <div className="mt-1 text-[11px] text-slate-500">
+                              {period.periodNo} • {formatDate(period.periodStart)} - {formatDate(period.periodEnd)}
+                              {period.requestedBy?.name ? ` • diajukan ${period.requestedBy.name}` : ''}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${statusMeta.className}`}>
+                                {statusMeta.label}
+                              </span>
+                              <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${approvalMeta.className}`}>
+                                {approvalMeta.label}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-xs lg:min-w-[280px]">
+                            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                              <div className="text-slate-500">Outstanding</div>
+                              <div className="mt-1 font-semibold text-slate-900">
+                                {formatCurrency(period.summary.outstandingAmount)}
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2">
+                              <div className="text-sky-700">Pending Verifikasi</div>
+                              <div className="mt-1 font-semibold text-sky-900">
+                                {formatCurrency(period.summary.pendingVerificationAmount)}
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2">
+                              <div className="text-violet-700">Unmatched Bank</div>
+                              <div className="mt-1 font-semibold text-violet-900">
+                                {formatCurrency(period.summary.unmatchedBankAmount)}
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+                              <div className="text-amber-700">Kas/Rekon Terbuka</div>
+                              <div className="mt-1 font-semibold text-amber-900">
+                                {period.summary.openCashSessionCount} / {period.summary.openReconciliationCount}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
+                          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                            <div className="text-slate-500">Saldo Kas</div>
+                            <div className="mt-1 font-semibold text-slate-900">
+                              {formatCurrency(period.summary.cashClosingBalance)}
+                            </div>
+                          </div>
+                          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                            <div className="text-slate-500">Saldo Bank</div>
+                            <div className="mt-1 font-semibold text-slate-900">
+                              {formatCurrency(period.summary.bankClosingBalance)}
+                            </div>
+                          </div>
+                          <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+                            <div className="text-emerald-700">Cash In / Out</div>
+                            <div className="mt-1 font-semibold text-emerald-900">
+                              {formatCurrency(period.summary.totalCashIn)} / {formatCurrency(period.summary.totalCashOut)}
+                            </div>
+                          </div>
+                          <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2">
+                            <div className="text-indigo-700">Bank In / Out</div>
+                            <div className="mt-1 font-semibold text-indigo-900">
+                              {formatCurrency(period.summary.totalBankIn)} / {formatCurrency(period.summary.totalBankOut)}
+                            </div>
+                          </div>
+                        </div>
+                        {period.closingNote ? (
+                          <div className="mt-3 text-[11px] text-slate-500">{period.closingNote}</div>
+                        ) : null}
+                        {period.headTuDecisionNote ? (
+                          <div className="mt-1 text-[11px] text-slate-500">
+                            Review Head TU: {period.headTuDecisionNote}
+                          </div>
+                        ) : null}
+                        {period.principalDecisionNote ? (
+                          <div className="mt-1 text-[11px] text-slate-500">
+                            Keputusan Kepsek: {period.principalDecisionNote}
+                          </div>
+                        ) : null}
+                        {period.closedAt ? (
+                          <div className="mt-1 text-[11px] text-emerald-700">
+                            Locked {formatDate(period.closedAt)}{period.closedBy?.name ? ` oleh ${period.closedBy.name}` : ''}
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })
