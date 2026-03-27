@@ -195,6 +195,27 @@ function getAssessmentStateMeta(completed: boolean, passed?: boolean | null) {
   return { label: 'Selesai', backgroundColor: '#dcfce7', textColor: '#15803d', borderColor: '#bbf7d0' };
 }
 
+function formatCandidateCurrency(value?: number | null) {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
+}
+
+function getFinanceSummaryMeta(state?: string | null) {
+  if (state === 'CLEAR') {
+    return { label: 'Clear', backgroundColor: '#dcfce7', textColor: '#15803d', borderColor: '#bbf7d0' };
+  }
+  if (state === 'PENDING') {
+    return { label: 'Ada Tagihan', backgroundColor: '#fef3c7', textColor: '#b45309', borderColor: '#fde68a' };
+  }
+  if (state === 'OVERDUE') {
+    return { label: 'Terlambat', backgroundColor: '#ffe4e6', textColor: '#be123c', borderColor: '#fecdd3' };
+  }
+  return { label: 'Belum Terbit', backgroundColor: '#e2e8f0', textColor: '#475569', borderColor: '#cbd5e1' };
+}
+
 function Field({
   label,
   value,
@@ -357,6 +378,11 @@ export default function CandidateApplicationScreen() {
         />
       ) : (
         <>
+          {(() => {
+            const financeSummary = admissionQuery.data.financeSummary;
+            const financeMeta = getFinanceSummaryMeta(financeSummary?.state);
+            return (
+              <>
           {admissionQuery.data.decisionAnnouncement.isPublished ? (
             <InfoCard title="Pengumuman Hasil Seleksi">
               <Text style={{ color: BRAND_COLORS.textDark, fontSize: 18, fontWeight: '700' }}>
@@ -469,6 +495,21 @@ export default function CandidateApplicationScreen() {
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8 }}>
               Nomor pendaftaran: {admissionQuery.data.registrationNumber}
             </Text>
+            <View style={{ marginTop: 8 }}>
+              <View
+                style={{
+                  alignSelf: 'flex-start',
+                  borderWidth: 1,
+                  borderColor: financeMeta.borderColor,
+                  backgroundColor: financeMeta.backgroundColor,
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                }}
+              >
+                <Text style={{ color: financeMeta.textColor, fontWeight: '700', fontSize: 12 }}>{financeMeta.label}</Text>
+              </View>
+            </View>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
               {admissionQuery.data.reviewNotes
                 ? `Catatan admin: ${admissionQuery.data.reviewNotes}`
@@ -505,6 +546,65 @@ export default function CandidateApplicationScreen() {
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8 }}>
               Submit terakhir: {formatDateTime(admissionQuery.data.selectionResults?.summary.latestSubmittedAt)}
             </Text>
+          </InfoCard>
+
+          <InfoCard title="Administrasi Keuangan">
+            <View
+              style={{
+                alignSelf: 'flex-start',
+                borderWidth: 1,
+                borderColor: financeMeta.borderColor,
+                backgroundColor: financeMeta.backgroundColor,
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+              }}
+            >
+              <Text style={{ color: financeMeta.textColor, fontWeight: '700', fontSize: 12 }}>{financeMeta.label}</Text>
+            </View>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 24, marginTop: 10 }}>
+              {formatCandidateCurrency(financeSummary?.outstandingAmount || 0)}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
+              {financeSummary?.state === 'NO_BILLING'
+                ? 'Tagihan administrasi akan tampil di sini setelah diterbitkan sekolah.'
+                : financeSummary?.hasOverdue
+                  ? `${financeSummary.overdueInvoices} tagihan administrasi sudah lewat jatuh tempo.`
+                  : financeSummary?.hasOutstanding
+                    ? `${financeSummary.activeInvoices} tagihan administrasi masih aktif.`
+                    : 'Tagihan administrasi saat ini sudah clear.'}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
+              Jatuh tempo terdekat: {formatDateTime(financeSummary?.nextDueDate)}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
+              Pembayaran terakhir: {formatDateTime(financeSummary?.lastPaymentAt)}
+            </Text>
+            {financeSummary?.invoices?.length ? (
+              <View style={{ marginTop: 10 }}>
+                {financeSummary.invoices.slice(0, 3).map((invoice) => (
+                  <View
+                    key={invoice.id}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#d6e0f2',
+                      backgroundColor: '#f8fbff',
+                      borderRadius: 12,
+                      padding: 12,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{invoice.label}</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4, fontSize: 12 }}>
+                      {invoice.invoiceNo} • {invoice.periodKey}
+                    </Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
+                      Sisa {formatCandidateCurrency(invoice.balanceAmount)} • jatuh tempo {formatDateTime(invoice.dueDate)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </InfoCard>
 
           <InfoCard title="Board Penilaian PPDB">
@@ -708,6 +808,9 @@ export default function CandidateApplicationScreen() {
               })
             )}
           </InfoCard>
+              </>
+            );
+          })()}
 
           <InfoCard title="Data Utama">
             <Field label="Nama Lengkap" value={form.name} onChangeText={(value) => setForm((prev) => ({ ...prev, name: value }))} />

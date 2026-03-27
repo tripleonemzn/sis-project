@@ -1,6 +1,6 @@
 # Mobile Parity Audit (All Roles)
 
-Generated: 2026-03-27T09:14:47.286Z
+Generated: 2026-03-27T09:36:42.286Z
 
 ## Ringkasan per Role
 
@@ -59,7 +59,7 @@ Generated: 2026-03-27T09:14:47.286Z
 
 ### CALON_SISWA
 - Status Pendaftaran (`candidate-application`)
-  - `app/(app)/candidate/application.tsx:422`
+  - `app/(app)/candidate/application.tsx:448`
 
 ### EXAMINER
 - Tidak ada.
@@ -88,7 +88,7 @@ Generated: 2026-03-27T09:14:47.286Z
 
 ## Semua Pemanggilan Linking.openURL (Global)
 
-- `app/(app)/candidate/application.tsx:422`
+- `app/(app)/candidate/application.tsx:448`
 - `app/(app)/public/vacancies.tsx:394`
 - `app/(app)/web-module/[moduleKey].tsx:44`
 

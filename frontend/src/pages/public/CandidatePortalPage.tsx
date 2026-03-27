@@ -7,10 +7,12 @@ import { candidateAdmissionService } from '../../services/candidateAdmission.ser
 import {
   CANDIDATE_ADMISSION_QUERY_KEY,
   formatCandidateDateTime,
+  formatCandidateCurrency,
   CandidateAdmissionStatusBadge,
   CandidateInfoCard,
   VerificationBadge,
   extractCandidateAdmissionPayload,
+  getCandidateFinanceSummaryMeta,
   getCandidateDecisionLetterPrintPath,
   getCandidateSelectionStatusMeta,
 } from './candidateShared';
@@ -39,6 +41,8 @@ export const CandidateDashboardPage = () => {
   const recentResults = admission?.selectionResults?.results.slice(0, 3) || [];
   const decisionLetter = admission?.decisionLetter;
   const assessmentBoard = admission?.assessmentBoard;
+  const financeSummary = admission?.financeSummary;
+  const financeMeta = getCandidateFinanceSummaryMeta(financeSummary?.state);
 
   if (meQuery.isLoading || admissionQuery.isLoading) {
     return (
@@ -122,7 +126,7 @@ export const CandidateDashboardPage = () => {
         </section>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-4">
+      <div className="grid gap-4 xl:grid-cols-5">
         <CandidateInfoCard title="Ringkasan Akun">
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-slate-700">
@@ -176,6 +180,23 @@ export const CandidateDashboardPage = () => {
             {selectionSummary?.total
               ? `${selectionSummary.completed} sesi selesai, ${selectionSummary.passed} lulus, ${selectionSummary.failed} belum lulus.`
               : 'Belum ada hasil tes seleksi yang terekam.'}
+          </p>
+        </CandidateInfoCard>
+        <CandidateInfoCard title="Administrasi Keuangan">
+          <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${financeMeta.className}`}>
+            {financeMeta.label}
+          </span>
+          <p className="mt-3 text-2xl font-semibold text-slate-900">
+            {formatCandidateCurrency(financeSummary?.outstandingAmount || 0)}
+          </p>
+          <p className="mt-2 text-sm text-slate-600">
+            {financeSummary?.state === 'NO_BILLING'
+              ? 'Belum ada tagihan administrasi yang diterbitkan untuk akun ini.'
+              : financeSummary?.hasOverdue
+                ? `${financeSummary.overdueInvoices} tagihan sudah lewat jatuh tempo.`
+                : financeSummary?.hasOutstanding
+                  ? `${financeSummary.activeInvoices} tagihan masih aktif dan menunggu penyelesaian.`
+                  : 'Tidak ada outstanding finance yang aktif saat ini.'}
           </p>
         </CandidateInfoCard>
       </div>
@@ -282,6 +303,30 @@ export const CandidateDashboardPage = () => {
             <p className="mt-2 text-sm text-slate-600">
               Surat resmi diunggah {formatCandidateDateTime(decisionLetter.officialUploadedAt)}.
             </p>
+          ) : null}
+        </CandidateInfoCard>
+        <CandidateInfoCard title="Ringkasan Tagihan">
+          <div className="space-y-2">
+            <p>Outstanding: {formatCandidateCurrency(financeSummary?.outstandingAmount || 0)}</p>
+            <p>Tagihan aktif: {financeSummary?.activeInvoices || 0}</p>
+            <p>Lewat jatuh tempo: {financeSummary?.overdueInvoices || 0}</p>
+            <p>Pembayaran terakhir: {formatCandidateDateTime(financeSummary?.lastPaymentAt)}</p>
+            <p>Jatuh tempo terdekat: {formatCandidateDateTime(financeSummary?.nextDueDate)}</p>
+          </div>
+          {financeSummary?.invoices?.length ? (
+            <div className="mt-3 space-y-2">
+              {financeSummary.invoices.slice(0, 3).map((invoice) => (
+                <div key={invoice.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="font-semibold text-slate-900">{invoice.label}</p>
+                  <p className="text-xs text-slate-500">
+                    {invoice.invoiceNo} • {invoice.periodKey}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Sisa {formatCandidateCurrency(invoice.balanceAmount)} • jatuh tempo {formatCandidateDateTime(invoice.dueDate)}
+                  </p>
+                </div>
+              ))}
+            </div>
           ) : null}
         </CandidateInfoCard>
         <CandidateInfoCard title="Aksi Cepat">

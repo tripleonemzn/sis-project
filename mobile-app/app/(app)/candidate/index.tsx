@@ -52,6 +52,27 @@ function StatusChip({ status }: { status: string }) {
   );
 }
 
+function formatCandidateCurrency(value?: number | null) {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
+}
+
+function getFinanceSummaryMeta(state?: string | null) {
+  if (state === 'CLEAR') {
+    return { label: 'Clear', backgroundColor: '#dcfce7', textColor: '#15803d', borderColor: '#bbf7d0' };
+  }
+  if (state === 'PENDING') {
+    return { label: 'Ada Tagihan', backgroundColor: '#fef3c7', textColor: '#b45309', borderColor: '#fde68a' };
+  }
+  if (state === 'OVERDUE') {
+    return { label: 'Terlambat', backgroundColor: '#ffe4e6', textColor: '#be123c', borderColor: '#fecdd3' };
+  }
+  return { label: 'Belum Terbit', backgroundColor: '#e2e8f0', textColor: '#475569', borderColor: '#cbd5e1' };
+}
+
 function QuickAction({
   label,
   onPress,
@@ -97,6 +118,8 @@ export default function CandidateDashboardScreen() {
   const admission = admissionQuery.data;
   const selectionSummary = admission?.selectionResults?.summary;
   const assessmentSummary = admission?.assessmentBoard?.summary;
+  const financeSummary = admission?.financeSummary;
+  const financeMeta = getFinanceSummaryMeta(financeSummary?.state);
 
   return (
     <ScrollView
@@ -158,6 +181,38 @@ export default function CandidateDashboardScreen() {
               </InfoCard>
             </View>
           </View>
+
+          <InfoCard title="Administrasi Keuangan">
+            <View
+              style={{
+                alignSelf: 'flex-start',
+                borderWidth: 1,
+                borderColor: financeMeta.borderColor,
+                backgroundColor: financeMeta.backgroundColor,
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                marginBottom: 8,
+              }}
+            >
+              <Text style={{ color: financeMeta.textColor, fontWeight: '700', fontSize: 12 }}>{financeMeta.label}</Text>
+            </View>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 24 }}>
+              {formatCandidateCurrency(financeSummary?.outstandingAmount || 0)}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
+              {financeSummary?.state === 'NO_BILLING'
+                ? 'Belum ada tagihan administrasi yang diterbitkan untuk akun ini.'
+                : financeSummary?.hasOverdue
+                  ? `${financeSummary.overdueInvoices} tagihan sudah lewat jatuh tempo.`
+                  : financeSummary?.hasOutstanding
+                    ? `${financeSummary.activeInvoices} tagihan masih aktif dan menunggu penyelesaian.`
+                    : 'Administrasi keuangan saat ini sudah clear.'}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
+              Jatuh tempo terdekat: {financeSummary?.nextDueDate ? new Date(financeSummary.nextDueDate).toLocaleDateString('id-ID') : '-'}
+            </Text>
+          </InfoCard>
 
           <InfoCard title="Tes & Penilaian">
             <Text style={{ color: BRAND_COLORS.textMuted }}>

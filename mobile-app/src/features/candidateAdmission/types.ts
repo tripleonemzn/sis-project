@@ -91,6 +91,36 @@ export type MobileCandidateAdmissionDecisionLetter = {
   generatedAt?: string | null;
 };
 
+export type MobileCandidateAdmissionFinanceState = 'NO_BILLING' | 'CLEAR' | 'PENDING' | 'OVERDUE';
+
+export type MobileCandidateAdmissionFinanceInvoice = {
+  id: number;
+  invoiceNo: string;
+  label: string;
+  periodKey: string;
+  status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
+  dueDate?: string | null;
+  totalAmount: number;
+  paidAmount: number;
+  balanceAmount: number;
+  issuedAt: string;
+};
+
+export type MobileCandidateAdmissionFinanceSummary = {
+  state: MobileCandidateAdmissionFinanceState;
+  hasOutstanding: boolean;
+  hasOverdue: boolean;
+  totalAmount: number;
+  paidAmount: number;
+  outstandingAmount: number;
+  activeInvoices: number;
+  overdueInvoices: number;
+  settledInvoices: number;
+  nextDueDate?: string | null;
+  lastPaymentAt?: string | null;
+  invoices: MobileCandidateAdmissionFinanceInvoice[];
+};
+
 export type MobileCandidateAdmissionAssessmentItem = {
   code: 'TKD' | 'LITERACY_COLOR' | 'INTERVIEW' | 'PHYSICAL';
   title: string;
@@ -263,4 +293,5 @@ export type MobileCandidateAdmissionDetail = {
     };
   };
   assessmentBoard?: MobileCandidateAdmissionAssessmentBoard;
+  financeSummary?: MobileCandidateAdmissionFinanceSummary;
 };

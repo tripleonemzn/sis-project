@@ -10,11 +10,13 @@ import { majorService, type Major } from '../../../services/major.service';
 import {
   ADMIN_CANDIDATE_ADMISSION_QUERY_KEY,
   formatCandidateDateTime,
+  formatCandidateCurrency,
   CandidateAdmissionStatusBadge,
   CandidateInfoCard,
   VerificationBadge,
   extractCandidateAdmissionListPayload,
   extractCandidateAdmissionPayload,
+  getCandidateFinanceSummaryMeta,
   getCandidateDecisionLetterPrintPath,
   getCandidateSelectionStatusMeta,
 } from '../../public/candidateShared';
@@ -444,6 +446,11 @@ export const CandidateAdmissionReviewPage = () => {
             <div className="py-20 text-center text-sm text-slate-500">Detail pendaftaran tidak ditemukan.</div>
           ) : (
             <div className="space-y-5">
+              {(() => {
+                const financeSummary = detail.financeSummary;
+                const financeMeta = getCandidateFinanceSummaryMeta(financeSummary?.state);
+                return (
+                  <>
               <div>
                 <div className="flex flex-wrap items-center gap-3">
                   <h2 className="text-xl font-semibold text-slate-900">{detail.user.name}</h2>
@@ -455,7 +462,7 @@ export const CandidateAdmissionReviewPage = () => {
                 </p>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 <CandidateInfoCard title="Kontak">
                   <p>{detail.user.phone || '-'}</p>
                   <p>{detail.user.email || '-'}</p>
@@ -468,6 +475,28 @@ export const CandidateAdmissionReviewPage = () => {
                     Dokumen wajib: {detail.documentChecklist.summary.requiredUploaded}/
                     {detail.documentChecklist.summary.requiredTotal}
                   </p>
+                </CandidateInfoCard>
+                <CandidateInfoCard title="Administrasi Keuangan">
+                  <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${financeMeta.className}`}>
+                    {financeMeta.label}
+                  </span>
+                  <p className="mt-3 text-2xl font-semibold text-slate-900">
+                    {formatCandidateCurrency(financeSummary?.outstandingAmount || 0)}
+                  </p>
+                  <p className="mt-2 text-sm text-slate-600">
+                    {financeSummary?.state === 'NO_BILLING'
+                      ? 'Belum ada tagihan administrasi yang diterbitkan untuk calon siswa ini.'
+                      : financeSummary?.hasOverdue
+                        ? `${financeSummary.overdueInvoices} tagihan sudah lewat jatuh tempo.`
+                        : financeSummary?.hasOutstanding
+                          ? `${financeSummary.activeInvoices} tagihan masih aktif.`
+                          : 'Tagihan administrasi untuk akun ini sudah clear.'}
+                  </p>
+                  <div className="mt-3 space-y-1 text-xs text-slate-500">
+                    <p>Tagihan aktif: {financeSummary?.activeInvoices || 0}</p>
+                    <p>Jatuh tempo terdekat: {formatCandidateDateTime(financeSummary?.nextDueDate)}</p>
+                    <p>Pembayaran terakhir: {formatCandidateDateTime(financeSummary?.lastPaymentAt)}</p>
+                  </div>
                 </CandidateInfoCard>
               </div>
 
@@ -538,6 +567,34 @@ export const CandidateAdmissionReviewPage = () => {
                   </div>
                 </CandidateInfoCard>
               </div>
+
+              {financeSummary?.invoices?.length ? (
+                <CandidateInfoCard title="Riwayat Tagihan Administrasi">
+                  <div className="space-y-3">
+                    {financeSummary.invoices.slice(0, 4).map((invoice) => (
+                      <div key={invoice.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="font-semibold text-slate-900">{invoice.label}</p>
+                            <p className="text-xs text-slate-500">
+                              {invoice.invoiceNo} • {invoice.periodKey}
+                            </p>
+                          </div>
+                          <span className="text-sm font-semibold text-slate-900">
+                            {formatCandidateCurrency(invoice.balanceAmount)}
+                          </span>
+                        </div>
+                        <div className="mt-2 grid gap-1 text-sm text-slate-600 sm:grid-cols-2">
+                          <p>Total: {formatCandidateCurrency(invoice.totalAmount)}</p>
+                          <p>Terbayar: {formatCandidateCurrency(invoice.paidAmount)}</p>
+                          <p>Status: {invoice.status}</p>
+                          <p>Jatuh tempo: {formatCandidateDateTime(invoice.dueDate)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CandidateInfoCard>
+              ) : null}
 
               <CandidateInfoCard title="Riwayat Tes Seleksi">
                 {!detail.selectionResults?.results.length ? (
@@ -920,6 +977,9 @@ export const CandidateAdmissionReviewPage = () => {
                   <span className="font-semibold text-slate-900">Diterima:</span> {formatCandidateDateTime(detail.acceptedAt)}
                 </div>
               </div>
+                  </>
+                );
+              })()}
             </div>
           )}
         </section>

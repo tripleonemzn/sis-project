@@ -1,5 +1,9 @@
 import type { ReactNode } from 'react';
-import type { CandidateAdmissionDetail, CandidateAdmissionStatus } from '../../services/candidateAdmission.service';
+import type {
+  CandidateAdmissionDetail,
+  CandidateAdmissionFinanceState,
+  CandidateAdmissionStatus,
+} from '../../services/candidateAdmission.service';
 
 export const CANDIDATE_ADMISSION_QUERY_KEY = ['candidate-admission', 'me'] as const;
 export const ADMIN_CANDIDATE_ADMISSION_QUERY_KEY = ['admin-candidate-admissions'] as const;
@@ -139,6 +143,40 @@ export function formatCandidateDateTime(value?: string | null, withTime = true) 
         }
       : {}),
   });
+}
+
+export function formatCandidateCurrency(value?: number | null) {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
+}
+
+export function getCandidateFinanceSummaryMeta(state?: CandidateAdmissionFinanceState | null) {
+  switch (state) {
+    case 'CLEAR':
+      return {
+        label: 'Clear',
+        className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+      };
+    case 'PENDING':
+      return {
+        label: 'Ada Tagihan',
+        className: 'border-amber-200 bg-amber-50 text-amber-700',
+      };
+    case 'OVERDUE':
+      return {
+        label: 'Terlambat',
+        className: 'border-rose-200 bg-rose-50 text-rose-700',
+      };
+    case 'NO_BILLING':
+    default:
+      return {
+        label: 'Belum Terbit',
+        className: 'border-slate-200 bg-slate-100 text-slate-700',
+      };
+  }
 }
 
 export function getCandidateDecisionLetterPrintPath(admissionId?: number | null) {

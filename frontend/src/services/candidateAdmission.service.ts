@@ -191,6 +191,36 @@ export interface CandidateAdmissionCompleteness {
   missingFields: string[];
 }
 
+export type CandidateAdmissionFinanceState = 'NO_BILLING' | 'CLEAR' | 'PENDING' | 'OVERDUE';
+
+export interface CandidateAdmissionFinanceInvoice {
+  id: number;
+  invoiceNo: string;
+  label: string;
+  periodKey: string;
+  status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
+  dueDate?: string | null;
+  totalAmount: number;
+  paidAmount: number;
+  balanceAmount: number;
+  issuedAt: string;
+}
+
+export interface CandidateAdmissionFinanceSummary {
+  state: CandidateAdmissionFinanceState;
+  hasOutstanding: boolean;
+  hasOverdue: boolean;
+  totalAmount: number;
+  paidAmount: number;
+  outstandingAmount: number;
+  activeInvoices: number;
+  overdueInvoices: number;
+  settledInvoices: number;
+  nextDueDate?: string | null;
+  lastPaymentAt?: string | null;
+  invoices: CandidateAdmissionFinanceInvoice[];
+}
+
 export interface CandidateAdmissionDetail {
   id: number;
   userId: number;
@@ -220,6 +250,7 @@ export interface CandidateAdmissionDetail {
   documentCount: number;
   documentChecklist: CandidateAdmissionDocumentChecklist;
   completeness: CandidateAdmissionCompleteness;
+  financeSummary?: CandidateAdmissionFinanceSummary;
   canSubmit: boolean;
   canPublishDecision: boolean;
   canPromoteToStudent: boolean;

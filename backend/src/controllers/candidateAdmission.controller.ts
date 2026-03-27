@@ -201,6 +201,122 @@ type CandidateAdmissionAccessProfile = {
   name: string;
 };
 
+type CandidateAdmissionFinanceSummaryState = 'NO_BILLING' | 'CLEAR' | 'PENDING' | 'OVERDUE';
+
+function normalizeCandidateFinanceAmount(value: number | null | undefined) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return 0;
+  return Number(numeric.toFixed(2));
+}
+
+function buildCandidateFinanceInvoiceLabel(invoice: {
+  title?: string | null;
+  periodKey: string;
+  items: Array<{ componentName: string }>;
+}) {
+  const explicitTitle = String(invoice.title || '').trim();
+  if (explicitTitle) return explicitTitle;
+
+  const componentNames = invoice.items
+    .map((item) => String(item.componentName || '').trim())
+    .filter(Boolean);
+
+  if (componentNames.length === 0) {
+    return `Tagihan ${invoice.periodKey}`;
+  }
+
+  const preview = componentNames.slice(0, 2).join(', ');
+  return componentNames.length > 2 ? `${preview} +${componentNames.length - 2} komponen` : preview;
+}
+
+async function loadCandidateFinanceSummary(userId: number) {
+  const [invoices, lastPayment] = await Promise.all([
+    prisma.financeInvoice.findMany({
+      where: {
+        studentId: userId,
+        status: {
+          not: 'CANCELLED',
+        },
+      },
+      select: {
+        id: true,
+        invoiceNo: true,
+        title: true,
+        periodKey: true,
+        status: true,
+        dueDate: true,
+        totalAmount: true,
+        paidAmount: true,
+        balanceAmount: true,
+        issuedAt: true,
+        items: {
+          select: {
+            componentName: true,
+          },
+          orderBy: {
+            id: 'asc',
+          },
+        },
+      },
+      orderBy: [{ dueDate: 'asc' }, { issuedAt: 'desc' }, { id: 'desc' }],
+    }),
+    prisma.financePayment.findFirst({
+      where: {
+        studentId: userId,
+        verificationStatus: 'VERIFIED',
+      },
+      select: {
+        paidAt: true,
+      },
+      orderBy: {
+        paidAt: 'desc',
+      },
+    }),
+  ]);
+
+  const activeInvoices = invoices.filter((invoice) => ['UNPAID', 'PARTIAL'].includes(String(invoice.status)));
+  const overdueInvoices = activeInvoices.filter((invoice) => invoice.dueDate && invoice.dueDate < new Date());
+  const totalAmount = invoices.reduce((sum, invoice) => sum + Number(invoice.totalAmount || 0), 0);
+  const paidAmount = invoices.reduce((sum, invoice) => sum + Number(invoice.paidAmount || 0), 0);
+  const outstandingAmount = activeInvoices.reduce((sum, invoice) => sum + Number(invoice.balanceAmount || 0), 0);
+  const nextDueDate =
+    activeInvoices
+      .map((invoice) => invoice.dueDate)
+      .filter((dueDate): dueDate is Date => Boolean(dueDate))
+      .sort((left, right) => left.getTime() - right.getTime())[0] || null;
+
+  let state: CandidateAdmissionFinanceSummaryState = 'NO_BILLING';
+  if (invoices.length > 0) {
+    state = overdueInvoices.length > 0 ? 'OVERDUE' : outstandingAmount > 0 ? 'PENDING' : 'CLEAR';
+  }
+
+  return {
+    state,
+    hasOutstanding: outstandingAmount > 0,
+    hasOverdue: overdueInvoices.length > 0,
+    totalAmount: normalizeCandidateFinanceAmount(totalAmount),
+    paidAmount: normalizeCandidateFinanceAmount(paidAmount),
+    outstandingAmount: normalizeCandidateFinanceAmount(outstandingAmount),
+    activeInvoices: activeInvoices.length,
+    overdueInvoices: overdueInvoices.length,
+    settledInvoices: invoices.filter((invoice) => String(invoice.status) === 'PAID').length,
+    nextDueDate: nextDueDate ? nextDueDate.toISOString() : null,
+    lastPaymentAt: lastPayment?.paidAt ? lastPayment.paidAt.toISOString() : null,
+    invoices: invoices.slice(0, 8).map((invoice) => ({
+      id: invoice.id,
+      invoiceNo: invoice.invoiceNo,
+      label: buildCandidateFinanceInvoiceLabel(invoice),
+      periodKey: invoice.periodKey,
+      status: invoice.status,
+      dueDate: invoice.dueDate ? invoice.dueDate.toISOString() : null,
+      totalAmount: normalizeCandidateFinanceAmount(invoice.totalAmount),
+      paidAmount: normalizeCandidateFinanceAmount(invoice.paidAmount),
+      balanceAmount: normalizeCandidateFinanceAmount(invoice.balanceAmount),
+      issuedAt: invoice.issuedAt.toISOString(),
+    })),
+  };
+}
+
 function getAuthUserId(req: Request): number {
   const authUserId = (req as Request & { user?: { id?: number } }).user?.id;
   if (!authUserId) {
@@ -922,14 +1038,16 @@ async function buildCandidateAdmissionDetailPayload(record: CandidateAdmissionRe
   const shouldLoadDecisionLetterDefaults = Boolean(
     record.decisionPublishedAt || record.decisionLetterId || record.decisionLetterOfficialUrl,
   );
-  const [selectionResults, decisionLetterDefaults] = await Promise.all([
+  const [selectionResults, decisionLetterDefaults, financeSummary] = await Promise.all([
     loadCandidateSelectionResults(record.userId),
     shouldLoadDecisionLetterDefaults ? loadDefaultDecisionLetterSigners() : Promise.resolve(null),
+    loadCandidateFinanceSummary(record.userId),
   ]);
   const base = serializeCandidateAdmission(record, decisionLetterDefaults || undefined);
   const assessmentBoard = buildCandidateAssessmentBoard(record, selectionResults);
   return {
     ...base,
+    financeSummary,
     selectionResults,
     assessmentBoard,
   };

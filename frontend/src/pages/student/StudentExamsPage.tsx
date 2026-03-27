@@ -65,6 +65,15 @@ type ExamAvailabilityPayload = {
   sessions?: ExamSessionPayload[]
   isBlocked?: boolean
   blockReason?: string
+  financeClearance?: {
+    blocksExam: boolean
+    hasOutstanding: boolean
+    hasOverdue: boolean
+    outstandingAmount: number
+    outstandingInvoices: number
+    overdueInvoices: number
+    reason?: string | null
+  } | null
   makeupAvailable?: boolean
   makeupDeadline?: string | null
   jobVacancy?: {
@@ -221,6 +230,15 @@ interface Exam {
   }
   isBlocked?: boolean
   blockReason?: string
+  financeClearance?: {
+    blocksExam: boolean
+    hasOutstanding: boolean
+    hasOverdue: boolean
+    outstandingAmount: number
+    outstandingInvoices: number
+    overdueInvoices: number
+    reason?: string | null
+  } | null
   makeupAvailable?: boolean
   makeupDeadline?: string | null
   jobVacancy?: {
@@ -234,6 +252,14 @@ type ServerTimeDriftState = {
   serverNowIso: string
   deviceNowIso: string
   driftMs: number
+}
+
+function formatExamCurrency(value?: number | null): string {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0))
 }
 
 export default function StudentExamsPage() {
@@ -474,6 +500,7 @@ export default function StudentExamsPage() {
           } : undefined,
           isBlocked: item.isBlocked,
           blockReason: item.blockReason,
+          financeClearance: item.financeClearance || null,
           makeupAvailable: Boolean(item.makeupAvailable),
           makeupDeadline: item.makeupDeadline || null,
           jobVacancy: item.jobVacancy
@@ -1051,6 +1078,16 @@ export default function StudentExamsPage() {
                               <span className="text-xs text-red-600 max-w-[200px] whitespace-normal text-center">
                                 {exam.blockReason}
                               </span>
+                              {exam.financeClearance?.hasOutstanding ? (
+                                <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-[11px] text-amber-800">
+                                  <div className="font-semibold">Clearance finance</div>
+                                  <div>Outstanding: {formatExamCurrency(exam.financeClearance.outstandingAmount)}</div>
+                                  <div>
+                                    Tagihan aktif: {exam.financeClearance.outstandingInvoices} • overdue:{' '}
+                                    {exam.financeClearance.overdueInvoices}
+                                  </div>
+                                </div>
+                              ) : null}
                             </div>
                           ) : canTake ? (
                             <button

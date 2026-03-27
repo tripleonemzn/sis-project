@@ -263,6 +263,16 @@ type AutomaticExamRestrictionInfo = {
     details: AutomaticExamRestrictionDetails;
 };
 
+type ExamFinanceClearanceSummary = {
+    blocksExam: boolean;
+    hasOutstanding: boolean;
+    hasOverdue: boolean;
+    outstandingAmount: number;
+    outstandingInvoices: number;
+    overdueInvoices: number;
+    reason: string | null;
+};
+
 const emptyAutomaticExamRestrictionInfo = (): AutomaticExamRestrictionInfo => ({
     autoBlocked: false,
     reason: '',
@@ -309,6 +319,25 @@ function buildEffectiveExamRestrictionState(params: {
         reason,
         manualBlocked,
         autoBlocked,
+    };
+}
+
+function buildExamFinanceClearanceSummary(
+    automaticRestriction: AutomaticExamRestrictionInfo | null,
+): ExamFinanceClearanceSummary {
+    const info = automaticRestriction || emptyAutomaticExamRestrictionInfo();
+    const financeReason = info.flags.financeOutstanding
+        ? `Masih memiliki tunggakan Rp ${currencyFormatterId.format(Math.round(info.details.outstandingAmount))}${info.flags.financeOverdue ? ` (${info.details.overdueInvoices} lewat jatuh tempo)` : ''}`
+        : null;
+
+    return {
+        blocksExam: info.flags.financeOutstanding,
+        hasOutstanding: info.details.outstandingAmount > 0 && info.details.outstandingInvoices > 0,
+        hasOverdue: info.details.overdueInvoices > 0,
+        outstandingAmount: Number(info.details.outstandingAmount || 0),
+        outstandingInvoices: Number(info.details.outstandingInvoices || 0),
+        overdueInvoices: Number(info.details.overdueInvoices || 0),
+        reason: financeReason,
     };
 }
 
@@ -6242,6 +6271,7 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
         const assignedSitting = matchingSittings[0] || slotSittings[0] || null;
         let isBlocked = false;
         let blockReason = '';
+        let financeClearance: ExamFinanceClearanceSummary | null = null;
 
         if (accessRole === 'STUDENT' && schedule.packet) {
             const packet = schedule.packet;
@@ -6267,6 +6297,7 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
             });
             isBlocked = effectiveRestriction.isBlocked;
             blockReason = effectiveRestriction.reason || '';
+            financeClearance = buildExamFinanceClearanceSummary(automaticRestriction);
         }
 
         const session = pickBestSession(schedule.sessions);
@@ -6355,6 +6386,7 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
             has_submitted: normalizedSessionStatus === 'COMPLETED' || normalizedSessionStatus === 'TIMEOUT',
             isBlocked,
             blockReason,
+            financeClearance,
             makeupAvailable,
             makeupDeadline: makeupDeadline ? makeupDeadline.toISOString() : null,
         };

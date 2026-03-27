@@ -11,10 +11,12 @@ import { majorService, type Major } from '../../services/major.service';
 import {
   CANDIDATE_ADMISSION_QUERY_KEY,
   formatCandidateDateTime,
+  formatCandidateCurrency,
   CandidateAdmissionStatusBadge,
   CandidateInfoCard,
   VerificationBadge,
   extractCandidateAdmissionPayload,
+  getCandidateFinanceSummaryMeta,
   getCandidateDecisionLetterPrintPath,
   getCandidateSelectionStatusMeta,
 } from './candidateShared';
@@ -147,6 +149,8 @@ export const CandidateApplicationPage = () => {
   const selectionSummary = admission?.selectionResults?.summary;
   const decisionLetter = admission?.decisionLetter;
   const assessmentBoard = admission?.assessmentBoard;
+  const financeSummary = admission?.financeSummary;
+  const financeMeta = getCandidateFinanceSummaryMeta(financeSummary?.state);
 
   useEffect(() => {
     if (!admission) return;
@@ -289,7 +293,7 @@ export const CandidateApplicationPage = () => {
         </section>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-4">
+      <div className="grid gap-4 xl:grid-cols-5">
         <CandidateInfoCard title="Status PPDB">
           <div className="space-y-3">
             <CandidateAdmissionStatusBadge status={admission.status} />
@@ -337,6 +341,23 @@ export const CandidateApplicationPage = () => {
             {selectionSummary?.total
               ? `${selectionSummary.completed} sesi selesai, ${selectionSummary.passed} lulus.`
               : 'Belum ada hasil tes seleksi yang tercatat.'}
+          </p>
+        </CandidateInfoCard>
+        <CandidateInfoCard title="Administrasi Keuangan">
+          <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${financeMeta.className}`}>
+            {financeMeta.label}
+          </span>
+          <p className="mt-3 text-2xl font-semibold text-slate-900">
+            {formatCandidateCurrency(financeSummary?.outstandingAmount || 0)}
+          </p>
+          <p className="mt-2 text-sm text-slate-600">
+            {financeSummary?.state === 'NO_BILLING'
+              ? 'Tagihan administrasi akan muncul di sini setelah diterbitkan sekolah.'
+              : financeSummary?.hasOverdue
+                ? `${financeSummary.overdueInvoices} tagihan administrasi sudah melewati jatuh tempo.`
+                : financeSummary?.hasOutstanding
+                  ? `${financeSummary.activeInvoices} tagihan administrasi masih aktif.`
+                  : 'Tagihan administrasi saat ini sudah clear.'}
           </p>
         </CandidateInfoCard>
       </div>
@@ -389,6 +410,29 @@ export const CandidateApplicationPage = () => {
           <p className="mt-2 text-sm text-slate-600">
             Gunakan menu Tes Seleksi jika admin sudah menjadwalkan ujian untuk akun ini.
           </p>
+        </CandidateInfoCard>
+        <CandidateInfoCard title="Tagihan Aktif">
+          <div className="space-y-2 text-sm text-slate-600">
+            <p>Outstanding: {formatCandidateCurrency(financeSummary?.outstandingAmount || 0)}</p>
+            <p>Tagihan aktif: {financeSummary?.activeInvoices || 0}</p>
+            <p>Lewat jatuh tempo: {financeSummary?.overdueInvoices || 0}</p>
+            <p>Jatuh tempo terdekat: {formatCandidateDateTime(financeSummary?.nextDueDate)}</p>
+          </div>
+          {financeSummary?.invoices?.length ? (
+            <div className="mt-3 space-y-2">
+              {financeSummary.invoices.slice(0, 3).map((invoice) => (
+                <div key={invoice.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="font-semibold text-slate-900">{invoice.label}</p>
+                  <p className="text-xs text-slate-500">
+                    {invoice.invoiceNo} • {invoice.periodKey}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Sisa {formatCandidateCurrency(invoice.balanceAmount)} • jatuh tempo {formatCandidateDateTime(invoice.dueDate)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </CandidateInfoCard>
         <CandidateInfoCard title="Surat Hasil Seleksi">
           <p className="text-sm text-slate-600">

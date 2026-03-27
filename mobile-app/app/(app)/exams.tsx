@@ -47,6 +47,14 @@ function formatDateTime(value: string) {
   return `${day} ${month} ${year} ${hour}:${minute}`;
 }
 
+function formatExamCurrency(value?: number | null) {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
+}
+
 function statusStyle(status: 'OPEN' | 'UPCOMING' | 'MISSED' | 'COMPLETED') {
   if (status === 'OPEN') return { bg: '#dcfce7', border: '#86efac', text: '#166534', label: 'Berlangsung' };
   if (status === 'COMPLETED') return { bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8', label: 'Selesai' };
@@ -436,6 +444,26 @@ export default function StudentExamsScreen() {
                       <Text style={{ color: '#991b1b', fontSize: 12, fontWeight: '600' }}>
                         Diblokir: {item.blockReason || 'Akses dibatasi wali kelas'}
                       </Text>
+                      {item.financeClearance?.hasOutstanding ? (
+                        <View
+                          style={{
+                            marginTop: 8,
+                            borderWidth: 1,
+                            borderColor: '#fde68a',
+                            backgroundColor: '#fffbeb',
+                            borderRadius: 8,
+                            padding: 8,
+                          }}
+                        >
+                          <Text style={{ color: '#92400e', fontSize: 11, fontWeight: '700' }}>Clearance finance</Text>
+                          <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
+                            Outstanding: {formatExamCurrency(item.financeClearance.outstandingAmount)}
+                          </Text>
+                          <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
+                            Tagihan aktif: {item.financeClearance.outstandingInvoices} • overdue: {item.financeClearance.overdueInvoices}
+                          </Text>
+                        </View>
+                      ) : null}
                     </View>
                   ) : null}
                   <Pressable

@@ -130,6 +130,15 @@ export type StudentExamItem = {
   has_submitted: boolean;
   isBlocked?: boolean;
   blockReason?: string;
+  financeClearance?: {
+    blocksExam: boolean;
+    hasOutstanding: boolean;
+    hasOverdue: boolean;
+    outstandingAmount: number;
+    outstandingInvoices: number;
+    overdueInvoices: number;
+    reason?: string | null;
+  } | null;
   subject?: {
     id: number;
     name: string;
