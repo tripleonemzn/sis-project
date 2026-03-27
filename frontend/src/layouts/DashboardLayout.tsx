@@ -1079,7 +1079,13 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
   if (role === 'staff') {
     const mapping: Record<string, { label: string; group?: string }> = {
       dashboard: { label: 'Dashboard' },
-      finance: { label: 'Pembayaran Siswa', group: 'KEUANGAN' },
+      finance: { label: 'Ringkasan Keuangan', group: 'KEUANGAN' },
+      'finance/master': { label: 'Master Biaya', group: 'KEUANGAN' },
+      'finance/tagihan': { label: 'Tagihan Siswa', group: 'KEUANGAN' },
+      'finance/pembayaran': { label: 'Pembayaran', group: 'KEUANGAN' },
+      'finance/kas-bank': { label: 'Kas & Bank', group: 'KEUANGAN' },
+      'finance/tutup-buku': { label: 'Tutup Buku', group: 'KEUANGAN' },
+      'finance/laporan': { label: 'Laporan', group: 'KEUANGAN' },
       'finance/students': { label: 'Data Siswa', group: 'KEUANGAN' },
       'finance/operations': { label: 'Realisasi Anggaran', group: 'KEUANGAN' },
       administration: { label: 'Administrasi', group: 'ADMINISTRASI' },
@@ -1094,7 +1100,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       'head-tu/permissions': { label: 'Perizinan Siswa', group: 'LAYANAN TU' },
       'head-tu/letters': { label: 'Surat-Menyurat', group: 'LAYANAN TU' },
       'head-tu/exam-cards': { label: 'Kartu Ujian', group: 'LAYANAN TU' },
-      payments: { label: 'Pembayaran Siswa', group: 'KEUANGAN' },
+      payments: { label: 'Ringkasan Keuangan', group: 'KEUANGAN' },
       students: { label: 'Data Siswa', group: 'KEUANGAN' },
       admin: { label: 'Realisasi Anggaran', group: 'KEUANGAN' },
     };

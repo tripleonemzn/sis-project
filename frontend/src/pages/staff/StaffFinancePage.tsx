@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BellRing, Download, Loader2, Pencil, Plus, Power, ReceiptText, WalletCards, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { academicYearService, type AcademicYear } from '../../services/academicYear.service';
 import {
@@ -81,6 +82,110 @@ const STATUS_OPTIONS: Array<{ value: '' | FinanceInvoiceStatus; label: string }>
   { value: 'PAID', label: 'Lunas' },
   { value: 'CANCELLED', label: 'Dibatalkan' },
 ];
+
+export type FinanceWorkspaceSection =
+  | 'overview'
+  | 'master'
+  | 'billing'
+  | 'payments'
+  | 'treasury'
+  | 'closing'
+  | 'reports';
+
+const FINANCE_SECTION_ITEMS: Array<{
+  key: FinanceWorkspaceSection;
+  label: string;
+  title: string;
+  description: string;
+  path: string;
+}> = [
+  {
+    key: 'overview',
+    label: 'Ringkasan',
+    title: 'Ringkasan Keuangan',
+    description: 'Lihat kondisi tagihan, prioritas tindak lanjut, dan pengingat penting dalam satu tampilan ringkas.',
+    path: '/staff/finance',
+  },
+  {
+    key: 'master',
+    label: 'Master Biaya',
+    title: 'Master Biaya',
+    description: 'Kelola komponen biaya, aturan tarif, dan aturan potongan atau tambahan biaya dengan bahasa yang mudah dipahami.',
+    path: '/staff/finance/master',
+  },
+  {
+    key: 'billing',
+    label: 'Tagihan',
+    title: 'Tagihan Siswa',
+    description: 'Buat tagihan, atur cicilan, lihat daftar tagihan, dan pantau denda keterlambatan siswa.',
+    path: '/staff/finance/tagihan',
+  },
+  {
+    key: 'payments',
+    label: 'Pembayaran',
+    title: 'Pembayaran & Koreksi',
+    description: 'Catat pembayaran, cek bukti transfer, kelola kelebihan bayar, dan proses koreksi bila terjadi salah input.',
+    path: '/staff/finance/pembayaran',
+  },
+  {
+    key: 'treasury',
+    label: 'Kas & Bank',
+    title: 'Kas & Bank',
+    description: 'Pantau tutup kas harian, rekening sekolah, kecocokan mutasi bank, serta buku kas dan buku bank.',
+    path: '/staff/finance/kas-bank',
+  },
+  {
+    key: 'closing',
+    label: 'Tutup Buku',
+    title: 'Tutup Buku',
+    description: 'Kunci periode keuangan, atur alur persetujuan, dan buka ulang periode bila ada koreksi yang sah.',
+    path: '/staff/finance/tutup-buku',
+  },
+  {
+    key: 'reports',
+    label: 'Laporan',
+    title: 'Laporan & Kesiapan',
+    description: 'Pantau anggaran, tren kinerja, laporan keuangan, dan status kesiapan operasional bendahara.',
+    path: '/staff/finance/laporan',
+  },
+];
+
+const FINANCE_SECTION_HINTS: Record<
+  FinanceWorkspaceSection,
+  {
+    title: string;
+    description: string;
+  }
+> = {
+  overview: {
+    title: 'Ringkasan Keuangan',
+    description: 'Halaman ini fokus ke kondisi umum dan prioritas kerja harian, jadi bukan tempat input data detail.',
+  },
+  master: {
+    title: 'Master Biaya',
+    description: 'Istilah "aturan tarif" dipakai agar lebih mudah dipahami. Ini adalah aturan nominal biaya yang berlaku untuk kelompok siswa tertentu.',
+  },
+  billing: {
+    title: 'Tagihan Siswa',
+    description: 'Istilah "tagihan" dipakai untuk invoice. Jika ada termin, artinya tagihan dibayar bertahap sesuai jadwal cicilan.',
+  },
+  payments: {
+    title: 'Pembayaran & Koreksi',
+    description: 'Bagian ini dipakai untuk pembayaran masuk, kelebihan bayar, refund, dan pembatalan pembayaran bila ada koreksi resmi.',
+  },
+  treasury: {
+    title: 'Kas & Bank',
+    description: 'Istilah "cocok mutasi bank" dipakai sebagai pengganti rekonsiliasi bank, yaitu proses mencocokkan catatan sistem dengan mutasi rekening.',
+  },
+  closing: {
+    title: 'Tutup Buku',
+    description: 'Tutup buku berarti mengunci satu periode agar transaksi lama tidak berubah sembarangan. Jika perlu koreksi, gunakan buka ulang periode.',
+  },
+  reports: {
+    title: 'Laporan & Kesiapan',
+    description: 'Bagian ini untuk membaca tren, laporan, dan status kesiapan operasional. Jika ada istilah baku atau singkatan, keterangannya ditampilkan langsung di kartu terkait.',
+  },
+};
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('id-ID', {
@@ -347,10 +452,10 @@ function getLateFeeModeLabel(mode?: FinanceLateFeeMode | null) {
 }
 
 function getCreditTransactionLabel(transaction: FinanceCreditTransaction) {
-  if (transaction.kind === 'APPLIED_TO_INVOICE') return 'Saldo kredit dipakai ke invoice';
-  if (transaction.kind === 'REFUND') return 'Refund saldo kredit';
-  if (transaction.kind === 'PAYMENT_REVERSAL') return 'Reversal mengurangi saldo kredit';
-  return 'Kelebihan bayar masuk saldo kredit';
+  if (transaction.kind === 'APPLIED_TO_INVOICE') return 'Saldo titipan dipakai ke tagihan';
+  if (transaction.kind === 'REFUND') return 'Refund saldo titipan';
+  if (transaction.kind === 'PAYMENT_REVERSAL') return 'Pembatalan pembayaran mengurangi saldo titipan';
+  return 'Kelebihan bayar masuk saldo titipan';
 }
 
 function describeAdjustmentScope(adjustment: FinanceAdjustmentRule) {
@@ -460,7 +565,7 @@ function getCashSessionApprovalMeta(status: FinanceCashSessionApprovalStatus) {
     return { label: 'Disetujui', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
   }
   if (status === 'AUTO_APPROVED') {
-    return { label: 'Auto Approved', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+    return { label: 'Otomatis Disetujui', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
   }
   if (status === 'REJECTED') {
     return { label: 'Ditolak', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
@@ -473,7 +578,7 @@ function getClosingPeriodStatusMeta(status: FinanceClosingPeriod['status']) {
     return { label: 'Terkunci', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
   }
   if (status === 'CLOSING_REVIEW') {
-    return { label: 'Review Closing', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+    return { label: 'Review Tutup Buku', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
   }
   return { label: 'Terbuka', className: 'bg-slate-50 text-slate-700 border border-slate-200' };
 }
@@ -539,8 +644,36 @@ function getBankReconciliationStatusMeta(status: FinanceBankReconciliation['stat
   return { label: 'Terbuka', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
 }
 
-export const StaffFinancePage = () => {
+type StaffFinancePageProps = {
+  activeSection?: FinanceWorkspaceSection;
+};
+
+function FinanceTermHint({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-xl border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-900">
+      <span className="font-semibold">{title}:</span> {description}
+    </div>
+  );
+}
+
+export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePageProps) => {
   const queryClient = useQueryClient();
+  const activeSectionMeta =
+    FINANCE_SECTION_ITEMS.find((item) => item.key === activeSection) || FINANCE_SECTION_ITEMS[0];
+  const activeSectionHint = FINANCE_SECTION_HINTS[activeSection];
+  const isOverviewSection = activeSection === 'overview';
+  const isMasterSection = activeSection === 'master';
+  const isBillingSection = activeSection === 'billing';
+  const isPaymentsSection = activeSection === 'payments';
+  const isTreasurySection = activeSection === 'treasury';
+  const isClosingSection = activeSection === 'closing';
+  const isReportsSection = activeSection === 'reports';
 
   const [componentCode, setComponentCode] = useState('');
   const [componentName, setComponentName] = useState('');
@@ -2748,12 +2881,39 @@ export const StaffFinancePage = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Pembayaran (SPP) - Staff Keuangan</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Kelola komponen biaya, tarif dinamis, generate tagihan, pencatatan pembayaran, dan tindak lanjut kolektibilitas.
-        </p>
+        <h2 className="text-2xl font-bold text-gray-900">{activeSectionMeta.title}</h2>
+        <p className="mt-1 text-sm text-gray-500">{activeSectionMeta.description}</p>
       </div>
 
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap gap-2">
+          {FINANCE_SECTION_ITEMS.map((item) => {
+            const active = item.key === activeSection;
+            return (
+              <Link
+                key={item.key}
+                to={item.path}
+                className={`inline-flex items-center rounded-full border px-3 py-2 text-sm font-semibold transition ${
+                  active
+                    ? 'border-blue-200 bg-blue-50 text-blue-700'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-blue-100 hover:bg-blue-50/60 hover:text-blue-700'
+                }`}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          Istilah finance dibuat lebih familiar. Jika ada istilah yang tetap baku, penjelasannya akan muncul di bagian terkait.
+        </p>
+        <div className="mt-3">
+          <FinanceTermHint title={activeSectionHint.title} description={activeSectionHint.description} />
+        </div>
+      </div>
+
+      {isOverviewSection ? (
+      <>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4">
           <div className="text-xs text-blue-700 uppercase tracking-wider">Total Tagihan</div>
@@ -2797,14 +2957,17 @@ export const StaffFinancePage = () => {
           )}
         </div>
       </div>
+      </>
+      ) : null}
 
+      {isPaymentsSection ? (
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2 rounded-xl border border-emerald-100 bg-white shadow-sm overflow-hidden">
           <div className="px-4 py-4 border-b border-emerald-50 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <div className="text-xs uppercase tracking-wider text-emerald-700">Saldo Kredit Siswa</div>
+              <div className="text-xs uppercase tracking-wider text-emerald-700">Kelebihan Bayar Siswa</div>
               <p className="mt-1 text-sm text-slate-600">
-                Kelebihan bayar otomatis masuk ke saldo kredit dan bisa direfund dari sini.
+                Kelebihan bayar otomatis disimpan sebagai saldo titipan siswa dan bisa dikembalikan dari sini.
               </p>
             </div>
             <input
@@ -2820,7 +2983,7 @@ export const StaffFinancePage = () => {
               <div className="mt-1 text-lg font-bold text-emerald-900">{creditSummary?.totalStudentsWithCredit || 0}</div>
             </div>
             <div className="rounded-lg border border-emerald-100 bg-white px-3 py-3">
-              <div className="text-[11px] uppercase tracking-wider text-emerald-700">Total Saldo Kredit</div>
+              <div className="text-[11px] uppercase tracking-wider text-emerald-700">Total Saldo Titipan</div>
               <div className="mt-1 text-lg font-bold text-emerald-900">
                 {formatCurrency(creditSummary?.totalCreditBalance || 0)}
               </div>
@@ -2877,7 +3040,7 @@ export const StaffFinancePage = () => {
                       ) : null}
                     </div>
                     <div className="flex flex-col items-start lg:items-end gap-2">
-                      <div className="text-xs uppercase tracking-wider text-slate-500">Saldo Kredit</div>
+                      <div className="text-xs uppercase tracking-wider text-slate-500">Saldo Titipan</div>
                       <div className="text-xl font-bold text-emerald-900">{formatCurrency(balance.balanceAmount)}</div>
                       <button
                         type="button"
@@ -2898,7 +3061,7 @@ export const StaffFinancePage = () => {
         <div className="rounded-xl border border-sky-100 bg-white shadow-sm overflow-hidden">
           <div className="px-4 py-4 border-b border-sky-50">
             <div className="text-xs uppercase tracking-wider text-sky-700">Refund Terbaru</div>
-            <p className="mt-1 text-sm text-slate-600">Riwayat pengembalian saldo kredit yang sudah diproses.</p>
+            <p className="mt-1 text-sm text-slate-600">Riwayat pengembalian saldo titipan yang sudah diproses.</p>
           </div>
           <div className="divide-y divide-gray-100">
             {creditsQuery.isLoading ? (
@@ -2926,16 +3089,18 @@ export const StaffFinancePage = () => {
           </div>
         </div>
       </div>
+      ) : null}
 
+      {(isOverviewSection || isBillingSection) ? (
       <div className="rounded-xl border border-sky-100 bg-sky-50/70 p-4">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div>
             <div className="inline-flex items-center gap-2 text-xs uppercase tracking-wider text-sky-700">
               <BellRing className="w-3.5 h-3.5" />
-              Reminder Jatuh Tempo
+              Pengingat Tagihan
             </div>
             <p className="mt-1 text-sm text-sky-900">
-              Pengingat otomatis berjalan mengikuti policy finance. Anda bisa atur interval due soon, overdue, warning denda, dan eskalasi tanpa hardcode.
+              Pengingat otomatis membantu bendahara menindak tagihan yang mendekati jatuh tempo, telat bayar, atau sudah perlu eskalasi.
             </p>
             <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-sky-900">
               <span
@@ -2945,16 +3110,16 @@ export const StaffFinancePage = () => {
                     : 'bg-rose-100 text-rose-700'
                 }`}
               >
-                {reminderPolicy?.isActive ? 'Worker reminder aktif' : 'Worker reminder nonaktif'}
+                {reminderPolicy?.isActive ? 'Pengingat otomatis aktif' : 'Pengingat otomatis nonaktif'}
               </span>
               <span className="rounded-full bg-white px-2 py-1">
-                Due soon {reminderPolicy?.dueSoonDays ?? 3} hari • ulang {reminderPolicy?.dueSoonRepeatIntervalDays ?? 1} hari
+                Menjelang jatuh tempo {reminderPolicy?.dueSoonDays ?? 3} hari • ulang {reminderPolicy?.dueSoonRepeatIntervalDays ?? 1} hari
               </span>
               <span className="rounded-full bg-white px-2 py-1">
-                Overdue ulang {reminderPolicy?.overdueRepeatIntervalDays ?? 3} hari
+                Lewat jatuh tempo • ulang {reminderPolicy?.overdueRepeatIntervalDays ?? 3} hari
               </span>
               <span className="rounded-full bg-white px-2 py-1">
-                Warning denda {reminderPolicy?.lateFeeWarningEnabled ? 'aktif' : 'nonaktif'}
+                Peringatan denda {reminderPolicy?.lateFeeWarningEnabled ? 'aktif' : 'nonaktif'}
               </span>
               <span className="rounded-full bg-white px-2 py-1">
                 Eskalasi {reminderPolicy?.escalationEnabled ? `mulai ${reminderPolicy?.escalationStartDays ?? 7} hari` : 'nonaktif'}
@@ -2962,7 +3127,7 @@ export const StaffFinancePage = () => {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="text-xs text-sky-800">Due soon (hari)</label>
+            <label className="text-xs text-sky-800">Menjelang jatuh tempo (hari)</label>
             <input
               type="number"
               min={0}
@@ -2978,7 +3143,7 @@ export const StaffFinancePage = () => {
               className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-100 disabled:opacity-50"
             >
               {dispatchReminderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-              Kirim Due Soon
+              Kirim Pengingat Awal
             </button>
             <button
               type="button"
@@ -2987,7 +3152,7 @@ export const StaffFinancePage = () => {
               className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
             >
               {dispatchReminderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-              Kirim Overdue
+              Kirim Pengingat Tunggakan
             </button>
             <button
               type="button"
@@ -2996,7 +3161,7 @@ export const StaffFinancePage = () => {
               className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
             >
               {dispatchReminderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-              Warning Denda
+              Kirim Peringatan Denda
             </button>
             <button
               type="button"
@@ -3013,17 +3178,19 @@ export const StaffFinancePage = () => {
               disabled={reminderPolicyQuery.isLoading}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
             >
-              Pengaturan Policy
+              Atur Pengingat
             </button>
           </div>
         </div>
       </div>
+      ) : null}
 
+      {isTreasurySection && (
       <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_0.8fr] gap-4">
         <div className="rounded-xl border border-amber-100 bg-white shadow-sm overflow-hidden">
           <div className="px-4 py-4 border-b border-amber-50 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <div className="text-xs uppercase tracking-wider text-amber-700">Cashier Closing Harian</div>
+              <div className="text-xs uppercase tracking-wider text-amber-700">Tutup Kas Harian</div>
               <p className="mt-1 text-sm text-slate-600">
                 Sesi kas membaca transaksi tunai yang dicatat petugas dalam rentang sesi, jadi settlement harian tetap akurat tanpa mengubah alur pembayaran yang sudah berjalan.
               </p>
@@ -3194,9 +3361,9 @@ export const StaffFinancePage = () => {
 
               <div className="rounded-xl border border-sky-100 bg-sky-50 p-4 space-y-3">
                 <div>
-                  <div className="text-sm font-semibold text-sky-900">Policy Approval Settlement</div>
+                  <div className="text-sm font-semibold text-sky-900">Aturan Persetujuan Tutup Kas</div>
                   <p className="mt-1 text-xs text-sky-800">
-                    Workflow review settlement dibaca live dari policy ini di web dan mobile.
+                    Alur review tutup kas dibaca live dari aturan yang sama di web dan mobile.
                   </p>
                 </div>
                 <label className="flex items-center gap-2 text-xs text-sky-900">
@@ -3228,7 +3395,7 @@ export const StaffFinancePage = () => {
                 <textarea
                   value={cashSessionApprovalPolicyNotes}
                   onChange={(event) => setCashSessionApprovalPolicyNotes(event.target.value)}
-                  placeholder="Catatan policy approval settlement"
+                    placeholder="Catatan aturan persetujuan tutup kas"
                   rows={3}
                   className="w-full rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm"
                 />
@@ -3239,7 +3406,7 @@ export const StaffFinancePage = () => {
                   className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-800 disabled:opacity-50"
                 >
                   {saveCashSessionApprovalPolicyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                  Simpan Policy Approval
+                  Simpan Aturan Persetujuan
                 </button>
               </div>
             </div>
@@ -3360,14 +3527,17 @@ export const StaffFinancePage = () => {
                     })
                   )}
                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
+	              </div>
+	            </div>
+	          </div>
+	        </div>
+	      </div>
+	      )}
 
+      {isTreasurySection && (
       <div className="rounded-xl border border-slate-100 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-4 border-b border-slate-100">
-          <div className="text-xs uppercase tracking-wider text-slate-600">Kontrol Settlement</div>
+          <div className="text-xs uppercase tracking-wider text-slate-600">Panduan Tutup Kas</div>
             <p className="mt-1 text-sm text-slate-600">
               Closing tunai ini menyatu dengan pembayaran, refund, dan reversal tunai sehingga operasional kas harian bendahara tetap sinkron.
             </p>
@@ -3382,13 +3552,14 @@ export const StaffFinancePage = () => {
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
               Jika ada reversal pada pembayaran tunai, net kas masuk sesi ikut terkoreksi sehingga angka closing tidak misleading.
             </div>
-            <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-3 text-amber-900">
-              Head TU dan Kepala Sekolah bisa membaca settlement ini melalui endpoint finance yang sama, jadi monitoring lintas web/mobile tetap konsisten.
-            </div>
-          </div>
-        </div>
-      </div>
+	            <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-3 text-amber-900">
+	              Head TU dan Kepala Sekolah bisa membaca settlement ini melalui endpoint finance yang sama, jadi monitoring lintas web/mobile tetap konsisten.
+	            </div>
+	          </div>
+	      </div>
+	      )}
 
+      {isPaymentsSection ? (
       <div className="rounded-xl border border-amber-100 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-4 border-b border-amber-100">
           <div className="text-xs uppercase tracking-wider text-amber-700">Verifikasi Pembayaran Non-Tunai</div>
@@ -3521,7 +3692,9 @@ export const StaffFinancePage = () => {
           </div>
         </div>
       </div>
+	      ) : null}
 
+      {isTreasurySection ? (
       <div className="grid grid-cols-1 xl:grid-cols-[0.85fr_1.15fr] gap-4">
         <div className="rounded-xl border border-blue-100 bg-white shadow-sm overflow-hidden">
           <div className="px-4 py-4 border-b border-blue-100">
@@ -3649,7 +3822,7 @@ export const StaffFinancePage = () => {
 
         <div className="rounded-xl border border-indigo-100 bg-white shadow-sm overflow-hidden">
           <div className="px-4 py-4 border-b border-indigo-100">
-            <div className="text-xs uppercase tracking-wider text-indigo-700">Rekonsiliasi Bank</div>
+          <div className="text-xs uppercase tracking-wider text-indigo-700">Cocok Mutasi Bank</div>
             <p className="mt-1 text-sm text-slate-600">
               Cocokkan mutasi statement bank dengan pembayaran dan refund non-tunai yang sudah tercatat.
             </p>
@@ -4094,10 +4267,12 @@ export const StaffFinancePage = () => {
           </div>
         </div>
       </div>
+      ) : null}
 
+      {isTreasurySection ? (
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-4 border-b border-slate-100">
-          <div className="text-xs uppercase tracking-wider text-slate-700">Ledger / Cashbook / Bankbook</div>
+          <div className="text-xs uppercase tracking-wider text-slate-700">Buku Kas &amp; Buku Bank</div>
           <p className="mt-1 text-sm text-slate-600">
             Buku treasury ini membaca transaksi finance live. Buku kas hanya menghitung penerimaan dan refund tunai,
             sedangkan buku bank menampilkan transaksi non-tunai beserta status verifikasi dan matching mutasi.
@@ -4407,10 +4582,12 @@ export const StaffFinancePage = () => {
           </div>
         </div>
       </div>
+      ) : null}
 
+      {isReportsSection && (
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-4 border-b border-slate-100">
-          <div className="text-xs uppercase tracking-wider text-slate-700">Budget vs Realization</div>
+          <div className="text-xs uppercase tracking-wider text-slate-700">Anggaran vs Realisasi</div>
           <p className="mt-1 text-sm text-slate-600">
             Kontrol anggaran finance yang menggabungkan pengajuan disetujui, konfirmasi realisasi, progres LPJ, dan actual spent dari LPJ yang selesai diproses.
             {activeYear?.name ? ` Fokus ${activeYear.name}.` : ''}
@@ -4635,10 +4812,12 @@ export const StaffFinancePage = () => {
           )}
         </div>
       </div>
+      )}
 
+      {isReportsSection ? (
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-4 border-b border-slate-100">
-          <div className="text-xs uppercase tracking-wider text-slate-700">Finance Performance Trend</div>
+          <div className="text-xs uppercase tracking-wider text-slate-700">Tren Kinerja Keuangan</div>
           <p className="mt-1 text-sm text-slate-600">
             Tren 6 bulan terakhir untuk melihat laju koleksi, net flow treasury, pending verifikasi, dan disiplin closing dari satu ringkasan operasional.
           </p>
@@ -4784,10 +4963,12 @@ export const StaffFinancePage = () => {
           )}
         </div>
       </div>
+      ) : null}
 
+      {isReportsSection ? (
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-4 border-b border-slate-100">
-          <div className="text-xs uppercase tracking-wider text-slate-700">Finance Integrity &amp; Readiness</div>
+          <div className="text-xs uppercase tracking-wider text-slate-700">Status Kesiapan Keuangan</div>
           <p className="mt-1 text-sm text-slate-600">
             Checklist penutup untuk memastikan verifikasi, approval, treasury, closing, dan portal finance benar-benar bersih sebelum dianggap siap penuh.
           </p>
@@ -4906,16 +5087,18 @@ export const StaffFinancePage = () => {
                     </div>
                   )}
                 </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+	              </div>
+	            </>
+	          )}
+	        </div>
+	      </div>
+	      ) : null}
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="px-4 py-4 border-b border-slate-100">
-          <div className="text-xs uppercase tracking-wider text-slate-700">Closing Period Finance</div>
-          <p className="mt-1 text-sm text-slate-600">
+	      {isClosingSection ? (
+	      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+	        <div className="px-4 py-4 border-b border-slate-100">
+	          <div className="text-xs uppercase tracking-wider text-slate-700">Tutup Buku Periode</div>
+	          <p className="mt-1 text-sm text-slate-600">
             Ajukan closing bulanan atau tahunan dengan snapshot kas, bank, outstanding, dan kontrol lock periode yang akan dibaca seluruh modul finance.
           </p>
         </div>
@@ -4962,7 +5145,7 @@ export const StaffFinancePage = () => {
           <div className="grid grid-cols-1 xl:grid-cols-[0.42fr_0.58fr] gap-4">
             <div className="space-y-4">
               <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-                <div className="text-sm font-semibold text-slate-900">Ajukan Closing Period</div>
+                <div className="text-sm font-semibold text-slate-900">Ajukan Tutup Buku</div>
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                   <select
                     value={closingPeriodType}
@@ -5028,7 +5211,7 @@ export const StaffFinancePage = () => {
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <div className="text-sm font-semibold text-slate-900">Policy Approval Closing</div>
+                <div className="text-sm font-semibold text-slate-900">Aturan Persetujuan Tutup Buku</div>
                 <div className="mt-3 space-y-3">
                   <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
                     <input
@@ -5149,7 +5332,7 @@ export const StaffFinancePage = () => {
               <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-semibold text-slate-900">Ajukan Reopen Closing</div>
+                  <div className="text-sm font-semibold text-slate-900">Buka Ulang Periode</div>
                     <div className="mt-1 text-xs text-slate-500">
                       Dipakai saat periode yang sudah locked perlu dibuka kembali untuk koreksi yang sah.
                     </div>
@@ -5209,7 +5392,7 @@ export const StaffFinancePage = () => {
             <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-slate-900">Riwayat Closing Period</div>
+                  <div className="text-sm font-semibold text-slate-900">Riwayat Tutup Buku</div>
                   <div className="mt-1 text-xs text-slate-500">
                     Snapshot terbaru untuk memonitor lock periode, outstanding, dan eskalasi approval.
                   </div>
@@ -5329,7 +5512,7 @@ export const StaffFinancePage = () => {
                 <div className="pt-3 border-t border-slate-100">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-slate-900">Riwayat Reopen Closing</div>
+                      <div className="text-sm font-semibold text-slate-900">Riwayat Buka Ulang Periode</div>
                       <div className="mt-1 text-xs text-slate-500">
                         Semua unlock period tercatat di sini agar bendahara bisa menelusuri approval dan alasan reopen.
                       </div>
@@ -5382,10 +5565,12 @@ export const StaffFinancePage = () => {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
+	          </div>
+	        </div>
+	      </div>
+	      ) : null}
 
+      {isMasterSection ? (
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -5505,7 +5690,7 @@ export const StaffFinancePage = () => {
             <div className="flex items-center gap-2">
               <WalletCards className="w-4 h-4 text-emerald-600" />
               <div>
-                <h3 className="text-sm font-semibold text-gray-900">Rule Tarif Dinamis</h3>
+                <h3 className="text-sm font-semibold text-gray-900">Aturan Tarif</h3>
                 <p className="mt-1 text-xs text-slate-500">
                   Penambahan tarif dibuka lewat popup, lalu hasilnya langsung tampil di tabel berikut.
                 </p>
@@ -5600,11 +5785,13 @@ export const StaffFinancePage = () => {
           </div>
         </div>
       </div>
+      ) : null}
 
+      {isMasterSection ? (
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-4">
         <div className="flex items-center gap-2">
           <WalletCards className="w-4 h-4 text-violet-600" />
-          <h3 className="text-sm font-semibold text-gray-900">Rule Penyesuaian Dinamis</h3>
+          <h3 className="text-sm font-semibold text-gray-900">Aturan Potongan / Tambahan</h3>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
           <input
@@ -5906,7 +6093,9 @@ export const StaffFinancePage = () => {
           </table>
         </div>
       </div>
+      ) : null}
 
+      {isBillingSection ? (
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-4">
         <div className="flex items-center gap-2">
           <ReceiptText className="w-4 h-4 text-indigo-600" />
@@ -6263,12 +6452,15 @@ export const StaffFinancePage = () => {
         ) : null}
       </div>
 
+      ) : null}
+
+      {isPaymentsSection ? (
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Write-Off Piutang</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Penghapusan Tagihan</h3>
             <p className="mt-1 text-xs text-gray-500">
-              Monitor pengajuan, approval, dan penerapan penghapusan piutang siswa.
+              Dipakai jika sekolah memutuskan sisa tagihan tertentu tidak lagi ditagih. Semua proses tetap lewat persetujuan.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs lg:grid-cols-4">
@@ -6376,13 +6568,15 @@ export const StaffFinancePage = () => {
           </table>
         </div>
       </div>
+      ) : null}
 
+      {isPaymentsSection ? (
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Reversal Pembayaran</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Pembatalan Pembayaran</h3>
             <p className="mt-1 text-xs text-gray-500">
-              Monitor koreksi pembayaran, approval, dan penerapan reversal pembayaran langsung.
+              Dipakai untuk membatalkan pembayaran yang sudah tercatat jika ada salah input atau koreksi resmi.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs lg:grid-cols-4">
@@ -6491,6 +6685,9 @@ export const StaffFinancePage = () => {
         </div>
       </div>
 
+      ) : null}
+
+      {isBillingSection ? (
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
           <h3 className="text-sm font-semibold text-gray-900">Daftar Tagihan</h3>
@@ -6650,6 +6847,9 @@ export const StaffFinancePage = () => {
         </div>
       </div>
 
+      ) : null}
+
+      {isReportsSection ? (
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 flex flex-col gap-3">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
@@ -7178,6 +7378,7 @@ export const StaffFinancePage = () => {
           )}
         </div>
       </div>
+      ) : null}
 
       {isComponentModalOpen ? (
         <div

@@ -25,6 +25,15 @@ import { userService } from '../../services/user.service';
 import toast from 'react-hot-toast';
 import { isFinanceStaffProfile } from '../../utils/staffRole';
 
+type FinanceWorkspaceSection =
+  | 'overview'
+  | 'master'
+  | 'billing'
+  | 'payments'
+  | 'treasury'
+  | 'closing'
+  | 'reports';
+
 type FinanceLpjInvoice = BudgetLpjInvoice & {
   budgetRequest: {
     id: number;
@@ -38,6 +47,16 @@ type FinanceLpjInvoice = BudgetLpjInvoice & {
     } | null;
   };
 };
+
+function resolveFinanceSection(pathname: string): FinanceWorkspaceSection {
+  if (pathname.startsWith('/staff/finance/master')) return 'master';
+  if (pathname.startsWith('/staff/finance/tagihan')) return 'billing';
+  if (pathname.startsWith('/staff/finance/pembayaran')) return 'payments';
+  if (pathname.startsWith('/staff/finance/kas-bank')) return 'treasury';
+  if (pathname.startsWith('/staff/finance/tutup-buku')) return 'closing';
+  if (pathname.startsWith('/staff/finance/laporan')) return 'reports';
+  return 'overview';
+}
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('id-ID', {
@@ -74,6 +93,7 @@ export const StaffFinanceWorkspace = () => {
   const location = useLocation();
   const queryClient = useQueryClient();
   const normalizedPath = location.pathname.replace(/\/+$/, '') || '/staff';
+  const financeSection = resolveFinanceSection(normalizedPath);
 
   const isDashboardPage =
     normalizedPath === '/staff' ||
@@ -83,6 +103,7 @@ export const StaffFinanceWorkspace = () => {
     normalizedPath.startsWith('/staff/admin');
   const isPaymentsPage =
     normalizedPath === '/staff/finance' ||
+    normalizedPath.startsWith('/staff/finance/') ||
     normalizedPath.startsWith('/staff/payments');
   const isStudentsPage =
     normalizedPath.startsWith('/staff/finance/students') ||
@@ -428,7 +449,7 @@ export const StaffFinanceWorkspace = () => {
   }
 
   if (isPaymentsPage) {
-    return <StaffFinancePage />;
+    return <StaffFinancePage activeSection={financeSection} />;
   }
 
   if (isDashboardPage) {
@@ -454,7 +475,7 @@ export const StaffFinanceWorkspace = () => {
               <p className="mt-1 text-xs text-blue-800/70">Total siswa terdaftar</p>
             </div>
           </Link>
-          <Link to="/staff/finance" className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
+          <Link to="/staff/finance/tagihan" className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
             <div className="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50 to-purple-100/80 shadow-sm p-4 hover:shadow-md transition-shadow">
               <p className="text-xs uppercase tracking-wider text-violet-700/80">Total Tagihan</p>
               <p className="mt-2 text-2xl font-bold text-violet-900">
@@ -463,7 +484,7 @@ export const StaffFinanceWorkspace = () => {
               <p className="mt-1 text-xs text-violet-800/70">Invoice aktif</p>
             </div>
           </Link>
-          <Link to="/staff/finance" className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
+          <Link to="/staff/finance/pembayaran" className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
             <div className="rounded-xl border border-orange-100 bg-gradient-to-br from-orange-50 to-amber-100/80 shadow-sm p-4 hover:shadow-md transition-shadow">
               <p className="text-xs uppercase tracking-wider text-orange-700/80">Outstanding</p>
               <p className="mt-2 text-xl font-bold text-orange-900">
@@ -474,7 +495,7 @@ export const StaffFinanceWorkspace = () => {
               <p className="mt-1 text-xs text-orange-800/70">Belum terbayar</p>
             </div>
           </Link>
-          <Link to="/staff/finance" className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+          <Link to="/staff/finance/kas-bank" className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
             <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-green-100/80 shadow-sm p-4 hover:shadow-md transition-shadow">
               <p className="text-xs uppercase tracking-wider text-emerald-700/80">Terbayar</p>
               <p className="mt-2 text-xl font-bold text-emerald-900">
@@ -699,19 +720,19 @@ export const StaffFinanceWorkspace = () => {
             to="/staff/finance"
             className="inline-flex items-center justify-center rounded-lg border border-blue-200 bg-white px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50"
           >
-            Buka Pembayaran
+            Buka Ringkasan
           </Link>
           <Link
-            to="/staff/finance/operations"
+            to="/staff/finance/tagihan"
             className="inline-flex items-center justify-center rounded-lg border border-blue-200 bg-white px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50"
           >
-            Buka Administrasi
+            Buka Tagihan
           </Link>
           <Link
-            to="/staff/finance/students"
+            to="/staff/finance/kas-bank"
             className="inline-flex items-center justify-center rounded-lg border border-blue-200 bg-white px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50"
           >
-            Buka Data Siswa
+            Buka Kas & Bank
           </Link>
         </div>
       </div>

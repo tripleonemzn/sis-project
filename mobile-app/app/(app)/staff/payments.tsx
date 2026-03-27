@@ -98,7 +98,101 @@ const CLOSING_PERIOD_TYPE_OPTIONS: Array<{ value: FinanceClosingPeriodType; labe
   { value: 'YEARLY', label: 'Tahunan' },
 ];
 
-type FinanceTab = 'dashboard' | 'components' | 'tariffs' | 'adjustments' | 'invoices';
+type FinanceWorkspaceSection =
+  | 'overview'
+  | 'master'
+  | 'billing'
+  | 'payments'
+  | 'treasury'
+  | 'closing'
+  | 'reports';
+
+const FINANCE_SECTION_ITEMS: Array<{
+  key: FinanceWorkspaceSection;
+  label: string;
+  title: string;
+  description: string;
+}> = [
+  {
+    key: 'overview',
+    label: 'Ringkasan',
+    title: 'Ringkasan Keuangan',
+    description: 'Lihat kondisi tagihan, prioritas kerja, dan pengingat penting tanpa harus membuka semua menu sekaligus.',
+  },
+  {
+    key: 'master',
+    label: 'Master Biaya',
+    title: 'Master Biaya',
+    description: 'Kelola komponen biaya, aturan tarif, dan aturan potongan atau tambahan biaya dengan istilah yang lebih mudah dipahami.',
+  },
+  {
+    key: 'billing',
+    label: 'Tagihan',
+    title: 'Tagihan Siswa',
+    description: 'Buat tagihan, atur cicilan, lihat daftar tagihan, dan tindak lanjuti setiap tagihan siswa dari satu tempat.',
+  },
+  {
+    key: 'payments',
+    label: 'Pembayaran',
+    title: 'Pembayaran & Kelebihan Bayar',
+    description: 'Fokus untuk verifikasi transfer, cek kelebihan bayar, dan refund agar uang masuk lebih mudah dipantau.',
+  },
+  {
+    key: 'treasury',
+    label: 'Kas & Bank',
+    title: 'Kas & Bank',
+    description: 'Pantau tutup kas harian, rekening sekolah, kecocokan mutasi bank, dan buku kas atau buku bank.',
+  },
+  {
+    key: 'closing',
+    label: 'Tutup Buku',
+    title: 'Tutup Buku',
+    description: 'Kunci periode keuangan, atur persetujuan, dan buka ulang periode jika ada koreksi yang sah.',
+  },
+  {
+    key: 'reports',
+    label: 'Laporan',
+    title: 'Laporan & Kesiapan',
+    description: 'Baca tren keuangan, anggaran vs realisasi, dan status kesiapan operasional bendahara.',
+  },
+];
+
+const FINANCE_SECTION_HINTS: Record<
+  FinanceWorkspaceSection,
+  {
+    title: string;
+    description: string;
+  }
+> = {
+  overview: {
+    title: 'Ringkasan Keuangan',
+    description: 'Bagian ini hanya untuk membaca kondisi umum. Istilah seperti DSO berarti rata-rata hari sampai tagihan dibayar.',
+  },
+  master: {
+    title: 'Master Biaya',
+    description: 'Istilah "aturan tarif" berarti aturan nominal biaya untuk kelompok siswa tertentu. "Potongan / tambahan" dipakai agar lebih familiar daripada adjustment.',
+  },
+  billing: {
+    title: 'Tagihan Siswa',
+    description: 'Istilah "tagihan" dipakai sebagai pengganti invoice. Jika ada termin, artinya tagihan dibayar bertahap sesuai jadwal cicilan.',
+  },
+  payments: {
+    title: 'Pembayaran & Kelebihan Bayar',
+    description: 'Kelebihan bayar adalah uang siswa yang masuk lebih besar dari sisa tagihan. Dana itu disimpan sebagai saldo titipan sampai dipakai atau direfund.',
+  },
+  treasury: {
+    title: 'Kas & Bank',
+    description: 'Istilah "cocok mutasi bank" dipakai sebagai pengganti rekonsiliasi bank, yaitu proses mencocokkan catatan sistem dengan mutasi rekening.',
+  },
+  closing: {
+    title: 'Tutup Buku',
+    description: 'Tutup buku berarti mengunci satu periode agar transaksi lama tidak berubah sembarangan. Jika perlu koreksi, gunakan buka ulang periode.',
+  },
+  reports: {
+    title: 'Laporan & Kesiapan',
+    description: 'Bagian ini khusus membaca tren dan kesiapan operasional. Jika ada istilah baku seperti exposure, artinya nilai uang yang masih perlu perhatian.',
+  },
+};
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('id-ID', {
@@ -344,10 +438,10 @@ function getLateFeeModeLabel(mode?: FinanceLateFeeMode | null) {
 }
 
 function getCreditTransactionLabel(transaction: StaffFinanceCreditTransaction) {
-  if (transaction.kind === 'APPLIED_TO_INVOICE') return 'Saldo kredit dipakai ke invoice';
-  if (transaction.kind === 'REFUND') return 'Refund saldo kredit';
-  if (transaction.kind === 'PAYMENT_REVERSAL') return 'Reversal mengurangi saldo kredit';
-  return 'Kelebihan bayar masuk saldo kredit';
+  if (transaction.kind === 'APPLIED_TO_INVOICE') return 'Saldo titipan dipakai ke tagihan';
+  if (transaction.kind === 'REFUND') return 'Refund saldo titipan';
+  if (transaction.kind === 'PAYMENT_REVERSAL') return 'Pembatalan pembayaran mengurangi saldo titipan';
+  return 'Kelebihan bayar masuk saldo titipan';
 }
 
 function describeAdjustmentScope(adjustment: StaffFinanceAdjustmentRule) {
@@ -467,7 +561,7 @@ function getCashSessionApprovalBadge(status: StaffFinanceCashSession['approvalSt
     return { label: 'Ditolak', bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
   }
   if (status === 'AUTO_APPROVED') {
-    return { label: 'Auto Approved', bg: '#dcfce7', border: '#86efac', text: '#166534' };
+    return { label: 'Otomatis Disetujui', bg: '#dcfce7', border: '#86efac', text: '#166534' };
   }
   if (status === 'APPROVED') {
     return { label: 'Disetujui', bg: '#dcfce7', border: '#86efac', text: '#166534' };
@@ -480,7 +574,7 @@ function getClosingPeriodStatusBadge(status: StaffFinanceClosingPeriod['status']
     return { label: 'Terkunci', bg: '#dcfce7', border: '#86efac', text: '#166534' };
   }
   if (status === 'CLOSING_REVIEW') {
-    return { label: 'Review Closing', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+    return { label: 'Review Tutup Buku', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
   }
   return { label: 'Terbuka', bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
 }
@@ -554,7 +648,7 @@ export default function StaffPaymentsScreen() {
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const canOpenPayments = canAccessStaffPayments(user);
 
-  const [activeTab, setActiveTab] = useState<FinanceTab>('dashboard');
+  const [activeSection, setActiveSection] = useState<FinanceWorkspaceSection>('overview');
 
   const [componentCode, setComponentCode] = useState('');
   const [componentName, setComponentName] = useState('');
@@ -2409,7 +2503,7 @@ export default function StaffPaymentsScreen() {
     setAdjustmentEffectiveStart(adjustment.effectiveStart ? String(adjustment.effectiveStart).slice(0, 10) : '');
     setAdjustmentEffectiveEnd(adjustment.effectiveEnd ? String(adjustment.effectiveEnd).slice(0, 10) : '');
     setAdjustmentNotes(adjustment.notes || '');
-    setActiveTab('adjustments');
+    setActiveSection('master');
   };
 
   const handleSelectInvoiceStudent = (studentId: number) => {
@@ -2629,6 +2723,17 @@ export default function StaffPaymentsScreen() {
     invoicesQuery.isLoading ||
     studentsQuery.isLoading;
 
+  const activeSectionConfig =
+    FINANCE_SECTION_ITEMS.find((section) => section.key === activeSection) || FINANCE_SECTION_ITEMS[0];
+  const activeSectionHint = FINANCE_SECTION_HINTS[activeSection];
+  const isOverviewSection = activeSection === 'overview';
+  const isMasterSection = activeSection === 'master';
+  const isBillingSection = activeSection === 'billing';
+  const isPaymentsSection = activeSection === 'payments';
+  const isTreasurySection = activeSection === 'treasury';
+  const isClosingSection = activeSection === 'closing';
+  const isReportsSection = activeSection === 'reports';
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: '#f8fafc' }}
@@ -2678,10 +2783,10 @@ export default function StaffPaymentsScreen() {
       }
     >
       <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
-        Staff Keuangan
+        {activeSectionConfig.title}
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Kelola komponen biaya, tarif dinamis, tagihan siswa, dan reminder jatuh tempo.
+        {activeSectionConfig.description}
       </Text>
 
       {isInitialLoading ? <QueryStateView type="loading" message="Mengambil data keuangan..." /> : null}
@@ -2702,6 +2807,47 @@ export default function StaffPaymentsScreen() {
         />
       ) : null}
 
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+        <View style={{ flexDirection: 'row', gap: 8, paddingRight: 12 }}>
+          {FINANCE_SECTION_ITEMS.map((section) => {
+            const active = activeSection === section.key;
+            return (
+              <Pressable
+                key={section.key}
+                onPress={() => setActiveSection(section.key)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: active ? '#1d4ed8' : '#cbd5e1',
+                  backgroundColor: active ? '#e9f1ff' : '#fff',
+                  borderRadius: 999,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                }}
+              >
+                <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                  {section.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </ScrollView>
+
+      <View
+        style={{
+          backgroundColor: '#eff6ff',
+          borderWidth: 1,
+          borderColor: '#bfdbfe',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: '#1d4ed8', fontWeight: '700', marginBottom: 4 }}>{activeSectionHint.title}</Text>
+        <Text style={{ color: '#1e3a8a', fontSize: 12, lineHeight: 18 }}>{activeSectionHint.description}</Text>
+      </View>
+
+      {isOverviewSection ? (
       <View
         style={{
           backgroundColor: '#fff',
@@ -2748,7 +2894,7 @@ export default function StaffPaymentsScreen() {
         </View>
 
         <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 10 }}>
-          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Reminder Jatuh Tempo</Text>
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Pengingat Tagihan</Text>
           <Text style={{ color: '#0f172a', fontSize: 12, lineHeight: 18, marginBottom: 8 }}>
             Worker reminder mengikuti policy finance yang bisa diubah live untuk due soon, overdue, warning denda, dan eskalasi.
           </Text>
@@ -2763,21 +2909,21 @@ export default function StaffPaymentsScreen() {
                 }}
               >
                 <Text style={{ color: reminderPolicy?.isActive ? '#166534' : '#991b1b', fontSize: 11, fontWeight: '700' }}>
-                  {reminderPolicy?.isActive ? 'Worker aktif' : 'Worker nonaktif'}
+                  {reminderPolicy?.isActive ? 'Pengingat otomatis aktif' : 'Pengingat otomatis nonaktif'}
                 </Text>
               </View>
             </View>
             <View style={{ paddingHorizontal: 4, paddingBottom: 6 }}>
               <View style={{ backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
                 <Text style={{ color: '#0f172a', fontSize: 11 }}>
-                  Due soon {reminderPolicy?.dueSoonDays ?? 3} hari
+                  Menjelang jatuh tempo {reminderPolicy?.dueSoonDays ?? 3} hari
                 </Text>
               </View>
             </View>
             <View style={{ paddingHorizontal: 4, paddingBottom: 6 }}>
               <View style={{ backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
                 <Text style={{ color: '#0f172a', fontSize: 11 }}>
-                  Warning denda {reminderPolicy?.lateFeeWarningEnabled ? 'aktif' : 'off'}
+                  Peringatan denda {reminderPolicy?.lateFeeWarningEnabled ? 'aktif' : 'off'}
                 </Text>
               </View>
             </View>
@@ -2790,7 +2936,7 @@ export default function StaffPaymentsScreen() {
             </View>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-            <Text style={{ color: '#475569', marginRight: 8 }}>Due soon (hari)</Text>
+            <Text style={{ color: '#475569', marginRight: 8 }}>Menjelang jatuh tempo (hari)</Text>
             <TextInput
               keyboardType="numeric"
               value={reminderDueSoonDays}
@@ -2822,7 +2968,7 @@ export default function StaffPaymentsScreen() {
                   opacity: dispatchReminderMutation.isPending ? 0.6 : 1,
                 }}
               >
-                <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Kirim Due Soon</Text>
+                <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Kirim Pengingat Awal</Text>
               </Pressable>
             </View>
             <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -2839,7 +2985,7 @@ export default function StaffPaymentsScreen() {
                   opacity: dispatchReminderMutation.isPending ? 0.6 : 1,
                 }}
               >
-                <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 12 }}>Kirim Overdue</Text>
+                <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 12 }}>Kirim Pengingat Tunggakan</Text>
               </Pressable>
             </View>
           </View>
@@ -2858,7 +3004,7 @@ export default function StaffPaymentsScreen() {
                   opacity: dispatchReminderMutation.isPending ? 0.6 : 1,
                 }}
               >
-                <Text style={{ color: '#b45309', fontWeight: '700', fontSize: 12 }}>Warning Denda</Text>
+                <Text style={{ color: '#b45309', fontWeight: '700', fontSize: 12 }}>Kirim Peringatan Denda</Text>
               </Pressable>
             </View>
             <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -2893,11 +3039,13 @@ export default function StaffPaymentsScreen() {
               opacity: reminderPolicyQuery.isLoading ? 0.6 : 1,
             }}
           >
-            <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>Pengaturan Policy Reminder</Text>
+              <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>Atur Pengingat</Text>
           </Pressable>
         </View>
       </View>
+      ) : null}
 
+      {isReportsSection ? (
       <View
         style={{
           backgroundColor: '#fff',
@@ -2908,7 +3056,7 @@ export default function StaffPaymentsScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Finance Integrity &amp; Readiness</Text>
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Status Kesiapan Keuangan</Text>
         <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
           Checklist penutup untuk memastikan backlog verifikasi, approval, treasury, closing, dan portal finance sudah benar-benar bersih.
         </Text>
@@ -3038,7 +3186,9 @@ export default function StaffPaymentsScreen() {
           </>
         )}
       </View>
+      ) : null}
 
+      {isReportsSection ? (
       <View
         style={{
           backgroundColor: '#fff',
@@ -3049,7 +3199,7 @@ export default function StaffPaymentsScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Finance Performance Trend</Text>
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Tren Kinerja Keuangan</Text>
         <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
           Tren 6 bulan terakhir untuk membaca pace koleksi, net flow treasury, pending verifikasi, dan disiplin closing.
         </Text>
@@ -3179,7 +3329,9 @@ export default function StaffPaymentsScreen() {
           </>
         )}
       </View>
+      ) : null}
 
+      {isPaymentsSection ? (
       <View
         style={{
           backgroundColor: '#fff',
@@ -3314,7 +3466,10 @@ export default function StaffPaymentsScreen() {
           })
         )}
       </View>
+      ) : null}
 
+      {isTreasurySection ? (
+      <>
       <View
         style={{
           backgroundColor: '#fff',
@@ -3325,9 +3480,9 @@ export default function StaffPaymentsScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Cashier Closing Harian</Text>
+        <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tutup Kas Harian</Text>
         <Text style={{ color: '#475569', fontSize: 12, lineHeight: 18, marginBottom: 10 }}>
-          Settlement kas membaca pembayaran tunai, refund tunai, dan koreksi reversal tunai dalam rentang sesi yang sama.
+          Perhitungan tutup kas membaca pembayaran tunai, refund tunai, dan koreksi pembatalan pembayaran dalam rentang sesi yang sama.
         </Text>
 
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
@@ -3532,9 +3687,9 @@ export default function StaffPaymentsScreen() {
             marginBottom: 10,
           }}
         >
-          <Text style={{ color: '#1d4ed8', fontWeight: '700', marginBottom: 8 }}>Policy Approval Settlement</Text>
+          <Text style={{ color: '#1d4ed8', fontWeight: '700', marginBottom: 8 }}>Aturan Persetujuan Tutup Kas</Text>
           <Text style={{ color: '#475569', fontSize: 12, marginBottom: 8 }}>
-            Workflow review settlement dibaca live dari policy yang sama di web dan mobile.
+            Alur review tutup kas dibaca live dari aturan yang sama di web dan mobile.
           </Text>
           <Pressable
             onPress={() => setCashSessionZeroVarianceAutoApproved((value) => !value)}
@@ -3563,7 +3718,7 @@ export default function StaffPaymentsScreen() {
           <TextInput
             value={cashSessionApprovalPolicyNotes}
             onChangeText={setCashSessionApprovalPolicyNotes}
-            placeholder="Catatan policy approval settlement"
+            placeholder="Catatan aturan persetujuan tutup kas"
             placeholderTextColor="#94a3b8"
             multiline
             style={{ borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, minHeight: 72, textAlignVertical: 'top', color: '#0f172a', backgroundColor: '#fff' }}
@@ -3580,7 +3735,7 @@ export default function StaffPaymentsScreen() {
             }}
           >
             <Text style={{ color: '#fff', fontWeight: '700' }}>
-              {saveCashSessionApprovalPolicyMutation.isPending ? 'Menyimpan policy...' : 'Simpan Policy Approval'}
+              {saveCashSessionApprovalPolicyMutation.isPending ? 'Menyimpan aturan...' : 'Simpan Aturan Persetujuan'}
             </Text>
           </Pressable>
         </View>
@@ -3711,7 +3866,7 @@ export default function StaffPaymentsScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Master Rekening Bank</Text>
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Daftar Rekening Bank</Text>
         <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
           Rekening aktif dipakai bersama di web dan mobile untuk pembayaran non-tunai, refund, dan rekonsiliasi bank.
         </Text>
@@ -3856,9 +4011,12 @@ export default function StaffPaymentsScreen() {
               </View>
             </View>
           ))
-        )}
+          )}
       </View>
+      </>
+      ) : null}
 
+      {isTreasurySection ? (
       <View
         style={{
           backgroundColor: '#fff',
@@ -3869,7 +4027,7 @@ export default function StaffPaymentsScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Rekonsiliasi Bank</Text>
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Cocok Mutasi Bank</Text>
         <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
           Cocokkan transaksi bank non-tunai dengan mutasi statement agar kontrol kas dan bank tetap akurat.
         </Text>
@@ -4396,7 +4554,9 @@ export default function StaffPaymentsScreen() {
           </View>
         )}
       </View>
+      ) : null}
 
+      {isTreasurySection ? (
       <View
         style={{
           backgroundColor: '#fff',
@@ -4407,7 +4567,7 @@ export default function StaffPaymentsScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Ledger / Cashbook / Bankbook</Text>
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Buku Kas &amp; Buku Bank</Text>
         <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
           Buku treasury ini membaca transaksi finance live. Buku bank tetap menampilkan transaksi pending verifikasi,
           tetapi running balance hanya bergerak setelah transaksi benar-benar terverifikasi.
@@ -4745,7 +4905,9 @@ export default function StaffPaymentsScreen() {
           })
         )}
       </View>
+      ) : null}
 
+      {isReportsSection ? (
       <View
         style={{
           backgroundColor: '#fff',
@@ -4756,7 +4918,7 @@ export default function StaffPaymentsScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Budget vs Realization</Text>
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Anggaran vs Realisasi</Text>
         <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
           Kontrol anggaran finance yang menggabungkan budget approved, konfirmasi realisasi, progres LPJ, dan actual spent dari LPJ yang selesai diproses.
           {activeYearQuery.data?.name ? ` Fokus ${activeYearQuery.data.name}.` : ''}
@@ -4946,7 +5108,9 @@ export default function StaffPaymentsScreen() {
           </>
         )}
       </View>
+      ) : null}
 
+      {isClosingSection ? (
       <View
         style={{
           backgroundColor: '#fff',
@@ -4957,7 +5121,7 @@ export default function StaffPaymentsScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Closing Period Finance</Text>
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Tutup Buku Periode</Text>
         <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
           Ajukan closing bulanan atau tahunan dengan snapshot kas, bank, outstanding, dan lock periode untuk seluruh transaksi finance.
         </Text>
@@ -4992,7 +5156,7 @@ export default function StaffPaymentsScreen() {
             marginBottom: 10,
           }}
         >
-          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Ajukan Closing Period</Text>
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Ajukan Tutup Buku</Text>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
             <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -5105,7 +5269,7 @@ export default function StaffPaymentsScreen() {
             marginBottom: 10,
           }}
         >
-          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Policy Approval Closing</Text>
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Aturan Persetujuan Tutup Buku</Text>
 
           {[
             {
@@ -5221,7 +5385,7 @@ export default function StaffPaymentsScreen() {
             marginBottom: 10,
           }}
         >
-          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Ajukan Reopen Closing</Text>
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Ajukan Buka Ulang Periode</Text>
           <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
             Unlock period yang sudah locked hanya untuk koreksi sah, dan tetap lewat jejak approval.
           </Text>
@@ -5290,7 +5454,7 @@ export default function StaffPaymentsScreen() {
           </Pressable>
         </View>
 
-        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Riwayat Closing Period</Text>
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Riwayat Tutup Buku</Text>
         {closingPeriodsQuery.isLoading ? (
           <QueryStateView type="loading" message="Mengambil closing period..." />
         ) : closingPeriods.length === 0 ? (
@@ -5390,7 +5554,7 @@ export default function StaffPaymentsScreen() {
           })
         )}
 
-        <Text style={{ color: '#0f172a', fontWeight: '700', marginTop: 6, marginBottom: 6 }}>Riwayat Reopen Closing</Text>
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginTop: 6, marginBottom: 6 }}>Riwayat Buka Ulang Periode</Text>
         {closingPeriodReopenRequestsQuery.isLoading ? (
           <QueryStateView type="loading" message="Mengambil request reopen..." />
         ) : closingPeriodReopenRequests.length === 0 ? (
@@ -5444,40 +5608,11 @@ export default function StaffPaymentsScreen() {
           })
         )}
       </View>
+      ) : null}
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
-        {(
-          [
-            { key: 'dashboard', label: 'Dashboard' },
-            { key: 'components', label: 'Komponen' },
-            { key: 'tariffs', label: 'Tarif' },
-            { key: 'adjustments', label: 'Penyesuaian' },
-            { key: 'invoices', label: 'Tagihan' },
-          ] as Array<{ key: FinanceTab; label: string }>
-        ).map((tab) => {
-          const active = activeTab === tab.key;
-          return (
-            <View key={tab.key} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <Pressable
-                onPress={() => setActiveTab(tab.key)}
-                style={{
-                  borderWidth: 1,
-                  borderColor: active ? '#1d4ed8' : '#d6e2f7',
-                  backgroundColor: active ? '#e9f1ff' : '#fff',
-                  borderRadius: 10,
-                  paddingVertical: 10,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700' }}>{tab.label}</Text>
-              </Pressable>
-            </View>
-          );
-        })}
-      </View>
-
-      {activeTab === 'dashboard' ? (
+      {(isOverviewSection || isPaymentsSection) ? (
         <>
+          {isOverviewSection ? (
           <View
             style={{
               backgroundColor: '#fff',
@@ -5490,19 +5625,19 @@ export default function StaffPaymentsScreen() {
           >
             <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>KPI Kolektibilitas</Text>
             <Text style={{ color: '#334155', marginBottom: 4 }}>
-              Collection rate:{' '}
+              Tingkat penagihan:{' '}
               <Text style={{ color: '#166534', fontWeight: '700' }}>
                 {dashboardQuery.data ? `${dashboardQuery.data.kpi.collectionRate.toFixed(1)}%` : '-'}
               </Text>
             </Text>
             <Text style={{ color: '#334155', marginBottom: 4 }}>
-              Overdue rate:{' '}
+              Tingkat lewat jatuh tempo:{' '}
               <Text style={{ color: '#b45309', fontWeight: '700' }}>
                 {dashboardQuery.data ? `${dashboardQuery.data.kpi.overdueRate.toFixed(1)}%` : '-'}
               </Text>
             </Text>
             <Text style={{ color: '#334155', marginBottom: 8 }}>
-              DSO:{' '}
+              Rata-rata hari sampai lunas (DSO):{' '}
               <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
                 {dashboardQuery.data ? `${dashboardQuery.data.kpi.dsoDays.toFixed(1)} hari` : '-'}
               </Text>
@@ -5532,7 +5667,9 @@ export default function StaffPaymentsScreen() {
               )}
             </View>
           </View>
+          ) : null}
 
+          {isPaymentsSection ? (
           <View
             style={{
               backgroundColor: '#fff',
@@ -5543,7 +5680,7 @@ export default function StaffPaymentsScreen() {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Saldo Kredit Siswa</Text>
+            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Kelebihan Bayar Siswa</Text>
             <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
               Kelebihan bayar akan masuk ke saldo kredit dan bisa direfund dari sini.
             </Text>
@@ -5576,7 +5713,7 @@ export default function StaffPaymentsScreen() {
               </View>
               <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
                 <View style={{ backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#86efac', borderRadius: 10, padding: 10 }}>
-                  <Text style={{ color: '#166534', fontSize: 11 }}>Total Saldo Kredit</Text>
+                  <Text style={{ color: '#166534', fontSize: 11 }}>Total Saldo Titipan</Text>
                   <Text style={{ color: '#166534', fontWeight: '700', fontSize: 16, marginTop: 3 }}>
                     {formatCurrency(creditSummary?.totalCreditBalance || 0)}
                   </Text>
@@ -5674,7 +5811,10 @@ export default function StaffPaymentsScreen() {
               )}
             </View>
           </View>
+          ) : null}
 
+          {isOverviewSection ? (
+          <>
           <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
             <View style={{ flex: 1, paddingHorizontal: 4 }}>
               <View style={{ backgroundColor: '#fff1f2', borderWidth: 1, borderColor: '#fecdd3', borderRadius: 12, padding: 12 }}>
@@ -5825,10 +5965,12 @@ export default function StaffPaymentsScreen() {
               ))
             )}
           </View>
+          </>
+          ) : null}
         </>
       ) : null}
 
-      {activeTab === 'components' ? (
+      {isMasterSection ? (
         <View
           style={{
             backgroundColor: '#fff',
@@ -5931,7 +6073,7 @@ export default function StaffPaymentsScreen() {
         </View>
       ) : null}
 
-      {activeTab === 'tariffs' ? (
+      {isMasterSection ? (
         <View
           style={{
             backgroundColor: '#fff',
@@ -5944,7 +6086,7 @@ export default function StaffPaymentsScreen() {
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Rule Tarif</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Aturan Tarif</Text>
               <Text style={{ color: '#64748b', fontSize: 12 }}>
                 Form tambah tarif dibuka lewat popup, dan level kelas diambil dari master kelas admin tanpa rombel.
               </Text>
@@ -6019,7 +6161,7 @@ export default function StaffPaymentsScreen() {
         </View>
       ) : null}
 
-      {activeTab === 'adjustments' ? (
+      {isMasterSection ? (
         <View
           style={{
             backgroundColor: '#fff',
@@ -6030,7 +6172,7 @@ export default function StaffPaymentsScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Rule Penyesuaian Dinamis</Text>
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Aturan Potongan / Tambahan</Text>
 
           <TextInput
             value={adjustmentCode}
@@ -6566,7 +6708,7 @@ export default function StaffPaymentsScreen() {
         </View>
       ) : null}
 
-      {activeTab === 'invoices' ? (
+      {isBillingSection ? (
         <View
           style={{
             backgroundColor: '#fff',
@@ -6577,7 +6719,7 @@ export default function StaffPaymentsScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Generate Tagihan</Text>
+          <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Buat Tagihan Siswa</Text>
 
           <Text style={{ color: '#475569', marginBottom: 4 }}>Tahun ajaran</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
@@ -6642,7 +6784,7 @@ export default function StaffPaymentsScreen() {
           <TextInput
             value={invoicePeriodKey}
             onChangeText={setInvoicePeriodKey}
-            placeholder="Period key (YYYY-MM)"
+            placeholder="Kode periode (contoh: 2026-03)"
             placeholderTextColor="#94a3b8"
             style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
           />
@@ -7001,7 +7143,7 @@ export default function StaffPaymentsScreen() {
                 }}
               >
                 <Text style={{ color: '#fff', fontWeight: '700' }}>
-                  {generateInvoiceMutation.isPending ? 'Memproses...' : 'Generate Tagihan'}
+                  {generateInvoiceMutation.isPending ? 'Memproses...' : 'Buat Tagihan'}
                 </Text>
               </Pressable>
             </View>
@@ -7018,7 +7160,7 @@ export default function StaffPaymentsScreen() {
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: '#3730a3', fontWeight: '700', marginBottom: 4 }}>Preview Generate</Text>
+              <Text style={{ color: '#3730a3', fontWeight: '700', marginBottom: 4 }}>Preview Tagihan</Text>
               <Text style={{ color: '#312e81', marginBottom: 10 }}>
                 {previewInvoiceMutation.data.summary.totalTargetStudents} siswa terjaring dengan proyeksi tagihan{' '}
                 {formatCurrency(previewInvoiceMutation.data.summary.totalProjectedAmount)}.
@@ -7339,7 +7481,7 @@ export default function StaffPaymentsScreen() {
                       alignItems: 'center',
                     }}
                   >
-                    <Text style={{ color: '#fff', fontWeight: '700' }}>Ajukan Write-Off</Text>
+                    <Text style={{ color: '#fff', fontWeight: '700' }}>Ajukan Penghapusan</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => startPaying(invoice)}
@@ -7370,7 +7512,7 @@ export default function StaffPaymentsScreen() {
               backgroundColor: '#fff',
             }}
           >
-            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Write-Off Piutang</Text>
+            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Penghapusan Tagihan</Text>
             <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
               Pending Kepala TU {writeOffSummary?.pendingHeadTuCount || 0} • pending Kepala Sekolah {writeOffSummary?.pendingPrincipalCount || 0} • siap apply {writeOffSummary?.approvedCount || 0}
             </Text>
@@ -7440,7 +7582,7 @@ export default function StaffPaymentsScreen() {
               backgroundColor: '#fff',
             }}
           >
-            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Reversal Pembayaran</Text>
+            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Pembatalan Pembayaran</Text>
             <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
               Pending Kepala TU {paymentReversalSummary?.pendingHeadTuCount || 0} • pending Kepala Sekolah {paymentReversalSummary?.pendingPrincipalCount || 0} • siap apply {paymentReversalSummary?.approvedCount || 0}
             </Text>
@@ -7705,7 +7847,7 @@ export default function StaffPaymentsScreen() {
             <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>
-                  {editingTariffId ? 'Edit Rule Tarif' : 'Tambah Rule Tarif'}
+                  {editingTariffId ? 'Edit Aturan Tarif' : 'Tambah Aturan Tarif'}
                 </Text>
                 <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
                   Level kelas diambil dari master kelas admin tanpa rombel.
@@ -8000,7 +8142,7 @@ export default function StaffPaymentsScreen() {
             <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>
-                  Policy Reminder & Eskalasi Finance
+                  Aturan Pengingat & Eskalasi Keuangan
                 </Text>
                 <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
                   Worker production memakai policy ini untuk due soon, overdue, warning denda, dan eskalasi.
@@ -8853,7 +8995,7 @@ export default function StaffPaymentsScreen() {
         <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 }}>
           <View style={{ backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#dbe7fb' }}>
             <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
-              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>Refund Saldo Kredit</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>Refund Saldo Titipan</Text>
               <Text style={{ color: '#64748b', marginTop: 2 }}>
                 {selectedCreditBalance?.student.name || '-'} • Saldo {formatCurrency(selectedCreditBalance?.balanceAmount || 0)}
               </Text>
@@ -8977,7 +9119,7 @@ export default function StaffPaymentsScreen() {
         <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 }}>
           <View style={{ backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#dbe7fb' }}>
             <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
-              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>Ajukan Reversal Pembayaran</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>Ajukan Pembatalan Pembayaran</Text>
               <Text style={{ color: '#64748b', marginTop: 2 }}>
                 {reversalTargetPayment?.paymentNo || '-'} • Sisa reversible {formatCurrency(reversalTargetPayment?.remainingReversibleAmount || 0)}
               </Text>
@@ -9058,7 +9200,7 @@ export default function StaffPaymentsScreen() {
         <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 }}>
           <View style={{ backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#dbe7fb' }}>
             <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
-              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>Ajukan Write-Off</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>Ajukan Penghapusan Tagihan</Text>
               <Text style={{ color: '#64748b', marginTop: 2 }}>
                 {writeOffTargetInvoice?.invoiceNo || '-'} • Outstanding {formatCurrency(writeOffTargetInvoice?.balanceAmount || 0)}
               </Text>
