@@ -137,6 +137,11 @@ export type StudentExamItem = {
     outstandingAmount: number;
     outstandingInvoices: number;
     overdueInvoices: number;
+    mode?: string;
+    thresholdAmount?: number;
+    minOverdueInvoices?: number;
+    notes?: string | null;
+    warningOnly?: boolean;
     reason?: string | null;
   } | null;
   subject?: {

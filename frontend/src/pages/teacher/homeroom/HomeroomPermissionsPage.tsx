@@ -288,8 +288,13 @@ export const HomeroomPermissionsPage = () => {
     if (item.isBlocked && item.autoBlocked) {
       const autoReasons: string[] = [];
       if (item.flags.belowKkm) autoReasons.push('nilai masih di bawah KKM');
-      if (item.flags.financeOutstanding) autoReasons.push('masih ada tunggakan');
-      if (item.flags.financeOverdue) autoReasons.push('ada tunggakan jatuh tempo');
+      if (item.flags.financeBlocked) {
+        autoReasons.push(
+          item.flags.financeOverdue
+            ? 'policy clearance finance belum terpenuhi karena ada tunggakan jatuh tempo'
+            : 'policy clearance finance belum terpenuhi',
+        );
+      }
 
       toast.error(
         autoReasons.length > 0
@@ -712,14 +717,19 @@ export const HomeroomPermissionsPage = () => {
                                   Nilai &lt; KKM
                                 </span>
                               )}
-                              {item.flags.financeOutstanding && (
+                              {item.flags.financeBlocked && (
                                 <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
                                   Tunggakan
                                 </span>
                               )}
-                              {item.flags.financeOverdue && (
+                              {item.flags.financeBlocked && item.flags.financeOverdue && (
                                 <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">
                                   Jatuh Tempo
+                                </span>
+                              )}
+                              {item.flags.financeOutstanding && !item.flags.financeBlocked && (
+                                <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                                  Info Finance
                                 </span>
                               )}
                             </div>
@@ -750,6 +760,11 @@ export const HomeroomPermissionsPage = () => {
                                     ? `, ${item.details.overdueInvoices} sudah jatuh tempo`
                                     : ''}
                                 </p>
+                                {!item.flags.financeBlocked ? (
+                                  <p className="mt-1 text-[11px] text-orange-600">
+                                    Program ujian ini tidak memblokir akses dari status tunggakan tersebut.
+                                  </p>
+                                ) : null}
                               </div>
                             )}
                           </div>

@@ -169,6 +169,7 @@ export type ExamProgramBaseType = string;
 export type ExamProgramGradeComponentType = string;
 export type ExamProgramGradeEntryMode = string;
 export type ExamProgramReportSlot = string;
+export type ExamFinanceClearanceMode = string;
 
 export type ExamGradeComponentItem = {
   id?: number;
@@ -208,6 +209,10 @@ export type ExamProgramItem = {
   targetClassLevels?: string[];
   allowedSubjectIds?: number[];
   allowedAuthorIds?: number[];
+  financeClearanceMode?: ExamFinanceClearanceMode;
+  financeMinOutstandingAmount?: number;
+  financeMinOverdueInvoices?: number;
+  financeClearanceNotes?: string | null;
   source: 'default' | 'custom';
 };
 
@@ -322,6 +327,10 @@ export const examApi = {
       targetClassLevels?: string[];
       allowedSubjectIds?: number[];
       allowedAuthorIds?: number[];
+      financeClearanceMode?: ExamFinanceClearanceMode;
+      financeMinOutstandingAmount?: number;
+      financeMinOverdueInvoices?: number;
+      financeClearanceNotes?: string | null;
     }>;
   }) {
     const response = await apiClient.put<ExamProgramsUpdateResponse>('/exams/programs', payload);

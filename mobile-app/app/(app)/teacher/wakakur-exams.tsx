@@ -20,6 +20,7 @@ import { academicYearApi } from '../../../src/features/academicYear/academicYear
 import { AdminSubject, AdminUser, adminApi } from '../../../src/features/admin/adminApi';
 import {
   examApi,
+  ExamFinanceClearanceMode,
   ExamGradeComponentItem,
   ExamProgramBaseType,
   ExamProgramCode,
@@ -63,6 +64,10 @@ type ExamProgramDraft = {
   targetClassLevels: string[];
   allowedSubjectIds: number[];
   allowedAuthorIds: number[];
+  financeClearanceMode: ExamFinanceClearanceMode;
+  financeMinOutstandingAmount: number;
+  financeMinOverdueInvoices: number;
+  financeClearanceNotes: string;
   source: 'default' | 'custom' | 'new';
   isCodeLocked: boolean;
 };
@@ -112,10 +117,68 @@ const PROGRAM_FIXED_SEMESTER_OPTIONS = [
   { key: 'ODD', label: 'Ganjil', value: 'ODD' },
   { key: 'EVEN', label: 'Genap', value: 'EVEN' },
 ] as const;
+const DEFAULT_FINANCE_CLEARANCE_MODE: ExamFinanceClearanceMode = 'BLOCK_ANY_OUTSTANDING';
+const FINANCE_CLEARANCE_MODE_OPTIONS: Array<{
+  value: ExamFinanceClearanceMode;
+  label: string;
+  hint: string;
+}> = [
+  { value: 'BLOCK_ANY_OUTSTANDING', label: 'Blok Semua Tunggakan', hint: 'Ujian diblok jika ada outstanding.' },
+  { value: 'BLOCK_OVERDUE_ONLY', label: 'Blok Jika Overdue', hint: 'Hanya tunggakan jatuh tempo yang memblokir.' },
+  { value: 'BLOCK_AMOUNT_THRESHOLD', label: 'Blok Di Atas Nominal', hint: 'Blok jika outstanding melewati ambang nominal.' },
+  { value: 'BLOCK_OVERDUE_OR_AMOUNT', label: 'Blok Overdue / Nominal', hint: 'Blok jika overdue atau nominal melewati ambang.' },
+  { value: 'WARN_ONLY', label: 'Peringatan Saja', hint: 'Status keuangan terlihat, tetapi tidak memblokir.' },
+  { value: 'IGNORE', label: 'Abaikan Finance', hint: 'Program tidak membaca clearance finance.' },
+];
 
 function hasCurriculumDuty(userDuties?: string[]) {
   const duties = (userDuties || []).map((item) => item.trim().toUpperCase());
   return duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
+}
+
+function normalizeFinanceClearanceMode(raw: unknown): ExamFinanceClearanceMode {
+  const normalized = normalizeProgramCode(raw) as ExamFinanceClearanceMode;
+  return FINANCE_CLEARANCE_MODE_OPTIONS.some((option) => option.value === normalized)
+    ? normalized
+    : DEFAULT_FINANCE_CLEARANCE_MODE;
+}
+
+function normalizeFinanceAmount(raw: unknown) {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Number(parsed.toFixed(2)));
+}
+
+function normalizeFinanceOverdueCount(raw: unknown) {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.max(1, Math.round(parsed));
+}
+
+function shouldShowFinanceThresholdAmount(mode: ExamFinanceClearanceMode) {
+  return mode === 'BLOCK_AMOUNT_THRESHOLD' || mode === 'BLOCK_OVERDUE_OR_AMOUNT';
+}
+
+function shouldShowFinanceOverdueCount(mode: ExamFinanceClearanceMode) {
+  return mode === 'BLOCK_OVERDUE_ONLY' || mode === 'BLOCK_OVERDUE_OR_AMOUNT';
+}
+
+function getFinanceClearanceSummary(row: {
+  financeClearanceMode: ExamFinanceClearanceMode;
+  financeMinOutstandingAmount: number;
+  financeMinOverdueInvoices: number;
+}) {
+  const option = FINANCE_CLEARANCE_MODE_OPTIONS.find(
+    (item) => item.value === normalizeFinanceClearanceMode(row.financeClearanceMode),
+  );
+  const details: string[] = [];
+  if (shouldShowFinanceThresholdAmount(row.financeClearanceMode)) {
+    details.push(`Ambang Rp ${new Intl.NumberFormat('id-ID').format(Math.round(row.financeMinOutstandingAmount || 0))}`);
+  }
+  if (shouldShowFinanceOverdueCount(row.financeClearanceMode)) {
+    details.push(`Min overdue ${Math.max(1, Math.round(row.financeMinOverdueInvoices || 1))}`);
+  }
+  return details.length > 0 ? `${option?.label || DEFAULT_FINANCE_CLEARANCE_MODE} • ${details.join(' • ')}` : option?.label || DEFAULT_FINANCE_CLEARANCE_MODE;
 }
 
 function createId(prefix: string) {
@@ -347,6 +410,10 @@ function normalizeProgramDrafts(programs: ExamProgramItem[]): ExamProgramDraft[]
         targetClassLevels: normalizeClassLevelScope(item.targetClassLevels),
         allowedSubjectIds: normalizeNumericIds(item.allowedSubjectIds),
         allowedAuthorIds: normalizeNumericIds(item.allowedAuthorIds),
+        financeClearanceMode: normalizeFinanceClearanceMode(item.financeClearanceMode),
+        financeMinOutstandingAmount: normalizeFinanceAmount(item.financeMinOutstandingAmount),
+        financeMinOverdueInvoices: normalizeFinanceOverdueCount(item.financeMinOverdueInvoices),
+        financeClearanceNotes: String(item.financeClearanceNotes || '').trim(),
         source: item.source || 'custom',
         isCodeLocked: true,
       };
@@ -378,6 +445,10 @@ function snapshotProgramDrafts(rows: ExamProgramDraft[]) {
       targetClassLevels: normalizeClassLevelScope(row.targetClassLevels),
       allowedSubjectIds: normalizeNumericIds(row.allowedSubjectIds),
       allowedAuthorIds: normalizeNumericIds(row.allowedAuthorIds),
+      financeClearanceMode: normalizeFinanceClearanceMode(row.financeClearanceMode),
+      financeMinOutstandingAmount: normalizeFinanceAmount(row.financeMinOutstandingAmount),
+      financeMinOverdueInvoices: normalizeFinanceOverdueCount(row.financeMinOverdueInvoices),
+      financeClearanceNotes: row.financeClearanceNotes,
       source: row.source,
       isCodeLocked: row.isCodeLocked,
     })),
@@ -476,6 +547,10 @@ function createNewProgramDraft(
     targetClassLevels: [],
     allowedSubjectIds: [],
     allowedAuthorIds: [],
+    financeClearanceMode: DEFAULT_FINANCE_CLEARANCE_MODE,
+    financeMinOutstandingAmount: 0,
+    financeMinOverdueInvoices: 1,
+    financeClearanceNotes: '',
     source: 'new',
     isCodeLocked: false,
   };
@@ -817,6 +892,10 @@ export default function TeacherWakakurExamsScreen() {
           targetClassLevels: normalizeClassLevelScope(row.targetClassLevels),
           allowedSubjectIds: normalizeNumericIds(row.allowedSubjectIds),
           allowedAuthorIds: normalizeNumericIds(row.allowedAuthorIds),
+          financeClearanceMode: normalizeFinanceClearanceMode(row.financeClearanceMode),
+          financeMinOutstandingAmount: normalizeFinanceAmount(row.financeMinOutstandingAmount),
+          financeMinOverdueInvoices: normalizeFinanceOverdueCount(row.financeMinOverdueInvoices),
+          financeClearanceNotes: row.financeClearanceNotes.trim() || null,
           ...(function alignFromComponent() {
             const component = componentMap.get(normalizeProgramCode(row.gradeComponentCode));
             if (!component) return {};
@@ -2276,6 +2355,9 @@ export default function TeacherWakakurExamsScreen() {
                     );
                   })}
                 </View>
+                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 8 }}>
+                  Finance: {getFinanceClearanceSummary(program)}
+                </Text>
 
                 <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Target Tingkat Kelas (opsional)</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
@@ -2405,6 +2487,115 @@ export default function TeacherWakakurExamsScreen() {
                         </Pressable>
                       );
                     })}
+                </View>
+
+                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Policy Clearance Finance</Text>
+                <View style={{ gap: 8, marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {FINANCE_CLEARANCE_MODE_OPTIONS.map((option) => {
+                      const active = program.financeClearanceMode === option.value;
+                      return (
+                        <Pressable
+                          key={`${program.rowId}-finance-${option.value}`}
+                          onPress={() =>
+                            updateProgramDraft(program.rowId, {
+                              financeClearanceMode: option.value,
+                            })
+                          }
+                          style={{
+                            borderWidth: 1,
+                            borderColor: active ? '#f59e0b' : '#d5e1f5',
+                            backgroundColor: active ? '#fffbeb' : '#fff',
+                            borderRadius: 12,
+                            paddingVertical: 7,
+                            paddingHorizontal: 10,
+                          }}
+                        >
+                          <Text style={{ color: active ? '#92400e' : BRAND_COLORS.textMuted, fontSize: 11, fontWeight: '600' }}>
+                            {option.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <Text style={{ color: '#92400e', fontSize: 11 }}>
+                    {
+                      FINANCE_CLEARANCE_MODE_OPTIONS.find(
+                        (option) => option.value === normalizeFinanceClearanceMode(program.financeClearanceMode),
+                      )?.hint
+                    }
+                  </Text>
+                  {shouldShowFinanceThresholdAmount(program.financeClearanceMode) ? (
+                    <View>
+                      <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Ambang Outstanding</Text>
+                      <TextInput
+                        value={String(program.financeMinOutstandingAmount)}
+                        onChangeText={(value) =>
+                          updateProgramDraft(program.rowId, {
+                            financeMinOutstandingAmount: normalizeFinanceAmount(value),
+                          })
+                        }
+                        keyboardType="numeric"
+                        placeholder="Contoh: 500000"
+                        placeholderTextColor="#94a3b8"
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#d5e1f5',
+                          borderRadius: 9,
+                          backgroundColor: '#fff',
+                          paddingHorizontal: 10,
+                          paddingVertical: 8,
+                          color: BRAND_COLORS.textDark,
+                        }}
+                      />
+                    </View>
+                  ) : null}
+                  {shouldShowFinanceOverdueCount(program.financeClearanceMode) ? (
+                    <View>
+                      <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Minimal Invoice Overdue</Text>
+                      <TextInput
+                        value={String(program.financeMinOverdueInvoices)}
+                        onChangeText={(value) =>
+                          updateProgramDraft(program.rowId, {
+                            financeMinOverdueInvoices: normalizeFinanceOverdueCount(value),
+                          })
+                        }
+                        keyboardType="number-pad"
+                        placeholder="Contoh: 1"
+                        placeholderTextColor="#94a3b8"
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#d5e1f5',
+                          borderRadius: 9,
+                          backgroundColor: '#fff',
+                          paddingHorizontal: 10,
+                          paddingVertical: 8,
+                          color: BRAND_COLORS.textDark,
+                        }}
+                      />
+                    </View>
+                  ) : null}
+                  <View>
+                    <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Catatan Policy (opsional)</Text>
+                    <TextInput
+                      value={program.financeClearanceNotes}
+                      onChangeText={(value) => updateProgramDraft(program.rowId, { financeClearanceNotes: value })}
+                      placeholder="Contoh: Program ini wajib clear minimal daftar ulang."
+                      placeholderTextColor="#94a3b8"
+                      multiline
+                      style={{
+                        minHeight: 68,
+                        borderWidth: 1,
+                        borderColor: '#d5e1f5',
+                        borderRadius: 9,
+                        backgroundColor: '#fff',
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        color: BRAND_COLORS.textDark,
+                        textAlignVertical: 'top',
+                      }}
+                    />
+                  </View>
                 </View>
 
                 <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Pembuat Soal Diizinkan (opsional)</Text>

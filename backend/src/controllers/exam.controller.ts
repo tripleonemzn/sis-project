@@ -232,14 +232,29 @@ function buildLegacyRestrictionKey(academicYearId: number, semester: Semester, e
     return `${academicYearId}:${semester}:${examType}`;
 }
 
-function buildAutomaticRestrictionKey(academicYearId: number, semester: Semester): string {
-    return `${academicYearId}:${semester}`;
+function buildAutomaticRestrictionKey(
+    academicYearId: number,
+    semester: Semester,
+    programCode?: string | null,
+    examType?: ExamType | null,
+): string {
+    const normalizedTarget = normalizeProgramCode(programCode || examType) || 'GENERAL';
+    return `${academicYearId}:${semester}:${normalizedTarget}`;
 }
+
+type ExamFinanceClearanceMode =
+    | 'IGNORE'
+    | 'WARN_ONLY'
+    | 'BLOCK_ANY_OUTSTANDING'
+    | 'BLOCK_OVERDUE_ONLY'
+    | 'BLOCK_AMOUNT_THRESHOLD'
+    | 'BLOCK_OVERDUE_OR_AMOUNT';
 
 type AutomaticExamRestrictionFlags = {
     belowKkm: boolean;
     financeOutstanding: boolean;
     financeOverdue: boolean;
+    financeBlocked: boolean;
 };
 
 type AutomaticExamRestrictionBelowKkmSubject = {
@@ -254,6 +269,10 @@ type AutomaticExamRestrictionDetails = {
     outstandingAmount: number;
     outstandingInvoices: number;
     overdueInvoices: number;
+    financeClearanceMode: ExamFinanceClearanceMode;
+    financeMinOutstandingAmount: number;
+    financeMinOverdueInvoices: number;
+    financeClearanceNotes: string | null;
 };
 
 type AutomaticExamRestrictionInfo = {
@@ -270,8 +289,33 @@ type ExamFinanceClearanceSummary = {
     outstandingAmount: number;
     outstandingInvoices: number;
     overdueInvoices: number;
+    mode: ExamFinanceClearanceMode;
+    thresholdAmount: number;
+    minOverdueInvoices: number;
+    notes: string | null;
+    warningOnly: boolean;
     reason: string | null;
 };
+
+type ResolvedExamFinanceClearancePolicy = {
+    programCode: string | null;
+    mode: ExamFinanceClearanceMode;
+    minOutstandingAmount: number;
+    minOverdueInvoices: number;
+    notes: string | null;
+};
+
+const VALID_EXAM_FINANCE_CLEARANCE_MODES = new Set<ExamFinanceClearanceMode>([
+    'IGNORE',
+    'WARN_ONLY',
+    'BLOCK_ANY_OUTSTANDING',
+    'BLOCK_OVERDUE_ONLY',
+    'BLOCK_AMOUNT_THRESHOLD',
+    'BLOCK_OVERDUE_OR_AMOUNT',
+]);
+const DEFAULT_EXAM_FINANCE_CLEARANCE_MODE: ExamFinanceClearanceMode = 'BLOCK_ANY_OUTSTANDING';
+const DEFAULT_EXAM_FINANCE_MIN_OUTSTANDING_AMOUNT = 0;
+const DEFAULT_EXAM_FINANCE_MIN_OVERDUE_INVOICES = 1;
 
 const emptyAutomaticExamRestrictionInfo = (): AutomaticExamRestrictionInfo => ({
     autoBlocked: false,
@@ -280,16 +324,205 @@ const emptyAutomaticExamRestrictionInfo = (): AutomaticExamRestrictionInfo => ({
         belowKkm: false,
         financeOutstanding: false,
         financeOverdue: false,
+        financeBlocked: false,
     },
     details: {
         belowKkmSubjects: [],
         outstandingAmount: 0,
         outstandingInvoices: 0,
         overdueInvoices: 0,
+        financeClearanceMode: DEFAULT_EXAM_FINANCE_CLEARANCE_MODE,
+        financeMinOutstandingAmount: DEFAULT_EXAM_FINANCE_MIN_OUTSTANDING_AMOUNT,
+        financeMinOverdueInvoices: DEFAULT_EXAM_FINANCE_MIN_OVERDUE_INVOICES,
+        financeClearanceNotes: null,
     },
 });
 
 const currencyFormatterId = new Intl.NumberFormat('id-ID');
+
+function normalizeExamFinanceClearanceMode(
+    raw: unknown,
+    fallback: ExamFinanceClearanceMode = DEFAULT_EXAM_FINANCE_CLEARANCE_MODE,
+): ExamFinanceClearanceMode {
+    const normalized = String(raw || '')
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '') as ExamFinanceClearanceMode;
+    if (VALID_EXAM_FINANCE_CLEARANCE_MODES.has(normalized)) {
+        return normalized;
+    }
+    return fallback;
+}
+
+function normalizeFinanceThresholdAmount(raw: unknown, fallback = DEFAULT_EXAM_FINANCE_MIN_OUTSTANDING_AMOUNT) {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return Math.max(0, fallback);
+    return Math.max(0, Number(parsed.toFixed(2)));
+}
+
+function normalizeFinanceOverdueInvoiceCount(raw: unknown, fallback = DEFAULT_EXAM_FINANCE_MIN_OVERDUE_INVOICES) {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return Math.max(1, Math.round(fallback));
+    return Math.max(1, Math.round(parsed));
+}
+
+function getDefaultExamFinanceClearancePolicy(programCode: string | null = null): ResolvedExamFinanceClearancePolicy {
+    return {
+        programCode,
+        mode: DEFAULT_EXAM_FINANCE_CLEARANCE_MODE,
+        minOutstandingAmount: DEFAULT_EXAM_FINANCE_MIN_OUTSTANDING_AMOUNT,
+        minOverdueInvoices: DEFAULT_EXAM_FINANCE_MIN_OVERDUE_INVOICES,
+        notes: null,
+    };
+}
+
+async function resolveExamFinanceClearancePolicy(params: {
+    academicYearId: number;
+    programCode?: string | null;
+    examType?: ExamType | null;
+}): Promise<ResolvedExamFinanceClearancePolicy> {
+    const normalizedProgramCode = normalizeProgramCode(params.programCode);
+    if (normalizedProgramCode) {
+        const program = await prisma.examProgramConfig.findFirst({
+            where: {
+                academicYearId: params.academicYearId,
+                code: normalizedProgramCode,
+            },
+            select: {
+                code: true,
+                financeClearanceMode: true,
+                financeMinOutstandingAmount: true,
+                financeMinOverdueInvoices: true,
+                financeClearanceNotes: true,
+            },
+        });
+        if (program) {
+            return {
+                programCode: program.code,
+                mode: normalizeExamFinanceClearanceMode(program.financeClearanceMode),
+                minOutstandingAmount: normalizeFinanceThresholdAmount(program.financeMinOutstandingAmount),
+                minOverdueInvoices: normalizeFinanceOverdueInvoiceCount(program.financeMinOverdueInvoices),
+                notes: program.financeClearanceNotes || null,
+            };
+        }
+    }
+
+    const normalizedExamType = normalizeProgramCode(params.examType);
+    const inferredExamType = params.examType || (normalizedExamType ? tryNormalizePacketType(normalizedExamType) : null);
+    if (inferredExamType) {
+        const program = await prisma.examProgramConfig.findFirst({
+            where: {
+                academicYearId: params.academicYearId,
+                isActive: true,
+                OR: [
+                    { baseType: inferredExamType },
+                    ...(normalizedExamType ? [{ baseTypeCode: normalizedExamType }] : []),
+                ],
+            },
+            orderBy: [{ displayOrder: 'asc' }, { id: 'asc' }],
+            select: {
+                code: true,
+                financeClearanceMode: true,
+                financeMinOutstandingAmount: true,
+                financeMinOverdueInvoices: true,
+                financeClearanceNotes: true,
+            },
+        });
+        if (program) {
+            return {
+                programCode: program.code,
+                mode: normalizeExamFinanceClearanceMode(program.financeClearanceMode),
+                minOutstandingAmount: normalizeFinanceThresholdAmount(program.financeMinOutstandingAmount),
+                minOverdueInvoices: normalizeFinanceOverdueInvoiceCount(program.financeMinOverdueInvoices),
+                notes: program.financeClearanceNotes || null,
+            };
+        }
+    }
+
+    return getDefaultExamFinanceClearancePolicy(normalizedProgramCode);
+}
+
+function buildFinanceRestrictionReason(params: {
+    finance: { outstandingAmount: number; overdueInvoices: number };
+    policy: ResolvedExamFinanceClearancePolicy;
+    amountMatched: boolean;
+    overdueMatched: boolean;
+}) {
+    const amountLabel = currencyFormatterId.format(Math.round(params.finance.outstandingAmount));
+    const overdueLabel = `${params.finance.overdueInvoices} lewat jatuh tempo`;
+
+    if (params.policy.mode === 'BLOCK_OVERDUE_ONLY') {
+        return `Memiliki ${overdueLabel} dengan outstanding Rp ${amountLabel}`;
+    }
+    if (params.policy.mode === 'BLOCK_AMOUNT_THRESHOLD') {
+        return `Outstanding Rp ${amountLabel} mencapai ambang blokir Rp ${currencyFormatterId.format(
+            Math.round(params.policy.minOutstandingAmount),
+        )}`;
+    }
+    if (params.policy.mode === 'BLOCK_OVERDUE_OR_AMOUNT') {
+        if (params.overdueMatched && params.amountMatched) {
+            return `Memenuhi kebijakan clearance keuangan: ${overdueLabel} dan outstanding Rp ${amountLabel}`;
+        }
+        if (params.overdueMatched) {
+            return `Memiliki ${overdueLabel} dengan outstanding Rp ${amountLabel}`;
+        }
+        return `Outstanding Rp ${amountLabel} mencapai ambang blokir Rp ${currencyFormatterId.format(
+            Math.round(params.policy.minOutstandingAmount),
+        )}`;
+    }
+    return `Masih memiliki tunggakan Rp ${amountLabel}${params.finance.overdueInvoices > 0 ? ` (${overdueLabel})` : ''}`;
+}
+
+function evaluateFinanceClearancePolicy(params: {
+    finance: { outstandingAmount: number; outstandingInvoices: number; overdueInvoices: number };
+    policy: ResolvedExamFinanceClearancePolicy;
+}) {
+    const hasOutstanding = params.finance.outstandingInvoices > 0 && params.finance.outstandingAmount > 0;
+    const hasOverdue = params.finance.overdueInvoices > 0;
+    const amountMatched =
+        hasOutstanding && params.finance.outstandingAmount >= Math.max(0, params.policy.minOutstandingAmount);
+    const overdueMatched =
+        hasOverdue && params.finance.overdueInvoices >= Math.max(1, params.policy.minOverdueInvoices);
+
+    let blocked = false;
+    switch (params.policy.mode) {
+        case 'IGNORE':
+        case 'WARN_ONLY':
+            blocked = false;
+            break;
+        case 'BLOCK_OVERDUE_ONLY':
+            blocked = overdueMatched;
+            break;
+        case 'BLOCK_AMOUNT_THRESHOLD':
+            blocked = amountMatched;
+            break;
+        case 'BLOCK_OVERDUE_OR_AMOUNT':
+            blocked = overdueMatched || amountMatched;
+            break;
+        case 'BLOCK_ANY_OUTSTANDING':
+        default:
+            blocked = hasOutstanding;
+            break;
+    }
+
+    return {
+        hasOutstanding,
+        hasOverdue,
+        amountMatched,
+        overdueMatched,
+        blocked,
+        reason: blocked
+            ? buildFinanceRestrictionReason({
+                  finance: params.finance,
+                  policy: params.policy,
+                  amountMatched,
+                  overdueMatched,
+              })
+            : '',
+    };
+}
 
 function formatAutomaticRestrictionReason(parts: string[]): string {
     return parts
@@ -326,17 +559,29 @@ function buildExamFinanceClearanceSummary(
     automaticRestriction: AutomaticExamRestrictionInfo | null,
 ): ExamFinanceClearanceSummary {
     const info = automaticRestriction || emptyAutomaticExamRestrictionInfo();
-    const financeReason = info.flags.financeOutstanding
+    const hasOutstanding = info.details.outstandingAmount > 0 && info.details.outstandingInvoices > 0;
+    const warningOnly =
+        info.details.financeClearanceMode === 'WARN_ONLY' &&
+        hasOutstanding &&
+        !info.flags.financeBlocked;
+    const financeReason = info.flags.financeBlocked
         ? `Masih memiliki tunggakan Rp ${currencyFormatterId.format(Math.round(info.details.outstandingAmount))}${info.flags.financeOverdue ? ` (${info.details.overdueInvoices} lewat jatuh tempo)` : ''}`
-        : null;
+        : warningOnly
+            ? `Masih memiliki tunggakan Rp ${currencyFormatterId.format(Math.round(info.details.outstandingAmount))}, namun program ini hanya memberi peringatan.`
+            : null;
 
     return {
-        blocksExam: info.flags.financeOutstanding,
-        hasOutstanding: info.details.outstandingAmount > 0 && info.details.outstandingInvoices > 0,
+        blocksExam: info.flags.financeBlocked,
+        hasOutstanding,
         hasOverdue: info.details.overdueInvoices > 0,
         outstandingAmount: Number(info.details.outstandingAmount || 0),
         outstandingInvoices: Number(info.details.outstandingInvoices || 0),
         overdueInvoices: Number(info.details.overdueInvoices || 0),
+        mode: info.details.financeClearanceMode,
+        thresholdAmount: Number(info.details.financeMinOutstandingAmount || 0),
+        minOverdueInvoices: Number(info.details.financeMinOverdueInvoices || 0),
+        notes: info.details.financeClearanceNotes || null,
+        warningOnly,
         reason: financeReason,
     };
 }
@@ -346,6 +591,8 @@ async function buildAutomaticExamRestrictionMap(params: {
     academicYearId: number;
     semester: Semester;
     studentIds: number[];
+    programCode?: string | null;
+    examType?: ExamType | null;
 }): Promise<Map<number, AutomaticExamRestrictionInfo>> {
     const studentIds = Array.from(
         new Set(
@@ -359,7 +606,12 @@ async function buildAutomaticExamRestrictionMap(params: {
         return new Map();
     }
 
-    const [teacherAssignments, reportGrades, studentGrades, financeInvoices] = await Promise.all([
+    const [financePolicy, teacherAssignments, reportGrades, studentGrades, financeInvoices] = await Promise.all([
+        resolveExamFinanceClearancePolicy({
+            academicYearId: params.academicYearId,
+            programCode: params.programCode,
+            examType: params.examType,
+        }),
         prisma.teacherAssignment.findMany({
             where: {
                 classId: params.classId,
@@ -525,11 +777,16 @@ async function buildAutomaticExamRestrictionMap(params: {
             outstandingInvoices: 0,
             overdueInvoices: 0,
         };
+        const financeEvaluation = evaluateFinanceClearancePolicy({
+            finance,
+            policy: financePolicy,
+        });
 
         const flags: AutomaticExamRestrictionFlags = {
             belowKkm: belowKkmSubjects.length > 0,
-            financeOutstanding: finance.outstandingInvoices > 0 && finance.outstandingAmount > 0,
-            financeOverdue: finance.overdueInvoices > 0,
+            financeOutstanding: financeEvaluation.hasOutstanding,
+            financeOverdue: financeEvaluation.hasOverdue,
+            financeBlocked: financeEvaluation.blocked,
         };
 
         const reasonParts: string[] = [];
@@ -542,14 +799,12 @@ async function buildAutomaticExamRestrictionMap(params: {
                 `Nilai di bawah KKM${subjectPreview ? `: ${subjectPreview}` : ''}${belowKkmSubjects.length > 3 ? ' dan lainnya' : ''}`,
             );
         }
-        if (flags.financeOutstanding) {
-            reasonParts.push(
-                `Masih memiliki tunggakan Rp ${currencyFormatterId.format(Math.round(finance.outstandingAmount))}${flags.financeOverdue ? ` (${finance.overdueInvoices} lewat jatuh tempo)` : ''}`,
-            );
+        if (flags.financeBlocked) {
+            reasonParts.push(financeEvaluation.reason);
         }
 
         result.set(studentId, {
-            autoBlocked: flags.belowKkm || flags.financeOutstanding,
+            autoBlocked: flags.belowKkm || flags.financeBlocked,
             reason: formatAutomaticRestrictionReason(reasonParts),
             flags,
             details: {
@@ -557,6 +812,10 @@ async function buildAutomaticExamRestrictionMap(params: {
                 outstandingAmount: Number(finance.outstandingAmount.toFixed(2)),
                 outstandingInvoices: finance.outstandingInvoices,
                 overdueInvoices: finance.overdueInvoices,
+                financeClearanceMode: financePolicy.mode,
+                financeMinOutstandingAmount: Number(financePolicy.minOutstandingAmount.toFixed(2)),
+                financeMinOverdueInvoices: financePolicy.minOverdueInvoices,
+                financeClearanceNotes: financePolicy.notes || null,
             },
         });
     });
@@ -606,7 +865,7 @@ async function createHomeroomAutomaticRestrictionNotification(params: {
         data: {
             userId: homeroomClass.teacherId,
             title,
-            message: `${blockedStudents.length} siswa di ${homeroomClass.name} otomatis diblok karena nilai < KKM atau masih memiliki tunggakan.`,
+            message: `${blockedStudents.length} siswa di ${homeroomClass.name} otomatis diblok karena nilai < KKM atau memenuhi kebijakan clearance ujian.`,
             type: 'EXAM_PERMISSION_AUTOBLOCK',
             data: {
                 module: 'HOMEROOM_EXAM_PERMISSION',
@@ -6191,8 +6450,18 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
     const automaticRestrictionTargets = Array.from(
         new Map(
             scheduleTargets.map((target) => [
-                buildAutomaticRestrictionKey(target.academicYearId, target.semester),
-                { academicYearId: target.academicYearId, semester: target.semester },
+                buildAutomaticRestrictionKey(
+                    target.academicYearId,
+                    target.semester,
+                    target.programCode,
+                    target.examType,
+                ),
+                {
+                    academicYearId: target.academicYearId,
+                    semester: target.semester,
+                    programCode: target.programCode,
+                    examType: target.examType,
+                },
             ]),
         ).values(),
     );
@@ -6235,10 +6504,17 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
                               academicYearId: target.academicYearId,
                               semester: target.semester,
                               studentIds: [studentId],
+                              programCode: target.programCode,
+                              examType: target.examType,
                           });
 
                           return [
-                              buildAutomaticRestrictionKey(target.academicYearId, target.semester),
+                              buildAutomaticRestrictionKey(
+                                  target.academicYearId,
+                                  target.semester,
+                                  target.programCode,
+                                  target.examType,
+                              ),
                               restrictionMap,
                           ] as [string, Map<number, AutomaticExamRestrictionInfo>];
                       }),
@@ -6289,7 +6565,14 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
             );
             const automaticRestriction =
                 automaticRestrictionByTargetMap
-                    .get(buildAutomaticRestrictionKey(packet.academicYearId, packet.semester))
+                    .get(
+                        buildAutomaticRestrictionKey(
+                            packet.academicYearId,
+                            packet.semester,
+                            normalizedProgramCode,
+                            packet.type,
+                        ),
+                    )
                     ?.get(studentId) || null;
             const effectiveRestriction = buildEffectiveExamRestrictionState({
                 manualRestriction: programRestriction ?? legacyRestriction ?? null,
@@ -6478,6 +6761,8 @@ async function buildStartExamPayload(params: {
                     academicYearId: schedule.packet.academicYearId,
                     semester: schedule.packet.semester,
                     studentIds: [studentId],
+                    programCode: normalizedProgramCode,
+                    examType: schedule.packet.type,
                 })
             ).get(studentId) || null;
         const effectiveRestriction = buildEffectiveExamRestrictionState({
@@ -7235,6 +7520,8 @@ export const getExamRestrictions = asyncHandler(async (req: Request, res: Respon
             academicYearId: parsedAcademicYearId,
             semester: parsedSemester,
             studentIds: allClassStudentIds,
+            programCode: restrictionTarget.programCode,
+            examType: restrictionTarget.baseType,
         }),
     ]);
 

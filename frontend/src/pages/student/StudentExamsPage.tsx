@@ -72,6 +72,11 @@ type ExamAvailabilityPayload = {
     outstandingAmount: number
     outstandingInvoices: number
     overdueInvoices: number
+    mode?: string
+    thresholdAmount?: number
+    minOverdueInvoices?: number
+    notes?: string | null
+    warningOnly?: boolean
     reason?: string | null
   } | null
   makeupAvailable?: boolean
@@ -237,6 +242,11 @@ interface Exam {
     outstandingAmount: number
     outstandingInvoices: number
     overdueInvoices: number
+    mode?: string
+    thresholdAmount?: number
+    minOverdueInvoices?: number
+    notes?: string | null
+    warningOnly?: boolean
     reason?: string | null
   } | null
   makeupAvailable?: boolean
@@ -1086,6 +1096,11 @@ export default function StudentExamsPage() {
                                     Tagihan aktif: {exam.financeClearance.outstandingInvoices} • overdue:{' '}
                                     {exam.financeClearance.overdueInvoices}
                                   </div>
+                                  {!exam.financeClearance.blocksExam ? (
+                                    <div className="mt-1 text-[11px] text-amber-700">
+                                      Status finance ini tidak menjadi penyebab blokir pada program ujian ini.
+                                    </div>
+                                  ) : null}
                                 </div>
                               ) : null}
                             </div>
@@ -1105,6 +1120,19 @@ export default function StudentExamsPage() {
                           ) : (
                             <span className="text-sm text-gray-400">-</span>
                           )}
+                          {!exam.isBlocked && exam.financeClearance?.warningOnly && exam.financeClearance.hasOutstanding ? (
+                            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-[11px] text-amber-800">
+                              <div className="font-semibold">Info finance</div>
+                              <div>Outstanding: {formatExamCurrency(exam.financeClearance.outstandingAmount)}</div>
+                              <div>
+                                Tagihan aktif: {exam.financeClearance.outstandingInvoices} • overdue:{' '}
+                                {exam.financeClearance.overdueInvoices}
+                              </div>
+                              <div className="mt-1 text-[11px] text-amber-700">
+                                Program ini hanya memberi peringatan dan tidak memblokir ujian.
+                              </div>
+                            </div>
+                          ) : null}
                         </td>
                       </tr>
                     )

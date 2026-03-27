@@ -3,6 +3,14 @@ import { ExamType, GradeComponentType, GradeEntryMode, ReportComponentSlot, Seme
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 
+type ExamFinanceClearanceMode =
+  | 'IGNORE'
+  | 'WARN_ONLY'
+  | 'BLOCK_ANY_OUTSTANDING'
+  | 'BLOCK_OVERDUE_ONLY'
+  | 'BLOCK_AMOUNT_THRESHOLD'
+  | 'BLOCK_OVERDUE_OR_AMOUNT';
+
 type ExamProgramDefinition = {
   code: string;
   baseType: ExamType;
@@ -24,6 +32,10 @@ type ExamProgramDefinition = {
   targetClassLevels: string[];
   allowedSubjectIds: number[];
   allowedAuthorIds: number[];
+  financeClearanceMode?: ExamFinanceClearanceMode;
+  financeMinOutstandingAmount?: number;
+  financeMinOverdueInvoices?: number;
+  financeClearanceNotes?: string | null;
 };
 
 type NormalizedExamProgramPayload = {
@@ -48,6 +60,14 @@ type NormalizedExamProgramPayload = {
   targetClassLevels: string[];
   allowedSubjectIds: number[];
   allowedAuthorIds: number[];
+  financeClearanceMode: ExamFinanceClearanceMode;
+  financeMinOutstandingAmount: number;
+  financeMinOverdueInvoices: number;
+  financeClearanceNotes: string | null;
+  financeClearanceModeProvided: boolean;
+  financeMinOutstandingAmountProvided: boolean;
+  financeMinOverdueInvoicesProvided: boolean;
+  financeClearanceNotesProvided: boolean;
 };
 
 type ExamProgramRow = {
@@ -72,6 +92,10 @@ type ExamProgramRow = {
   targetClassLevels: string[];
   allowedSubjectIds: number[];
   allowedAuthorIds: number[];
+  financeClearanceMode: string | null;
+  financeMinOutstandingAmount: number | null;
+  financeMinOverdueInvoices: number | null;
+  financeClearanceNotes: string | null;
 };
 
 type ExamGradeComponentDefinition = {
@@ -125,6 +149,17 @@ const GRADE_COMPONENT_SYNC_COOLDOWN_MS = 5 * 60 * 1000;
 const gradeComponentSyncTimestamps = new Map<number, number>();
 const EXAM_PROGRAMS_CACHE_TTL_MS = 15000;
 const examProgramsResponseCache = new Map<string, { expiresAt: number; payload: unknown }>();
+const VALID_EXAM_FINANCE_CLEARANCE_MODES = new Set<ExamFinanceClearanceMode>([
+  'IGNORE',
+  'WARN_ONLY',
+  'BLOCK_ANY_OUTSTANDING',
+  'BLOCK_OVERDUE_ONLY',
+  'BLOCK_AMOUNT_THRESHOLD',
+  'BLOCK_OVERDUE_OR_AMOUNT',
+]);
+const DEFAULT_EXAM_FINANCE_CLEARANCE_MODE: ExamFinanceClearanceMode = 'BLOCK_ANY_OUTSTANDING';
+const DEFAULT_EXAM_FINANCE_MIN_OUTSTANDING_AMOUNT = 0;
+const DEFAULT_EXAM_FINANCE_MIN_OVERDUE_INVOICES = 1;
 
 function buildExamProgramsCacheKey(params: {
   academicYearId: number;
@@ -737,6 +772,37 @@ function toNumber(raw: unknown, fallback: number): number {
   return Math.max(0, Math.round(parsed));
 }
 
+function normalizeExamFinanceClearanceMode(
+  raw: unknown,
+  fallback: ExamFinanceClearanceMode = DEFAULT_EXAM_FINANCE_CLEARANCE_MODE,
+): ExamFinanceClearanceMode {
+  const normalized = String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '') as ExamFinanceClearanceMode;
+  if (VALID_EXAM_FINANCE_CLEARANCE_MODES.has(normalized)) {
+    return normalized;
+  }
+  return fallback;
+}
+
+function normalizeFinanceThresholdAmount(raw: unknown, fallback = DEFAULT_EXAM_FINANCE_MIN_OUTSTANDING_AMOUNT) {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return Math.max(0, fallback);
+  return Math.max(0, Number(parsed.toFixed(2)));
+}
+
+function normalizeFinanceOverdueInvoiceCount(
+  raw: unknown,
+  fallback = DEFAULT_EXAM_FINANCE_MIN_OVERDUE_INVOICES,
+) {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return Math.max(1, Math.round(fallback));
+  return Math.max(1, Math.round(parsed));
+}
+
 function assertProgramSemesterCompatibility(baseType: ExamType, fixedSemester: Semester | null) {
   const normalized = normalizeProgramCodeSeed(baseType);
   if (isFinalOddAliasCode(normalized) && fixedSemester === Semester.EVEN) {
@@ -1062,6 +1128,19 @@ function rowToProgram(row: ExamProgramRow): ExamProgramDefinition {
     (row.gradeComponentLabel || '').trim() ||
     defaults?.gradeComponentLabel ||
     gradeComponentCode.replace(/_/g, ' ');
+  const financeClearanceMode = normalizeExamFinanceClearanceMode(
+    row.financeClearanceMode,
+    defaults?.financeClearanceMode || DEFAULT_EXAM_FINANCE_CLEARANCE_MODE,
+  );
+  const financeMinOutstandingAmount = normalizeFinanceThresholdAmount(
+    row.financeMinOutstandingAmount,
+    defaults?.financeMinOutstandingAmount ?? DEFAULT_EXAM_FINANCE_MIN_OUTSTANDING_AMOUNT,
+  );
+  const financeMinOverdueInvoices = normalizeFinanceOverdueInvoiceCount(
+    row.financeMinOverdueInvoices,
+    defaults?.financeMinOverdueInvoices ?? DEFAULT_EXAM_FINANCE_MIN_OVERDUE_INVOICES,
+  );
+  const financeClearanceNotes = row.financeClearanceNotes || defaults?.financeClearanceNotes || null;
 
   return {
     code: row.code,
@@ -1084,6 +1163,10 @@ function rowToProgram(row: ExamProgramRow): ExamProgramDefinition {
     targetClassLevels: normalizeClassLevels(row.targetClassLevels, defaults?.targetClassLevels || []),
     allowedSubjectIds: normalizeIdArray(row.allowedSubjectIds, defaults?.allowedSubjectIds || []),
     allowedAuthorIds: normalizeIdArray(row.allowedAuthorIds, defaults?.allowedAuthorIds || []),
+    financeClearanceMode,
+    financeMinOutstandingAmount,
+    financeMinOverdueInvoices,
+    financeClearanceNotes,
   };
 }
 
@@ -1127,6 +1210,10 @@ async function fetchProgramRows(academicYearId: number) {
       targetClassLevels: true,
       allowedSubjectIds: true,
       allowedAuthorIds: true,
+      financeClearanceMode: true,
+      financeMinOutstandingAmount: true,
+      financeMinOverdueInvoices: true,
+      financeClearanceNotes: true,
     },
     orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
   });
@@ -1195,6 +1282,10 @@ function normalizeProgramPayload(rawPrograms: unknown[]): NormalizedExamProgramP
     const hasTargetClassLevels = Object.prototype.hasOwnProperty.call(item, 'targetClassLevels');
     const hasAllowedSubjectIds = Object.prototype.hasOwnProperty.call(item, 'allowedSubjectIds');
     const hasAllowedAuthorIds = Object.prototype.hasOwnProperty.call(item, 'allowedAuthorIds');
+    const hasFinanceClearanceMode = Object.prototype.hasOwnProperty.call(item, 'financeClearanceMode');
+    const hasFinanceMinOutstandingAmount = Object.prototype.hasOwnProperty.call(item, 'financeMinOutstandingAmount');
+    const hasFinanceMinOverdueInvoices = Object.prototype.hasOwnProperty.call(item, 'financeMinOverdueInvoices');
+    const hasFinanceClearanceNotes = Object.prototype.hasOwnProperty.call(item, 'financeClearanceNotes');
 
     // For new/edited payload rows, missing restriction fields should stay permissive by default:
     // - targetClassLevels: [] => all levels
@@ -1212,6 +1303,19 @@ function normalizeProgramPayload(rawPrograms: unknown[]): NormalizedExamProgramP
       item.allowedAuthorIds,
       hasAllowedAuthorIds ? [] : defaults?.allowedAuthorIds || [],
     );
+    const financeClearanceMode = normalizeExamFinanceClearanceMode(
+      item.financeClearanceMode,
+      defaults?.financeClearanceMode || DEFAULT_EXAM_FINANCE_CLEARANCE_MODE,
+    );
+    const financeMinOutstandingAmount = normalizeFinanceThresholdAmount(
+      item.financeMinOutstandingAmount,
+      defaults?.financeMinOutstandingAmount ?? DEFAULT_EXAM_FINANCE_MIN_OUTSTANDING_AMOUNT,
+    );
+    const financeMinOverdueInvoices = normalizeFinanceOverdueInvoiceCount(
+      item.financeMinOverdueInvoices,
+      defaults?.financeMinOverdueInvoices ?? DEFAULT_EXAM_FINANCE_MIN_OVERDUE_INVOICES,
+    );
+    const financeClearanceNotes = normalizeOptionalText(item.financeClearanceNotes, 300);
 
     return {
       id,
@@ -1235,6 +1339,14 @@ function normalizeProgramPayload(rawPrograms: unknown[]): NormalizedExamProgramP
       targetClassLevels,
       allowedSubjectIds,
       allowedAuthorIds,
+      financeClearanceMode,
+      financeMinOutstandingAmount,
+      financeMinOverdueInvoices,
+      financeClearanceNotes,
+      financeClearanceModeProvided: hasFinanceClearanceMode,
+      financeMinOutstandingAmountProvided: hasFinanceMinOutstandingAmount,
+      financeMinOverdueInvoicesProvided: hasFinanceMinOverdueInvoices,
+      financeClearanceNotesProvided: hasFinanceClearanceNotes,
     };
   });
 }
@@ -1470,6 +1582,10 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
         gradeComponentType: true,
         gradeComponentTypeCode: true,
         gradeEntryModeCode: true,
+        financeClearanceMode: true,
+        financeMinOutstandingAmount: true,
+        financeMinOverdueInvoices: true,
+        financeClearanceNotes: true,
       },
     });
 
@@ -1489,6 +1605,28 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
         if (conflict && conflict.id !== matchedRow.id) {
           throw new ApiError(400, `Kode program duplikat: ${item.code}`);
         }
+
+        const resolvedFinanceClearanceMode = item.financeClearanceModeProvided
+          ? item.financeClearanceMode
+          : normalizeExamFinanceClearanceMode(
+              matchedRow.financeClearanceMode,
+              item.financeClearanceMode,
+            );
+        const resolvedFinanceMinOutstandingAmount = item.financeMinOutstandingAmountProvided
+          ? item.financeMinOutstandingAmount
+          : normalizeFinanceThresholdAmount(
+              matchedRow.financeMinOutstandingAmount,
+              item.financeMinOutstandingAmount,
+            );
+        const resolvedFinanceMinOverdueInvoices = item.financeMinOverdueInvoicesProvided
+          ? item.financeMinOverdueInvoices
+          : normalizeFinanceOverdueInvoiceCount(
+              matchedRow.financeMinOverdueInvoices,
+              item.financeMinOverdueInvoices,
+            );
+        const resolvedFinanceClearanceNotes = item.financeClearanceNotesProvided
+          ? item.financeClearanceNotes
+          : matchedRow.financeClearanceNotes ?? item.financeClearanceNotes;
 
         await tx.examProgramConfig.update({
           where: { id: matchedRow.id },
@@ -1513,6 +1651,10 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
             targetClassLevels: item.targetClassLevels,
             allowedSubjectIds: item.allowedSubjectIds,
             allowedAuthorIds: item.allowedAuthorIds,
+            financeClearanceMode: resolvedFinanceClearanceMode,
+            financeMinOutstandingAmount: resolvedFinanceMinOutstandingAmount,
+            financeMinOverdueInvoices: resolvedFinanceMinOverdueInvoices,
+            financeClearanceNotes: resolvedFinanceClearanceNotes,
           },
         });
 
@@ -1530,6 +1672,10 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
           gradeComponentType: item.gradeComponentType,
           gradeComponentTypeCode: item.gradeComponentTypeCode,
           gradeEntryModeCode: item.gradeEntryModeCode,
+          financeClearanceMode: resolvedFinanceClearanceMode,
+          financeMinOutstandingAmount: resolvedFinanceMinOutstandingAmount,
+          financeMinOverdueInvoices: resolvedFinanceMinOverdueInvoices,
+          financeClearanceNotes: resolvedFinanceClearanceNotes,
         };
         existingById.set(matchedRow.id, updatedRef);
         existingByCode.set(item.code, updatedRef);
@@ -1557,6 +1703,10 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
             targetClassLevels: item.targetClassLevels,
             allowedSubjectIds: item.allowedSubjectIds,
             allowedAuthorIds: item.allowedAuthorIds,
+            financeClearanceMode: item.financeClearanceMode,
+            financeMinOutstandingAmount: item.financeMinOutstandingAmount,
+            financeMinOverdueInvoices: item.financeMinOverdueInvoices,
+            financeClearanceNotes: item.financeClearanceNotes,
           },
           select: {
             id: true,
@@ -1566,6 +1716,10 @@ export const upsertExamPrograms = asyncHandler(async (req: Request, res: Respons
             gradeComponentType: true,
             gradeComponentTypeCode: true,
             gradeEntryModeCode: true,
+            financeClearanceMode: true,
+            financeMinOutstandingAmount: true,
+            financeMinOverdueInvoices: true,
+            financeClearanceNotes: true,
           },
         });
 

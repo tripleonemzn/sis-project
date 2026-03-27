@@ -8,6 +8,7 @@ import { teacherAssignmentService } from '../../../services/teacherAssignment.se
 import {
   examService,
   normalizeExamProgramCode,
+  type ExamFinanceClearanceMode,
   type ExamGradeComponent,
   type ExamProgram,
   type ExamProgramBaseType,
@@ -39,6 +40,10 @@ type ProgramFormRow = {
   targetClassLevels: string[];
   allowedSubjectIds: number[];
   allowedAuthorIds: number[];
+  financeClearanceMode: ExamFinanceClearanceMode;
+  financeMinOutstandingAmount: number;
+  financeMinOverdueInvoices: number;
+  financeClearanceNotes: string;
   source: 'default' | 'custom' | 'new';
 };
 
@@ -72,6 +77,10 @@ type AddProgramDraft = {
   targetClassLevels: string[];
   allowedSubjectIds: number[];
   allowedAuthorIds: number[];
+  financeClearanceMode: ExamFinanceClearanceMode;
+  financeMinOutstandingAmount: number;
+  financeMinOverdueInvoices: number;
+  financeClearanceNotes: string;
 };
 
 type AddComponentDraft = {
@@ -125,6 +134,16 @@ const TARGET_CLASS_LEVEL_OPTIONS = [
   { value: 'CALON_SISWA', label: 'Calon Siswa' },
 ];
 
+const FINANCE_CLEARANCE_MODE_OPTIONS: Array<{ value: ExamFinanceClearanceMode; label: string; hint: string }> = [
+  { value: 'BLOCK_ANY_OUTSTANDING', label: 'Blok Semua Tunggakan', hint: 'Ujian diblok jika masih ada outstanding.' },
+  { value: 'BLOCK_OVERDUE_ONLY', label: 'Blok Jika Overdue', hint: 'Hanya tunggakan yang lewat jatuh tempo yang memblokir.' },
+  { value: 'BLOCK_AMOUNT_THRESHOLD', label: 'Blok Di Atas Nominal', hint: 'Blok jika outstanding mencapai ambang nominal.' },
+  { value: 'BLOCK_OVERDUE_OR_AMOUNT', label: 'Blok Overdue / Nominal', hint: 'Blok jika overdue atau nominal outstanding melewati ambang.' },
+  { value: 'WARN_ONLY', label: 'Peringatan Saja', hint: 'Status keuangan ditampilkan, tetapi tidak memblokir ujian.' },
+  { value: 'IGNORE', label: 'Abaikan Finance', hint: 'Program ujian tidak memakai clearance finance.' },
+];
+const DEFAULT_FINANCE_CLEARANCE_MODE: ExamFinanceClearanceMode = 'BLOCK_ANY_OUTSTANDING';
+
 function normalizeAcademicClassLevel(raw: unknown): string {
   const value = String(raw || '')
     .trim()
@@ -164,6 +183,57 @@ function formatTargetScopeLabel(value: string): string {
   if (value === 'XII') return 'Kelas XII';
   if (value === 'CALON_SISWA') return 'Calon Siswa';
   return value;
+}
+
+function normalizeFinanceClearanceMode(raw: unknown): ExamFinanceClearanceMode {
+  const normalized = normalizeExamProgramCode(raw) as ExamFinanceClearanceMode;
+  return FINANCE_CLEARANCE_MODE_OPTIONS.some((option) => option.value === normalized)
+    ? normalized
+    : DEFAULT_FINANCE_CLEARANCE_MODE;
+}
+
+function normalizeFinanceAmount(raw: unknown): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Number(parsed.toFixed(2)));
+}
+
+function normalizeFinanceOverdueCount(raw: unknown): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.max(1, Math.round(parsed));
+}
+
+function shouldShowFinanceThresholdAmount(mode: ExamFinanceClearanceMode) {
+  return mode === 'BLOCK_AMOUNT_THRESHOLD' || mode === 'BLOCK_OVERDUE_OR_AMOUNT';
+}
+
+function shouldShowFinanceOverdueCount(mode: ExamFinanceClearanceMode) {
+  return mode === 'BLOCK_OVERDUE_ONLY' || mode === 'BLOCK_OVERDUE_OR_AMOUNT';
+}
+
+function getFinanceClearanceModeLabel(mode: unknown) {
+  const normalized = normalizeFinanceClearanceMode(mode);
+  return (
+    FINANCE_CLEARANCE_MODE_OPTIONS.find((option) => option.value === normalized)?.label ||
+    DEFAULT_FINANCE_CLEARANCE_MODE
+  );
+}
+
+function getFinanceClearanceSummary(row: {
+  financeClearanceMode: ExamFinanceClearanceMode;
+  financeMinOutstandingAmount: number;
+  financeMinOverdueInvoices: number;
+}) {
+  const label = getFinanceClearanceModeLabel(row.financeClearanceMode);
+  const details: string[] = [];
+  if (shouldShowFinanceThresholdAmount(row.financeClearanceMode)) {
+    details.push(`Ambang Rp ${new Intl.NumberFormat('id-ID').format(Math.round(row.financeMinOutstandingAmount || 0))}`);
+  }
+  if (shouldShowFinanceOverdueCount(row.financeClearanceMode)) {
+    details.push(`Min overdue ${Math.max(1, Math.round(row.financeMinOverdueInvoices || 1))}`);
+  }
+  return details.length > 0 ? `${label} • ${details.join(' • ')}` : label;
 }
 
 function normalizeNumericIds(raw: unknown): number[] {
@@ -445,6 +515,10 @@ function normalizeRows(programs: ExamProgram[]): ProgramFormRow[] {
         targetClassLevels: normalizeClassLevels(program.targetClassLevels),
         allowedSubjectIds: normalizeNumericIds(program.allowedSubjectIds),
         allowedAuthorIds: normalizeNumericIds(program.allowedAuthorIds),
+        financeClearanceMode: normalizeFinanceClearanceMode(program.financeClearanceMode),
+        financeMinOutstandingAmount: normalizeFinanceAmount(program.financeMinOutstandingAmount),
+        financeMinOverdueInvoices: normalizeFinanceOverdueCount(program.financeMinOverdueInvoices),
+        financeClearanceNotes: String(program.financeClearanceNotes || '').trim(),
         source: program.source,
       };
     }),
@@ -489,6 +563,10 @@ function createNewRow(currentRows: ProgramFormRow[], componentRows: GradeCompone
     targetClassLevels: [],
     allowedSubjectIds: [],
     allowedAuthorIds: [],
+    financeClearanceMode: DEFAULT_FINANCE_CLEARANCE_MODE,
+    financeMinOutstandingAmount: 0,
+    financeMinOverdueInvoices: 1,
+    financeClearanceNotes: '',
     source: 'new',
   };
 }
@@ -526,6 +604,10 @@ export default function ExamProgramManagementPage() {
     targetClassLevels: [],
     allowedSubjectIds: [],
     allowedAuthorIds: [],
+    financeClearanceMode: DEFAULT_FINANCE_CLEARANCE_MODE,
+    financeMinOutstandingAmount: 0,
+    financeMinOverdueInvoices: 1,
+    financeClearanceNotes: '',
   });
   const [componentDraft, setComponentDraft] = useState<AddComponentDraft>({
     code: '',
@@ -615,6 +697,10 @@ export default function ExamProgramManagementPage() {
       targetClassLevels: [],
       allowedSubjectIds: [],
       allowedAuthorIds: [],
+      financeClearanceMode: DEFAULT_FINANCE_CLEARANCE_MODE,
+      financeMinOutstandingAmount: 0,
+      financeMinOverdueInvoices: 1,
+      financeClearanceNotes: '',
     });
     setEditingProgramRowId(null);
     setIsAddProgramModalOpen(true);
@@ -642,6 +728,10 @@ export default function ExamProgramManagementPage() {
         targetClassLevels: normalizeClassLevels(target.targetClassLevels),
         allowedSubjectIds: normalizeNumericIds(target.allowedSubjectIds),
         allowedAuthorIds: normalizeNumericIds(target.allowedAuthorIds),
+        financeClearanceMode: normalizeFinanceClearanceMode(target.financeClearanceMode),
+        financeMinOutstandingAmount: normalizeFinanceAmount(target.financeMinOutstandingAmount),
+        financeMinOverdueInvoices: normalizeFinanceOverdueCount(target.financeMinOverdueInvoices),
+        financeClearanceNotes: String(target.financeClearanceNotes || '').trim(),
       });
       setEditingProgramRowId(rowId);
       setIsAddProgramModalOpen(true);
@@ -957,6 +1047,10 @@ export default function ExamProgramManagementPage() {
           targetClassLevels: normalizeClassLevels(row.targetClassLevels),
           allowedSubjectIds: normalizeNumericIds(row.allowedSubjectIds),
           allowedAuthorIds: [],
+          financeClearanceMode: normalizeFinanceClearanceMode(row.financeClearanceMode),
+          financeMinOutstandingAmount: normalizeFinanceAmount(row.financeMinOutstandingAmount),
+          financeMinOverdueInvoices: normalizeFinanceOverdueCount(row.financeMinOverdueInvoices),
+          financeClearanceNotes: String(row.financeClearanceNotes || '').trim(),
         };
       });
 
@@ -1019,6 +1113,10 @@ export default function ExamProgramManagementPage() {
             targetClassLevels: row.targetClassLevels,
             allowedSubjectIds: row.allowedSubjectIds,
             allowedAuthorIds: [],
+            financeClearanceMode: row.financeClearanceMode,
+            financeMinOutstandingAmount: row.financeMinOutstandingAmount,
+            financeMinOverdueInvoices: row.financeMinOverdueInvoices,
+            financeClearanceNotes: row.financeClearanceNotes || null,
           })),
         });
 
@@ -1096,6 +1194,10 @@ export default function ExamProgramManagementPage() {
       targetClassLevels: normalizeClassLevels(programDraft.targetClassLevels),
       allowedSubjectIds: normalizeNumericIds(programDraft.allowedSubjectIds),
       allowedAuthorIds: [],
+      financeClearanceMode: normalizeFinanceClearanceMode(programDraft.financeClearanceMode),
+      financeMinOutstandingAmount: normalizeFinanceAmount(programDraft.financeMinOutstandingAmount),
+      financeMinOverdueInvoices: normalizeFinanceOverdueCount(programDraft.financeMinOverdueInvoices),
+      financeClearanceNotes: String(programDraft.financeClearanceNotes || '').trim(),
     };
 
     const nextRows = editingProgramRowId
@@ -1497,6 +1599,7 @@ export default function ExamProgramManagementPage() {
                       <p className="text-gray-500">
                         Mapel: {row.allowedSubjectIds.length > 0 ? `${row.allowedSubjectIds.length} dipilih` : 'Semua'}
                       </p>
+                      <p className="text-gray-500">Finance: {getFinanceClearanceSummary(row)}</p>
                       <p className="text-gray-500">Pembuat: Sesuai assignment mapel aktif</p>
                     </td>
                     <td className="px-3 py-2 text-gray-700">
@@ -1714,6 +1817,90 @@ export default function ExamProgramManagementPage() {
                     </div>
                   )}
                 </div>
+              </div>
+              <div className="md:col-span-2 xl:col-span-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-medium text-amber-900">Policy Clearance Finance</p>
+                <p className="text-[11px] text-amber-800">
+                  Atur apakah program ujian ini harus membaca status tunggakan siswa sebelum ujian dimulai.
+                </p>
+                <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {FINANCE_CLEARANCE_MODE_OPTIONS.map((option) => {
+                    const active = programDraft.financeClearanceMode === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() =>
+                          setProgramDraft((prev) => ({
+                            ...prev,
+                            financeClearanceMode: option.value,
+                          }))
+                        }
+                        className={`rounded-lg border px-3 py-2 text-left ${
+                          active
+                            ? 'border-amber-300 bg-white shadow-sm'
+                            : 'border-amber-100 bg-white/70 hover:border-amber-200'
+                        }`}
+                      >
+                        <p className="text-xs font-semibold text-gray-900">{option.label}</p>
+                        <p className="mt-1 text-[11px] text-gray-600">{option.hint}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+                {(shouldShowFinanceThresholdAmount(programDraft.financeClearanceMode) ||
+                  shouldShowFinanceOverdueCount(programDraft.financeClearanceMode)) && (
+                  <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {shouldShowFinanceThresholdAmount(programDraft.financeClearanceMode) ? (
+                      <label className="space-y-1">
+                        <span className="text-xs font-medium text-gray-600">Ambang Outstanding</span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={programDraft.financeMinOutstandingAmount}
+                          onChange={(event) =>
+                            setProgramDraft((prev) => ({
+                              ...prev,
+                              financeMinOutstandingAmount: normalizeFinanceAmount(event.target.value),
+                            }))
+                          }
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          placeholder="Contoh: 500000"
+                        />
+                      </label>
+                    ) : null}
+                    {shouldShowFinanceOverdueCount(programDraft.financeClearanceMode) ? (
+                      <label className="space-y-1">
+                        <span className="text-xs font-medium text-gray-600">Minimal Invoice Overdue</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={programDraft.financeMinOverdueInvoices}
+                          onChange={(event) =>
+                            setProgramDraft((prev) => ({
+                              ...prev,
+                              financeMinOverdueInvoices: normalizeFinanceOverdueCount(event.target.value),
+                            }))
+                          }
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          placeholder="Contoh: 1"
+                        />
+                      </label>
+                    ) : null}
+                  </div>
+                )}
+                <label className="mt-3 block space-y-1">
+                  <span className="text-xs font-medium text-gray-600">Catatan Policy (opsional)</span>
+                  <textarea
+                    value={programDraft.financeClearanceNotes}
+                    onChange={(event) =>
+                      setProgramDraft((prev) => ({ ...prev, financeClearanceNotes: event.target.value }))
+                    }
+                    rows={2}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Contoh: Ujian akhir jenjang wajib clear minimal daftar ulang."
+                  />
+                </label>
               </div>
               <div className="md:col-span-2 xl:col-span-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
                 <p className="text-xs font-medium text-emerald-800">Pembuat Soal Mengikuti Assignment</p>

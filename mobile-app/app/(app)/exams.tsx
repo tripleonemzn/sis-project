@@ -462,8 +462,36 @@ export default function StudentExamsScreen() {
                           <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
                             Tagihan aktif: {item.financeClearance.outstandingInvoices} • overdue: {item.financeClearance.overdueInvoices}
                           </Text>
+                          {!item.financeClearance.blocksExam ? (
+                            <Text style={{ color: '#92400e', fontSize: 11, marginTop: 4 }}>
+                              Status finance ini tidak menjadi penyebab blokir pada program ujian ini.
+                            </Text>
+                          ) : null}
                         </View>
                       ) : null}
+                    </View>
+                  ) : null}
+                  {!item.isBlocked && item.financeClearance?.warningOnly && item.financeClearance.hasOutstanding ? (
+                    <View
+                      style={{
+                        marginBottom: 8,
+                        borderWidth: 1,
+                        borderColor: '#fde68a',
+                        backgroundColor: '#fffbeb',
+                        borderRadius: 8,
+                        padding: 8,
+                      }}
+                    >
+                      <Text style={{ color: '#92400e', fontSize: 11, fontWeight: '700' }}>Info finance</Text>
+                      <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
+                        Outstanding: {formatExamCurrency(item.financeClearance.outstandingAmount)}
+                      </Text>
+                      <Text style={{ color: '#92400e', fontSize: 11, marginTop: 2 }}>
+                        Tagihan aktif: {item.financeClearance.outstandingInvoices} • overdue: {item.financeClearance.overdueInvoices}
+                      </Text>
+                      <Text style={{ color: '#92400e', fontSize: 11, marginTop: 4 }}>
+                        Program ini hanya memberi peringatan dan tidak memblokir ujian.
+                      </Text>
                     </View>
                   ) : null}
                   <Pressable

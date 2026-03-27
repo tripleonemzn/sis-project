@@ -6,6 +6,7 @@ export type ExamProgramBaseType = string;
 export type ExamProgramGradeComponentType = string;
 export type ExamProgramGradeEntryMode = string;
 export type ExamProgramReportSlot = string;
+export type ExamFinanceClearanceMode = string;
 
 export interface ExamGradeComponent {
     id?: number;
@@ -45,6 +46,10 @@ export interface ExamProgram {
     targetClassLevels?: string[];
     allowedSubjectIds?: number[];
     allowedAuthorIds?: number[];
+    financeClearanceMode?: ExamFinanceClearanceMode;
+    financeMinOutstandingAmount?: number;
+    financeMinOverdueInvoices?: number;
+    financeClearanceNotes?: string | null;
     source: 'default' | 'custom';
 }
 
@@ -199,6 +204,7 @@ export interface ExamRestriction {
         belowKkm: boolean;
         financeOutstanding: boolean;
         financeOverdue: boolean;
+        financeBlocked: boolean;
     };
     details: {
         belowKkmSubjects: Array<{
@@ -210,6 +216,10 @@ export interface ExamRestriction {
         outstandingAmount: number;
         outstandingInvoices: number;
         overdueInvoices: number;
+        financeClearanceMode: ExamFinanceClearanceMode;
+        financeMinOutstandingAmount: number;
+        financeMinOverdueInvoices: number;
+        financeClearanceNotes?: string | null;
     };
 }
 
@@ -514,6 +524,10 @@ export const examService = {
             targetClassLevels?: string[];
             allowedSubjectIds?: number[];
             allowedAuthorIds?: number[];
+            financeClearanceMode?: ExamFinanceClearanceMode;
+            financeMinOutstandingAmount?: number;
+            financeMinOverdueInvoices?: number;
+            financeClearanceNotes?: string | null;
         }>;
     }) => {
         const response = await api.put('/exams/programs', payload);
