@@ -32,6 +32,7 @@ import {
   type StaffFinanceReminderPolicy,
   type StaffFinanceRefundRecord,
   type StaffFinanceTariffRule,
+  type StaffFinanceWriteOffRequest,
 } from '../../../src/features/staff/staffFinanceApi';
 import { staffApi } from '../../../src/features/staff/staffApi';
 import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
@@ -241,6 +242,22 @@ function getInvoicePreviewStatusMeta(status: string) {
   };
 }
 
+function getWriteOffStatusBadge(status: StaffFinanceWriteOffRequest['status']) {
+  if (status === 'PENDING_HEAD_TU') {
+    return { label: 'Menunggu Kepala TU', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  }
+  if (status === 'PENDING_PRINCIPAL') {
+    return { label: 'Menunggu Kepsek', bg: '#e0f2fe', border: '#bae6fd', text: '#075985' };
+  }
+  if (status === 'APPROVED') {
+    return { label: 'Siap diterapkan', bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  }
+  if (status === 'APPLIED') {
+    return { label: 'Sudah diterapkan', bg: '#ede9fe', border: '#c4b5fd', text: '#5b21b6' };
+  }
+  return { label: 'Ditolak', bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+}
+
 export default function StaffPaymentsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -344,6 +361,10 @@ export default function StaffPaymentsScreen() {
   const [refundMethod, setRefundMethod] = useState<FinancePaymentMethod>('BANK_TRANSFER');
   const [refundReference, setRefundReference] = useState('');
   const [refundNote, setRefundNote] = useState('');
+  const [writeOffTargetInvoice, setWriteOffTargetInvoice] = useState<StaffFinanceInvoice | null>(null);
+  const [writeOffAmount, setWriteOffAmount] = useState('');
+  const [writeOffReason, setWriteOffReason] = useState('');
+  const [writeOffNote, setWriteOffNote] = useState('');
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-staff-finance-active-year'],
@@ -499,6 +520,13 @@ export default function StaffPaymentsScreen() {
       }),
   });
 
+  const writeOffsQuery = useQuery({
+    queryKey: ['mobile-staff-finance-write-offs'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => staffFinanceApi.listWriteOffs({ limit: 100 }),
+    staleTime: 60_000,
+  });
+
   const dashboardQuery = useQuery({
     queryKey: ['mobile-staff-finance-dashboard', activeYearQuery.data?.id || 'none'],
     enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments && Boolean(activeYearQuery.data?.id),
@@ -516,6 +544,8 @@ export default function StaffPaymentsScreen() {
   const creditSummary = creditsQuery.data?.summary;
   const creditBalances = creditsQuery.data?.balances || [];
   const recentRefunds = creditsQuery.data?.recentRefunds || [];
+  const writeOffSummary = writeOffsQuery.data?.summary;
+  const writeOffRequests = writeOffsQuery.data?.requests || [];
   const paymentPreviewAmount = Number(paymentAmount || 0);
   const paymentAllocatedAmount = Math.min(paymentPreviewAmount, Number(selectedInvoice?.balanceAmount || 0));
   const paymentCreditedAmount = Math.max(paymentPreviewAmount - Number(selectedInvoice?.balanceAmount || 0), 0);
@@ -527,7 +557,8 @@ export default function StaffPaymentsScreen() {
   const selectedInvoiceCreditAppliedAmount = (selectedInvoice?.payments || [])
     .filter((payment) => payment.source === 'CREDIT_BALANCE')
     .reduce((sum, payment) => sum + Number(payment.allocatedAmount || payment.amount || 0), 0);
-  const selectedInvoiceCanEditAmounts = Number(selectedInvoice?.paidAmount || 0) <= 0;
+  const selectedInvoiceCanEditAmounts =
+    Number(selectedInvoice?.paidAmount || 0) + Number(selectedInvoice?.writtenOffAmount || 0) <= 0;
 
   useEffect(() => {
     if (invoiceAcademicYearId == null && activeYearQuery.data?.id) {
@@ -663,12 +694,27 @@ export default function StaffPaymentsScreen() {
     setRefundNote('');
   };
 
+  const resetWriteOffForm = () => {
+    setWriteOffTargetInvoice(null);
+    setWriteOffAmount('');
+    setWriteOffReason('');
+    setWriteOffNote('');
+  };
+
+  const openWriteOffModal = (invoice: StaffFinanceInvoice) => {
+    setWriteOffTargetInvoice(invoice);
+    setWriteOffAmount(String(Number(invoice.balanceAmount || 0)));
+    setWriteOffReason('');
+    setWriteOffNote('');
+  };
+
   const invalidateFinanceQueries = () => {
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-components'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-tariffs'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-adjustments'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-invoices'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-credits'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-write-offs'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-dashboard'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-reminder-policy'] });
   };
@@ -989,6 +1035,39 @@ export default function StaffPaymentsScreen() {
     onError: (error: unknown) => notifyApiError(error, 'Gagal mencatat refund saldo kredit.'),
   });
 
+  const createWriteOffMutation = useMutation({
+    mutationFn: () => {
+      if (!writeOffTargetInvoice) throw new Error('Tagihan belum dipilih');
+      return staffFinanceApi.createWriteOffRequest(writeOffTargetInvoice.id, {
+        amount: Number(writeOffAmount),
+        reason: writeOffReason,
+        note: writeOffNote || undefined,
+      });
+    },
+    onSuccess: (request) => {
+      notifySuccess('Pengajuan write-off dikirim ke Kepala TU.');
+      if (selectedInvoice?.id === request.invoiceId && selectedInvoice) {
+        setSelectedInvoice({
+          ...selectedInvoice,
+          writeOffRequests: [request, ...(selectedInvoice.writeOffRequests || [])],
+        });
+      }
+      resetWriteOffForm();
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal membuat pengajuan write-off.'),
+  });
+
+  const applyWriteOffMutation = useMutation({
+    mutationFn: (request: StaffFinanceWriteOffRequest) => staffFinanceApi.applyWriteOff(request.id),
+    onSuccess: (result) => {
+      notifySuccess('Write-off berhasil diterapkan.');
+      setSelectedInvoice(result.invoice);
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal menerapkan write-off.'),
+  });
+
   const handleSaveComponent = () => {
     if (!componentCode.trim() || !componentName.trim()) {
       notifyApiError(null, 'Kode dan nama komponen wajib diisi.');
@@ -1280,6 +1359,26 @@ export default function StaffPaymentsScreen() {
       return;
     }
     refundMutation.mutate();
+  };
+
+  const handleSaveWriteOff = () => {
+    if (!writeOffTargetInvoice) {
+      notifyApiError(null, 'Tagihan belum dipilih.');
+      return;
+    }
+    if (Number(writeOffAmount) <= 0) {
+      notifyApiError(null, 'Nominal write-off harus lebih dari nol.');
+      return;
+    }
+    if (Number(writeOffAmount) > Number(writeOffTargetInvoice.balanceAmount || 0)) {
+      notifyApiError(null, 'Nominal write-off melebihi outstanding invoice.');
+      return;
+    }
+    if (writeOffReason.trim().length < 5) {
+      notifyApiError(null, 'Alasan write-off minimal 5 karakter.');
+      return;
+    }
+    createWriteOffMutation.mutate();
   };
 
   useEffect(() => {
@@ -3461,6 +3560,11 @@ export default function StaffPaymentsScreen() {
                     )}
                   </Text>
                 ) : null}
+                {Number(invoice.writtenOffAmount || 0) > 0 ? (
+                  <Text style={{ color: '#6d28d9', fontSize: 12, marginBottom: 2 }}>
+                    Write-off diterapkan {formatCurrency(invoice.writtenOffAmount)}
+                  </Text>
+                ) : null}
                 <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>
                   Sisa: {formatCurrency(invoice.balanceAmount)}
                 </Text>
@@ -3484,6 +3588,22 @@ export default function StaffPaymentsScreen() {
                     </Pressable>
                   ) : null}
                   <Pressable
+                    onPress={() => openWriteOffModal(invoice)}
+                    disabled={invoice.status === 'PAID' || invoice.status === 'CANCELLED' || createWriteOffMutation.isPending}
+                    style={{
+                      flex: 1,
+                      backgroundColor:
+                        invoice.status === 'PAID' || invoice.status === 'CANCELLED' || createWriteOffMutation.isPending
+                          ? '#ddd6fe'
+                          : '#7c3aed',
+                      borderRadius: 8,
+                      paddingVertical: 9,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700' }}>Ajukan Write-Off</Text>
+                  </Pressable>
+                  <Pressable
                     onPress={() => startPaying(invoice)}
                     disabled={invoice.status === 'PAID' || invoice.status === 'CANCELLED'}
                     style={{
@@ -3501,6 +3621,76 @@ export default function StaffPaymentsScreen() {
               </View>
             );
           })}
+
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 10,
+              padding: 12,
+              marginBottom: 8,
+              backgroundColor: '#fff',
+            }}
+          >
+            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Write-Off Piutang</Text>
+            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+              Pending Kepala TU {writeOffSummary?.pendingHeadTuCount || 0} • pending Kepala Sekolah {writeOffSummary?.pendingPrincipalCount || 0} • siap apply {writeOffSummary?.approvedCount || 0}
+            </Text>
+            {writeOffsQuery.isLoading ? (
+              <Text style={{ color: '#64748b' }}>Memuat pengajuan write-off...</Text>
+            ) : writeOffRequests.length === 0 ? (
+              <Text style={{ color: '#64748b' }}>Belum ada pengajuan write-off.</Text>
+            ) : (
+              writeOffRequests.slice(0, 8).map((request) => {
+                const badge = getWriteOffStatusBadge(request.status);
+                return (
+                  <View key={request.id} style={{ borderTopWidth: 1, borderTopColor: '#eef2ff', paddingVertical: 8 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#0f172a', fontWeight: '700' }}>{request.requestNo}</Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                          {request.student?.name || '-'} • {request.invoice?.invoiceNo || '-'}
+                        </Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{request.reason}</Text>
+                        <Text style={{ color: '#5b21b6', fontSize: 11, marginTop: 2 }}>
+                          Request {formatCurrency(request.requestedAmount)} • approved {formatCurrency(request.approvedAmount || 0)} • applied {formatCurrency(request.appliedAmount || 0)}
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: badge.border,
+                          backgroundColor: badge.bg,
+                          borderRadius: 999,
+                          paddingHorizontal: 8,
+                          paddingVertical: 2,
+                        }}
+                      >
+                        <Text style={{ color: badge.text, fontWeight: '700', fontSize: 11 }}>{badge.label}</Text>
+                      </View>
+                    </View>
+                    {request.status === 'APPROVED' ? (
+                      <Pressable
+                        onPress={() => applyWriteOffMutation.mutate(request)}
+                        disabled={applyWriteOffMutation.isPending}
+                        style={{
+                          marginTop: 8,
+                          backgroundColor: applyWriteOffMutation.isPending ? '#a7f3d0' : '#059669',
+                          borderRadius: 8,
+                          paddingVertical: 9,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#fff', fontWeight: '700' }}>
+                          {applyWriteOffMutation.isPending ? 'Menerapkan...' : 'Terapkan Write-Off'}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                );
+              })
+            )}
+          </View>
 
           {invoices.length === 0 ? (
             <View style={{ borderWidth: 1, borderColor: '#e2e8f0', borderStyle: 'dashed', borderRadius: 10, padding: 14 }}>
@@ -4243,6 +4433,24 @@ export default function StaffPaymentsScreen() {
             </View>
 
             <ScrollView style={{ maxHeight: 520 }} contentContainerStyle={{ padding: 14 }}>
+              {Number(selectedInvoice?.writtenOffAmount || 0) > 0 ? (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#ddd6fe',
+                    backgroundColor: '#f5f3ff',
+                    borderRadius: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={{ color: '#5b21b6', fontSize: 12 }}>
+                    Write-off yang sudah diterapkan:{' '}
+                    <Text style={{ fontWeight: '700' }}>{formatCurrency(selectedInvoice?.writtenOffAmount || 0)}</Text>
+                  </Text>
+                </View>
+              ) : null}
               {selectedInvoiceCreditAppliedAmount > 0 ? (
                 <View
                   style={{
@@ -4260,6 +4468,98 @@ export default function StaffPaymentsScreen() {
                   </Text>
                 </View>
               ) : null}
+
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#ddd6fe',
+                  backgroundColor: '#f5f3ff',
+                  borderRadius: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  marginBottom: 8,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#5b21b6', fontSize: 12, fontWeight: '700' }}>Workflow write-off</Text>
+                    <Text style={{ color: '#6d28d9', fontSize: 11, marginTop: 2 }}>
+                      {(selectedInvoice?.writeOffRequests || []).length} pengajuan tercatat untuk invoice ini.
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => selectedInvoice && openWriteOffModal(selectedInvoice)}
+                    disabled={createWriteOffMutation.isPending || selectedInvoice?.status === 'PAID' || selectedInvoice?.status === 'CANCELLED'}
+                    style={{
+                      backgroundColor:
+                        createWriteOffMutation.isPending || selectedInvoice?.status === 'PAID' || selectedInvoice?.status === 'CANCELLED'
+                          ? '#ddd6fe'
+                          : '#7c3aed',
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      paddingVertical: 9,
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Ajukan</Text>
+                  </Pressable>
+                </View>
+                {(selectedInvoice?.writeOffRequests || []).slice(0, 3).map((request) => {
+                  const badge = getWriteOffStatusBadge(request.status);
+                  return (
+                    <View
+                      key={`selected-writeoff-${request.id}`}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#c4b5fd',
+                        backgroundColor: '#fff',
+                        borderRadius: 8,
+                        paddingHorizontal: 8,
+                        paddingVertical: 8,
+                        marginTop: 8,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#5b21b6', fontSize: 12, fontWeight: '700' }}>{request.requestNo}</Text>
+                          <Text style={{ color: '#6d28d9', fontSize: 11, marginTop: 2 }}>{request.reason}</Text>
+                          <Text style={{ color: '#6d28d9', fontSize: 11, marginTop: 2 }}>
+                            Request {formatCurrency(request.requestedAmount)} • approved {formatCurrency(request.approvedAmount || 0)} • applied {formatCurrency(request.appliedAmount || 0)}
+                          </Text>
+                        </View>
+                        <View
+                          style={{
+                            borderWidth: 1,
+                            borderColor: badge.border,
+                            backgroundColor: badge.bg,
+                            borderRadius: 999,
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                          }}
+                        >
+                          <Text style={{ color: badge.text, fontWeight: '700', fontSize: 11 }}>{badge.label}</Text>
+                        </View>
+                      </View>
+                      {request.status === 'APPROVED' ? (
+                        <Pressable
+                          onPress={() => applyWriteOffMutation.mutate(request)}
+                          disabled={applyWriteOffMutation.isPending}
+                          style={{
+                            marginTop: 8,
+                            backgroundColor: applyWriteOffMutation.isPending ? '#c4b5fd' : '#7c3aed',
+                            borderRadius: 8,
+                            paddingVertical: 9,
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Text style={{ color: '#fff', fontWeight: '700' }}>
+                            {applyWriteOffMutation.isPending ? 'Menerapkan...' : 'Terapkan Write-Off'}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </View>
 
               {selectedInvoice?.lateFeeSummary?.configured ? (
                 <View
@@ -4644,6 +4944,87 @@ export default function StaffPaymentsScreen() {
                 >
                   <Text style={{ color: '#fff', fontWeight: '700' }}>
                     {refundMutation.isPending ? 'Memproses...' : 'Simpan Refund'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={Boolean(writeOffTargetInvoice)} animationType="fade" transparent onRequestClose={resetWriteOffForm}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#dbe7fb' }}>
+            <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 16 }}>Ajukan Write-Off</Text>
+              <Text style={{ color: '#64748b', marginTop: 2 }}>
+                {writeOffTargetInvoice?.invoiceNo || '-'} • Outstanding {formatCurrency(writeOffTargetInvoice?.balanceAmount || 0)}
+              </Text>
+            </View>
+
+            <View style={{ padding: 14 }}>
+              <TextInput
+                keyboardType="numeric"
+                value={writeOffAmount}
+                onChangeText={setWriteOffAmount}
+                placeholder="Nominal write-off"
+                placeholderTextColor="#94a3b8"
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+              />
+              <TextInput
+                value={writeOffReason}
+                onChangeText={setWriteOffReason}
+                placeholder="Alasan pengajuan write-off"
+                placeholderTextColor="#94a3b8"
+                multiline
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', minHeight: 90, textAlignVertical: 'top', backgroundColor: '#fff' }}
+              />
+              <TextInput
+                value={writeOffNote}
+                onChangeText={setWriteOffNote}
+                placeholder="Catatan internal (opsional)"
+                placeholderTextColor="#94a3b8"
+                multiline
+                style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', minHeight: 72, textAlignVertical: 'top', backgroundColor: '#fff' }}
+              />
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#ddd6fe',
+                  backgroundColor: '#f5f3ff',
+                  borderRadius: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                }}
+              >
+                <Text style={{ color: '#5b21b6', fontSize: 12 }}>
+                  Approval akan berjalan berurutan: Kepala TU, lalu Kepala Sekolah, baru setelah itu bendahara bisa menerapkan write-off ke invoice.
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', padding: 12, flexDirection: 'row' }}>
+              <View style={{ flex: 1, paddingRight: 6 }}>
+                <Pressable
+                  onPress={resetWriteOffForm}
+                  style={{ borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, paddingVertical: 10, alignItems: 'center', backgroundColor: '#fff' }}
+                >
+                  <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+                </Pressable>
+              </View>
+              <View style={{ flex: 1, paddingLeft: 6 }}>
+                <Pressable
+                  disabled={createWriteOffMutation.isPending || Number(writeOffAmount) <= 0}
+                  onPress={handleSaveWriteOff}
+                  style={{
+                    backgroundColor: createWriteOffMutation.isPending || Number(writeOffAmount) <= 0 ? '#c4b5fd' : '#7c3aed',
+                    borderRadius: 10,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>
+                    {createWriteOffMutation.isPending ? 'Mengirim...' : 'Kirim Pengajuan'}
                   </Text>
                 </Pressable>
               </View>

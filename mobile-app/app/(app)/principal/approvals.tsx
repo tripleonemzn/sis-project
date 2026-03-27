@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../../src/components/QueryStateView';
@@ -18,6 +18,10 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { principalApi } from '../../../src/features/principal/principalApi';
 import { PrincipalBudgetRequest, PrincipalBudgetRequestStatus } from '../../../src/features/principal/types';
 import { usePrincipalApprovalsQuery } from '../../../src/features/principal/usePrincipalApprovalsQuery';
+import {
+  staffFinanceApi,
+  type StaffFinanceWriteOffRequest,
+} from '../../../src/features/staff/staffFinanceApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
@@ -37,6 +41,10 @@ function statusColor(status: PrincipalBudgetRequestStatus) {
   return '#b45309';
 }
 
+function formatCurrency(value: number) {
+  return `Rp ${Math.round(value || 0).toLocaleString('id-ID')}`;
+}
+
 export default function PrincipalApprovalsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -46,6 +54,12 @@ export default function PrincipalApprovalsScreen() {
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('ALL');
   const [search, setSearch] = useState('');
+  const writeOffsQuery = useQuery({
+    queryKey: ['mobile-principal-write-offs', user?.id],
+    enabled: isAuthenticated && user?.role === 'PRINCIPAL',
+    queryFn: () => staffFinanceApi.listWriteOffs({ pendingFor: 'PRINCIPAL', limit: 20 }),
+    staleTime: 60 * 1000,
+  });
 
   const decisionMutation = useMutation({
     mutationFn: (payload: { id: number; status: 'APPROVED' | 'REJECTED' }) =>
@@ -58,6 +72,20 @@ export default function PrincipalApprovalsScreen() {
     },
     onError: (error: unknown) => {
       notifyApiError(error, 'Gagal memproses pengajuan.');
+    },
+  });
+
+  const principalWriteOffMutation = useMutation({
+    mutationFn: (payload: { requestId: number; approved: boolean }) =>
+      staffFinanceApi.decideWriteOffAsPrincipal(payload.requestId, {
+        approved: payload.approved,
+      }),
+    onSuccess: (_, payload) => {
+      void queryClient.invalidateQueries({ queryKey: ['mobile-principal-write-offs', user?.id] });
+      notifySuccess(payload.approved ? 'Write-off disetujui.' : 'Write-off ditolak.');
+    },
+    onError: (error: unknown) => {
+      notifyApiError(error, 'Gagal memproses approval write-off.');
     },
   });
 
@@ -74,6 +102,14 @@ export default function PrincipalApprovalsScreen() {
 
   const totalAmount = filteredApprovals.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
   const pendingCount = approvals.filter((item) => item.status === 'PENDING').length;
+  const pendingWriteOffs = useMemo(
+    () => writeOffsQuery.data?.requests || [],
+    [writeOffsQuery.data],
+  );
+  const pendingWriteOffAmount = useMemo(
+    () => pendingWriteOffs.reduce((sum, item) => sum + Number(item.approvedAmount || item.requestedAmount || 0), 0),
+    [pendingWriteOffs],
+  );
 
   if (isLoading) return <AppLoadingScreen message="Memuat persetujuan..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -111,14 +147,36 @@ export default function PrincipalApprovalsScreen() {
     ]);
   };
 
+  const handleWriteOffDecision = (item: StaffFinanceWriteOffRequest, approved: boolean) => {
+    const label = approved ? 'menyetujui' : 'menolak';
+    Alert.alert(
+      approved ? 'Setujui Write-Off' : 'Tolak Write-Off',
+      `Yakin ingin ${label} pengajuan "${item.requestNo}" untuk ${item.student?.name || 'siswa ini'}?`,
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: approved ? 'Ya, Setujui' : 'Ya, Tolak',
+          style: approved ? 'default' : 'destructive',
+          onPress: () => principalWriteOffMutation.mutate({ requestId: item.id, approved }),
+        },
+      ],
+    );
+  };
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: '#f8fafc' }}
       contentContainerStyle={pagePadding}
       refreshControl={
         <RefreshControl
-          refreshing={approvalsQuery.isFetching && !approvalsQuery.isLoading}
-          onRefresh={() => approvalsQuery.refetch()}
+          refreshing={
+            (approvalsQuery.isFetching && !approvalsQuery.isLoading) ||
+            (writeOffsQuery.isFetching && !writeOffsQuery.isLoading)
+          }
+          onRefresh={() => {
+            void approvalsQuery.refetch();
+            void writeOffsQuery.refetch();
+          }}
         />
       }
     >
@@ -309,6 +367,129 @@ export default function PrincipalApprovalsScreen() {
           </View>
         )
       ) : null}
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#d6e2f7',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Approval Write-Off Piutang</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+              Review pengajuan penghapusan piutang yang sudah lolos review Kepala TU.
+            </Text>
+          </View>
+          <View
+            style={{
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: '#bfdbfe',
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              backgroundColor: '#eff6ff',
+            }}
+          >
+            <Text style={{ color: '#1d4ed8', fontSize: 11, fontWeight: '700' }}>{pendingWriteOffs.length} menunggu</Text>
+          </View>
+        </View>
+
+        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+          Total nominal rekomendasi:{' '}
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatCurrency(pendingWriteOffAmount)}</Text>
+        </Text>
+
+        {writeOffsQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil approval write-off..." />
+        ) : writeOffsQuery.isError ? (
+          <QueryStateView type="error" message="Gagal memuat approval write-off." onRetry={() => writeOffsQuery.refetch()} />
+        ) : pendingWriteOffs.length > 0 ? (
+          <View>
+            {pendingWriteOffs.map((item) => (
+              <View
+                key={item.id}
+                style={{
+                  borderTopWidth: 1,
+                  borderTopColor: '#eef3ff',
+                  paddingVertical: 10,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.requestNo}</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  {item.student?.name || '-'} • {item.student?.studentClass?.name || '-'}
+                </Text>
+                <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                  Invoice {item.invoice?.invoiceNo || '-'} • outstanding{' '}
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                    {formatCurrency(item.invoice?.balanceAmount || 0)}
+                  </Text>
+                </Text>
+                <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                  Diminta {formatCurrency(item.requestedAmount)} • rekomendasi{' '}
+                  <Text style={{ color: '#047857', fontWeight: '700' }}>
+                    {formatCurrency(Number(item.approvedAmount || item.requestedAmount || 0))}
+                  </Text>
+                </Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{item.reason}</Text>
+
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                  <Pressable
+                    disabled={principalWriteOffMutation.isPending}
+                    onPress={() => handleWriteOffDecision(item, false)}
+                    style={{
+                      flex: 1,
+                      backgroundColor: '#fff1f2',
+                      borderWidth: 1,
+                      borderColor: '#fecdd3',
+                      borderRadius: 9,
+                      alignItems: 'center',
+                      paddingVertical: 10,
+                    }}
+                  >
+                    <Text style={{ color: '#be123c', fontWeight: '700' }}>Tolak</Text>
+                  </Pressable>
+                  <Pressable
+                    disabled={principalWriteOffMutation.isPending}
+                    onPress={() => handleWriteOffDecision(item, true)}
+                    style={{
+                      flex: 1,
+                      backgroundColor: '#ecfdf5',
+                      borderWidth: 1,
+                      borderColor: '#a7f3d0',
+                      borderRadius: 9,
+                      alignItems: 'center',
+                      paddingVertical: 10,
+                    }}
+                  >
+                    <Text style={{ color: '#047857', fontWeight: '700' }}>Setujui</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <View
+            style={{
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderStyle: 'dashed',
+              backgroundColor: '#fff',
+              padding: 14,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>Tidak ada data</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              Belum ada pengajuan write-off yang menunggu persetujuan Kepala Sekolah.
+            </Text>
+          </View>
+        )}
+      </View>
 
       <Pressable
         onPress={() => router.replace('/home')}

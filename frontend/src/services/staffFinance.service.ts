@@ -7,6 +7,13 @@ export type FinanceLateFeeMode = 'FIXED' | 'DAILY';
 export type FinancePaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER';
 export type FinancePaymentSource = 'DIRECT' | 'CREDIT_BALANCE';
 export type FinanceCreditTransactionKind = 'OVERPAYMENT' | 'APPLIED_TO_INVOICE' | 'REFUND';
+export type FinanceWriteOffStatus =
+  | 'PENDING_HEAD_TU'
+  | 'PENDING_PRINCIPAL'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'APPLIED';
+export type FinanceWriteOffPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'FINANCE_APPLY' | 'NONE';
 export type SemesterCode = 'ODD' | 'EVEN';
 export type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE' | 'LATE_FEE' | 'ESCALATION';
 
@@ -166,6 +173,7 @@ export interface FinanceInvoice {
   dueDate?: string | null;
   totalAmount: number;
   paidAmount: number;
+  writtenOffAmount: number;
   balanceAmount: number;
   status: FinanceInvoiceStatus;
   student: {
@@ -248,6 +256,98 @@ export interface FinanceInvoice {
     }>;
     asOfDate: string;
   };
+  writeOffRequests: FinanceWriteOffRequest[];
+}
+
+export interface FinanceWriteOffRequest {
+  id: number;
+  requestNo: string;
+  invoiceId: number;
+  studentId: number;
+  requestedAmount: number;
+  approvedAmount?: number | null;
+  appliedAmount?: number | null;
+  reason: string;
+  requestedNote?: string | null;
+  status: FinanceWriteOffStatus;
+  pendingActor: FinanceWriteOffPendingActor;
+  remainingEligibleAmount: number;
+  createdAt: string;
+  updatedAt: string;
+  headTuDecision: {
+    approved?: boolean | null;
+    decidedAt?: string | null;
+    note?: string | null;
+    by?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+  };
+  principalDecision: {
+    approved?: boolean | null;
+    decidedAt?: string | null;
+    note?: string | null;
+    by?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+  };
+  application: {
+    appliedAt?: string | null;
+    note?: string | null;
+    by?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+  };
+  requestedBy?: {
+    id: number;
+    name: string;
+    role?: string | null;
+  } | null;
+  student?: {
+    id: number;
+    name: string;
+    username: string;
+    nis?: string | null;
+    nisn?: string | null;
+    studentClass?: {
+      id: number;
+      name: string;
+      level: string;
+    } | null;
+  } | null;
+  invoice?: {
+    id: number;
+    invoiceNo: string;
+    periodKey: string;
+    semester: SemesterCode;
+    title?: string | null;
+    dueDate?: string | null;
+    totalAmount: number;
+    paidAmount: number;
+    writtenOffAmount: number;
+    balanceAmount: number;
+    status: FinanceInvoiceStatus;
+  } | null;
+}
+
+export interface FinanceWriteOffListResult {
+  summary: {
+    totalRequests: number;
+    pendingHeadTuCount: number;
+    pendingPrincipalCount: number;
+    approvedCount: number;
+    rejectedCount: number;
+    appliedCount: number;
+    totalRequestedAmount: number;
+    totalApprovedAmount: number;
+    totalAppliedAmount: number;
+  };
+  requests: FinanceWriteOffRequest[];
 }
 
 export interface FinanceCreditTransaction {
@@ -960,6 +1060,79 @@ export const staffFinanceService = {
         };
       }>
     >(`/payments/credits/${studentId}/refunds`, payload);
+    return response.data.data;
+  },
+
+  async listWriteOffs(params?: {
+    invoiceId?: number;
+    studentId?: number;
+    status?: FinanceWriteOffStatus;
+    pendingFor?: 'HEAD_TU' | 'PRINCIPAL' | 'FINANCE_APPLY';
+    search?: string;
+    limit?: number;
+  }) {
+    const response = await api.get<ApiResponse<FinanceWriteOffListResult>>('/payments/write-offs', {
+      params,
+    });
+    return response.data.data;
+  },
+
+  async createWriteOffRequest(
+    invoiceId: number,
+    payload: {
+      amount: number;
+      reason: string;
+      note?: string;
+    },
+  ) {
+    const response = await api.post<ApiResponse<{ request: FinanceWriteOffRequest }>>(
+      `/payments/invoices/${invoiceId}/write-offs`,
+      payload,
+    );
+    return response.data.data.request;
+  },
+
+  async decideWriteOffAsHeadTu(
+    requestId: number,
+    payload: {
+      approved: boolean;
+      approvedAmount?: number;
+      note?: string;
+    },
+  ) {
+    const response = await api.post<ApiResponse<{ request: FinanceWriteOffRequest }>>(
+      `/payments/write-offs/${requestId}/head-tu-decision`,
+      payload,
+    );
+    return response.data.data.request;
+  },
+
+  async decideWriteOffAsPrincipal(
+    requestId: number,
+    payload: {
+      approved: boolean;
+      approvedAmount?: number;
+      note?: string;
+    },
+  ) {
+    const response = await api.post<ApiResponse<{ request: FinanceWriteOffRequest }>>(
+      `/payments/write-offs/${requestId}/principal-decision`,
+      payload,
+    );
+    return response.data.data.request;
+  },
+
+  async applyWriteOff(
+    requestId: number,
+    payload?: {
+      amount?: number;
+      note?: string;
+    },
+  ) {
+    const response = await api.post<ApiResponse<{ request: FinanceWriteOffRequest; invoice: FinanceInvoice }>>(
+      `/payments/write-offs/${requestId}/apply`,
+      payload || {},
+    );
     return response.data.data;
   },
 };

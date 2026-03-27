@@ -22,7 +22,11 @@ import { officeService, type OfficeLetter, type OfficeLetterType } from '../../s
 import { uploadService } from '../../services/upload.service';
 import { userService } from '../../services/user.service';
 import { permissionService, type StudentPermission } from '../../services/permission.service';
-import { staffFinanceService, type FinanceReportSnapshot } from '../../services/staffFinance.service';
+import {
+  staffFinanceService,
+  type FinanceReportSnapshot,
+  type FinanceWriteOffRequest,
+} from '../../services/staffFinance.service';
 import api from '../../services/api';
 import type { User } from '../../types/auth';
 import {
@@ -240,6 +244,30 @@ const HeadTuWorkspace = () => {
     refetchOnWindowFocus: false,
   });
 
+  const financeWriteOffsQuery = useQuery({
+    queryKey: ['head-tu-finance-write-offs'],
+    queryFn: () => staffFinanceService.listWriteOffs({ pendingFor: 'HEAD_TU', limit: 50 }),
+    enabled: isFinancePage || isDashboardPage,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const headTuWriteOffDecisionMutation = useMutation({
+    mutationFn: (payload: { requestId: number; approved: boolean }) =>
+      staffFinanceService.decideWriteOffAsHeadTu(payload.requestId, {
+        approved: payload.approved,
+      }),
+    onSuccess: (_, payload) => {
+      toast.success(payload.approved ? 'Write-off diteruskan ke Kepala Sekolah' : 'Write-off ditolak');
+      queryClient.invalidateQueries({ queryKey: ['head-tu-finance-write-offs'] });
+      queryClient.invalidateQueries({ queryKey: ['head-tu-finance-snapshot'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal memproses approval write-off');
+    },
+  });
+
   const officeSummaryQuery = useQuery({
     queryKey: ['head-tu-office-summary', activeYear?.id || 'none'],
     queryFn: () =>
@@ -327,6 +355,7 @@ const HeadTuWorkspace = () => {
     [permissionsQuery.data?.data?.permissions],
   );
   const financeSnapshot = financeSnapshotQuery.data as FinanceReportSnapshot | undefined;
+  const pendingHeadTuWriteOffs = financeWriteOffsQuery.data?.requests || [];
   const officeSummary = officeSummaryQuery.data;
   const examCardDetails = examCardsQuery.data || [];
   const officeLetters = officeLettersQuery.data?.letters || [];
@@ -1800,6 +1829,80 @@ const HeadTuWorkspace = () => {
                       <td className="px-6 py-4 text-sm text-gray-600 text-right">{row.invoiceCount.toLocaleString('id-ID')}</td>
                       <td className="px-6 py-4 text-sm text-gray-600 text-right">Rp {row.totalOutstanding.toLocaleString('id-ID')}</td>
                       <td className="px-6 py-4 text-sm text-gray-600 text-right">{row.overdueCount.toLocaleString('id-ID')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Approval Write-Off</h3>
+              <p className="mt-1 text-xs text-gray-500">
+                Review pengajuan penghapusan piutang sebelum diteruskan ke Kepala Sekolah.
+              </p>
+            </div>
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+              {pendingHeadTuWriteOffs.length} menunggu
+            </span>
+          </div>
+          {financeWriteOffsQuery.isLoading ? (
+            <div className="py-10 flex items-center justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+            </div>
+          ) : pendingHeadTuWriteOffs.length === 0 ? (
+            <div className="py-10 text-center text-sm text-gray-500">Tidak ada approval write-off yang menunggu.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pengajuan</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Nominal</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {pendingHeadTuWriteOffs.map((request: FinanceWriteOffRequest) => (
+                    <tr key={request.id}>
+                      <td className="px-6 py-4 text-sm text-gray-700">
+                        <div className="font-semibold text-gray-900">{request.requestNo}</div>
+                        <div className="text-xs text-gray-500 mt-1">{request.student?.name || '-'} • {request.student?.studentClass?.name || '-'}</div>
+                        <div className="text-xs text-gray-500 mt-1">{request.reason}</div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-700">
+                        <div className="font-medium text-gray-900">{request.invoice?.invoiceNo || '-'}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Outstanding {request.invoice ? `Rp ${Math.round(request.invoice.balanceAmount).toLocaleString('id-ID')}` : '-'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-right text-gray-700">
+                        <div>Request Rp {Math.round(request.requestedAmount).toLocaleString('id-ID')}</div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-right">
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => headTuWriteOffDecisionMutation.mutate({ requestId: request.id, approved: false })}
+                            disabled={headTuWriteOffDecisionMutation.isPending}
+                            className="inline-flex items-center rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                          >
+                            Tolak
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => headTuWriteOffDecisionMutation.mutate({ requestId: request.id, approved: true })}
+                            disabled={headTuWriteOffDecisionMutation.isPending}
+                            className="inline-flex items-center rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                          >
+                            Teruskan
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

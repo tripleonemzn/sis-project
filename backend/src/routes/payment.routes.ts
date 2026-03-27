@@ -3,7 +3,10 @@ import {
   createFinanceAdjustmentRule,
   createFinanceComponent,
   listFinanceClassLevels,
+  createFinanceWriteOffRequest,
   dispatchFinanceDueRemindersHandler,
+  decideFinanceWriteOffAsHeadTu,
+  decideFinanceWriteOffAsPrincipal,
   exportFinanceReports,
   applyFinanceInvoiceLateFees,
   createFinancePayment,
@@ -16,10 +19,12 @@ import {
   listFinanceCredits,
   listFinanceInvoices,
   listFinanceReports,
+  listFinanceWriteOffs,
   listStudentPayments,
   listFinanceTariffRules,
   listParentPayments,
   previewFinanceInvoices,
+  applyFinanceWriteOff,
   updateFinanceInvoiceInstallments,
   updateFinanceAdjustmentRule,
   updateFinanceComponent,
@@ -52,8 +57,13 @@ router.get('/invoices', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL'
 router.post('/invoices/:id/late-fees/apply', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), applyFinanceInvoiceLateFees);
 router.patch('/invoices/:id/installments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceInvoiceInstallments);
 router.post('/invoices/:id/payments', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinancePayment);
+router.post('/invoices/:id/write-offs', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceWriteOffRequest);
 router.get('/credits', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceCredits);
 router.post('/credits/:studentId/refunds', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceRefund);
+router.get('/write-offs', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceWriteOffs);
+router.post('/write-offs/:id/head-tu-decision', roleMiddleware(['STAFF']), decideFinanceWriteOffAsHeadTu);
+router.post('/write-offs/:id/principal-decision', roleMiddleware(['PRINCIPAL']), decideFinanceWriteOffAsPrincipal);
+router.post('/write-offs/:id/apply', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), applyFinanceWriteOff);
 router.post('/reminders/dispatch', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), dispatchFinanceDueRemindersHandler);
 router.put('/reminder-policy', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceReminderPolicy);
 router.get('/reports', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceReports);

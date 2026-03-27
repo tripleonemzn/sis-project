@@ -18,6 +18,7 @@ import {
   type FinancePaymentMethod,
   type FinanceReminderMode,
   type FinanceReminderPolicy,
+  type FinanceWriteOffRequest,
   type FinanceTariffRule,
   type FinanceReportSnapshot,
   type SemesterCode,
@@ -219,6 +220,22 @@ function getInvoicePreviewStatusMeta(status: string) {
   };
 }
 
+function getWriteOffStatusMeta(status: FinanceWriteOffRequest['status']) {
+  if (status === 'PENDING_HEAD_TU') {
+    return { label: 'Menunggu Kepala TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  }
+  if (status === 'PENDING_PRINCIPAL') {
+    return { label: 'Menunggu Kepala Sekolah', className: 'bg-sky-50 text-sky-700 border border-sky-200' };
+  }
+  if (status === 'APPROVED') {
+    return { label: 'Siap Diterapkan', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+  }
+  if (status === 'APPLIED') {
+    return { label: 'Sudah Diterapkan', className: 'bg-violet-50 text-violet-700 border border-violet-200' };
+  }
+  return { label: 'Ditolak', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
+}
+
 export const StaffFinancePage = () => {
   const queryClient = useQueryClient();
 
@@ -320,6 +337,10 @@ export const StaffFinancePage = () => {
   const [refundMethod, setRefundMethod] = useState<FinancePaymentMethod>('BANK_TRANSFER');
   const [refundReference, setRefundReference] = useState('');
   const [refundNote, setRefundNote] = useState('');
+  const [writeOffTargetInvoice, setWriteOffTargetInvoice] = useState<FinanceInvoice | null>(null);
+  const [writeOffAmount, setWriteOffAmount] = useState('');
+  const [writeOffReason, setWriteOffReason] = useState('');
+  const [writeOffNote, setWriteOffNote] = useState('');
 
   const yearsQuery = useQuery({
     queryKey: ['staff-finance-academic-years'],
@@ -381,6 +402,12 @@ export const StaffFinancePage = () => {
         limit: 50,
         search: creditSearch.trim() || undefined,
       }),
+  });
+
+  const writeOffsQuery = useQuery({
+    queryKey: ['staff-finance-write-offs'],
+    queryFn: () => staffFinanceService.listWriteOffs({ limit: 100 }),
+    staleTime: 60_000,
   });
 
   const reminderPolicyQuery = useQuery({
@@ -507,6 +534,8 @@ export const StaffFinancePage = () => {
   const creditSummary = creditsQuery.data?.summary;
   const creditBalances = creditsQuery.data?.balances || [];
   const recentRefunds = creditsQuery.data?.recentRefunds || [];
+  const writeOffSummary = writeOffsQuery.data?.summary;
+  const writeOffRequests = writeOffsQuery.data?.requests || [];
   const paymentPreviewAmount = Number(paymentAmount || 0);
   const paymentAllocatedAmount = Math.min(paymentPreviewAmount, Number(selectedInvoice?.balanceAmount || 0));
   const paymentCreditedAmount = Math.max(paymentPreviewAmount - Number(selectedInvoice?.balanceAmount || 0), 0);
@@ -518,7 +547,8 @@ export const StaffFinancePage = () => {
   const selectedInvoiceCreditAppliedAmount = (selectedInvoice?.payments || [])
     .filter((payment) => payment.source === 'CREDIT_BALANCE')
     .reduce((sum, payment) => sum + Number(payment.allocatedAmount || payment.amount || 0), 0);
-  const selectedInvoiceCanEditAmounts = Number(selectedInvoice?.paidAmount || 0) <= 0;
+  const selectedInvoiceCanEditAmounts =
+    Number(selectedInvoice?.paidAmount || 0) + Number(selectedInvoice?.writtenOffAmount || 0) <= 0;
   const overdueCount = useMemo(() => {
     const today = Date.now();
     return invoices.filter((invoice) => {
@@ -648,6 +678,20 @@ export const StaffFinancePage = () => {
     setRefundMethod('BANK_TRANSFER');
     setRefundReference('');
     setRefundNote('');
+  };
+
+  const resetWriteOffForm = () => {
+    setWriteOffTargetInvoice(null);
+    setWriteOffAmount('');
+    setWriteOffReason('');
+    setWriteOffNote('');
+  };
+
+  const openWriteOffModal = (invoice: FinanceInvoice) => {
+    setWriteOffTargetInvoice(invoice);
+    setWriteOffAmount(String(Number(invoice.balanceAmount || 0)));
+    setWriteOffReason('');
+    setWriteOffNote('');
   };
 
   const saveComponentMutation = useMutation({
@@ -971,6 +1015,50 @@ export const StaffFinancePage = () => {
     onError: (error: unknown) => {
       const apiError = error as { response?: { data?: { message?: string } } };
       toast.error(apiError?.response?.data?.message || 'Gagal mencatat refund saldo kredit');
+    },
+  });
+
+  const createWriteOffMutation = useMutation({
+    mutationFn: () => {
+      if (!writeOffTargetInvoice) {
+        throw new Error('Tagihan belum dipilih');
+      }
+      return staffFinanceService.createWriteOffRequest(writeOffTargetInvoice.id, {
+        amount: Number(writeOffAmount),
+        reason: writeOffReason,
+        note: writeOffNote || undefined,
+      });
+    },
+    onSuccess: (request) => {
+      toast.success('Pengajuan write-off berhasil dikirim ke Kepala TU');
+      if (selectedInvoice?.id === request.invoiceId && selectedInvoice) {
+        setSelectedInvoice({
+          ...selectedInvoice,
+          writeOffRequests: [request, ...(selectedInvoice.writeOffRequests || [])],
+        });
+      }
+      resetWriteOffForm();
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-write-offs'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal membuat pengajuan write-off');
+    },
+  });
+
+  const applyWriteOffMutation = useMutation({
+    mutationFn: (request: FinanceWriteOffRequest) => staffFinanceService.applyWriteOff(request.id),
+    onSuccess: (result) => {
+      toast.success('Write-off berhasil diterapkan ke invoice');
+      setSelectedInvoice(result.invoice);
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-write-offs'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-reports'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal menerapkan write-off');
     },
   });
 
@@ -1318,6 +1406,26 @@ export const StaffFinancePage = () => {
       return;
     }
     refundMutation.mutate();
+  };
+
+  const handleSaveWriteOff = () => {
+    if (!writeOffTargetInvoice) {
+      toast.error('Tagihan belum dipilih');
+      return;
+    }
+    if (Number(writeOffAmount) <= 0) {
+      toast.error('Nominal write-off harus lebih dari nol');
+      return;
+    }
+    if (Number(writeOffAmount) > Number(writeOffTargetInvoice.balanceAmount || 0)) {
+      toast.error('Nominal write-off melebihi outstanding invoice');
+      return;
+    }
+    if (writeOffReason.trim().length < 5) {
+      toast.error('Alasan write-off minimal 5 karakter');
+      return;
+    }
+    createWriteOffMutation.mutate();
   };
 
   useEffect(() => {
@@ -2541,6 +2649,120 @@ export const StaffFinancePage = () => {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Write-Off Piutang</h3>
+            <p className="mt-1 text-xs text-gray-500">
+              Monitor pengajuan, approval, dan penerapan penghapusan piutang siswa.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs lg:grid-cols-4">
+            <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+              <div className="text-amber-700">Pending Kepala TU</div>
+              <div className="mt-1 font-semibold text-amber-900">{writeOffSummary?.pendingHeadTuCount || 0}</div>
+            </div>
+            <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2">
+              <div className="text-sky-700">Pending Kepala Sekolah</div>
+              <div className="mt-1 font-semibold text-sky-900">{writeOffSummary?.pendingPrincipalCount || 0}</div>
+            </div>
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+              <div className="text-emerald-700">Siap Apply</div>
+              <div className="mt-1 font-semibold text-emerald-900">{writeOffSummary?.approvedCount || 0}</div>
+            </div>
+            <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2">
+              <div className="text-violet-700">Sudah Diterapkan</div>
+              <div className="mt-1 font-semibold text-violet-900">{writeOffSummary?.appliedCount || 0}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pengajuan</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Invoice</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Nominal</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {writeOffsQuery.isLoading ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
+                    Memuat pengajuan write-off...
+                  </td>
+                </tr>
+              ) : writeOffRequests.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
+                    Belum ada pengajuan write-off.
+                  </td>
+                </tr>
+              ) : (
+                writeOffRequests.slice(0, 12).map((request) => {
+                  const status = getWriteOffStatusMeta(request.status);
+                  return (
+                    <tr key={request.id}>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        <div className="font-semibold text-gray-900">{request.requestNo}</div>
+                        <div className="text-xs text-gray-500">{request.student?.name || '-'}</div>
+                        <div className="mt-1 text-[11px] text-gray-500">{request.reason}</div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        <div className="font-medium text-gray-900">{request.invoice?.invoiceNo || '-'}</div>
+                        <div className="text-xs text-gray-500">
+                          Outstanding {formatCurrency(request.invoice?.balanceAmount || 0)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm text-gray-700">
+                        <div>{formatCurrency(request.requestedAmount)}</div>
+                        <div className="text-xs text-emerald-700">
+                          Approved {formatCurrency(request.approvedAmount || 0)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${status.className}`}>
+                          {status.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {request.status === 'APPROVED' ? (
+                            <button
+                              type="button"
+                              onClick={() => applyWriteOffMutation.mutate(request)}
+                              disabled={applyWriteOffMutation.isPending}
+                              className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
+                            >
+                              {applyWriteOffMutation.isPending ? 'Menerapkan...' : 'Terapkan'}
+                            </button>
+                          ) : null}
+                          {request.invoiceId ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const invoice = invoices.find((item) => item.id === request.invoiceId);
+                                if (invoice) setSelectedInvoice(invoice);
+                              }}
+                              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                            >
+                              Buka Invoice
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
           <h3 className="text-sm font-semibold text-gray-900">Daftar Tagihan</h3>
           <div className="flex gap-3">
@@ -2643,6 +2865,11 @@ export const StaffFinancePage = () => {
                           )}
                         </div>
                       ) : null}
+                      {Number(invoice.writtenOffAmount || 0) > 0 ? (
+                        <div className="mt-1 text-[11px] text-violet-700">
+                          Write-off diterapkan {formatCurrency(invoice.writtenOffAmount)}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700">
                       <div className="font-medium text-gray-900">{invoice.student.name}</div>
@@ -2668,6 +2895,14 @@ export const StaffFinancePage = () => {
                             {applyLateFeesMutation.isPending ? 'Menerapkan...' : 'Terapkan Denda'}
                           </button>
                         ) : null}
+                        <button
+                          type="button"
+                          onClick={() => openWriteOffModal(invoice)}
+                          disabled={invoice.status === 'PAID' || invoice.status === 'CANCELLED' || createWriteOffMutation.isPending}
+                          className="rounded-lg border border-violet-200 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40"
+                        >
+                          Ajukan Write-Off
+                        </button>
                         <button
                           type="button"
                           onClick={() => startPaying(invoice)}
@@ -3758,12 +3993,68 @@ export const StaffFinancePage = () => {
               <div className="text-xs text-gray-600">
                 Sisa tagihan: <span className="font-semibold">{formatCurrency(selectedInvoice.balanceAmount)}</span>
               </div>
+              {Number(selectedInvoice.writtenOffAmount || 0) > 0 ? (
+                <div className="rounded-lg border border-violet-100 bg-violet-50/70 px-3 py-2 text-xs text-violet-800">
+                  Write-off yang sudah diterapkan:{' '}
+                  <span className="font-semibold">{formatCurrency(selectedInvoice.writtenOffAmount)}</span>
+                </div>
+              ) : null}
               {selectedInvoiceCreditAppliedAmount > 0 ? (
                 <div className="rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2 text-xs text-sky-800">
                   Saldo kredit yang sudah terpakai ke invoice ini:{' '}
                   <span className="font-semibold">{formatCurrency(selectedInvoiceCreditAppliedAmount)}</span>
                 </div>
               ) : null}
+              <div className="rounded-lg border border-violet-100 bg-violet-50/50 px-3 py-2 text-xs text-violet-900">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-semibold">Workflow write-off</div>
+                    <div className="mt-1 text-[11px] text-violet-700">
+                      {selectedInvoice.writeOffRequests?.length || 0} pengajuan tercatat untuk invoice ini.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openWriteOffModal(selectedInvoice)}
+                    disabled={createWriteOffMutation.isPending || selectedInvoice.status === 'PAID' || selectedInvoice.status === 'CANCELLED'}
+                    className="rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50"
+                  >
+                    Ajukan Write-Off
+                  </button>
+                </div>
+                {(selectedInvoice.writeOffRequests || []).slice(0, 3).map((request) => {
+                  const status = getWriteOffStatusMeta(request.status);
+                  return (
+                    <div key={`selected-writeoff-${request.id}`} className="mt-2 rounded-md border border-violet-200 bg-white/80 px-2 py-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="font-medium text-violet-900">{request.requestNo}</div>
+                          <div className="mt-1 text-[11px] text-violet-700">{request.reason}</div>
+                        </div>
+                        <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${status.className}`}>
+                          {status.label}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[11px] text-violet-700">
+                        Request {formatCurrency(request.requestedAmount)} • approved{' '}
+                        {formatCurrency(request.approvedAmount || 0)} • applied{' '}
+                        {formatCurrency(request.appliedAmount || 0)}
+                      </div>
+                      {request.status === 'APPROVED' ? (
+                        <button
+                          type="button"
+                          onClick={() => applyWriteOffMutation.mutate(request)}
+                          disabled={applyWriteOffMutation.isPending}
+                          className="mt-2 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                        >
+                          {applyWriteOffMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                          Terapkan Write-Off
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
               {selectedInvoice.lateFeeSummary?.configured ? (
                 <div className="rounded-lg border border-amber-100 bg-amber-50/70 px-3 py-2 text-xs text-amber-900">
                   <div className="font-semibold">
@@ -4001,6 +4292,68 @@ export const StaffFinancePage = () => {
           </div>
         </div>
       )}
+
+      {writeOffTargetInvoice ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          onClick={resetWriteOffForm}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h3 className="text-base font-semibold text-gray-900">Ajukan Write-Off</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                {writeOffTargetInvoice.invoiceNo} • Outstanding {formatCurrency(writeOffTargetInvoice.balanceAmount)}
+              </p>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <input
+                type="number"
+                min={0}
+                value={writeOffAmount}
+                onChange={(event) => setWriteOffAmount(event.target.value)}
+                placeholder="Nominal write-off"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
+              />
+              <textarea
+                value={writeOffReason}
+                onChange={(event) => setWriteOffReason(event.target.value)}
+                placeholder="Alasan pengajuan write-off"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-h-24"
+              />
+              <textarea
+                value={writeOffNote}
+                onChange={(event) => setWriteOffNote(event.target.value)}
+                placeholder="Catatan internal (opsional)"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-h-20"
+              />
+              <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2 text-xs text-violet-800">
+                Pengajuan ini akan masuk approval Kepala TU dulu, lalu Kepala Sekolah, baru sesudah itu bisa diterapkan oleh bendahara.
+              </div>
+            </div>
+            <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={resetWriteOffForm}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-xs font-medium text-gray-700"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveWriteOff}
+                disabled={createWriteOffMutation.isPending || Number(writeOffAmount) <= 0}
+                className="px-4 py-2 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 disabled:opacity-50 inline-flex items-center gap-2"
+              >
+                {createWriteOffMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                Kirim Pengajuan
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

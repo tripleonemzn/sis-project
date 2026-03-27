@@ -89,6 +89,7 @@ model User {
   financeCreditBalance           FinanceCreditBalance?            @relation("FinanceCreditBalanceStudent")
   financeCreditTransactions      FinanceCreditTransaction[]       @relation("FinanceCreditTransactionStudent")
   financeRefunds                 FinanceRefund[]                  @relation("FinanceRefundStudent")
+  financeWriteOffRequestsAsStudent FinanceWriteOffRequest[]       @relation("FinanceWriteOffStudent")
   createdFinanceInvoices         FinanceInvoice[]                 @relation("FinanceInvoiceCreator")
   createdFinancePayments         FinancePayment[]                 @relation("FinancePaymentCreator")
   createdFinanceCreditTransactions FinanceCreditTransaction[]     @relation("FinanceCreditTransactionCreator")
@@ -97,6 +98,10 @@ model User {
   createdFinanceTariffRules      FinanceTariffRule[]              @relation("FinanceTariffRuleCreator")
   financeAdjustmentRules         FinanceAdjustmentRule[]          @relation("FinanceAdjustmentRuleStudent")
   createdFinanceAdjustmentRules  FinanceAdjustmentRule[]          @relation("FinanceAdjustmentRuleCreator")
+  createdFinanceWriteOffRequests FinanceWriteOffRequest[]         @relation("FinanceWriteOffRequester")
+  headTuDecidedFinanceWriteOffs  FinanceWriteOffRequest[]         @relation("FinanceWriteOffHeadTuDecisionBy")
+  principalDecidedFinanceWriteOffs FinanceWriteOffRequest[]       @relation("FinanceWriteOffPrincipalDecisionBy")
+  appliedFinanceWriteOffs        FinanceWriteOffRequest[]         @relation("FinanceWriteOffAppliedBy")
   pklAssessments                 PklAssessment[]
   reportNotes                    ReportNote[]
   achievements                   StudentAchievement[]
@@ -1546,6 +1551,7 @@ model FinanceInvoice {
   dueDate        DateTime?
   totalAmount    Float                @default(0)
   paidAmount     Float                @default(0)
+  writtenOffAmount Float              @default(0)
   balanceAmount  Float                @default(0)
   status         FinanceInvoiceStatus @default(UNPAID)
   createdById    Int?
@@ -1558,6 +1564,7 @@ model FinanceInvoice {
   items          FinanceInvoiceItem[]
   payments       FinancePayment[]
   installments   FinanceInvoiceInstallment[]
+  writeOffRequests FinanceWriteOffRequest[]
 
   @@unique([studentId, semester, periodKey])
   @@index([studentId, status])
@@ -1622,6 +1629,44 @@ model FinanceInvoiceInstallment {
   @@unique([invoiceId, sequence])
   @@index([invoiceId, dueDate])
   @@map("finance_invoice_installments")
+}
+
+model FinanceWriteOffRequest {
+  id                     Int                    @id @default(autoincrement())
+  requestNo              String                 @unique
+  invoiceId              Int
+  studentId              Int
+  requestedAmount        Float
+  approvedAmount         Float?
+  appliedAmount          Float?
+  reason                 String
+  requestedNote          String?
+  status                 FinanceWriteOffStatus  @default(PENDING_HEAD_TU)
+  requestedById          Int
+  headTuApproved         Boolean?
+  headTuDecisionById     Int?
+  headTuDecisionAt       DateTime?
+  headTuDecisionNote     String?
+  principalApproved      Boolean?
+  principalDecisionById  Int?
+  principalDecisionAt    DateTime?
+  principalDecisionNote  String?
+  appliedById            Int?
+  appliedAt              DateTime?
+  applyNote              String?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  invoice                FinanceInvoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  student                User                   @relation("FinanceWriteOffStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  requestedBy            User                   @relation("FinanceWriteOffRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  headTuDecisionBy       User?                  @relation("FinanceWriteOffHeadTuDecisionBy", fields: [headTuDecisionById], references: [id], onDelete: SetNull)
+  principalDecisionBy    User?                  @relation("FinanceWriteOffPrincipalDecisionBy", fields: [principalDecisionById], references: [id], onDelete: SetNull)
+  appliedBy              User?                  @relation("FinanceWriteOffAppliedBy", fields: [appliedById], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId, status])
+  @@index([studentId, status])
+  @@index([status, createdAt])
+  @@map("finance_write_off_requests")
 }
 
 model FinanceCreditBalance {
@@ -2081,6 +2126,14 @@ enum FinanceCreditTransactionKind {
   OVERPAYMENT
   APPLIED_TO_INVOICE
   REFUND
+}
+
+enum FinanceWriteOffStatus {
+  PENDING_HEAD_TU
+  PENDING_PRINCIPAL
+  APPROVED
+  REJECTED
+  APPLIED
 }
 
 enum Gender {

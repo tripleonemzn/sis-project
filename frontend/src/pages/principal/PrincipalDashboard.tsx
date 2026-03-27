@@ -8,6 +8,10 @@ import {
   type BudgetRequest,
   type UpdateBudgetRequestStatusPayload,
 } from '../../services/budgetRequest.service';
+import {
+  staffFinanceService,
+  type FinanceWriteOffRequest,
+} from '../../services/staffFinance.service';
 import { workProgramService, type WorkProgram } from '../../services/workProgram.service';
 import {
   teachingResourceProgramService,
@@ -3164,6 +3168,12 @@ const PrincipalFinancePage = () => {
     enabled: isFinancePage && !!activeYear,
   });
 
+  const { data: financeWriteOffsData, isLoading: isWriteOffsLoading } = useQuery({
+    queryKey: ['principal-finance-write-offs'],
+    queryFn: () => staffFinanceService.listWriteOffs({ pendingFor: 'PRINCIPAL', limit: 50 }),
+    enabled: isFinancePage,
+  });
+
   let budgets: BudgetRequest[] = budgetsData?.data || budgetsData || [];
 
   if (statusFilter !== 'ALL') {
@@ -3198,6 +3208,21 @@ const PrincipalFinancePage = () => {
     },
   });
 
+  const principalWriteOffMutation = useMutation({
+    mutationFn: (payload: { requestId: number; approved: boolean }) =>
+      staffFinanceService.decideWriteOffAsPrincipal(payload.requestId, {
+        approved: payload.approved,
+      }),
+    onSuccess: (_, payload) => {
+      queryClient.invalidateQueries({ queryKey: ['principal-finance-write-offs'] });
+      toast.success(payload.approved ? 'Write-off disetujui' : 'Write-off ditolak');
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal memproses approval write-off');
+    },
+  });
+
   const handleApprove = () => {
     if (!selectedForApprove) return;
     updateStatusMutation.mutate({
@@ -3222,6 +3247,7 @@ const PrincipalFinancePage = () => {
   }
 
   const totalAmount = budgets.reduce((sum, b) => sum + b.totalAmount, 0);
+  const pendingPrincipalWriteOffs = financeWriteOffsData?.requests || [];
 
   return (
     <div className="space-y-6">
@@ -3426,6 +3452,94 @@ const PrincipalFinancePage = () => {
                       ) : (
                         <span className="text-xs text-gray-400">Tidak ada aksi</span>
                       )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Approval Write-Off Piutang</h3>
+            <p className="mt-1 text-xs text-gray-500">
+              Review pengajuan penghapusan piutang yang sudah lolos review Kepala TU.
+            </p>
+          </div>
+          <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+            {pendingPrincipalWriteOffs.length} menunggu
+          </span>
+        </div>
+
+        {isWriteOffsLoading ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          </div>
+        ) : pendingPrincipalWriteOffs.length === 0 ? (
+          <div className="py-10 text-center text-sm text-gray-500">
+            Belum ada pengajuan write-off yang menunggu persetujuan Kepala Sekolah.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Pengajuan
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Invoice
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Nominal
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Aksi
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {pendingPrincipalWriteOffs.map((request: FinanceWriteOffRequest) => (
+                  <tr key={request.id}>
+                    <td className="px-6 py-4 text-sm text-gray-700">
+                      <div className="font-semibold text-gray-900">{request.requestNo}</div>
+                      <div className="text-xs text-gray-500 mt-1">{request.student?.name || '-'} • {request.student?.studentClass?.name || '-'}</div>
+                      <div className="text-xs text-gray-500 mt-1">{request.reason}</div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-700">
+                      <div className="font-medium text-gray-900">{request.invoice?.invoiceNo || '-'}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Outstanding {request.invoice ? `Rp ${Math.round(request.invoice.balanceAmount).toLocaleString('id-ID')}` : '-'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-right text-gray-700">
+                      <div>Request Rp {Math.round(request.requestedAmount).toLocaleString('id-ID')}</div>
+                      <div className="text-xs text-emerald-700 mt-1">
+                        Rekomendasi Rp {Math.round(Number(request.approvedAmount || request.requestedAmount)).toLocaleString('id-ID')}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-right">
+                      <div className="inline-flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => principalWriteOffMutation.mutate({ requestId: request.id, approved: false })}
+                          disabled={principalWriteOffMutation.isPending}
+                          className="inline-flex items-center rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                        >
+                          Tolak
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => principalWriteOffMutation.mutate({ requestId: request.id, approved: true })}
+                          disabled={principalWriteOffMutation.isPending}
+                          className="inline-flex items-center rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                        >
+                          Setujui
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

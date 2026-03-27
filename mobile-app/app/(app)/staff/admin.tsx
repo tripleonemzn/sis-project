@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Redirect, useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../../src/components/QueryStateView';
@@ -14,6 +14,7 @@ import {
 } from '../../../src/features/staff/staffAdministrationApi';
 import {
   staffFinanceApi,
+  type StaffFinanceWriteOffRequest,
   type StaffFinanceReportSnapshot,
 } from '../../../src/features/staff/staffFinanceApi';
 import { staffApi } from '../../../src/features/staff/staffApi';
@@ -26,6 +27,7 @@ import type {
 } from '../../../src/features/staff/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
+import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
 
 function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
   return (
@@ -81,6 +83,10 @@ function formatDate(value?: string | null) {
   });
 }
 
+function formatCurrency(value: number) {
+  return `Rp ${Math.round(value || 0).toLocaleString('id-ID')}`;
+}
+
 function getCollectionPriorityStyle(priority: 'MONITOR' | 'TINGGI' | 'KRITIS') {
   if (priority === 'KRITIS') return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
   if (priority === 'TINGGI') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
@@ -96,6 +102,7 @@ function getDueSoonLabel(daysUntilDue: number) {
 export default function StaffAdminScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const staffDivision = resolveStaffDivision(user);
@@ -134,6 +141,28 @@ export default function StaffAdminScreen() {
         }),
       ]);
       return { kind: 'FINANCE', budgets, students, dashboard };
+    },
+  });
+
+  const headTuWriteOffsQuery = useQuery({
+    queryKey: ['mobile-head-tu-finance-write-offs', user?.id],
+    enabled: isAuthenticated && user?.role === 'STAFF' && staffDivision === 'HEAD_TU',
+    queryFn: () => staffFinanceApi.listWriteOffs({ pendingFor: 'HEAD_TU', limit: 20 }),
+    staleTime: 60 * 1000,
+  });
+
+  const headTuWriteOffDecisionMutation = useMutation({
+    mutationFn: (payload: { requestId: number; approved: boolean }) =>
+      staffFinanceApi.decideWriteOffAsHeadTu(payload.requestId, {
+        approved: payload.approved,
+      }),
+    onSuccess: (_, payload) => {
+      void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-write-offs', user?.id] });
+      const message = payload.approved ? 'Write-off diteruskan ke Kepala Sekolah.' : 'Pengajuan write-off ditolak.';
+      notifySuccess(message);
+    },
+    onError: (error: unknown) => {
+      notifyApiError(error, 'Gagal memproses approval write-off.');
     },
   });
 
@@ -187,6 +216,34 @@ export default function StaffAdminScreen() {
   const headTuPendingBudgets = headTuBudgets.filter((item) => item.status === 'PENDING').length;
   const headTuAdministrationStaff = headTuStaffs.filter((item) => resolveStaffDivision(item) === 'ADMINISTRATION').length;
   const headTuFinanceStaff = headTuStaffs.filter((item) => resolveStaffDivision(item) === 'FINANCE').length;
+  const headTuPendingWriteOffs = useMemo(
+    () => headTuWriteOffsQuery.data?.requests || [],
+    [headTuWriteOffsQuery.data],
+  );
+
+  const handleRefresh = () => {
+    void dataQuery.refetch();
+    if (staffDivision === 'HEAD_TU') {
+      void headTuWriteOffsQuery.refetch();
+    }
+  };
+
+  const handleHeadTuWriteOffDecision = (request: StaffFinanceWriteOffRequest, approved: boolean) => {
+    const actionLabel = approved ? 'meneruskan' : 'menolak';
+    const buttonLabel = approved ? 'Ya, Teruskan' : 'Ya, Tolak';
+    Alert.alert(
+      approved ? 'Teruskan ke Kepala Sekolah' : 'Tolak Write-Off',
+      `Yakin ingin ${actionLabel} pengajuan "${request.requestNo}" untuk ${request.student?.name || 'siswa ini'}?`,
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: buttonLabel,
+          style: approved ? 'default' : 'destructive',
+          onPress: () => headTuWriteOffDecisionMutation.mutate({ requestId: request.id, approved }),
+        },
+      ],
+    );
+  };
 
   if (isLoading) return <AppLoadingScreen message="Memuat administrasi staff..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -218,7 +275,7 @@ export default function StaffAdminScreen() {
       style={{ flex: 1, backgroundColor: '#f8fafc' }}
       contentContainerStyle={pagePadding}
       refreshControl={
-        <RefreshControl refreshing={dataQuery.isFetching && !dataQuery.isLoading} onRefresh={() => dataQuery.refetch()} />
+        <RefreshControl refreshing={dataQuery.isFetching && !dataQuery.isLoading} onRefresh={handleRefresh} />
       }
     >
       <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>{title}</Text>
@@ -743,6 +800,105 @@ export default function StaffAdminScreen() {
             <Text style={{ color: '#475569' }}>
               Staff keuangan: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{headTuFinanceStaff}</Text>
             </Text>
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Approval Write-Off</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  Review pengajuan penghapusan piutang sebelum diteruskan ke Kepala Sekolah.
+                </Text>
+              </View>
+              <View
+                style={{
+                  backgroundColor: '#fff7ed',
+                  borderColor: '#fed7aa',
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                }}
+              >
+                <Text style={{ color: '#c2410c', fontSize: 11, fontWeight: '700' }}>{headTuPendingWriteOffs.length} menunggu</Text>
+              </View>
+            </View>
+
+            {headTuWriteOffsQuery.isLoading ? (
+              <QueryStateView type="loading" message="Mengambil approval write-off..." />
+            ) : headTuWriteOffsQuery.isError ? (
+              <QueryStateView
+                type="error"
+                message="Gagal memuat approval write-off."
+                onRetry={() => headTuWriteOffsQuery.refetch()}
+              />
+            ) : headTuPendingWriteOffs.length === 0 ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada approval write-off yang menunggu.</Text>
+            ) : (
+              headTuPendingWriteOffs.slice(0, 5).map((request) => (
+                <View key={request.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 10 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{request.requestNo}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                    {request.student?.name || '-'} • {request.student?.studentClass?.name || '-'}
+                  </Text>
+                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                    Invoice {request.invoice?.invoiceNo || '-'} • outstanding{' '}
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                      {formatCurrency(request.invoice?.balanceAmount || 0)}
+                    </Text>
+                  </Text>
+                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                    Permintaan{' '}
+                    <Text style={{ color: '#b45309', fontWeight: '700' }}>
+                      {formatCurrency(request.requestedAmount)}
+                    </Text>
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{request.reason}</Text>
+
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                    <Pressable
+                      disabled={headTuWriteOffDecisionMutation.isPending}
+                      onPress={() => handleHeadTuWriteOffDecision(request, false)}
+                      style={{
+                        flex: 1,
+                        backgroundColor: '#fff1f2',
+                        borderWidth: 1,
+                        borderColor: '#fecdd3',
+                        borderRadius: 9,
+                        alignItems: 'center',
+                        paddingVertical: 10,
+                      }}
+                    >
+                      <Text style={{ color: '#be123c', fontWeight: '700' }}>Tolak</Text>
+                    </Pressable>
+                    <Pressable
+                      disabled={headTuWriteOffDecisionMutation.isPending}
+                      onPress={() => handleHeadTuWriteOffDecision(request, true)}
+                      style={{
+                        flex: 1,
+                        backgroundColor: '#ecfdf5',
+                        borderWidth: 1,
+                        borderColor: '#a7f3d0',
+                        borderRadius: 9,
+                        alignItems: 'center',
+                        paddingVertical: 10,
+                      }}
+                    >
+                      <Text style={{ color: '#047857', fontWeight: '700' }}>Teruskan</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ))
+            )}
           </View>
 
           <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>

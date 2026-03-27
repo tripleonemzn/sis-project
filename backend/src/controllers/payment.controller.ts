@@ -6,6 +6,7 @@ import {
   FinanceLateFeeMode,
   FinancePaymentMethod,
   FinancePaymentSource,
+  FinanceWriteOffStatus,
   PaymentStatus,
   PaymentType,
   Prisma,
@@ -79,8 +80,68 @@ function makeFinanceRefundNo(studentId: number): string {
   return `REF-${studentId}-${ts}${rand}`;
 }
 
+function makeFinanceWriteOffNo(studentId: number): string {
+  const ts = Date.now().toString().slice(-7);
+  const rand = Math.floor(Math.random() * 900 + 100).toString();
+  return `WO-${studentId}-${ts}${rand}`;
+}
+
 function normalizeFinanceAmount(value: number): number {
   return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function inferFinanceWrittenOffAmount(params: {
+  totalAmount: number;
+  paidAmount: number;
+  balanceAmount: number;
+  writtenOffAmount?: number | null;
+  status?: FinanceInvoiceStatus;
+}) {
+  if (params.status === 'CANCELLED') return 0;
+  if (params.writtenOffAmount != null) {
+    return normalizeFinanceAmount(Math.max(Number(params.writtenOffAmount || 0), 0));
+  }
+
+  return normalizeFinanceAmount(
+    Math.max(
+      Number(params.totalAmount || 0) - Number(params.paidAmount || 0) - Number(params.balanceAmount || 0),
+      0,
+    ),
+  );
+}
+
+function calculateFinanceInvoiceBalanceAmount(params: {
+  totalAmount: number;
+  paidAmount: number;
+  writtenOffAmount?: number;
+  status?: FinanceInvoiceStatus;
+}) {
+  if (params.status === 'CANCELLED') return 0;
+  return normalizeFinanceAmount(
+    Math.max(
+      Number(params.totalAmount || 0) -
+        Number(params.paidAmount || 0) -
+        Number(params.writtenOffAmount || 0),
+      0,
+    ),
+  );
+}
+
+function calculateFinanceInvoiceStatus(params: {
+  balanceAmount: number;
+  paidAmount?: number;
+  writtenOffAmount?: number;
+  currentStatus?: FinanceInvoiceStatus;
+}) {
+  if (params.currentStatus === 'CANCELLED') return 'CANCELLED' as const;
+  if (normalizeFinanceAmount(params.balanceAmount) <= 0) return 'PAID' as const;
+  if (
+    normalizeFinanceAmount(Number(params.paidAmount || 0)) > 0 ||
+    normalizeFinanceAmount(Number(params.writtenOffAmount || 0)) > 0
+  ) {
+    return 'PARTIAL' as const;
+  }
+  return 'UNPAID' as const;
 }
 
 function addDays(date: Date, days: number): Date {
@@ -127,6 +188,7 @@ type SerializedFinanceInstallment = {
   amount: number;
   dueDate: Date | null;
   paidAmount: number;
+  writtenOffAmount: number;
   balanceAmount: number;
   status: FinanceInvoiceStatus;
   isOverdue: boolean;
@@ -136,7 +198,9 @@ type SerializedFinanceInstallment = {
 function serializeFinanceInstallments(params: {
   invoiceTotalAmount: number;
   invoicePaidAmount: number;
+  invoiceBalanceAmount: number;
   invoiceStatus: FinanceInvoiceStatus;
+  invoiceWrittenOffAmount?: number | null;
   invoiceDueDate?: Date | null;
   installments?: Array<{
     sequence: number;
@@ -160,6 +224,13 @@ function serializeFinanceInstallments(params: {
   today.setHours(0, 0, 0, 0);
 
   let remainingPaidAmount = normalizeFinanceAmount(params.invoicePaidAmount);
+  let remainingWrittenOffAmount = inferFinanceWrittenOffAmount({
+    totalAmount: params.invoiceTotalAmount,
+    paidAmount: params.invoicePaidAmount,
+    balanceAmount: params.invoiceBalanceAmount,
+    writtenOffAmount: params.invoiceWrittenOffAmount,
+    status: params.invoiceStatus,
+  });
 
   return sourceInstallments.map((installment) => {
     const amount = normalizeFinanceAmount(installment.amount);
@@ -168,6 +239,14 @@ function serializeFinanceInstallments(params: {
         ? 0
         : normalizeFinanceAmount(Math.min(remainingPaidAmount, amount));
     remainingPaidAmount = normalizeFinanceAmount(Math.max(remainingPaidAmount - paidAmount, 0));
+    const remainingAfterPaid = normalizeFinanceAmount(Math.max(amount - paidAmount, 0));
+    const writtenOffAmount =
+      params.invoiceStatus === 'CANCELLED'
+        ? 0
+        : normalizeFinanceAmount(Math.min(remainingWrittenOffAmount, remainingAfterPaid));
+    remainingWrittenOffAmount = normalizeFinanceAmount(
+      Math.max(remainingWrittenOffAmount - writtenOffAmount, 0),
+    );
 
     const dueDate = installment.dueDate ? new Date(installment.dueDate) : null;
     if (dueDate) {
@@ -177,14 +256,14 @@ function serializeFinanceInstallments(params: {
     const balanceAmount =
       params.invoiceStatus === 'CANCELLED'
         ? 0
-        : normalizeFinanceAmount(Math.max(amount - paidAmount, 0));
+        : normalizeFinanceAmount(Math.max(amount - paidAmount - writtenOffAmount, 0));
 
     let status: FinanceInvoiceStatus = 'UNPAID';
     if (params.invoiceStatus === 'CANCELLED') {
       status = 'CANCELLED';
     } else if (balanceAmount <= 0) {
       status = 'PAID';
-    } else if (paidAmount > 0) {
+    } else if (paidAmount > 0 || writtenOffAmount > 0) {
       status = 'PARTIAL';
     }
 
@@ -206,6 +285,7 @@ function serializeFinanceInstallments(params: {
       amount,
       dueDate,
       paidAmount,
+      writtenOffAmount,
       balanceAmount,
       status,
       isOverdue,
@@ -244,6 +324,7 @@ function buildFinanceInstallmentSummary(installments: SerializedFinanceInstallme
           amount: normalizeFinanceAmount(nextInstallment.amount),
           dueDate: nextInstallment.dueDate || null,
           paidAmount: normalizeFinanceAmount(nextInstallment.paidAmount),
+          writtenOffAmount: normalizeFinanceAmount(nextInstallment.writtenOffAmount),
           balanceAmount: normalizeFinanceAmount(nextInstallment.balanceAmount),
           status: nextInstallment.status,
           isOverdue: nextInstallment.isOverdue,
@@ -256,7 +337,9 @@ function buildFinanceInstallmentSummary(installments: SerializedFinanceInstallme
 function resolveFinanceInvoiceDueDate(params: {
   invoiceTotalAmount: number;
   invoicePaidAmount: number;
+  invoiceBalanceAmount: number;
   invoiceStatus: FinanceInvoiceStatus;
+  invoiceWrittenOffAmount?: number | null;
   invoiceDueDate?: Date | null;
   installments?: Array<{
     sequence: number;
@@ -267,7 +350,9 @@ function resolveFinanceInvoiceDueDate(params: {
   const serializedInstallments = serializeFinanceInstallments({
     invoiceTotalAmount: params.invoiceTotalAmount,
     invoicePaidAmount: params.invoicePaidAmount,
+    invoiceBalanceAmount: params.invoiceBalanceAmount,
     invoiceStatus: params.invoiceStatus,
+    invoiceWrittenOffAmount: params.invoiceWrittenOffAmount,
     invoiceDueDate: params.invoiceDueDate || null,
     installments: params.installments || [],
   });
@@ -314,6 +399,7 @@ function serializeFinanceInvoiceRecord<
   T extends {
     totalAmount: number;
     paidAmount: number;
+    writtenOffAmount?: number | null;
     balanceAmount: number;
     status: FinanceInvoiceStatus;
     dueDate?: Date | null;
@@ -334,15 +420,91 @@ function serializeFinanceInvoiceRecord<
       paidAt: Date;
     }>;
     items?: Array<FinanceLateFeeInvoiceItemLike>;
+    writeOffRequests?: Array<{
+      id: number;
+      requestNo: string;
+      invoiceId: number;
+      studentId: number;
+      requestedAmount: number;
+      approvedAmount?: number | null;
+      appliedAmount?: number | null;
+      reason: string;
+      requestedNote?: string | null;
+      status: FinanceWriteOffStatus;
+      headTuApproved?: boolean | null;
+      headTuDecisionAt?: Date | null;
+      headTuDecisionNote?: string | null;
+      principalApproved?: boolean | null;
+      principalDecisionAt?: Date | null;
+      principalDecisionNote?: string | null;
+      appliedAt?: Date | null;
+      applyNote?: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+      invoice?: {
+        id: number;
+        invoiceNo: string;
+        periodKey: string;
+        semester: Semester;
+        title?: string | null;
+        dueDate?: Date | null;
+        totalAmount: number;
+        paidAmount: number;
+        writtenOffAmount?: number | null;
+        balanceAmount: number;
+        status: FinanceInvoiceStatus;
+      } | null;
+      student?: {
+        id: number;
+        name: string;
+        username: string;
+        nis?: string | null;
+        nisn?: string | null;
+        studentClass?: {
+          id: number;
+          name: string;
+          level?: string | null;
+        } | null;
+      } | null;
+      requestedBy?: {
+        id: number;
+        name: string;
+        role?: string | null;
+      } | null;
+      headTuDecisionBy?: {
+        id: number;
+        name: string;
+        role?: string | null;
+      } | null;
+      principalDecisionBy?: {
+        id: number;
+        name: string;
+        role?: string | null;
+      } | null;
+      appliedBy?: {
+        id: number;
+        name: string;
+        role?: string | null;
+      } | null;
+    }>;
   },
 >(invoice: T, options?: { asOfDate?: Date }) {
   const totalAmount = Number(invoice.totalAmount || 0);
   const paidAmount = Number(invoice.paidAmount || 0);
   const balanceAmount = Number(invoice.balanceAmount || 0);
+  const writtenOffAmount = inferFinanceWrittenOffAmount({
+    totalAmount,
+    paidAmount,
+    balanceAmount,
+    writtenOffAmount: invoice.writtenOffAmount,
+    status: invoice.status,
+  });
   const installments = serializeFinanceInstallments({
     invoiceTotalAmount: totalAmount,
     invoicePaidAmount: paidAmount,
+    invoiceBalanceAmount: balanceAmount,
     invoiceStatus: invoice.status,
+    invoiceWrittenOffAmount: writtenOffAmount,
     invoiceDueDate: invoice.dueDate || null,
     installments: invoice.installments || [],
     asOfDate: options?.asOfDate,
@@ -352,6 +514,7 @@ function serializeFinanceInvoiceRecord<
     ...invoice,
     totalAmount,
     paidAmount,
+    writtenOffAmount,
     balanceAmount,
     installmentSummary: buildFinanceInstallmentSummary(installments),
     lateFeeSummary: invoice.items ? buildFinanceLateFeeSummary(invoice, options?.asOfDate) : undefined,
@@ -363,6 +526,9 @@ function serializeFinanceInvoiceRecord<
       creditedAmount: Number(payment.creditedAmount || 0),
       source: payment.source || FinancePaymentSource.DIRECT,
     })),
+    writeOffRequests: (invoice.writeOffRequests || []).map((request) =>
+      serializeFinanceWriteOffRecord(request),
+    ),
   };
 }
 
@@ -396,6 +562,7 @@ function buildFinanceLateFeeSummary<
   T extends {
     totalAmount: number;
     paidAmount: number;
+    balanceAmount: number;
     status: FinanceInvoiceStatus;
     dueDate?: Date | null;
     installments?: Array<{
@@ -411,7 +578,12 @@ function buildFinanceLateFeeSummary<
   const serializedInstallments = serializeFinanceInstallments({
     invoiceTotalAmount: Number(invoice.totalAmount || 0),
     invoicePaidAmount: Number(invoice.paidAmount || 0),
+    invoiceBalanceAmount: Number(invoice.balanceAmount || 0),
     invoiceStatus: invoice.status,
+    invoiceWrittenOffAmount:
+      'writtenOffAmount' in invoice
+        ? Number((invoice as { writtenOffAmount?: number | null }).writtenOffAmount || 0)
+        : undefined,
     invoiceDueDate: invoice.dueDate || null,
     installments: invoice.installments || [],
     asOfDate: snapshotDate,
@@ -618,6 +790,157 @@ function serializeFinanceRefundRecord(refund: {
     createdAt: refund.createdAt,
     student: refund.student,
     createdBy: refund.createdBy || null,
+  };
+}
+
+type FinanceWriteOffPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'FINANCE_APPLY' | 'NONE';
+
+function getFinanceWriteOffPendingActor(status: FinanceWriteOffStatus): FinanceWriteOffPendingActor {
+  if (status === FinanceWriteOffStatus.PENDING_HEAD_TU) return 'HEAD_TU';
+  if (status === FinanceWriteOffStatus.PENDING_PRINCIPAL) return 'PRINCIPAL';
+  if (status === FinanceWriteOffStatus.APPROVED) return 'FINANCE_APPLY';
+  return 'NONE';
+}
+
+function serializeFinanceWriteOffRecord<
+  T extends {
+    id: number;
+    requestNo: string;
+    invoiceId: number;
+    studentId: number;
+    requestedAmount: number;
+    approvedAmount?: number | null;
+    appliedAmount?: number | null;
+    reason: string;
+    requestedNote?: string | null;
+    status: FinanceWriteOffStatus;
+    headTuApproved?: boolean | null;
+    headTuDecisionAt?: Date | null;
+    headTuDecisionNote?: string | null;
+    principalApproved?: boolean | null;
+    principalDecisionAt?: Date | null;
+    principalDecisionNote?: string | null;
+    appliedAt?: Date | null;
+    applyNote?: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    invoice?: {
+      id: number;
+      invoiceNo: string;
+      periodKey: string;
+      semester: Semester;
+      title?: string | null;
+      dueDate?: Date | null;
+      totalAmount: number;
+      paidAmount: number;
+      writtenOffAmount?: number | null;
+      balanceAmount: number;
+      status: FinanceInvoiceStatus;
+    } | null;
+    student?: {
+      id: number;
+      name: string;
+      username: string;
+      nis?: string | null;
+      nisn?: string | null;
+      studentClass?: {
+        id: number;
+        name: string;
+        level?: string | null;
+      } | null;
+    } | null;
+    requestedBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+    headTuDecisionBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+    principalDecisionBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+    appliedBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+  },
+>(request: T) {
+  const requestedAmount = normalizeFinanceAmount(Number(request.requestedAmount || 0));
+  const approvedAmount =
+    request.approvedAmount == null ? null : normalizeFinanceAmount(Number(request.approvedAmount || 0));
+  const appliedAmount =
+    request.appliedAmount == null ? null : normalizeFinanceAmount(Number(request.appliedAmount || 0));
+  const invoiceBalanceAmount = request.invoice ? normalizeFinanceAmount(Number(request.invoice.balanceAmount || 0)) : 0;
+  const invoiceWrittenOffAmount = request.invoice
+    ? inferFinanceWrittenOffAmount({
+        totalAmount: Number(request.invoice.totalAmount || 0),
+        paidAmount: Number(request.invoice.paidAmount || 0),
+        balanceAmount: Number(request.invoice.balanceAmount || 0),
+        writtenOffAmount: request.invoice.writtenOffAmount,
+        status: request.invoice.status,
+      })
+    : 0;
+  const baseAmount = approvedAmount ?? requestedAmount;
+  const remainingEligibleAmount =
+    request.status === FinanceWriteOffStatus.APPLIED || request.status === FinanceWriteOffStatus.REJECTED
+      ? 0
+      : normalizeFinanceAmount(Math.min(baseAmount, invoiceBalanceAmount));
+
+  return {
+    id: request.id,
+    requestNo: request.requestNo,
+    invoiceId: request.invoiceId,
+    studentId: request.studentId,
+    requestedAmount,
+    approvedAmount,
+    appliedAmount,
+    reason: request.reason,
+    requestedNote: request.requestedNote || null,
+    status: request.status,
+    pendingActor: getFinanceWriteOffPendingActor(request.status),
+    remainingEligibleAmount,
+    createdAt: request.createdAt,
+    updatedAt: request.updatedAt,
+    headTuDecision: {
+      approved: request.headTuApproved ?? null,
+      decidedAt: request.headTuDecisionAt || null,
+      note: request.headTuDecisionNote || null,
+      by: request.headTuDecisionBy || null,
+    },
+    principalDecision: {
+      approved: request.principalApproved ?? null,
+      decidedAt: request.principalDecisionAt || null,
+      note: request.principalDecisionNote || null,
+      by: request.principalDecisionBy || null,
+    },
+    application: {
+      appliedAt: request.appliedAt || null,
+      note: request.applyNote || null,
+      by: request.appliedBy || null,
+    },
+    requestedBy: request.requestedBy || null,
+    student: request.student || null,
+    invoice: request.invoice
+      ? {
+          id: request.invoice.id,
+          invoiceNo: request.invoice.invoiceNo,
+          periodKey: request.invoice.periodKey,
+          semester: request.invoice.semester,
+          title: request.invoice.title || null,
+          dueDate: request.invoice.dueDate || null,
+          totalAmount: Number(request.invoice.totalAmount || 0),
+          paidAmount: Number(request.invoice.paidAmount || 0),
+          writtenOffAmount: invoiceWrittenOffAmount,
+          balanceAmount: invoiceBalanceAmount,
+          status: request.invoice.status,
+        }
+      : null,
   };
 }
 
@@ -896,6 +1219,99 @@ async function listFinanceEscalationRecipients(
   return Array.from(uniqueByUserId.values());
 }
 
+type FinanceInternalNotificationScope = 'FINANCE' | 'HEAD_TU' | 'PRINCIPAL';
+
+function resolveFinanceInternalRoute(recipient: FinanceEscalationRecipient) {
+  const normalizedRole = String(recipient.role || '').toUpperCase();
+  const normalizedPtkType = String(recipient.ptkType || '').toUpperCase();
+  const duties = (recipient.additionalDuties || []).map((duty) => String(duty || '').trim().toUpperCase());
+
+  if (normalizedRole === 'PRINCIPAL') return '/principal/approvals';
+  if (normalizedRole === 'STAFF' && (normalizedPtkType === 'KEPALA_TU' || normalizedPtkType === 'KEPALA_TATA_USAHA')) {
+    return '/staff/head-tu/finance';
+  }
+  if (
+    normalizedRole === 'ADMIN' ||
+    (normalizedRole === 'STAFF' && normalizedPtkType === 'STAFF_KEUANGAN') ||
+    duties.includes('BENDAHARA')
+  ) {
+    return '/staff/finance';
+  }
+  return '/notifications';
+}
+
+async function listFinanceInternalRecipients(
+  scopes: FinanceInternalNotificationScope[],
+): Promise<FinanceEscalationRecipient[]> {
+  const clauses: Prisma.UserWhereInput[] = [];
+
+  if (scopes.includes('FINANCE')) {
+    clauses.push({ role: 'ADMIN' });
+    clauses.push({ role: 'STAFF', ptkType: 'STAFF_KEUANGAN' });
+    clauses.push({ additionalDuties: { has: 'BENDAHARA' } });
+  }
+
+  if (scopes.includes('HEAD_TU')) {
+    clauses.push({ role: 'STAFF', ptkType: 'KEPALA_TU' });
+    clauses.push({ role: 'STAFF', ptkType: 'KEPALA_TATA_USAHA' });
+  }
+
+  if (scopes.includes('PRINCIPAL')) {
+    clauses.push({ role: 'PRINCIPAL' });
+  }
+
+  if (!clauses.length) return [];
+
+  const users = await prisma.user.findMany({
+    where: { OR: clauses },
+    select: {
+      id: true,
+      role: true,
+      ptkType: true,
+      additionalDuties: true,
+    },
+  });
+
+  const uniqueByUserId = new Map<number, FinanceEscalationRecipient>();
+  for (const user of users) {
+    if (!uniqueByUserId.has(user.id)) {
+      uniqueByUserId.set(user.id, {
+        userId: user.id,
+        role: user.role,
+        ptkType: user.ptkType,
+        additionalDuties: (user.additionalDuties || []).map((duty) => String(duty)),
+      });
+    }
+  }
+
+  return Array.from(uniqueByUserId.values());
+}
+
+async function createFinanceInternalNotifications(params: {
+  scopes: FinanceInternalNotificationScope[];
+  title: string;
+  message: string;
+  type: string;
+  data?: Record<string, unknown>;
+}) {
+  const recipients = await listFinanceInternalRecipients(params.scopes);
+  if (!recipients.length) return;
+
+  const rows = recipients.map((recipient) => ({
+    userId: recipient.userId,
+    title: params.title,
+    message: params.message,
+    type: params.type,
+    data: {
+      ...(params.data || {}),
+      module: 'FINANCE',
+      route: resolveFinanceInternalRoute(recipient),
+    },
+  })) as Prisma.NotificationCreateManyInput[];
+
+  await prisma.notification.createMany({ data: rows });
+}
+
 export async function dispatchFinanceDueReminders(options: DispatchFinanceDueReminderOptions = {}) {
   const now = options.now ? new Date(options.now) : new Date();
   const todayStart = getFinanceStartOfDay(now);
@@ -1127,6 +1543,7 @@ export async function dispatchFinanceDueReminders(options: DispatchFinanceDueRem
             {
               totalAmount: Number(invoice.totalAmount || 0),
               paidAmount: Number(invoice.paidAmount || 0),
+              balanceAmount: Number(invoice.balanceAmount || 0),
               status: invoice.status,
               dueDate: invoice.dueDate,
               installments: invoice.installments,
@@ -1265,10 +1682,17 @@ export async function dispatchFinanceDueReminders(options: DispatchFinanceDueRem
   };
 }
 
-async function ensureFinanceActor(
-  authUser: { id?: number; role?: string },
-  options?: { allowPrincipalReadOnly?: boolean },
-) {
+type FinanceActorContext = {
+  id: number;
+  role: string;
+  ptkType: string | null;
+  additionalDuties: string[];
+  isFinanceStaff: boolean;
+  isHeadTu: boolean;
+  isPrincipal: boolean;
+};
+
+async function loadFinanceActorContext(authUser: { id?: number; role?: string }) {
   const userId = Number(authUser?.id || 0);
   if (!userId) {
     throw new ApiError(401, 'Tidak memiliki otorisasi');
@@ -1289,17 +1713,63 @@ async function ensureFinanceActor(
   }
 
   const duties = (user.additionalDuties || []).map((duty) => String(duty).toUpperCase());
-  const isPrincipalReadOnly = options?.allowPrincipalReadOnly && user.role === 'PRINCIPAL';
-
   const isFinanceStaff =
     user.role === 'ADMIN' ||
     (user.role === 'STAFF' && user.ptkType === 'STAFF_KEUANGAN') ||
     duties.includes('BENDAHARA');
 
-  if (!isFinanceStaff && !isPrincipalReadOnly) {
+  const isHeadTu =
+    user.role === 'STAFF' &&
+    (user.ptkType === 'KEPALA_TU' || user.ptkType === 'KEPALA_TATA_USAHA');
+  const isPrincipal = user.role === 'PRINCIPAL';
+
+  return {
+    id: user.id,
+    role: user.role,
+    ptkType: user.ptkType || null,
+    additionalDuties: duties,
+    isFinanceStaff,
+    isHeadTu,
+    isPrincipal,
+  } satisfies FinanceActorContext;
+}
+
+async function ensureFinanceActor(
+  authUser: { id?: number; role?: string },
+  options?: { allowPrincipalReadOnly?: boolean; allowHeadTuReadOnly?: boolean },
+) {
+  const user = await loadFinanceActorContext(authUser);
+  const isPrincipalReadOnly = options?.allowPrincipalReadOnly && user.isPrincipal;
+  const isHeadTuReadOnly = options?.allowHeadTuReadOnly && user.isHeadTu;
+
+  if (!user.isFinanceStaff && !isPrincipalReadOnly && !isHeadTuReadOnly) {
     throw new ApiError(403, 'Akses staff keuangan dibutuhkan untuk fitur ini');
   }
 
+  return user;
+}
+
+async function ensureFinanceHeadTuActor(authUser: { id?: number; role?: string }) {
+  const user = await loadFinanceActorContext(authUser);
+  if (!user.isHeadTu) {
+    throw new ApiError(403, 'Akses Kepala TU dibutuhkan untuk persetujuan write-off');
+  }
+  return user;
+}
+
+async function ensureFinancePrincipalActor(authUser: { id?: number; role?: string }) {
+  const user = await loadFinanceActorContext(authUser);
+  if (!user.isPrincipal) {
+    throw new ApiError(403, 'Akses kepala sekolah dibutuhkan untuk persetujuan write-off');
+  }
+  return user;
+}
+
+async function ensureFinanceWriteOffViewer(authUser: { id?: number; role?: string }) {
+  const user = await loadFinanceActorContext(authUser);
+  if (!user.isFinanceStaff && !user.isHeadTu && !user.isPrincipal) {
+    throw new ApiError(403, 'Akses finance monitoring dibutuhkan untuk melihat write-off');
+  }
   return user;
 }
 
@@ -1542,9 +2012,107 @@ const createFinanceRefundSchema = z.object({
   refundedAt: z.coerce.date().optional(),
 });
 
+const listFinanceWriteOffsQuerySchema = z.object({
+  invoiceId: z.coerce.number().int().positive().optional(),
+  studentId: z.coerce.number().int().positive().optional(),
+  status: z.nativeEnum(FinanceWriteOffStatus).optional(),
+  pendingFor: z.enum(['HEAD_TU', 'PRINCIPAL', 'FINANCE_APPLY']).optional(),
+  search: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional().default(100),
+});
+
+const createFinanceWriteOffSchema = z.object({
+  amount: z.coerce.number().positive(),
+  reason: z.string().trim().min(5).max(500),
+  note: z.string().trim().max(500).optional(),
+});
+
+const decideFinanceWriteOffSchema = z
+  .object({
+    approved: z.boolean(),
+    approvedAmount: z.coerce.number().positive().optional(),
+    note: z.string().trim().max(500).optional(),
+  })
+  .superRefine((payload, ctx) => {
+    if (!payload.approved && payload.approvedAmount != null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['approvedAmount'],
+        message: 'Nominal persetujuan hanya boleh diisi saat menyetujui write-off',
+      });
+    }
+  });
+
+const applyFinanceWriteOffSchema = z.object({
+  amount: z.coerce.number().positive().optional(),
+  note: z.string().trim().max(500).optional(),
+});
+
 const applyFinanceLateFeeSchema = z.object({
   note: z.string().trim().max(500).optional(),
   appliedAt: z.coerce.date().optional(),
+});
+
+const financeWriteOffRecordInclude = Prisma.validator<Prisma.FinanceWriteOffRequestInclude>()({
+  invoice: {
+    select: {
+      id: true,
+      invoiceNo: true,
+      periodKey: true,
+      semester: true,
+      title: true,
+      dueDate: true,
+      totalAmount: true,
+      paidAmount: true,
+      writtenOffAmount: true,
+      balanceAmount: true,
+      status: true,
+    },
+  },
+  student: {
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      nis: true,
+      nisn: true,
+      studentClass: {
+        select: {
+          id: true,
+          name: true,
+          level: true,
+        },
+      },
+    },
+  },
+  requestedBy: {
+    select: {
+      id: true,
+      name: true,
+      role: true,
+    },
+  },
+  headTuDecisionBy: {
+    select: {
+      id: true,
+      name: true,
+      role: true,
+    },
+  },
+  principalDecisionBy: {
+    select: {
+      id: true,
+      name: true,
+      role: true,
+    },
+  },
+  appliedBy: {
+    select: {
+      id: true,
+      name: true,
+      role: true,
+    },
+  },
 });
 
 const PERIOD_KEY_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -2765,6 +3333,9 @@ async function buildFinanceInvoiceGenerationPlan(payload: z.infer<typeof generat
       studentId: true,
       invoiceNo: true,
       paidAmount: true,
+      totalAmount: true,
+      balanceAmount: true,
+      writtenOffAmount: true,
     },
   });
 
@@ -2918,7 +3489,16 @@ async function buildFinanceInvoiceGenerationPlan(payload: z.infer<typeof generat
     const projectedBalanceAmount = normalizeFinanceAmount(Math.max(totalAmount - appliedCreditAmount, 0));
     const existingInvoice = existingInvoiceMap.get(student.id);
 
-    if (existingInvoice && Number(existingInvoice.paidAmount || 0) > 0) {
+    const existingWrittenOffAmount = existingInvoice
+      ? inferFinanceWrittenOffAmount({
+          totalAmount: Number(existingInvoice.totalAmount || 0),
+          paidAmount: Number(existingInvoice.paidAmount || 0),
+          balanceAmount: Number(existingInvoice.balanceAmount || 0),
+          writtenOffAmount: existingInvoice.writtenOffAmount,
+        })
+      : 0;
+
+    if (existingInvoice && (Number(existingInvoice.paidAmount || 0) > 0 || existingWrittenOffAmount > 0)) {
       return {
         student,
         status: 'SKIPPED_LOCKED_PAID',
@@ -3150,14 +3730,30 @@ async function autoApplyFinanceCreditBalanceToInvoice(
   }
 
   const nextPaidAmount = normalizeFinanceAmount(Number(invoice.paidAmount || 0) + appliedAmount);
-  const nextBalanceAmount = normalizeFinanceAmount(
-    Math.max(Number(invoice.totalAmount || 0) - nextPaidAmount, 0),
-  );
-  const nextStatus: FinanceInvoiceStatus = nextBalanceAmount <= 0 ? 'PAID' : 'PARTIAL';
+  const writtenOffAmount = inferFinanceWrittenOffAmount({
+    totalAmount: Number(invoice.totalAmount || 0),
+    paidAmount: Number(invoice.paidAmount || 0),
+    balanceAmount: Number(invoice.balanceAmount || 0),
+    status: invoice.status,
+  });
+  const nextBalanceAmount = calculateFinanceInvoiceBalanceAmount({
+    totalAmount: Number(invoice.totalAmount || 0),
+    paidAmount: nextPaidAmount,
+    writtenOffAmount,
+    status: invoice.status,
+  });
+  const nextStatus = calculateFinanceInvoiceStatus({
+    balanceAmount: nextBalanceAmount,
+    paidAmount: nextPaidAmount,
+    writtenOffAmount,
+    currentStatus: invoice.status,
+  });
   const nextDueDate = resolveFinanceInvoiceDueDate({
     invoiceTotalAmount: Number(invoice.totalAmount || 0),
     invoicePaidAmount: nextPaidAmount,
+    invoiceBalanceAmount: nextBalanceAmount,
     invoiceStatus: nextStatus,
+    invoiceWrittenOffAmount: writtenOffAmount,
     invoiceDueDate: params.dueDate || null,
     installments: params.installments || [],
   });
@@ -4185,6 +4781,10 @@ export const listFinanceInvoices = asyncHandler(async (req: Request, res: Respon
         },
         orderBy: [{ sequence: 'asc' }],
       },
+      writeOffRequests: {
+        include: financeWriteOffRecordInclude,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      },
     },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit,
@@ -4560,13 +5160,32 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
       },
     });
 
-    const paidAmount = Number(invoice.paidAmount || 0) + allocatedAmount;
-    const balanceAmount = Math.max(Number(invoice.totalAmount || 0) - paidAmount, 0);
-    const status: FinanceInvoiceStatus = balanceAmount <= 0 ? 'PAID' : 'PARTIAL';
+    const paidAmount = normalizeFinanceAmount(Number(invoice.paidAmount || 0) + allocatedAmount);
+    const writtenOffAmount = inferFinanceWrittenOffAmount({
+      totalAmount: Number(invoice.totalAmount || 0),
+      paidAmount: Number(invoice.paidAmount || 0),
+      balanceAmount: Number(invoice.balanceAmount || 0),
+      writtenOffAmount: invoice.writtenOffAmount,
+      status: invoice.status,
+    });
+    const balanceAmount = calculateFinanceInvoiceBalanceAmount({
+      totalAmount: Number(invoice.totalAmount || 0),
+      paidAmount,
+      writtenOffAmount,
+      status: invoice.status,
+    });
+    const status = calculateFinanceInvoiceStatus({
+      balanceAmount,
+      paidAmount,
+      writtenOffAmount,
+      currentStatus: invoice.status,
+    });
     const nextDueDate = resolveFinanceInvoiceDueDate({
       invoiceTotalAmount: Number(invoice.totalAmount || 0),
       invoicePaidAmount: paidAmount,
+      invoiceBalanceAmount: balanceAmount,
       invoiceStatus: status,
+      invoiceWrittenOffAmount: writtenOffAmount,
       invoiceDueDate: invoice.dueDate || null,
       installments: invoice.installments,
     });
@@ -4809,7 +5428,9 @@ export const updateFinanceInvoiceInstallments = asyncHandler(async (req: Request
     const currentInstallments = serializeFinanceInstallments({
       invoiceTotalAmount: Number(invoice.totalAmount || 0),
       invoicePaidAmount: Number(invoice.paidAmount || 0),
+      invoiceBalanceAmount: Number(invoice.balanceAmount || 0),
       invoiceStatus: invoice.status,
+      invoiceWrittenOffAmount: invoice.writtenOffAmount,
       invoiceDueDate: invoice.dueDate || null,
       installments: invoice.installments,
     });
@@ -4822,7 +5443,17 @@ export const updateFinanceInvoiceInstallments = asyncHandler(async (req: Request
         dueDate: installment.dueDate ? new Date(installment.dueDate) : null,
       }));
 
-    if (Number(invoice.paidAmount || 0) > 0) {
+    const settledAmount =
+      normalizeFinanceAmount(Number(invoice.paidAmount || 0)) +
+      inferFinanceWrittenOffAmount({
+        totalAmount: Number(invoice.totalAmount || 0),
+        paidAmount: Number(invoice.paidAmount || 0),
+        balanceAmount: Number(invoice.balanceAmount || 0),
+        writtenOffAmount: invoice.writtenOffAmount,
+        status: invoice.status,
+      });
+
+    if (settledAmount > 0) {
       if (nextInstallments.length !== currentInstallments.length) {
         throw new ApiError(
           400,
@@ -4879,7 +5510,9 @@ export const updateFinanceInvoiceInstallments = asyncHandler(async (req: Request
     const nextDueDate = resolveFinanceInvoiceDueDate({
       invoiceTotalAmount: Number(invoice.totalAmount || 0),
       invoicePaidAmount: Number(invoice.paidAmount || 0),
+      invoiceBalanceAmount: Number(invoice.balanceAmount || 0),
       invoiceStatus: invoice.status,
+      invoiceWrittenOffAmount: invoice.writtenOffAmount,
       invoiceDueDate: invoice.dueDate || null,
       installments: savedInstallments,
     });
@@ -5140,7 +5773,9 @@ export const applyFinanceInvoiceLateFees = asyncHandler(async (req: Request, res
     const nextDueDate = resolveFinanceInvoiceDueDate({
       invoiceTotalAmount: nextTotalAmount,
       invoicePaidAmount: Number(invoice.paidAmount || 0),
+      invoiceBalanceAmount: nextBalanceAmount,
       invoiceStatus: invoice.status,
+      invoiceWrittenOffAmount: invoice.writtenOffAmount,
       invoiceDueDate: invoice.dueDate || null,
       installments: [...invoice.installments, lateFeeInstallment],
     });
@@ -5650,6 +6285,769 @@ export const createFinanceRefund = asyncHandler(async (req: Request, res: Respon
   );
 });
 
+export const listFinanceWriteOffs = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinanceWriteOffViewer((req as any).user || {});
+
+  const { invoiceId, studentId, status, pendingFor, search, limit } =
+    listFinanceWriteOffsQuerySchema.parse(req.query);
+  const normalizedSearch = search?.trim();
+
+  const statusWhere =
+    status != null
+      ? { status }
+      : pendingFor === 'HEAD_TU'
+        ? { status: FinanceWriteOffStatus.PENDING_HEAD_TU }
+        : pendingFor === 'PRINCIPAL'
+          ? { status: FinanceWriteOffStatus.PENDING_PRINCIPAL }
+          : pendingFor === 'FINANCE_APPLY'
+            ? { status: FinanceWriteOffStatus.APPROVED }
+            : {};
+
+  const where: Prisma.FinanceWriteOffRequestWhereInput = {
+    ...(invoiceId ? { invoiceId } : {}),
+    ...(studentId ? { studentId } : {}),
+    ...statusWhere,
+    ...(normalizedSearch
+      ? {
+          OR: [
+            { requestNo: { contains: normalizedSearch, mode: 'insensitive' } },
+            { reason: { contains: normalizedSearch, mode: 'insensitive' } },
+            { invoice: { invoiceNo: { contains: normalizedSearch, mode: 'insensitive' } } },
+            { student: { name: { contains: normalizedSearch, mode: 'insensitive' } } },
+            { student: { username: { contains: normalizedSearch, mode: 'insensitive' } } },
+            { student: { nis: { contains: normalizedSearch, mode: 'insensitive' } } },
+            { student: { nisn: { contains: normalizedSearch, mode: 'insensitive' } } },
+          ],
+        }
+      : {}),
+  };
+
+  const [requests, groupedSummary] = await Promise.all([
+    prisma.financeWriteOffRequest.findMany({
+      where,
+      include: financeWriteOffRecordInclude,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+    }),
+    prisma.financeWriteOffRequest.groupBy({
+      by: ['status'],
+      where,
+      _count: { _all: true },
+      _sum: {
+        requestedAmount: true,
+        approvedAmount: true,
+        appliedAmount: true,
+      },
+    }),
+  ]);
+
+  const summary = groupedSummary.reduce(
+    (acc, row) => {
+      acc.totalRequests += row._count._all;
+      acc.totalRequestedAmount += Number(row._sum.requestedAmount || 0);
+      acc.totalApprovedAmount += Number(row._sum.approvedAmount || 0);
+      acc.totalAppliedAmount += Number(row._sum.appliedAmount || 0);
+
+      if (row.status === FinanceWriteOffStatus.PENDING_HEAD_TU) acc.pendingHeadTuCount += row._count._all;
+      if (row.status === FinanceWriteOffStatus.PENDING_PRINCIPAL) acc.pendingPrincipalCount += row._count._all;
+      if (row.status === FinanceWriteOffStatus.APPROVED) acc.approvedCount += row._count._all;
+      if (row.status === FinanceWriteOffStatus.REJECTED) acc.rejectedCount += row._count._all;
+      if (row.status === FinanceWriteOffStatus.APPLIED) acc.appliedCount += row._count._all;
+
+      return acc;
+    },
+    {
+      totalRequests: 0,
+      pendingHeadTuCount: 0,
+      pendingPrincipalCount: 0,
+      approvedCount: 0,
+      rejectedCount: 0,
+      appliedCount: 0,
+      totalRequestedAmount: 0,
+      totalApprovedAmount: 0,
+      totalAppliedAmount: 0,
+    },
+  );
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        summary: {
+          ...summary,
+          totalRequestedAmount: normalizeFinanceAmount(summary.totalRequestedAmount),
+          totalApprovedAmount: normalizeFinanceAmount(summary.totalApprovedAmount),
+          totalAppliedAmount: normalizeFinanceAmount(summary.totalAppliedAmount),
+        },
+        requests: requests.map((request) => serializeFinanceWriteOffRecord(request)),
+      },
+      'Daftar write-off berhasil diambil',
+    ),
+  );
+});
+
+export const createFinanceWriteOffRequest = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+
+  const invoiceId = Number(req.params.id);
+  if (!Number.isInteger(invoiceId) || invoiceId <= 0) {
+    throw new ApiError(400, 'ID tagihan tidak valid');
+  }
+
+  const payload = createFinanceWriteOffSchema.parse(req.body || {});
+
+  const result = await prisma.$transaction(async (tx) => {
+    const [invoice, activeRequest] = await Promise.all([
+      tx.financeInvoice.findUnique({
+        where: { id: invoiceId },
+        include: {
+          student: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              nis: true,
+              nisn: true,
+              studentClass: {
+                select: {
+                  id: true,
+                  name: true,
+                  level: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      tx.financeWriteOffRequest.findFirst({
+        where: {
+          invoiceId,
+          status: {
+            in: [
+              FinanceWriteOffStatus.PENDING_HEAD_TU,
+              FinanceWriteOffStatus.PENDING_PRINCIPAL,
+              FinanceWriteOffStatus.APPROVED,
+            ],
+          },
+        },
+        select: {
+          id: true,
+          requestNo: true,
+        },
+      }),
+    ]);
+
+    if (!invoice) {
+      throw new ApiError(404, 'Tagihan tidak ditemukan');
+    }
+
+    if (invoice.status === 'CANCELLED') {
+      throw new ApiError(400, 'Tagihan yang dibatalkan tidak dapat diajukan write-off');
+    }
+
+    if (Number(invoice.balanceAmount || 0) <= 0) {
+      throw new ApiError(400, 'Tagihan sudah tidak memiliki outstanding untuk di-write-off');
+    }
+
+    if (activeRequest) {
+      throw new ApiError(
+        400,
+        `Masih ada pengajuan write-off aktif (${activeRequest.requestNo}) untuk invoice ini`,
+      );
+    }
+
+    const requestedAmount = normalizeFinanceAmount(Number(payload.amount || 0));
+    if (requestedAmount > Number(invoice.balanceAmount || 0)) {
+      throw new ApiError(
+        400,
+        `Nominal write-off melebihi outstanding invoice (maksimal Rp${Math.round(
+          Number(invoice.balanceAmount || 0),
+        ).toLocaleString('id-ID')})`,
+      );
+    }
+
+    const request = await tx.financeWriteOffRequest.create({
+      data: {
+        requestNo: makeFinanceWriteOffNo(invoice.studentId),
+        invoiceId: invoice.id,
+        studentId: invoice.studentId,
+        requestedAmount,
+        reason: payload.reason.trim(),
+        requestedNote: payload.note?.trim() || null,
+        requestedById: actor.id,
+      },
+      include: financeWriteOffRecordInclude,
+    });
+
+    return request;
+  });
+
+  const serializedRequest = serializeFinanceWriteOffRecord(result);
+
+  await createFinanceInternalNotifications({
+    scopes: ['HEAD_TU'],
+    title: 'Pengajuan Write-Off Baru',
+    message: `Invoice ${serializedRequest.invoice?.invoiceNo || '-'} untuk ${
+      serializedRequest.student?.name || 'siswa'
+    } diajukan write-off sebesar Rp${Math.round(serializedRequest.requestedAmount).toLocaleString('id-ID')}.`,
+    type: 'FINANCE_WRITE_OFF_REQUESTED',
+    data: {
+      requestId: serializedRequest.id,
+      requestNo: serializedRequest.requestNo,
+      invoiceId: serializedRequest.invoiceId,
+      invoiceNo: serializedRequest.invoice?.invoiceNo || null,
+      studentId: serializedRequest.studentId,
+      studentName: serializedRequest.student?.name || null,
+      requestedAmount: serializedRequest.requestedAmount,
+      reason: serializedRequest.reason,
+    },
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'CREATE',
+      'FINANCE_WRITE_OFF_REQUEST',
+      serializedRequest.id,
+      null,
+      {
+        requestNo: serializedRequest.requestNo,
+        invoiceId: serializedRequest.invoiceId,
+        invoiceNo: serializedRequest.invoice?.invoiceNo || null,
+        studentId: serializedRequest.studentId,
+        requestedAmount: serializedRequest.requestedAmount,
+        reason: serializedRequest.reason,
+      },
+      'Pengajuan write-off piutang siswa',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat pengajuan write-off finance', auditError);
+  }
+
+  res
+    .status(201)
+    .json(new ApiResponse(201, { request: serializedRequest }, 'Pengajuan write-off berhasil dibuat'));
+});
+
+export const decideFinanceWriteOffAsHeadTu = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceHeadTuActor((req as any).user || {});
+
+  const requestId = Number(req.params.id);
+  if (!Number.isInteger(requestId) || requestId <= 0) {
+    throw new ApiError(400, 'ID pengajuan write-off tidak valid');
+  }
+
+  const payload = decideFinanceWriteOffSchema.parse(req.body || {});
+
+  const before = await prisma.financeWriteOffRequest.findUnique({
+    where: { id: requestId },
+    include: financeWriteOffRecordInclude,
+  });
+
+  if (!before) {
+    throw new ApiError(404, 'Pengajuan write-off tidak ditemukan');
+  }
+
+  if (before.status !== FinanceWriteOffStatus.PENDING_HEAD_TU) {
+    throw new ApiError(400, 'Pengajuan write-off ini tidak sedang menunggu persetujuan Kepala TU');
+  }
+
+  const invoiceBalanceAmount = Number(before.invoice?.balanceAmount || 0);
+  const approvedAmount = payload.approved
+    ? normalizeFinanceAmount(Number(payload.approvedAmount || before.requestedAmount || 0))
+    : null;
+
+  if (payload.approved && approvedAmount != null && approvedAmount > invoiceBalanceAmount) {
+    throw new ApiError(400, 'Nominal persetujuan melebihi outstanding invoice saat ini');
+  }
+
+  const updated = await prisma.financeWriteOffRequest.update({
+    where: { id: requestId },
+    data: {
+      status: payload.approved ? FinanceWriteOffStatus.PENDING_PRINCIPAL : FinanceWriteOffStatus.REJECTED,
+      approvedAmount: payload.approved ? approvedAmount : null,
+      headTuApproved: payload.approved,
+      headTuDecisionById: actor.id,
+      headTuDecisionAt: new Date(),
+      headTuDecisionNote: payload.note?.trim() || null,
+    },
+    include: financeWriteOffRecordInclude,
+  });
+
+  const serializedRequest = serializeFinanceWriteOffRecord(updated);
+
+  await createFinanceInternalNotifications({
+    scopes: payload.approved ? ['PRINCIPAL', 'FINANCE'] : ['FINANCE'],
+    title: payload.approved ? 'Write-Off Disetujui Kepala TU' : 'Write-Off Ditolak Kepala TU',
+    message: payload.approved
+      ? `Pengajuan ${serializedRequest.requestNo} untuk invoice ${
+          serializedRequest.invoice?.invoiceNo || '-'
+        } disetujui Kepala TU dan diteruskan ke Kepala Sekolah.`
+      : `Pengajuan ${serializedRequest.requestNo} untuk invoice ${
+          serializedRequest.invoice?.invoiceNo || '-'
+        } ditolak oleh Kepala TU.`,
+    type: payload.approved ? 'FINANCE_WRITE_OFF_HEAD_TU_APPROVED' : 'FINANCE_WRITE_OFF_HEAD_TU_REJECTED',
+    data: {
+      requestId: serializedRequest.id,
+      requestNo: serializedRequest.requestNo,
+      invoiceId: serializedRequest.invoiceId,
+      invoiceNo: serializedRequest.invoice?.invoiceNo || null,
+      studentId: serializedRequest.studentId,
+      studentName: serializedRequest.student?.name || null,
+      requestedAmount: serializedRequest.requestedAmount,
+      approvedAmount: serializedRequest.approvedAmount,
+      note: payload.note?.trim() || null,
+    },
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'UPDATE',
+      'FINANCE_WRITE_OFF_HEAD_TU_DECISION',
+      serializedRequest.id,
+      before,
+      serializedRequest,
+      payload.approved ? 'Persetujuan write-off oleh Kepala TU' : 'Penolakan write-off oleh Kepala TU',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat keputusan write-off Head TU', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      { request: serializedRequest },
+      payload.approved ? 'Write-off diteruskan ke persetujuan Kepala Sekolah' : 'Write-off ditolak Kepala TU',
+    ),
+  );
+});
+
+export const decideFinanceWriteOffAsPrincipal = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinancePrincipalActor((req as any).user || {});
+
+  const requestId = Number(req.params.id);
+  if (!Number.isInteger(requestId) || requestId <= 0) {
+    throw new ApiError(400, 'ID pengajuan write-off tidak valid');
+  }
+
+  const payload = decideFinanceWriteOffSchema.parse(req.body || {});
+
+  const before = await prisma.financeWriteOffRequest.findUnique({
+    where: { id: requestId },
+    include: financeWriteOffRecordInclude,
+  });
+
+  if (!before) {
+    throw new ApiError(404, 'Pengajuan write-off tidak ditemukan');
+  }
+
+  if (before.status !== FinanceWriteOffStatus.PENDING_PRINCIPAL) {
+    throw new ApiError(400, 'Pengajuan write-off ini tidak sedang menunggu persetujuan Kepala Sekolah');
+  }
+
+  const invoiceBalanceAmount = Number(before.invoice?.balanceAmount || 0);
+  const approvedAmount = payload.approved
+    ? normalizeFinanceAmount(Number(payload.approvedAmount || before.approvedAmount || before.requestedAmount || 0))
+    : null;
+
+  if (payload.approved && approvedAmount != null && approvedAmount > invoiceBalanceAmount) {
+    throw new ApiError(400, 'Nominal persetujuan melebihi outstanding invoice saat ini');
+  }
+
+  const updated = await prisma.financeWriteOffRequest.update({
+    where: { id: requestId },
+    data: {
+      status: payload.approved ? FinanceWriteOffStatus.APPROVED : FinanceWriteOffStatus.REJECTED,
+      approvedAmount: payload.approved ? approvedAmount : before.approvedAmount,
+      principalApproved: payload.approved,
+      principalDecisionById: actor.id,
+      principalDecisionAt: new Date(),
+      principalDecisionNote: payload.note?.trim() || null,
+    },
+    include: financeWriteOffRecordInclude,
+  });
+
+  const serializedRequest = serializeFinanceWriteOffRecord(updated);
+
+  await createFinanceInternalNotifications({
+    scopes: ['FINANCE', 'HEAD_TU'],
+    title: payload.approved ? 'Write-Off Disetujui Kepala Sekolah' : 'Write-Off Ditolak Kepala Sekolah',
+    message: payload.approved
+      ? `Pengajuan ${serializedRequest.requestNo} disetujui Kepala Sekolah dengan nominal Rp${Math.round(
+          Number(serializedRequest.approvedAmount || 0),
+        ).toLocaleString('id-ID')} dan siap diterapkan oleh bendahara.`
+      : `Pengajuan ${serializedRequest.requestNo} ditolak oleh Kepala Sekolah.`,
+    type: payload.approved ? 'FINANCE_WRITE_OFF_PRINCIPAL_APPROVED' : 'FINANCE_WRITE_OFF_PRINCIPAL_REJECTED',
+    data: {
+      requestId: serializedRequest.id,
+      requestNo: serializedRequest.requestNo,
+      invoiceId: serializedRequest.invoiceId,
+      invoiceNo: serializedRequest.invoice?.invoiceNo || null,
+      studentId: serializedRequest.studentId,
+      studentName: serializedRequest.student?.name || null,
+      requestedAmount: serializedRequest.requestedAmount,
+      approvedAmount: serializedRequest.approvedAmount,
+      note: payload.note?.trim() || null,
+    },
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'UPDATE',
+      'FINANCE_WRITE_OFF_PRINCIPAL_DECISION',
+      serializedRequest.id,
+      before,
+      serializedRequest,
+      payload.approved
+        ? 'Persetujuan write-off oleh Kepala Sekolah'
+        : 'Penolakan write-off oleh Kepala Sekolah',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat keputusan write-off Kepala Sekolah', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      { request: serializedRequest },
+      payload.approved ? 'Write-off disetujui Kepala Sekolah' : 'Write-off ditolak Kepala Sekolah',
+    ),
+  );
+});
+
+export const applyFinanceWriteOff = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+
+  const requestId = Number(req.params.id);
+  if (!Number.isInteger(requestId) || requestId <= 0) {
+    throw new ApiError(400, 'ID pengajuan write-off tidak valid');
+  }
+
+  const payload = applyFinanceWriteOffSchema.parse(req.body || {});
+
+  const before = await prisma.financeWriteOffRequest.findUnique({
+    where: { id: requestId },
+    include: financeWriteOffRecordInclude,
+  });
+
+  if (!before) {
+    throw new ApiError(404, 'Pengajuan write-off tidak ditemukan');
+  }
+
+  if (before.status !== FinanceWriteOffStatus.APPROVED) {
+    throw new ApiError(400, 'Pengajuan write-off ini belum siap diterapkan');
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const invoice = await tx.financeInvoice.findUnique({
+      where: { id: before.invoiceId },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nis: true,
+            nisn: true,
+            studentClass: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+            },
+          },
+        },
+        items: {
+          select: {
+            id: true,
+            componentId: true,
+            componentCode: true,
+            componentName: true,
+            amount: true,
+            notes: true,
+            component: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                lateFeeEnabled: true,
+                lateFeeMode: true,
+                lateFeeAmount: true,
+                lateFeeGraceDays: true,
+                lateFeeCapAmount: true,
+              },
+            },
+          },
+        },
+        payments: {
+          select: {
+            id: true,
+            paymentNo: true,
+            amount: true,
+            allocatedAmount: true,
+            creditedAmount: true,
+            source: true,
+            method: true,
+            referenceNo: true,
+            paidAt: true,
+          },
+          orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
+        },
+        installments: {
+          select: {
+            id: true,
+            sequence: true,
+            amount: true,
+            dueDate: true,
+          },
+          orderBy: [{ sequence: 'asc' }],
+        },
+        writeOffRequests: {
+          include: financeWriteOffRecordInclude,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        },
+      },
+    });
+
+    if (!invoice) {
+      throw new ApiError(404, 'Tagihan tidak ditemukan');
+    }
+
+    if (invoice.status === 'CANCELLED') {
+      throw new ApiError(400, 'Tagihan yang dibatalkan tidak dapat diterapkan write-off');
+    }
+
+    const currentWrittenOffAmount = inferFinanceWrittenOffAmount({
+      totalAmount: Number(invoice.totalAmount || 0),
+      paidAmount: Number(invoice.paidAmount || 0),
+      balanceAmount: Number(invoice.balanceAmount || 0),
+      writtenOffAmount: invoice.writtenOffAmount,
+      status: invoice.status,
+    });
+    const baseApprovedAmount = normalizeFinanceAmount(
+      Number(before.approvedAmount || before.requestedAmount || 0),
+    );
+    const maxApplicableAmount = normalizeFinanceAmount(
+      Math.min(baseApprovedAmount, Number(invoice.balanceAmount || 0)),
+    );
+
+    if (maxApplicableAmount <= 0) {
+      throw new ApiError(400, 'Outstanding invoice sudah tidak tersedia untuk diterapkan write-off');
+    }
+
+    const applyAmount = normalizeFinanceAmount(Number(payload.amount || maxApplicableAmount));
+    if (applyAmount > maxApplicableAmount) {
+      throw new ApiError(400, 'Nominal apply write-off melebihi outstanding yang dapat diproses');
+    }
+
+    const nextWrittenOffAmount = normalizeFinanceAmount(currentWrittenOffAmount + applyAmount);
+    const nextBalanceAmount = calculateFinanceInvoiceBalanceAmount({
+      totalAmount: Number(invoice.totalAmount || 0),
+      paidAmount: Number(invoice.paidAmount || 0),
+      writtenOffAmount: nextWrittenOffAmount,
+      status: invoice.status,
+    });
+    const nextStatus = calculateFinanceInvoiceStatus({
+      balanceAmount: nextBalanceAmount,
+      paidAmount: Number(invoice.paidAmount || 0),
+      writtenOffAmount: nextWrittenOffAmount,
+      currentStatus: invoice.status,
+    });
+    const nextDueDate = resolveFinanceInvoiceDueDate({
+      invoiceTotalAmount: Number(invoice.totalAmount || 0),
+      invoicePaidAmount: Number(invoice.paidAmount || 0),
+      invoiceBalanceAmount: nextBalanceAmount,
+      invoiceStatus: nextStatus,
+      invoiceWrittenOffAmount: nextWrittenOffAmount,
+      invoiceDueDate: invoice.dueDate || null,
+      installments: invoice.installments,
+    });
+
+    const updatedInvoice = await tx.financeInvoice.update({
+      where: { id: invoice.id },
+      data: {
+        writtenOffAmount: nextWrittenOffAmount,
+        balanceAmount: nextBalanceAmount,
+        status: nextStatus,
+        dueDate: nextDueDate,
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nis: true,
+            nisn: true,
+            studentClass: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+            },
+          },
+        },
+        items: {
+          select: {
+            id: true,
+            componentId: true,
+            componentCode: true,
+            componentName: true,
+            amount: true,
+            notes: true,
+            component: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                lateFeeEnabled: true,
+                lateFeeMode: true,
+                lateFeeAmount: true,
+                lateFeeGraceDays: true,
+                lateFeeCapAmount: true,
+              },
+            },
+          },
+        },
+        payments: {
+          select: {
+            id: true,
+            paymentNo: true,
+            amount: true,
+            allocatedAmount: true,
+            creditedAmount: true,
+            source: true,
+            method: true,
+            referenceNo: true,
+            paidAt: true,
+          },
+          orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
+        },
+        installments: {
+          select: {
+            id: true,
+            sequence: true,
+            amount: true,
+            dueDate: true,
+          },
+          orderBy: [{ sequence: 'asc' }],
+        },
+        writeOffRequests: {
+          include: financeWriteOffRecordInclude,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        },
+      },
+    });
+
+    const updatedRequest = await tx.financeWriteOffRequest.update({
+      where: { id: before.id },
+      data: {
+        status: FinanceWriteOffStatus.APPLIED,
+        appliedAmount: applyAmount,
+        appliedById: actor.id,
+        appliedAt: new Date(),
+        applyNote: payload.note?.trim() || null,
+      },
+      include: financeWriteOffRecordInclude,
+    });
+
+    return {
+      request: updatedRequest,
+      invoice: updatedInvoice,
+      appliedAmount: applyAmount,
+      previousWrittenOffAmount: currentWrittenOffAmount,
+    };
+  });
+
+  const serializedRequest = serializeFinanceWriteOffRecord(result.request);
+  const serializedInvoice = serializeFinanceInvoiceRecord(result.invoice);
+
+  await Promise.all([
+    createFinanceInternalNotifications({
+      scopes: ['HEAD_TU', 'PRINCIPAL'],
+      title: 'Write-Off Sudah Diterapkan',
+      message: `Pengajuan ${serializedRequest.requestNo} sudah diterapkan ke invoice ${
+        serializedRequest.invoice?.invoiceNo || '-'
+      } sebesar Rp${Math.round(result.appliedAmount).toLocaleString('id-ID')}.`,
+      type: 'FINANCE_WRITE_OFF_APPLIED',
+      data: {
+        requestId: serializedRequest.id,
+        requestNo: serializedRequest.requestNo,
+        invoiceId: serializedRequest.invoiceId,
+        invoiceNo: serializedRequest.invoice?.invoiceNo || null,
+        studentId: serializedRequest.studentId,
+        studentName: serializedRequest.student?.name || null,
+        appliedAmount: result.appliedAmount,
+        remainingBalance: serializedInvoice.balanceAmount,
+      },
+    }),
+    createFinanceNotifications({
+      studentId: serializedRequest.studentId,
+      title: 'Penyesuaian Tagihan Diterapkan',
+      message: `Penyesuaian write-off sebesar Rp${Math.round(result.appliedAmount).toLocaleString(
+        'id-ID',
+      )} diterapkan ke invoice ${serializedRequest.invoice?.invoiceNo || '-'}. Sisa tagihan sekarang Rp${Math.round(
+        serializedInvoice.balanceAmount,
+      ).toLocaleString('id-ID')}.`,
+      type: 'FINANCE_WRITE_OFF_APPLIED',
+      data: {
+        requestId: serializedRequest.id,
+        requestNo: serializedRequest.requestNo,
+        invoiceId: serializedRequest.invoiceId,
+        invoiceNo: serializedRequest.invoice?.invoiceNo || null,
+        appliedAmount: result.appliedAmount,
+        remainingBalance: serializedInvoice.balanceAmount,
+      },
+    }),
+  ]);
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'UPDATE',
+      'FINANCE_WRITE_OFF_APPLY',
+      serializedRequest.id,
+      before,
+      {
+        request: serializedRequest,
+        invoice: {
+          id: serializedInvoice.id,
+          invoiceNo: serializedInvoice.invoiceNo,
+          writtenOffAmount: serializedInvoice.writtenOffAmount,
+          balanceAmount: serializedInvoice.balanceAmount,
+          status: serializedInvoice.status,
+        },
+      },
+      'Penerapan write-off ke invoice siswa',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat penerapan write-off finance', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        request: serializedRequest,
+        invoice: serializedInvoice,
+      },
+      'Write-off berhasil diterapkan ke invoice',
+    ),
+  );
+});
+
 type FinancePortalInvoiceRecord = {
   id: number;
   invoiceNo: string;
@@ -5660,6 +7058,7 @@ type FinancePortalInvoiceRecord = {
   status: FinanceInvoiceStatus;
   totalAmount: number;
   paidAmount: number;
+  writtenOffAmount?: number | null;
   balanceAmount: number;
   items: Array<{
     componentId?: number | null;
@@ -5763,6 +7162,7 @@ function buildFinancePortalOverview(financeInvoices: FinancePortalInvoiceRecord[
       status: invoice.status,
       totalAmount: serializedInvoice.totalAmount,
       paidAmount: serializedInvoice.paidAmount,
+      writtenOffAmount: serializedInvoice.writtenOffAmount,
       balanceAmount: serializedInvoice.balanceAmount,
       isOverdue,
       daysPastDue,
@@ -5809,7 +7209,7 @@ function buildFinancePortalOverview(financeInvoices: FinancePortalInvoiceRecord[
       statusSummary.PAID.amount += invoicePaid;
     } else if (invoice.status === 'PAID') {
       statusSummary.PAID.count += 1;
-      statusSummary.PAID.amount += invoiceTotal;
+      statusSummary.PAID.amount += invoicePaid;
     } else if (invoice.status === 'CANCELLED') {
       statusSummary.CANCELLED.count += 1;
       statusSummary.CANCELLED.amount += invoiceTotal;
