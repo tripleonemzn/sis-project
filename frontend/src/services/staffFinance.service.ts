@@ -491,6 +491,7 @@ export interface FinanceReportSnapshot {
     academicYearId: number | null;
     semester: SemesterCode | null;
     classId: number | null;
+    gradeLevel?: string | null;
     periodFrom: string | null;
     periodTo: string | null;
     asOfDate: string | null;
@@ -527,6 +528,7 @@ export interface FinanceReportQueryParams {
   academicYearId?: number;
   semester?: SemesterCode;
   classId?: number;
+  gradeLevel?: string;
   periodFrom?: string;
   periodTo?: string;
   asOfDate?: string;
@@ -767,6 +769,7 @@ export const staffFinanceService = {
     academicYearId?: number;
     semester?: SemesterCode;
     classId?: number;
+    gradeLevel?: string;
     studentId?: number;
     status?: FinanceInvoiceStatus;
     search?: string;

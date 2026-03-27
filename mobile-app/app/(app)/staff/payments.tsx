@@ -120,11 +120,25 @@ function formatEffectiveWindow(start?: string | null, end?: string | null) {
   return `${startLabel} - ${endLabel}`;
 }
 
+function normalizeClassLevel(raw?: string | null) {
+  return String(raw || '')
+    .trim()
+    .toUpperCase();
+}
+
+function getClassLevelLabel(level?: string | null) {
+  const normalized = normalizeClassLevel(level);
+  return normalized ? `Kelas ${normalized}` : 'Semua kelas';
+}
+
 function describeTariffScope(tariff: StaffFinanceTariffRule) {
   const parts = [
-    tariff.class?.name || 'Semua kelas',
+    tariff.gradeLevel
+      ? getClassLevelLabel(tariff.gradeLevel)
+      : tariff.class?.level
+        ? getClassLevelLabel(tariff.class.level)
+        : tariff.class?.name || 'Semua kelas',
     tariff.major?.name ? `Jurusan ${tariff.major.name}` : 'Semua jurusan',
-    tariff.gradeLevel ? `Tingkat ${tariff.gradeLevel}` : 'Semua tingkat',
     tariff.semester === 'ODD' ? 'Ganjil' : tariff.semester === 'EVEN' ? 'Genap' : 'Semua semester',
     tariff.academicYear?.name || 'Semua tahun ajaran',
   ];
@@ -159,9 +173,12 @@ function describeAdjustmentScope(adjustment: StaffFinanceAdjustmentRule) {
     adjustment.component?.name ? `Komponen ${adjustment.component.name}` : 'Seluruh invoice',
     adjustment.student?.name
       ? `Siswa ${adjustment.student.name}`
-      : adjustment.class?.name || 'Semua kelas',
+      : adjustment.gradeLevel
+        ? getClassLevelLabel(adjustment.gradeLevel)
+        : adjustment.class?.level
+          ? getClassLevelLabel(adjustment.class.level)
+          : adjustment.class?.name || 'Semua kelas',
     adjustment.major?.name ? `Jurusan ${adjustment.major.name}` : 'Semua jurusan',
-    adjustment.gradeLevel ? `Tingkat ${adjustment.gradeLevel}` : 'Semua tingkat',
     adjustment.semester === 'ODD'
       ? 'Ganjil'
       : adjustment.semester === 'EVEN'
@@ -242,7 +259,6 @@ export default function StaffPaymentsScreen() {
 
   const [tariffComponentId, setTariffComponentId] = useState<number | null>(null);
   const [tariffAcademicYearId, setTariffAcademicYearId] = useState<number | null>(null);
-  const [tariffClassId, setTariffClassId] = useState<number | null>(null);
   const [tariffMajorId, setTariffMajorId] = useState<number | null>(null);
   const [tariffSemester, setTariffSemester] = useState<SemesterCode | ''>('');
   const [tariffGradeLevel, setTariffGradeLevel] = useState('');
@@ -259,7 +275,6 @@ export default function StaffPaymentsScreen() {
   const [adjustmentAmount, setAdjustmentAmount] = useState('');
   const [adjustmentComponentId, setAdjustmentComponentId] = useState<number | null>(null);
   const [adjustmentAcademicYearId, setAdjustmentAcademicYearId] = useState<number | null>(null);
-  const [adjustmentClassId, setAdjustmentClassId] = useState<number | null>(null);
   const [adjustmentMajorId, setAdjustmentMajorId] = useState<number | null>(null);
   const [adjustmentStudentId, setAdjustmentStudentId] = useState<number | null>(null);
   const [adjustmentStudentSearch, setAdjustmentStudentSearch] = useState('');
@@ -275,7 +290,6 @@ export default function StaffPaymentsScreen() {
   const [invoicePeriodKey, setInvoicePeriodKey] = useState('');
   const [invoiceDueDate, setInvoiceDueDate] = useState('');
   const [invoiceTitle, setInvoiceTitle] = useState('');
-  const [invoiceClassId, setInvoiceClassId] = useState<number | null>(null);
   const [invoiceMajorId, setInvoiceMajorId] = useState<number | null>(null);
   const [invoiceGradeLevel, setInvoiceGradeLevel] = useState('');
   const [invoiceInstallmentCount, setInvoiceInstallmentCount] = useState(1);
@@ -287,7 +301,7 @@ export default function StaffPaymentsScreen() {
 
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [invoiceStatus, setInvoiceStatus] = useState<'' | FinanceInvoiceStatus>('');
-  const [invoiceClassFilter, setInvoiceClassFilter] = useState<number | null>(null);
+  const [invoiceGradeLevelFilter, setInvoiceGradeLevelFilter] = useState('');
 
   const [reminderDueSoonDays, setReminderDueSoonDays] = useState('3');
 
@@ -327,6 +341,13 @@ export default function StaffPaymentsScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const classesQuery = useQuery({
+    queryKey: ['mobile-staff-finance-classes'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => adminApi.listClasses({ page: 1, limit: 500 }),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const majorsQuery = useQuery({
     queryKey: ['mobile-staff-finance-majors'],
     enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
@@ -334,32 +355,19 @@ export default function StaffPaymentsScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const classes = useMemo(() => {
-    const map = new Map<number, { id: number; name: string; level: string }>();
-    (studentsQuery.data || []).forEach((student) => {
-      if (student.studentClass?.id && student.studentClass?.name) {
-        map.set(student.studentClass.id, {
-          id: student.studentClass.id,
-          name: student.studentClass.name,
-          level: student.studentClass.level || '',
-        });
-      }
-    });
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [studentsQuery.data]);
-
   const academicYears = academicYearsQuery.data?.items || [];
+  const masterClasses = classesQuery.data?.items || [];
   const majors = majorsQuery.data?.items || [];
-  const gradeLevels = useMemo(
+  const classLevelOptions = useMemo(
     () =>
       Array.from(
         new Set(
-          classes
-            .map((classItem) => classItem.level.trim())
+          masterClasses
+            .map((classItem) => normalizeClassLevel(classItem.level || classItem.name))
             .filter((value) => value.length > 0),
         ),
-      ).sort((a, b) => a.localeCompare(b)),
-    [classes],
+      ).sort((a, b) => a.localeCompare(b, 'id-ID', { numeric: true })),
+    [masterClasses],
   );
 
   const studentLookup = useMemo(() => {
@@ -440,14 +448,14 @@ export default function StaffPaymentsScreen() {
   });
 
   const invoicesQuery = useQuery({
-    queryKey: ['mobile-staff-finance-invoices', invoiceSearch, invoiceStatus, invoiceClassFilter],
+    queryKey: ['mobile-staff-finance-invoices', invoiceSearch, invoiceStatus, invoiceGradeLevelFilter],
     enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
     queryFn: () =>
       staffFinanceApi.listInvoices({
         limit: 100,
         search: invoiceSearch.trim() || undefined,
         status: invoiceStatus || undefined,
-        classId: invoiceClassFilter || undefined,
+        gradeLevel: invoiceGradeLevelFilter.trim() || undefined,
       }),
   });
 
@@ -536,7 +544,6 @@ export default function StaffPaymentsScreen() {
     setEditingTariffId(null);
     setTariffComponentId(null);
     setTariffAcademicYearId(null);
-    setTariffClassId(null);
     setTariffMajorId(null);
     setTariffSemester('');
     setTariffGradeLevel('');
@@ -555,7 +562,6 @@ export default function StaffPaymentsScreen() {
     setAdjustmentAmount('');
     setAdjustmentComponentId(null);
     setAdjustmentAcademicYearId(null);
-    setAdjustmentClassId(null);
     setAdjustmentMajorId(null);
     setAdjustmentStudentId(null);
     setAdjustmentStudentSearch('');
@@ -638,7 +644,7 @@ export default function StaffPaymentsScreen() {
         ? staffFinanceApi.updateTariff(editingTariffId, {
             componentId: Number(tariffComponentId),
             academicYearId: tariffAcademicYearId,
-            classId: tariffClassId,
+            classId: null,
             majorId: tariffMajorId,
             semester: tariffSemester || null,
             gradeLevel: tariffGradeLevel.trim() || null,
@@ -650,7 +656,6 @@ export default function StaffPaymentsScreen() {
         : staffFinanceApi.createTariff({
             componentId: Number(tariffComponentId),
             academicYearId: tariffAcademicYearId || undefined,
-            classId: tariffClassId || undefined,
             majorId: tariffMajorId || undefined,
             semester: tariffSemester || undefined,
             gradeLevel: tariffGradeLevel.trim() || undefined,
@@ -688,7 +693,7 @@ export default function StaffPaymentsScreen() {
             amount: Number(adjustmentAmount),
             componentId: adjustmentComponentId,
             academicYearId: adjustmentAcademicYearId,
-            classId: adjustmentClassId,
+            classId: null,
             majorId: adjustmentMajorId,
             studentId: adjustmentStudentId,
             semester: adjustmentSemester || null,
@@ -705,7 +710,6 @@ export default function StaffPaymentsScreen() {
             amount: Number(adjustmentAmount),
             componentId: adjustmentComponentId || undefined,
             academicYearId: adjustmentAcademicYearId || undefined,
-            classId: adjustmentClassId || undefined,
             majorId: adjustmentMajorId || undefined,
             studentId: adjustmentStudentId || undefined,
             semester: adjustmentSemester || undefined,
@@ -740,7 +744,6 @@ export default function StaffPaymentsScreen() {
         periodKey: invoicePeriodKey,
         dueDate: invoiceDueDate || undefined,
         title: invoiceTitle || undefined,
-        classId: invoiceClassId || undefined,
         majorId: invoiceMajorId || undefined,
         gradeLevel: invoiceGradeLevel.trim() || undefined,
         installmentCount: Math.max(1, Number(invoiceInstallmentCount || 1)),
@@ -768,7 +771,6 @@ export default function StaffPaymentsScreen() {
         periodKey: invoicePeriodKey,
         dueDate: invoiceDueDate || undefined,
         title: invoiceTitle || undefined,
-        classId: invoiceClassId || undefined,
         majorId: invoiceMajorId || undefined,
         gradeLevel: invoiceGradeLevel.trim() || undefined,
         installmentCount: Math.max(1, Number(invoiceInstallmentCount || 1)),
@@ -998,12 +1000,11 @@ export default function StaffPaymentsScreen() {
     setAdjustmentAmount(String(Number(adjustment.amount || 0)));
     setAdjustmentComponentId(adjustment.componentId || null);
     setAdjustmentAcademicYearId(adjustment.academicYearId || null);
-    setAdjustmentClassId(adjustment.classId || null);
     setAdjustmentMajorId(adjustment.majorId || null);
     setAdjustmentStudentId(adjustment.studentId || null);
     setAdjustmentStudentSearch('');
     setAdjustmentSemester(adjustment.semester || '');
-    setAdjustmentGradeLevel(adjustment.gradeLevel || '');
+    setAdjustmentGradeLevel(adjustment.gradeLevel || adjustment.class?.level || '');
     setAdjustmentEffectiveStart(adjustment.effectiveStart ? String(adjustment.effectiveStart).slice(0, 10) : '');
     setAdjustmentEffectiveEnd(adjustment.effectiveEnd ? String(adjustment.effectiveEnd).slice(0, 10) : '');
     setAdjustmentNotes(adjustment.notes || '');
@@ -1085,7 +1086,6 @@ export default function StaffPaymentsScreen() {
     invoicePeriodKey,
     invoiceDueDate,
     invoiceTitle,
-    invoiceClassId,
     invoiceMajorId,
     invoiceGradeLevel,
     invoiceInstallmentCount,
@@ -2048,26 +2048,26 @@ export default function StaffPaymentsScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Pressable
-                onPress={() => setTariffClassId(null)}
+                onPress={() => setTariffGradeLevel('')}
                 style={{
                   borderWidth: 1,
-                  borderColor: tariffClassId === null ? '#1d4ed8' : '#dbeafe',
-                  backgroundColor: tariffClassId === null ? '#e9f1ff' : '#fff',
+                  borderColor: tariffGradeLevel === '' ? '#1d4ed8' : '#dbeafe',
+                  backgroundColor: tariffGradeLevel === '' ? '#e9f1ff' : '#fff',
                   borderRadius: 999,
                   paddingHorizontal: 10,
                   paddingVertical: 6,
                 }}
               >
-                <Text style={{ color: tariffClassId === null ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                <Text style={{ color: tariffGradeLevel === '' ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
                   Semua kelas
                 </Text>
               </Pressable>
-              {classes.map((classItem) => {
-                const active = tariffClassId === classItem.id;
+              {classLevelOptions.map((level) => {
+                const active = tariffGradeLevel === level;
                 return (
                   <Pressable
-                    key={classItem.id}
-                    onPress={() => setTariffClassId(classItem.id)}
+                    key={level}
+                    onPress={() => setTariffGradeLevel(level)}
                     style={{
                       borderWidth: 1,
                       borderColor: active ? '#1d4ed8' : '#dbeafe',
@@ -2078,7 +2078,7 @@ export default function StaffPaymentsScreen() {
                     }}
                   >
                     <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
-                      {classItem.name}
+                      {getClassLevelLabel(level)}
                     </Text>
                   </Pressable>
                 );
@@ -2177,13 +2177,6 @@ export default function StaffPaymentsScreen() {
           </View>
 
           <TextInput
-            value={tariffGradeLevel}
-            onChangeText={setTariffGradeLevel}
-            placeholder="Tingkat (contoh: X / XI / XII)"
-            placeholderTextColor="#94a3b8"
-            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
-          />
-          <TextInput
             value={tariffEffectiveStart}
             onChangeText={setTariffEffectiveStart}
             placeholder="Efektif mulai (YYYY-MM-DD, opsional)"
@@ -2270,10 +2263,9 @@ export default function StaffPaymentsScreen() {
                       setEditingTariffId(tariff.id);
                       setTariffComponentId(tariff.componentId);
                       setTariffAcademicYearId(tariff.academicYearId || null);
-                      setTariffClassId(tariff.classId || null);
                       setTariffMajorId(tariff.majorId || null);
                       setTariffSemester(tariff.semester || '');
-                      setTariffGradeLevel(tariff.gradeLevel || '');
+                      setTariffGradeLevel(tariff.gradeLevel || tariff.class?.level || '');
                       setTariffAmount(String(Number(tariff.amount || 0)));
                       setTariffEffectiveStart(tariff.effectiveStart ? String(tariff.effectiveStart).slice(0, 10) : '');
                       setTariffEffectiveEnd(tariff.effectiveEnd ? String(tariff.effectiveEnd).slice(0, 10) : '');
@@ -2463,26 +2455,26 @@ export default function StaffPaymentsScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Pressable
-                onPress={() => setAdjustmentClassId(null)}
+                onPress={() => setAdjustmentGradeLevel('')}
                 style={{
                   borderWidth: 1,
-                  borderColor: adjustmentClassId === null ? '#7c3aed' : '#ddd6fe',
-                  backgroundColor: adjustmentClassId === null ? '#f5f3ff' : '#fff',
+                  borderColor: adjustmentGradeLevel === '' ? '#7c3aed' : '#ddd6fe',
+                  backgroundColor: adjustmentGradeLevel === '' ? '#f5f3ff' : '#fff',
                   borderRadius: 999,
                   paddingHorizontal: 10,
                   paddingVertical: 6,
                 }}
               >
-                <Text style={{ color: adjustmentClassId === null ? '#6d28d9' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                <Text style={{ color: adjustmentGradeLevel === '' ? '#6d28d9' : '#475569', fontWeight: '700', fontSize: 12 }}>
                   Semua kelas
                 </Text>
               </Pressable>
-              {classes.map((classItem) => {
-                const active = adjustmentClassId === classItem.id;
+              {classLevelOptions.map((level) => {
+                const active = adjustmentGradeLevel === level;
                 return (
                   <Pressable
-                    key={classItem.id}
-                    onPress={() => setAdjustmentClassId(classItem.id)}
+                    key={level}
+                    onPress={() => setAdjustmentGradeLevel(level)}
                     style={{
                       borderWidth: 1,
                       borderColor: active ? '#7c3aed' : '#ddd6fe',
@@ -2493,7 +2485,7 @@ export default function StaffPaymentsScreen() {
                     }}
                   >
                     <Text style={{ color: active ? '#6d28d9' : '#475569', fontWeight: '700', fontSize: 12 }}>
-                      {classItem.name}
+                      {getClassLevelLabel(level)}
                     </Text>
                   </Pressable>
                 );
@@ -2591,13 +2583,6 @@ export default function StaffPaymentsScreen() {
             </View>
           </View>
 
-          <TextInput
-            value={adjustmentGradeLevel}
-            onChangeText={setAdjustmentGradeLevel}
-            placeholder="Tingkat (opsional)"
-            placeholderTextColor="#94a3b8"
-            style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
-          />
           <TextInput
             value={adjustmentEffectiveStart}
             onChangeText={setAdjustmentEffectiveStart}
@@ -2965,26 +2950,26 @@ export default function StaffPaymentsScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Pressable
-                onPress={() => setInvoiceClassId(null)}
+                onPress={() => setInvoiceGradeLevel('')}
                 style={{
                   borderWidth: 1,
-                  borderColor: invoiceClassId === null ? '#1d4ed8' : '#dbeafe',
-                  backgroundColor: invoiceClassId === null ? '#e9f1ff' : '#fff',
+                  borderColor: invoiceGradeLevel === '' ? '#1d4ed8' : '#dbeafe',
+                  backgroundColor: invoiceGradeLevel === '' ? '#e9f1ff' : '#fff',
                   borderRadius: 999,
                   paddingHorizontal: 10,
                   paddingVertical: 6,
                 }}
               >
-                <Text style={{ color: invoiceClassId === null ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                <Text style={{ color: invoiceGradeLevel === '' ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
                   Semua kelas
                 </Text>
               </Pressable>
-              {classes.map((classItem) => {
-                const active = invoiceClassId === classItem.id;
+              {classLevelOptions.map((level) => {
+                const active = invoiceGradeLevel === level;
                 return (
                   <Pressable
-                    key={classItem.id}
-                    onPress={() => setInvoiceClassId(classItem.id)}
+                    key={level}
+                    onPress={() => setInvoiceGradeLevel(level)}
                     style={{
                       borderWidth: 1,
                       borderColor: active ? '#1d4ed8' : '#dbeafe',
@@ -2995,7 +2980,7 @@ export default function StaffPaymentsScreen() {
                     }}
                   >
                     <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
-                      {classItem.name}
+                      {getClassLevelLabel(level)}
                     </Text>
                   </Pressable>
                 );
@@ -3038,48 +3023,6 @@ export default function StaffPaymentsScreen() {
                   >
                     <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
                       {major.name}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
-
-          <Text style={{ color: '#475569', marginBottom: 4 }}>Tingkat target (opsional)</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Pressable
-                onPress={() => setInvoiceGradeLevel('')}
-                style={{
-                  borderWidth: 1,
-                  borderColor: invoiceGradeLevel === '' ? '#1d4ed8' : '#dbeafe',
-                  backgroundColor: invoiceGradeLevel === '' ? '#e9f1ff' : '#fff',
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                }}
-              >
-                <Text style={{ color: invoiceGradeLevel === '' ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
-                  Semua tingkat
-                </Text>
-              </Pressable>
-              {gradeLevels.map((level) => {
-                const active = invoiceGradeLevel === level;
-                return (
-                  <Pressable
-                    key={level}
-                    onPress={() => setInvoiceGradeLevel(level)}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: active ? '#1d4ed8' : '#dbeafe',
-                      backgroundColor: active ? '#e9f1ff' : '#fff',
-                      borderRadius: 999,
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                    }}
-                  >
-                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
-                      Tingkat {level}
                     </Text>
                   </Pressable>
                 );
@@ -3499,6 +3442,47 @@ export default function StaffPaymentsScreen() {
             placeholderTextColor="#94a3b8"
             style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
           />
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => setInvoiceGradeLevelFilter('')}
+                style={{
+                  borderWidth: 1,
+                  borderColor: invoiceGradeLevelFilter === '' ? '#1d4ed8' : '#dbeafe',
+                  backgroundColor: invoiceGradeLevelFilter === '' ? '#e9f1ff' : '#fff',
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                }}
+              >
+                <Text style={{ color: invoiceGradeLevelFilter === '' ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                  Semua kelas
+                </Text>
+              </Pressable>
+              {classLevelOptions.map((level) => {
+                const active = invoiceGradeLevelFilter === level;
+                return (
+                  <Pressable
+                    key={`filter-${level}`}
+                    onPress={() => setInvoiceGradeLevelFilter(level)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: active ? '#1d4ed8' : '#dbeafe',
+                      backgroundColor: active ? '#e9f1ff' : '#fff',
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                      {getClassLevelLabel(level)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
             <View style={{ flexDirection: 'row', gap: 8 }}>

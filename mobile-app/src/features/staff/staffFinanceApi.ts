@@ -687,6 +687,7 @@ export const staffFinanceApi = {
     academicYearId?: number;
     semester?: SemesterCode;
     classId?: number;
+    gradeLevel?: string;
     status?: FinanceInvoiceStatus;
     search?: string;
     limit?: number;
@@ -778,6 +779,7 @@ export const staffFinanceApi = {
     academicYearId?: number;
     semester?: SemesterCode;
     classId?: number;
+    gradeLevel?: string;
     periodFrom?: string;
     periodTo?: string;
     asOfDate?: string;

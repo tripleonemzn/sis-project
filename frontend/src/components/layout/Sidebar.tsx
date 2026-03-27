@@ -1154,33 +1154,53 @@ export const Sidebar = ({ user }: SidebarProps) => {
       hasActiveOsisElection,
     ],
   );
-  // Helper: check path active with relaxed query matching
-  const isChildPathActive = useCallback((itemPath: string) => {
+  const getMenuPathMatchScore = useCallback((itemPath: string) => {
+    if (ROOT_MENU_PATHS.includes(itemPath as (typeof ROOT_MENU_PATHS)[number])) {
+      return location.pathname === itemPath ? itemPath.length : -1;
+    }
+
     if (itemPath.includes('?')) {
       const [pathOnly, qs] = itemPath.split('?');
       const required = new URLSearchParams(qs);
       const current = new URLSearchParams(location.search);
-      if (!location.pathname.startsWith(pathOnly)) return false;
+      if (!location.pathname.startsWith(pathOnly)) return -1;
       const isInventoryScopePath =
         pathOnly.includes('/teacher/head-library/inventory') ||
         pathOnly.includes('/teacher/head-lab/inventory');
       if (isInventoryScopePath && !location.search) {
-        return true;
+        return pathOnly.length;
       }
       for (const [k, v] of required.entries()) {
-        if (current.get(k) !== v) return false;
+        if (current.get(k) !== v) return -1;
       }
-      return true;
+      return pathOnly.length + required.toString().length + 1_000;
     }
+
     const cleanChildPath = itemPath.split('?')[0];
-    return location.pathname.startsWith(cleanChildPath);
+    if (location.pathname === cleanChildPath) return cleanChildPath.length;
+    if (location.pathname.startsWith(`${cleanChildPath}/`)) return cleanChildPath.length;
+    return -1;
   }, [location.pathname, location.search]);
+
+  const isPathActive = useCallback((itemPath: string) => getMenuPathMatchScore(itemPath) >= 0, [getMenuPathMatchScore]);
+
+  const getMostSpecificChildPath = useCallback((children?: MenuItem[]) => {
+    if (!children?.length) return null;
+    let matchedPath: string | null = null;
+    let bestScore = -1;
+    children.forEach((child) => {
+      const score = getMenuPathMatchScore(child.path);
+      if (score > bestScore) {
+        bestScore = score;
+        matchedPath = child.path;
+      }
+    });
+    return matchedPath;
+  }, [getMenuPathMatchScore]);
+
   const activeParentPath = useMemo(() => {
     const activeParent = items.find((item) => {
-      // Check if any child matches
-      if (item.children && item.children.some((child) => {
-        return isChildPathActive(child.path);
-      })) {
+      if (getMostSpecificChildPath(item.children)) {
         return true;
       }
       // Special handling for Exam creation page which isn't explicitly in the menu but belongs to UJIAN
@@ -1190,7 +1210,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
       return false;
     });
     return activeParent ? activeParent.path : null;
-  }, [items, location.pathname, isChildPathActive]);
+  }, [getMostSpecificChildPath, items, location.pathname]);
 
   const [openGroup, setOpenGroup] = useState<string | null>(null);
 
@@ -1209,9 +1229,6 @@ export const Sidebar = ({ user }: SidebarProps) => {
       return activeParentPath;
     });
   }, [activeParentPath, items]);
-
-
-
   /* 
   const updatePreferencesMutation = useMutation({
     mutationFn: (newPreferences: any) => {
@@ -1236,37 +1253,6 @@ export const Sidebar = ({ user }: SidebarProps) => {
     // updatePreferencesMutation.mutate({ sidebarOpenGroup: newState });
   };
 
-  const isPathActive = (itemPath: string) => {
-    if (ROOT_MENU_PATHS.includes(itemPath as (typeof ROOT_MENU_PATHS)[number])) {
-      return location.pathname === itemPath;
-    }
-    
-    // When itemPath includes query params, require that all those params are present
-    // but allow additional params (e.g., tab=BUDGET) to co-exist
-    if (itemPath.includes('?')) {
-      const [pathOnly, qs] = itemPath.split('?');
-      const required = new URLSearchParams(qs);
-      const current = new URLSearchParams(location.search);
-      
-      if (!location.pathname.startsWith(pathOnly)) return false;
-      const isInventoryScopePath =
-        pathOnly.includes('/teacher/head-library/inventory') ||
-        pathOnly.includes('/teacher/head-lab/inventory');
-      if (isInventoryScopePath && !location.search) {
-        return true;
-      }
-      
-      for (const [k, v] of required.entries()) {
-        if (current.get(k) !== v) return false;
-      }
-      return true;
-    }
-
-    // Remove query params from itemPath for comparison
-    const cleanItemPath = itemPath.split('?')[0];
-    return location.pathname.startsWith(cleanItemPath);
-  };
-
   return (
     <aside className="relative z-[80] w-64 shrink-0 bg-white hidden md:flex flex-col h-full shadow-xl pointer-events-auto">
       <div className="p-6 flex items-center gap-3 border-b border-gray-100">
@@ -1286,7 +1272,8 @@ export const Sidebar = ({ user }: SidebarProps) => {
           {items.map((item) => {
             const Icon = item.icon;
             const hasChildren = item.children && item.children.length > 0;
-            const isChildActive = hasChildren && item.children?.some((child) => isPathActive(child.path));
+            const activeChildPath = hasChildren ? getMostSpecificChildPath(item.children) : null;
+            const isChildActive = Boolean(activeChildPath);
             const isActive = isPathActive(item.path) || isChildActive;
             const isOpen = effectiveOpenGroup === item.path;
 
@@ -1316,7 +1303,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
                     <ul className="pl-3 space-y-1 border-l-2 border-gray-100 ml-3">
                       {item.children?.map((child) => {
                         const ChildIcon = child.icon;
-                        const isChildItemActive = isPathActive(child.path);
+                        const isChildItemActive = activeChildPath === child.path;
                         return (
                           <li key={child.path}>
                             <Link

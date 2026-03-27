@@ -1041,6 +1041,7 @@ const listFinanceInvoicesQuerySchema = z.object({
   academicYearId: z.coerce.number().int().positive().optional(),
   semester: z.nativeEnum(Semester).optional(),
   classId: z.coerce.number().int().positive().optional(),
+  gradeLevel: z.string().trim().min(1).max(20).optional(),
   studentId: z.coerce.number().int().positive().optional(),
   status: z.nativeEnum(FinanceInvoiceStatus).optional(),
   search: z.string().optional(),
@@ -1110,6 +1111,7 @@ const listFinanceReportQuerySchema = z.object({
   academicYearId: z.coerce.number().int().positive().optional(),
   semester: z.nativeEnum(Semester).optional(),
   classId: z.coerce.number().int().positive().optional(),
+  gradeLevel: z.string().trim().min(1).max(20).optional(),
   periodFrom: z
     .string()
     .trim()
@@ -1149,6 +1151,7 @@ type FinanceReportFilters = {
   academicYearId?: number;
   semester?: Semester;
   classId?: number;
+  gradeLevel?: string;
   periodFrom?: string;
   periodTo?: string;
   asOfDate?: Date;
@@ -1231,10 +1234,20 @@ async function buildFinanceReportSnapshot(filters: FinanceReportFilters) {
     where: {
       ...(filters.academicYearId ? { academicYearId: filters.academicYearId } : {}),
       ...(filters.semester ? { semester: filters.semester } : {}),
-      ...(filters.classId
+      ...((filters.classId || filters.gradeLevel)
         ? {
             student: {
-              classId: filters.classId,
+              ...(filters.classId ? { classId: filters.classId } : {}),
+              ...(filters.gradeLevel
+                ? {
+                    studentClass: {
+                      level: {
+                        equals: filters.gradeLevel.trim(),
+                        mode: 'insensitive' as const,
+                      },
+                    },
+                  }
+                : {}),
             },
           }
         : {}),
@@ -1786,6 +1799,7 @@ async function buildFinanceReportSnapshot(filters: FinanceReportFilters) {
       academicYearId: filters.academicYearId || null,
       semester: filters.semester || null,
       classId: filters.classId || null,
+      gradeLevel: filters.gradeLevel?.trim() || null,
       periodFrom: filters.periodFrom || null,
       periodTo: filters.periodTo || null,
       asOfDate: toIsoDate(asOfDate),
@@ -3426,7 +3440,7 @@ export const previewFinanceInvoices = asyncHandler(async (req: Request, res: Res
 export const listFinanceInvoices = asyncHandler(async (req: Request, res: Response) => {
   await ensureFinanceActor((req as any).user || {}, { allowPrincipalReadOnly: true });
 
-  const { academicYearId, semester, classId, studentId, status, search, limit } =
+  const { academicYearId, semester, classId, gradeLevel, studentId, status, search, limit } =
     listFinanceInvoicesQuerySchema.parse(req.query);
 
   const normalizedSearch = search?.trim();
@@ -3437,10 +3451,20 @@ export const listFinanceInvoices = asyncHandler(async (req: Request, res: Respon
       ...(semester ? { semester } : {}),
       ...(status ? { status } : {}),
       ...(studentId ? { studentId } : {}),
-      ...(classId
+      ...((classId || gradeLevel)
         ? {
             student: {
-              classId,
+              ...(classId ? { classId } : {}),
+              ...(gradeLevel
+                ? {
+                    studentClass: {
+                      level: {
+                        equals: gradeLevel.trim(),
+                        mode: 'insensitive' as const,
+                      },
+                    },
+                  }
+                : {}),
             },
           }
         : {}),

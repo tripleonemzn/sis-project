@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BellRing, Download, Loader2, Pencil, Plus, Power, ReceiptText, WalletCards, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { academicYearService, type AcademicYear } from '../../services/academicYear.service';
+import { classService, type Class as SchoolClass } from '../../services/class.service';
 import {
   type FinanceAdjustmentKind,
   type FinanceAdjustmentRule,
@@ -108,11 +109,25 @@ function formatEffectiveWindow(start?: string | null, end?: string | null) {
   return `${startLabel} - ${endLabel}`;
 }
 
+function normalizeClassLevel(raw?: string | null) {
+  return String(raw || '')
+    .trim()
+    .toUpperCase();
+}
+
+function getClassLevelLabel(level?: string | null) {
+  const normalized = normalizeClassLevel(level);
+  return normalized ? `Kelas ${normalized}` : 'Semua kelas';
+}
+
 function describeTariffScope(tariff: FinanceTariffRule) {
   const parts = [
-    tariff.class?.name || 'Semua kelas',
+    tariff.gradeLevel
+      ? getClassLevelLabel(tariff.gradeLevel)
+      : tariff.class?.level
+        ? getClassLevelLabel(tariff.class.level)
+        : tariff.class?.name || 'Semua kelas',
     tariff.major?.name ? `Jurusan ${tariff.major.name}` : 'Semua jurusan',
-    tariff.gradeLevel ? `Tingkat ${tariff.gradeLevel}` : 'Semua tingkat',
     tariff.semester === 'ODD' ? 'Ganjil' : tariff.semester === 'EVEN' ? 'Genap' : 'Semua semester',
     tariff.academicYear?.name || 'Semua tahun ajaran',
   ];
@@ -147,9 +162,12 @@ function describeAdjustmentScope(adjustment: FinanceAdjustmentRule) {
     adjustment.component?.name ? `Komponen ${adjustment.component.name}` : 'Seluruh invoice',
     adjustment.student?.name
       ? `Siswa ${adjustment.student.name}`
-      : adjustment.class?.name || 'Semua kelas',
+      : adjustment.gradeLevel
+        ? getClassLevelLabel(adjustment.gradeLevel)
+        : adjustment.class?.level
+          ? getClassLevelLabel(adjustment.class.level)
+          : adjustment.class?.name || 'Semua kelas',
     adjustment.major?.name ? `Jurusan ${adjustment.major.name}` : 'Semua jurusan',
-    adjustment.gradeLevel ? `Tingkat ${adjustment.gradeLevel}` : 'Semua tingkat',
     adjustment.semester === 'ODD'
       ? 'Ganjil'
       : adjustment.semester === 'EVEN'
@@ -212,7 +230,6 @@ export const StaffFinancePage = () => {
 
   const [tariffComponentId, setTariffComponentId] = useState<number | ''>('');
   const [tariffAcademicYearId, setTariffAcademicYearId] = useState<number | ''>('');
-  const [tariffClassId, setTariffClassId] = useState<number | ''>('');
   const [tariffMajorId, setTariffMajorId] = useState<number | ''>('');
   const [tariffSemester, setTariffSemester] = useState<SemesterCode | ''>('');
   const [tariffGradeLevel, setTariffGradeLevel] = useState('');
@@ -229,7 +246,6 @@ export const StaffFinancePage = () => {
   const [adjustmentAmount, setAdjustmentAmount] = useState('');
   const [adjustmentComponentId, setAdjustmentComponentId] = useState<number | ''>('');
   const [adjustmentAcademicYearId, setAdjustmentAcademicYearId] = useState<number | ''>('');
-  const [adjustmentClassId, setAdjustmentClassId] = useState<number | ''>('');
   const [adjustmentMajorId, setAdjustmentMajorId] = useState<number | ''>('');
   const [adjustmentStudentId, setAdjustmentStudentId] = useState<number | ''>('');
   const [adjustmentStudentSearch, setAdjustmentStudentSearch] = useState('');
@@ -245,7 +261,6 @@ export const StaffFinancePage = () => {
   const [invoicePeriodKey, setInvoicePeriodKey] = useState('');
   const [invoiceDueDate, setInvoiceDueDate] = useState('');
   const [invoiceTitle, setInvoiceTitle] = useState('');
-  const [invoiceClassId, setInvoiceClassId] = useState<number | ''>('');
   const [invoiceMajorId, setInvoiceMajorId] = useState<number | ''>('');
   const [invoiceGradeLevel, setInvoiceGradeLevel] = useState('');
   const [invoiceInstallmentCount, setInvoiceInstallmentCount] = useState(1);
@@ -257,10 +272,10 @@ export const StaffFinancePage = () => {
 
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'' | FinanceInvoiceStatus>('');
-  const [invoiceClassFilter, setInvoiceClassFilter] = useState<number | ''>('');
+  const [invoiceGradeLevelFilter, setInvoiceGradeLevelFilter] = useState('');
   const [reportYearId, setReportYearId] = useState<number | ''>('');
   const [reportSemester, setReportSemester] = useState<SemesterCode | ''>('');
-  const [reportClassId, setReportClassId] = useState<number | ''>('');
+  const [reportGradeLevelFilter, setReportGradeLevelFilter] = useState('');
   const [reportPeriodFrom, setReportPeriodFrom] = useState('');
   const [reportPeriodTo, setReportPeriodTo] = useState('');
   const [reportAsOfDate, setReportAsOfDate] = useState(getTodayInputDate());
@@ -295,6 +310,12 @@ export const StaffFinancePage = () => {
     staleTime: 5 * 60 * 1000,
   });
 
+  const classesQuery = useQuery({
+    queryKey: ['staff-finance-master-classes'],
+    queryFn: () => classService.list({ page: 1, limit: 500 }),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const studentsQuery = useQuery({
     queryKey: ['staff-finance-students'],
     queryFn: () => userService.getUsers({ role: 'STUDENT', limit: 10000 }),
@@ -320,13 +341,13 @@ export const StaffFinancePage = () => {
   });
 
   const invoicesQuery = useQuery({
-    queryKey: ['staff-finance-invoices', invoiceSearch, invoiceStatusFilter, invoiceClassFilter],
+    queryKey: ['staff-finance-invoices', invoiceSearch, invoiceStatusFilter, invoiceGradeLevelFilter],
     queryFn: () =>
       staffFinanceService.listInvoices({
         limit: 100,
         status: invoiceStatusFilter || undefined,
         search: invoiceSearch.trim() || undefined,
-        classId: invoiceClassFilter === '' ? undefined : Number(invoiceClassFilter),
+        gradeLevel: invoiceGradeLevelFilter.trim() || undefined,
       }),
   });
 
@@ -354,31 +375,23 @@ export const StaffFinancePage = () => {
   }, [majorsQuery.data]);
 
   const students = useMemo<User[]>(() => studentsQuery.data?.data || [], [studentsQuery.data?.data]);
+  const masterClasses = useMemo<SchoolClass[]>(() => {
+    const payload = classesQuery.data as
+      | { data?: { classes?: SchoolClass[] }; classes?: SchoolClass[] }
+      | undefined;
+    return payload?.data?.classes || payload?.classes || [];
+  }, [classesQuery.data]);
 
-  const classes = useMemo<Array<{ id: number; name: string; level: string }>>(() => {
-    const map = new Map<number, { id: number; name: string; level: string }>();
-    students.forEach((student) => {
-      if (student.studentClass?.id && student.studentClass?.name) {
-        map.set(student.studentClass.id, {
-          id: student.studentClass.id,
-          name: student.studentClass.name,
-          level: student.studentClass.level || '',
-        });
-      }
-    });
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [students]);
-
-  const gradeLevels = useMemo(
+  const classLevelOptions = useMemo(
     () =>
       Array.from(
         new Set(
-          classes
-            .map((classItem) => classItem.level.trim())
+          masterClasses
+            .map((classItem) => normalizeClassLevel(classItem.level || classItem.name))
             .filter((value) => value.length > 0),
         ),
-      ).sort((a, b) => a.localeCompare(b)),
-    [classes],
+      ).sort((a, b) => a.localeCompare(b, 'id-ID', { numeric: true })),
+    [masterClasses],
   );
 
   const studentLookup = useMemo(() => {
@@ -447,7 +460,7 @@ export const StaffFinancePage = () => {
       'staff-finance-reports',
       reportYearId || null,
       reportSemester || null,
-      reportClassId || null,
+      reportGradeLevelFilter || null,
       reportPeriodFrom || null,
       reportPeriodTo || null,
       reportAsOfDate || null,
@@ -456,7 +469,7 @@ export const StaffFinancePage = () => {
       staffFinanceService.listReports({
         academicYearId: reportYearId === '' ? activeYear?.id : Number(reportYearId),
         semester: reportSemester === '' ? undefined : reportSemester,
-        classId: reportClassId === '' ? undefined : Number(reportClassId),
+        gradeLevel: reportGradeLevelFilter.trim() || undefined,
         periodFrom: reportPeriodFrom.trim() || undefined,
         periodTo: reportPeriodTo.trim() || undefined,
         asOfDate: reportAsOfDate || undefined,
@@ -525,7 +538,6 @@ export const StaffFinancePage = () => {
     setEditingTariffId(null);
     setTariffComponentId('');
     setTariffAcademicYearId('');
-    setTariffClassId('');
     setTariffMajorId('');
     setTariffSemester('');
     setTariffGradeLevel('');
@@ -544,7 +556,6 @@ export const StaffFinancePage = () => {
     setAdjustmentAmount('');
     setAdjustmentComponentId('');
     setAdjustmentAcademicYearId('');
-    setAdjustmentClassId('');
     setAdjustmentMajorId('');
     setAdjustmentStudentId('');
     setAdjustmentStudentSearch('');
@@ -626,7 +637,7 @@ export const StaffFinancePage = () => {
         ? staffFinanceService.updateTariff(editingTariffId, {
             componentId: Number(tariffComponentId),
             academicYearId: tariffAcademicYearId === '' ? null : Number(tariffAcademicYearId),
-            classId: tariffClassId === '' ? null : Number(tariffClassId),
+            classId: null,
             majorId: tariffMajorId === '' ? null : Number(tariffMajorId),
             semester: tariffSemester === '' ? null : tariffSemester,
             gradeLevel: tariffGradeLevel.trim() || null,
@@ -638,7 +649,6 @@ export const StaffFinancePage = () => {
         : staffFinanceService.createTariff({
             componentId: Number(tariffComponentId),
             academicYearId: tariffAcademicYearId === '' ? undefined : Number(tariffAcademicYearId),
-            classId: tariffClassId === '' ? undefined : Number(tariffClassId),
             majorId: tariffMajorId === '' ? undefined : Number(tariffMajorId),
             semester: tariffSemester === '' ? undefined : tariffSemester,
             gradeLevel: tariffGradeLevel.trim() || undefined,
@@ -686,7 +696,7 @@ export const StaffFinancePage = () => {
             amount: Number(adjustmentAmount),
             componentId: adjustmentComponentId === '' ? null : Number(adjustmentComponentId),
             academicYearId: adjustmentAcademicYearId === '' ? null : Number(adjustmentAcademicYearId),
-            classId: adjustmentClassId === '' ? null : Number(adjustmentClassId),
+            classId: null,
             majorId: adjustmentMajorId === '' ? null : Number(adjustmentMajorId),
             studentId: adjustmentStudentId === '' ? null : Number(adjustmentStudentId),
             semester: adjustmentSemester === '' ? null : adjustmentSemester,
@@ -703,7 +713,6 @@ export const StaffFinancePage = () => {
             amount: Number(adjustmentAmount),
             componentId: adjustmentComponentId === '' ? undefined : Number(adjustmentComponentId),
             academicYearId: adjustmentAcademicYearId === '' ? undefined : Number(adjustmentAcademicYearId),
-            classId: adjustmentClassId === '' ? undefined : Number(adjustmentClassId),
             majorId: adjustmentMajorId === '' ? undefined : Number(adjustmentMajorId),
             studentId: adjustmentStudentId === '' ? undefined : Number(adjustmentStudentId),
             semester: adjustmentSemester === '' ? undefined : adjustmentSemester,
@@ -748,7 +757,6 @@ export const StaffFinancePage = () => {
         periodKey: invoicePeriodKey,
         dueDate: invoiceDueDate || undefined,
         title: invoiceTitle || undefined,
-        classId: invoiceClassId === '' ? undefined : Number(invoiceClassId),
         majorId: invoiceMajorId === '' ? undefined : Number(invoiceMajorId),
         gradeLevel: invoiceGradeLevel.trim() || undefined,
         installmentCount: Math.max(1, Number(invoiceInstallmentCount || 1)),
@@ -780,7 +788,6 @@ export const StaffFinancePage = () => {
         periodKey: invoicePeriodKey,
         dueDate: invoiceDueDate || undefined,
         title: invoiceTitle || undefined,
-        classId: invoiceClassId === '' ? undefined : Number(invoiceClassId),
         majorId: invoiceMajorId === '' ? undefined : Number(invoiceMajorId),
         gradeLevel: invoiceGradeLevel.trim() || undefined,
         installmentCount: Math.max(1, Number(invoiceInstallmentCount || 1)),
@@ -998,10 +1005,9 @@ export const StaffFinancePage = () => {
     setEditingTariffId(tariff.id);
     setTariffComponentId(tariff.componentId);
     setTariffAcademicYearId(tariff.academicYearId || '');
-    setTariffClassId(tariff.classId || '');
     setTariffMajorId(tariff.majorId || '');
     setTariffSemester(tariff.semester || '');
-    setTariffGradeLevel(tariff.gradeLevel || '');
+    setTariffGradeLevel(tariff.gradeLevel || tariff.class?.level || '');
     setTariffAmount(String(Number(tariff.amount || 0)));
     setTariffEffectiveStart(tariff.effectiveStart ? String(tariff.effectiveStart).slice(0, 10) : '');
     setTariffEffectiveEnd(tariff.effectiveEnd ? String(tariff.effectiveEnd).slice(0, 10) : '');
@@ -1017,12 +1023,11 @@ export const StaffFinancePage = () => {
     setAdjustmentAmount(String(Number(adjustment.amount || 0)));
     setAdjustmentComponentId(adjustment.componentId || '');
     setAdjustmentAcademicYearId(adjustment.academicYearId || '');
-    setAdjustmentClassId(adjustment.classId || '');
     setAdjustmentMajorId(adjustment.majorId || '');
     setAdjustmentStudentId(adjustment.studentId || '');
     setAdjustmentStudentSearch('');
     setAdjustmentSemester(adjustment.semester || '');
-    setAdjustmentGradeLevel(adjustment.gradeLevel || '');
+    setAdjustmentGradeLevel(adjustment.gradeLevel || adjustment.class?.level || '');
     setAdjustmentEffectiveStart(adjustment.effectiveStart ? String(adjustment.effectiveStart).slice(0, 10) : '');
     setAdjustmentEffectiveEnd(adjustment.effectiveEnd ? String(adjustment.effectiveEnd).slice(0, 10) : '');
     setAdjustmentNotes(adjustment.notes || '');
@@ -1152,7 +1157,6 @@ export const StaffFinancePage = () => {
     invoicePeriodKey,
     invoiceDueDate,
     invoiceTitle,
-    invoiceClassId,
     invoiceMajorId,
     invoiceGradeLevel,
     invoiceInstallmentCount,
@@ -1191,7 +1195,7 @@ export const StaffFinancePage = () => {
         reportType,
         academicYearId: reportYearId === '' ? activeYear?.id : Number(reportYearId),
         semester: reportSemester === '' ? undefined : reportSemester,
-        classId: reportClassId === '' ? undefined : Number(reportClassId),
+        gradeLevel: reportGradeLevelFilter.trim() || undefined,
         periodFrom: reportPeriodFrom.trim() || undefined,
         periodTo: reportPeriodTo.trim() || undefined,
         asOfDate: reportAsOfDate || undefined,
@@ -1674,14 +1678,14 @@ export const StaffFinancePage = () => {
               ))}
             </select>
             <select
-              value={tariffClassId === '' ? '' : String(tariffClassId)}
-              onChange={(event) => setTariffClassId(event.target.value ? Number(event.target.value) : '')}
+              value={tariffGradeLevel}
+              onChange={(event) => setTariffGradeLevel(event.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
             >
               <option value="">Semua kelas</option>
-              {classes.map((classItem) => (
-                <option key={classItem.id} value={classItem.id}>
-                  {classItem.name}
+              {classLevelOptions.map((level) => (
+                <option key={level} value={level}>
+                  {getClassLevelLabel(level)}
                 </option>
               ))}
             </select>
@@ -1697,12 +1701,6 @@ export const StaffFinancePage = () => {
                 </option>
               ))}
             </select>
-            <input
-              value={tariffGradeLevel}
-              onChange={(event) => setTariffGradeLevel(event.target.value)}
-              placeholder="Tingkat (contoh: X / XI / XII)"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
             <input
               type="number"
               min={0}
@@ -1904,14 +1902,14 @@ export const StaffFinancePage = () => {
             ))}
           </select>
           <select
-            value={adjustmentClassId === '' ? '' : String(adjustmentClassId)}
-            onChange={(event) => setAdjustmentClassId(event.target.value ? Number(event.target.value) : '')}
+            value={adjustmentGradeLevel}
+            onChange={(event) => setAdjustmentGradeLevel(event.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
           >
             <option value="">Semua kelas</option>
-            {classes.map((classItem) => (
-              <option key={classItem.id} value={classItem.id}>
-                {classItem.name}
+            {classLevelOptions.map((level) => (
+              <option key={level} value={level}>
+                {getClassLevelLabel(level)}
               </option>
             ))}
           </select>
@@ -1936,12 +1934,6 @@ export const StaffFinancePage = () => {
             <option value="ODD">Ganjil</option>
             <option value="EVEN">Genap</option>
           </select>
-          <input
-            value={adjustmentGradeLevel}
-            onChange={(event) => setAdjustmentGradeLevel(event.target.value)}
-            placeholder="Tingkat (opsional)"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-          />
           <input
             type="date"
             value={adjustmentEffectiveStart}
@@ -2190,14 +2182,14 @@ export const StaffFinancePage = () => {
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
           />
           <select
-            value={invoiceClassId === '' ? '' : String(invoiceClassId)}
-            onChange={(event) => setInvoiceClassId(event.target.value ? Number(event.target.value) : '')}
+            value={invoiceGradeLevel}
+            onChange={(event) => setInvoiceGradeLevel(event.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
           >
             <option value="">Semua kelas</option>
-            {classes.map((classItem) => (
-              <option key={classItem.id} value={classItem.id}>
-                {classItem.name}
+            {classLevelOptions.map((level) => (
+              <option key={level} value={level}>
+                {getClassLevelLabel(level)}
               </option>
             ))}
           </select>
@@ -2210,18 +2202,6 @@ export const StaffFinancePage = () => {
             {majors.map((major) => (
               <option key={major.id} value={major.id}>
                 {major.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={invoiceGradeLevel}
-            onChange={(event) => setInvoiceGradeLevel(event.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-          >
-            <option value="">Semua tingkat</option>
-            {gradeLevels.map((level) => (
-              <option key={level} value={level}>
-                Tingkat {level}
               </option>
             ))}
           </select>
@@ -2530,14 +2510,14 @@ export const StaffFinancePage = () => {
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
             />
             <select
-              value={invoiceClassFilter === '' ? '' : String(invoiceClassFilter)}
-              onChange={(event) => setInvoiceClassFilter(event.target.value ? Number(event.target.value) : '')}
+              value={invoiceGradeLevelFilter}
+              onChange={(event) => setInvoiceGradeLevelFilter(event.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
             >
               <option value="">Semua Kelas</option>
-              {classes.map((classItem) => (
-                <option key={classItem.id} value={classItem.id}>
-                  {classItem.name}
+              {classLevelOptions.map((level) => (
+                <option key={level} value={level}>
+                  {getClassLevelLabel(level)}
                 </option>
               ))}
             </select>
@@ -2748,14 +2728,14 @@ export const StaffFinancePage = () => {
               <option value="EVEN">Genap</option>
             </select>
             <select
-              value={reportClassId === '' ? '' : String(reportClassId)}
-              onChange={(event) => setReportClassId(event.target.value ? Number(event.target.value) : '')}
+              value={reportGradeLevelFilter}
+              onChange={(event) => setReportGradeLevelFilter(event.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
             >
               <option value="">Semua Kelas</option>
-              {classes.map((classItem) => (
-                <option key={classItem.id} value={classItem.id}>
-                  {classItem.name}
+              {classLevelOptions.map((level) => (
+                <option key={level} value={level}>
+                  {getClassLevelLabel(level)}
                 </option>
               ))}
             </select>
