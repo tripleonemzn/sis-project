@@ -171,6 +171,80 @@ function formatEffectiveWindow(start?: string | null, end?: string | null) {
   return `${startLabel} - ${endLabel}`;
 }
 
+function normalizeBankStatementImportDirection(raw: string): FinanceBankStatementDirection | null {
+  const normalized = raw.trim().toUpperCase();
+  if (['CREDIT', 'KREDIT', 'CR', 'IN', 'MASUK', 'BANK MASUK'].includes(normalized)) return 'CREDIT';
+  if (['DEBIT', 'DB', 'OUT', 'KELUAR', 'BANK KELUAR'].includes(normalized)) return 'DEBIT';
+  return null;
+}
+
+function normalizeBankStatementImportAmount(raw: string): number | null {
+  const cleaned = raw.replace(/[^\d,.-]/g, '').trim();
+  if (!cleaned) return null;
+
+  let normalized = cleaned;
+  if (normalized.includes(',') && normalized.includes('.')) {
+    normalized =
+      normalized.lastIndexOf(',') > normalized.lastIndexOf('.')
+        ? normalized.replace(/\./g, '').replace(',', '.')
+        : normalized.replace(/,/g, '');
+  } else if (normalized.includes(',')) {
+    const parts = normalized.split(',');
+    normalized =
+      parts.length === 2 && parts[1].length <= 2
+        ? `${parts[0].replace(/\./g, '')}.${parts[1]}`
+        : normalized.replace(/,/g, '');
+  }
+
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return amount;
+}
+
+function parseBankStatementImportRows(rawText: string) {
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const entries = lines.map((line, index) => {
+    const delimiter = line.includes('\t') ? '\t' : line.includes('|') ? '|' : line.includes(';') ? ';' : ',';
+    const columns = line.split(delimiter).map((part) => part.trim());
+    if (columns.length < 3) {
+      throw new Error(`Baris ${index + 1} belum valid. Gunakan format tanggal, arah, nominal.`);
+    }
+
+    const [entryDate, rawDirection, rawAmount, rawReference = '', ...rest] = columns;
+    const direction = normalizeBankStatementImportDirection(rawDirection);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(entryDate)) {
+      throw new Error(`Tanggal pada baris ${index + 1} harus berformat YYYY-MM-DD.`);
+    }
+    if (!direction) {
+      throw new Error(`Arah mutasi pada baris ${index + 1} harus CREDIT/KREDIT atau DEBIT.`);
+    }
+
+    const amount = normalizeBankStatementImportAmount(rawAmount);
+    if (!amount) {
+      throw new Error(`Nominal pada baris ${index + 1} tidak valid.`);
+    }
+
+    const description = rest.join(delimiter).trim();
+    return {
+      entryDate,
+      direction,
+      amount,
+      referenceNo: rawReference.trim() || undefined,
+      description: description || undefined,
+    };
+  });
+
+  if (!entries.length) {
+    throw new Error('Tempel minimal satu baris mutasi untuk diimport.');
+  }
+
+  return entries;
+}
+
 function normalizeClassLevel(raw?: string | null) {
   const normalized = String(raw || '')
     .trim()
@@ -620,6 +694,7 @@ export default function StaffPaymentsScreen() {
   const [bankStatementAmount, setBankStatementAmount] = useState('');
   const [bankStatementReference, setBankStatementReference] = useState('');
   const [bankStatementDescription, setBankStatementDescription] = useState('');
+  const [bankStatementImportText, setBankStatementImportText] = useState('');
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-staff-finance-active-year'],
@@ -1012,6 +1087,27 @@ export default function StaffPaymentsScreen() {
     bankReconciliations.find((reconciliation) => reconciliation.id === selectedBankReconciliationId) ||
     bankReconciliations[0] ||
     null;
+  const bankStatementImportPreview = useMemo(() => {
+    const rawText = bankStatementImportText.trim();
+    if (!rawText) {
+      return {
+        entries: [] as ReturnType<typeof parseBankStatementImportRows>,
+        error: '',
+      };
+    }
+
+    try {
+      return {
+        entries: parseBankStatementImportRows(rawText),
+        error: '',
+      };
+    } catch (error) {
+      return {
+        entries: [] as ReturnType<typeof parseBankStatementImportRows>,
+        error: error instanceof Error ? error.message : 'Format import mutasi tidak valid.',
+      };
+    }
+  }, [bankStatementImportText]);
   const writeOffSummary = writeOffsQuery.data?.summary;
   const writeOffRequests = writeOffsQuery.data?.requests || [];
   const paymentReversalSummary = paymentReversalsQuery.data?.summary;
@@ -1221,6 +1317,7 @@ export default function StaffPaymentsScreen() {
     setBankStatementAmount('');
     setBankStatementReference('');
     setBankStatementDescription('');
+    setBankStatementImportText('');
   };
 
   const resetBankStatementEntryForm = () => {
@@ -1229,6 +1326,10 @@ export default function StaffPaymentsScreen() {
     setBankStatementAmount('');
     setBankStatementReference('');
     setBankStatementDescription('');
+  };
+
+  const resetBankStatementImportForm = () => {
+    setBankStatementImportText('');
   };
 
   const resetWriteOffForm = () => {
@@ -1771,6 +1872,25 @@ export default function StaffPaymentsScreen() {
     onError: (error: unknown) => notifyApiError(error, 'Gagal mencatat mutasi statement bank.'),
   });
 
+  const importBankStatementEntriesMutation = useMutation({
+    mutationFn: (payload: {
+      reconciliation: StaffFinanceBankReconciliation;
+      entries: ReturnType<typeof parseBankStatementImportRows>;
+    }) =>
+      staffFinanceApi.importBankStatementEntries(payload.reconciliation.id, {
+        entries: payload.entries,
+        skipDuplicates: true,
+      }),
+    onSuccess: (result) => {
+      notifySuccess(
+        `Import selesai: ${result.summary.createdCount} baru, ${result.summary.skippedCount} duplikat, ${result.summary.matchedCount} auto-match.`,
+      );
+      resetBankStatementImportForm();
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal import mutasi statement bank.'),
+  });
+
   const finalizeBankReconciliationMutation = useMutation({
     mutationFn: (reconciliation: StaffFinanceBankReconciliation) =>
       staffFinanceApi.finalizeBankReconciliation(reconciliation.id, {
@@ -2115,6 +2235,21 @@ export default function StaffPaymentsScreen() {
       return;
     }
     createBankStatementEntryMutation.mutate(reconciliation);
+  };
+
+  const handleImportBankStatementEntries = (reconciliation: StaffFinanceBankReconciliation) => {
+    if (!bankStatementImportText.trim()) {
+      notifyApiError(null, 'Tempel data mutasi bank terlebih dahulu.');
+      return;
+    }
+    if (bankStatementImportPreview.error) {
+      notifyApiError(null, bankStatementImportPreview.error);
+      return;
+    }
+    importBankStatementEntriesMutation.mutate({
+      reconciliation,
+      entries: bankStatementImportPreview.entries,
+    });
   };
 
   const handleFinalizeBankReconciliation = (reconciliation: StaffFinanceBankReconciliation) => {
@@ -3695,6 +3830,98 @@ export default function StaffPaymentsScreen() {
                             {finalizeBankReconciliationMutation.isPending ? 'Memfinalkan...' : 'Finalkan'}
                           </Text>
                         </Pressable>
+                      </View>
+                    </View>
+
+                    <View
+                      style={{
+                        borderWidth: 1,
+                        borderStyle: 'dashed',
+                        borderColor: '#c7d2fe',
+                        backgroundColor: '#ffffff',
+                        borderRadius: 10,
+                        padding: 10,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <Text style={{ color: '#312e81', fontWeight: '700', marginBottom: 4 }}>Import Mutasi Batch</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                        Tempel data Excel/CSV per baris: tanggal, arah, nominal, referensi, deskripsi. Tab, titik koma, pipa, atau koma didukung.
+                      </Text>
+                      <TextInput
+                        value={bankStatementImportText}
+                        onChangeText={setBankStatementImportText}
+                        placeholder={'2026-03-27\tCREDIT\t150000\tTRX-001\tPembayaran transfer\n2026-03-27\tDEBIT\t50000\tFEE-ADM\tBiaya admin'}
+                        placeholderTextColor="#94a3b8"
+                        multiline
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#c7d2fe',
+                          borderRadius: 8,
+                          paddingHorizontal: 10,
+                          paddingVertical: 9,
+                          minHeight: 110,
+                          textAlignVertical: 'top',
+                          marginBottom: 8,
+                          color: '#0f172a',
+                          backgroundColor: '#fff',
+                          fontFamily: 'monospace',
+                        }}
+                      />
+                      <Text
+                        style={{
+                          color: bankStatementImportPreview.error ? '#be123c' : '#64748b',
+                          fontSize: 12,
+                          marginBottom: 8,
+                        }}
+                      >
+                        {bankStatementImportPreview.error
+                          ? bankStatementImportPreview.error
+                          : bankStatementImportPreview.entries.length > 0
+                            ? `${bankStatementImportPreview.entries.length} baris siap diimport. Duplikat pada rekonsiliasi ini akan dilewati otomatis.`
+                            : 'Belum ada data batch yang ditempel.'}
+                      </Text>
+                      <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+                        <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                          <Pressable
+                            onPress={() => handleImportBankStatementEntries(selectedBankReconciliation)}
+                            disabled={
+                              importBankStatementEntriesMutation.isPending ||
+                              !bankStatementImportText.trim() ||
+                              Boolean(bankStatementImportPreview.error)
+                            }
+                            style={{
+                              backgroundColor:
+                                importBankStatementEntriesMutation.isPending ||
+                                !bankStatementImportText.trim() ||
+                                Boolean(bankStatementImportPreview.error)
+                                  ? '#6ee7b7'
+                                  : '#059669',
+                              borderRadius: 10,
+                              paddingVertical: 10,
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Text style={{ color: '#fff', fontWeight: '700' }}>
+                              {importBankStatementEntriesMutation.isPending ? 'Mengimpor...' : 'Import Batch'}
+                            </Text>
+                          </Pressable>
+                        </View>
+                        <View style={{ width: 120, paddingHorizontal: 4 }}>
+                          <Pressable
+                            onPress={resetBankStatementImportForm}
+                            style={{
+                              backgroundColor: '#fff',
+                              borderWidth: 1,
+                              borderColor: '#cbd5e1',
+                              borderRadius: 10,
+                              paddingVertical: 10,
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Text style={{ color: '#334155', fontWeight: '700' }}>Reset Batch</Text>
+                          </Pressable>
+                        </View>
                       </View>
                     </View>
                   </>

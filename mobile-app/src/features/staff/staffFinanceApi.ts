@@ -997,6 +997,18 @@ export type StaffFinanceBankReconciliationListResult = {
   };
 };
 
+export type StaffFinanceBankStatementImportResult = {
+  entries: StaffFinanceBankStatementEntry[];
+  reconciliation: StaffFinanceBankReconciliation;
+  summary: {
+    submittedCount: number;
+    createdCount: number;
+    skippedCount: number;
+    matchedCount: number;
+    unmatchedCount: number;
+  };
+};
+
 export type StaffFinanceLedgerEntry = {
   id: string;
   sourceType: 'PAYMENT' | 'REFUND';
@@ -1989,6 +2001,26 @@ export const staffFinanceApi = {
         reconciliation: StaffFinanceBankReconciliation;
       }>
     >(`/payments/bank-reconciliations/${reconciliationId}/entries`, payload);
+    return response.data.data;
+  },
+
+  async importBankStatementEntries(
+    reconciliationId: number,
+    payload: {
+      entries: Array<{
+        entryDate: string;
+        direction: FinanceBankStatementDirection;
+        amount: number;
+        referenceNo?: string;
+        description?: string;
+      }>;
+      skipDuplicates?: boolean;
+    },
+  ) {
+    const response = await apiClient.post<ApiResponse<StaffFinanceBankStatementImportResult>>(
+      `/payments/bank-reconciliations/${reconciliationId}/entries/import`,
+      payload,
+    );
     return response.data.data;
   },
 

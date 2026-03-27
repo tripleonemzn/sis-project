@@ -3766,6 +3766,11 @@ const createFinanceBankStatementEntrySchema = z.object({
   description: z.string().trim().max(500).optional(),
 });
 
+const importFinanceBankStatementEntriesSchema = z.object({
+  entries: z.array(createFinanceBankStatementEntrySchema).min(1).max(250),
+  skipDuplicates: z.boolean().optional().default(true),
+});
+
 const finalizeFinanceBankReconciliationSchema = z.object({
   note: z.string().trim().max(500).optional(),
 });
@@ -4202,6 +4207,108 @@ const financeBankReconciliationRecordInclude = {
   },
 } as const;
 
+const financeBankStatementEntryRecordInclude = Prisma.validator<Prisma.FinanceBankStatementEntryInclude>()({
+  matchedPayment: {
+    select: {
+      id: true,
+      paymentNo: true,
+      amount: true,
+      allocatedAmount: true,
+      creditedAmount: true,
+      reversedAmount: true,
+      reversedAllocatedAmount: true,
+      reversedCreditedAmount: true,
+      source: true,
+      method: true,
+      verificationStatus: true,
+      verificationNote: true,
+      verifiedAt: true,
+      referenceNo: true,
+      note: true,
+      paidAt: true,
+      createdAt: true,
+      updatedAt: true,
+      bankAccount: {
+        select: {
+          id: true,
+          code: true,
+          bankName: true,
+          accountName: true,
+          accountNumber: true,
+        },
+      },
+      verifiedBy: {
+        select: {
+          id: true,
+          name: true,
+          role: true,
+        },
+      },
+      bankStatementEntries: {
+        select: {
+          id: true,
+          entryDate: true,
+          amount: true,
+          direction: true,
+          referenceNo: true,
+          status: true,
+          reconciliation: {
+            select: {
+              id: true,
+              reconciliationNo: true,
+            },
+          },
+        },
+        orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
+        take: 1,
+      },
+      invoice: {
+        select: {
+          id: true,
+          invoiceNo: true,
+          periodKey: true,
+          semester: true,
+        },
+      },
+    },
+  },
+  matchedRefund: {
+    include: {
+      student: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          nis: true,
+          nisn: true,
+          studentClass: {
+            select: {
+              id: true,
+              name: true,
+              level: true,
+            },
+          },
+        },
+      },
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      bankAccount: {
+        select: {
+          id: true,
+          code: true,
+          bankName: true,
+          accountName: true,
+          accountNumber: true,
+        },
+      },
+    },
+  },
+});
+
 async function buildFinanceCashSessionSummary(
   db: Prisma.TransactionClient | typeof prisma,
   session: {
@@ -4400,6 +4507,87 @@ function serializeFinanceBankStatementEntry(entry: {
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
   };
+}
+
+function assertFinanceBankStatementEntryWithinPeriod(
+  reconciliation: {
+    periodStart: Date;
+    periodEnd: Date;
+  },
+  entryDate: Date,
+) {
+  const periodStart = getFinanceStartOfDay(reconciliation.periodStart);
+  const periodEnd = getFinanceEndOfDay(reconciliation.periodEnd);
+  if (entryDate < periodStart || entryDate > periodEnd) {
+    throw new ApiError(400, 'Tanggal mutasi harus berada di dalam periode rekonsiliasi');
+  }
+}
+
+function buildFinanceBankStatementDuplicateKey(params: {
+  entryDate: Date;
+  direction: FinanceBankStatementDirection;
+  amount: number;
+  referenceNo?: string | null;
+  description?: string | null;
+}) {
+  return [
+    getFinanceStartOfDay(params.entryDate).toISOString(),
+    params.direction,
+    normalizeFinanceAmount(Number(params.amount || 0)).toFixed(2),
+    params.referenceNo?.trim().toLowerCase() || '',
+    params.description?.trim().toLowerCase() || '',
+  ].join('|');
+}
+
+async function createFinanceBankStatementEntryRecord(
+  tx: Prisma.TransactionClient,
+  params: {
+    reconciliationId: number;
+    reconciliation: {
+      id: number;
+      bankAccountId: number;
+      periodStart: Date;
+      periodEnd: Date;
+      status: FinanceBankReconciliationStatus;
+    };
+    actorId: number;
+    entryDate: Date;
+    direction: FinanceBankStatementDirection;
+    amount: number;
+    referenceNo?: string | null;
+    description?: string | null;
+  },
+) {
+  assertFinanceBankStatementEntryWithinPeriod(params.reconciliation, params.entryDate);
+
+  if (params.reconciliation.status !== 'OPEN') {
+    throw new ApiError(400, 'Mutasi hanya bisa ditambahkan ke rekonsiliasi bank yang masih terbuka');
+  }
+
+  const autoMatch = await resolveFinanceBankStatementAutoMatch(tx, params.reconciliation, {
+    entryDate: params.entryDate,
+    direction: params.direction,
+    amount: params.amount,
+    referenceNo: params.referenceNo?.trim() || null,
+  });
+
+  const entry = await tx.financeBankStatementEntry.create({
+    data: {
+      reconciliationId: params.reconciliationId,
+      entryDate: params.entryDate,
+      direction: params.direction,
+      amount: normalizeFinanceAmount(Number(params.amount || 0)),
+      referenceNo: params.referenceNo?.trim() || null,
+      description: params.description?.trim() || null,
+      status: autoMatch.status,
+      matchedPaymentId: autoMatch.matchedPaymentId,
+      matchedRefundId: autoMatch.matchedRefundId,
+      createdById: params.actorId,
+    },
+    include: financeBankStatementEntryRecordInclude,
+  });
+
+  return serializeFinanceBankStatementEntry(entry);
 }
 
 async function loadFinanceBankReconciliationTransactions(
@@ -13379,128 +13567,15 @@ export const createFinanceBankStatementEntry = asyncHandler(async (req: Request,
       'Pencatatan mutasi bank',
     );
 
-    if (reconciliation.status !== 'OPEN') {
-      throw new ApiError(400, 'Mutasi hanya bisa ditambahkan ke rekonsiliasi bank yang masih terbuka');
-    }
-
-    const autoMatch = await resolveFinanceBankStatementAutoMatch(tx, reconciliation, {
+    const entry = await createFinanceBankStatementEntryRecord(tx, {
+      reconciliationId,
+      reconciliation,
+      actorId: actor.id,
       entryDate,
-      direction: payload.direction,
-      amount: payload.amount,
+      direction: payload.direction as FinanceBankStatementDirection,
+      amount: Number(payload.amount || 0),
       referenceNo: payload.referenceNo?.trim() || null,
-    });
-
-    const entry = await tx.financeBankStatementEntry.create({
-      data: {
-        reconciliationId,
-        entryDate,
-        direction: payload.direction,
-        amount: normalizeFinanceAmount(Number(payload.amount || 0)),
-        referenceNo: payload.referenceNo?.trim() || null,
-        description: payload.description?.trim() || null,
-        status: autoMatch.status,
-        matchedPaymentId: autoMatch.matchedPaymentId,
-        matchedRefundId: autoMatch.matchedRefundId,
-        createdById: actor.id,
-      },
-      include: {
-        matchedPayment: {
-          select: {
-            id: true,
-            paymentNo: true,
-            amount: true,
-            allocatedAmount: true,
-            creditedAmount: true,
-            reversedAmount: true,
-            reversedAllocatedAmount: true,
-            reversedCreditedAmount: true,
-            source: true,
-            method: true,
-            referenceNo: true,
-            note: true,
-            paidAt: true,
-            createdAt: true,
-            updatedAt: true,
-            bankAccount: {
-              select: {
-                id: true,
-                code: true,
-                bankName: true,
-                accountName: true,
-                accountNumber: true,
-              },
-            },
-            verifiedBy: {
-              select: {
-                id: true,
-                name: true,
-                role: true,
-              },
-            },
-            bankStatementEntries: {
-              select: {
-                id: true,
-                entryDate: true,
-                amount: true,
-                direction: true,
-                referenceNo: true,
-                status: true,
-                reconciliation: {
-                  select: {
-                    id: true,
-                    reconciliationNo: true,
-                  },
-                },
-              },
-              orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
-              take: 1,
-            },
-            invoice: {
-              select: {
-                id: true,
-                invoiceNo: true,
-                periodKey: true,
-                semester: true,
-              },
-            },
-          },
-        },
-        matchedRefund: {
-          include: {
-            student: {
-              select: {
-                id: true,
-                name: true,
-                username: true,
-                nis: true,
-                nisn: true,
-                studentClass: {
-                  select: {
-                    id: true,
-                    name: true,
-                    level: true,
-                  },
-                },
-              },
-            },
-            createdBy: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            bankAccount: {
-              select: {
-                id: true,
-                code: true,
-                bankName: true,
-                accountName: true,
-                accountNumber: true,
-              },
-            },
-          },
-        },
-      },
+      description: payload.description?.trim() || null,
     });
 
     const refreshedReconciliation = await tx.financeBankReconciliation.findUnique({
@@ -13517,7 +13592,7 @@ export const createFinanceBankStatementEntry = asyncHandler(async (req: Request,
       refreshedReconciliation,
     );
     return {
-      entry: serializeFinanceBankStatementEntry(entry),
+      entry,
       reconciliation: serializedReconciliation,
     };
   });
@@ -13545,6 +13620,151 @@ export const createFinanceBankStatementEntry = asyncHandler(async (req: Request,
       result.entry.status === 'MATCHED'
         ? 'Mutasi bank berhasil ditambahkan dan otomatis matched'
         : 'Mutasi bank berhasil ditambahkan',
+    ),
+  );
+});
+
+export const importFinanceBankStatementEntries = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+
+  const reconciliationId = Number(req.params.id);
+  if (!Number.isInteger(reconciliationId) || reconciliationId <= 0) {
+    throw new ApiError(400, 'ID rekonsiliasi bank tidak valid');
+  }
+
+  const payload = importFinanceBankStatementEntriesSchema.parse(req.body || {});
+  const parsedEntries = payload.entries.map((entry) => ({
+    entryDate: parseFinanceDateInput(entry.entryDate, false),
+    direction: entry.direction as FinanceBankStatementDirection,
+    amount: Number(entry.amount || 0),
+    referenceNo: entry.referenceNo?.trim() || null,
+    description: entry.description?.trim() || null,
+  }));
+
+  const result = await prisma.$transaction(async (tx) => {
+    const reconciliation = await tx.financeBankReconciliation.findUnique({
+      where: { id: reconciliationId },
+      include: financeBankReconciliationRecordInclude,
+    });
+
+    if (!reconciliation) {
+      throw new ApiError(404, 'Rekonsiliasi bank tidak ditemukan');
+    }
+
+    await assertFinanceClosingPeriodRangeUnlocked(
+      tx,
+      reconciliation.periodStart,
+      reconciliation.periodEnd,
+      'Import mutasi bank batch',
+    );
+
+    if (reconciliation.status !== 'OPEN') {
+      throw new ApiError(400, 'Import mutasi hanya bisa dilakukan ke rekonsiliasi bank yang masih terbuka');
+    }
+
+    const existingEntries = await tx.financeBankStatementEntry.findMany({
+      where: { reconciliationId },
+      select: {
+        entryDate: true,
+        direction: true,
+        amount: true,
+        referenceNo: true,
+        description: true,
+      },
+    });
+
+    const seenKeys = new Set(
+      existingEntries.map((entry) =>
+        buildFinanceBankStatementDuplicateKey({
+          entryDate: entry.entryDate,
+          direction: entry.direction,
+          amount: Number(entry.amount || 0),
+          referenceNo: entry.referenceNo || null,
+          description: entry.description || null,
+        }),
+      ),
+    );
+
+    const createdEntries: SerializedFinanceBankStatementEntry[] = [];
+    let skippedCount = 0;
+    let matchedCount = 0;
+    let unmatchedCount = 0;
+
+    for (const row of parsedEntries) {
+      const duplicateKey = buildFinanceBankStatementDuplicateKey(row);
+      if (seenKeys.has(duplicateKey)) {
+        if (payload.skipDuplicates) {
+          skippedCount += 1;
+          continue;
+        }
+        throw new ApiError(400, `Mutasi duplikat terdeteksi pada referensi ${row.referenceNo || row.entryDate.toISOString()}`);
+      }
+
+      const created = await createFinanceBankStatementEntryRecord(tx, {
+        reconciliationId,
+        reconciliation,
+        actorId: actor.id,
+        entryDate: row.entryDate,
+        direction: row.direction,
+        amount: row.amount,
+        referenceNo: row.referenceNo,
+        description: row.description,
+      });
+
+      seenKeys.add(duplicateKey);
+      createdEntries.push(created);
+      if (created.status === 'MATCHED') matchedCount += 1;
+      else unmatchedCount += 1;
+    }
+
+    const refreshedReconciliation = await tx.financeBankReconciliation.findUnique({
+      where: { id: reconciliationId },
+      include: financeBankReconciliationRecordInclude,
+    });
+
+    if (!refreshedReconciliation) {
+      throw new ApiError(404, 'Rekonsiliasi bank tidak ditemukan setelah import mutasi');
+    }
+
+    return {
+      entries: createdEntries,
+      reconciliation: await serializeFinanceBankReconciliationRecord(tx, refreshedReconciliation),
+      summary: {
+        submittedCount: parsedEntries.length,
+        createdCount: createdEntries.length,
+        skippedCount,
+        matchedCount,
+        unmatchedCount,
+      },
+    };
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'CREATE',
+      'FINANCE_BANK_STATEMENT_IMPORT',
+      reconciliationId,
+      null,
+      {
+        reconciliationId,
+        summary: result.summary,
+      },
+      'Import batch mutasi statement bank finance',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat import batch mutasi statement bank finance', auditError);
+  }
+
+  res.status(201).json(
+    new ApiResponse(
+      201,
+      result,
+      result.summary.createdCount > 0
+        ? 'Import mutasi bank batch berhasil diproses'
+        : 'Import selesai, tidak ada mutasi baru yang ditambahkan',
     ),
   );
 });

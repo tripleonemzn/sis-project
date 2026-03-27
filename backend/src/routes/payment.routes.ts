@@ -35,6 +35,7 @@ import {
   getFinanceCashSessionApprovalPolicy,
   getFinanceClosingPeriodApprovalPolicy,
   getFinanceAuditSummary,
+  importFinanceBankStatementEntries,
   listFinanceAdjustmentRules,
   listFinanceBankReconciliations,
   listFinanceCashSessions,
@@ -103,6 +104,7 @@ router.get('/ledger-books', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCI
 router.get('/bank-reconciliations', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceBankReconciliations);
 router.post('/bank-reconciliations', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceBankReconciliation);
 router.post('/bank-reconciliations/:id/entries', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceBankStatementEntry);
+router.post('/bank-reconciliations/:id/entries/import', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), importFinanceBankStatementEntries);
 router.post('/bank-reconciliations/:id/finalize', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), finalizeFinanceBankReconciliation);
 router.get('/cash-sessions', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceCashSessions);
 router.get('/closing-periods', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceClosingPeriods);

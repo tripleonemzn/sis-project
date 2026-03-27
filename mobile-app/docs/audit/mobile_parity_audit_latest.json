@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-27T12:26:22.499Z",
+  "generatedAt": "2026-03-27T14:08:16.019Z",
   "perRoleSummary": [
     {
       "role": "ADMIN",
@@ -737,7 +737,7 @@
         "openUrlHits": [
           {
             "file": "app/(app)/staff/payments.tsx",
-            "line": 2780
+            "line": 2915
           }
         ]
       },
@@ -1614,7 +1614,7 @@
     },
     {
       "file": "app/(app)/staff/payments.tsx",
-      "line": 2780
+      "line": 2915
     },
     {
       "file": "app/(app)/student/finance.tsx",

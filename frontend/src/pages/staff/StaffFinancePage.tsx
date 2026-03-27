@@ -143,6 +143,80 @@ function formatEffectiveWindow(start?: string | null, end?: string | null) {
   return `${startLabel} - ${endLabel}`;
 }
 
+function normalizeBankStatementImportDirection(raw: string): FinanceBankStatementDirection | null {
+  const normalized = raw.trim().toUpperCase();
+  if (['CREDIT', 'KREDIT', 'CR', 'IN', 'MASUK', 'BANK MASUK'].includes(normalized)) return 'CREDIT';
+  if (['DEBIT', 'DB', 'OUT', 'KELUAR', 'BANK KELUAR'].includes(normalized)) return 'DEBIT';
+  return null;
+}
+
+function normalizeBankStatementImportAmount(raw: string): number | null {
+  const cleaned = raw.replace(/[^\d,.-]/g, '').trim();
+  if (!cleaned) return null;
+
+  let normalized = cleaned;
+  if (normalized.includes(',') && normalized.includes('.')) {
+    normalized =
+      normalized.lastIndexOf(',') > normalized.lastIndexOf('.')
+        ? normalized.replace(/\./g, '').replace(',', '.')
+        : normalized.replace(/,/g, '');
+  } else if (normalized.includes(',')) {
+    const parts = normalized.split(',');
+    normalized =
+      parts.length === 2 && parts[1].length <= 2
+        ? `${parts[0].replace(/\./g, '')}.${parts[1]}`
+        : normalized.replace(/,/g, '');
+  }
+
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return amount;
+}
+
+function parseBankStatementImportRows(rawText: string) {
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const entries = lines.map((line, index) => {
+    const delimiter = line.includes('\t') ? '\t' : line.includes('|') ? '|' : line.includes(';') ? ';' : ',';
+    const columns = line.split(delimiter).map((part) => part.trim());
+    if (columns.length < 3) {
+      throw new Error(`Baris ${index + 1} belum valid. Gunakan format tanggal, arah, nominal.`);
+    }
+
+    const [entryDate, rawDirection, rawAmount, rawReference = '', ...rest] = columns;
+    const direction = normalizeBankStatementImportDirection(rawDirection);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(entryDate)) {
+      throw new Error(`Tanggal pada baris ${index + 1} harus berformat YYYY-MM-DD.`);
+    }
+    if (!direction) {
+      throw new Error(`Arah mutasi pada baris ${index + 1} harus CREDIT/KREDIT atau DEBIT.`);
+    }
+
+    const amount = normalizeBankStatementImportAmount(rawAmount);
+    if (!amount) {
+      throw new Error(`Nominal pada baris ${index + 1} tidak valid.`);
+    }
+
+    const description = rest.join(delimiter).trim();
+    return {
+      entryDate,
+      direction,
+      amount,
+      referenceNo: rawReference.trim() || undefined,
+      description: description || undefined,
+    };
+  });
+
+  if (!entries.length) {
+    throw new Error('Tempel minimal satu baris mutasi untuk diimport.');
+  }
+
+  return entries;
+}
+
 function normalizeClassLevel(raw?: string | null) {
   const normalized = String(raw || '')
     .trim()
@@ -603,6 +677,7 @@ export const StaffFinancePage = () => {
   const [bankStatementAmount, setBankStatementAmount] = useState('');
   const [bankStatementReference, setBankStatementReference] = useState('');
   const [bankStatementDescription, setBankStatementDescription] = useState('');
+  const [bankStatementImportText, setBankStatementImportText] = useState('');
 
   const yearsQuery = useQuery({
     queryKey: ['staff-finance-academic-years'],
@@ -1007,6 +1082,27 @@ export const StaffFinancePage = () => {
     bankReconciliations.find((reconciliation) => reconciliation.id === selectedBankReconciliationId) ||
     bankReconciliations[0] ||
     null;
+  const bankStatementImportPreview = useMemo(() => {
+    const rawText = bankStatementImportText.trim();
+    if (!rawText) {
+      return {
+        entries: [] as ReturnType<typeof parseBankStatementImportRows>,
+        error: '',
+      };
+    }
+
+    try {
+      return {
+        entries: parseBankStatementImportRows(rawText),
+        error: '',
+      };
+    } catch (error) {
+      return {
+        entries: [] as ReturnType<typeof parseBankStatementImportRows>,
+        error: error instanceof Error ? error.message : 'Format import mutasi tidak valid.',
+      };
+    }
+  }, [bankStatementImportText]);
   const writeOffSummary = writeOffsQuery.data?.summary;
   const writeOffRequests = writeOffsQuery.data?.requests || [];
   const paymentReversalSummary = paymentReversalsQuery.data?.summary;
@@ -1209,6 +1305,7 @@ export const StaffFinancePage = () => {
     setBankStatementAmount('');
     setBankStatementReference('');
     setBankStatementDescription('');
+    setBankStatementImportText('');
   };
 
   const resetBankStatementEntryForm = () => {
@@ -1217,6 +1314,10 @@ export const StaffFinancePage = () => {
     setBankStatementAmount('');
     setBankStatementReference('');
     setBankStatementDescription('');
+  };
+
+  const resetBankStatementImportForm = () => {
+    setBankStatementImportText('');
   };
 
   const resetWriteOffForm = () => {
@@ -1718,6 +1819,30 @@ export const StaffFinancePage = () => {
     },
   });
 
+  const importBankStatementEntriesMutation = useMutation({
+    mutationFn: (payload: {
+      reconciliation: FinanceBankReconciliation;
+      entries: ReturnType<typeof parseBankStatementImportRows>;
+    }) =>
+      staffFinanceService.importBankStatementEntries(payload.reconciliation.id, {
+        entries: payload.entries,
+        skipDuplicates: true,
+      }),
+    onSuccess: (result) => {
+      toast.success(
+        `Import selesai: ${result.summary.createdCount} baru, ${result.summary.skippedCount} duplikat dilewati, ${result.summary.matchedCount} auto-match`,
+      );
+      resetBankStatementImportForm();
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-bank-reconciliations'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-payment-verifications'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-finance-ledger-books'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { message?: string } } };
+      toast.error(apiError?.response?.data?.message || 'Gagal import mutasi statement bank');
+    },
+  });
+
   const finalizeBankReconciliationMutation = useMutation({
     mutationFn: (reconciliation: FinanceBankReconciliation) =>
       staffFinanceService.finalizeBankReconciliation(reconciliation.id, {
@@ -2105,6 +2230,21 @@ export const StaffFinancePage = () => {
       return;
     }
     createBankStatementEntryMutation.mutate(reconciliation);
+  };
+
+  const handleImportBankStatementEntries = (reconciliation: FinanceBankReconciliation) => {
+    if (!bankStatementImportText.trim()) {
+      toast.error('Tempel data mutasi bank terlebih dahulu');
+      return;
+    }
+    if (bankStatementImportPreview.error) {
+      toast.error(bankStatementImportPreview.error);
+      return;
+    }
+    importBankStatementEntriesMutation.mutate({
+      reconciliation,
+      entries: bankStatementImportPreview.entries,
+    });
   };
 
   const handleFinalizeBankReconciliation = (reconciliation: FinanceBankReconciliation) => {
@@ -3715,6 +3855,59 @@ export const StaffFinancePage = () => {
                               {finalizeBankReconciliationMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                               Finalkan Rekonsiliasi
                             </button>
+                          </div>
+
+                          <div className="rounded-xl border border-dashed border-indigo-200 bg-white/80 p-4 space-y-3">
+                            <div>
+                              <div className="text-sm font-semibold text-indigo-900">Import Mutasi Batch</div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                Tempel data dari Excel/CSV dengan format per baris:
+                                <span className="font-medium text-slate-700"> tanggal, arah, nominal, referensi, deskripsi</span>.
+                                Tab, titik koma, pipa, atau koma didukung.
+                              </div>
+                            </div>
+                            <textarea
+                              value={bankStatementImportText}
+                              onChange={(event) => setBankStatementImportText(event.target.value)}
+                              placeholder={'2026-03-27\tCREDIT\t150000\tTRX-001\tPembayaran transfer\n2026-03-27\tDEBIT\t50000\tFEE-ADM\tBiaya admin'}
+                              rows={5}
+                              className="w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-mono"
+                            />
+                            <div
+                              className={`text-xs ${
+                                bankStatementImportPreview.error ? 'text-rose-600' : 'text-slate-500'
+                              }`}
+                            >
+                              {bankStatementImportPreview.error
+                                ? bankStatementImportPreview.error
+                                : bankStatementImportPreview.entries.length > 0
+                                  ? `${bankStatementImportPreview.entries.length} baris siap diimport. Duplikat pada rekonsiliasi yang sama akan dilewati otomatis.`
+                                  : 'Belum ada data batch yang ditempel.'}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleImportBankStatementEntries(selectedBankReconciliation)}
+                                disabled={
+                                  importBankStatementEntriesMutation.isPending ||
+                                  !bankStatementImportText.trim() ||
+                                  Boolean(bankStatementImportPreview.error)
+                                }
+                                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                              >
+                                {importBankStatementEntriesMutation.isPending ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : null}
+                                Import Batch
+                              </button>
+                              <button
+                                type="button"
+                                onClick={resetBankStatementImportForm}
+                                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
+                              >
+                                Reset Batch
+                              </button>
+                            </div>
                           </div>
                         </div>
                       ) : null}

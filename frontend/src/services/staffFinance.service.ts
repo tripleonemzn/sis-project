@@ -1001,6 +1001,18 @@ export interface FinanceBankReconciliationListResult {
   };
 }
 
+export interface FinanceBankStatementImportResult {
+  entries: FinanceBankStatementEntry[];
+  reconciliation: FinanceBankReconciliation;
+  summary: {
+    submittedCount: number;
+    createdCount: number;
+    skippedCount: number;
+    matchedCount: number;
+    unmatchedCount: number;
+  };
+}
+
 export interface FinanceLedgerEntry {
   id: string;
   sourceType: 'PAYMENT' | 'REFUND';
@@ -2155,6 +2167,26 @@ export const staffFinanceService = {
         reconciliation: FinanceBankReconciliation;
       }>
     >(`/payments/bank-reconciliations/${reconciliationId}/entries`, payload);
+    return response.data.data;
+  },
+
+  async importBankStatementEntries(
+    reconciliationId: number,
+    payload: {
+      entries: Array<{
+        entryDate: string;
+        direction: FinanceBankStatementDirection;
+        amount: number;
+        referenceNo?: string;
+        description?: string;
+      }>;
+      skipDuplicates?: boolean;
+    },
+  ) {
+    const response = await api.post<ApiResponse<FinanceBankStatementImportResult>>(
+      `/payments/bank-reconciliations/${reconciliationId}/entries/import`,
+      payload,
+    );
     return response.data.data;
   },
 
