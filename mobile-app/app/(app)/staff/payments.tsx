@@ -36,6 +36,7 @@ import {
   type FinanceInvoiceStatus,
   type FinanceLateFeeMode,
   type FinancePaymentMethod,
+  type StaffFinancePerformanceSummary,
   type FinanceReminderMode,
   type SemesterCode,
   type StaffFinanceAdjustmentRule,
@@ -162,6 +163,12 @@ function getDueSoonLabel(daysUntilDue: number) {
   if (daysUntilDue <= 0) return 'Hari ini';
   if (daysUntilDue === 1) return '1 hari lagi';
   return `${daysUntilDue} hari lagi`;
+}
+
+function getPerformanceSignalStyle(tone: StaffFinancePerformanceSummary['signals'][number]['tone']) {
+  if (tone === 'POSITIVE') return { bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  if (tone === 'WATCH') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
 }
 
 function formatEffectiveWindow(start?: string | null, end?: string | null) {
@@ -815,6 +822,16 @@ export default function StaffPaymentsScreen() {
       staffFinanceApi.getBudgetRealizationSummary({
         academicYearId: activeYearQuery.data?.id,
         limit: 10,
+    }),
+    staleTime: 30_000,
+  });
+
+  const performanceSummaryQuery = useQuery({
+    queryKey: ['mobile-staff-finance-performance-summary'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () =>
+      staffFinanceApi.getPerformanceSummary({
+        months: 6,
       }),
     staleTime: 30_000,
   });
@@ -861,6 +878,7 @@ export default function StaffPaymentsScreen() {
   const closingPeriodReopenSummary = closingPeriodReopenRequestsQuery.data?.summary;
   const closingPeriodApprovalPolicy = closingPeriodApprovalPolicyQuery.data || null;
   const budgetRealizationSummary = budgetRealizationQuery.data || null;
+  const performanceSummary = performanceSummaryQuery.data || null;
   const closedClosingPeriods = useMemo(
     () => closingPeriods.filter((period) => period.status === 'CLOSED'),
     [closingPeriods],
@@ -1379,6 +1397,7 @@ export default function StaffPaymentsScreen() {
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-closing-periods'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-closing-period-reopen-requests'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-closing-period-policy'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-performance-summary'] });
   };
 
   const saveComponentMutation = useMutation({
@@ -2576,6 +2595,7 @@ export default function StaffPaymentsScreen() {
     closingPeriodsQuery.isLoading ||
     closingPeriodApprovalPolicyQuery.isLoading ||
     budgetRealizationQuery.isLoading ||
+    performanceSummaryQuery.isLoading ||
     creditsQuery.isLoading ||
     invoicesQuery.isLoading ||
     studentsQuery.isLoading;
@@ -2599,6 +2619,7 @@ export default function StaffPaymentsScreen() {
             closingPeriodsQuery.isFetching ||
             closingPeriodApprovalPolicyQuery.isFetching ||
             budgetRealizationQuery.isFetching ||
+            performanceSummaryQuery.isFetching ||
             creditsQuery.isFetching ||
             invoicesQuery.isFetching ||
             dashboardQuery.isFetching
@@ -2616,6 +2637,7 @@ export default function StaffPaymentsScreen() {
             void closingPeriodsQuery.refetch();
             void closingPeriodApprovalPolicyQuery.refetch();
             void budgetRealizationQuery.refetch();
+            void performanceSummaryQuery.refetch();
             void creditsQuery.refetch();
             void invoicesQuery.refetch();
             void dashboardQuery.refetch();
@@ -2843,6 +2865,147 @@ export default function StaffPaymentsScreen() {
             <Text style={{ color: '#334155', fontWeight: '700', fontSize: 12 }}>Pengaturan Policy Reminder</Text>
           </Pressable>
         </View>
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#cbd5e1',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Finance Performance Trend</Text>
+        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+          Tren 6 bulan terakhir untuk membaca pace koleksi, net flow treasury, pending verifikasi, dan disiplin closing.
+        </Text>
+
+        {performanceSummaryQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil trend performa finance..." />
+        ) : !performanceSummary ? (
+          <Text style={{ color: '#64748b', fontSize: 12 }}>Ringkasan performa finance belum tersedia.</Text>
+        ) : (
+          <>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
+              {[
+                {
+                  label: 'Avg Collection',
+                  value: `${performanceSummary.overview.averageCollectionRate.toFixed(1)}%`,
+                  subtitle: `${formatCurrency(performanceSummary.overview.averageCollectedAgainstIssuedAmount)} / bulan`,
+                  bg: '#f8fafc',
+                  border: '#cbd5e1',
+                  text: '#334155',
+                },
+                {
+                  label: 'Net Flow Terbaru',
+                  value: formatCurrency(performanceSummary.overview.latestNetFlowAmount),
+                  subtitle: performanceSummary.overview.latestMonthLabel || 'Bulan terbaru',
+                  bg: '#dcfce7',
+                  border: '#86efac',
+                  text: '#166534',
+                },
+                {
+                  label: 'Outstanding',
+                  value: formatCurrency(performanceSummary.overview.latestOutstandingAmount),
+                  subtitle: `Rate ${performanceSummary.overview.latestCollectionRate.toFixed(1)}%`,
+                  bg: '#fef3c7',
+                  border: '#fcd34d',
+                  text: '#92400e',
+                },
+                {
+                  label: 'Pending Verifikasi',
+                  value: formatCurrency(performanceSummary.overview.latestPendingVerificationAmount),
+                  subtitle: performanceSummary.highlights.highestPendingVerificationMonth
+                    ? `Puncak ${performanceSummary.highlights.highestPendingVerificationMonth.label}`
+                    : 'Tidak ada backlog',
+                  bg: '#fee2e2',
+                  border: '#fecaca',
+                  text: '#991b1b',
+                },
+              ].map((card) => (
+                <View key={card.label} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                  <View style={{ backgroundColor: card.bg, borderWidth: 1, borderColor: card.border, borderRadius: 10, padding: 10 }}>
+                    <Text style={{ color: card.text, fontSize: 11 }}>{card.label}</Text>
+                    <Text style={{ color: card.text, fontWeight: '700', fontSize: 13, marginTop: 4 }} numberOfLines={1}>
+                      {card.value}
+                    </Text>
+                    <Text style={{ color: card.text, fontSize: 11, marginTop: 3 }} numberOfLines={1}>
+                      {card.subtitle}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                backgroundColor: '#f8fafc',
+                borderRadius: 10,
+                padding: 10,
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Signal Prioritas</Text>
+              {performanceSummary.signals.map((signal) => {
+                const badge = getPerformanceSignalStyle(signal.tone);
+                return (
+                  <View key={signal.key} style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingVertical: 8 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#0f172a', fontWeight: '700' }}>{signal.title}</Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>{signal.detail}</Text>
+                      </View>
+                      <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                        <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{signal.tone}</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                backgroundColor: '#fff',
+                borderRadius: 10,
+                padding: 10,
+              }}
+            >
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Trend Bulanan</Text>
+              {performanceSummary.monthlyTrend.map((row) => (
+                <View key={row.periodKey} style={{ borderTopWidth: 1, borderTopColor: '#eef2ff', paddingVertical: 8 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#0f172a', fontWeight: '700' }}>{row.label}</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        {row.issuedInvoiceCount} invoice • rate {row.collectionRate.toFixed(1)}%
+                      </Text>
+                    </View>
+                    <Text style={{ color: '#0f172a', fontWeight: '700' }}>{formatCurrency(row.issuedInvoiceAmount)}</Text>
+                  </View>
+                  <Text style={{ color: '#166534', fontSize: 12, marginTop: 3 }}>
+                    Collected {formatCurrency(row.collectedAgainstIssuedAmount)} • Net Flow {formatCurrency(row.netFlowAmount)}
+                  </Text>
+                  <Text style={{ color: '#92400e', fontSize: 12, marginTop: 3 }}>
+                    Outstanding {formatCurrency(row.outstandingAmount)} • overdue {formatCurrency(row.overdueOutstandingAmount)}
+                  </Text>
+                  <Text style={{ color: '#991b1b', fontSize: 12, marginTop: 3 }}>
+                    Pending {formatCurrency(row.pendingVerificationAmount)} • {row.pendingPaymentCount} payment
+                  </Text>
+                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                    Recon / Close {row.finalizedReconciliationCount} / {row.finalizedClosingCount} • Refund {formatCurrency(row.refundAmount)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
       </View>
 
       <View

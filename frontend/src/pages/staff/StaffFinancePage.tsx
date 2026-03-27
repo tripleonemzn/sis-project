@@ -30,6 +30,7 @@ import {
   type FinanceLedgerEntry,
   type FinanceLateFeeMode,
   type FinancePaymentMethod,
+  type FinancePerformanceSummary,
   type FinanceReminderMode,
   type FinanceReminderPolicy,
   type FinanceWriteOffRequest,
@@ -258,6 +259,16 @@ function getAdjustmentKindLabel(kind: FinanceAdjustmentKind) {
 
 function getPaymentMethodLabel(method?: FinancePaymentMethod | null) {
   return PAYMENT_METHOD_OPTIONS.find((option) => option.value === method)?.label || method || '-';
+}
+
+function getPerformanceSignalTone(tone: FinancePerformanceSummary['signals'][number]['tone']) {
+  if (tone === 'POSITIVE') {
+    return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+  }
+  if (tone === 'WATCH') {
+    return 'bg-amber-50 text-amber-700 border border-amber-200';
+  }
+  return 'bg-rose-50 text-rose-700 border border-rose-200';
 }
 
 function isTrackedNonCashPaymentMethod(method?: FinancePaymentMethod | null) {
@@ -851,6 +862,15 @@ export const StaffFinancePage = () => {
     staleTime: 30_000,
   });
 
+  const performanceSummaryQuery = useQuery({
+    queryKey: ['staff-finance-performance-summary'],
+    queryFn: () =>
+      staffFinanceService.getPerformanceSummary({
+        months: 6,
+      }),
+    staleTime: 30_000,
+  });
+
   const closingPeriodApprovalPolicyQuery = useQuery({
     queryKey: ['staff-finance-closing-period-policy'],
     queryFn: () => staffFinanceService.getClosingPeriodApprovalPolicy(),
@@ -906,6 +926,7 @@ export const StaffFinancePage = () => {
   const closingPeriodReopenSummary = closingPeriodReopenRequestsQuery.data?.summary;
   const closingPeriodApprovalPolicy = closingPeriodApprovalPolicyQuery.data || null;
   const budgetRealizationSummary = budgetRealizationQuery.data || null;
+  const performanceSummary = performanceSummaryQuery.data || null;
   const closedClosingPeriods = useMemo(
     () => closingPeriods.filter((period) => period.status === 'CLOSED'),
     [closingPeriods],
@@ -4581,6 +4602,155 @@ export const StaffFinancePage = () => {
                         ))
                       )}
                     </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-4 border-b border-slate-100">
+          <div className="text-xs uppercase tracking-wider text-slate-700">Finance Performance Trend</div>
+          <p className="mt-1 text-sm text-slate-600">
+            Tren 6 bulan terakhir untuk melihat laju koleksi, net flow treasury, pending verifikasi, dan disiplin closing dari satu ringkasan operasional.
+          </p>
+        </div>
+        <div className="p-4 space-y-4">
+          {performanceSummaryQuery.isLoading ? (
+            <div className="text-sm text-slate-500">Memuat trend performa finance...</div>
+          ) : !performanceSummary ? (
+            <div className="text-sm text-slate-500">Ringkasan performa finance belum tersedia.</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                  <div className="text-[11px] uppercase tracking-wider text-slate-700">Avg Collection</div>
+                  <div className="mt-1 text-sm font-bold text-slate-900">
+                    {performanceSummary.overview.averageCollectionRate.toFixed(1)}%
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-500">
+                    {formatCurrency(performanceSummary.overview.averageCollectedAgainstIssuedAmount)} / bulan
+                  </div>
+                </div>
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3">
+                  <div className="text-[11px] uppercase tracking-wider text-emerald-700">Net Flow Terbaru</div>
+                  <div className="mt-1 text-sm font-bold text-emerald-900">
+                    {formatCurrency(performanceSummary.overview.latestNetFlowAmount)}
+                  </div>
+                  <div className="mt-1 text-[11px] text-emerald-700">
+                    {performanceSummary.overview.latestMonthLabel || 'Bulan terbaru'}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3">
+                  <div className="text-[11px] uppercase tracking-wider text-amber-700">Outstanding Terbaru</div>
+                  <div className="mt-1 text-sm font-bold text-amber-900">
+                    {formatCurrency(performanceSummary.overview.latestOutstandingAmount)}
+                  </div>
+                  <div className="mt-1 text-[11px] text-amber-700">
+                    Rate {performanceSummary.overview.latestCollectionRate.toFixed(1)}%
+                  </div>
+                </div>
+                <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-3">
+                  <div className="text-[11px] uppercase tracking-wider text-rose-700">Pending Verifikasi</div>
+                  <div className="mt-1 text-sm font-bold text-rose-900">
+                    {formatCurrency(performanceSummary.overview.latestPendingVerificationAmount)}
+                  </div>
+                  <div className="mt-1 text-[11px] text-rose-700">
+                    {performanceSummary.highlights.highestPendingVerificationMonth
+                      ? `Puncak ${performanceSummary.highlights.highestPendingVerificationMonth.label}`
+                      : 'Tidak ada backlog'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-[0.42fr_0.58fr] gap-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Signal Prioritas</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      Indikator cepat untuk membaca bulan terbaik, backlog verifikasi, dan disiplin closing.
+                    </div>
+                  </div>
+                  {performanceSummary.signals.map((signal) => (
+                    <div key={signal.key} className="rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-semibold text-slate-900">{signal.title}</div>
+                        <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${getPerformanceSignalTone(signal.tone)}`}>
+                          {signal.tone}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500">{signal.detail}</div>
+                      <div className="mt-2 text-sm font-semibold text-slate-900">{signal.metric}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Trend Bulanan</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        Invoice terbit, koleksi invoice cohort, flow kas/bank, dan disiplin closing per bulan.
+                      </div>
+                    </div>
+                    <div className="text-xs text-slate-500">{performanceSummary.monthlyTrend.length} bulan</div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Bulan</th>
+                          <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Invoice</th>
+                          <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Collected</th>
+                          <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Net Flow</th>
+                          <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Outstanding</th>
+                          <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Pending</th>
+                          <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Recon/Close</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {performanceSummary.monthlyTrend.map((row) => (
+                          <tr key={row.periodKey}>
+                            <td className="px-4 py-3 text-sm text-slate-700">
+                              <div className="font-semibold text-slate-900">{row.label}</div>
+                              <div className="mt-1 text-[11px] text-slate-500">
+                                {row.issuedInvoiceCount} invoice • rate {row.collectionRate.toFixed(1)}%
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right text-sm font-semibold text-slate-900">
+                              {formatCurrency(row.issuedInvoiceAmount)}
+                            </td>
+                            <td className="px-4 py-3 text-right text-sm font-semibold text-emerald-700">
+                              {formatCurrency(row.collectedAgainstIssuedAmount)}
+                            </td>
+                            <td className="px-4 py-3 text-right text-sm font-semibold text-sky-700">
+                              {formatCurrency(row.netFlowAmount)}
+                              <div className="mt-1 text-[11px] text-slate-500">
+                                Cash {formatCurrency(row.cashInAmount)} • Non-cash {formatCurrency(row.nonCashVerifiedAmount)}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right text-sm font-semibold text-amber-700">
+                              {formatCurrency(row.outstandingAmount)}
+                              <div className="mt-1 text-[11px] text-slate-500">
+                                Overdue {formatCurrency(row.overdueOutstandingAmount)}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right text-sm font-semibold text-rose-700">
+                              {formatCurrency(row.pendingVerificationAmount)}
+                              <div className="mt-1 text-[11px] text-slate-500">{row.pendingPaymentCount} payment</div>
+                            </td>
+                            <td className="px-4 py-3 text-right text-sm text-slate-700">
+                              <div className="font-semibold text-slate-900">{row.finalizedReconciliationCount} / {row.finalizedClosingCount}</div>
+                              <div className="mt-1 text-[11px] text-slate-500">
+                                Refund {formatCurrency(row.refundAmount)}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               </div>

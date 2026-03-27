@@ -30,6 +30,7 @@ import {
   type FinanceClosingPeriod,
   type FinanceClosingPeriodReopenRequest,
   type FinanceGovernanceSummary,
+  type FinancePerformanceSummary,
   type FinancePaymentReversalRequest,
   type FinanceReportSnapshot,
   type FinanceWriteOffRequest,
@@ -182,6 +183,16 @@ function getGovernanceSeverityTone(level: FinanceGovernanceSummary['followUpQueu
     return { className: 'bg-sky-50 text-sky-700 border border-sky-200' };
   }
   return { className: 'bg-slate-50 text-slate-700 border border-slate-200' };
+}
+
+function getPerformanceSignalTone(level: FinancePerformanceSummary['signals'][number]['tone']) {
+  if (level === 'POSITIVE') {
+    return { className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+  }
+  if (level === 'WATCH') {
+    return { className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  }
+  return { className: 'bg-rose-50 text-rose-700 border border-rose-200' };
 }
 
 function escapeHtml(value: string) {
@@ -437,6 +448,17 @@ const HeadTuWorkspace = () => {
     refetchOnWindowFocus: false,
   });
 
+  const financePerformanceQuery = useQuery({
+    queryKey: ['head-tu-finance-performance'],
+    queryFn: () =>
+      staffFinanceService.getPerformanceSummary({
+        months: 6,
+      }),
+    enabled: isFinancePage || isDashboardPage,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
   const financeClosingPeriodsQuery = useQuery({
     queryKey: ['head-tu-finance-closing-periods'],
     queryFn: () => staffFinanceService.listClosingPeriods({ limit: 8 }),
@@ -661,6 +683,7 @@ const HeadTuWorkspace = () => {
   const financeBudgetRealization = financeBudgetRealizationQuery.data || null;
   const financeGovernance = financeGovernanceQuery.data || null;
   const financeAudit = financeAuditQuery.data || null;
+  const financePerformance = financePerformanceQuery.data || null;
   const financeClosingPeriods = financeClosingPeriodsQuery.data?.periods || [];
   const financeClosingPeriodSummary = financeClosingPeriodsQuery.data?.summary;
   const pendingHeadTuClosingPeriods = financeClosingPeriodApprovalsQuery.data?.periods || [];
@@ -2183,6 +2206,110 @@ const HeadTuWorkspace = () => {
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h3 className="text-sm font-semibold text-gray-900">Performance Trend 6 Bulan</h3>
+            <p className="mt-1 text-xs text-gray-500">
+              Tren invoice, pace koleksi, pending verifikasi, treasury flow, dan disiplin closing untuk monitoring Head TU.
+            </p>
+          </div>
+          {financePerformanceQuery.isLoading ? (
+            <div className="py-10 flex items-center justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+            </div>
+          ) : !financePerformance ? (
+            <div className="py-10 text-center text-sm text-gray-500">Ringkasan performa finance belum tersedia.</div>
+          ) : (
+            <div className="p-4 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="text-xs uppercase tracking-wider text-slate-700/80">Avg Collection</div>
+                  <div className="mt-2 text-lg font-bold text-slate-900">{financePerformance.overview.averageCollectionRate.toFixed(1)}%</div>
+                  <div className="mt-1 text-xs text-slate-600">{formatCurrency(financePerformance.overview.averageCollectedAgainstIssuedAmount)} / bulan</div>
+                </div>
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                  <div className="text-xs uppercase tracking-wider text-emerald-700/80">Net Flow Terbaru</div>
+                  <div className="mt-2 text-lg font-bold text-emerald-900">{formatCurrency(financePerformance.overview.latestNetFlowAmount)}</div>
+                  <div className="mt-1 text-xs text-emerald-800/80">{financePerformance.overview.latestMonthLabel || 'Bulan terbaru'}</div>
+                </div>
+                <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+                  <div className="text-xs uppercase tracking-wider text-amber-700/80">Outstanding</div>
+                  <div className="mt-2 text-lg font-bold text-amber-900">{formatCurrency(financePerformance.overview.latestOutstandingAmount)}</div>
+                  <div className="mt-1 text-xs text-amber-800/80">Rate {financePerformance.overview.latestCollectionRate.toFixed(1)}%</div>
+                </div>
+                <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3">
+                  <div className="text-xs uppercase tracking-wider text-rose-700/80">Pending Verifikasi</div>
+                  <div className="mt-2 text-lg font-bold text-rose-900">{formatCurrency(financePerformance.overview.latestPendingVerificationAmount)}</div>
+                  <div className="mt-1 text-xs text-rose-800/80">
+                    {financePerformance.highlights.highestPendingVerificationMonth
+                      ? `Puncak ${financePerformance.highlights.highestPendingVerificationMonth.label}`
+                      : 'Tidak ada backlog'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-[0.42fr_0.58fr] gap-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                  <div className="text-sm font-semibold text-slate-900">Signal Prioritas</div>
+                  {financePerformance.signals.map((signal) => (
+                    <div key={signal.key} className="rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-semibold text-slate-900">{signal.title}</div>
+                        <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${getPerformanceSignalTone(signal.tone).className}`}>
+                          {signal.tone}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500">{signal.detail}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+                  <div className="px-4 py-3 border-b border-gray-100">
+                    <h4 className="text-sm font-semibold text-gray-900">Trend Bulanan</h4>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {financePerformance.monthlyTrend.map((row) => (
+                      <div key={row.periodKey} className="px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-gray-900">{row.label}</div>
+                            <div className="mt-1 text-xs text-gray-500">
+                              {row.issuedInvoiceCount} invoice • rate {row.collectionRate.toFixed(1)}%
+                            </div>
+                          </div>
+                          <div className="text-right text-sm font-semibold text-gray-900">
+                            {formatCurrency(row.issuedInvoiceAmount)}
+                            <div className="mt-1 text-[11px] text-gray-500">Collected {formatCurrency(row.collectedAgainstIssuedAmount)}</div>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                            <div className="text-slate-500">Net Flow</div>
+                            <div className="mt-1 font-semibold text-slate-900">{formatCurrency(row.netFlowAmount)}</div>
+                          </div>
+                          <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+                            <div className="text-amber-700">Outstanding</div>
+                            <div className="mt-1 font-semibold text-amber-900">{formatCurrency(row.outstandingAmount)}</div>
+                          </div>
+                          <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2">
+                            <div className="text-rose-700">Pending</div>
+                            <div className="mt-1 font-semibold text-rose-900">{formatCurrency(row.pendingVerificationAmount)}</div>
+                          </div>
+                          <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2">
+                            <div className="text-sky-700">Recon / Close</div>
+                            <div className="mt-1 font-semibold text-sky-900">{row.finalizedReconciliationCount} / {row.finalizedClosingCount}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           )}

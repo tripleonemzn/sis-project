@@ -3724,6 +3724,10 @@ const listFinanceAuditSummaryQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(20).optional().default(8),
 });
 
+const listFinancePerformanceSummaryQuerySchema = z.object({
+  months: z.coerce.number().int().min(3).max(18).optional().default(6),
+});
+
 const listFinanceBankReconciliationsQuerySchema = z.object({
   bankAccountId: z.coerce.number().int().positive().optional(),
   status: z.enum(FINANCE_BANK_RECONCILIATION_STATUSES).optional(),
@@ -7707,6 +7711,7 @@ type FinanceGovernanceArea = 'COLLECTION' | 'TREASURY' | 'APPROVAL' | 'BUDGET' |
 type FinanceGovernanceSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 type FinanceAuditArea = 'POLICY' | 'COLLECTION' | 'TREASURY' | 'APPROVAL';
 type FinanceAuditSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+type FinancePerformanceSignalTone = 'POSITIVE' | 'WATCH' | 'RISK';
 
 function getFinanceGovernanceSeverityWeight(severity: FinanceGovernanceSeverity) {
   if (severity === 'CRITICAL') return 4;
@@ -7733,6 +7738,25 @@ function resolveFinanceGovernanceRiskLevel(score: number): FinanceGovernanceSeve
 
 function formatFinanceGovernanceCurrency(value: number) {
   return `Rp ${Math.round(Number(value || 0)).toLocaleString('id-ID')}`;
+}
+
+function getFinanceMonthStart(date: Date) {
+  return getFinanceStartOfDay(new Date(date.getFullYear(), date.getMonth(), 1));
+}
+
+function getFinanceMonthEnd(date: Date) {
+  return getFinanceEndOfDay(new Date(date.getFullYear(), date.getMonth() + 1, 0));
+}
+
+function getFinanceMonthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function getFinanceMonthLabelShort(date: Date) {
+  return date.toLocaleDateString('id-ID', {
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 async function buildFinanceGovernanceSummary(filters: {
@@ -8669,6 +8693,346 @@ async function buildFinanceAuditSummary(filters: {
     categorySummary,
     actorSummary,
     recentEvents,
+  };
+}
+
+async function buildFinancePerformanceSummary(filters: {
+  months: number;
+}) {
+  const totalMonths = Math.max(3, Math.min(18, Math.trunc(Number(filters.months || 6))));
+  const now = new Date();
+  const bucketStart = getFinanceMonthStart(new Date(now.getFullYear(), now.getMonth() - (totalMonths - 1), 1));
+  const bucketEnd = getFinanceMonthEnd(now);
+
+  const buckets = Array.from({ length: totalMonths }, (_, index) => {
+    const bucketDate = new Date(bucketStart.getFullYear(), bucketStart.getMonth() + index, 1);
+    return {
+      key: getFinanceMonthKey(bucketDate),
+      label: getFinanceMonthLabelShort(bucketDate),
+      start: getFinanceMonthStart(bucketDate),
+      end: getFinanceMonthEnd(bucketDate),
+      issuedInvoiceCount: 0,
+      issuedInvoiceAmount: 0,
+      collectedAgainstIssuedAmount: 0,
+      outstandingAmount: 0,
+      overdueOutstandingAmount: 0,
+      pendingPaymentCount: 0,
+      pendingVerificationAmount: 0,
+      cashInAmount: 0,
+      nonCashVerifiedAmount: 0,
+      refundAmount: 0,
+      netFlowAmount: 0,
+      finalizedReconciliationCount: 0,
+      finalizedClosingCount: 0,
+      collectionRate: 0,
+    };
+  });
+
+  const bucketMap = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+  const todayStart = getFinanceStartOfDay(now);
+
+  const [invoiceRows, paymentRows, refundRows, reconciliationRows, closingRows] = await Promise.all([
+    prisma.financeInvoice.findMany({
+      where: {
+        status: {
+          not: FinanceInvoiceStatus.CANCELLED,
+        },
+        createdAt: {
+          gte: bucketStart,
+          lte: bucketEnd,
+        },
+      },
+      select: {
+        createdAt: true,
+        issuedAt: true,
+        totalAmount: true,
+        paidAmount: true,
+        balanceAmount: true,
+        dueDate: true,
+      },
+    }),
+    prisma.financePayment.findMany({
+      where: {
+        paidAt: {
+          gte: bucketStart,
+          lte: bucketEnd,
+        },
+      },
+      select: {
+        paidAt: true,
+        amount: true,
+        method: true,
+        verificationStatus: true,
+      },
+    }),
+    prisma.financeRefund.findMany({
+      where: {
+        refundedAt: {
+          gte: bucketStart,
+          lte: bucketEnd,
+        },
+      },
+      select: {
+        refundedAt: true,
+        amount: true,
+      },
+    }),
+    prisma.financeBankReconciliation.findMany({
+      where: {
+        status: 'FINALIZED',
+        finalizedAt: {
+          gte: bucketStart,
+          lte: bucketEnd,
+        },
+      },
+      select: {
+        finalizedAt: true,
+      },
+    }),
+    prisma.financeClosingPeriod.findMany({
+      where: {
+        status: FinanceClosingPeriodStatus.CLOSED,
+        closedAt: {
+          gte: bucketStart,
+          lte: bucketEnd,
+        },
+      },
+      select: {
+        closedAt: true,
+      },
+    }),
+  ]);
+
+  invoiceRows.forEach((row) => {
+    const bucketDate = row.issuedAt || row.createdAt;
+    const bucket = bucketMap.get(getFinanceMonthKey(bucketDate));
+    if (!bucket) return;
+    bucket.issuedInvoiceCount += 1;
+    bucket.issuedInvoiceAmount = normalizeFinanceAmount(bucket.issuedInvoiceAmount + Number(row.totalAmount || 0));
+    bucket.collectedAgainstIssuedAmount = normalizeFinanceAmount(
+      bucket.collectedAgainstIssuedAmount + Number(row.paidAmount || 0),
+    );
+    bucket.outstandingAmount = normalizeFinanceAmount(
+      bucket.outstandingAmount + Number(row.balanceAmount || 0),
+    );
+    if (Number(row.balanceAmount || 0) > 0 && row.dueDate && row.dueDate < todayStart) {
+      bucket.overdueOutstandingAmount = normalizeFinanceAmount(
+        bucket.overdueOutstandingAmount + Number(row.balanceAmount || 0),
+      );
+    }
+  });
+
+  paymentRows.forEach((row) => {
+    const bucket = bucketMap.get(getFinanceMonthKey(row.paidAt));
+    if (!bucket) return;
+
+    if (row.verificationStatus === FinancePaymentVerificationStatus.PENDING) {
+      bucket.pendingPaymentCount += 1;
+      bucket.pendingVerificationAmount = normalizeFinanceAmount(
+        bucket.pendingVerificationAmount + Number(row.amount || 0),
+      );
+      return;
+    }
+
+    if (row.verificationStatus !== FinancePaymentVerificationStatus.VERIFIED) {
+      return;
+    }
+
+    if (row.method === FinancePaymentMethod.CASH) {
+      bucket.cashInAmount = normalizeFinanceAmount(bucket.cashInAmount + Number(row.amount || 0));
+    } else {
+      bucket.nonCashVerifiedAmount = normalizeFinanceAmount(
+        bucket.nonCashVerifiedAmount + Number(row.amount || 0),
+      );
+    }
+  });
+
+  refundRows.forEach((row) => {
+    const bucket = bucketMap.get(getFinanceMonthKey(row.refundedAt));
+    if (!bucket) return;
+    bucket.refundAmount = normalizeFinanceAmount(bucket.refundAmount + Number(row.amount || 0));
+  });
+
+  reconciliationRows.forEach((row) => {
+    if (!row.finalizedAt) return;
+    const bucket = bucketMap.get(getFinanceMonthKey(row.finalizedAt));
+    if (!bucket) return;
+    bucket.finalizedReconciliationCount += 1;
+  });
+
+  closingRows.forEach((row) => {
+    if (!row.closedAt) return;
+    const bucket = bucketMap.get(getFinanceMonthKey(row.closedAt));
+    if (!bucket) return;
+    bucket.finalizedClosingCount += 1;
+  });
+
+  const monthlyTrend = buckets.map((bucket) => {
+    const netFlowAmount = normalizeFinanceAmount(
+      bucket.cashInAmount + bucket.nonCashVerifiedAmount - bucket.refundAmount,
+    );
+    const collectionRate =
+      bucket.issuedInvoiceAmount > 0
+        ? Math.round((bucket.collectedAgainstIssuedAmount / bucket.issuedInvoiceAmount) * 1000) / 10
+        : 0;
+
+    return {
+      periodKey: bucket.key,
+      label: bucket.label,
+      issuedInvoiceCount: bucket.issuedInvoiceCount,
+      issuedInvoiceAmount: bucket.issuedInvoiceAmount,
+      collectedAgainstIssuedAmount: bucket.collectedAgainstIssuedAmount,
+      collectionRate,
+      outstandingAmount: bucket.outstandingAmount,
+      overdueOutstandingAmount: bucket.overdueOutstandingAmount,
+      pendingPaymentCount: bucket.pendingPaymentCount,
+      pendingVerificationAmount: bucket.pendingVerificationAmount,
+      cashInAmount: bucket.cashInAmount,
+      nonCashVerifiedAmount: bucket.nonCashVerifiedAmount,
+      refundAmount: bucket.refundAmount,
+      netFlowAmount,
+      finalizedReconciliationCount: bucket.finalizedReconciliationCount,
+      finalizedClosingCount: bucket.finalizedClosingCount,
+    };
+  });
+
+  const latestMonth = monthlyTrend[monthlyTrend.length - 1] || null;
+  const averageIssuedInvoiceAmount = normalizeFinanceAmount(
+    monthlyTrend.reduce((sum, row) => sum + row.issuedInvoiceAmount, 0) / totalMonths,
+  );
+  const averageCollectedAgainstIssuedAmount = normalizeFinanceAmount(
+    monthlyTrend.reduce((sum, row) => sum + row.collectedAgainstIssuedAmount, 0) / totalMonths,
+  );
+  const averageCollectionRate = Math.round(
+    (monthlyTrend.reduce((sum, row) => sum + row.collectionRate, 0) / totalMonths) * 10,
+  ) / 10;
+
+  const bestCollectionMonth = [...monthlyTrend].sort((left, right) => {
+    if (right.collectionRate !== left.collectionRate) return right.collectionRate - left.collectionRate;
+    return right.collectedAgainstIssuedAmount - left.collectedAgainstIssuedAmount;
+  })[0] || null;
+
+  const highestOutstandingMonth = [...monthlyTrend].sort((left, right) => {
+    if (right.outstandingAmount !== left.outstandingAmount) return right.outstandingAmount - left.outstandingAmount;
+    return right.overdueOutstandingAmount - left.overdueOutstandingAmount;
+  })[0] || null;
+
+  const highestPendingVerificationMonth = [...monthlyTrend].sort((left, right) => {
+    if (right.pendingVerificationAmount !== left.pendingVerificationAmount) {
+      return right.pendingVerificationAmount - left.pendingVerificationAmount;
+    }
+    return right.pendingPaymentCount - left.pendingPaymentCount;
+  })[0] || null;
+
+  const strongestNetFlowMonth = [...monthlyTrend].sort((left, right) => right.netFlowAmount - left.netFlowAmount)[0] || null;
+  const monthsWithClosing = monthlyTrend.filter((row) => row.finalizedClosingCount > 0).length;
+  const closingRatio = totalMonths > 0 ? monthsWithClosing / totalMonths : 0;
+
+  const signals: Array<{
+    key: string;
+    title: string;
+    detail: string;
+    tone: FinancePerformanceSignalTone;
+    metric: string;
+    amount: number;
+  }> = [
+    {
+      key: 'best-collection',
+      title: 'Pace koleksi terbaik',
+      detail: bestCollectionMonth
+        ? `${bestCollectionMonth.label} • ${bestCollectionMonth.collectionRate.toFixed(1)}% • ${formatFinanceGovernanceCurrency(bestCollectionMonth.collectedAgainstIssuedAmount)}`
+        : 'Belum ada data koleksi.',
+      tone:
+        bestCollectionMonth && bestCollectionMonth.collectionRate >= 85
+          ? 'POSITIVE'
+          : bestCollectionMonth && bestCollectionMonth.collectionRate > 0
+            ? 'WATCH'
+            : 'RISK',
+      metric: bestCollectionMonth ? `${bestCollectionMonth.collectionRate.toFixed(1)}%` : '0%',
+      amount: Number(bestCollectionMonth?.collectedAgainstIssuedAmount || 0),
+    },
+    {
+      key: 'outstanding-peak',
+      title: 'Outstanding tertinggi',
+      detail: highestOutstandingMonth
+        ? `${highestOutstandingMonth.label} • overdue ${formatFinanceGovernanceCurrency(highestOutstandingMonth.overdueOutstandingAmount)}`
+        : 'Belum ada outstanding.',
+      tone:
+        highestOutstandingMonth && highestOutstandingMonth.outstandingAmount > 0 ? 'RISK' : 'POSITIVE',
+      metric: formatFinanceGovernanceCurrency(Number(highestOutstandingMonth?.outstandingAmount || 0)),
+      amount: Number(highestOutstandingMonth?.outstandingAmount || 0),
+    },
+    {
+      key: 'pending-verification-peak',
+      title: 'Pending verifikasi terbesar',
+      detail: highestPendingVerificationMonth
+        ? `${highestPendingVerificationMonth.label} • ${highestPendingVerificationMonth.pendingPaymentCount} payment pending`
+        : 'Tidak ada pending verifikasi.',
+      tone:
+        highestPendingVerificationMonth && highestPendingVerificationMonth.pendingVerificationAmount > 0
+          ? 'WATCH'
+          : 'POSITIVE',
+      metric: highestPendingVerificationMonth
+        ? `${highestPendingVerificationMonth.pendingPaymentCount} payment`
+        : '0 payment',
+      amount: Number(highestPendingVerificationMonth?.pendingVerificationAmount || 0),
+    },
+    {
+      key: 'closing-discipline',
+      title: 'Disiplin closing',
+      detail: `${monthsWithClosing}/${totalMonths} bulan sudah punya closing final dalam window ini.`,
+      tone: closingRatio >= 0.8 ? 'POSITIVE' : closingRatio >= 0.5 ? 'WATCH' : 'RISK',
+      metric: `${monthsWithClosing}/${totalMonths} bulan`,
+      amount: monthsWithClosing,
+    },
+  ];
+
+  return {
+    filters: {
+      months: totalMonths,
+      generatedAt: new Date().toISOString(),
+    },
+    overview: {
+      averageIssuedInvoiceAmount,
+      averageCollectedAgainstIssuedAmount,
+      averageCollectionRate,
+      latestMonthLabel: latestMonth?.label || null,
+      latestCollectionRate: Number(latestMonth?.collectionRate || 0),
+      latestOutstandingAmount: Number(latestMonth?.outstandingAmount || 0),
+      latestPendingVerificationAmount: Number(latestMonth?.pendingVerificationAmount || 0),
+      latestNetFlowAmount: Number(latestMonth?.netFlowAmount || 0),
+    },
+    highlights: {
+      bestCollectionMonth: bestCollectionMonth
+        ? {
+            label: bestCollectionMonth.label,
+            collectionRate: bestCollectionMonth.collectionRate,
+            amount: bestCollectionMonth.collectedAgainstIssuedAmount,
+          }
+        : null,
+      highestOutstandingMonth: highestOutstandingMonth
+        ? {
+            label: highestOutstandingMonth.label,
+            outstandingAmount: highestOutstandingMonth.outstandingAmount,
+            overdueOutstandingAmount: highestOutstandingMonth.overdueOutstandingAmount,
+          }
+        : null,
+      highestPendingVerificationMonth: highestPendingVerificationMonth
+        ? {
+            label: highestPendingVerificationMonth.label,
+            pendingPaymentCount: highestPendingVerificationMonth.pendingPaymentCount,
+            pendingVerificationAmount: highestPendingVerificationMonth.pendingVerificationAmount,
+          }
+        : null,
+      strongestNetFlowMonth: strongestNetFlowMonth
+        ? {
+            label: strongestNetFlowMonth.label,
+            netFlowAmount: strongestNetFlowMonth.netFlowAmount,
+          }
+        : null,
+    },
+    signals,
+    monthlyTrend,
   };
 }
 
@@ -11084,6 +11448,19 @@ export const getFinanceAuditSummary = asyncHandler(async (req: Request, res: Res
   res
     .status(200)
     .json(new ApiResponse(200, snapshot, 'Ringkasan audit finance berhasil diambil'));
+});
+
+export const getFinancePerformanceSummary = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinanceActor((req as any).user || {}, {
+    allowPrincipalReadOnly: true,
+    allowHeadTuReadOnly: true,
+  });
+
+  const filters = listFinancePerformanceSummaryQuerySchema.parse(req.query || {});
+  const snapshot = await buildFinancePerformanceSummary(filters);
+  res
+    .status(200)
+    .json(new ApiResponse(200, snapshot, 'Ringkasan performa finance berhasil diambil'));
 });
 
 export const exportFinanceReports = asyncHandler(async (req: Request, res: Response) => {

@@ -1546,6 +1546,72 @@ export type StaffFinanceAuditSummary = {
   }>;
 };
 
+export type StaffFinancePerformanceSignalTone = 'POSITIVE' | 'WATCH' | 'RISK';
+
+export type StaffFinancePerformanceSummary = {
+  filters: {
+    months: number;
+    generatedAt: string;
+  };
+  overview: {
+    averageIssuedInvoiceAmount: number;
+    averageCollectedAgainstIssuedAmount: number;
+    averageCollectionRate: number;
+    latestMonthLabel?: string | null;
+    latestCollectionRate: number;
+    latestOutstandingAmount: number;
+    latestPendingVerificationAmount: number;
+    latestNetFlowAmount: number;
+  };
+  highlights: {
+    bestCollectionMonth: {
+      label: string;
+      collectionRate: number;
+      amount: number;
+    } | null;
+    highestOutstandingMonth: {
+      label: string;
+      outstandingAmount: number;
+      overdueOutstandingAmount: number;
+    } | null;
+    highestPendingVerificationMonth: {
+      label: string;
+      pendingPaymentCount: number;
+      pendingVerificationAmount: number;
+    } | null;
+    strongestNetFlowMonth: {
+      label: string;
+      netFlowAmount: number;
+    } | null;
+  };
+  signals: Array<{
+    key: string;
+    title: string;
+    detail: string;
+    tone: StaffFinancePerformanceSignalTone;
+    metric: string;
+    amount: number;
+  }>;
+  monthlyTrend: Array<{
+    periodKey: string;
+    label: string;
+    issuedInvoiceCount: number;
+    issuedInvoiceAmount: number;
+    collectedAgainstIssuedAmount: number;
+    collectionRate: number;
+    outstandingAmount: number;
+    overdueOutstandingAmount: number;
+    pendingPaymentCount: number;
+    pendingVerificationAmount: number;
+    cashInAmount: number;
+    nonCashVerifiedAmount: number;
+    refundAmount: number;
+    netFlowAmount: number;
+    finalizedReconciliationCount: number;
+    finalizedClosingCount: number;
+  }>;
+};
+
 export const staffFinanceApi = {
   async listClassLevels(params?: { academicYearId?: number }) {
     const response = await apiClient.get<ApiResponse<StaffFinanceClassLevelListResult>>(
@@ -2421,6 +2487,18 @@ export const staffFinanceApi = {
   }) {
     const response = await apiClient.get<ApiResponse<StaffFinanceAuditSummary>>(
       '/payments/audit-summary',
+      {
+        params,
+      },
+    );
+    return response.data.data;
+  },
+
+  async getPerformanceSummary(params?: {
+    months?: number;
+  }) {
+    const response = await apiClient.get<ApiResponse<StaffFinancePerformanceSummary>>(
+      '/payments/performance-summary',
       {
         params,
       },

@@ -20,6 +20,7 @@ import {
   type StaffFinanceClosingPeriod,
   type StaffFinanceClosingPeriodReopenRequest,
   type StaffFinanceGovernanceSummary,
+  type StaffFinancePerformanceSummary,
   type StaffFinancePaymentReversalRequest,
   type StaffFinanceWriteOffRequest,
   type StaffFinanceReportSnapshot,
@@ -152,6 +153,12 @@ function getGovernanceSeverityStyle(level: StaffFinanceGovernanceSummary['follow
   return { bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
 }
 
+function getPerformanceSignalStyle(level: StaffFinancePerformanceSummary['signals'][number]['tone']) {
+  if (level === 'POSITIVE') return { bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  if (level === 'WATCH') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+}
+
 export default function StaffAdminScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -261,6 +268,16 @@ export default function StaffAdminScreen() {
       staffFinanceApi.getAuditSummary({
         days: 30,
         limit: 6,
+    }),
+    staleTime: 60 * 1000,
+  });
+
+  const headTuPerformanceQuery = useQuery({
+    queryKey: ['mobile-head-tu-finance-performance', user?.id],
+    enabled: isAuthenticated && user?.role === 'STAFF' && staffDivision === 'HEAD_TU',
+    queryFn: () =>
+      staffFinanceApi.getPerformanceSummary({
+        months: 6,
       }),
     staleTime: 60 * 1000,
   });
@@ -445,6 +462,7 @@ export default function StaffAdminScreen() {
   const headTuBankReconciliationSummary = headTuBankReconciliationsQuery.data?.summary;
   const headTuGovernance = headTuGovernanceQuery.data || null;
   const headTuAudit = headTuAuditQuery.data || null;
+  const headTuPerformance = headTuPerformanceQuery.data || null;
   const headTuBudgetRealization = headTuBudgetRealizationQuery.data || null;
   const headTuClosingPeriods = useMemo(
     () => headTuClosingPeriodsQuery.data?.periods || [],
@@ -475,6 +493,7 @@ export default function StaffAdminScreen() {
       void headTuBankReconciliationsQuery.refetch();
       void headTuGovernanceQuery.refetch();
       void headTuAuditQuery.refetch();
+      void headTuPerformanceQuery.refetch();
       void headTuBudgetRealizationQuery.refetch();
       void headTuClosingPeriodsQuery.refetch();
       void headTuClosingPeriodApprovalsQuery.refetch();
@@ -634,6 +653,106 @@ export default function StaffAdminScreen() {
                 subtitle="Akumulasi seluruh pengajuan"
               />
             </View>
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <View style={{ marginBottom: 8 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Performance Trend 6 Bulan</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                Tren invoice, koleksi, pending verifikasi, treasury flow, dan closing untuk monitoring Head TU.
+              </Text>
+            </View>
+
+            {headTuPerformanceQuery.isLoading ? (
+              <QueryStateView type="loading" message="Mengambil trend performa finance..." />
+            ) : !headTuPerformance ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Ringkasan performa finance belum tersedia.</Text>
+            ) : (
+              <>
+                <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <SummaryCard
+                      title="Avg Collection"
+                      value={`${headTuPerformance.overview.averageCollectionRate.toFixed(1)}%`}
+                      subtitle={`${formatCurrency(headTuPerformance.overview.averageCollectedAgainstIssuedAmount)} / bulan`}
+                    />
+                  </View>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <SummaryCard
+                      title="Net Flow"
+                      value={formatCurrency(headTuPerformance.overview.latestNetFlowAmount)}
+                      subtitle={headTuPerformance.overview.latestMonthLabel || 'Bulan terbaru'}
+                    />
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <SummaryCard
+                      title="Outstanding"
+                      value={formatCurrency(headTuPerformance.overview.latestOutstandingAmount)}
+                      subtitle={`Rate ${headTuPerformance.overview.latestCollectionRate.toFixed(1)}%`}
+                    />
+                  </View>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <SummaryCard
+                      title="Pending"
+                      value={formatCurrency(headTuPerformance.overview.latestPendingVerificationAmount)}
+                      subtitle={
+                        headTuPerformance.highlights.highestPendingVerificationMonth
+                          ? `Puncak ${headTuPerformance.highlights.highestPendingVerificationMonth.label}`
+                          : 'Tidak ada backlog'
+                      }
+                    />
+                  </View>
+                </View>
+
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Signal Prioritas</Text>
+                {headTuPerformance.signals.map((signal) => {
+                  const badge = getPerformanceSignalStyle(signal.tone);
+                  return (
+                    <View key={signal.key} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{signal.title}</Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>{signal.detail}</Text>
+                        </View>
+                        <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                          <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{signal.tone}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6, marginTop: 8 }}>Trend Bulanan</Text>
+                {headTuPerformance.monthlyTrend.map((row) => (
+                  <View key={row.periodKey} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.label}</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                      {row.issuedInvoiceCount} invoice • rate {row.collectionRate.toFixed(1)}%
+                    </Text>
+                    <Text style={{ color: '#166534', fontSize: 12, marginTop: 3 }}>
+                      Collected {formatCurrency(row.collectedAgainstIssuedAmount)} • Net Flow {formatCurrency(row.netFlowAmount)}
+                    </Text>
+                    <Text style={{ color: '#92400e', fontSize: 12, marginTop: 3 }}>
+                      Outstanding {formatCurrency(row.outstandingAmount)} • overdue {formatCurrency(row.overdueOutstandingAmount)}
+                    </Text>
+                    <Text style={{ color: '#991b1b', fontSize: 12, marginTop: 3 }}>
+                      Pending {formatCurrency(row.pendingVerificationAmount)} • {row.pendingPaymentCount} payment
+                    </Text>
+                  </View>
+                ))}
+              </>
+            )}
           </View>
 
           <View
