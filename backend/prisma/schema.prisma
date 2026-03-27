@@ -1681,6 +1681,10 @@ model FinancePayment {
   verifiedById Int?
   referenceNo String?
   note        String?
+  proofFileUrl String?
+  proofFileName String?
+  proofMimeType String?
+  proofFileSize Int?
   paidAt      DateTime             @default(now())
   createdById Int?
   createdAt   DateTime             @default(now())

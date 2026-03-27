@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import * as Linking from 'expo-linking';
 import { Redirect, useRouter } from 'expo-router';
 import {
   Modal,
@@ -51,6 +52,7 @@ import { academicYearApi } from '../../../src/features/academicYear/academicYear
 import { adminApi } from '../../../src/features/admin/adminApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
+import { ENV } from '../../../src/config/env';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
 import { canAccessStaffPayments, getStaffPaymentsBlockedMessage } from '../../../src/features/staff/staffRole';
 
@@ -112,6 +114,13 @@ function formatDate(value?: string | null) {
     month: 'short',
     year: 'numeric',
   });
+}
+
+function resolveAssetUrl(path?: string | null) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  const origin = ENV.API_BASE_URL.replace(/\/api\/?$/, '');
+  return `${origin}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
 function getTodayInputDate() {
@@ -2673,6 +2682,27 @@ export default function StaffPaymentsScreen() {
                     <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
                       {getPaymentMethodLabel(payment.method)} • {payment.referenceNo || 'Tanpa referensi'}
                     </Text>
+                    {payment.createdBy ? (
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        Dikirim oleh {payment.createdBy.name} • {payment.createdBy.role || '-'}
+                      </Text>
+                    ) : null}
+                    {payment.proofFile?.url ? (
+                      <Pressable
+                        onPress={() => {
+                          const url = resolveAssetUrl(payment.proofFile?.url);
+                          if (url) {
+                            void Linking.openURL(url);
+                          }
+                        }}
+                        style={{ marginTop: 4 }}
+                      >
+                        <Text style={{ color: BRAND_COLORS.blue, fontSize: 12, fontWeight: '700' }}>
+                          Lihat bukti bayar
+                          {payment.proofFile?.name ? ` • ${payment.proofFile.name}` : ''}
+                        </Text>
+                      </Pressable>
+                    ) : null}
                     {payment.matchedStatementEntry ? (
                       <Text style={{ color: '#0369a1', fontSize: 12, marginTop: 4 }}>
                         Matched mutasi {payment.matchedStatementEntry.referenceNo || 'tanpa referensi'} • {formatCurrency(payment.matchedStatementEntry.amount)}

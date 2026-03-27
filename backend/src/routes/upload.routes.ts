@@ -10,6 +10,8 @@ import {
     questionVideoUpload,
     permissionUpload,
     uploadPermissionFile,
+    financeProofUpload,
+    uploadFinanceProofFile,
     internshipUpload,
     uploadInternshipFile
 } from '../controllers/upload.controller';
@@ -33,6 +35,9 @@ router.post('/question-video', roleMiddleware(['TEACHER', 'ADMIN']), questionVid
 
 // Upload File Izin (Siswa)
 router.post('/permission', roleMiddleware(['STUDENT']), permissionUpload.single('file'), uploadPermissionFile);
+
+// Upload Bukti Pembayaran (Siswa & Orang Tua)
+router.post('/finance-proof', roleMiddleware(['STUDENT', 'PARENT']), financeProofUpload.single('file'), uploadFinanceProofFile);
 
 // Upload File PKL (Siswa)
 router.post('/internship', roleMiddleware(['STUDENT']), internshipUpload.single('file'), uploadInternshipFile);

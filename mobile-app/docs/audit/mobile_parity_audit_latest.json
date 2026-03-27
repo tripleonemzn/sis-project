@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-27T11:08:05.876Z",
+  "generatedAt": "2026-03-27T11:43:01.912Z",
   "perRoleSummary": [
     {
       "role": "ADMIN",
@@ -44,7 +44,7 @@
       "nativeWithWebFallback": 0,
       "webBridgeRoute": 0,
       "webOnlyNoRoute": 0,
-      "hasOpenUrlInRouteTree": 0
+      "hasOpenUrlInRouteTree": 1
     },
     {
       "role": "PRINCIPAL",
@@ -62,7 +62,7 @@
       "nativeWithWebFallback": 0,
       "webBridgeRoute": 0,
       "webOnlyNoRoute": 0,
-      "hasOpenUrlInRouteTree": 0
+      "hasOpenUrlInRouteTree": 1
     },
     {
       "role": "STUDENT",
@@ -71,7 +71,7 @@
       "nativeWithWebFallback": 0,
       "webBridgeRoute": 0,
       "webOnlyNoRoute": 0,
-      "hasOpenUrlInRouteTree": 0
+      "hasOpenUrlInRouteTree": 1
     },
     {
       "role": "TEACHER",
@@ -614,8 +614,13 @@
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/parent/finance.tsx",
-        "hasOpenUrlInRouteTree": false,
-        "openUrlHits": []
+        "hasOpenUrlInRouteTree": true,
+        "openUrlHits": [
+          {
+            "file": "app/(app)/parent/finance.tsx",
+            "line": 1029
+          }
+        ]
       },
       {
         "key": "child-attendance",
@@ -728,8 +733,13 @@
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/staff/payments.tsx",
-        "hasOpenUrlInRouteTree": false,
-        "openUrlHits": []
+        "hasOpenUrlInRouteTree": true,
+        "openUrlHits": [
+          {
+            "file": "app/(app)/staff/payments.tsx",
+            "line": 2695
+          }
+        ]
       },
       {
         "key": "staff-students",
@@ -890,8 +900,13 @@
         "webPath": null,
         "mode": "NATIVE_ONLY",
         "routeFile": "app/(app)/student/finance.tsx",
-        "hasOpenUrlInRouteTree": false,
-        "openUrlHits": []
+        "hasOpenUrlInRouteTree": true,
+        "openUrlHits": [
+          {
+            "file": "app/(app)/student/finance.tsx",
+            "line": 937
+          }
+        ]
       },
       {
         "key": "student-profile-web",
@@ -1590,8 +1605,20 @@
       "line": 448
     },
     {
+      "file": "app/(app)/parent/finance.tsx",
+      "line": 1029
+    },
+    {
       "file": "app/(app)/public/vacancies.tsx",
       "line": 394
+    },
+    {
+      "file": "app/(app)/staff/payments.tsx",
+      "line": 2695
+    },
+    {
+      "file": "app/(app)/student/finance.tsx",
+      "line": 937
     },
     {
       "file": "app/(app)/web-module/[moduleKey].tsx",

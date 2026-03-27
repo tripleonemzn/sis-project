@@ -116,6 +116,18 @@ const internshipStorage = multer.diskStorage({
   },
 });
 
+const financeProofStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.resolve(__dirname, '../../../../uploads/finance/proofs');
+    ensureDir(uploadDir);
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
 export const questionImageUpload = multer({
   storage: questionImageStorage,
   limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
@@ -160,6 +172,18 @@ export const internshipUpload = multer({
       cb(null, true);
     } else {
       cb(new Error('Hanya file gambar dan PDF yang diperbolehkan!'));
+    }
+  },
+});
+
+export const financeProofUpload = multer({
+  storage: financeProofStorage,
+  limits: { fileSize: 3 * 1024 * 1024 }, // 3MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Bukti pembayaran harus berupa gambar atau PDF.'));
     }
   },
 });
@@ -264,4 +288,26 @@ export const uploadInternshipFile = asyncHandler(async (req: Request, res: Respo
     originalname: req.file.originalname,
     mimetype: req.file.mimetype
   }, 'File PKL berhasil diunggah'));
+});
+
+export const uploadFinanceProofFile = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.file) {
+    throw new ApiError(400, 'Tidak ada bukti pembayaran yang diunggah');
+  }
+
+  const fileUrl = `/api/uploads/finance/proofs/${req.file.filename}`;
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        url: fileUrl,
+        filename: req.file.filename,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+      },
+      'Bukti pembayaran berhasil diunggah',
+    ),
+  );
 });

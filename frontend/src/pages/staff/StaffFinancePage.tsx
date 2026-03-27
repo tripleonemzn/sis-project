@@ -3181,6 +3181,24 @@ export const StaffFinancePage = () => {
                         <div className="mt-1 text-xs text-slate-500">
                           Referensi {payment.referenceNo || 'Tanpa referensi'} • dibayar {formatDate(payment.paidAt)}
                         </div>
+                        {payment.createdBy ? (
+                          <div className="mt-1 text-[11px] text-slate-500">
+                            Dikirim oleh {payment.createdBy.name} • {payment.createdBy.role || '-'}
+                          </div>
+                        ) : null}
+                        {payment.proofFile?.url ? (
+                          <div className="mt-1 text-[11px]">
+                            <a
+                              href={payment.proofFile.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-600 hover:text-blue-700"
+                            >
+                              Lihat bukti bayar
+                            </a>
+                            {payment.proofFile.name ? ` • ${payment.proofFile.name}` : ''}
+                          </div>
+                        ) : null}
                         {payment.matchedStatementEntry ? (
                           <div className="mt-2 rounded-md border border-indigo-100 bg-indigo-50 px-2 py-1 text-[11px] text-indigo-700">
                             Matched ke mutasi {payment.matchedStatementEntry.referenceNo || 'tanpa referensi'} •{' '}

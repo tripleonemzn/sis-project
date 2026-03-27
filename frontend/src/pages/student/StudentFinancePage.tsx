@@ -1,6 +1,13 @@
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CreditCard, Loader2, RefreshCw, Wallet } from 'lucide-react';
-import { studentFinanceService, type StudentPaymentStatus } from '../../services/studentFinance.service';
+import toast from 'react-hot-toast';
+import {
+  studentFinanceService,
+  type StudentPaymentStatus,
+  type StudentFinancePaymentSubmissionPayload,
+} from '../../services/studentFinance.service';
+import { uploadService } from '../../services/upload.service';
 
 type StudentInvoiceStatus = 'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED';
 
@@ -44,14 +51,27 @@ function getPaymentSourceLabel(source?: 'DIRECT' | 'CREDIT_BALANCE' | null): str
 }
 
 function getPaymentMethodLabel(
-  method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER' | null,
+  method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'QRIS' | 'OTHER' | null,
 ): string {
   if (method === 'BANK_TRANSFER') return 'Transfer Bank';
   if (method === 'VIRTUAL_ACCOUNT') return 'Virtual Account';
-  if (method === 'E_WALLET') return 'E-Wallet / QRIS';
+  if (method === 'E_WALLET') return 'E-Wallet';
+  if (method === 'QRIS') return 'QRIS';
   if (method === 'CASH') return 'Tunai';
   if (method === 'OTHER') return 'Metode Lain';
   return 'Metode belum dicatat';
+}
+
+function getVerificationBadgeClass(status?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null): string {
+  if (status === 'VERIFIED') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (status === 'REJECTED') return 'border-rose-200 bg-rose-50 text-rose-700';
+  return 'border-amber-200 bg-amber-50 text-amber-700';
+}
+
+function getVerificationLabel(status?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null): string {
+  if (status === 'VERIFIED') return 'Terverifikasi';
+  if (status === 'REJECTED') return 'Ditolak';
+  return 'Menunggu Verifikasi';
 }
 
 function getInvoiceStatusBadgeClass(status: StudentInvoiceStatus): string {
@@ -107,13 +127,105 @@ export default function StudentFinancePage() {
     queryKey: ['student-finance-overview-web', 50],
     queryFn: () => studentFinanceService.getOverview({ limit: 50 }),
   });
+  const bankAccountsQuery = useQuery({
+    queryKey: ['student-finance-portal-bank-accounts-web'],
+    queryFn: () => studentFinanceService.getPortalBankAccounts(),
+  });
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
+  const [paymentMethod, setPaymentMethod] =
+    useState<StudentFinancePaymentSubmissionPayload['method']>('BANK_TRANSFER');
+  const [bankAccountId, setBankAccountId] = useState<string>('');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [referenceNo, setReferenceNo] = useState('');
+  const [paymentNote, setPaymentNote] = useState('');
+  const [paidAt, setPaidAt] = useState(() => new Date().toISOString().slice(0, 10));
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
   const overview = financeQuery.data;
+  const outstandingInvoices = useMemo(
+    () =>
+      (overview?.invoices || []).filter(
+        (invoice) =>
+          invoice.status !== 'PAID' &&
+          invoice.status !== 'CANCELLED' &&
+          Number(invoice.balanceAmount || 0) > 0,
+      ),
+    [overview?.invoices],
+  );
+  const selectedInvoice =
+    outstandingInvoices.find((invoice) => invoice.id === selectedInvoiceId) || outstandingInvoices[0] || null;
   const unpaidAmount =
     Number(overview?.summary.status.pendingAmount || 0) +
     Number(overview?.summary.status.partialAmount || 0);
   const actionCenter = overview?.actionCenter;
   const latestRefund = overview?.creditBalance.refunds?.[0] || actionCenter?.latestRefund || null;
+
+  useEffect(() => {
+    if (!selectedInvoice) {
+      if (selectedInvoiceId !== null) setSelectedInvoiceId(null);
+      if (paymentAmount) setPaymentAmount('');
+      return;
+    }
+    if (selectedInvoiceId !== selectedInvoice.id) {
+      setSelectedInvoiceId(selectedInvoice.id);
+      setPaymentAmount(String(Math.round(selectedInvoice.balanceAmount || 0)));
+      return;
+    }
+    if (!paymentAmount) {
+      setPaymentAmount(String(Math.round(selectedInvoice.balanceAmount || 0)));
+    }
+  }, [paymentAmount, selectedInvoice, selectedInvoiceId]);
+
+  const handleSubmitPayment = async () => {
+    if (!selectedInvoice) {
+      toast.error('Belum ada tagihan aktif yang bisa diajukan pembayarannya.');
+      return;
+    }
+    if (!proofFile) {
+      toast.error('Bukti pembayaran wajib diunggah.');
+      return;
+    }
+
+    const amount = Number(paymentAmount || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Nominal pembayaran tidak valid.');
+      return;
+    }
+    if (paymentMethod !== 'OTHER' && !bankAccountId) {
+      toast.error('Pilih rekening tujuan terlebih dulu.');
+      return;
+    }
+
+    try {
+      setIsSubmittingPayment(true);
+      const uploaded = await uploadService.uploadFinanceProof(proofFile);
+      await studentFinanceService.submitPayment({
+        invoiceId: selectedInvoice.id,
+        amount,
+        method: paymentMethod,
+        bankAccountId: bankAccountId ? Number(bankAccountId) : undefined,
+        referenceNo: referenceNo.trim() || undefined,
+        note: paymentNote.trim() || undefined,
+        paidAt: paidAt ? new Date(`${paidAt}T12:00:00`).toISOString() : undefined,
+        proofFileUrl: uploaded.url,
+        proofFileName: uploaded.originalname,
+        proofMimeType: uploaded.mimetype,
+        proofFileSize: uploaded.size,
+      });
+      toast.success('Bukti pembayaran berhasil dikirim dan menunggu verifikasi bendahara.');
+      setReferenceNo('');
+      setPaymentNote('');
+      setProofFile(null);
+      const input = document.getElementById('student-finance-proof-input') as HTMLInputElement | null;
+      if (input) input.value = '';
+      await financeQuery.refetch();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Gagal mengirim bukti pembayaran.');
+    } finally {
+      setIsSubmittingPayment(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -230,6 +342,159 @@ export default function StudentFinancePage() {
           </div>
         </div>
       ) : null}
+
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-gray-500">Kirim Bukti Bayar</p>
+            <h2 className="mt-2 text-lg font-semibold text-gray-900">Pembayaran Non-Tunai Portal</h2>
+            <p className="mt-2 text-sm text-gray-600">
+              Unggah bukti transfer, VA, e-wallet, atau QRIS. Pembayaran baru mengurangi tagihan setelah diverifikasi bendahara.
+            </p>
+          </div>
+          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+            Verifikasi Manual
+          </span>
+        </div>
+
+        {!outstandingInvoices.length ? (
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+            Belum ada tagihan aktif yang bisa diajukan pembayarannya.
+          </div>
+        ) : (
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Tagihan</label>
+              <select
+                value={selectedInvoice?.id || ''}
+                onChange={(event) => {
+                  const invoice = outstandingInvoices.find((row) => row.id === Number(event.target.value)) || null;
+                  setSelectedInvoiceId(invoice?.id || null);
+                  setPaymentAmount(invoice ? String(Math.round(invoice.balanceAmount || 0)) : '');
+                }}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+              >
+                {outstandingInvoices.map((invoice) => (
+                  <option key={invoice.id} value={invoice.id}>
+                    {invoice.invoiceNo} • {formatCurrency(invoice.balanceAmount)}
+                  </option>
+                ))}
+              </select>
+              {selectedInvoice ? (
+                <p className="mt-1 text-[11px] text-gray-500">
+                  {selectedInvoice.title || `${selectedInvoice.periodKey} • ${selectedInvoice.semester === 'ODD' ? 'Ganjil' : 'Genap'}`}
+                </p>
+              ) : null}
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Metode</label>
+              <select
+                value={paymentMethod}
+                onChange={(event) => setPaymentMethod(event.target.value as StudentFinancePaymentSubmissionPayload['method'])}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+              >
+                <option value="BANK_TRANSFER">Transfer Bank</option>
+                <option value="VIRTUAL_ACCOUNT">Virtual Account</option>
+                <option value="E_WALLET">E-Wallet</option>
+                <option value="QRIS">QRIS</option>
+                <option value="OTHER">Metode Lain</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Rekening Tujuan</label>
+              <select
+                value={bankAccountId}
+                onChange={(event) => setBankAccountId(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+              >
+                <option value="">Pilih rekening</option>
+                {(bankAccountsQuery.data || []).map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.label}
+                  </option>
+                ))}
+              </select>
+              {bankAccountsQuery.isLoading ? (
+                <p className="mt-1 text-[11px] text-gray-500">Memuat rekening aktif...</p>
+              ) : null}
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Nominal</label>
+              <input
+                type="number"
+                min={1}
+                value={paymentAmount}
+                onChange={(event) => setPaymentAmount(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Referensi</label>
+              <input
+                type="text"
+                value={referenceNo}
+                onChange={(event) => setReferenceNo(event.target.value)}
+                placeholder="Nomor referensi transfer / VA / QRIS"
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Tanggal Bayar</label>
+              <input
+                type="date"
+                value={paidAt}
+                onChange={(event) => setPaidAt(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Catatan</label>
+              <textarea
+                rows={3}
+                value={paymentNote}
+                onChange={(event) => setPaymentNote(event.target.value)}
+                placeholder="Catatan tambahan untuk bendahara"
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Bukti Pembayaran</label>
+              <input
+                id="student-finance-proof-input"
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={(event) => setProofFile(event.target.files?.[0] || null)}
+                className="mt-1 block w-full text-sm text-gray-600 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-blue-700 hover:file:bg-blue-100"
+              />
+              <p className="mt-1 text-[11px] text-gray-500">
+                Format gambar atau PDF, maksimal 3 MB.
+              </p>
+            </div>
+
+            <div className="md:col-span-2 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div className="text-xs text-gray-500">
+                {selectedInvoice ? `Tagihan dipilih: ${selectedInvoice.invoiceNo} • outstanding ${formatCurrency(selectedInvoice.balanceAmount)}` : 'Pilih tagihan aktif lebih dulu.'}
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleSubmitPayment()}
+                disabled={isSubmittingPayment || bankAccountsQuery.isLoading}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isSubmittingPayment ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Kirim Bukti Bayar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
@@ -374,6 +639,26 @@ export default function StudentFinancePage() {
                         {getPaymentMethodLabel(payment.method)}
                         {payment.referenceNo ? ` • Ref ${payment.referenceNo}` : ''}
                       </div>
+                      <div className="mt-1">
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${getVerificationBadgeClass(payment.verificationStatus)}`}
+                        >
+                          {getVerificationLabel(payment.verificationStatus)}
+                        </span>
+                      </div>
+                      {payment.proofFile?.url ? (
+                        <div className="mt-1 text-[11px]">
+                          <a
+                            href={payment.proofFile.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-600 hover:text-blue-700"
+                          >
+                            Lihat bukti bayar
+                          </a>
+                          {payment.proofFile.name ? ` • ${payment.proofFile.name}` : ''}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-5 py-3 text-sm text-right font-semibold text-gray-900">
                       {formatCurrency(payment.amount)}
@@ -405,6 +690,11 @@ export default function StudentFinancePage() {
                           {Number(payment.reversedCreditedAmount || 0) > 0
                             ? ` • saldo kredit dibalik ${formatCurrency(payment.reversedCreditedAmount || 0)}`
                             : ''}
+                        </div>
+                      ) : null}
+                      {payment.verificationNote ? (
+                        <div className="mt-1 text-[11px] text-gray-500">
+                          Catatan verifikasi: {payment.verificationNote}
                         </div>
                       ) : null}
                     </td>

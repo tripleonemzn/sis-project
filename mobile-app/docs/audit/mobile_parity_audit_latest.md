@@ -1,6 +1,6 @@
 # Mobile Parity Audit (All Roles)
 
-Generated: 2026-03-27T11:08:05.876Z
+Generated: 2026-03-27T11:43:01.912Z
 
 ## Ringkasan per Role
 
@@ -10,10 +10,10 @@ Generated: 2026-03-27T11:08:05.876Z
 | CALON_SISWA | 4 | 4 | 0 | 0 | 1 |
 | EXAMINER | 4 | 4 | 0 | 0 | 0 |
 | EXTRACURRICULAR_TUTOR | 6 | 6 | 0 | 0 | 0 |
-| PARENT | 5 | 5 | 0 | 0 | 0 |
+| PARENT | 5 | 5 | 0 | 0 | 1 |
 | PRINCIPAL | 7 | 7 | 0 | 0 | 0 |
-| STAFF | 5 | 5 | 0 | 0 | 0 |
-| STUDENT | 15 | 15 | 0 | 0 | 0 |
+| STAFF | 5 | 5 | 0 | 0 | 1 |
+| STUDENT | 15 | 15 | 0 | 0 | 1 |
 | TEACHER | 59 | 49 | 6 | 4 | 4 |
 | UMUM | 6 | 6 | 0 | 0 | 1 |
 
@@ -68,16 +68,19 @@ Generated: 2026-03-27T11:08:05.876Z
 - Tidak ada.
 
 ### PARENT
-- Tidak ada.
+- Keuangan (`parent-finance`)
+  - `app/(app)/parent/finance.tsx:1029`
 
 ### PRINCIPAL
 - Tidak ada.
 
 ### STAFF
-- Tidak ada.
+- Pembayaran (SPP) (`staff-payments`)
+  - `app/(app)/staff/payments.tsx:2695`
 
 ### STUDENT
-- Tidak ada.
+- Keuangan (`student-finance`)
+  - `app/(app)/student/finance.tsx:937`
 
 ### TEACHER
 - Tidak ada.
@@ -89,6 +92,9 @@ Generated: 2026-03-27T11:08:05.876Z
 ## Semua Pemanggilan Linking.openURL (Global)
 
 - `app/(app)/candidate/application.tsx:448`
+- `app/(app)/parent/finance.tsx:1029`
 - `app/(app)/public/vacancies.tsx:394`
+- `app/(app)/staff/payments.tsx:2695`
+- `app/(app)/student/finance.tsx:937`
 - `app/(app)/web-module/[moduleKey].tsx:44`
 

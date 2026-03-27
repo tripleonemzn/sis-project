@@ -6,6 +6,8 @@ import {
   ParentChildLookupResult,
   ParentChildReportCard,
   ParentFinanceOverview,
+  ParentFinancePaymentSubmissionPayload,
+  ParentFinancePortalBankAccount,
 } from './types';
 
 type ApiResponse<T> = {
@@ -13,6 +15,12 @@ type ApiResponse<T> = {
   success: boolean;
   message: string;
   data: T;
+};
+
+type ReactNativeFilePart = {
+  uri: string;
+  name: string;
+  type: string;
 };
 
 export const parentApi = {
@@ -75,5 +83,52 @@ export const parentApi = {
       },
     });
     return response.data.data;
+  },
+  async getPortalBankAccounts() {
+    const response = await apiClient.get<ApiResponse<{ accounts: ParentFinancePortalBankAccount[] }>>(
+      '/payments/portal-bank-accounts',
+    );
+    return response.data.data.accounts || [];
+  },
+  async uploadPaymentProof(file: { uri: string; name?: string; type?: string }) {
+    const formData = new FormData();
+    const filePart: ReactNativeFilePart = {
+      uri: file.uri,
+      name: file.name || 'payment-proof.jpg',
+      type: file.type || 'application/octet-stream',
+    };
+    formData.append('file', filePart as unknown as Blob);
+    const response = await apiClient.post<
+      ApiResponse<{
+        url: string;
+        filename: string;
+        originalname: string;
+        mimetype: string;
+        size: number;
+      }>
+    >('/upload/finance-proof', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data.data;
+  },
+  async submitPayment(payload: ParentFinancePaymentSubmissionPayload) {
+    const response = await apiClient.post<ApiResponse<{ payment: ParentFinanceOverview['children'][number]['payments'][number] }>>(
+      `/payments/invoices/${payload.invoiceId}/portal-submissions`,
+      {
+        amount: payload.amount,
+        method: payload.method,
+        bankAccountId: payload.bankAccountId,
+        referenceNo: payload.referenceNo,
+        note: payload.note,
+        paidAt: payload.paidAt,
+        proofFileUrl: payload.proofFileUrl,
+        proofFileName: payload.proofFileName,
+        proofMimeType: payload.proofFileMimeType,
+        proofFileSize: payload.proofFileSize,
+      },
+    );
+    return response.data.data.payment;
   },
 };

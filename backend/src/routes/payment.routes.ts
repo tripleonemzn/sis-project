@@ -8,6 +8,7 @@ import {
   createFinanceComponent,
   listFinanceClassLevels,
   listFinanceBankAccounts,
+  listFinancePortalBankAccounts,
   createFinanceWriteOffRequest,
   decideFinanceCashSessionAsHeadTu,
   decideFinanceCashSessionAsPrincipal,
@@ -19,6 +20,7 @@ import {
   exportFinanceReports,
   applyFinanceInvoiceLateFees,
   createFinancePayment,
+  createFinancePortalPaymentSubmission,
   listFinancePaymentVerifications,
   verifyFinancePayment,
   rejectFinancePayment,
@@ -72,6 +74,8 @@ router.use(authMiddleware);
 
 router.get('/parent-overview', roleMiddleware(['PARENT']), listParentPayments);
 router.get('/student-overview', roleMiddleware(['STUDENT']), listStudentPayments);
+router.get('/portal-bank-accounts', roleMiddleware(['STUDENT', 'PARENT']), listFinancePortalBankAccounts);
+router.post('/invoices/:id/portal-submissions', roleMiddleware(['STUDENT', 'PARENT']), createFinancePortalPaymentSubmission);
 router.get('/components', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceComponents);
 router.get('/class-levels', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceClassLevels);
 router.get('/bank-accounts', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceBankAccounts);

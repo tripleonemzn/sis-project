@@ -4,6 +4,36 @@ export type StudentPaymentStatus = 'PENDING' | 'PAID' | 'PARTIAL' | 'CANCELLED';
 export type StudentPaymentType = 'MONTHLY' | 'ONE_TIME';
 export type StudentPaymentSource = 'DIRECT' | 'CREDIT_BALANCE';
 
+export interface FinancePortalBankAccount {
+  id: number;
+  code: string;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  label: string;
+}
+
+export interface FinancePaymentProofFile {
+  url: string;
+  name?: string | null;
+  mimetype?: string | null;
+  size?: number | null;
+}
+
+export interface StudentFinancePaymentSubmissionPayload {
+  invoiceId: number;
+  amount: number;
+  method: 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'QRIS' | 'OTHER';
+  bankAccountId?: number;
+  referenceNo?: string;
+  note?: string;
+  paidAt?: string;
+  proofFileUrl: string;
+  proofFileName?: string;
+  proofMimeType?: string;
+  proofFileSize?: number;
+}
+
 interface ApiResponse<T> {
   data: T;
   success?: boolean;
@@ -99,12 +129,21 @@ export interface StudentFinanceOverview {
     source?: StudentPaymentSource | null;
     status: StudentPaymentStatus;
     type: StudentPaymentType;
-    method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER' | null;
+    method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'QRIS' | 'OTHER' | null;
+    verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
+    verificationNote?: string | null;
+    verifiedAt?: string | null;
     referenceNo?: string | null;
     invoiceId?: number | null;
     invoiceNo?: string | null;
     periodKey?: string | null;
     semester?: 'ODD' | 'EVEN' | null;
+    proofFile?: FinancePaymentProofFile | null;
+    createdBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
     createdAt: string;
     updatedAt: string;
   }>;
@@ -185,5 +224,29 @@ export const studentFinanceService = {
       params,
     });
     return response.data.data;
+  },
+  async getPortalBankAccounts() {
+    const response = await api.get<ApiResponse<{ accounts: FinancePortalBankAccount[] }>>(
+      '/payments/portal-bank-accounts',
+    );
+    return response.data.data.accounts || [];
+  },
+  async submitPayment(payload: StudentFinancePaymentSubmissionPayload) {
+    const response = await api.post<ApiResponse<{ payment: StudentFinanceOverview['payments'][number] }>>(
+      `/payments/invoices/${payload.invoiceId}/portal-submissions`,
+      {
+        amount: payload.amount,
+        method: payload.method,
+        bankAccountId: payload.bankAccountId,
+        referenceNo: payload.referenceNo,
+        note: payload.note,
+        paidAt: payload.paidAt,
+        proofFileUrl: payload.proofFileUrl,
+        proofFileName: payload.proofFileName,
+        proofMimeType: payload.proofMimeType,
+        proofFileSize: payload.proofFileSize,
+      },
+    );
+    return response.data.data.payment;
   },
 };

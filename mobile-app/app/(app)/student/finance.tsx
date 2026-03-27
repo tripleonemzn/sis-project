@@ -1,12 +1,21 @@
+import { useEffect, useMemo, useState } from 'react';
+import * as DocumentPicker from 'expo-document-picker';
+import * as Linking from 'expo-linking';
 import { Redirect, useRouter } from 'expo-router';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { OfflineCacheNotice } from '../../../src/components/OfflineCacheNotice';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { useStudentFinanceOverviewQuery } from '../../../src/features/student/useStudentFinanceOverviewQuery';
-import { StudentPaymentStatus } from '../../../src/features/student/studentFinanceApi';
+import { ENV } from '../../../src/config/env';
+import {
+  StudentPaymentStatus,
+  studentFinanceApi,
+  type StudentFinancePaymentSubmissionPayload,
+} from '../../../src/features/student/studentFinanceApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 
@@ -43,14 +52,25 @@ function getPaymentSourceLabel(source?: 'DIRECT' | 'CREDIT_BALANCE' | null) {
 }
 
 function getPaymentMethodLabel(
-  method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER' | null,
+  method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'QRIS' | 'OTHER' | null,
 ) {
   if (method === 'BANK_TRANSFER') return 'Transfer Bank';
   if (method === 'VIRTUAL_ACCOUNT') return 'Virtual Account';
-  if (method === 'E_WALLET') return 'E-Wallet / QRIS';
+  if (method === 'E_WALLET') return 'E-Wallet';
+  if (method === 'QRIS') return 'QRIS';
   if (method === 'CASH') return 'Tunai';
   if (method === 'OTHER') return 'Metode Lain';
   return 'Metode belum dicatat';
+}
+
+function getVerificationTone(status?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null) {
+  if (status === 'VERIFIED') {
+    return { border: '#bbf7d0', background: '#f0fdf4', text: '#15803d', label: 'Terverifikasi' };
+  }
+  if (status === 'REJECTED') {
+    return { border: '#fecaca', background: '#fff1f2', text: '#be123c', label: 'Ditolak' };
+  }
+  return { border: '#fde68a', background: '#fffbeb', text: '#b45309', label: 'Menunggu Verifikasi' };
 }
 
 function getActionCenterTone(
@@ -92,6 +112,13 @@ function formatDate(dateValue: string) {
   });
 }
 
+function resolveAssetUrl(path?: string | null) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  const origin = ENV.API_BASE_URL.replace(/\/api\/?$/, '');
+  return `${origin}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
 export default function StudentFinanceScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -102,6 +129,118 @@ export default function StudentFinanceScreen() {
     user,
     limit: 50,
   });
+  const bankAccountsQuery = useQuery({
+    queryKey: ['student-finance-portal-bank-accounts-mobile'],
+    enabled: isAuthenticated,
+    queryFn: () => studentFinanceApi.getPortalBankAccounts(),
+  });
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
+  const [paymentMethod, setPaymentMethod] =
+    useState<StudentFinancePaymentSubmissionPayload['method']>('BANK_TRANSFER');
+  const [bankAccountId, setBankAccountId] = useState<number | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [referenceNo, setReferenceNo] = useState('');
+  const [paymentNote, setPaymentNote] = useState('');
+  const [paidAt, setPaidAt] = useState(() => new Date().toISOString().slice(0, 10));
+  const [proofFile, setProofFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+
+  const overview = financeQuery.data?.overview;
+  const outstandingInvoices = useMemo(
+    () =>
+      (overview?.invoices || []).filter(
+        (invoice) =>
+          invoice.status !== 'PAID' &&
+          invoice.status !== 'CANCELLED' &&
+          Number(invoice.balanceAmount || 0) > 0,
+      ),
+    [overview?.invoices],
+  );
+  const selectedInvoice =
+    outstandingInvoices.find((invoice) => invoice.id === selectedInvoiceId) || outstandingInvoices[0] || null;
+  const unpaidAmount =
+    Number(overview?.summary.status.pendingAmount || 0) +
+    Number(overview?.summary.status.partialAmount || 0);
+  const actionCenter = overview?.actionCenter;
+  const actionTone = actionCenter ? getActionCenterTone(actionCenter.state) : null;
+  const latestRefund = overview?.creditBalance.refunds?.[0] || actionCenter?.latestRefund || null;
+
+  useEffect(() => {
+    if (!selectedInvoice) {
+      if (selectedInvoiceId !== null) setSelectedInvoiceId(null);
+      if (paymentAmount) setPaymentAmount('');
+      return;
+    }
+    if (selectedInvoiceId !== selectedInvoice.id) {
+      setSelectedInvoiceId(selectedInvoice.id);
+      setPaymentAmount(String(Math.round(selectedInvoice.balanceAmount || 0)));
+      return;
+    }
+    if (!paymentAmount) {
+      setPaymentAmount(String(Math.round(selectedInvoice.balanceAmount || 0)));
+    }
+  }, [paymentAmount, selectedInvoice, selectedInvoiceId]);
+
+  const handlePickProof = async () => {
+    const result = await DocumentPicker.getDocumentAsync({
+      multiple: false,
+      copyToCacheDirectory: true,
+      type: ['image/*', 'application/pdf'],
+    });
+    if (result.canceled || !result.assets?.length) return;
+    setProofFile(result.assets[0]);
+  };
+
+  const handleSubmitPayment = async () => {
+    if (!selectedInvoice) {
+      Alert.alert('Belum ada tagihan', 'Belum ada tagihan aktif yang bisa diajukan pembayarannya.');
+      return;
+    }
+    if (!proofFile) {
+      Alert.alert('Bukti bayar wajib', 'Unggah bukti pembayaran terlebih dulu.');
+      return;
+    }
+    const amount = Number(paymentAmount || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      Alert.alert('Nominal tidak valid', 'Nominal pembayaran harus lebih besar dari nol.');
+      return;
+    }
+    if (paymentMethod !== 'OTHER' && !bankAccountId) {
+      Alert.alert('Rekening tujuan', 'Pilih rekening tujuan terlebih dulu.');
+      return;
+    }
+
+    try {
+      setIsSubmittingPayment(true);
+      const uploaded = await studentFinanceApi.uploadPaymentProof({
+        uri: proofFile.uri,
+        name: proofFile.name,
+        type: proofFile.mimeType || undefined,
+      });
+      await studentFinanceApi.submitPayment({
+        invoiceId: selectedInvoice.id,
+        amount,
+        method: paymentMethod,
+        bankAccountId: bankAccountId || undefined,
+        referenceNo: referenceNo.trim() || undefined,
+        note: paymentNote.trim() || undefined,
+        paidAt: paidAt ? new Date(`${paidAt}T12:00:00`).toISOString() : undefined,
+        proofFileUrl: uploaded.url,
+        proofFileName: uploaded.originalname,
+        proofFileMimeType: uploaded.mimetype,
+        proofFileSize: uploaded.size,
+      });
+      setReferenceNo('');
+      setPaymentNote('');
+      setProofFile(null);
+      await financeQuery.refetch();
+      Alert.alert('Berhasil', 'Bukti pembayaran berhasil dikirim dan menunggu verifikasi bendahara.');
+    } catch (error: any) {
+      Alert.alert('Gagal', error?.response?.data?.message || 'Gagal mengirim bukti pembayaran.');
+    } finally {
+      setIsSubmittingPayment(false);
+    }
+  };
 
   if (isLoading) return <AppLoadingScreen message="Memuat modul keuangan..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -114,14 +253,6 @@ export default function StudentFinanceScreen() {
       </ScrollView>
     );
   }
-
-  const overview = financeQuery.data?.overview;
-  const unpaidAmount =
-    Number(overview?.summary.status.pendingAmount || 0) +
-    Number(overview?.summary.status.partialAmount || 0);
-  const actionCenter = overview?.actionCenter;
-  const actionTone = actionCenter ? getActionCenterTone(actionCenter.state) : null;
-  const latestRefund = overview?.creditBalance.refunds?.[0] || actionCenter?.latestRefund || null;
 
   return (
     <ScrollView
@@ -374,6 +505,247 @@ export default function StudentFinanceScreen() {
               marginBottom: 12,
             }}
           >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, textTransform: 'uppercase' }}>
+                  Kirim Bukti Bayar
+                </Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, marginTop: 6 }}>
+                  Pembayaran Non-Tunai Portal
+                </Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6, lineHeight: 20 }}>
+                  Pilih tagihan aktif, unggah bukti transfer/VA/e-wallet/QRIS, lalu tunggu verifikasi bendahara.
+                </Text>
+              </View>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#fde68a',
+                  backgroundColor: '#fffbeb',
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                }}
+              >
+                <Text style={{ color: '#b45309', fontWeight: '700', fontSize: 11 }}>Manual</Text>
+              </View>
+            </View>
+
+            {!outstandingInvoices.length ? (
+              <Text style={{ color: '#64748b', marginTop: 12, fontSize: 12 }}>
+                Belum ada tagihan aktif yang bisa diajukan pembayarannya.
+              </Text>
+            ) : (
+              <View style={{ marginTop: 12 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Pilih Tagihan</Text>
+                <View style={{ marginHorizontal: -4, flexDirection: 'row', flexWrap: 'wrap' }}>
+                  {outstandingInvoices.map((invoice) => {
+                    const selected = selectedInvoice?.id === invoice.id;
+                    return (
+                      <View key={`student-submit-invoice-${invoice.id}`} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+                        <Pressable
+                          onPress={() => {
+                            setSelectedInvoiceId(invoice.id);
+                            setPaymentAmount(String(Math.round(invoice.balanceAmount || 0)));
+                          }}
+                          style={{
+                            borderWidth: 1,
+                            borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',
+                            backgroundColor: selected ? '#e9f1ff' : '#fff',
+                            borderRadius: 10,
+                            padding: 10,
+                          }}
+                        >
+                          <Text numberOfLines={1} style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}>
+                            {invoice.invoiceNo}
+                          </Text>
+                          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                            {formatCurrency(invoice.balanceAmount)}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    );
+                  })}
+                </View>
+
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8, marginTop: 6 }}>Metode</Text>
+                <View style={{ marginHorizontal: -4, flexDirection: 'row', flexWrap: 'wrap' }}>
+                  {[
+                    { value: 'BANK_TRANSFER', label: 'Transfer' },
+                    { value: 'VIRTUAL_ACCOUNT', label: 'VA' },
+                    { value: 'E_WALLET', label: 'E-Wallet' },
+                    { value: 'QRIS', label: 'QRIS' },
+                    { value: 'OTHER', label: 'Lainnya' },
+                  ].map((option) => {
+                    const selected = paymentMethod === option.value;
+                    return (
+                      <View key={`student-submit-method-${option.value}`} style={{ width: '33.33%', paddingHorizontal: 4, marginBottom: 8 }}>
+                        <Pressable
+                          onPress={() => setPaymentMethod(option.value as StudentFinancePaymentSubmissionPayload['method'])}
+                          style={{
+                            borderWidth: 1,
+                            borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',
+                            backgroundColor: selected ? '#e9f1ff' : '#fff',
+                            borderRadius: 10,
+                            paddingVertical: 10,
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Text style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
+                            {option.label}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    );
+                  })}
+                </View>
+
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Rekening Tujuan</Text>
+                <View style={{ marginHorizontal: -4, flexDirection: 'row', flexWrap: 'wrap' }}>
+                  {(bankAccountsQuery.data || []).map((account) => {
+                    const selected = bankAccountId === account.id;
+                    return (
+                      <View key={`student-submit-account-${account.id}`} style={{ width: '100%', paddingHorizontal: 4, marginBottom: 8 }}>
+                        <Pressable
+                          onPress={() => setBankAccountId(account.id)}
+                          style={{
+                            borderWidth: 1,
+                            borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',
+                            backgroundColor: selected ? '#e9f1ff' : '#fff',
+                            borderRadius: 10,
+                            padding: 10,
+                          }}
+                        >
+                          <Text style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700', fontSize: 12 }}>
+                            {account.bankName} • {account.accountNumber}
+                          </Text>
+                          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{account.accountName}</Text>
+                        </Pressable>
+                      </View>
+                    );
+                  })}
+                  {bankAccountsQuery.isLoading ? (
+                    <Text style={{ color: '#64748b', fontSize: 12, paddingHorizontal: 4 }}>Memuat rekening aktif...</Text>
+                  ) : null}
+                </View>
+
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Nominal</Text>
+                <TextInput
+                  value={paymentAmount}
+                  onChangeText={setPaymentAmount}
+                  keyboardType="numeric"
+                  placeholder="Nominal pembayaran"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#d5e1f5',
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    backgroundColor: '#fff',
+                    marginBottom: 10,
+                  }}
+                />
+
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Referensi</Text>
+                <TextInput
+                  value={referenceNo}
+                  onChangeText={setReferenceNo}
+                  placeholder="Nomor referensi transfer / VA / QRIS"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#d5e1f5',
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    backgroundColor: '#fff',
+                    marginBottom: 10,
+                  }}
+                />
+
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Tanggal Bayar</Text>
+                <TextInput
+                  value={paidAt}
+                  onChangeText={setPaidAt}
+                  placeholder="YYYY-MM-DD"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#d5e1f5',
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    backgroundColor: '#fff',
+                    marginBottom: 10,
+                  }}
+                />
+
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Catatan</Text>
+                <TextInput
+                  value={paymentNote}
+                  onChangeText={setPaymentNote}
+                  placeholder="Catatan tambahan untuk bendahara"
+                  multiline
+                  textAlignVertical="top"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#d5e1f5',
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    backgroundColor: '#fff',
+                    minHeight: 88,
+                    marginBottom: 10,
+                  }}
+                />
+
+                <Pressable
+                  onPress={() => void handlePickProof()}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#d5e1f5',
+                    borderRadius: 10,
+                    paddingVertical: 12,
+                    alignItems: 'center',
+                    marginBottom: 10,
+                    backgroundColor: '#fff',
+                  }}
+                >
+                  <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>
+                    {proofFile ? 'Ganti Bukti Bayar' : 'Pilih Bukti Bayar'}
+                  </Text>
+                </Pressable>
+                <Text style={{ color: '#64748b', fontSize: 12 }}>
+                  {proofFile ? `${proofFile.name} • ${Math.round((proofFile.size || 0) / 1024)} KB` : 'Format gambar atau PDF, maksimal 3 MB.'}
+                </Text>
+
+                <Pressable
+                  onPress={() => void handleSubmitPayment()}
+                  disabled={isSubmittingPayment || bankAccountsQuery.isLoading}
+                  style={{
+                    backgroundColor: isSubmittingPayment ? '#93c5fd' : BRAND_COLORS.blue,
+                    borderRadius: 10,
+                    paddingVertical: 12,
+                    alignItems: 'center',
+                    marginTop: 12,
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>
+                    {isSubmittingPayment ? 'Mengirim...' : 'Kirim Bukti Bayar'}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
               Tagihan Aktif
             </Text>
@@ -519,6 +891,28 @@ export default function StudentFinanceScreen() {
                     {getPaymentMethodLabel(payment.method)}
                     {payment.referenceNo ? ` • Ref ${payment.referenceNo}` : ''}
                   </Text>
+                  <View
+                    style={{
+                      alignSelf: 'flex-start',
+                      borderWidth: 1,
+                      borderColor: getVerificationTone(payment.verificationStatus).border,
+                      backgroundColor: getVerificationTone(payment.verificationStatus).background,
+                      borderRadius: 999,
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                      marginTop: 6,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: getVerificationTone(payment.verificationStatus).text,
+                        fontSize: 11,
+                        fontWeight: '700',
+                      }}
+                    >
+                      {getVerificationTone(payment.verificationStatus).label}
+                    </Text>
+                  </View>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 4 }}>
                     {formatCurrency(payment.amount)}
                   </Text>
@@ -535,6 +929,22 @@ export default function StudentFinanceScreen() {
                   <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
                     Tanggal: {formatDate(payment.createdAt)}
                   </Text>
+                  {payment.proofFile?.url ? (
+                    <Pressable
+                      onPress={() => {
+                        const url = resolveAssetUrl(payment.proofFile?.url);
+                        if (url) {
+                          void Linking.openURL(url);
+                        }
+                      }}
+                      style={{ marginTop: 6 }}
+                    >
+                      <Text style={{ color: BRAND_COLORS.blue, fontSize: 12, fontWeight: '700' }}>
+                        Lihat bukti bayar
+                        {payment.proofFile?.name ? ` • ${payment.proofFile.name}` : ''}
+                      </Text>
+                    </Pressable>
+                  ) : null}
                   {Number(payment.creditedAmount || 0) > 0 ? (
                     <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
                       Dialokasikan ke invoice: {formatCurrency(payment.allocatedAmount || 0)}
@@ -546,6 +956,11 @@ export default function StudentFinanceScreen() {
                       {Number(payment.reversedCreditedAmount || 0) > 0
                         ? ` • saldo kredit dibalik ${formatCurrency(payment.reversedCreditedAmount || 0)}`
                         : ''}
+                    </Text>
+                  ) : null}
+                  {payment.verificationNote ? (
+                    <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                      Catatan verifikasi: {payment.verificationNote}
                     </Text>
                   ) : null}
                 </View>

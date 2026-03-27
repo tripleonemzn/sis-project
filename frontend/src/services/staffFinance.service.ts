@@ -286,6 +286,11 @@ export interface FinanceInvoice {
       name: string;
       role?: string | null;
     } | null;
+    createdBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
     bankAccount?: FinanceBankAccount | null;
     matchedStatementEntry?: {
       id: number;
@@ -301,6 +306,12 @@ export interface FinanceInvoice {
     } | null;
     referenceNo?: string | null;
     note?: string | null;
+    proofFile?: {
+      url: string;
+      name?: string | null;
+      mimetype?: string | null;
+      size?: number | null;
+    } | null;
     paidAt: string;
   }>;
   installments: Array<{

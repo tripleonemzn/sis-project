@@ -81,6 +81,36 @@ export type ParentPaymentStatus = 'PENDING' | 'PAID' | 'PARTIAL' | 'CANCELLED';
 export type ParentPaymentType = 'MONTHLY' | 'ONE_TIME';
 export type ParentPaymentSource = 'DIRECT' | 'CREDIT_BALANCE';
 
+export type ParentFinancePortalBankAccount = {
+  id: number;
+  code: string;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  label: string;
+};
+
+export type ParentFinancePaymentProofFile = {
+  url: string;
+  name?: string | null;
+  mimetype?: string | null;
+  size?: number | null;
+};
+
+export type ParentFinancePaymentSubmissionPayload = {
+  invoiceId: number;
+  amount: number;
+  method: 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'QRIS' | 'OTHER';
+  bankAccountId?: number;
+  referenceNo?: string;
+  note?: string;
+  paidAt?: string;
+  proofFileUrl: string;
+  proofFileName?: string;
+  proofFileSize?: number;
+  proofFileMimeType?: string;
+};
+
 export type ParentPaymentRecord = {
   id: number;
   paymentNo?: string | null;
@@ -93,12 +123,21 @@ export type ParentPaymentRecord = {
   source?: ParentPaymentSource | null;
   status: ParentPaymentStatus;
   type: ParentPaymentType;
-  method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER' | null;
+  method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'QRIS' | 'OTHER' | null;
+  verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
+  verificationNote?: string | null;
+  verifiedAt?: string | null;
   referenceNo?: string | null;
   invoiceId?: number | null;
   invoiceNo?: string | null;
   periodKey?: string | null;
   semester?: 'ODD' | 'EVEN' | null;
+  proofFile?: ParentFinancePaymentProofFile | null;
+  createdBy?: {
+    id: number;
+    name: string;
+    role?: string | null;
+  } | null;
   createdAt: string;
   updatedAt: string;
 };

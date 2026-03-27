@@ -36,12 +36,28 @@ const listStudentPaymentsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
 });
 
+const financePortalPaymentSubmissionSchema = z.object({
+  amount: z.coerce.number().positive(),
+  method: z
+    .nativeEnum(FinancePaymentMethod)
+    .refine((value) => value !== FinancePaymentMethod.CASH, 'Portal hanya menerima pembayaran non-tunai'),
+  bankAccountId: z.coerce.number().int().positive().optional(),
+  referenceNo: z.string().trim().max(120).optional(),
+  note: z.string().trim().max(500).optional(),
+  paidAt: z.coerce.date().optional(),
+  proofFileUrl: z.string().trim().min(1).max(255),
+  proofFileName: z.string().trim().max(255).optional(),
+  proofMimeType: z.string().trim().max(120).optional(),
+  proofFileSize: z.coerce.number().int().min(0).max(3 * 1024 * 1024).optional(),
+});
+
 const PAYMENT_STATUSES: PaymentStatus[] = ['PENDING', 'PAID', 'PARTIAL', 'CANCELLED'];
 const PAYMENT_TYPES: PaymentType[] = ['MONTHLY', 'ONE_TIME'];
 const FINANCE_LEDGER_BOOKS = ['ALL', 'CASHBOOK', 'BANKBOOK'] as const;
 const FINANCE_BANK_RECONCILIATION_STATUSES = ['OPEN', 'FINALIZED'] as const;
 const FINANCE_BANK_STATEMENT_DIRECTIONS = ['CREDIT', 'DEBIT'] as const;
 const FINANCE_BANK_STATEMENT_ENTRY_STATUSES = ['MATCHED', 'UNMATCHED'] as const;
+const FINANCE_PORTAL_PROOF_UPLOAD_PREFIX = '/api/uploads/finance/proofs/';
 
 type FinanceLedgerBook = (typeof FINANCE_LEDGER_BOOKS)[number];
 type FinanceBankReconciliationStatus = (typeof FINANCE_BANK_RECONCILIATION_STATUSES)[number];
@@ -149,6 +165,14 @@ function normalizeFinanceReferenceKey(value?: string | null) {
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '');
+}
+
+function ensureFinancePortalProofPath(value: string) {
+  const normalized = String(value || '').trim();
+  if (!normalized.startsWith(FINANCE_PORTAL_PROOF_UPLOAD_PREFIX)) {
+    throw new ApiError(400, 'Bukti pembayaran tidak valid. Unggah ulang file bukti bayar.');
+  }
+  return normalized;
 }
 
 function resolveFinancePaymentReversalAvailability(payment: {
@@ -877,6 +901,10 @@ function serializeFinancePaymentRecord(payment: {
   verifiedAt?: Date | null;
   referenceNo?: string | null;
   note?: string | null;
+  proofFileUrl?: string | null;
+  proofFileName?: string | null;
+  proofMimeType?: string | null;
+  proofFileSize?: number | null;
   paidAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -894,6 +922,11 @@ function serializeFinancePaymentRecord(payment: {
     accountNumber: string;
   } | null;
   verifiedBy?: {
+    id: number;
+    name: string;
+    role?: string | null;
+  } | null;
+  createdBy?: {
     id: number;
     name: string;
     role?: string | null;
@@ -942,8 +975,23 @@ function serializeFinancePaymentRecord(payment: {
           role: payment.verifiedBy.role || null,
         }
       : null,
+    createdBy: payment.createdBy
+      ? {
+          id: payment.createdBy.id,
+          name: payment.createdBy.name,
+          role: payment.createdBy.role || null,
+        }
+      : null,
     referenceNo: payment.referenceNo || null,
     note: payment.note || null,
+    proofFile: payment.proofFileUrl
+      ? {
+          url: payment.proofFileUrl,
+          name: payment.proofFileName || null,
+          mimetype: payment.proofMimeType || null,
+          size: Number(payment.proofFileSize || 0) || null,
+        }
+      : null,
     invoiceId: payment.invoice?.id || null,
     invoiceNo: payment.invoice?.invoiceNo || null,
     periodKey: payment.invoice?.periodKey || null,
@@ -973,6 +1021,7 @@ function serializeFinancePaymentRecord(payment: {
             : null,
         }
       : null,
+    paidAt: payment.paidAt || payment.createdAt,
     createdAt: payment.paidAt || payment.createdAt,
     updatedAt: payment.updatedAt,
   };
@@ -2820,6 +2869,72 @@ async function ensureFinancePaymentVerificationViewer(authUser: { id?: number; r
   return user;
 }
 
+async function ensureFinancePortalActor(authUser: { id?: number; role?: string }) {
+  const actorId = Number(authUser?.id || 0);
+  const actorRole = String(authUser?.role || '').toUpperCase();
+  if (!actorId || (actorRole !== 'STUDENT' && actorRole !== 'PARENT')) {
+    throw new ApiError(403, 'Akses portal keuangan tidak valid');
+  }
+
+  const actor = await prisma.user.findUnique({
+    where: { id: actorId },
+    select: {
+      id: true,
+      name: true,
+      role: true,
+      children: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  });
+
+  if (!actor || String(actor.role || '').toUpperCase() !== actorRole) {
+    throw new ApiError(404, 'Akun portal keuangan tidak ditemukan');
+  }
+
+  return actor;
+}
+
+async function loadFinancePortalSubmissionContext(params: {
+  authUser: { id?: number; role?: string };
+  invoiceId: number;
+}) {
+  const actor = await ensureFinancePortalActor(params.authUser);
+  const invoice = await prisma.financeInvoice.findUnique({
+    where: { id: params.invoiceId },
+    include: {
+      student: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          nis: true,
+          nisn: true,
+        },
+      },
+    },
+  });
+
+  if (!invoice) {
+    throw new ApiError(404, 'Tagihan tidak ditemukan');
+  }
+
+  if (actor.role === 'STUDENT' && invoice.studentId !== actor.id) {
+    throw new ApiError(403, 'Anda tidak memiliki akses ke tagihan ini');
+  }
+
+  if (
+    actor.role === 'PARENT' &&
+    !(actor.children || []).some((child) => child.id === invoice.studentId)
+  ) {
+    throw new ApiError(403, 'Anda tidak memiliki akses ke tagihan siswa ini');
+  }
+
+  return { actor, invoice };
+}
+
 async function resolveFinanceBankAccountForTransaction(
   db: Prisma.TransactionClient | typeof prisma,
   method: FinancePaymentMethod,
@@ -2905,6 +3020,13 @@ async function settleFinanceVerifiedPayment(
           bankName: true,
           accountName: true,
           accountNumber: true,
+        },
+      },
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+          role: true,
         },
       },
       verifiedBy: {
@@ -3018,6 +3140,13 @@ async function settleFinanceVerifiedPayment(
           bankName: true,
           accountName: true,
           accountNumber: true,
+        },
+      },
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+          role: true,
         },
       },
       verifiedBy: {
@@ -4203,6 +4332,13 @@ async function loadFinanceBankReconciliationTransactions(
             bankName: true,
             accountName: true,
             accountNumber: true,
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
           },
         },
         verifiedBy: {
@@ -9152,6 +9288,23 @@ export const listFinanceBankAccounts = asyncHandler(async (req: Request, res: Re
   res.status(200).json(new ApiResponse(200, { accounts }, 'Rekening bank finance berhasil diambil'));
 });
 
+export const listFinancePortalBankAccounts = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinancePortalActor((req as any).user || {});
+
+  const rows = await prisma.financeBankAccount.findMany({
+    where: {
+      isActive: true,
+    },
+    orderBy: [{ bankName: 'asc' }, { accountNumber: 'asc' }],
+  });
+
+  const accounts = rows.map((row: any) => serializeFinanceBankAccount(row));
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, { accounts }, 'Rekening bank portal finance berhasil diambil'));
+});
+
 export const createFinanceBankAccount = asyncHandler(async (req: Request, res: Response) => {
   const actor = await ensureFinanceActor((req as any).user || {});
   const payload = createFinanceBankAccountSchema.parse(req.body || {});
@@ -10346,6 +10499,10 @@ export const listFinanceInvoices = asyncHandler(async (req: Request, res: Respon
           verifiedAt: true,
           referenceNo: true,
           note: true,
+          proofFileUrl: true,
+          proofFileName: true,
+          proofMimeType: true,
+          proofFileSize: true,
           paidAt: true,
           createdAt: true,
           updatedAt: true,
@@ -10359,6 +10516,13 @@ export const listFinanceInvoices = asyncHandler(async (req: Request, res: Respon
             },
           },
           verifiedBy: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+          createdBy: {
             select: {
               id: true,
               name: true,
@@ -10801,6 +10965,13 @@ export const listFinancePaymentVerifications = asyncHandler(async (req: Request,
           accountNumber: true,
         },
       },
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+          role: true,
+        },
+      },
       verifiedBy: {
         select: {
           id: true,
@@ -11081,6 +11252,13 @@ export const rejectFinancePayment = asyncHandler(async (req: Request, res: Respo
             bankName: true,
             accountName: true,
             accountNumber: true,
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
           },
         },
         verifiedBy: {
@@ -11527,6 +11705,226 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
           : 'Pembayaran tagihan berhasil dicatat',
       ),
     );
+});
+
+export const createFinancePortalPaymentSubmission = asyncHandler(async (req: Request, res: Response) => {
+  const invoiceId = Number(req.params.id);
+  if (!Number.isInteger(invoiceId) || invoiceId <= 0) {
+    throw new ApiError(400, 'ID tagihan tidak valid');
+  }
+
+  const payload = financePortalPaymentSubmissionSchema.parse(req.body || {});
+  const proofFileUrl = ensureFinancePortalProofPath(payload.proofFileUrl);
+  const { actor, invoice: accessibleInvoice } = await loadFinancePortalSubmissionContext({
+    authUser: (req as any).user || {},
+    invoiceId,
+  });
+  const roleLabel = actor.role === 'PARENT' ? 'orang tua' : 'siswa';
+
+  const result = await prisma.$transaction(async (tx) => {
+    const bankAccount = await resolveFinanceBankAccountForTransaction(
+      tx,
+      payload.method,
+      payload.bankAccountId,
+    );
+
+    const invoice = await tx.financeInvoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nis: true,
+            nisn: true,
+          },
+        },
+      },
+    });
+
+    if (!invoice) {
+      throw new ApiError(404, 'Tagihan tidak ditemukan');
+    }
+
+    if (invoice.status === FinanceInvoiceStatus.PAID) {
+      throw new ApiError(400, 'Tagihan sudah lunas');
+    }
+
+    if (invoice.status === FinanceInvoiceStatus.CANCELLED) {
+      throw new ApiError(400, 'Tagihan sudah dibatalkan');
+    }
+
+    await assertFinanceClosingPeriodUnlocked(
+      tx,
+      payload.paidAt || new Date(),
+      'Pengajuan pembayaran portal',
+    );
+
+    const payment = await tx.financePayment.create({
+      data: {
+        paymentNo: makeFinancePaymentNo(invoice.studentId),
+        studentId: invoice.studentId,
+        invoiceId: invoice.id,
+        amount: payload.amount,
+        allocatedAmount: 0,
+        creditedAmount: 0,
+        method: payload.method,
+        verificationStatus: FinancePaymentVerificationStatus.PENDING,
+        verificationNote: null,
+        verifiedAt: null,
+        verifiedById: null,
+        bankAccountId: bankAccount?.id || null,
+        referenceNo: payload.referenceNo?.trim() || null,
+        note: payload.note?.trim() || null,
+        proofFileUrl,
+        proofFileName: payload.proofFileName?.trim() || null,
+        proofMimeType: payload.proofMimeType?.trim() || null,
+        proofFileSize: payload.proofFileSize || null,
+        paidAt: payload.paidAt || new Date(),
+        createdById: actor.id,
+      },
+      include: {
+        invoice: {
+          select: {
+            id: true,
+            invoiceNo: true,
+            periodKey: true,
+            semester: true,
+          },
+        },
+        bankAccount: {
+          select: {
+            id: true,
+            code: true,
+            bankName: true,
+            accountName: true,
+            accountNumber: true,
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+          },
+        },
+        verifiedBy: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+          },
+        },
+        bankStatementEntries: {
+          select: {
+            id: true,
+            entryDate: true,
+            amount: true,
+            direction: true,
+            referenceNo: true,
+            status: true,
+            reconciliation: {
+              select: {
+                id: true,
+                reconciliationNo: true,
+              },
+            },
+          },
+          orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
+          take: 1,
+        },
+      },
+    });
+
+    return {
+      invoice,
+      payment,
+    };
+  });
+
+  const serializedPayment = serializeFinancePaymentRecord(result.payment);
+
+  await Promise.all([
+    createFinanceNotifications({
+      studentId: result.invoice.student.id,
+      title: 'Bukti Pembayaran Terkirim',
+      message: `Pembayaran ${serializedPayment.paymentNo || '-'} sebesar Rp${Math.round(
+        serializedPayment.amount,
+      ).toLocaleString('id-ID')} untuk invoice ${
+        result.invoice.invoiceNo
+      } sudah dikirim oleh ${roleLabel} dan menunggu verifikasi bendahara.`,
+      type: 'FINANCE_PAYMENT_PENDING',
+      data: {
+        module: 'FINANCE',
+        invoiceId: result.invoice.id,
+        invoiceNo: result.invoice.invoiceNo,
+        paymentId: serializedPayment.id,
+        paymentNo: serializedPayment.paymentNo,
+        paidAmount: serializedPayment.amount,
+        verificationStatus: serializedPayment.verificationStatus,
+        referenceNo: serializedPayment.referenceNo,
+        proofFile: serializedPayment.proofFile,
+      },
+    }),
+    createFinanceInternalNotifications({
+      scopes: ['FINANCE'],
+      title: 'Pengajuan Pembayaran Portal Masuk',
+      message: `${actor.name} mengirim bukti pembayaran ${serializedPayment.paymentNo || '-'} untuk invoice ${
+        result.invoice.invoiceNo
+      }. Segera verifikasi di antrean pembayaran non-tunai.`,
+      type: 'FINANCE_PAYMENT_PENDING',
+      data: {
+        paymentId: serializedPayment.id,
+        paymentNo: serializedPayment.paymentNo,
+        invoiceId: result.invoice.id,
+        invoiceNo: result.invoice.invoiceNo,
+        studentId: accessibleInvoice.studentId,
+        studentName: accessibleInvoice.student.name,
+        submittedById: actor.id,
+        submittedByName: actor.name,
+        submittedByRole: actor.role,
+        amount: serializedPayment.amount,
+        method: serializedPayment.method,
+        referenceNo: serializedPayment.referenceNo,
+        proofFile: serializedPayment.proofFile,
+      },
+    }),
+  ]);
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      [],
+      'CREATE',
+      'FINANCE_PAYMENT_PORTAL_SUBMIT',
+      serializedPayment.id,
+      null,
+      {
+        payment: serializedPayment,
+        invoice: {
+          id: result.invoice.id,
+          invoiceNo: result.invoice.invoiceNo,
+          studentId: result.invoice.student.id,
+          studentName: result.invoice.student.name,
+        },
+      },
+      'Pengajuan pembayaran portal keuangan',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat pengajuan pembayaran portal finance', auditError);
+  }
+
+  res.status(201).json(
+    new ApiResponse(
+      201,
+      {
+        payment: serializedPayment,
+      },
+      'Bukti pembayaran berhasil dikirim dan menunggu verifikasi bendahara',
+    ),
+  );
 });
 
 export const updateFinanceInvoiceInstallments = asyncHandler(async (req: Request, res: Response) => {
@@ -15814,11 +16212,35 @@ type FinancePortalInvoiceRecord = {
     reversedCreditedAmount?: number | null;
     source: FinancePaymentSource;
     method: FinancePaymentMethod;
+    verificationStatus?: FinancePaymentVerificationStatus | null;
+    verificationNote?: string | null;
+    verifiedAt?: Date | null;
     referenceNo: string | null;
     note?: string | null;
+    proofFileUrl?: string | null;
+    proofFileName?: string | null;
+    proofFileSize?: number | null;
+    proofMimeType?: string | null;
     paidAt: Date;
     createdAt: Date;
     updatedAt: Date;
+    createdBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+    verifiedBy?: {
+      id: number;
+      name: string;
+      role?: string | null;
+    } | null;
+    bankAccount?: {
+      id: number;
+      code: string;
+      bankName: string;
+      accountName: string;
+      accountNumber: string;
+    } | null;
     invoice: {
       id: number;
       invoiceNo: string;
@@ -16312,8 +16734,15 @@ export const listParentPayments = asyncHandler(async (req: Request, res: Respons
                 reversedCreditedAmount: true,
                 source: true,
                 method: true,
+                verificationStatus: true,
+                verificationNote: true,
+                verifiedAt: true,
                 referenceNo: true,
                 note: true,
+                proofFileUrl: true,
+                proofFileName: true,
+                proofMimeType: true,
+                proofFileSize: true,
                 paidAt: true,
                 createdAt: true,
                 updatedAt: true,
@@ -16323,6 +16752,20 @@ export const listParentPayments = asyncHandler(async (req: Request, res: Respons
                     invoiceNo: true,
                     periodKey: true,
                     semester: true,
+                  },
+                },
+                createdBy: {
+                  select: {
+                    id: true,
+                    name: true,
+                    role: true,
+                  },
+                },
+                verifiedBy: {
+                  select: {
+                    id: true,
+                    name: true,
+                    role: true,
                   },
                 },
               },
@@ -16639,8 +17082,15 @@ export const listStudentPayments = asyncHandler(async (req: Request, res: Respon
             reversedCreditedAmount: true,
             source: true,
             method: true,
+            verificationStatus: true,
+            verificationNote: true,
+            verifiedAt: true,
             referenceNo: true,
             note: true,
+            proofFileUrl: true,
+            proofFileName: true,
+            proofMimeType: true,
+            proofFileSize: true,
             paidAt: true,
             createdAt: true,
             updatedAt: true,
@@ -16650,6 +17100,20 @@ export const listStudentPayments = asyncHandler(async (req: Request, res: Respon
                 invoiceNo: true,
                 periodKey: true,
                 semester: true,
+              },
+            },
+            createdBy: {
+              select: {
+                id: true,
+                name: true,
+                role: true,
+              },
+            },
+            verifiedBy: {
+              select: {
+                id: true,
+                name: true,
+                role: true,
               },
             },
           },
