@@ -30,6 +30,8 @@ export type FinanceCashSessionApprovalStatus =
   | 'AUTO_APPROVED'
   | 'REJECTED';
 export type FinanceCashSessionPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'NONE';
+export type FinanceBankReconciliationStatus = 'OPEN' | 'FINALIZED';
+export type FinanceBankStatementDirection = 'CREDIT' | 'DEBIT';
 export type SemesterCode = 'ODD' | 'EVEN';
 export type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE' | 'LATE_FEE' | 'ESCALATION';
 
@@ -76,6 +78,20 @@ export interface FinanceCashSessionApprovalPolicy {
   requireVarianceNote: boolean;
   principalApprovalThresholdAmount: number;
   notes?: string | null;
+  updatedAt: string;
+}
+
+export interface FinanceBankAccount {
+  id: number;
+  code: string;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  branch?: string | null;
+  notes?: string | null;
+  isActive: boolean;
+  label: string;
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -236,6 +252,7 @@ export interface FinanceInvoice {
     canRequestReversal: boolean;
     source: FinancePaymentSource;
     method: FinancePaymentMethod;
+    bankAccount?: FinanceBankAccount | null;
     referenceNo?: string | null;
     note?: string | null;
     paidAt: string;
@@ -536,6 +553,7 @@ export interface FinanceRefundRecord {
   refundNo: string;
   amount: number;
   method: FinancePaymentMethod;
+  bankAccount?: FinanceBankAccount | null;
   referenceNo?: string | null;
   note?: string | null;
   refundedAt: string;
@@ -682,6 +700,94 @@ export interface FinanceCashSessionListResult {
     totalExpectedCashOut: number;
     totalExpectedClosingBalance: number;
     totalVarianceAmount: number;
+  };
+}
+
+export interface FinanceBankStatementEntry {
+  id: number;
+  entryDate: string;
+  direction: FinanceBankStatementDirection;
+  amount: number;
+  referenceNo?: string | null;
+  description?: string | null;
+  status: 'MATCHED' | 'UNMATCHED';
+  matchedPayment?: (FinanceInvoice['payments'][number] & {
+    bankAccount?: FinanceBankAccount | null;
+  }) | null;
+  matchedRefund?: FinanceRefundRecord | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type FinanceBankSystemPayment = FinanceInvoice['payments'][number] & {
+  bankAccount?: FinanceBankAccount | null;
+  netBankAmount: number;
+  matched: boolean;
+};
+
+export type FinanceBankSystemRefund = FinanceRefundRecord & {
+  matched: boolean;
+};
+
+export interface FinanceBankReconciliation {
+  id: number;
+  reconciliationNo: string;
+  status: FinanceBankReconciliationStatus;
+  periodStart: string;
+  periodEnd: string;
+  statementOpeningBalance: number;
+  statementClosingBalance: number;
+  note?: string | null;
+  bankAccount: FinanceBankAccount;
+  createdBy?: {
+    id: number;
+    name: string;
+    role: string;
+  } | null;
+  finalizedBy?: {
+    id: number;
+    name: string;
+    role: string;
+  } | null;
+  finalizedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  summary: {
+    expectedBankIn: number;
+    expectedBankOut: number;
+    expectedClosingBalance: number;
+    statementRecordedIn: number;
+    statementRecordedOut: number;
+    statementComputedClosingBalance: number;
+    varianceAmount: number;
+    statementGapAmount: number;
+    totalPaymentCount: number;
+    totalRefundCount: number;
+    matchedPaymentCount: number;
+    matchedRefundCount: number;
+    unmatchedPaymentCount: number;
+    unmatchedRefundCount: number;
+    matchedStatementEntryCount: number;
+    unmatchedStatementEntryCount: number;
+  };
+  statementEntries: FinanceBankStatementEntry[];
+  systemPayments: FinanceBankSystemPayment[];
+  systemRefunds: FinanceBankSystemRefund[];
+}
+
+export interface FinanceBankReconciliationListResult {
+  reconciliations: FinanceBankReconciliation[];
+  summary: {
+    totalReconciliations: number;
+    openCount: number;
+    finalizedCount: number;
+    totalExpectedBankIn: number;
+    totalExpectedBankOut: number;
+    totalVarianceAmount: number;
+    totalStatementGapAmount: number;
+    totalUnmatchedPayments: number;
+    totalUnmatchedRefunds: number;
+    totalUnmatchedStatementEntries: number;
   };
 }
 
@@ -1243,6 +1349,48 @@ export const staffFinanceService = {
     return response.data.data.policy;
   },
 
+  async listBankAccounts(params?: { isActive?: boolean; search?: string }) {
+    const response = await api.get<ApiResponse<{ accounts: FinanceBankAccount[] }>>('/payments/bank-accounts', {
+      params,
+    });
+    return response.data.data.accounts;
+  },
+
+  async createBankAccount(payload: {
+    code: string;
+    bankName: string;
+    accountName: string;
+    accountNumber: string;
+    branch?: string;
+    notes?: string;
+    isActive?: boolean;
+  }) {
+    const response = await api.post<ApiResponse<{ account: FinanceBankAccount }>>(
+      '/payments/bank-accounts',
+      payload,
+    );
+    return response.data.data.account;
+  },
+
+  async updateBankAccount(
+    accountId: number,
+    payload: Partial<{
+      code: string;
+      bankName: string;
+      accountName: string;
+      accountNumber: string;
+      branch?: string;
+      notes?: string;
+      isActive: boolean;
+    }>,
+  ) {
+    const response = await api.patch<ApiResponse<{ account: FinanceBankAccount }>>(
+      `/payments/bank-accounts/${accountId}`,
+      payload,
+    );
+    return response.data.data.account;
+  },
+
   async updateReminderPolicy(payload: Partial<Omit<FinanceReminderPolicy, 'updatedAt'>>) {
     const response = await api.put<ApiResponse<{ policy: FinanceReminderPolicy }>>(
       '/payments/reminder-policy',
@@ -1256,6 +1404,7 @@ export const staffFinanceService = {
     payload: {
       amount: number;
       method: FinancePaymentMethod;
+      bankAccountId?: number;
       referenceNo?: string;
       note?: string;
       paidAt?: string;
@@ -1286,6 +1435,62 @@ export const staffFinanceService = {
       params,
     });
     return response.data.data;
+  },
+
+  async listBankReconciliations(params?: {
+    bankAccountId?: number;
+    status?: FinanceBankReconciliationStatus;
+    limit?: number;
+  }) {
+    const response = await api.get<ApiResponse<FinanceBankReconciliationListResult>>(
+      '/payments/bank-reconciliations',
+      {
+        params,
+      },
+    );
+    return response.data.data;
+  },
+
+  async createBankReconciliation(payload: {
+    bankAccountId: number;
+    periodStart: string;
+    periodEnd: string;
+    statementOpeningBalance?: number;
+    statementClosingBalance: number;
+    note?: string;
+  }) {
+    const response = await api.post<ApiResponse<{ reconciliation: FinanceBankReconciliation }>>(
+      '/payments/bank-reconciliations',
+      payload,
+    );
+    return response.data.data.reconciliation;
+  },
+
+  async createBankStatementEntry(
+    reconciliationId: number,
+    payload: {
+      entryDate: string;
+      direction: FinanceBankStatementDirection;
+      amount: number;
+      referenceNo?: string;
+      description?: string;
+    },
+  ) {
+    const response = await api.post<
+      ApiResponse<{
+        entry: FinanceBankStatementEntry;
+        reconciliation: FinanceBankReconciliation;
+      }>
+    >(`/payments/bank-reconciliations/${reconciliationId}/entries`, payload);
+    return response.data.data;
+  },
+
+  async finalizeBankReconciliation(reconciliationId: number, payload?: { note?: string }) {
+    const response = await api.post<ApiResponse<{ reconciliation: FinanceBankReconciliation }>>(
+      `/payments/bank-reconciliations/${reconciliationId}/finalize`,
+      payload || {},
+    );
+    return response.data.data.reconciliation;
   },
 
   async listCashSessions(params?: {
@@ -1367,6 +1572,7 @@ export const staffFinanceService = {
     payload: {
       amount: number;
       method: FinancePaymentMethod;
+      bankAccountId?: number;
       referenceNo?: string;
       note?: string;
       refundedAt?: string;

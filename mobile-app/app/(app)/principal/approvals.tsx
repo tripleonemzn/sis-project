@@ -20,6 +20,7 @@ import { PrincipalBudgetRequest, PrincipalBudgetRequestStatus } from '../../../s
 import { usePrincipalApprovalsQuery } from '../../../src/features/principal/usePrincipalApprovalsQuery';
 import {
   staffFinanceApi,
+  type StaffFinanceBankReconciliation,
   type StaffFinanceCashSession,
   type StaffFinancePaymentReversalRequest,
   type StaffFinanceWriteOffRequest,
@@ -45,6 +46,17 @@ function statusColor(status: PrincipalBudgetRequestStatus) {
 
 function formatCurrency(value: number) {
   return `Rp ${Math.round(value || 0).toLocaleString('id-ID')}`;
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 export default function PrincipalApprovalsScreen() {
@@ -81,6 +93,13 @@ export default function PrincipalApprovalsScreen() {
     queryKey: ['mobile-principal-cash-session-approvals', user?.id],
     enabled: isAuthenticated && user?.role === 'PRINCIPAL',
     queryFn: () => staffFinanceApi.listCashSessions({ pendingFor: 'PRINCIPAL', limit: 20 }),
+    staleTime: 60 * 1000,
+  });
+
+  const bankReconciliationsQuery = useQuery({
+    queryKey: ['mobile-principal-bank-reconciliations', user?.id],
+    enabled: isAuthenticated && user?.role === 'PRINCIPAL',
+    queryFn: () => staffFinanceApi.listBankReconciliations({ limit: 8 }),
     staleTime: 60 * 1000,
   });
 
@@ -146,6 +165,11 @@ export default function PrincipalApprovalsScreen() {
   const financeCashSessions = useMemo(() => cashSessionsQuery.data?.sessions || [], [cashSessionsQuery.data]);
   const pendingCashSessionApprovals = useMemo(() => cashSessionApprovalsQuery.data?.sessions || [], [cashSessionApprovalsQuery.data]);
   const financeCashSummary = cashSessionsQuery.data?.summary;
+  const financeBankReconciliations = useMemo(
+    () => bankReconciliationsQuery.data?.reconciliations || [],
+    [bankReconciliationsQuery.data],
+  );
+  const financeBankReconciliationSummary = bankReconciliationsQuery.data?.summary;
   const filteredApprovals = useMemo(() => {
     const query = search.trim().toLowerCase();
     return approvals.filter((item) => {
@@ -270,7 +294,8 @@ export default function PrincipalApprovalsScreen() {
             (writeOffsQuery.isFetching && !writeOffsQuery.isLoading) ||
             (paymentReversalsQuery.isFetching && !paymentReversalsQuery.isLoading) ||
             (cashSessionsQuery.isFetching && !cashSessionsQuery.isLoading) ||
-            (cashSessionApprovalsQuery.isFetching && !cashSessionApprovalsQuery.isLoading)
+            (cashSessionApprovalsQuery.isFetching && !cashSessionApprovalsQuery.isLoading) ||
+            (bankReconciliationsQuery.isFetching && !bankReconciliationsQuery.isLoading)
           }
           onRefresh={() => {
             void approvalsQuery.refetch();
@@ -278,6 +303,7 @@ export default function PrincipalApprovalsScreen() {
             void paymentReversalsQuery.refetch();
             void cashSessionsQuery.refetch();
             void cashSessionApprovalsQuery.refetch();
+            void bankReconciliationsQuery.refetch();
           }}
         />
       }
@@ -555,6 +581,90 @@ export default function PrincipalApprovalsScreen() {
             }}
           >
             <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada sesi kas harian yang tercatat.</Text>
+          </View>
+        )}
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#d6e2f7',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Rekonsiliasi Bank</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+              Monitoring transaksi bank non-tunai untuk melihat variance, statement gap, dan item yang belum matched.
+            </Text>
+          </View>
+          <View
+            style={{
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: '#c7d2fe',
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              backgroundColor: '#eef2ff',
+            }}
+          >
+            <Text style={{ color: '#4338ca', fontSize: 11, fontWeight: '700' }}>
+              {financeBankReconciliationSummary?.openCount || 0} terbuka
+            </Text>
+          </View>
+        </View>
+        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+          Final {financeBankReconciliationSummary?.finalizedCount || 0} • unmatched statement {financeBankReconciliationSummary?.totalUnmatchedStatementEntries || 0}
+        </Text>
+
+        {bankReconciliationsQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil rekonsiliasi bank..." />
+        ) : financeBankReconciliations.length > 0 ? (
+          <View>
+            {financeBankReconciliations.slice(0, 4).map((reconciliation: StaffFinanceBankReconciliation) => (
+              <View
+                key={reconciliation.id}
+                style={{
+                  borderTopWidth: 1,
+                  borderTopColor: '#eef3ff',
+                  paddingVertical: 10,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{reconciliation.reconciliationNo}</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  {reconciliation.bankAccount.bankName} • {reconciliation.bankAccount.accountNumber}
+                </Text>
+                <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                  {formatDate(reconciliation.periodStart)} - {formatDate(reconciliation.periodEnd)}
+                </Text>
+                <Text style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                  Expected {formatCurrency(reconciliation.summary.expectedClosingBalance)} • statement {formatCurrency(reconciliation.summary.statementComputedClosingBalance)}
+                </Text>
+                <Text style={{ color: Number(reconciliation.summary.varianceAmount || 0) === 0 ? '#166534' : '#b91c1c', fontSize: 12, marginTop: 3 }}>
+                  Variance {formatCurrency(reconciliation.summary.varianceAmount)}
+                </Text>
+                <Text style={{ color: '#4338ca', fontSize: 12, marginTop: 3 }}>
+                  {reconciliation.status === 'FINALIZED' ? 'Final' : 'Terbuka'} • unmatched statement {reconciliation.summary.unmatchedStatementEntryCount} • payment {reconciliation.summary.unmatchedPaymentCount} • refund {reconciliation.summary.unmatchedRefundCount}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <View
+            style={{
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderStyle: 'dashed',
+              backgroundColor: '#fff',
+              padding: 14,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada rekonsiliasi bank yang tercatat.</Text>
           </View>
         )}
       </View>

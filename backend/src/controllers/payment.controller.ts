@@ -34,6 +34,13 @@ const listStudentPaymentsQuerySchema = z.object({
 
 const PAYMENT_STATUSES: PaymentStatus[] = ['PENDING', 'PAID', 'PARTIAL', 'CANCELLED'];
 const PAYMENT_TYPES: PaymentType[] = ['MONTHLY', 'ONE_TIME'];
+const FINANCE_BANK_RECONCILIATION_STATUSES = ['OPEN', 'FINALIZED'] as const;
+const FINANCE_BANK_STATEMENT_DIRECTIONS = ['CREDIT', 'DEBIT'] as const;
+const FINANCE_BANK_STATEMENT_ENTRY_STATUSES = ['MATCHED', 'UNMATCHED'] as const;
+
+type FinanceBankReconciliationStatus = (typeof FINANCE_BANK_RECONCILIATION_STATUSES)[number];
+type FinanceBankStatementDirection = (typeof FINANCE_BANK_STATEMENT_DIRECTIONS)[number];
+type FinanceBankStatementEntryStatus = (typeof FINANCE_BANK_STATEMENT_ENTRY_STATUSES)[number];
 
 type StatusSummary = Record<PaymentStatus, { count: number; amount: number }>;
 type TypeSummary = Record<PaymentType, { count: number; amount: number }>;
@@ -93,6 +100,27 @@ function makeFinanceCashSessionNo(userId: number): string {
   const ts = Date.now().toString().slice(-7);
   const rand = Math.floor(Math.random() * 900 + 100).toString();
   return `CSH-${userId}-${ts}${rand}`;
+}
+
+function makeFinanceBankReconciliationNo(bankAccountId: number): string {
+  const ts = Date.now().toString().slice(-7);
+  const rand = Math.floor(Math.random() * 900 + 100).toString();
+  return `BNK-${bankAccountId}-${ts}${rand}`;
+}
+
+function isFinanceBankTrackedMethod(method?: FinancePaymentMethod | null) {
+  return (
+    method === FinancePaymentMethod.BANK_TRANSFER ||
+    method === FinancePaymentMethod.VIRTUAL_ACCOUNT ||
+    method === FinancePaymentMethod.E_WALLET
+  );
+}
+
+function normalizeFinanceReferenceKey(value?: string | null) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
 }
 
 function resolveFinancePaymentReversalAvailability(payment: {
@@ -824,6 +852,13 @@ function serializeFinancePaymentRecord(payment: {
     periodKey?: string | null;
     semester?: Semester | null;
   } | null;
+  bankAccount?: {
+    id: number;
+    code: string;
+    bankName: string;
+    accountName: string;
+    accountNumber: string;
+  } | null;
 }) {
   const reversal = resolveFinancePaymentReversalAvailability(payment);
 
@@ -849,6 +884,15 @@ function serializeFinancePaymentRecord(payment: {
     invoiceNo: payment.invoice?.invoiceNo || null,
     periodKey: payment.invoice?.periodKey || null,
     semester: payment.invoice?.semester || null,
+    bankAccount: payment.bankAccount
+      ? {
+          id: payment.bankAccount.id,
+          code: payment.bankAccount.code,
+          bankName: payment.bankAccount.bankName,
+          accountName: payment.bankAccount.accountName,
+          accountNumber: payment.bankAccount.accountNumber,
+        }
+      : null,
     createdAt: payment.paidAt || payment.createdAt,
     updatedAt: payment.updatedAt,
   };
@@ -879,6 +923,13 @@ function serializeFinanceRefundRecord(refund: {
     id: number;
     name: string;
   } | null;
+  bankAccount?: {
+    id: number;
+    code: string;
+    bankName: string;
+    accountName: string;
+    accountNumber: string;
+  } | null;
 }) {
   return {
     id: refund.id,
@@ -891,8 +942,115 @@ function serializeFinanceRefundRecord(refund: {
     createdAt: refund.createdAt,
     student: refund.student,
     createdBy: refund.createdBy || null,
+    bankAccount: refund.bankAccount
+      ? {
+          id: refund.bankAccount.id,
+          code: refund.bankAccount.code,
+          bankName: refund.bankAccount.bankName,
+          accountName: refund.bankAccount.accountName,
+          accountNumber: refund.bankAccount.accountNumber,
+        }
+      : null,
   };
 }
+
+function serializeFinanceBankAccount(bankAccount: {
+  id: number;
+  code: string;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  branch?: string | null;
+  notes?: string | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: bankAccount.id,
+    code: bankAccount.code,
+    bankName: bankAccount.bankName,
+    accountName: bankAccount.accountName,
+    accountNumber: bankAccount.accountNumber,
+    branch: bankAccount.branch || null,
+    notes: bankAccount.notes || null,
+    isActive: Boolean(bankAccount.isActive),
+    label: `${bankAccount.bankName} • ${bankAccount.accountNumber}`,
+    createdAt: bankAccount.createdAt,
+    updatedAt: bankAccount.updatedAt,
+  };
+}
+
+type SerializedFinanceBankStatementEntry = {
+  id: number;
+  entryDate: Date;
+  direction: FinanceBankStatementDirection;
+  amount: number;
+  referenceNo: string | null;
+  description: string | null;
+  status: FinanceBankStatementEntryStatus;
+  matchedPayment: ReturnType<typeof serializeFinancePaymentRecord> | null;
+  matchedRefund: ReturnType<typeof serializeFinanceRefundRecord> | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type SerializedFinanceBankSystemPayment = ReturnType<typeof serializeFinancePaymentRecord> & {
+  netBankAmount: number;
+  matched: boolean;
+};
+
+type SerializedFinanceBankSystemRefund = ReturnType<typeof serializeFinanceRefundRecord> & {
+  matched: boolean;
+};
+
+type SerializedFinanceBankReconciliationSummary = {
+  expectedBankIn: number;
+  expectedBankOut: number;
+  expectedClosingBalance: number;
+  statementRecordedIn: number;
+  statementRecordedOut: number;
+  statementComputedClosingBalance: number;
+  varianceAmount: number;
+  statementGapAmount: number;
+  totalPaymentCount: number;
+  totalRefundCount: number;
+  matchedPaymentCount: number;
+  matchedRefundCount: number;
+  unmatchedPaymentCount: number;
+  unmatchedRefundCount: number;
+  matchedStatementEntryCount: number;
+  unmatchedStatementEntryCount: number;
+};
+
+type SerializedFinanceBankReconciliation = {
+  id: number;
+  reconciliationNo: string;
+  status: FinanceBankReconciliationStatus;
+  periodStart: Date;
+  periodEnd: Date;
+  statementOpeningBalance: number;
+  statementClosingBalance: number;
+  note: string | null;
+  bankAccount: ReturnType<typeof serializeFinanceBankAccount>;
+  createdBy: {
+    id: number;
+    name: string;
+    role: string;
+  } | null;
+  finalizedBy: {
+    id: number;
+    name: string;
+    role: string;
+  } | null;
+  finalizedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  summary: SerializedFinanceBankReconciliationSummary;
+  statementEntries: SerializedFinanceBankStatementEntry[];
+  systemPayments: SerializedFinanceBankSystemPayment[];
+  systemRefunds: SerializedFinanceBankSystemRefund[];
+};
 
 type SerializedFinanceCashSessionSummary = {
   expectedCashIn: number;
@@ -2342,6 +2500,48 @@ async function ensureFinanceCashSessionViewer(authUser: { id?: number; role?: st
   return user;
 }
 
+async function ensureFinanceBankReconciliationViewer(authUser: { id?: number; role?: string }) {
+  const user = await loadFinanceActorContext(authUser);
+  if (!user.isFinanceStaff && !user.isHeadTu && !user.isPrincipal) {
+    throw new ApiError(403, 'Akses finance monitoring dibutuhkan untuk melihat rekonsiliasi bank');
+  }
+  return user;
+}
+
+async function resolveFinanceBankAccountForTransaction(
+  db: Prisma.TransactionClient | typeof prisma,
+  method: FinancePaymentMethod,
+  bankAccountId?: number,
+) {
+  if (method === FinancePaymentMethod.CASH) {
+    if (bankAccountId != null) {
+      throw new ApiError(400, 'Transaksi tunai tidak boleh memakai rekening bank');
+    }
+    return null;
+  }
+
+  if (!bankAccountId) {
+    if (isFinanceBankTrackedMethod(method)) {
+      throw new ApiError(400, 'Rekening bank wajib dipilih untuk transaksi non-tunai ini');
+    }
+    return null;
+  }
+
+  const bankAccount = await db.financeBankAccount.findUnique({
+    where: { id: bankAccountId },
+    select: {
+      id: true,
+      isActive: true,
+    },
+  });
+
+  if (!bankAccount || !bankAccount.isActive) {
+    throw new ApiError(400, 'Rekening bank tidak valid atau sudah nonaktif');
+  }
+
+  return bankAccount;
+}
+
 function buildFinanceStudentSearchFilter(search?: string) {
   const normalizedSearch = search?.trim();
   if (!normalizedSearch) return undefined;
@@ -2373,6 +2573,20 @@ const listFinanceComponentsQuerySchema = z.object({
 
 const listFinanceClassLevelsQuerySchema = z.object({
   academicYearId: z.coerce.number().int().positive().optional(),
+});
+
+const listFinanceBankAccountsQuerySchema = z.object({
+  isActive: z
+    .string()
+    .optional()
+    .transform((value) => {
+      if (value == null || value === '') return undefined;
+      const normalized = value.toLowerCase();
+      if (normalized === 'true' || normalized === '1') return true;
+      if (normalized === 'false' || normalized === '0') return false;
+      return undefined;
+    }),
+  search: z.string().optional(),
 });
 
 const financeComponentSchemaFields = {
@@ -2532,6 +2746,7 @@ const listFinanceInvoicesQuerySchema = z.object({
 const createFinancePaymentSchema = z.object({
   amount: z.coerce.number().positive(),
   method: z.nativeEnum(FinancePaymentMethod).default('OTHER'),
+  bankAccountId: z.coerce.number().int().positive().optional(),
   referenceNo: z.string().trim().max(120).optional(),
   note: z.string().trim().max(500).optional(),
   paidAt: z.coerce.date().optional(),
@@ -2592,6 +2807,52 @@ const listFinanceCashSessionsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional().default(12),
 });
 
+const listFinanceBankReconciliationsQuerySchema = z.object({
+  bankAccountId: z.coerce.number().int().positive().optional(),
+  status: z.enum(FINANCE_BANK_RECONCILIATION_STATUSES).optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(8),
+});
+
+const createFinanceBankAccountSchema = z.object({
+  code: z.string().trim().min(2).max(30),
+  bankName: z.string().trim().min(2).max(120),
+  accountName: z.string().trim().min(2).max(120),
+  accountNumber: z.string().trim().min(4).max(40),
+  branch: z.string().trim().max(120).optional(),
+  notes: z.string().trim().max(500).optional(),
+  isActive: z.boolean().optional().default(true),
+});
+
+const updateFinanceBankAccountSchema = createFinanceBankAccountSchema
+  .partial()
+  .refine((payload) => Object.keys(payload).length > 0, 'Tidak ada perubahan data');
+
+const createFinanceBankReconciliationSchema = z
+  .object({
+    bankAccountId: z.coerce.number().int().positive(),
+    periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    periodEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    statementOpeningBalance: z.coerce.number().min(0).optional().default(0),
+    statementClosingBalance: z.coerce.number().min(0).default(0),
+    note: z.string().trim().max(500).optional(),
+  })
+  .refine((payload) => payload.periodEnd >= payload.periodStart, {
+    path: ['periodEnd'],
+    message: 'periodEnd tidak boleh lebih kecil dari periodStart',
+  });
+
+const createFinanceBankStatementEntrySchema = z.object({
+  entryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  direction: z.enum(FINANCE_BANK_STATEMENT_DIRECTIONS),
+  amount: z.coerce.number().positive(),
+  referenceNo: z.string().trim().max(120).optional(),
+  description: z.string().trim().max(500).optional(),
+});
+
+const finalizeFinanceBankReconciliationSchema = z.object({
+  note: z.string().trim().max(500).optional(),
+});
+
 const openFinanceCashSessionSchema = z.object({
   businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   openingBalance: z.coerce.number().min(0).optional().default(0),
@@ -2618,6 +2879,7 @@ const decideFinanceCashSessionSchema = z.object({
 const createFinanceRefundSchema = z.object({
   amount: z.coerce.number().positive(),
   method: z.nativeEnum(FinancePaymentMethod).default('OTHER'),
+  bankAccountId: z.coerce.number().int().positive().optional(),
   referenceNo: z.string().trim().max(120).optional(),
   note: z.string().trim().max(500).optional(),
   refundedAt: z.coerce.date().optional(),
@@ -2864,6 +3126,37 @@ const financeCashSessionRecordInclude = Prisma.validator<Prisma.FinanceCashSessi
   },
 });
 
+const financeBankReconciliationRecordInclude = {
+  bankAccount: {
+    select: {
+      id: true,
+      code: true,
+      bankName: true,
+      accountName: true,
+      accountNumber: true,
+      branch: true,
+      notes: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  },
+  createdBy: {
+    select: {
+      id: true,
+      name: true,
+      role: true,
+    },
+  },
+  finalizedBy: {
+    select: {
+      id: true,
+      name: true,
+      role: true,
+    },
+  },
+} as const;
+
 async function buildFinanceCashSessionSummary(
   db: Prisma.TransactionClient | typeof prisma,
   session: {
@@ -3004,6 +3297,548 @@ async function buildFinanceCashSessionSummary(
       };
     }),
     recentCashRefunds: recentRefunds.map((refund) => serializeFinanceRefundRecord(refund)),
+  };
+}
+
+function parseFinanceDateInput(value: string, endOfDay = false) {
+  const match = String(value || '')
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!match) {
+    throw new ApiError(400, 'Format tanggal harus YYYY-MM-DD');
+  }
+
+  return new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    endOfDay ? 23 : 0,
+    endOfDay ? 59 : 0,
+    endOfDay ? 59 : 0,
+    endOfDay ? 999 : 0,
+  );
+}
+
+function isFinanceSameDay(left?: Date | null, right?: Date | null) {
+  if (!left || !right) return false;
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+  );
+}
+
+function serializeFinanceBankStatementEntry(entry: {
+  id: number;
+  entryDate: Date;
+  direction: FinanceBankStatementDirection;
+  amount: number;
+  referenceNo?: string | null;
+  description?: string | null;
+  status: FinanceBankStatementEntryStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  matchedPayment?: Parameters<typeof serializeFinancePaymentRecord>[0] | null;
+  matchedRefund?: Parameters<typeof serializeFinanceRefundRecord>[0] | null;
+}): SerializedFinanceBankStatementEntry {
+  return {
+    id: entry.id,
+    entryDate: entry.entryDate,
+    direction: entry.direction,
+    amount: normalizeFinanceAmount(Number(entry.amount || 0)),
+    referenceNo: entry.referenceNo || null,
+    description: entry.description || null,
+    status: entry.status,
+    matchedPayment: entry.matchedPayment ? serializeFinancePaymentRecord(entry.matchedPayment) : null,
+    matchedRefund: entry.matchedRefund ? serializeFinanceRefundRecord(entry.matchedRefund) : null,
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
+  };
+}
+
+async function loadFinanceBankReconciliationTransactions(
+  db: Prisma.TransactionClient | typeof prisma,
+  reconciliation: {
+    id: number;
+    bankAccountId: number;
+    periodStart: Date;
+    periodEnd: Date;
+  },
+) {
+  const paymentWhere = {
+    bankAccountId: reconciliation.bankAccountId,
+    source: FinancePaymentSource.DIRECT,
+    method: { not: FinancePaymentMethod.CASH },
+    paidAt: {
+      gte: reconciliation.periodStart,
+      lte: reconciliation.periodEnd,
+    },
+  };
+
+  const refundWhere = {
+    bankAccountId: reconciliation.bankAccountId,
+    method: { not: FinancePaymentMethod.CASH },
+    refundedAt: {
+      gte: reconciliation.periodStart,
+      lte: reconciliation.periodEnd,
+    },
+  };
+
+  const [payments, refunds, statementEntries] = await Promise.all([
+    db.financePayment.findMany({
+      where: paymentWhere,
+      orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        paymentNo: true,
+        amount: true,
+        allocatedAmount: true,
+        creditedAmount: true,
+        reversedAmount: true,
+        reversedAllocatedAmount: true,
+        reversedCreditedAmount: true,
+        source: true,
+        method: true,
+        referenceNo: true,
+        note: true,
+        paidAt: true,
+        createdAt: true,
+        updatedAt: true,
+        bankAccount: {
+          select: {
+            id: true,
+            code: true,
+            bankName: true,
+            accountName: true,
+            accountNumber: true,
+          },
+        },
+        student: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nis: true,
+            nisn: true,
+            studentClass: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+            },
+          },
+        },
+        invoice: {
+          select: {
+            id: true,
+            invoiceNo: true,
+            periodKey: true,
+            semester: true,
+          },
+        },
+      },
+    }),
+    db.financeRefund.findMany({
+      where: refundWhere,
+      orderBy: [{ refundedAt: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        refundNo: true,
+        amount: true,
+        method: true,
+        referenceNo: true,
+        note: true,
+        refundedAt: true,
+        createdAt: true,
+        bankAccount: {
+          select: {
+            id: true,
+            code: true,
+            bankName: true,
+            accountName: true,
+            accountNumber: true,
+          },
+        },
+        student: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            nis: true,
+            nisn: true,
+            studentClass: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+              },
+            },
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    }),
+    db.financeBankStatementEntry.findMany({
+      where: { reconciliationId: reconciliation.id },
+      orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
+      include: {
+        matchedPayment: {
+          select: {
+            id: true,
+            paymentNo: true,
+            amount: true,
+            allocatedAmount: true,
+            creditedAmount: true,
+            reversedAmount: true,
+            reversedAllocatedAmount: true,
+            reversedCreditedAmount: true,
+            source: true,
+            method: true,
+            referenceNo: true,
+            note: true,
+            paidAt: true,
+            createdAt: true,
+            updatedAt: true,
+            bankAccount: {
+              select: {
+                id: true,
+                code: true,
+                bankName: true,
+                accountName: true,
+                accountNumber: true,
+              },
+            },
+            invoice: {
+              select: {
+                id: true,
+                invoiceNo: true,
+                periodKey: true,
+                semester: true,
+              },
+            },
+          },
+        },
+        matchedRefund: {
+          include: {
+            student: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                nis: true,
+                nisn: true,
+                studentClass: {
+                  select: {
+                    id: true,
+                    name: true,
+                    level: true,
+                  },
+                },
+              },
+            },
+            createdBy: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            bankAccount: {
+              select: {
+                id: true,
+                code: true,
+                bankName: true,
+                accountName: true,
+                accountNumber: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  return { payments, refunds, statementEntries };
+}
+
+async function buildFinanceBankReconciliationSummary(
+  db: Prisma.TransactionClient | typeof prisma,
+  reconciliation: {
+    id: number;
+    bankAccountId: number;
+    periodStart: Date;
+    periodEnd: Date;
+    statementOpeningBalance: number;
+    statementClosingBalance: number;
+  },
+) {
+  const { payments, refunds, statementEntries } = await loadFinanceBankReconciliationTransactions(
+    db,
+    reconciliation,
+  );
+  const paymentRows = payments as any[];
+  const refundRows = refunds as any[];
+  const statementEntryRows = statementEntries as any[];
+
+  const matchedPaymentIds = new Set(
+    statementEntryRows
+      .map((entry: any) => entry.matchedPaymentId)
+      .filter((value: any): value is number => Number.isInteger(value)),
+  );
+  const matchedRefundIds = new Set(
+    statementEntryRows
+      .map((entry: any) => entry.matchedRefundId)
+      .filter((value: any): value is number => Number.isInteger(value)),
+  );
+
+  const systemPayments = paymentRows
+    .map((payment: any) => {
+      const serialized = serializeFinancePaymentRecord(payment);
+      const netBankAmount = normalizeFinanceAmount(
+        Math.max(Number(payment.amount || 0) - Number(payment.reversedAmount || 0), 0),
+      );
+      return {
+        ...serialized,
+        netBankAmount,
+        matched: matchedPaymentIds.has(payment.id),
+      } satisfies SerializedFinanceBankSystemPayment;
+    })
+    .filter((payment: any) => payment.netBankAmount > 0);
+
+  const systemRefunds = refundRows.map((refund: any) => ({
+    ...serializeFinanceRefundRecord(refund),
+    matched: matchedRefundIds.has(refund.id),
+  })) satisfies SerializedFinanceBankSystemRefund[];
+
+  const statementIn = normalizeFinanceAmount(
+    statementEntryRows
+      .filter((entry: any) => entry.direction === 'CREDIT')
+      .reduce((sum: number, entry: any) => sum + Number(entry.amount || 0), 0),
+  );
+  const statementOut = normalizeFinanceAmount(
+    statementEntryRows
+      .filter((entry: any) => entry.direction === 'DEBIT')
+      .reduce((sum: number, entry: any) => sum + Number(entry.amount || 0), 0),
+  );
+  const expectedBankIn = normalizeFinanceAmount(
+    systemPayments.reduce((sum: number, payment: any) => sum + Number(payment.netBankAmount || 0), 0),
+  );
+  const expectedBankOut = normalizeFinanceAmount(
+    systemRefunds.reduce((sum: number, refund: any) => sum + Number(refund.amount || 0), 0),
+  );
+  const expectedClosingBalance = normalizeFinanceAmount(
+    Number(reconciliation.statementOpeningBalance || 0) + expectedBankIn - expectedBankOut,
+  );
+  const statementComputedClosingBalance = normalizeFinanceAmount(
+    Number(reconciliation.statementOpeningBalance || 0) + statementIn - statementOut,
+  );
+  const varianceAmount = normalizeFinanceAmount(
+    Number(reconciliation.statementClosingBalance || 0) - expectedClosingBalance,
+  );
+  const statementGapAmount = normalizeFinanceAmount(
+    Number(reconciliation.statementClosingBalance || 0) - statementComputedClosingBalance,
+  );
+
+  const summary: SerializedFinanceBankReconciliationSummary = {
+    expectedBankIn,
+    expectedBankOut,
+    expectedClosingBalance,
+    statementRecordedIn: statementIn,
+    statementRecordedOut: statementOut,
+    statementComputedClosingBalance,
+    varianceAmount,
+    statementGapAmount,
+    totalPaymentCount: systemPayments.length,
+    totalRefundCount: systemRefunds.length,
+    matchedPaymentCount: systemPayments.filter((payment: any) => payment.matched).length,
+    matchedRefundCount: systemRefunds.filter((refund: any) => refund.matched).length,
+    unmatchedPaymentCount: systemPayments.filter((payment: any) => !payment.matched).length,
+    unmatchedRefundCount: systemRefunds.filter((refund: any) => !refund.matched).length,
+    matchedStatementEntryCount: statementEntryRows.filter((entry: any) => entry.status === 'MATCHED').length,
+    unmatchedStatementEntryCount: statementEntryRows.filter((entry: any) => entry.status !== 'MATCHED').length,
+  };
+
+  return {
+    summary,
+    statementEntries: statementEntryRows.map((entry: any) => serializeFinanceBankStatementEntry(entry)),
+    systemPayments: systemPayments.slice(0, 12),
+    systemRefunds: systemRefunds.slice(0, 12),
+  };
+}
+
+async function serializeFinanceBankReconciliationRecord(
+  db: Prisma.TransactionClient | typeof prisma,
+  reconciliation: {
+    id: number;
+    bankAccountId: number;
+    reconciliationNo: string;
+    status: FinanceBankReconciliationStatus;
+    periodStart: Date;
+    periodEnd: Date;
+    statementOpeningBalance: number;
+    statementClosingBalance: number;
+    note?: string | null;
+    finalizedAt?: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+    bankAccount: {
+      id: number;
+      code: string;
+      bankName: string;
+      accountName: string;
+      accountNumber: string;
+      branch?: string | null;
+      notes?: string | null;
+      isActive: boolean;
+      createdAt: Date;
+      updatedAt: Date;
+    };
+    createdBy?: {
+      id: number;
+      name: string;
+      role: string;
+    } | null;
+    finalizedBy?: {
+      id: number;
+      name: string;
+      role: string;
+    } | null;
+  },
+): Promise<SerializedFinanceBankReconciliation> {
+  const details = await buildFinanceBankReconciliationSummary(db, reconciliation);
+
+  return {
+    id: reconciliation.id,
+    reconciliationNo: reconciliation.reconciliationNo,
+    status: reconciliation.status,
+    periodStart: reconciliation.periodStart,
+    periodEnd: reconciliation.periodEnd,
+    statementOpeningBalance: normalizeFinanceAmount(Number(reconciliation.statementOpeningBalance || 0)),
+    statementClosingBalance: normalizeFinanceAmount(Number(reconciliation.statementClosingBalance || 0)),
+    note: reconciliation.note || null,
+    bankAccount: serializeFinanceBankAccount(reconciliation.bankAccount),
+    createdBy: reconciliation.createdBy || null,
+    finalizedBy: reconciliation.finalizedBy || null,
+    finalizedAt: reconciliation.finalizedAt || null,
+    createdAt: reconciliation.createdAt,
+    updatedAt: reconciliation.updatedAt,
+    summary: details.summary,
+    statementEntries: details.statementEntries,
+    systemPayments: details.systemPayments,
+    systemRefunds: details.systemRefunds,
+  };
+}
+
+async function resolveFinanceBankStatementAutoMatch(
+  db: Prisma.TransactionClient | typeof prisma,
+  reconciliation: {
+    id: number;
+    bankAccountId: number;
+    periodStart: Date;
+    periodEnd: Date;
+  },
+  payload: {
+    entryDate: Date;
+    direction: FinanceBankStatementDirection;
+    amount: number;
+    referenceNo?: string | null;
+  },
+): Promise<{
+  status: FinanceBankStatementEntryStatus;
+  matchedPaymentId: number | null;
+  matchedRefundId: number | null;
+}> {
+  const { payments, refunds, statementEntries } = await loadFinanceBankReconciliationTransactions(db, reconciliation);
+  const paymentRows = payments as any[];
+  const refundRows = refunds as any[];
+  const statementEntryRows = statementEntries as any[];
+  const normalizedAmount = normalizeFinanceAmount(Number(payload.amount || 0));
+  const referenceKey = normalizeFinanceReferenceKey(payload.referenceNo);
+
+  if (payload.direction === 'CREDIT') {
+    const reservedPaymentIds = new Set(
+      statementEntryRows
+        .map((entry: any) => entry.matchedPaymentId)
+        .filter((value: any): value is number => Number.isInteger(value)),
+    );
+    const candidates = paymentRows
+      .filter((payment: any) => !reservedPaymentIds.has(payment.id))
+      .map((payment: any) => ({
+        payment,
+        netBankAmount: normalizeFinanceAmount(
+          Math.max(Number(payment.amount || 0) - Number(payment.reversedAmount || 0), 0),
+        ),
+      }))
+      .filter((row: any) => row.netBankAmount > 0 && row.netBankAmount === normalizedAmount);
+
+    if (referenceKey) {
+      const exact = candidates.filter((row: any) => {
+        const paymentRefKey = normalizeFinanceReferenceKey(row.payment.referenceNo);
+        const paymentNoKey = normalizeFinanceReferenceKey(row.payment.paymentNo);
+        return paymentRefKey === referenceKey || paymentNoKey === referenceKey;
+      });
+      if (exact.length === 1) {
+        return {
+          status: 'MATCHED',
+          matchedPaymentId: exact[0].payment.id,
+          matchedRefundId: null,
+        };
+      }
+    }
+
+    const sameDay = candidates.filter((row: any) => isFinanceSameDay(row.payment.paidAt, payload.entryDate));
+    if (sameDay.length === 1) {
+      return {
+        status: 'MATCHED',
+        matchedPaymentId: sameDay[0].payment.id,
+        matchedRefundId: null,
+      };
+    }
+  } else {
+    const reservedRefundIds = new Set(
+      statementEntryRows
+        .map((entry: any) => entry.matchedRefundId)
+        .filter((value: any): value is number => Number.isInteger(value)),
+    );
+    const candidates = refundRows
+      .filter((refund: any) => !reservedRefundIds.has(refund.id))
+      .filter((refund: any) => normalizeFinanceAmount(Number(refund.amount || 0)) === normalizedAmount);
+
+    if (referenceKey) {
+      const exact = candidates.filter((refund: any) => {
+        const refundRefKey = normalizeFinanceReferenceKey(refund.referenceNo);
+        const refundNoKey = normalizeFinanceReferenceKey(refund.refundNo);
+        return refundRefKey === referenceKey || refundNoKey === referenceKey;
+      });
+      if (exact.length === 1) {
+        return {
+          status: 'MATCHED',
+          matchedPaymentId: null,
+          matchedRefundId: exact[0].id,
+        };
+      }
+    }
+
+    const sameDay = candidates.filter((refund: any) => isFinanceSameDay(refund.refundedAt, payload.entryDate));
+    if (sameDay.length === 1) {
+      return {
+        status: 'MATCHED',
+        matchedPaymentId: null,
+        matchedRefundId: sameDay[0].id,
+      };
+    }
+  }
+
+  return {
+    status: 'UNMATCHED',
+    matchedPaymentId: null,
+    matchedRefundId: null,
   };
 }
 
@@ -4771,6 +5606,153 @@ export const listFinanceClassLevels = asyncHandler(async (req: Request, res: Res
   res.status(200).json(new ApiResponse(200, { levels }, 'Level kelas finance berhasil diambil'));
 });
 
+export const listFinanceBankAccounts = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinanceActor((req as any).user || {}, {
+    allowPrincipalReadOnly: true,
+    allowHeadTuReadOnly: true,
+  });
+
+  const { isActive, search } = listFinanceBankAccountsQuerySchema.parse(req.query);
+  const normalizedSearch = search?.trim();
+
+  const rows = await prisma.financeBankAccount.findMany({
+    where: {
+      ...(isActive !== undefined ? { isActive } : {}),
+      ...(normalizedSearch
+        ? {
+            OR: [
+              { code: { contains: normalizedSearch, mode: 'insensitive' } },
+              { bankName: { contains: normalizedSearch, mode: 'insensitive' } },
+              { accountName: { contains: normalizedSearch, mode: 'insensitive' } },
+              { accountNumber: { contains: normalizedSearch, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: [{ isActive: 'desc' }, { bankName: 'asc' }, { accountNumber: 'asc' }],
+  });
+
+  const accounts = rows.map((row: any) => serializeFinanceBankAccount(row));
+
+  res.status(200).json(new ApiResponse(200, { accounts }, 'Rekening bank finance berhasil diambil'));
+});
+
+export const createFinanceBankAccount = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+  const payload = createFinanceBankAccountSchema.parse(req.body || {});
+  const code = normalizeFinanceCode(payload.code);
+
+  const existing = await prisma.financeBankAccount.findFirst({
+    where: {
+      OR: [{ code }, { bankName: payload.bankName, accountNumber: payload.accountNumber }],
+    },
+    select: { id: true },
+  });
+
+  if (existing) {
+    throw new ApiError(400, 'Rekening bank dengan kode atau nomor akun tersebut sudah ada');
+  }
+
+  const bankAccount = await prisma.financeBankAccount.create({
+    data: {
+      code,
+      bankName: payload.bankName.trim(),
+      accountName: payload.accountName.trim(),
+      accountNumber: payload.accountNumber.trim(),
+      branch: payload.branch?.trim() || null,
+      notes: payload.notes?.trim() || null,
+      isActive: payload.isActive ?? true,
+      createdById: actor.id,
+    },
+  });
+
+  const serialized = serializeFinanceBankAccount(bankAccount);
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'CREATE',
+      'FINANCE_BANK_ACCOUNT',
+      serialized.id,
+      null,
+      serialized,
+      'Pembuatan rekening bank finance',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat rekening bank finance', auditError);
+  }
+
+  res.status(201).json(new ApiResponse(201, { account: serialized }, 'Rekening bank berhasil ditambahkan'));
+});
+
+export const updateFinanceBankAccount = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+
+  const accountId = Number(req.params.id);
+  if (!Number.isInteger(accountId) || accountId <= 0) {
+    throw new ApiError(400, 'ID rekening bank tidak valid');
+  }
+
+  const payload = updateFinanceBankAccountSchema.parse(req.body || {});
+  const before = await prisma.financeBankAccount.findUnique({
+    where: { id: accountId },
+  });
+
+  if (!before) {
+    throw new ApiError(404, 'Rekening bank tidak ditemukan');
+  }
+
+  const code = payload.code ? normalizeFinanceCode(payload.code) : undefined;
+  if (code && code !== before.code) {
+    const duplicate = await prisma.financeBankAccount.findFirst({
+      where: {
+        code,
+        NOT: { id: accountId },
+      },
+      select: { id: true },
+    });
+
+    if (duplicate) {
+      throw new ApiError(400, 'Kode rekening bank sudah digunakan');
+    }
+  }
+
+  const updated = await prisma.financeBankAccount.update({
+    where: { id: accountId },
+    data: {
+      ...(code ? { code } : {}),
+      ...(payload.bankName !== undefined ? { bankName: payload.bankName.trim() } : {}),
+      ...(payload.accountName !== undefined ? { accountName: payload.accountName.trim() } : {}),
+      ...(payload.accountNumber !== undefined ? { accountNumber: payload.accountNumber.trim() } : {}),
+      ...(payload.branch !== undefined ? { branch: payload.branch?.trim() || null } : {}),
+      ...(payload.notes !== undefined ? { notes: payload.notes?.trim() || null } : {}),
+      ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
+    },
+  });
+
+  const serialized = serializeFinanceBankAccount(updated);
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'UPDATE',
+      'FINANCE_BANK_ACCOUNT',
+      serialized.id,
+      before,
+      serialized,
+      'Perubahan rekening bank finance',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat perubahan rekening bank finance', auditError);
+  }
+
+  res.status(200).json(new ApiResponse(200, { account: serialized }, 'Rekening bank berhasil diperbarui'));
+});
+
 export const getFinanceReminderPolicy = asyncHandler(async (req: Request, res: Response) => {
   await ensureFinanceActor((req as any).user || {}, { allowPrincipalReadOnly: true });
 
@@ -6082,6 +7064,12 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
   const payload = createFinancePaymentSchema.parse(req.body);
 
   const result = await prisma.$transaction(async (tx) => {
+    const bankAccount = await resolveFinanceBankAccountForTransaction(
+      tx,
+      payload.method,
+      payload.bankAccountId,
+    );
+
     const invoice = await tx.financeInvoice.findUnique({
       where: { id: invoiceId },
       include: {
@@ -6133,6 +7121,7 @@ export const createFinancePayment = asyncHandler(async (req: Request, res: Respo
         allocatedAmount,
         creditedAmount,
         method: payload.method,
+        bankAccountId: bankAccount?.id || null,
         referenceNo: payload.referenceNo?.trim() || null,
         note: payload.note?.trim() || null,
         paidAt: payload.paidAt || new Date(),
@@ -7122,6 +8111,12 @@ export const createFinanceRefund = asyncHandler(async (req: Request, res: Respon
   const payload = createFinanceRefundSchema.parse(req.body);
 
   const result = await prisma.$transaction(async (tx) => {
+    const bankAccount = await resolveFinanceBankAccountForTransaction(
+      tx,
+      payload.method,
+      payload.bankAccountId,
+    );
+
     const creditBalance = await tx.financeCreditBalance.findUnique({
       where: { studentId },
       include: {
@@ -7195,6 +8190,7 @@ export const createFinanceRefund = asyncHandler(async (req: Request, res: Respon
         creditTransactionId: creditTransaction.id,
         amount: payload.amount,
         method: payload.method,
+        bankAccountId: bankAccount?.id || null,
         referenceNo: payload.referenceNo?.trim() || null,
         note: payload.note?.trim() || null,
         refundedAt: payload.refundedAt || new Date(),
@@ -7221,6 +8217,15 @@ export const createFinanceRefund = asyncHandler(async (req: Request, res: Respon
           select: {
             id: true,
             name: true,
+          },
+        },
+        bankAccount: {
+          select: {
+            id: true,
+            code: true,
+            bankName: true,
+            accountName: true,
+            accountNumber: true,
           },
         },
       },
@@ -7286,6 +8291,397 @@ export const createFinanceRefund = asyncHandler(async (req: Request, res: Respon
       },
       'Refund saldo kredit berhasil dicatat',
     ),
+  );
+});
+
+export const listFinanceBankReconciliations = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinanceBankReconciliationViewer((req as any).user || {});
+
+  const { bankAccountId, status, limit } = listFinanceBankReconciliationsQuerySchema.parse(req.query);
+
+  const rows = await prisma.financeBankReconciliation.findMany({
+    where: {
+      ...(bankAccountId ? { bankAccountId } : {}),
+      ...(status ? { status } : {}),
+    },
+    include: financeBankReconciliationRecordInclude,
+    orderBy: [{ status: 'asc' }, { periodEnd: 'desc' }, { id: 'desc' }],
+    take: limit,
+  });
+
+  const reconciliations = await Promise.all(
+    rows.map((row: any) => serializeFinanceBankReconciliationRecord(prisma, row)),
+  );
+
+  const summary = reconciliations.reduce(
+    (acc: any, reconciliation: any) => {
+      acc.totalReconciliations += 1;
+      if (reconciliation.status === 'OPEN') acc.openCount += 1;
+      if (reconciliation.status === 'FINALIZED') acc.finalizedCount += 1;
+      acc.totalExpectedBankIn += reconciliation.summary.expectedBankIn;
+      acc.totalExpectedBankOut += reconciliation.summary.expectedBankOut;
+      acc.totalVarianceAmount += reconciliation.summary.varianceAmount;
+      acc.totalStatementGapAmount += reconciliation.summary.statementGapAmount;
+      acc.totalUnmatchedPayments += reconciliation.summary.unmatchedPaymentCount;
+      acc.totalUnmatchedRefunds += reconciliation.summary.unmatchedRefundCount;
+      acc.totalUnmatchedStatementEntries += reconciliation.summary.unmatchedStatementEntryCount;
+      return acc;
+    },
+    {
+      totalReconciliations: 0,
+      openCount: 0,
+      finalizedCount: 0,
+      totalExpectedBankIn: 0,
+      totalExpectedBankOut: 0,
+      totalVarianceAmount: 0,
+      totalStatementGapAmount: 0,
+      totalUnmatchedPayments: 0,
+      totalUnmatchedRefunds: 0,
+      totalUnmatchedStatementEntries: 0,
+    },
+  );
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        reconciliations,
+        summary,
+      },
+      'Rekonsiliasi bank berhasil diambil',
+    ),
+  );
+});
+
+export const createFinanceBankReconciliation = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+  const payload = createFinanceBankReconciliationSchema.parse(req.body || {});
+  const periodStart = parseFinanceDateInput(payload.periodStart, false);
+  const periodEnd = parseFinanceDateInput(payload.periodEnd, true);
+
+  const result = await prisma.$transaction(async (tx) => {
+    const bankAccount = await tx.financeBankAccount.findUnique({
+      where: { id: payload.bankAccountId },
+      select: {
+        id: true,
+        isActive: true,
+      },
+    });
+
+    if (!bankAccount || !bankAccount.isActive) {
+      throw new ApiError(400, 'Rekening bank tidak valid atau sudah nonaktif');
+    }
+
+    const overlapping = await tx.financeBankReconciliation.findFirst({
+      where: {
+        bankAccountId: payload.bankAccountId,
+        status: 'OPEN',
+        periodStart: { lte: periodEnd },
+        periodEnd: { gte: periodStart },
+      },
+      select: {
+        id: true,
+        reconciliationNo: true,
+      },
+    });
+
+    if (overlapping) {
+      throw new ApiError(
+        400,
+        `Masih ada rekonsiliasi bank terbuka yang overlap (${overlapping.reconciliationNo})`,
+      );
+    }
+
+    const reconciliation = await tx.financeBankReconciliation.create({
+      data: {
+        reconciliationNo: makeFinanceBankReconciliationNo(payload.bankAccountId),
+        bankAccountId: payload.bankAccountId,
+        periodStart,
+        periodEnd,
+        statementOpeningBalance: normalizeFinanceAmount(Number(payload.statementOpeningBalance || 0)),
+        statementClosingBalance: normalizeFinanceAmount(Number(payload.statementClosingBalance || 0)),
+        note: payload.note?.trim() || null,
+        createdById: actor.id,
+      },
+      include: financeBankReconciliationRecordInclude,
+    });
+
+    return serializeFinanceBankReconciliationRecord(tx, reconciliation);
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'CREATE',
+      'FINANCE_BANK_RECONCILIATION',
+      result.id,
+      null,
+      result,
+      'Pembuatan rekonsiliasi bank finance',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat pembuatan rekonsiliasi bank finance', auditError);
+  }
+
+  res.status(201).json(
+    new ApiResponse(201, { reconciliation: result }, 'Rekonsiliasi bank berhasil dibuat'),
+  );
+});
+
+export const createFinanceBankStatementEntry = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+
+  const reconciliationId = Number(req.params.id);
+  if (!Number.isInteger(reconciliationId) || reconciliationId <= 0) {
+    throw new ApiError(400, 'ID rekonsiliasi bank tidak valid');
+  }
+
+  const payload = createFinanceBankStatementEntrySchema.parse(req.body || {});
+  const entryDate = parseFinanceDateInput(payload.entryDate, false);
+
+  const result = await prisma.$transaction(async (tx) => {
+    const reconciliation = await tx.financeBankReconciliation.findUnique({
+      where: { id: reconciliationId },
+      include: financeBankReconciliationRecordInclude,
+    });
+
+    if (!reconciliation) {
+      throw new ApiError(404, 'Rekonsiliasi bank tidak ditemukan');
+    }
+
+    if (reconciliation.status !== 'OPEN') {
+      throw new ApiError(400, 'Mutasi hanya bisa ditambahkan ke rekonsiliasi bank yang masih terbuka');
+    }
+
+    const autoMatch = await resolveFinanceBankStatementAutoMatch(tx, reconciliation, {
+      entryDate,
+      direction: payload.direction,
+      amount: payload.amount,
+      referenceNo: payload.referenceNo?.trim() || null,
+    });
+
+    const entry = await tx.financeBankStatementEntry.create({
+      data: {
+        reconciliationId,
+        entryDate,
+        direction: payload.direction,
+        amount: normalizeFinanceAmount(Number(payload.amount || 0)),
+        referenceNo: payload.referenceNo?.trim() || null,
+        description: payload.description?.trim() || null,
+        status: autoMatch.status,
+        matchedPaymentId: autoMatch.matchedPaymentId,
+        matchedRefundId: autoMatch.matchedRefundId,
+        createdById: actor.id,
+      },
+      include: {
+        matchedPayment: {
+          select: {
+            id: true,
+            paymentNo: true,
+            amount: true,
+            allocatedAmount: true,
+            creditedAmount: true,
+            reversedAmount: true,
+            reversedAllocatedAmount: true,
+            reversedCreditedAmount: true,
+            source: true,
+            method: true,
+            referenceNo: true,
+            note: true,
+            paidAt: true,
+            createdAt: true,
+            updatedAt: true,
+            bankAccount: {
+              select: {
+                id: true,
+                code: true,
+                bankName: true,
+                accountName: true,
+                accountNumber: true,
+              },
+            },
+            invoice: {
+              select: {
+                id: true,
+                invoiceNo: true,
+                periodKey: true,
+                semester: true,
+              },
+            },
+          },
+        },
+        matchedRefund: {
+          include: {
+            student: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                nis: true,
+                nisn: true,
+                studentClass: {
+                  select: {
+                    id: true,
+                    name: true,
+                    level: true,
+                  },
+                },
+              },
+            },
+            createdBy: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            bankAccount: {
+              select: {
+                id: true,
+                code: true,
+                bankName: true,
+                accountName: true,
+                accountNumber: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const refreshedReconciliation = await tx.financeBankReconciliation.findUnique({
+      where: { id: reconciliationId },
+      include: financeBankReconciliationRecordInclude,
+    });
+
+    if (!refreshedReconciliation) {
+      throw new ApiError(404, 'Rekonsiliasi bank tidak ditemukan setelah mutasi ditambahkan');
+    }
+
+    const serializedReconciliation = await serializeFinanceBankReconciliationRecord(
+      tx,
+      refreshedReconciliation,
+    );
+    return {
+      entry: serializeFinanceBankStatementEntry(entry),
+      reconciliation: serializedReconciliation,
+    };
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'CREATE',
+      'FINANCE_BANK_STATEMENT_ENTRY',
+      result.entry.id,
+      null,
+      result.entry,
+      'Pencatatan mutasi statement bank finance',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat mutasi statement bank finance', auditError);
+  }
+
+  res.status(201).json(
+    new ApiResponse(
+      201,
+      result,
+      result.entry.status === 'MATCHED'
+        ? 'Mutasi bank berhasil ditambahkan dan otomatis matched'
+        : 'Mutasi bank berhasil ditambahkan',
+    ),
+  );
+});
+
+export const finalizeFinanceBankReconciliation = asyncHandler(async (req: Request, res: Response) => {
+  const actor = await ensureFinanceActor((req as any).user || {});
+
+  const reconciliationId = Number(req.params.id);
+  if (!Number.isInteger(reconciliationId) || reconciliationId <= 0) {
+    throw new ApiError(400, 'ID rekonsiliasi bank tidak valid');
+  }
+
+  const payload = finalizeFinanceBankReconciliationSchema.parse(req.body || {});
+
+  const before = await prisma.financeBankReconciliation.findUnique({
+    where: { id: reconciliationId },
+    include: financeBankReconciliationRecordInclude,
+  });
+
+  if (!before) {
+    throw new ApiError(404, 'Rekonsiliasi bank tidak ditemukan');
+  }
+
+  if (before.status !== 'OPEN') {
+    throw new ApiError(400, 'Rekonsiliasi bank sudah difinalkan');
+  }
+
+  const snapshot = await buildFinanceBankReconciliationSummary(prisma, before);
+  const hasVariance = isFinanceNonZeroAmount(snapshot.summary.varianceAmount);
+  const hasStatementGap = isFinanceNonZeroAmount(snapshot.summary.statementGapAmount);
+  const hasOpenItems =
+    snapshot.summary.unmatchedPaymentCount > 0 ||
+    snapshot.summary.unmatchedRefundCount > 0 ||
+    snapshot.summary.unmatchedStatementEntryCount > 0;
+
+  if ((hasVariance || hasStatementGap || hasOpenItems) && !payload.note?.trim()) {
+    throw new ApiError(
+      400,
+      'Catatan finalisasi wajib diisi jika masih ada variance, gap statement, atau item yang belum matched',
+    );
+  }
+
+  const updated = await prisma.financeBankReconciliation.update({
+    where: { id: reconciliationId },
+    data: {
+      status: 'FINALIZED',
+      finalizedById: actor.id,
+      finalizedAt: new Date(),
+      note: payload.note?.trim() || before.note || null,
+    },
+    include: financeBankReconciliationRecordInclude,
+  });
+
+  const serialized = await serializeFinanceBankReconciliationRecord(prisma, updated);
+
+  await createFinanceInternalNotifications({
+    scopes: ['HEAD_TU', 'PRINCIPAL'],
+    title: 'Rekonsiliasi Bank Difinalkan',
+    message: `Rekonsiliasi ${serialized.reconciliationNo} untuk ${serialized.bankAccount.bankName} ${serialized.bankAccount.accountNumber} sudah difinalkan.`,
+    type: 'FINANCE_BANK_RECONCILIATION_FINALIZED',
+    data: {
+      reconciliationId: serialized.id,
+      reconciliationNo: serialized.reconciliationNo,
+      bankAccountId: serialized.bankAccount.id,
+      bankAccountCode: serialized.bankAccount.code,
+      varianceAmount: serialized.summary.varianceAmount,
+      unmatchedPaymentCount: serialized.summary.unmatchedPaymentCount,
+      unmatchedRefundCount: serialized.summary.unmatchedRefundCount,
+      unmatchedStatementEntryCount: serialized.summary.unmatchedStatementEntryCount,
+    },
+  });
+
+  try {
+    await writeAuditLog(
+      actor.id,
+      actor.role,
+      actor.additionalDuties,
+      'UPDATE',
+      'FINANCE_BANK_RECONCILIATION_FINALIZE',
+      serialized.id,
+      before,
+      serialized,
+      'Finalisasi rekonsiliasi bank finance',
+    );
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat finalisasi rekonsiliasi bank finance', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(200, { reconciliation: serialized }, 'Rekonsiliasi bank berhasil difinalkan'),
   );
 });
 

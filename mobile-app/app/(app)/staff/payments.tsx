@@ -17,7 +17,10 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import {
   type FinanceAdjustmentKind,
+  type FinanceBankStatementDirection,
   staffFinanceApi,
+  type StaffFinanceBankAccount,
+  type StaffFinanceBankReconciliation,
   type StaffFinanceCashSession,
   type StaffFinanceCashSessionApprovalPolicy,
   type FinanceComponentPeriodicity,
@@ -312,6 +315,13 @@ function getCashSessionApprovalBadge(status: StaffFinanceCashSession['approvalSt
   return { label: 'Belum Diajukan', bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
 }
 
+function getBankReconciliationStatusBadge(status: StaffFinanceBankReconciliation['status']) {
+  if (status === 'FINALIZED') {
+    return { label: 'Final', bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  }
+  return { label: 'Terbuka', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+}
+
 export default function StaffPaymentsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -407,12 +417,14 @@ export default function StaffPaymentsScreen() {
   const [installmentScheduleNote, setInstallmentScheduleNote] = useState('');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<FinancePaymentMethod>('CASH');
+  const [paymentBankAccountId, setPaymentBankAccountId] = useState<number | ''>('');
   const [paymentReference, setPaymentReference] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
   const [creditSearch, setCreditSearch] = useState('');
   const [selectedCreditBalance, setSelectedCreditBalance] = useState<StaffFinanceCreditBalanceRow | null>(null);
   const [refundAmount, setRefundAmount] = useState('');
   const [refundMethod, setRefundMethod] = useState<FinancePaymentMethod>('BANK_TRANSFER');
+  const [refundBankAccountId, setRefundBankAccountId] = useState<number | ''>('');
   const [refundReference, setRefundReference] = useState('');
   const [refundNote, setRefundNote] = useState('');
   const [writeOffTargetInvoice, setWriteOffTargetInvoice] = useState<StaffFinanceInvoice | null>(null);
@@ -432,6 +444,25 @@ export default function StaffPaymentsScreen() {
   const [cashSessionRequireVarianceNote, setCashSessionRequireVarianceNote] = useState(true);
   const [cashSessionPrincipalApprovalThresholdAmount, setCashSessionPrincipalApprovalThresholdAmount] = useState('100000');
   const [cashSessionApprovalPolicyNotes, setCashSessionApprovalPolicyNotes] = useState('');
+  const [editingBankAccountId, setEditingBankAccountId] = useState<number | null>(null);
+  const [bankAccountCode, setBankAccountCode] = useState('');
+  const [bankAccountBankName, setBankAccountBankName] = useState('');
+  const [bankAccountAccountName, setBankAccountAccountName] = useState('');
+  const [bankAccountNumber, setBankAccountNumber] = useState('');
+  const [bankAccountBranch, setBankAccountBranch] = useState('');
+  const [bankAccountNotes, setBankAccountNotes] = useState('');
+  const [bankReconciliationAccountId, setBankReconciliationAccountId] = useState<number | ''>('');
+  const [bankReconciliationPeriodStart, setBankReconciliationPeriodStart] = useState(getTodayInputDate());
+  const [bankReconciliationPeriodEnd, setBankReconciliationPeriodEnd] = useState(getTodayInputDate());
+  const [bankReconciliationOpeningBalance, setBankReconciliationOpeningBalance] = useState('0');
+  const [bankReconciliationClosingBalance, setBankReconciliationClosingBalance] = useState('0');
+  const [bankReconciliationNote, setBankReconciliationNote] = useState('');
+  const [selectedBankReconciliationId, setSelectedBankReconciliationId] = useState<number | null>(null);
+  const [bankStatementEntryDate, setBankStatementEntryDate] = useState(getTodayInputDate());
+  const [bankStatementDirection, setBankStatementDirection] = useState<FinanceBankStatementDirection>('CREDIT');
+  const [bankStatementAmount, setBankStatementAmount] = useState('');
+  const [bankStatementReference, setBankStatementReference] = useState('');
+  const [bankStatementDescription, setBankStatementDescription] = useState('');
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-staff-finance-active-year'],
@@ -458,6 +489,20 @@ export default function StaffPaymentsScreen() {
     enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
     queryFn: () => staffFinanceApi.listClassLevels(),
     staleTime: 5 * 60 * 1000,
+  });
+
+  const bankAccountsQuery = useQuery({
+    queryKey: ['mobile-staff-finance-bank-accounts'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => staffFinanceApi.listBankAccounts(),
+    staleTime: 60_000,
+  });
+
+  const bankReconciliationsQuery = useQuery({
+    queryKey: ['mobile-staff-finance-bank-reconciliations'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && canOpenPayments,
+    queryFn: () => staffFinanceApi.listBankReconciliations({ limit: 8 }),
+    staleTime: 30_000,
   });
 
   const majorsQuery = useQuery({
@@ -487,9 +532,53 @@ export default function StaffPaymentsScreen() {
     () => (classLevelsQuery.data || []).map((level) => normalizeClassLevel(level)).filter((value) => value.length > 0),
     [classLevelsQuery.data],
   );
+  const bankAccounts = bankAccountsQuery.data || [];
+  const activeBankAccounts = useMemo(
+    () => bankAccounts.filter((account) => account.isActive),
+    [bankAccounts],
+  );
+  const bankReconciliationSummary = bankReconciliationsQuery.data?.summary;
+  const bankReconciliations = bankReconciliationsQuery.data?.reconciliations || [];
 
   const reminderPolicy = reminderPolicyQuery.data || null;
   const cashSessionApprovalPolicy = cashSessionApprovalPolicyQuery.data || null;
+
+  useEffect(() => {
+    if (bankReconciliationAccountId === '' && activeBankAccounts[0]?.id) {
+      setBankReconciliationAccountId(activeBankAccounts[0].id);
+    }
+  }, [activeBankAccounts, bankReconciliationAccountId]);
+
+  useEffect(() => {
+    if (paymentMethod !== 'CASH' && paymentBankAccountId === '' && activeBankAccounts[0]?.id) {
+      setPaymentBankAccountId(activeBankAccounts[0].id);
+    }
+    if (paymentMethod === 'CASH' && paymentBankAccountId !== '') {
+      setPaymentBankAccountId('');
+    }
+  }, [activeBankAccounts, paymentBankAccountId, paymentMethod]);
+
+  useEffect(() => {
+    if (refundMethod !== 'CASH' && refundBankAccountId === '' && activeBankAccounts[0]?.id) {
+      setRefundBankAccountId(activeBankAccounts[0].id);
+    }
+    if (refundMethod === 'CASH' && refundBankAccountId !== '') {
+      setRefundBankAccountId('');
+    }
+  }, [activeBankAccounts, refundBankAccountId, refundMethod]);
+
+  useEffect(() => {
+    if (!bankReconciliations.length) {
+      setSelectedBankReconciliationId(null);
+      return;
+    }
+    if (
+      selectedBankReconciliationId == null ||
+      !bankReconciliations.some((reconciliation) => reconciliation.id === selectedBankReconciliationId)
+    ) {
+      setSelectedBankReconciliationId(bankReconciliations[0].id);
+    }
+  }, [bankReconciliations, selectedBankReconciliationId]);
 
   useEffect(() => {
     if (!reminderPolicy) return;
@@ -645,6 +734,10 @@ export default function StaffPaymentsScreen() {
   const cashSessionSummary = cashSessionsQuery.data?.summary;
   const cashSessions = cashSessionsQuery.data?.sessions || [];
   const activeCashSession = cashSessionsQuery.data?.activeSession || null;
+  const selectedBankReconciliation =
+    bankReconciliations.find((reconciliation) => reconciliation.id === selectedBankReconciliationId) ||
+    bankReconciliations[0] ||
+    null;
   const writeOffSummary = writeOffsQuery.data?.summary;
   const writeOffRequests = writeOffsQuery.data?.requests || [];
   const paymentReversalSummary = paymentReversalsQuery.data?.summary;
@@ -814,8 +907,40 @@ export default function StaffPaymentsScreen() {
     setSelectedCreditBalance(null);
     setRefundAmount('');
     setRefundMethod('BANK_TRANSFER');
+    setRefundBankAccountId('');
     setRefundReference('');
     setRefundNote('');
+  };
+
+  const resetBankAccountForm = () => {
+    setEditingBankAccountId(null);
+    setBankAccountCode('');
+    setBankAccountBankName('');
+    setBankAccountAccountName('');
+    setBankAccountNumber('');
+    setBankAccountBranch('');
+    setBankAccountNotes('');
+  };
+
+  const resetBankReconciliationForm = () => {
+    setBankReconciliationPeriodStart(getTodayInputDate());
+    setBankReconciliationPeriodEnd(getTodayInputDate());
+    setBankReconciliationOpeningBalance('0');
+    setBankReconciliationClosingBalance('0');
+    setBankReconciliationNote('');
+    setBankStatementEntryDate(getTodayInputDate());
+    setBankStatementDirection('CREDIT');
+    setBankStatementAmount('');
+    setBankStatementReference('');
+    setBankStatementDescription('');
+  };
+
+  const resetBankStatementEntryForm = () => {
+    setBankStatementEntryDate(getTodayInputDate());
+    setBankStatementDirection('CREDIT');
+    setBankStatementAmount('');
+    setBankStatementReference('');
+    setBankStatementDescription('');
   };
 
   const resetWriteOffForm = () => {
@@ -852,6 +977,8 @@ export default function StaffPaymentsScreen() {
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-adjustments'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-invoices'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-credits'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-bank-accounts'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-bank-reconciliations'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-cash-sessions'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-write-offs'] });
     void queryClient.invalidateQueries({ queryKey: ['mobile-staff-finance-payment-reversals'] });
@@ -1127,6 +1254,7 @@ export default function StaffPaymentsScreen() {
       return staffFinanceApi.payInvoice(selectedInvoice.id, {
         amount: Number(paymentAmount),
         method: paymentMethod,
+        bankAccountId: paymentBankAccountId === '' ? undefined : Number(paymentBankAccountId),
         referenceNo: paymentReference || undefined,
         note: paymentNote || undefined,
       });
@@ -1138,6 +1266,7 @@ export default function StaffPaymentsScreen() {
       setPaymentReference('');
       setPaymentNote('');
       setPaymentMethod('CASH');
+      setPaymentBankAccountId('');
       invalidateFinanceQueries();
     },
     onError: (error: unknown) => notifyApiError(error, 'Gagal mencatat pembayaran.'),
@@ -1180,6 +1309,7 @@ export default function StaffPaymentsScreen() {
       return staffFinanceApi.createRefund(selectedCreditBalance.studentId, {
         amount: Number(refundAmount),
         method: refundMethod,
+        bankAccountId: refundBankAccountId === '' ? undefined : Number(refundBankAccountId),
         referenceNo: refundReference || undefined,
         note: refundNote || undefined,
       });
@@ -1190,6 +1320,91 @@ export default function StaffPaymentsScreen() {
       invalidateFinanceQueries();
     },
     onError: (error: unknown) => notifyApiError(error, 'Gagal mencatat refund saldo kredit.'),
+  });
+
+  const saveBankAccountMutation = useMutation({
+    mutationFn: () =>
+      editingBankAccountId
+        ? staffFinanceApi.updateBankAccount(editingBankAccountId, {
+            code: bankAccountCode,
+            bankName: bankAccountBankName,
+            accountName: bankAccountAccountName,
+            accountNumber: bankAccountNumber,
+            branch: bankAccountBranch || undefined,
+            notes: bankAccountNotes || undefined,
+          })
+        : staffFinanceApi.createBankAccount({
+            code: bankAccountCode,
+            bankName: bankAccountBankName,
+            accountName: bankAccountAccountName,
+            accountNumber: bankAccountNumber,
+            branch: bankAccountBranch || undefined,
+            notes: bankAccountNotes || undefined,
+          }),
+    onSuccess: () => {
+      notifySuccess(editingBankAccountId ? 'Rekening bank diperbarui.' : 'Rekening bank ditambahkan.');
+      resetBankAccountForm();
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal menyimpan rekening bank.'),
+  });
+
+  const toggleBankAccountMutation = useMutation({
+    mutationFn: (account: StaffFinanceBankAccount) =>
+      staffFinanceApi.updateBankAccount(account.id, { isActive: !account.isActive }),
+    onSuccess: (_, account) => {
+      notifySuccess(account.isActive ? 'Rekening bank dinonaktifkan.' : 'Rekening bank diaktifkan.');
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal mengubah status rekening bank.'),
+  });
+
+  const createBankReconciliationMutation = useMutation({
+    mutationFn: () =>
+      staffFinanceApi.createBankReconciliation({
+        bankAccountId: Number(bankReconciliationAccountId),
+        periodStart: bankReconciliationPeriodStart,
+        periodEnd: bankReconciliationPeriodEnd,
+        statementOpeningBalance: Number(bankReconciliationOpeningBalance || 0),
+        statementClosingBalance: Number(bankReconciliationClosingBalance || 0),
+        note: bankReconciliationNote.trim() || undefined,
+      }),
+    onSuccess: (reconciliation) => {
+      notifySuccess('Rekonsiliasi bank berhasil dibuat.');
+      setSelectedBankReconciliationId(reconciliation.id);
+      resetBankReconciliationForm();
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal membuat rekonsiliasi bank.'),
+  });
+
+  const createBankStatementEntryMutation = useMutation({
+    mutationFn: (reconciliation: StaffFinanceBankReconciliation) =>
+      staffFinanceApi.createBankStatementEntry(reconciliation.id, {
+        entryDate: bankStatementEntryDate,
+        direction: bankStatementDirection,
+        amount: Number(bankStatementAmount || 0),
+        referenceNo: bankStatementReference.trim() || undefined,
+        description: bankStatementDescription.trim() || undefined,
+      }),
+    onSuccess: () => {
+      notifySuccess('Mutasi statement bank dicatat.');
+      resetBankStatementEntryForm();
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal mencatat mutasi statement bank.'),
+  });
+
+  const finalizeBankReconciliationMutation = useMutation({
+    mutationFn: (reconciliation: StaffFinanceBankReconciliation) =>
+      staffFinanceApi.finalizeBankReconciliation(reconciliation.id, {
+        note: bankReconciliationNote.trim() || undefined,
+      }),
+    onSuccess: () => {
+      notifySuccess('Rekonsiliasi bank berhasil difinalkan.');
+      invalidateFinanceQueries();
+    },
+    onError: (error: unknown) => notifyApiError(error, 'Gagal memfinalkan rekonsiliasi bank.'),
   });
 
   const openCashSessionMutation = useMutation({
@@ -1471,10 +1686,74 @@ export default function StaffPaymentsScreen() {
     closeCashSessionMutation.mutate(session);
   };
 
+  const handleEditBankAccount = (account: StaffFinanceBankAccount) => {
+    setEditingBankAccountId(account.id);
+    setBankAccountCode(account.code);
+    setBankAccountBankName(account.bankName);
+    setBankAccountAccountName(account.accountName);
+    setBankAccountNumber(account.accountNumber);
+    setBankAccountBranch(account.branch || '');
+    setBankAccountNotes(account.notes || '');
+  };
+
+  const handleSaveBankAccount = () => {
+    if (
+      !bankAccountCode.trim() ||
+      !bankAccountBankName.trim() ||
+      !bankAccountAccountName.trim() ||
+      !bankAccountNumber.trim()
+    ) {
+      notifyApiError(null, 'Kode, nama bank, nama akun, dan nomor rekening wajib diisi.');
+      return;
+    }
+    saveBankAccountMutation.mutate();
+  };
+
+  const handleCreateBankReconciliation = () => {
+    if (!bankReconciliationAccountId) {
+      notifyApiError(null, 'Pilih rekening bank terlebih dahulu.');
+      return;
+    }
+    if (!bankReconciliationPeriodStart || !bankReconciliationPeriodEnd) {
+      notifyApiError(null, 'Periode rekonsiliasi wajib diisi.');
+      return;
+    }
+    if (bankReconciliationPeriodEnd < bankReconciliationPeriodStart) {
+      notifyApiError(null, 'Periode rekonsiliasi tidak valid.');
+      return;
+    }
+    if (Number(bankReconciliationOpeningBalance || 0) < 0 || Number(bankReconciliationClosingBalance || 0) < 0) {
+      notifyApiError(null, 'Saldo statement tidak boleh negatif.');
+      return;
+    }
+    createBankReconciliationMutation.mutate();
+  };
+
+  const handleAddBankStatementEntry = (reconciliation: StaffFinanceBankReconciliation) => {
+    if (!bankStatementEntryDate) {
+      notifyApiError(null, 'Tanggal mutasi bank wajib diisi.');
+      return;
+    }
+    if (Number(bankStatementAmount || 0) <= 0) {
+      notifyApiError(null, 'Nominal mutasi bank harus lebih dari nol.');
+      return;
+    }
+    createBankStatementEntryMutation.mutate(reconciliation);
+  };
+
+  const handleFinalizeBankReconciliation = (reconciliation: StaffFinanceBankReconciliation) => {
+    if (reconciliation.status === 'FINALIZED') {
+      notifyApiError(null, 'Rekonsiliasi bank sudah final.');
+      return;
+    }
+    finalizeBankReconciliationMutation.mutate(reconciliation);
+  };
+
   const startPaying = (invoice: StaffFinanceInvoice) => {
     setSelectedInvoice(invoice);
     setPaymentAmount(String(Number(invoice.balanceAmount || 0)));
     setPaymentMethod('CASH');
+    setPaymentBankAccountId('');
     setPaymentReference('');
     setPaymentNote('');
   };
@@ -1493,6 +1772,7 @@ export default function StaffPaymentsScreen() {
     setSelectedCreditBalance(balance);
     setRefundAmount(String(Number(balance.balanceAmount || 0)));
     setRefundMethod('BANK_TRANSFER');
+    setRefundBankAccountId(activeBankAccounts[0]?.id || '');
     setRefundReference('');
     setRefundNote('');
   };
@@ -1611,7 +1891,27 @@ export default function StaffPaymentsScreen() {
       notifyApiError(null, 'Nominal refund melebihi saldo kredit siswa.');
       return;
     }
+    if (refundMethod !== 'CASH' && refundBankAccountId === '') {
+      notifyApiError(null, 'Pilih rekening bank untuk refund non-tunai.');
+      return;
+    }
     refundMutation.mutate();
+  };
+
+  const handleSavePayment = () => {
+    if (!selectedInvoice) {
+      notifyApiError(null, 'Tagihan belum dipilih.');
+      return;
+    }
+    if (Number(paymentAmount) <= 0) {
+      notifyApiError(null, 'Nominal pembayaran harus lebih dari nol.');
+      return;
+    }
+    if (paymentMethod !== 'CASH' && paymentBankAccountId === '') {
+      notifyApiError(null, 'Pilih rekening bank untuk pembayaran non-tunai.');
+      return;
+    }
+    payInvoiceMutation.mutate();
   };
 
   const handleSaveWriteOff = () => {
@@ -1730,6 +2030,9 @@ export default function StaffPaymentsScreen() {
     componentsQuery.isLoading ||
     tariffsQuery.isLoading ||
     adjustmentsQuery.isLoading ||
+    bankAccountsQuery.isLoading ||
+    bankReconciliationsQuery.isLoading ||
+    cashSessionsQuery.isLoading ||
     creditsQuery.isLoading ||
     invoicesQuery.isLoading ||
     studentsQuery.isLoading;
@@ -1745,6 +2048,9 @@ export default function StaffPaymentsScreen() {
             componentsQuery.isFetching ||
             tariffsQuery.isFetching ||
             adjustmentsQuery.isFetching ||
+            bankAccountsQuery.isFetching ||
+            bankReconciliationsQuery.isFetching ||
+            cashSessionsQuery.isFetching ||
             creditsQuery.isFetching ||
             invoicesQuery.isFetching ||
             dashboardQuery.isFetching
@@ -1754,6 +2060,9 @@ export default function StaffPaymentsScreen() {
             void componentsQuery.refetch();
             void tariffsQuery.refetch();
             void adjustmentsQuery.refetch();
+            void bankAccountsQuery.refetch();
+            void bankReconciliationsQuery.refetch();
+            void cashSessionsQuery.refetch();
             void creditsQuery.refetch();
             void invoicesQuery.refetch();
             void dashboardQuery.refetch();
@@ -2364,6 +2673,561 @@ export default function StaffPaymentsScreen() {
             })
           )}
         </View>
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#dbe7fb',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Master Rekening Bank</Text>
+        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+          Rekening aktif dipakai bersama di web dan mobile untuk pembayaran non-tunai, refund, dan rekonsiliasi bank.
+        </Text>
+
+        <TextInput
+          value={bankAccountCode}
+          onChangeText={setBankAccountCode}
+          placeholder="Kode rekening"
+          placeholderTextColor="#94a3b8"
+          style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+        />
+        <TextInput
+          value={bankAccountBankName}
+          onChangeText={setBankAccountBankName}
+          placeholder="Nama bank"
+          placeholderTextColor="#94a3b8"
+          style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+        />
+        <TextInput
+          value={bankAccountAccountName}
+          onChangeText={setBankAccountAccountName}
+          placeholder="Nama pemilik rekening"
+          placeholderTextColor="#94a3b8"
+          style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+        />
+        <TextInput
+          value={bankAccountNumber}
+          onChangeText={setBankAccountNumber}
+          placeholder="Nomor rekening"
+          placeholderTextColor="#94a3b8"
+          style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+        />
+        <TextInput
+          value={bankAccountBranch}
+          onChangeText={setBankAccountBranch}
+          placeholder="Cabang (opsional)"
+          placeholderTextColor="#94a3b8"
+          style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+        />
+        <TextInput
+          value={bankAccountNotes}
+          onChangeText={setBankAccountNotes}
+          placeholder="Catatan rekening (opsional)"
+          placeholderTextColor="#94a3b8"
+          multiline
+          style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, minHeight: 72, textAlignVertical: 'top', marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+        />
+
+        <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+          <View style={{ flex: 1, paddingHorizontal: 4 }}>
+            <Pressable
+              onPress={handleSaveBankAccount}
+              disabled={saveBankAccountMutation.isPending}
+              style={{
+                backgroundColor: saveBankAccountMutation.isPending ? '#93c5fd' : '#2563eb',
+                borderRadius: 10,
+                paddingVertical: 10,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>
+                {saveBankAccountMutation.isPending
+                  ? 'Menyimpan rekening...'
+                  : editingBankAccountId
+                    ? 'Simpan Perubahan Rekening'
+                    : 'Tambah Rekening'}
+              </Text>
+            </Pressable>
+          </View>
+          {editingBankAccountId ? (
+            <View style={{ width: 120, paddingHorizontal: 4 }}>
+              <Pressable
+                onPress={resetBankAccountForm}
+                style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
+              >
+                <Text style={{ color: '#334155', fontWeight: '700' }}>Batal</Text>
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
+
+        {bankAccountsQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil rekening bank..." />
+        ) : bankAccounts.length === 0 ? (
+          <Text style={{ color: '#64748b', fontSize: 12 }}>Belum ada rekening bank.</Text>
+        ) : (
+          bankAccounts.map((account) => (
+            <View key={account.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#0f172a', fontWeight: '700' }}>{account.bankName}</Text>
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                    {account.accountName} • {account.accountNumber}
+                  </Text>
+                  <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>
+                    {account.code}
+                    {account.branch ? ` • ${account.branch}` : ''}
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: account.isActive ? '#86efac' : '#fecaca',
+                    backgroundColor: account.isActive ? '#dcfce7' : '#fee2e2',
+                    borderRadius: 999,
+                    paddingHorizontal: 8,
+                    paddingVertical: 2,
+                  }}
+                >
+                  <Text style={{ color: account.isActive ? '#166534' : '#991b1b', fontSize: 11, fontWeight: '700' }}>
+                    {account.isActive ? 'Aktif' : 'Nonaktif'}
+                  </Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', marginHorizontal: -4, marginTop: 8 }}>
+                <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                  <Pressable
+                    onPress={() => handleEditBankAccount(account)}
+                    style={{ borderWidth: 1, borderColor: '#bfdbfe', backgroundColor: '#eff6ff', borderRadius: 8, paddingVertical: 8, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Edit</Text>
+                  </Pressable>
+                </View>
+                <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                  <Pressable
+                    onPress={() => toggleBankAccountMutation.mutate(account)}
+                    disabled={toggleBankAccountMutation.isPending}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: account.isActive ? '#fecaca' : '#86efac',
+                      backgroundColor: account.isActive ? '#fff1f2' : '#f0fdf4',
+                      borderRadius: 8,
+                      paddingVertical: 8,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: account.isActive ? '#be123c' : '#166534', fontWeight: '700' }}>
+                      {account.isActive ? 'Nonaktifkan' : 'Aktifkan'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          ))
+        )}
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#dbe7fb',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Rekonsiliasi Bank</Text>
+        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+          Cocokkan transaksi bank non-tunai dengan mutasi statement agar kontrol kas dan bank tetap akurat.
+        </Text>
+
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
+          <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <View style={{ backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 10, padding: 10 }}>
+              <Text style={{ color: '#1d4ed8', fontSize: 11 }}>Rekonsiliasi terbuka</Text>
+              <Text style={{ color: '#1e3a8a', fontWeight: '700', fontSize: 18 }}>{bankReconciliationSummary?.openCount || 0}</Text>
+            </View>
+          </View>
+          <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <View style={{ backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#86efac', borderRadius: 10, padding: 10 }}>
+              <Text style={{ color: '#166534', fontSize: 11 }}>Final</Text>
+              <Text style={{ color: '#14532d', fontWeight: '700', fontSize: 18 }}>{bankReconciliationSummary?.finalizedCount || 0}</Text>
+            </View>
+          </View>
+          <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <View style={{ backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fde68a', borderRadius: 10, padding: 10 }}>
+              <Text style={{ color: '#b45309', fontSize: 11 }}>Variance total</Text>
+              <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
+                {formatCurrency(bankReconciliationSummary?.totalVarianceAmount || 0)}
+              </Text>
+            </View>
+          </View>
+          <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <View style={{ backgroundColor: '#fff1f2', borderWidth: 1, borderColor: '#fecdd3', borderRadius: 10, padding: 10 }}>
+              <Text style={{ color: '#be123c', fontSize: 11 }}>Unmatched statement</Text>
+              <Text style={{ color: '#9f1239', fontWeight: '700', fontSize: 18 }}>
+                {bankReconciliationSummary?.totalUnmatchedStatementEntries || 0}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <Text style={{ color: '#475569', marginBottom: 4 }}>Rekening bank</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {activeBankAccounts.map((account) => {
+              const active = bankReconciliationAccountId === account.id;
+              return (
+                <Pressable
+                  key={`recon-account-${account.id}`}
+                  onPress={() => setBankReconciliationAccountId(account.id)}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: active ? '#4f46e5' : '#c7d2fe',
+                    backgroundColor: active ? '#eef2ff' : '#fff',
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                  }}
+                >
+                  <Text style={{ color: active ? '#3730a3' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                    {account.bankName} • {account.accountNumber}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+
+        <TextInput
+          value={bankReconciliationPeriodStart}
+          onChangeText={setBankReconciliationPeriodStart}
+          placeholder="Periode mulai (YYYY-MM-DD)"
+          placeholderTextColor="#94a3b8"
+          style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+        />
+        <TextInput
+          value={bankReconciliationPeriodEnd}
+          onChangeText={setBankReconciliationPeriodEnd}
+          placeholder="Periode akhir (YYYY-MM-DD)"
+          placeholderTextColor="#94a3b8"
+          style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+        />
+        <TextInput
+          keyboardType="numeric"
+          value={bankReconciliationOpeningBalance}
+          onChangeText={setBankReconciliationOpeningBalance}
+          placeholder="Saldo awal statement"
+          placeholderTextColor="#94a3b8"
+          style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+        />
+        <TextInput
+          keyboardType="numeric"
+          value={bankReconciliationClosingBalance}
+          onChangeText={setBankReconciliationClosingBalance}
+          placeholder="Saldo akhir statement"
+          placeholderTextColor="#94a3b8"
+          style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+        />
+        <TextInput
+          value={bankReconciliationNote}
+          onChangeText={setBankReconciliationNote}
+          placeholder="Catatan rekonsiliasi / finalisasi"
+          placeholderTextColor="#94a3b8"
+          multiline
+          style={{ borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, minHeight: 72, textAlignVertical: 'top', marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+        />
+
+        <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+          <View style={{ flex: 1, paddingHorizontal: 4 }}>
+            <Pressable
+              onPress={handleCreateBankReconciliation}
+              disabled={createBankReconciliationMutation.isPending || activeBankAccounts.length === 0}
+              style={{
+                backgroundColor: createBankReconciliationMutation.isPending || activeBankAccounts.length === 0 ? '#818cf8' : '#4f46e5',
+                borderRadius: 10,
+                paddingVertical: 10,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>
+                {createBankReconciliationMutation.isPending ? 'Membuat rekonsiliasi...' : 'Buat Rekonsiliasi'}
+              </Text>
+            </Pressable>
+          </View>
+          <View style={{ width: 120, paddingHorizontal: 4 }}>
+            <Pressable
+              onPress={resetBankReconciliationForm}
+              style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
+            >
+              <Text style={{ color: '#334155', fontWeight: '700' }}>Reset</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {bankReconciliationsQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil rekonsiliasi bank..." />
+        ) : bankReconciliations.length === 0 ? (
+          <Text style={{ color: '#64748b', fontSize: 12 }}>Belum ada rekonsiliasi bank.</Text>
+        ) : (
+          <View>
+            {bankReconciliations.map((reconciliation) => {
+              const badge = getBankReconciliationStatusBadge(reconciliation.status);
+              const active = selectedBankReconciliation?.id === reconciliation.id;
+              return (
+                <Pressable
+                  key={reconciliation.id}
+                  onPress={() => setSelectedBankReconciliationId(reconciliation.id)}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: active ? '#6366f1' : '#dbe7fb',
+                    backgroundColor: active ? '#eef2ff' : '#fff',
+                    borderRadius: 10,
+                    padding: 10,
+                    marginBottom: 8,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#0f172a', fontWeight: '700' }}>{reconciliation.reconciliationNo}</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        {reconciliation.bankAccount.bankName} • {reconciliation.bankAccount.accountNumber}
+                      </Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        {formatDate(reconciliation.periodStart)} - {formatDate(reconciliation.periodEnd)}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        borderWidth: 1,
+                        borderColor: badge.border,
+                        backgroundColor: badge.bg,
+                        borderRadius: 999,
+                        paddingHorizontal: 8,
+                        paddingVertical: 2,
+                      }}
+                    >
+                      <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{badge.label}</Text>
+                    </View>
+                  </View>
+                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 6 }}>
+                    Variance {formatCurrency(reconciliation.summary.varianceAmount)} • statement gap{' '}
+                    {formatCurrency(reconciliation.summary.statementGapAmount)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+
+            {selectedBankReconciliation ? (
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#c7d2fe',
+                  backgroundColor: '#f8fafc',
+                  borderRadius: 12,
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>
+                  Detail {selectedBankReconciliation.reconciliationNo}
+                </Text>
+                <Text style={{ color: '#475569', fontSize: 12, marginBottom: 2 }}>
+                  Expected masuk {formatCurrency(selectedBankReconciliation.summary.expectedBankIn)} • keluar{' '}
+                  {formatCurrency(selectedBankReconciliation.summary.expectedBankOut)}
+                </Text>
+                <Text style={{ color: '#475569', fontSize: 12, marginBottom: 8 }}>
+                  Statement masuk {formatCurrency(selectedBankReconciliation.summary.statementRecordedIn)} • keluar{' '}
+                  {formatCurrency(selectedBankReconciliation.summary.statementRecordedOut)}
+                </Text>
+
+                {selectedBankReconciliation.status === 'OPEN' ? (
+                  <>
+                    <TextInput
+                      value={bankStatementEntryDate}
+                      onChangeText={setBankStatementEntryDate}
+                      placeholder="Tanggal mutasi (YYYY-MM-DD)"
+                      placeholderTextColor="#94a3b8"
+                      style={{ borderWidth: 1, borderColor: '#c7d2fe', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+                    />
+                    <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+                      {[
+                        { value: 'CREDIT' as FinanceBankStatementDirection, label: 'Bank Masuk' },
+                        { value: 'DEBIT' as FinanceBankStatementDirection, label: 'Bank Keluar' },
+                      ].map((option) => {
+                        const active = bankStatementDirection === option.value;
+                        return (
+                          <View key={option.value} style={{ flex: 1, paddingHorizontal: 4 }}>
+                            <Pressable
+                              onPress={() => setBankStatementDirection(option.value)}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: active ? '#4f46e5' : '#c7d2fe',
+                                backgroundColor: active ? '#eef2ff' : '#fff',
+                                borderRadius: 8,
+                                paddingVertical: 8,
+                                alignItems: 'center',
+                              }}
+                            >
+                              <Text style={{ color: active ? '#3730a3' : '#475569', fontWeight: '700' }}>{option.label}</Text>
+                            </Pressable>
+                          </View>
+                        );
+                      })}
+                    </View>
+                    <TextInput
+                      keyboardType="numeric"
+                      value={bankStatementAmount}
+                      onChangeText={setBankStatementAmount}
+                      placeholder="Nominal mutasi"
+                      placeholderTextColor="#94a3b8"
+                      style={{ borderWidth: 1, borderColor: '#c7d2fe', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+                    />
+                    <TextInput
+                      value={bankStatementReference}
+                      onChangeText={setBankStatementReference}
+                      placeholder="Referensi / nomor mutasi"
+                      placeholderTextColor="#94a3b8"
+                      style={{ borderWidth: 1, borderColor: '#c7d2fe', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+                    />
+                    <TextInput
+                      value={bankStatementDescription}
+                      onChangeText={setBankStatementDescription}
+                      placeholder="Deskripsi mutasi (opsional)"
+                      placeholderTextColor="#94a3b8"
+                      multiline
+                      style={{ borderWidth: 1, borderColor: '#c7d2fe', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, minHeight: 72, textAlignVertical: 'top', marginBottom: 8, color: '#0f172a', backgroundColor: '#fff' }}
+                    />
+                    <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+                      <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                        <Pressable
+                          onPress={() => handleAddBankStatementEntry(selectedBankReconciliation)}
+                          disabled={createBankStatementEntryMutation.isPending}
+                          style={{
+                            backgroundColor: createBankStatementEntryMutation.isPending ? '#818cf8' : '#4f46e5',
+                            borderRadius: 10,
+                            paddingVertical: 10,
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Text style={{ color: '#fff', fontWeight: '700' }}>
+                            {createBankStatementEntryMutation.isPending ? 'Menambah mutasi...' : 'Tambah Mutasi'}
+                          </Text>
+                        </Pressable>
+                      </View>
+                      <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                        <Pressable
+                          onPress={() => handleFinalizeBankReconciliation(selectedBankReconciliation)}
+                          disabled={finalizeBankReconciliationMutation.isPending}
+                          style={{
+                            backgroundColor: finalizeBankReconciliationMutation.isPending ? '#94a3b8' : '#0f172a',
+                            borderRadius: 10,
+                            paddingVertical: 10,
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Text style={{ color: '#fff', fontWeight: '700' }}>
+                            {finalizeBankReconciliationMutation.isPending ? 'Memfinalkan...' : 'Finalkan'}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  </>
+                ) : null}
+
+                <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Mutasi Statement</Text>
+                {selectedBankReconciliation.statementEntries.length === 0 ? (
+                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                    Belum ada mutasi statement untuk rekonsiliasi ini.
+                  </Text>
+                ) : (
+                  selectedBankReconciliation.statementEntries.map((entry) => (
+                    <View key={entry.id} style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingVertical: 8 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#0f172a', fontWeight: '700' }}>
+                            {entry.direction === 'CREDIT' ? 'Bank Masuk' : 'Bank Keluar'} • {formatCurrency(entry.amount)}
+                          </Text>
+                          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                            {formatDate(entry.entryDate)} • {entry.referenceNo || 'Tanpa referensi'}
+                          </Text>
+                          {entry.matchedPayment ? (
+                            <Text style={{ color: '#166534', fontSize: 12, marginTop: 2 }}>
+                              Matched ke pembayaran {entry.matchedPayment.paymentNo || '-'}
+                            </Text>
+                          ) : entry.matchedRefund ? (
+                            <Text style={{ color: '#166534', fontSize: 12, marginTop: 2 }}>
+                              Matched ke refund {entry.matchedRefund.refundNo || '-'}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <View
+                          style={{
+                            borderWidth: 1,
+                            borderColor: entry.status === 'MATCHED' ? '#86efac' : '#fecaca',
+                            backgroundColor: entry.status === 'MATCHED' ? '#dcfce7' : '#fee2e2',
+                            borderRadius: 999,
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                          }}
+                        >
+                          <Text style={{ color: entry.status === 'MATCHED' ? '#166534' : '#991b1b', fontSize: 11, fontWeight: '700' }}>
+                            {entry.status === 'MATCHED' ? 'Matched' : 'Unmatched'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  ))
+                )}
+
+                <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Pembayaran Sistem</Text>
+                {selectedBankReconciliation.systemPayments.length === 0 ? (
+                  <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                    Belum ada pembayaran non-tunai pada periode ini.
+                  </Text>
+                ) : (
+                  selectedBankReconciliation.systemPayments.slice(0, 6).map((payment) => (
+                    <View key={payment.id} style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingVertical: 8 }}>
+                      <Text style={{ color: '#0f172a', fontWeight: '700' }}>{payment.paymentNo || 'Pembayaran'}</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        {payment.referenceNo || 'Tanpa referensi'}
+                        {payment.bankAccount ? ` • ${payment.bankAccount.bankName}` : ''}
+                      </Text>
+                      <Text style={{ color: payment.matched ? '#166534' : '#b45309', fontSize: 12, marginTop: 2 }}>
+                        {payment.matched ? 'Matched' : 'Belum matched'} • {formatCurrency(payment.netBankAmount)}
+                      </Text>
+                    </View>
+                  ))
+                )}
+
+                <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Refund Sistem</Text>
+                {selectedBankReconciliation.systemRefunds.length === 0 ? (
+                  <Text style={{ color: '#64748b', fontSize: 12 }}>
+                    Belum ada refund non-tunai pada periode ini.
+                  </Text>
+                ) : (
+                  selectedBankReconciliation.systemRefunds.slice(0, 6).map((refund) => (
+                    <View key={refund.id} style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingVertical: 8 }}>
+                      <Text style={{ color: '#0f172a', fontWeight: '700' }}>{refund.refundNo || 'Refund'}</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        {refund.student.name} • {refund.referenceNo || 'Tanpa referensi'}
+                      </Text>
+                      <Text style={{ color: refund.matched ? '#166534' : '#b45309', fontSize: 12, marginTop: 2 }}>
+                        {refund.matched ? 'Matched' : 'Belum matched'} • {formatCurrency(refund.amount)}
+                      </Text>
+                    </View>
+                  ))
+                )}
+              </View>
+            ) : null}
+          </View>
+        )}
       </View>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
@@ -5667,6 +6531,37 @@ export default function StaffPaymentsScreen() {
                 </View>
               </ScrollView>
 
+              {paymentMethod !== 'CASH' ? (
+                <>
+                  <Text style={{ color: '#475569', marginBottom: 4 }}>Rekening bank penerimaan</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {activeBankAccounts.map((account) => {
+                        const active = paymentBankAccountId === account.id;
+                        return (
+                          <Pressable
+                            key={`payment-bank-${account.id}`}
+                            onPress={() => setPaymentBankAccountId(account.id)}
+                            style={{
+                              borderWidth: 1,
+                              borderColor: active ? '#1d4ed8' : '#bfdbfe',
+                              backgroundColor: active ? '#e9f1ff' : '#fff',
+                              borderRadius: 999,
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                            }}
+                          >
+                            <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                              {account.bankName} • {account.accountNumber}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+                </>
+              ) : null}
+
               <TextInput
                 value={paymentReference}
                 onChangeText={setPaymentReference}
@@ -5696,7 +6591,7 @@ export default function StaffPaymentsScreen() {
               <View style={{ flex: 1, paddingLeft: 6 }}>
                 <Pressable
                   disabled={payInvoiceMutation.isPending || Number(paymentAmount) <= 0}
-                  onPress={() => payInvoiceMutation.mutate()}
+                  onPress={handleSavePayment}
                   style={{
                     backgroundColor: payInvoiceMutation.isPending || Number(paymentAmount) <= 0 ? '#93c5fd' : '#2563eb',
                     borderRadius: 10,
@@ -5759,6 +6654,37 @@ export default function StaffPaymentsScreen() {
                   })}
                 </View>
               </ScrollView>
+
+              {refundMethod !== 'CASH' ? (
+                <>
+                  <Text style={{ color: '#475569', marginBottom: 4 }}>Rekening bank refund</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {activeBankAccounts.map((account) => {
+                        const active = refundBankAccountId === account.id;
+                        return (
+                          <Pressable
+                            key={`refund-bank-${account.id}`}
+                            onPress={() => setRefundBankAccountId(account.id)}
+                            style={{
+                              borderWidth: 1,
+                              borderColor: active ? '#1d4ed8' : '#bfdbfe',
+                              backgroundColor: active ? '#e9f1ff' : '#fff',
+                              borderRadius: 999,
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                            }}
+                          >
+                            <Text style={{ color: active ? '#1e3a8a' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                              {account.bankName} • {account.accountNumber}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+                </>
+              ) : null}
 
               <TextInput
                 value={refundReference}

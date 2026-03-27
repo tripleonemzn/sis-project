@@ -38,6 +38,8 @@ export type FinanceCashSessionApprovalStatus =
   | 'AUTO_APPROVED'
   | 'REJECTED';
 export type FinanceCashSessionPendingActor = 'HEAD_TU' | 'PRINCIPAL' | 'NONE';
+export type FinanceBankReconciliationStatus = 'OPEN' | 'FINALIZED';
+export type FinanceBankStatementDirection = 'CREDIT' | 'DEBIT';
 export type FinanceReminderMode = 'ALL' | 'DUE_SOON' | 'OVERDUE' | 'LATE_FEE' | 'ESCALATION';
 
 export type StaffFinanceReminderPolicy = {
@@ -83,6 +85,20 @@ export type StaffFinanceCashSessionApprovalPolicy = {
   requireVarianceNote: boolean;
   principalApprovalThresholdAmount: number;
   notes?: string | null;
+  updatedAt: string;
+};
+
+export type StaffFinanceBankAccount = {
+  id: number;
+  code: string;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  branch?: string | null;
+  notes?: string | null;
+  isActive: boolean;
+  label: string;
+  createdAt: string;
   updatedAt: string;
 };
 
@@ -232,6 +248,7 @@ export type StaffFinanceInvoice = {
     canRequestReversal: boolean;
     source: FinancePaymentSource;
     method: FinancePaymentMethod;
+    bankAccount?: StaffFinanceBankAccount | null;
     referenceNo?: string | null;
     note?: string | null;
     paidAt: string;
@@ -532,6 +549,7 @@ export type StaffFinanceRefundRecord = {
   refundNo: string;
   amount: number;
   method: FinancePaymentMethod;
+  bankAccount?: StaffFinanceBankAccount | null;
   referenceNo?: string | null;
   note?: string | null;
   refundedAt: string;
@@ -678,6 +696,94 @@ export type StaffFinanceCashSessionListResult = {
     totalExpectedCashOut: number;
     totalExpectedClosingBalance: number;
     totalVarianceAmount: number;
+  };
+};
+
+export type StaffFinanceBankStatementEntry = {
+  id: number;
+  entryDate: string;
+  direction: FinanceBankStatementDirection;
+  amount: number;
+  referenceNo?: string | null;
+  description?: string | null;
+  status: 'MATCHED' | 'UNMATCHED';
+  matchedPayment?: (StaffFinanceInvoice['payments'][number] & {
+    bankAccount?: StaffFinanceBankAccount | null;
+  }) | null;
+  matchedRefund?: StaffFinanceRefundRecord | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type StaffFinanceBankSystemPayment = StaffFinanceInvoice['payments'][number] & {
+  bankAccount?: StaffFinanceBankAccount | null;
+  netBankAmount: number;
+  matched: boolean;
+};
+
+export type StaffFinanceBankSystemRefund = StaffFinanceRefundRecord & {
+  matched: boolean;
+};
+
+export type StaffFinanceBankReconciliation = {
+  id: number;
+  reconciliationNo: string;
+  status: FinanceBankReconciliationStatus;
+  periodStart: string;
+  periodEnd: string;
+  statementOpeningBalance: number;
+  statementClosingBalance: number;
+  note?: string | null;
+  bankAccount: StaffFinanceBankAccount;
+  createdBy?: {
+    id: number;
+    name: string;
+    role: string;
+  } | null;
+  finalizedBy?: {
+    id: number;
+    name: string;
+    role: string;
+  } | null;
+  finalizedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  summary: {
+    expectedBankIn: number;
+    expectedBankOut: number;
+    expectedClosingBalance: number;
+    statementRecordedIn: number;
+    statementRecordedOut: number;
+    statementComputedClosingBalance: number;
+    varianceAmount: number;
+    statementGapAmount: number;
+    totalPaymentCount: number;
+    totalRefundCount: number;
+    matchedPaymentCount: number;
+    matchedRefundCount: number;
+    unmatchedPaymentCount: number;
+    unmatchedRefundCount: number;
+    matchedStatementEntryCount: number;
+    unmatchedStatementEntryCount: number;
+  };
+  statementEntries: StaffFinanceBankStatementEntry[];
+  systemPayments: StaffFinanceBankSystemPayment[];
+  systemRefunds: StaffFinanceBankSystemRefund[];
+};
+
+export type StaffFinanceBankReconciliationListResult = {
+  reconciliations: StaffFinanceBankReconciliation[];
+  summary: {
+    totalReconciliations: number;
+    openCount: number;
+    finalizedCount: number;
+    totalExpectedBankIn: number;
+    totalExpectedBankOut: number;
+    totalVarianceAmount: number;
+    totalStatementGapAmount: number;
+    totalUnmatchedPayments: number;
+    totalUnmatchedRefunds: number;
+    totalUnmatchedStatementEntries: number;
   };
 };
 
@@ -858,6 +964,49 @@ export const staffFinanceApi = {
       { params },
     );
     return response.data.data.components || [];
+  },
+
+  async listBankAccounts(params?: { isActive?: boolean; search?: string }) {
+    const response = await apiClient.get<ApiResponse<{ accounts: StaffFinanceBankAccount[] }>>(
+      '/payments/bank-accounts',
+      { params },
+    );
+    return response.data.data.accounts || [];
+  },
+
+  async createBankAccount(payload: {
+    code: string;
+    bankName: string;
+    accountName: string;
+    accountNumber: string;
+    branch?: string;
+    notes?: string;
+    isActive?: boolean;
+  }) {
+    const response = await apiClient.post<ApiResponse<{ account: StaffFinanceBankAccount }>>(
+      '/payments/bank-accounts',
+      payload,
+    );
+    return response.data.data.account;
+  },
+
+  async updateBankAccount(
+    accountId: number,
+    payload: Partial<{
+      code: string;
+      bankName: string;
+      accountName: string;
+      accountNumber: string;
+      branch?: string;
+      notes?: string;
+      isActive: boolean;
+    }>,
+  ) {
+    const response = await apiClient.patch<ApiResponse<{ account: StaffFinanceBankAccount }>>(
+      `/payments/bank-accounts/${accountId}`,
+      payload,
+    );
+    return response.data.data.account;
   },
 
   async createComponent(payload: {
@@ -1121,6 +1270,7 @@ export const staffFinanceApi = {
     payload: {
       amount: number;
       method: FinancePaymentMethod;
+      bankAccountId?: number;
       referenceNo?: string;
       note?: string;
     },
@@ -1150,6 +1300,62 @@ export const staffFinanceApi = {
       params,
     });
     return response.data.data;
+  },
+
+  async listBankReconciliations(params?: {
+    bankAccountId?: number;
+    status?: FinanceBankReconciliationStatus;
+    limit?: number;
+  }) {
+    const response = await apiClient.get<ApiResponse<StaffFinanceBankReconciliationListResult>>(
+      '/payments/bank-reconciliations',
+      {
+        params,
+      },
+    );
+    return response.data.data;
+  },
+
+  async createBankReconciliation(payload: {
+    bankAccountId: number;
+    periodStart: string;
+    periodEnd: string;
+    statementOpeningBalance?: number;
+    statementClosingBalance: number;
+    note?: string;
+  }) {
+    const response = await apiClient.post<ApiResponse<{ reconciliation: StaffFinanceBankReconciliation }>>(
+      '/payments/bank-reconciliations',
+      payload,
+    );
+    return response.data.data.reconciliation;
+  },
+
+  async createBankStatementEntry(
+    reconciliationId: number,
+    payload: {
+      entryDate: string;
+      direction: FinanceBankStatementDirection;
+      amount: number;
+      referenceNo?: string;
+      description?: string;
+    },
+  ) {
+    const response = await apiClient.post<
+      ApiResponse<{
+        entry: StaffFinanceBankStatementEntry;
+        reconciliation: StaffFinanceBankReconciliation;
+      }>
+    >(`/payments/bank-reconciliations/${reconciliationId}/entries`, payload);
+    return response.data.data;
+  },
+
+  async finalizeBankReconciliation(reconciliationId: number, payload?: { note?: string }) {
+    const response = await apiClient.post<ApiResponse<{ reconciliation: StaffFinanceBankReconciliation }>>(
+      `/payments/bank-reconciliations/${reconciliationId}/finalize`,
+      payload || {},
+    );
+    return response.data.data.reconciliation;
   },
 
   async listCashSessions(params?: {
@@ -1231,6 +1437,7 @@ export const staffFinanceApi = {
     payload: {
       amount: number;
       method: FinancePaymentMethod;
+      bankAccountId?: number;
       referenceNo?: string;
       note?: string;
       refundedAt?: string;

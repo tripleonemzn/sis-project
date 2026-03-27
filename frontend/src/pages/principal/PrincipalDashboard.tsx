@@ -10,6 +10,7 @@ import {
 } from '../../services/budgetRequest.service';
 import {
   staffFinanceService,
+  type FinanceBankReconciliation,
   type FinanceCashSession,
   type FinancePaymentReversalRequest,
   type FinanceWriteOffRequest,
@@ -3193,6 +3194,12 @@ const PrincipalFinancePage = () => {
     enabled: isFinancePage,
   });
 
+  const { data: financeBankReconciliationsData, isLoading: isFinanceBankReconciliationsLoading } = useQuery({
+    queryKey: ['principal-finance-bank-reconciliations'],
+    queryFn: () => staffFinanceService.listBankReconciliations({ limit: 8 }),
+    enabled: isFinancePage,
+  });
+
   let budgets: BudgetRequest[] = budgetsData?.data || budgetsData || [];
 
   if (statusFilter !== 'ALL') {
@@ -3303,6 +3310,8 @@ const PrincipalFinancePage = () => {
   const financeCashSessions = financeCashSessionsData?.sessions || [];
   const pendingPrincipalCashSessions = financeCashSessionApprovalsData?.sessions || [];
   const financeCashSessionSummary = financeCashSessionsData?.summary;
+  const financeBankReconciliations = financeBankReconciliationsData?.reconciliations || [];
+  const financeBankReconciliationSummary = financeBankReconciliationsData?.summary;
 
   return (
     <div className="space-y-6">
@@ -3626,6 +3635,109 @@ const PrincipalFinancePage = () => {
                       ) : session.headTuDecision.note ? (
                         <div className="mt-1 text-xs text-gray-500">{session.headTuDecision.note}</div>
                       ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Rekonsiliasi Bank</h3>
+            <p className="mt-1 text-xs text-gray-500">
+              Monitoring transaksi bank non-tunai untuk melihat variance, statement gap, dan item yang belum matched.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2">
+              <div className="text-indigo-700">Terbuka</div>
+              <div className="mt-1 font-semibold text-indigo-900">{financeBankReconciliationSummary?.openCount || 0}</div>
+            </div>
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+              <div className="text-emerald-700">Final</div>
+              <div className="mt-1 font-semibold text-emerald-900">{financeBankReconciliationSummary?.finalizedCount || 0}</div>
+            </div>
+            <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+              <div className="text-amber-700">Variance</div>
+              <div className="mt-1 font-semibold text-amber-900">
+                Rp {Math.round(financeBankReconciliationSummary?.totalVarianceAmount || 0).toLocaleString('id-ID')}
+              </div>
+            </div>
+            <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2">
+              <div className="text-rose-700">Unmatched</div>
+              <div className="mt-1 font-semibold text-rose-900">{financeBankReconciliationSummary?.totalUnmatchedStatementEntries || 0}</div>
+            </div>
+          </div>
+        </div>
+
+        {isFinanceBankReconciliationsLoading ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          </div>
+        ) : financeBankReconciliations.length === 0 ? (
+          <div className="py-10 text-center text-sm text-gray-500">
+            Belum ada rekonsiliasi bank yang tercatat.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Rekonsiliasi
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Expected Closing
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Statement Closing
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Variance
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {financeBankReconciliations.map((reconciliation: FinanceBankReconciliation) => (
+                  <tr key={reconciliation.id}>
+                    <td className="px-6 py-4 text-sm text-gray-700">
+                      <div className="font-semibold text-gray-900">{reconciliation.reconciliationNo}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {reconciliation.bankAccount.bankName} • {reconciliation.bankAccount.accountNumber}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {new Date(reconciliation.periodStart).toLocaleDateString('id-ID')} - {new Date(reconciliation.periodEnd).toLocaleDateString('id-ID')}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-right text-gray-700">
+                      Rp {Math.round(reconciliation.summary.expectedClosingBalance || 0).toLocaleString('id-ID')}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-right text-gray-700">
+                      Rp {Math.round(reconciliation.summary.statementComputedClosingBalance || 0).toLocaleString('id-ID')}
+                    </td>
+                    <td className={`px-6 py-4 text-sm text-right font-semibold ${Number(reconciliation.summary.varianceAmount || 0) === 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      Rp {Math.round(reconciliation.summary.varianceAmount || 0).toLocaleString('id-ID')}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-700">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${
+                          reconciliation.status === 'FINALIZED'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200'
+                        }`}
+                      >
+                        {reconciliation.status === 'FINALIZED' ? 'Final' : 'Terbuka'}
+                      </span>
+                      <div className="mt-1 text-xs text-gray-500">
+                        Unmatched statement {reconciliation.summary.unmatchedStatementEntryCount} • payment {reconciliation.summary.unmatchedPaymentCount} • refund {reconciliation.summary.unmatchedRefundCount}
+                      </div>
                     </td>
                   </tr>
                 ))}

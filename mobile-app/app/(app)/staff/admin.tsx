@@ -14,6 +14,7 @@ import {
 } from '../../../src/features/staff/staffAdministrationApi';
 import {
   staffFinanceApi,
+  type StaffFinanceBankReconciliation,
   type StaffFinanceCashSession,
   type StaffFinancePaymentReversalRequest,
   type StaffFinanceWriteOffRequest,
@@ -174,6 +175,13 @@ export default function StaffAdminScreen() {
     staleTime: 60 * 1000,
   });
 
+  const headTuBankReconciliationsQuery = useQuery({
+    queryKey: ['mobile-head-tu-finance-bank-reconciliations', user?.id],
+    enabled: isAuthenticated && user?.role === 'STAFF' && staffDivision === 'HEAD_TU',
+    queryFn: () => staffFinanceApi.listBankReconciliations({ limit: 8 }),
+    staleTime: 60 * 1000,
+  });
+
   const headTuWriteOffDecisionMutation = useMutation({
     mutationFn: (payload: { requestId: number; approved: boolean }) =>
       staffFinanceApi.decideWriteOffAsHeadTu(payload.requestId, {
@@ -286,6 +294,11 @@ export default function StaffAdminScreen() {
     [headTuCashSessionApprovalsQuery.data],
   );
   const headTuCashSummary = headTuCashSessionsQuery.data?.summary;
+  const headTuBankReconciliations = useMemo(
+    () => headTuBankReconciliationsQuery.data?.reconciliations || [],
+    [headTuBankReconciliationsQuery.data],
+  );
+  const headTuBankReconciliationSummary = headTuBankReconciliationsQuery.data?.summary;
 
   const handleRefresh = () => {
     void dataQuery.refetch();
@@ -294,6 +307,7 @@ export default function StaffAdminScreen() {
       void headTuPaymentReversalsQuery.refetch();
       void headTuCashSessionsQuery.refetch();
       void headTuCashSessionApprovalsQuery.refetch();
+      void headTuBankReconciliationsQuery.refetch();
     }
   };
 
@@ -1065,6 +1079,69 @@ export default function StaffAdminScreen() {
                           : session.approvalStatus === 'AUTO_APPROVED'
                             ? 'Auto approved'
                             : 'Disetujui'}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Rekonsiliasi Bank</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  Monitoring read-only transaksi bank non-tunai untuk melihat variance dan item yang belum matched.
+                </Text>
+              </View>
+              <View
+                style={{
+                  backgroundColor: '#eef2ff',
+                  borderColor: '#c7d2fe',
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                }}
+              >
+                <Text style={{ color: '#4338ca', fontSize: 11, fontWeight: '700' }}>
+                  {headTuBankReconciliationSummary?.openCount || 0} terbuka
+                </Text>
+              </View>
+            </View>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+              Final {headTuBankReconciliationSummary?.finalizedCount || 0} • unmatched statement {headTuBankReconciliationSummary?.totalUnmatchedStatementEntries || 0}
+            </Text>
+            {headTuBankReconciliationsQuery.isLoading ? (
+              <QueryStateView type="loading" message="Mengambil rekonsiliasi bank..." />
+            ) : headTuBankReconciliations.length === 0 ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada rekonsiliasi bank yang tercatat.</Text>
+            ) : (
+              headTuBankReconciliations.slice(0, 4).map((reconciliation: StaffFinanceBankReconciliation) => (
+                <View key={reconciliation.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{reconciliation.reconciliationNo}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                    {reconciliation.bankAccount.bankName} • {reconciliation.bankAccount.accountNumber}
+                  </Text>
+                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+                    {formatDate(reconciliation.periodStart)} - {formatDate(reconciliation.periodEnd)}
+                  </Text>
+                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+                    Expected {formatCurrency(reconciliation.summary.expectedClosingBalance)} • statement {formatCurrency(reconciliation.summary.statementComputedClosingBalance)}
+                  </Text>
+                  <Text style={{ color: Number(reconciliation.summary.varianceAmount || 0) === 0 ? '#166534' : '#b91c1c', fontSize: 12, marginTop: 2 }}>
+                    Variance {formatCurrency(reconciliation.summary.varianceAmount)}
+                  </Text>
+                  <Text style={{ color: '#4338ca', fontSize: 12, marginTop: 2 }}>
+                    {reconciliation.status === 'FINALIZED' ? 'Final' : 'Terbuka'} • unmatched statement {reconciliation.summary.unmatchedStatementEntryCount} • payment {reconciliation.summary.unmatchedPaymentCount} • refund {reconciliation.summary.unmatchedRefundCount}
                   </Text>
                 </View>
               ))

@@ -111,6 +111,10 @@ model User {
   closedFinanceCashSessions      FinanceCashSession[]                     @relation("FinanceCashSessionClosedBy")
   headTuReviewedFinanceCashSessions FinanceCashSession[]                  @relation("FinanceCashSessionHeadTuDecisionBy")
   principalReviewedFinanceCashSessions FinanceCashSession[]               @relation("FinanceCashSessionPrincipalDecisionBy")
+  createdFinanceBankAccounts     FinanceBankAccount[]                     @relation("FinanceBankAccountCreatedBy")
+  createdFinanceBankReconciliations FinanceBankReconciliation[]           @relation("FinanceBankReconciliationCreatedBy")
+  finalizedFinanceBankReconciliations FinanceBankReconciliation[]         @relation("FinanceBankReconciliationFinalizedBy")
+  createdFinanceBankStatementEntries FinanceBankStatementEntry[]          @relation("FinanceBankStatementEntryCreatedBy")
   pklAssessments                 PklAssessment[]
   reportNotes                    ReportNote[]
   achievements                   StudentAchievement[]
@@ -1498,6 +1502,27 @@ model FinanceCashSessionApprovalPolicy {
   @@map("finance_cash_session_approval_policy")
 }
 
+model FinanceBankAccount {
+  id            Int                         @id @default(autoincrement())
+  code          String                      @unique
+  bankName      String
+  accountName   String
+  accountNumber String
+  branch        String?
+  notes         String?
+  isActive      Boolean                     @default(true)
+  createdById   Int?
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
+  createdBy     User?                       @relation("FinanceBankAccountCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  payments      FinancePayment[]
+  refunds       FinanceRefund[]
+  reconciliations FinanceBankReconciliation[]
+
+  @@index([isActive, bankName])
+  @@map("finance_bank_accounts")
+}
+
 model FinanceTariffRule {
   id             Int              @id @default(autoincrement())
   componentId    Int
@@ -1617,6 +1642,7 @@ model FinancePayment {
   paymentNo   String               @unique
   studentId   Int
   invoiceId   Int
+  bankAccountId Int?
   amount      Float
   allocatedAmount Float            @default(0)
   creditedAmount Float             @default(0)
@@ -1633,12 +1659,15 @@ model FinancePayment {
   updatedAt   DateTime             @updatedAt
   student     User                 @relation("FinancePaymentStudent", fields: [studentId], references: [id], onDelete: Cascade)
   invoice     FinanceInvoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  bankAccount FinanceBankAccount?  @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
   createdBy   User?                @relation("FinancePaymentCreator", fields: [createdById], references: [id], onDelete: SetNull)
   creditTransactions FinanceCreditTransaction[]
   reversalRequests FinancePaymentReversalRequest[]
+  bankStatementEntries FinanceBankStatementEntry[] @relation("FinanceBankStatementEntryPayment")
 
   @@index([studentId, paidAt])
   @@index([invoiceId, paidAt])
+  @@index([bankAccountId, paidAt])
   @@map("finance_payments")
 }
 
@@ -1788,6 +1817,7 @@ model FinanceRefund {
   studentId           Int
   creditBalanceId     Int
   creditTransactionId Int?                 @unique
+  bankAccountId       Int?
   amount              Float
   method              FinancePaymentMethod @default(OTHER)
   referenceNo         String?
@@ -1799,10 +1829,13 @@ model FinanceRefund {
   student             User                 @relation("FinanceRefundStudent", fields: [studentId], references: [id], onDelete: Cascade)
   creditBalance       FinanceCreditBalance @relation(fields: [creditBalanceId], references: [id], onDelete: Cascade)
   creditTransaction   FinanceCreditTransaction? @relation(fields: [creditTransactionId], references: [id], onDelete: SetNull)
+  bankAccount         FinanceBankAccount?  @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
   createdBy           User?                @relation("FinanceRefundCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  bankStatementEntries FinanceBankStatementEntry[] @relation("FinanceBankStatementEntryRefund")
 
   @@index([studentId, refundedAt])
   @@index([creditBalanceId, refundedAt])
+  @@index([bankAccountId, refundedAt])
   @@map("finance_refunds")
 }
 
@@ -1846,6 +1879,57 @@ model FinanceCashSession {
   @@index([status, openedAt])
   @@index([approvalStatus, closedAt])
   @@map("finance_cash_sessions")
+}
+
+model FinanceBankReconciliation {
+  id                     Int                              @id @default(autoincrement())
+  reconciliationNo       String                           @unique
+  bankAccountId          Int
+  periodStart            DateTime
+  periodEnd              DateTime
+  status                 FinanceBankReconciliationStatus  @default(OPEN)
+  statementOpeningBalance Float                           @default(0)
+  statementClosingBalance Float                           @default(0)
+  note                   String?
+  createdById            Int
+  finalizedById          Int?
+  finalizedAt            DateTime?
+  createdAt              DateTime                         @default(now())
+  updatedAt              DateTime                         @updatedAt
+  bankAccount            FinanceBankAccount               @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  createdBy              User                             @relation("FinanceBankReconciliationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  finalizedBy            User?                            @relation("FinanceBankReconciliationFinalizedBy", fields: [finalizedById], references: [id], onDelete: SetNull)
+  statementEntries       FinanceBankStatementEntry[]
+
+  @@index([bankAccountId, status, periodStart])
+  @@index([status, createdAt])
+  @@map("finance_bank_reconciliations")
+}
+
+model FinanceBankStatementEntry {
+  id               Int                                  @id @default(autoincrement())
+  reconciliationId Int
+  entryDate        DateTime
+  direction        FinanceBankStatementDirection
+  amount           Float
+  referenceNo      String?
+  description      String?
+  status           FinanceBankStatementEntryStatus      @default(UNMATCHED)
+  matchedPaymentId Int?
+  matchedRefundId  Int?
+  createdById      Int?
+  createdAt        DateTime                             @default(now())
+  updatedAt        DateTime                             @updatedAt
+  reconciliation   FinanceBankReconciliation            @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+  matchedPayment   FinancePayment?                      @relation("FinanceBankStatementEntryPayment", fields: [matchedPaymentId], references: [id], onDelete: SetNull)
+  matchedRefund    FinanceRefund?                       @relation("FinanceBankStatementEntryRefund", fields: [matchedRefundId], references: [id], onDelete: SetNull)
+  createdBy        User?                                @relation("FinanceBankStatementEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([reconciliationId, entryDate])
+  @@index([matchedPaymentId])
+  @@index([matchedRefundId])
+  @@index([status, entryDate])
+  @@map("finance_bank_statement_entries")
 }
 
 model ExamPacket {
@@ -2272,6 +2356,21 @@ enum FinanceCashSessionApprovalStatus {
   APPROVED
   AUTO_APPROVED
   REJECTED
+}
+
+enum FinanceBankReconciliationStatus {
+  OPEN
+  FINALIZED
+}
+
+enum FinanceBankStatementDirection {
+  CREDIT
+  DEBIT
+}
+
+enum FinanceBankStatementEntryStatus {
+  MATCHED
+  UNMATCHED
 }
 
 enum Gender {

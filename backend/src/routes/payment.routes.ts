@@ -1,8 +1,12 @@
 import { Router } from 'express';
 import {
   createFinanceAdjustmentRule,
+  createFinanceBankAccount,
+  createFinanceBankReconciliation,
+  createFinanceBankStatementEntry,
   createFinanceComponent,
   listFinanceClassLevels,
+  listFinanceBankAccounts,
   createFinanceWriteOffRequest,
   decideFinanceCashSessionAsHeadTu,
   decideFinanceCashSessionAsPrincipal,
@@ -18,6 +22,7 @@ import {
   getFinanceReminderPolicy,
   getFinanceCashSessionApprovalPolicy,
   listFinanceAdjustmentRules,
+  listFinanceBankReconciliations,
   listFinanceCashSessions,
   listFinanceComponents,
   listFinanceCredits,
@@ -31,8 +36,10 @@ import {
   applyFinanceWriteOff,
   applyFinancePaymentReversal,
   closeFinanceCashSession,
+  finalizeFinanceBankReconciliation,
   openFinanceCashSession,
   updateFinanceInvoiceInstallments,
+  updateFinanceBankAccount,
   updateFinanceCashSessionApprovalPolicy,
   updateFinanceAdjustmentRule,
   updateFinanceComponent,
@@ -54,10 +61,13 @@ router.get('/parent-overview', roleMiddleware(['PARENT']), listParentPayments);
 router.get('/student-overview', roleMiddleware(['STUDENT']), listStudentPayments);
 router.get('/components', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceComponents);
 router.get('/class-levels', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceClassLevels);
+router.get('/bank-accounts', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceBankAccounts);
 router.get('/reminder-policy', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), getFinanceReminderPolicy);
 router.get('/cash-session-policy', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), getFinanceCashSessionApprovalPolicy);
 router.post('/components', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceComponent);
 router.patch('/components/:id', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceComponent);
+router.post('/bank-accounts', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceBankAccount);
+router.patch('/bank-accounts/:id', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceBankAccount);
 router.get('/tariffs', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceTariffRules);
 router.post('/tariffs', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceTariffRule);
 router.patch('/tariffs/:id', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), updateFinanceTariffRule);
@@ -67,6 +77,10 @@ router.patch('/adjustments/:id', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), 
 router.post('/invoices/preview', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), previewFinanceInvoices);
 router.post('/invoices/generate', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), generateFinanceInvoices);
 router.get('/invoices', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceInvoices);
+router.get('/bank-reconciliations', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceBankReconciliations);
+router.post('/bank-reconciliations', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceBankReconciliation);
+router.post('/bank-reconciliations/:id/entries', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), createFinanceBankStatementEntry);
+router.post('/bank-reconciliations/:id/finalize', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), finalizeFinanceBankReconciliation);
 router.get('/cash-sessions', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']), listFinanceCashSessions);
 router.post('/cash-sessions/open', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), openFinanceCashSession);
 router.post('/cash-sessions/:id/close', roleMiddleware(['STAFF', 'ADMIN', 'TEACHER']), closeFinanceCashSession);
