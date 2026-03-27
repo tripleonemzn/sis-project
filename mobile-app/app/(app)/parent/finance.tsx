@@ -45,6 +45,38 @@ function getPaymentSourceLabel(source?: 'DIRECT' | 'CREDIT_BALANCE' | null) {
   return source === 'CREDIT_BALANCE' ? 'Saldo Kredit' : 'Pembayaran Langsung';
 }
 
+function getPaymentMethodLabel(
+  method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER' | null,
+) {
+  if (method === 'BANK_TRANSFER') return 'Transfer Bank';
+  if (method === 'VIRTUAL_ACCOUNT') return 'Virtual Account';
+  if (method === 'E_WALLET') return 'E-Wallet / QRIS';
+  if (method === 'CASH') return 'Tunai';
+  if (method === 'OTHER') return 'Metode Lain';
+  return 'Metode belum dicatat';
+}
+
+function getActionCenterTone(
+  state:
+    | 'NO_INVOICE'
+    | 'OVERDUE'
+    | 'LATE_FEE_WARNING'
+    | 'DUE_SOON'
+    | 'CREDIT_AVAILABLE'
+    | 'UP_TO_DATE',
+) {
+  if (state === 'OVERDUE') return { border: '#fecaca', background: '#fff1f2', text: '#be123c', label: 'Prioritas' };
+  if (state === 'LATE_FEE_WARNING') {
+    return { border: '#fde68a', background: '#fffbeb', text: '#b45309', label: 'Warning' };
+  }
+  if (state === 'DUE_SOON') return { border: '#ddd6fe', background: '#f5f3ff', text: '#6d28d9', label: 'Segera' };
+  if (state === 'CREDIT_AVAILABLE') {
+    return { border: '#bae6fd', background: '#f0f9ff', text: '#0369a1', label: 'Saldo' };
+  }
+  if (state === 'NO_INVOICE') return { border: '#cbd5e1', background: '#f8fafc', text: '#475569', label: 'Info' };
+  return { border: '#bbf7d0', background: '#f0fdf4', text: '#15803d', label: 'Aman' };
+}
+
 function defaultSemesterByDate(): 'ODD' | 'EVEN' {
   const month = new Date().getMonth() + 1;
   return month >= 7 ? 'ODD' : 'EVEN';
@@ -137,6 +169,10 @@ export default function ParentFinanceScreen() {
     if (!selectedChildId) return childrenOverview[0];
     return childrenOverview.find((item) => item.student.id === selectedChildId) || null;
   }, [financeQuery.data?.overview.children, selectedChildId]);
+  const actionCenter = selectedChildFinance?.actionCenter || null;
+  const actionTone = actionCenter ? getActionCenterTone(actionCenter.state) : null;
+  const latestRefund =
+    selectedChildFinance?.creditBalance.refunds?.[0] || selectedChildFinance?.actionCenter.latestRefund || null;
 
   if (isLoading) return <AppLoadingScreen message="Memuat keuangan anak..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -341,6 +377,108 @@ export default function ParentFinanceScreen() {
                   </View>
                 </View>
 
+                {actionCenter && actionTone ? (
+                  <View
+                    style={{
+                      backgroundColor: '#fff',
+                      borderWidth: 1,
+                      borderColor: '#dbe7fb',
+                      borderRadius: 12,
+                      padding: 12,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, textTransform: 'uppercase' }}>
+                          Pusat Tindak Lanjut
+                        </Text>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, marginTop: 6 }}>
+                          {actionCenter.headline}
+                        </Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6, lineHeight: 20 }}>
+                          {actionCenter.detail}
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: actionTone.border,
+                          backgroundColor: actionTone.background,
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 4,
+                        }}
+                      >
+                        <Text style={{ color: actionTone.text, fontWeight: '700', fontSize: 11 }}>{actionTone.label}</Text>
+                      </View>
+                    </View>
+
+                    <View style={{ marginTop: 12 }}>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#ddd6fe',
+                          backgroundColor: '#f5f3ff',
+                          borderRadius: 10,
+                          padding: 10,
+                          marginBottom: 8,
+                        }}
+                      >
+                        <Text style={{ color: '#6d28d9', fontSize: 11, textTransform: 'uppercase' }}>Termin Berikutnya</Text>
+                        <Text style={{ color: '#4c1d95', fontWeight: '700', marginTop: 5 }}>
+                          {actionCenter.nextDue?.invoiceNo || 'Belum ada agenda'}
+                        </Text>
+                        <Text style={{ color: '#6d28d9', fontSize: 12, marginTop: 3 }}>
+                          {actionCenter.nextDue?.dueDate
+                            ? `${formatDate(actionCenter.nextDue.dueDate)} • ${formatCurrency(actionCenter.nextDue.balanceAmount)}`
+                            : 'Tidak ada termin aktif yang perlu dipantau'}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#fde68a',
+                          backgroundColor: '#fffbeb',
+                          borderRadius: 10,
+                          padding: 10,
+                          marginBottom: 8,
+                        }}
+                      >
+                        <Text style={{ color: '#b45309', fontSize: 11, textTransform: 'uppercase' }}>Potensi Denda</Text>
+                        <Text style={{ color: '#92400e', fontWeight: '700', marginTop: 5 }}>
+                          {formatCurrency(actionCenter.pendingLateFeeAmount)}
+                        </Text>
+                        <Text style={{ color: '#b45309', fontSize: 12, marginTop: 3 }}>
+                          {actionCenter.overdueInstallmentCount} termin overdue • diterapkan{' '}
+                          {formatCurrency(actionCenter.appliedLateFeeAmount)}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#bae6fd',
+                          backgroundColor: '#f0f9ff',
+                          borderRadius: 10,
+                          padding: 10,
+                        }}
+                      >
+                        <Text style={{ color: '#0369a1', fontSize: 11, textTransform: 'uppercase' }}>Saldo Kredit & Refund</Text>
+                        <Text style={{ color: '#0c4a6e', fontWeight: '700', marginTop: 5 }}>
+                          {formatCurrency(actionCenter.creditBalanceAmount)}
+                        </Text>
+                        <Text style={{ color: '#0369a1', fontSize: 12, marginTop: 3 }}>
+                          {latestRefund
+                            ? `Refund terakhir ${latestRefund.refundNo} • ${formatDate(latestRefund.refundedAt)}`
+                            : 'Belum ada refund saldo kredit'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                ) : null}
+
                 <View
                   style={{
                     backgroundColor: '#fff',
@@ -370,6 +508,11 @@ export default function ParentFinanceScreen() {
                               {invoice.title ||
                                 `${invoice.periodKey} • ${invoice.semester === 'ODD' ? 'Ganjil' : 'Genap'}`}
                             </Text>
+                            {invoice.items.length ? (
+                              <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
+                                Komponen: {invoice.items.map((item) => item.componentName).join(' • ')}
+                              </Text>
+                            ) : null}
                           </View>
                           <View
                             style={{
@@ -468,6 +611,10 @@ export default function ParentFinanceScreen() {
                         <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
                           Sumber: {getPaymentSourceLabel(payment.source)}
                         </Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                          {getPaymentMethodLabel(payment.method)}
+                          {payment.referenceNo ? ` • Ref ${payment.referenceNo}` : ''}
+                        </Text>
                         <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', marginTop: 5 }}>
                           {formatCurrency(payment.amount)}
                         </Text>
@@ -511,6 +658,80 @@ export default function ParentFinanceScreen() {
                       }}
                     >
                       <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada transaksi pembayaran untuk anak ini.</Text>
+                    </View>
+                  )}
+                </View>
+
+                <View
+                  style={{
+                    backgroundColor: '#fff',
+                    borderWidth: 1,
+                    borderColor: '#dbe7fb',
+                    borderRadius: 12,
+                    padding: 12,
+                  }}
+                >
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+                    Saldo Kredit & Refund
+                  </Text>
+                  {selectedChildFinance.creditBalance.refunds.length > 0 ? (
+                    <>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#bae6fd',
+                          backgroundColor: '#f0f9ff',
+                          borderRadius: 10,
+                          padding: 10,
+                          marginBottom: 10,
+                        }}
+                      >
+                        <Text style={{ color: '#0369a1', fontSize: 11 }}>Saldo kredit aktif</Text>
+                        <Text style={{ color: '#0c4a6e', fontWeight: '700', fontSize: 16, marginTop: 4 }}>
+                          {formatCurrency(selectedChildFinance.creditBalance.balanceAmount)}
+                        </Text>
+                      </View>
+                      {selectedChildFinance.creditBalance.refunds.map((refund) => (
+                        <View
+                          key={refund.id}
+                          style={{
+                            paddingVertical: 10,
+                            borderBottomWidth: 1,
+                            borderBottomColor: '#eef2ff',
+                          }}
+                        >
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{refund.refundNo}</Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                            {formatDate(refund.refundedAt)} • {getPaymentMethodLabel(refund.method)}
+                            {refund.referenceNo ? ` • Ref ${refund.referenceNo}` : ''}
+                          </Text>
+                          {refund.note ? (
+                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                              {refund.note}
+                            </Text>
+                          ) : null}
+                          <Text style={{ color: '#0369a1', fontWeight: '700', marginTop: 4 }}>
+                            {formatCurrency(refund.amount)}
+                          </Text>
+                        </View>
+                      ))}
+                    </>
+                  ) : (
+                    <View
+                      style={{
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: '#cbd5e1',
+                        borderStyle: 'dashed',
+                        backgroundColor: '#fff',
+                        padding: 12,
+                      }}
+                    >
+                      <Text style={{ color: BRAND_COLORS.textMuted }}>
+                        {selectedChildFinance.creditBalance.balanceAmount
+                          ? `Belum ada refund. Saldo kredit aktif saat ini ${formatCurrency(selectedChildFinance.creditBalance.balanceAmount)}.`
+                          : 'Belum ada saldo kredit maupun refund untuk anak ini.'}
+                      </Text>
                     </View>
                   )}
                 </View>

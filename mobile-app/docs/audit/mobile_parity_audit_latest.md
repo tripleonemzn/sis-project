@@ -1,6 +1,6 @@
 # Mobile Parity Audit (All Roles)
 
-Generated: 2026-03-27T10:04:43.068Z
+Generated: 2026-03-27T10:25:20.956Z
 
 ## Ringkasan per Role
 

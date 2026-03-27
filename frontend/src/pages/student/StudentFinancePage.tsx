@@ -43,6 +43,17 @@ function getPaymentSourceLabel(source?: 'DIRECT' | 'CREDIT_BALANCE' | null): str
   return source === 'CREDIT_BALANCE' ? 'Saldo Kredit' : 'Pembayaran Langsung';
 }
 
+function getPaymentMethodLabel(
+  method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER' | null,
+): string {
+  if (method === 'BANK_TRANSFER') return 'Transfer Bank';
+  if (method === 'VIRTUAL_ACCOUNT') return 'Virtual Account';
+  if (method === 'E_WALLET') return 'E-Wallet / QRIS';
+  if (method === 'CASH') return 'Tunai';
+  if (method === 'OTHER') return 'Metode Lain';
+  return 'Metode belum dicatat';
+}
+
 function getInvoiceStatusBadgeClass(status: StudentInvoiceStatus): string {
   if (status === 'PAID') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   if (status === 'PARTIAL') return 'border-amber-200 bg-amber-50 text-amber-700';
@@ -57,6 +68,40 @@ function getInvoiceStatusLabel(status: StudentInvoiceStatus): string {
   return 'Belum Lunas';
 }
 
+function getActionCenterBadgeClass(
+  state:
+    | 'NO_INVOICE'
+    | 'OVERDUE'
+    | 'LATE_FEE_WARNING'
+    | 'DUE_SOON'
+    | 'CREDIT_AVAILABLE'
+    | 'UP_TO_DATE',
+): string {
+  if (state === 'OVERDUE') return 'border-rose-200 bg-rose-50 text-rose-700';
+  if (state === 'LATE_FEE_WARNING') return 'border-amber-200 bg-amber-50 text-amber-700';
+  if (state === 'DUE_SOON') return 'border-violet-200 bg-violet-50 text-violet-700';
+  if (state === 'CREDIT_AVAILABLE') return 'border-sky-200 bg-sky-50 text-sky-700';
+  if (state === 'NO_INVOICE') return 'border-slate-200 bg-slate-50 text-slate-700';
+  return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+}
+
+function getActionCenterLabel(
+  state:
+    | 'NO_INVOICE'
+    | 'OVERDUE'
+    | 'LATE_FEE_WARNING'
+    | 'DUE_SOON'
+    | 'CREDIT_AVAILABLE'
+    | 'UP_TO_DATE',
+): string {
+  if (state === 'OVERDUE') return 'Prioritas';
+  if (state === 'LATE_FEE_WARNING') return 'Warning';
+  if (state === 'DUE_SOON') return 'Segera';
+  if (state === 'CREDIT_AVAILABLE') return 'Saldo';
+  if (state === 'NO_INVOICE') return 'Info';
+  return 'Aman';
+}
+
 export default function StudentFinancePage() {
   const financeQuery = useQuery({
     queryKey: ['student-finance-overview-web', 50],
@@ -67,6 +112,8 @@ export default function StudentFinancePage() {
   const unpaidAmount =
     Number(overview?.summary.status.pendingAmount || 0) +
     Number(overview?.summary.status.partialAmount || 0);
+  const actionCenter = overview?.actionCenter;
+  const latestRefund = overview?.creditBalance.refunds?.[0] || actionCenter?.latestRefund || null;
 
   return (
     <div className="space-y-6">
@@ -132,6 +179,58 @@ export default function StudentFinancePage() {
         </div>
       </div>
 
+      {actionCenter ? (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-wider text-gray-500">Pusat Tindak Lanjut</p>
+              <h2 className="mt-2 text-lg font-semibold text-gray-900">{actionCenter.headline}</h2>
+              <p className="mt-2 text-sm text-gray-600">{actionCenter.detail}</p>
+            </div>
+            <span
+              className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${getActionCenterBadgeClass(actionCenter.state)}`}
+            >
+              {getActionCenterLabel(actionCenter.state)}
+            </span>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="rounded-lg border border-violet-100 bg-violet-50/70 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-violet-700">Termin Berikutnya</p>
+              <p className="mt-2 text-sm font-semibold text-violet-900">
+                {actionCenter.nextDue?.invoiceNo || 'Belum ada agenda'}
+              </p>
+              <p className="mt-1 text-xs text-violet-700">
+                {actionCenter.nextDue?.dueDate
+                  ? `${formatDate(actionCenter.nextDue.dueDate)} • ${formatCurrency(actionCenter.nextDue.balanceAmount)}`
+                  : 'Tidak ada termin aktif yang perlu dipantau'}
+              </p>
+            </div>
+            <div className="rounded-lg border border-amber-100 bg-amber-50/70 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-amber-700">Potensi Denda</p>
+              <p className="mt-2 text-sm font-semibold text-amber-900">
+                {formatCurrency(actionCenter.pendingLateFeeAmount)}
+              </p>
+              <p className="mt-1 text-xs text-amber-700">
+                {actionCenter.overdueInstallmentCount} termin overdue • diterapkan{' '}
+                {formatCurrency(actionCenter.appliedLateFeeAmount)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-sky-100 bg-sky-50/70 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-sky-700">Saldo Kredit & Refund</p>
+              <p className="mt-2 text-sm font-semibold text-sky-900">
+                {formatCurrency(actionCenter.creditBalanceAmount)}
+              </p>
+              <p className="mt-1 text-xs text-sky-700">
+                {latestRefund
+                  ? `Refund terakhir ${latestRefund.refundNo} • ${formatDate(latestRefund.refundedAt)}`
+                  : 'Belum ada refund saldo kredit'}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
           <CreditCard className="w-4 h-4 text-amber-600" />
@@ -173,6 +272,11 @@ export default function StudentFinancePage() {
                       <div className="text-xs text-gray-500">
                         {invoice.title || `${invoice.periodKey} • ${invoice.semester === 'ODD' ? 'Ganjil' : 'Genap'}`}
                       </div>
+                      {invoice.items.length ? (
+                        <div className="mt-1 text-[11px] text-gray-500">
+                          Komponen: {invoice.items.map((item) => item.componentName).join(' • ')}
+                        </div>
+                      ) : null}
                       <div className="mt-1 text-[11px] text-violet-700">
                         {invoice.installmentSummary.totalCount} termin • {invoice.installmentSummary.paidCount} lunas
                       </div>
@@ -266,6 +370,10 @@ export default function StudentFinancePage() {
                         {payment.type === 'MONTHLY' ? 'Bulanan' : 'Sekali Bayar'}
                       </span>
                       <div className="mt-1 text-[11px] text-slate-500">{getPaymentSourceLabel(payment.source)}</div>
+                      <div className="mt-1 text-[11px] text-slate-500">
+                        {getPaymentMethodLabel(payment.method)}
+                        {payment.referenceNo ? ` • Ref ${payment.referenceNo}` : ''}
+                      </div>
                     </td>
                     <td className="px-5 py-3 text-sm text-right font-semibold text-gray-900">
                       {formatCurrency(payment.amount)}
@@ -308,6 +416,46 @@ export default function StudentFinancePage() {
         ) : (
           <div className="py-10 text-center text-sm text-gray-500">
             Belum ada histori pembayaran.
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+          <Wallet className="w-4 h-4 text-sky-600" />
+          <h2 className="text-sm font-semibold text-gray-900">Saldo Kredit & Refund</h2>
+        </div>
+        {overview?.creditBalance.refunds?.length ? (
+          <div className="divide-y divide-gray-100">
+            <div className="px-5 py-4 bg-sky-50/70">
+              <p className="text-xs text-sky-700">Saldo kredit aktif</p>
+              <p className="mt-1 text-lg font-semibold text-sky-900">
+                {formatCurrency(overview.creditBalance.balanceAmount)}
+              </p>
+            </div>
+            {overview.creditBalance.refunds.map((refund) => (
+              <div key={refund.id} className="px-5 py-4">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{refund.refundNo}</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {formatDate(refund.refundedAt)} • {getPaymentMethodLabel(refund.method)}
+                      {refund.referenceNo ? ` • Ref ${refund.referenceNo}` : ''}
+                    </p>
+                    {refund.note ? (
+                      <p className="mt-1 text-xs text-gray-500">{refund.note}</p>
+                    ) : null}
+                  </div>
+                  <p className="text-sm font-semibold text-sky-800">{formatCurrency(refund.amount)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="px-5 py-8 text-sm text-gray-500">
+            {overview?.creditBalance.balanceAmount
+              ? `Belum ada refund. Saldo kredit aktif saat ini ${formatCurrency(overview.creditBalance.balanceAmount)}.`
+              : 'Belum ada saldo kredit maupun refund.'}
           </div>
         )}
       </div>

@@ -97,6 +97,43 @@ interface ParentChildFinanceOverview {
     };
     creditBalance: number;
   };
+  actionCenter: {
+    state:
+      | 'NO_INVOICE'
+      | 'OVERDUE'
+      | 'LATE_FEE_WARNING'
+      | 'DUE_SOON'
+      | 'CREDIT_AVAILABLE'
+      | 'UP_TO_DATE';
+    headline: string;
+    detail: string;
+    overdueInvoiceCount: number;
+    overdueAmount: number;
+    overdueInstallmentCount: number;
+    overdueInstallmentAmount: number;
+    pendingLateFeeAmount: number;
+    appliedLateFeeAmount: number;
+    creditBalanceAmount: number;
+    latestPaymentAt?: string | null;
+    latestRefund?: {
+      refundNo: string;
+      amount: number;
+      refundedAt: string;
+      method: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER';
+      referenceNo?: string | null;
+      note?: string | null;
+    } | null;
+    nextDue?: {
+      invoiceId: number;
+      invoiceNo: string;
+      title?: string | null;
+      dueDate?: string | null;
+      balanceAmount: number;
+      installmentSequence?: number | null;
+      daysUntilDue?: number | null;
+      isOverdue: boolean;
+    } | null;
+  };
   invoices: Array<{
     id: number;
     invoiceNo: string;
@@ -247,6 +284,17 @@ function getParentPaymentSourceLabel(source?: ParentPaymentSource | null): strin
   return source === 'CREDIT_BALANCE' ? 'Saldo Kredit' : 'Pembayaran Langsung';
 }
 
+function getParentPaymentMethodLabel(
+  method?: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER' | null,
+): string {
+  if (method === 'BANK_TRANSFER') return 'Transfer Bank';
+  if (method === 'VIRTUAL_ACCOUNT') return 'Virtual Account';
+  if (method === 'E_WALLET') return 'E-Wallet / QRIS';
+  if (method === 'CASH') return 'Tunai';
+  if (method === 'OTHER') return 'Metode Lain';
+  return 'Metode belum dicatat';
+}
+
 const INVOICE_STATUS_LABELS: Record<'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED', string> = {
   UNPAID: 'Belum Lunas',
   PARTIAL: 'Parsial',
@@ -260,6 +308,40 @@ const INVOICE_STATUS_COLOR: Record<'UNPAID' | 'PARTIAL' | 'PAID' | 'CANCELLED', 
   PAID: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   CANCELLED: 'bg-rose-50 text-rose-700 border-rose-200',
 };
+
+function getFinanceActionCenterBadgeClass(
+  state:
+    | 'NO_INVOICE'
+    | 'OVERDUE'
+    | 'LATE_FEE_WARNING'
+    | 'DUE_SOON'
+    | 'CREDIT_AVAILABLE'
+    | 'UP_TO_DATE',
+) {
+  if (state === 'OVERDUE') return 'border-rose-200 bg-rose-50 text-rose-700';
+  if (state === 'LATE_FEE_WARNING') return 'border-amber-200 bg-amber-50 text-amber-700';
+  if (state === 'DUE_SOON') return 'border-violet-200 bg-violet-50 text-violet-700';
+  if (state === 'CREDIT_AVAILABLE') return 'border-sky-200 bg-sky-50 text-sky-700';
+  if (state === 'NO_INVOICE') return 'border-slate-200 bg-slate-50 text-slate-700';
+  return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+}
+
+function getFinanceActionCenterLabel(
+  state:
+    | 'NO_INVOICE'
+    | 'OVERDUE'
+    | 'LATE_FEE_WARNING'
+    | 'DUE_SOON'
+    | 'CREDIT_AVAILABLE'
+    | 'UP_TO_DATE',
+) {
+  if (state === 'OVERDUE') return 'Prioritas';
+  if (state === 'LATE_FEE_WARNING') return 'Warning';
+  if (state === 'DUE_SOON') return 'Segera';
+  if (state === 'CREDIT_AVAILABLE') return 'Saldo';
+  if (state === 'NO_INVOICE') return 'Info';
+  return 'Aman';
+}
 
 const ATTENDANCE_STATUS_LABELS: Record<ParentAttendanceStatus, string> = {
   PRESENT: 'Hadir',
@@ -947,6 +1029,9 @@ const ParentFinancePage = () => {
     if (!selectedChildId) return rows[0] || null;
     return rows.find((row) => row.student.id === selectedChildId) || rows[0] || null;
   }, [financeQuery.data?.children, selectedChildId]);
+  const actionCenter = selectedChildFinance?.actionCenter || null;
+  const latestRefund =
+    selectedChildFinance?.creditBalance.refunds?.[0] || selectedChildFinance?.actionCenter.latestRefund || null;
 
   const highestScore = useMemo(() => {
     const grades = reportCardQuery.data?.reportGrades || [];
@@ -1062,6 +1147,58 @@ const ParentFinancePage = () => {
         </div>
       </div>
 
+      {actionCenter ? (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-wider text-gray-500">Pusat Tindak Lanjut</p>
+              <h3 className="mt-2 text-lg font-semibold text-gray-900">{actionCenter.headline}</h3>
+              <p className="mt-2 text-sm text-gray-600">{actionCenter.detail}</p>
+            </div>
+            <span
+              className={`inline-flex items-center px-3 py-1 rounded-full border text-xs font-semibold ${getFinanceActionCenterBadgeClass(actionCenter.state)}`}
+            >
+              {getFinanceActionCenterLabel(actionCenter.state)}
+            </span>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="rounded-lg border border-violet-100 bg-violet-50/70 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-violet-700">Termin Berikutnya</p>
+              <p className="mt-2 text-sm font-semibold text-violet-900">
+                {actionCenter.nextDue?.invoiceNo || 'Belum ada agenda'}
+              </p>
+              <p className="mt-1 text-xs text-violet-700">
+                {actionCenter.nextDue?.dueDate
+                  ? `${formatDate(actionCenter.nextDue.dueDate)} • ${formatCurrency(actionCenter.nextDue.balanceAmount)}`
+                  : 'Tidak ada termin aktif yang perlu dipantau'}
+              </p>
+            </div>
+            <div className="rounded-lg border border-amber-100 bg-amber-50/70 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-amber-700">Potensi Denda</p>
+              <p className="mt-2 text-sm font-semibold text-amber-900">
+                {formatCurrency(actionCenter.pendingLateFeeAmount)}
+              </p>
+              <p className="mt-1 text-xs text-amber-700">
+                {actionCenter.overdueInstallmentCount} termin overdue • diterapkan{' '}
+                {formatCurrency(actionCenter.appliedLateFeeAmount)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-sky-100 bg-sky-50/70 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-sky-700">Saldo Kredit & Refund</p>
+              <p className="mt-2 text-sm font-semibold text-sky-900">
+                {formatCurrency(actionCenter.creditBalanceAmount)}
+              </p>
+              <p className="mt-1 text-xs text-sky-700">
+                {latestRefund
+                  ? `Refund terakhir ${latestRefund.refundNo} • ${formatDate(latestRefund.refundedAt)}`
+                  : 'Belum ada refund saldo kredit'}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
@@ -1119,6 +1256,11 @@ const ParentFinancePage = () => {
                                 {invoice.title ||
                                   `${invoice.periodKey} • ${invoice.semester === 'ODD' ? 'Ganjil' : 'Genap'}`}
                               </div>
+                              {invoice.items.length ? (
+                                <div className="mt-1 text-[11px] text-gray-500">
+                                  Komponen: {invoice.items.map((item) => item.componentName).join(' • ')}
+                                </div>
+                              ) : null}
                               <div className="mt-1 text-[11px] text-violet-700">
                                 {invoice.installmentSummary.totalCount} termin • {invoice.installmentSummary.paidCount} lunas
                               </div>
@@ -1204,6 +1346,10 @@ const ParentFinancePage = () => {
                               <div className="mt-1 text-[11px] text-gray-500">
                                 {getParentPaymentSourceLabel(payment.source)}
                               </div>
+                              <div className="mt-1 text-[11px] text-gray-500">
+                                {getParentPaymentMethodLabel(payment.method)}
+                                {payment.referenceNo ? ` • Ref ${payment.referenceNo}` : ''}
+                              </div>
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-900 text-right font-medium">
                               {formatCurrency(payment.amount)}
@@ -1249,7 +1395,53 @@ const ParentFinancePage = () => {
           )}
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-4">
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Saldo Kredit & Refund</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Pantau refund saldo kredit anak dan kelebihan bayar yang masih aktif.
+              </p>
+            </div>
+
+            {selectedChildFinance?.creditBalance.refunds?.length ? (
+              <>
+                <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2">
+                  <p className="text-[11px] text-sky-700">Saldo kredit aktif</p>
+                  <p className="text-sm font-semibold text-sky-900 mt-1">
+                    {formatCurrency(selectedChildFinance.creditBalance.balanceAmount)}
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  {selectedChildFinance.creditBalance.refunds.map((refund) => (
+                    <div key={refund.id} className="rounded-lg border border-gray-100 px-3 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">{refund.refundNo}</p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            {formatDate(refund.refundedAt)} • {getParentPaymentMethodLabel(refund.method)}
+                            {refund.referenceNo ? ` • Ref ${refund.referenceNo}` : ''}
+                          </p>
+                          {refund.note ? (
+                            <p className="mt-1 text-xs text-gray-500">{refund.note}</p>
+                          ) : null}
+                        </div>
+                        <p className="text-sm font-semibold text-sky-800">{formatCurrency(refund.amount)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="rounded-lg border border-gray-100 px-3 py-2 text-xs text-gray-500">
+                {selectedChildFinance?.creditBalance.balanceAmount
+                  ? `Belum ada refund. Saldo kredit aktif saat ini ${formatCurrency(selectedChildFinance.creditBalance.balanceAmount)}.`
+                  : 'Belum ada saldo kredit maupun refund untuk anak yang dipilih.'}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-4">
           <div>
             <h3 className="text-sm font-semibold text-gray-900">Ringkasan Akademik</h3>
             <p className="text-xs text-gray-500 mt-1">Diambil dari rapor anak pada tahun ajaran aktif.</p>
@@ -1299,6 +1491,7 @@ const ParentFinancePage = () => {
               Data rapor belum tersedia untuk periode ini.
             </div>
           )}
+        </div>
         </div>
       </div>
     </div>

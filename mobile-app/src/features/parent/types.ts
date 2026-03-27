@@ -130,6 +130,43 @@ export type ParentChildFinanceSummary = {
 export type ParentChildFinanceOverview = {
   student: ParentChildDetail;
   summary: ParentChildFinanceSummary;
+  actionCenter: {
+    state:
+      | 'NO_INVOICE'
+      | 'OVERDUE'
+      | 'LATE_FEE_WARNING'
+      | 'DUE_SOON'
+      | 'CREDIT_AVAILABLE'
+      | 'UP_TO_DATE';
+    headline: string;
+    detail: string;
+    overdueInvoiceCount: number;
+    overdueAmount: number;
+    overdueInstallmentCount: number;
+    overdueInstallmentAmount: number;
+    pendingLateFeeAmount: number;
+    appliedLateFeeAmount: number;
+    creditBalanceAmount: number;
+    latestPaymentAt?: string | null;
+    latestRefund?: {
+      refundNo: string;
+      amount: number;
+      refundedAt: string;
+      method: 'CASH' | 'BANK_TRANSFER' | 'VIRTUAL_ACCOUNT' | 'E_WALLET' | 'OTHER';
+      referenceNo?: string | null;
+      note?: string | null;
+    } | null;
+    nextDue?: {
+      invoiceId: number;
+      invoiceNo: string;
+      title?: string | null;
+      dueDate?: string | null;
+      balanceAmount: number;
+      installmentSequence?: number | null;
+      daysUntilDue?: number | null;
+      isOverdue: boolean;
+    } | null;
+  };
   invoices: Array<{
     id: number;
     invoiceNo: string;

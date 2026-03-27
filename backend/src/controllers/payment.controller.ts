@@ -14974,6 +14974,250 @@ function buildFinancePortalOverview(financeInvoices: FinancePortalInvoiceRecord[
   };
 }
 
+type FinancePortalCreditBalanceSnapshot = {
+  balanceAmount: number;
+  updatedAt?: Date | null;
+  refunds: Array<{
+    id: number;
+    refundNo: string;
+    amount: number;
+    method: FinancePaymentMethod;
+    refundedAt: Date;
+    referenceNo?: string | null;
+    note?: string | null;
+    createdAt: Date;
+  }>;
+};
+
+type FinancePortalActionCenterState =
+  | 'NO_INVOICE'
+  | 'OVERDUE'
+  | 'LATE_FEE_WARNING'
+  | 'DUE_SOON'
+  | 'CREDIT_AVAILABLE'
+  | 'UP_TO_DATE';
+
+type FinancePortalActionCenter = {
+  state: FinancePortalActionCenterState;
+  headline: string;
+  detail: string;
+  overdueInvoiceCount: number;
+  overdueAmount: number;
+  overdueInstallmentCount: number;
+  overdueInstallmentAmount: number;
+  pendingLateFeeAmount: number;
+  appliedLateFeeAmount: number;
+  creditBalanceAmount: number;
+  latestPaymentAt: Date | null;
+  latestRefund: {
+    refundNo: string;
+    amount: number;
+    refundedAt: Date;
+    method: FinancePaymentMethod;
+    referenceNo: string | null;
+    note: string | null;
+  } | null;
+  nextDue: {
+    invoiceId: number;
+    invoiceNo: string;
+    title: string | null;
+    dueDate: Date | null;
+    balanceAmount: number;
+    installmentSequence: number | null;
+    daysUntilDue: number | null;
+    isOverdue: boolean;
+  } | null;
+};
+
+type FinancePortalActionOverview = {
+  summary: {
+    overdueCount: number;
+    overdueAmount: number;
+  };
+  invoices: Array<{
+    id: number;
+    invoiceNo: string;
+    title?: string | null;
+    dueDate?: Date | null;
+    balanceAmount: number;
+    isOverdue?: boolean;
+    installmentSummary?: {
+      overdueCount: number;
+      overdueAmount: number;
+      nextInstallment: {
+        sequence: number;
+        dueDate?: Date | null;
+        balanceAmount: number;
+        isOverdue: boolean;
+      } | null;
+    };
+    lateFeeSummary?: {
+      pendingAmount: number;
+      appliedAmount: number;
+    };
+  }>;
+  payments: Array<{
+    createdAt: Date;
+  }>;
+};
+
+function formatFinancePortalCurrency(value: number) {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
+}
+
+function formatFinancePortalDate(value?: Date | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function buildFinancePortalActionCenter(params: {
+  overview: FinancePortalActionOverview;
+  creditBalance: FinancePortalCreditBalanceSnapshot;
+}): FinancePortalActionCenter {
+  const { overview, creditBalance } = params;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let overdueInstallmentCount = 0;
+  let overdueInstallmentAmount = 0;
+  let pendingLateFeeAmount = 0;
+  let appliedLateFeeAmount = 0;
+  let nextDueCandidate: FinancePortalActionCenter['nextDue'] = null;
+
+  for (const invoice of overview.invoices) {
+    overdueInstallmentCount += Number(invoice.installmentSummary?.overdueCount || 0);
+    overdueInstallmentAmount += Number(invoice.installmentSummary?.overdueAmount || 0);
+    pendingLateFeeAmount += Number(invoice.lateFeeSummary?.pendingAmount || 0);
+    appliedLateFeeAmount += Number(invoice.lateFeeSummary?.appliedAmount || 0);
+
+    const nextInstallment = invoice.installmentSummary?.nextInstallment || null;
+    const dueDate = nextInstallment?.dueDate || invoice.dueDate || null;
+    if (!dueDate || Number(invoice.balanceAmount || 0) <= 0) {
+      continue;
+    }
+
+    const normalizedDueDate = new Date(dueDate);
+    if (Number.isNaN(normalizedDueDate.getTime())) {
+      continue;
+    }
+    normalizedDueDate.setHours(0, 0, 0, 0);
+
+    const daysUntilDue = Math.floor((normalizedDueDate.getTime() - today.getTime()) / 86_400_000);
+    const candidate: FinancePortalActionCenter['nextDue'] = {
+      invoiceId: invoice.id,
+      invoiceNo: invoice.invoiceNo,
+      title: invoice.title || null,
+      dueDate,
+      balanceAmount: Number(nextInstallment?.balanceAmount || invoice.balanceAmount || 0),
+      installmentSequence: nextInstallment?.sequence || null,
+      daysUntilDue,
+      isOverdue: daysUntilDue < 0 || Boolean(nextInstallment?.isOverdue) || Boolean(invoice.isOverdue),
+    };
+
+    if (
+      !nextDueCandidate ||
+      (candidate.dueDate && nextDueCandidate.dueDate
+        ? new Date(candidate.dueDate).getTime() < new Date(nextDueCandidate.dueDate).getTime()
+        : Boolean(candidate.dueDate) && !nextDueCandidate.dueDate)
+    ) {
+      nextDueCandidate = candidate;
+    }
+  }
+
+  const latestRefund = creditBalance.refunds[0]
+    ? {
+        refundNo: creditBalance.refunds[0].refundNo,
+        amount: Number(creditBalance.refunds[0].amount || 0),
+        refundedAt: creditBalance.refunds[0].refundedAt,
+        method: creditBalance.refunds[0].method,
+        referenceNo: creditBalance.refunds[0].referenceNo || null,
+        note: creditBalance.refunds[0].note || null,
+      }
+    : null;
+  const latestPayment = overview.payments[0] || null;
+  const creditBalanceAmount = Number(creditBalance.balanceAmount || 0);
+
+  let state: FinancePortalActionCenterState = 'UP_TO_DATE';
+  if (!overview.invoices.length && creditBalanceAmount <= 0) {
+    state = 'NO_INVOICE';
+  } else if (Number(overview.summary.overdueAmount || 0) > 0 || overdueInstallmentCount > 0) {
+    state = 'OVERDUE';
+  } else if (pendingLateFeeAmount > 0) {
+    state = 'LATE_FEE_WARNING';
+  } else if (nextDueCandidate && nextDueCandidate.daysUntilDue != null && nextDueCandidate.daysUntilDue <= 7) {
+    state = 'DUE_SOON';
+  } else if (creditBalanceAmount > 0) {
+    state = 'CREDIT_AVAILABLE';
+  }
+
+  let headline = 'Tagihan terkendali';
+  let detail = 'Belum ada tunggakan yang perlu diprioritaskan saat ini.';
+
+  if (state === 'NO_INVOICE') {
+    headline = 'Belum ada tagihan aktif';
+    detail =
+      creditBalanceAmount > 0
+        ? `Saldo kredit ${formatFinancePortalCurrency(creditBalanceAmount)} tetap tersimpan dan siap dipakai otomatis.`
+        : 'Tagihan baru akan muncul otomatis saat invoice diterbitkan oleh sekolah.';
+  } else if (state === 'OVERDUE') {
+    headline = `Ada ${overview.summary.overdueCount} tagihan yang perlu diprioritaskan`;
+    detail = `Outstanding overdue ${formatFinancePortalCurrency(overview.summary.overdueAmount)}${
+      pendingLateFeeAmount > 0
+        ? ` • Potensi denda ${formatFinancePortalCurrency(pendingLateFeeAmount)}`
+        : ''
+    }.`;
+  } else if (state === 'LATE_FEE_WARNING') {
+    headline = 'Ada potensi denda keterlambatan';
+    detail = `${formatFinancePortalCurrency(
+      pendingLateFeeAmount,
+    )} berpotensi ditambahkan ke tagihan aktif jika overdue belum diselesaikan.`;
+  } else if (state === 'DUE_SOON' && nextDueCandidate) {
+    headline = 'Termin berikutnya segera jatuh tempo';
+    detail = `${nextDueCandidate.invoiceNo} • ${formatFinancePortalDate(
+      nextDueCandidate.dueDate,
+    )} • sisa ${formatFinancePortalCurrency(nextDueCandidate.balanceAmount)}.`;
+  } else if (state === 'CREDIT_AVAILABLE') {
+    headline = 'Saldo kredit tersedia';
+    detail = `Tersimpan ${formatFinancePortalCurrency(
+      creditBalanceAmount,
+    )} dan akan dipakai otomatis untuk tagihan berikutnya.`;
+  } else if (nextDueCandidate) {
+    headline = 'Tagihan aktif tetap terpantau';
+    detail = `Termin berikutnya ${formatFinancePortalDate(
+      nextDueCandidate.dueDate,
+    )} dengan sisa ${formatFinancePortalCurrency(nextDueCandidate.balanceAmount)}.`;
+  } else if (latestPayment?.createdAt) {
+    headline = 'Pembayaran terakhir sudah tercatat';
+    detail = `Transaksi terakhir masuk pada ${formatFinancePortalDate(latestPayment.createdAt)}.`;
+  }
+
+  return {
+    state,
+    headline,
+    detail,
+    overdueInvoiceCount: Number(overview.summary.overdueCount || 0),
+    overdueAmount: Number(overview.summary.overdueAmount || 0),
+    overdueInstallmentCount,
+    overdueInstallmentAmount: normalizeFinanceAmount(overdueInstallmentAmount),
+    pendingLateFeeAmount: normalizeFinanceAmount(pendingLateFeeAmount),
+    appliedLateFeeAmount: normalizeFinanceAmount(appliedLateFeeAmount),
+    creditBalanceAmount,
+    latestPaymentAt: latestPayment?.createdAt || null,
+    latestRefund,
+    nextDue: nextDueCandidate,
+  };
+}
+
 export const listParentPayments = asyncHandler(async (req: Request, res: Response) => {
   const { studentId, student_id, limit } = listParentPaymentsQuerySchema.parse(req.query);
   const requestedStudentId = studentId ?? student_id ?? null;
@@ -15120,6 +15364,20 @@ export const listParentPayments = asyncHandler(async (req: Request, res: Respons
           financeInvoices as FinancePortalInvoiceRecord[],
           limit,
         );
+        const serializedCreditBalance = {
+          balanceAmount: Number(creditBalance?.balanceAmount || 0),
+          updatedAt: creditBalance?.updatedAt || null,
+          refunds: (creditBalance?.refunds || []).map((refund) => ({
+            id: refund.id,
+            refundNo: refund.refundNo,
+            amount: Number(refund.amount || 0),
+            method: refund.method,
+            refundedAt: refund.refundedAt,
+            referenceNo: refund.referenceNo || null,
+            note: refund.note || null,
+            createdAt: refund.createdAt,
+          })),
+        };
 
         return {
           student: child,
@@ -15129,20 +15387,11 @@ export const listParentPayments = asyncHandler(async (req: Request, res: Respons
           },
           invoices: dynamicOverview.invoices,
           payments: dynamicOverview.payments,
-          creditBalance: {
-            balanceAmount: Number(creditBalance?.balanceAmount || 0),
-            updatedAt: creditBalance?.updatedAt || null,
-            refunds: (creditBalance?.refunds || []).map((refund) => ({
-              id: refund.id,
-              refundNo: refund.refundNo,
-              amount: Number(refund.amount || 0),
-              method: refund.method,
-              refundedAt: refund.refundedAt,
-              referenceNo: refund.referenceNo || null,
-              note: refund.note || null,
-              createdAt: refund.createdAt,
-            })),
-          },
+          actionCenter: buildFinancePortalActionCenter({
+            overview: dynamicOverview,
+            creditBalance: serializedCreditBalance,
+          }),
+          creditBalance: serializedCreditBalance,
         };
       }
 
@@ -15188,8 +15437,7 @@ export const listParentPayments = asyncHandler(async (req: Request, res: Respons
       const totalAmount = PAYMENT_STATUSES.reduce((sum, status) => sum + statusSummary[status].amount, 0);
       const totalRecords = PAYMENT_STATUSES.reduce((sum, status) => sum + statusSummary[status].count, 0);
 
-      return {
-        student: child,
+      const legacyOverview = {
         summary: {
           totalRecords,
           totalAmount,
@@ -15205,14 +15453,13 @@ export const listParentPayments = asyncHandler(async (req: Request, res: Respons
             cancelledCount: statusSummary.CANCELLED.count,
             cancelledAmount: statusSummary.CANCELLED.amount,
           },
-            type: {
-              monthlyCount: typeSummary.MONTHLY.count,
-              monthlyAmount: typeSummary.MONTHLY.amount,
-              oneTimeCount: typeSummary.ONE_TIME.count,
-              oneTimeAmount: typeSummary.ONE_TIME.amount,
-            },
-            creditBalance: Number(creditBalance?.balanceAmount || 0),
+          type: {
+            monthlyCount: typeSummary.MONTHLY.count,
+            monthlyAmount: typeSummary.MONTHLY.amount,
+            oneTimeCount: typeSummary.ONE_TIME.count,
+            oneTimeAmount: typeSummary.ONE_TIME.amount,
           },
+        },
         invoices: [],
         payments: payments.map((payment) => ({
           id: payment.id,
@@ -15231,20 +15478,35 @@ export const listParentPayments = asyncHandler(async (req: Request, res: Respons
           createdAt: payment.createdAt,
           updatedAt: payment.updatedAt,
         })),
-        creditBalance: {
-          balanceAmount: Number(creditBalance?.balanceAmount || 0),
-          updatedAt: creditBalance?.updatedAt || null,
-          refunds: (creditBalance?.refunds || []).map((refund) => ({
-            id: refund.id,
-            refundNo: refund.refundNo,
-            amount: Number(refund.amount || 0),
-            method: refund.method,
-            refundedAt: refund.refundedAt,
-            referenceNo: refund.referenceNo || null,
-            note: refund.note || null,
-            createdAt: refund.createdAt,
-          })),
+      };
+      const serializedCreditBalance = {
+        balanceAmount: Number(creditBalance?.balanceAmount || 0),
+        updatedAt: creditBalance?.updatedAt || null,
+        refunds: (creditBalance?.refunds || []).map((refund) => ({
+          id: refund.id,
+          refundNo: refund.refundNo,
+          amount: Number(refund.amount || 0),
+          method: refund.method,
+          refundedAt: refund.refundedAt,
+          referenceNo: refund.referenceNo || null,
+          note: refund.note || null,
+          createdAt: refund.createdAt,
+        })),
+      };
+
+      return {
+        student: child,
+        summary: {
+          ...legacyOverview.summary,
+          creditBalance: Number(creditBalance?.balanceAmount || 0),
         },
+        invoices: legacyOverview.invoices,
+        payments: legacyOverview.payments,
+        actionCenter: buildFinancePortalActionCenter({
+          overview: legacyOverview,
+          creditBalance: serializedCreditBalance,
+        }),
+        creditBalance: serializedCreditBalance,
       };
     }),
   );
@@ -15428,6 +15690,20 @@ export const listStudentPayments = asyncHandler(async (req: Request, res: Respon
       financeInvoices as FinancePortalInvoiceRecord[],
       limit,
     );
+    const serializedCreditBalance = {
+      balanceAmount: Number(creditBalance?.balanceAmount || 0),
+      updatedAt: creditBalance?.updatedAt || null,
+      refunds: (creditBalance?.refunds || []).map((refund) => ({
+        id: refund.id,
+        refundNo: refund.refundNo,
+        amount: Number(refund.amount || 0),
+        method: refund.method,
+        refundedAt: refund.refundedAt,
+        referenceNo: refund.referenceNo || null,
+        note: refund.note || null,
+        createdAt: refund.createdAt,
+      })),
+    };
 
     res.status(200).json(
       new ApiResponse(
@@ -15440,20 +15716,11 @@ export const listStudentPayments = asyncHandler(async (req: Request, res: Respon
           },
           invoices: dynamicOverview.invoices,
           payments: dynamicOverview.payments,
-          creditBalance: {
-            balanceAmount: Number(creditBalance?.balanceAmount || 0),
-            updatedAt: creditBalance?.updatedAt || null,
-            refunds: (creditBalance?.refunds || []).map((refund) => ({
-              id: refund.id,
-              refundNo: refund.refundNo,
-              amount: Number(refund.amount || 0),
-              method: refund.method,
-              refundedAt: refund.refundedAt,
-              referenceNo: refund.referenceNo || null,
-              note: refund.note || null,
-              createdAt: refund.createdAt,
-            })),
-          },
+          actionCenter: buildFinancePortalActionCenter({
+            overview: dynamicOverview,
+            creditBalance: serializedCreditBalance,
+          }),
+          creditBalance: serializedCreditBalance,
         },
         'Data keuangan siswa berhasil diambil',
       ),
@@ -15502,66 +15769,79 @@ export const listStudentPayments = asyncHandler(async (req: Request, res: Respon
   const totalAmount = PAYMENT_STATUSES.reduce((sum, status) => sum + statusSummary[status].amount, 0);
   const totalRecords = PAYMENT_STATUSES.reduce((sum, status) => sum + statusSummary[status].count, 0);
 
+  const legacyOverview = {
+    summary: {
+      totalRecords,
+      totalAmount,
+      overdueCount: 0,
+      overdueAmount: 0,
+      status: {
+        pendingCount: statusSummary.PENDING.count,
+        pendingAmount: statusSummary.PENDING.amount,
+        paidCount: statusSummary.PAID.count,
+        paidAmount: statusSummary.PAID.amount,
+        partialCount: statusSummary.PARTIAL.count,
+        partialAmount: statusSummary.PARTIAL.amount,
+        cancelledCount: statusSummary.CANCELLED.count,
+        cancelledAmount: statusSummary.CANCELLED.amount,
+      },
+      type: {
+        monthlyCount: typeSummary.MONTHLY.count,
+        monthlyAmount: typeSummary.MONTHLY.amount,
+        oneTimeCount: typeSummary.ONE_TIME.count,
+        oneTimeAmount: typeSummary.ONE_TIME.amount,
+      },
+    },
+    invoices: [],
+    payments: payments.map((payment) => ({
+      id: payment.id,
+      amount: payment.amount,
+      status: payment.status,
+      type: payment.type,
+      paymentNo: null,
+      allocatedAmount: payment.amount,
+      creditedAmount: 0,
+      method: null,
+      referenceNo: null,
+      invoiceId: null,
+      invoiceNo: null,
+      periodKey: null,
+      semester: null,
+      createdAt: payment.createdAt,
+      updatedAt: payment.updatedAt,
+    })),
+  };
+  const serializedCreditBalance = {
+    balanceAmount: Number(creditBalance?.balanceAmount || 0),
+    updatedAt: creditBalance?.updatedAt || null,
+    refunds: (creditBalance?.refunds || []).map((refund) => ({
+      id: refund.id,
+      refundNo: refund.refundNo,
+      amount: Number(refund.amount || 0),
+      method: refund.method,
+      refundedAt: refund.refundedAt,
+      referenceNo: refund.referenceNo || null,
+      note: refund.note || null,
+      createdAt: refund.createdAt,
+    })),
+  };
+
   res.status(200).json(
     new ApiResponse(
       200,
       {
         student,
         summary: {
-          totalRecords,
-          totalAmount,
-          overdueCount: 0,
-          overdueAmount: 0,
-          status: {
-            pendingCount: statusSummary.PENDING.count,
-            pendingAmount: statusSummary.PENDING.amount,
-            paidCount: statusSummary.PAID.count,
-            paidAmount: statusSummary.PAID.amount,
-            partialCount: statusSummary.PARTIAL.count,
-            partialAmount: statusSummary.PARTIAL.amount,
-            cancelledCount: statusSummary.CANCELLED.count,
-            cancelledAmount: statusSummary.CANCELLED.amount,
-          },
-          type: {
-            monthlyCount: typeSummary.MONTHLY.count,
-            monthlyAmount: typeSummary.MONTHLY.amount,
-            oneTimeCount: typeSummary.ONE_TIME.count,
-            oneTimeAmount: typeSummary.ONE_TIME.amount,
-          },
+          ...legacyOverview.summary,
           creditBalance: Number(creditBalance?.balanceAmount || 0),
         },
-        invoices: [],
-        payments: payments.map((payment) => ({
-          id: payment.id,
-          amount: payment.amount,
-          status: payment.status,
-          type: payment.type,
-          paymentNo: null,
-          allocatedAmount: payment.amount,
-          creditedAmount: 0,
-          method: null,
-          referenceNo: null,
-          invoiceId: null,
-          invoiceNo: null,
-          periodKey: null,
-          semester: null,
-          createdAt: payment.createdAt,
-          updatedAt: payment.updatedAt,
-        })),
-        creditBalance: {
-          balanceAmount: Number(creditBalance?.balanceAmount || 0),
-          updatedAt: creditBalance?.updatedAt || null,
-          refunds: (creditBalance?.refunds || []).map((refund) => ({
-            id: refund.id,
-            refundNo: refund.refundNo,
-            amount: Number(refund.amount || 0),
-            method: refund.method,
-            refundedAt: refund.refundedAt,
-            referenceNo: refund.referenceNo || null,
-            note: refund.note || null,
-            createdAt: refund.createdAt,
-          })),
-        },
+        invoices: legacyOverview.invoices,
+        payments: legacyOverview.payments,
+        actionCenter: buildFinancePortalActionCenter({
+          overview: legacyOverview,
+          creditBalance: serializedCreditBalance,
+        }),
+        creditBalance: serializedCreditBalance,
       },
       'Data keuangan siswa berhasil diambil',
     ),
