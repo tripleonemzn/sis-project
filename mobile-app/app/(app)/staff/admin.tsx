@@ -18,6 +18,7 @@ import {
   type FinanceBudgetProgressStage,
   type StaffFinanceCashSession,
   type StaffFinanceClosingPeriod,
+  type StaffFinanceGovernanceSummary,
   type StaffFinancePaymentReversalRequest,
   type StaffFinanceWriteOffRequest,
   type StaffFinanceReportSnapshot,
@@ -129,6 +130,20 @@ function getBudgetProgressStyle(stage: FinanceBudgetProgressStage) {
   return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b', label: 'Ditolak' };
 }
 
+function getGovernanceRiskStyle(level: StaffFinanceGovernanceSummary['overview']['riskLevel']) {
+  if (level === 'CRITICAL') return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b', label: 'Kritis' };
+  if (level === 'HIGH') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e', label: 'Tinggi' };
+  if (level === 'MEDIUM') return { bg: '#e0f2fe', border: '#bae6fd', text: '#075985', label: 'Pantau' };
+  return { bg: '#dcfce7', border: '#86efac', text: '#166534', label: 'Stabil' };
+}
+
+function getGovernanceSeverityStyle(level: StaffFinanceGovernanceSummary['followUpQueue'][number]['severity']) {
+  if (level === 'CRITICAL') return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+  if (level === 'HIGH') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  if (level === 'MEDIUM') return { bg: '#e0f2fe', border: '#bae6fd', text: '#075985' };
+  return { bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
+}
+
 export default function StaffAdminScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -216,6 +231,17 @@ export default function StaffAdminScreen() {
       staffFinanceApi.getBudgetRealizationSummary({
         academicYearId: activeYearQuery.data?.id,
         limit: 8,
+      }),
+    staleTime: 60 * 1000,
+  });
+
+  const headTuGovernanceQuery = useQuery({
+    queryKey: ['mobile-head-tu-finance-governance', user?.id, activeYearQuery.data?.id || 'none'],
+    enabled: isAuthenticated && user?.role === 'STAFF' && staffDivision === 'HEAD_TU',
+    queryFn: () =>
+      staffFinanceApi.getGovernanceSummary({
+        academicYearId: activeYearQuery.data?.id,
+        limit: 6,
       }),
     staleTime: 60 * 1000,
   });
@@ -367,6 +393,7 @@ export default function StaffAdminScreen() {
     [headTuBankReconciliationsQuery.data],
   );
   const headTuBankReconciliationSummary = headTuBankReconciliationsQuery.data?.summary;
+  const headTuGovernance = headTuGovernanceQuery.data || null;
   const headTuBudgetRealization = headTuBudgetRealizationQuery.data || null;
   const headTuClosingPeriods = useMemo(
     () => headTuClosingPeriodsQuery.data?.periods || [],
@@ -386,6 +413,7 @@ export default function StaffAdminScreen() {
       void headTuCashSessionsQuery.refetch();
       void headTuCashSessionApprovalsQuery.refetch();
       void headTuBankReconciliationsQuery.refetch();
+      void headTuGovernanceQuery.refetch();
       void headTuBudgetRealizationQuery.refetch();
       void headTuClosingPeriodsQuery.refetch();
       void headTuClosingPeriodApprovalsQuery.refetch();
@@ -876,6 +904,136 @@ export default function StaffAdminScreen() {
                   </Text>
                 </View>
               ))
+            )}
+          </View>
+
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Governance Summary</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                  Ringkasan kontrol finance untuk area risiko utama Head TU.
+                </Text>
+              </View>
+              {headTuGovernance ? (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: getGovernanceRiskStyle(headTuGovernance.overview.riskLevel).border,
+                    backgroundColor: getGovernanceRiskStyle(headTuGovernance.overview.riskLevel).bg,
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                  }}
+                >
+                  <Text style={{ color: getGovernanceRiskStyle(headTuGovernance.overview.riskLevel).text, fontSize: 11, fontWeight: '700' }}>
+                    {getGovernanceRiskStyle(headTuGovernance.overview.riskLevel).label}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            {headTuGovernanceQuery.isLoading ? (
+              <QueryStateView type="loading" message="Mengambil governance finance..." />
+            ) : !headTuGovernance ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Ringkasan governance finance belum tersedia.</Text>
+            ) : (
+              <>
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#cbd5e1',
+                    backgroundColor: '#f8fafc',
+                    borderRadius: 10,
+                    padding: 10,
+                    marginBottom: 10,
+                  }}
+                >
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{headTuGovernance.overview.headline}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>{headTuGovernance.overview.detail}</Text>
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                    {headTuGovernance.overview.attentionItems} item perhatian • {formatCurrency(headTuGovernance.overview.attentionAmount)}
+                  </Text>
+                </View>
+
+                <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <SummaryCard
+                      title="Kolektibilitas"
+                      value={String(headTuGovernance.collection.criticalCount)}
+                      subtitle={`High ${headTuGovernance.collection.highPriorityCount}`}
+                    />
+                  </View>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <SummaryCard
+                      title="Treasury"
+                      value={String(
+                        headTuGovernance.treasury.openCashSessions +
+                          headTuGovernance.treasury.openBankReconciliations,
+                      )}
+                      subtitle="Kas/bank terbuka"
+                    />
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <SummaryCard
+                      title="Approval"
+                      value={String(headTuGovernance.approvals.totalPendingCount)}
+                      subtitle="Menunggu review"
+                    />
+                  </View>
+                  <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <SummaryCard
+                      title="Budget/Close"
+                      value={String(
+                        headTuGovernance.budgetControl.followUpCount +
+                          headTuGovernance.closingControl.reviewCount,
+                      )}
+                      subtitle="Butuh tindak lanjut"
+                    />
+                  </View>
+                </View>
+
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Antrian Prioritas</Text>
+                {!headTuGovernance.followUpQueue.length ? (
+                  <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada antrian governance yang perlu ditindaklanjuti.</Text>
+                ) : (
+                  headTuGovernance.followUpQueue.map((item) => {
+                    const badge = getGovernanceSeverityStyle(item.severity);
+                    return (
+                      <View key={item.key} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                              <View style={{ borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                                <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{item.severity}</Text>
+                              </View>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }}>{item.category}</Text>
+                            </View>
+                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.title}</Text>
+                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>{item.detail}</Text>
+                            <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                              {item.referenceLabel ? `${item.referenceLabel} • ` : ''}
+                              {item.updatedAt ? formatDate(item.updatedAt) : 'Perlu ditinjau'}
+                            </Text>
+                          </View>
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatCurrency(item.amount)}</Text>
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
+              </>
             )}
           </View>
 

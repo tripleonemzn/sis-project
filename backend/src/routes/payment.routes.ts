@@ -46,6 +46,7 @@ import {
   applyFinancePaymentReversal,
   closeFinanceCashSession,
   finalizeFinanceBankReconciliation,
+  getFinanceGovernanceSummary,
   getFinanceBudgetRealizationSummary,
   openFinanceCashSession,
   updateFinanceInvoiceInstallments,
@@ -130,6 +131,11 @@ router.get(
   '/budget-realization',
   roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']),
   getFinanceBudgetRealizationSummary,
+);
+router.get(
+  '/governance-summary',
+  roleMiddleware(['STAFF', 'ADMIN', 'TEACHER', 'PRINCIPAL']),
+  getFinanceGovernanceSummary,
 );
 router.get(
   '/reports/export',

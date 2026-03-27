@@ -1391,6 +1391,83 @@ export interface FinanceBudgetRealizationSnapshot {
   recentRealizations: FinanceBudgetRealizationRecentRow[];
 }
 
+export type FinanceGovernanceArea = 'COLLECTION' | 'TREASURY' | 'APPROVAL' | 'BUDGET' | 'CLOSING';
+export type FinanceGovernanceSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export interface FinanceGovernanceFollowUpItem {
+  key: string;
+  category: FinanceGovernanceArea;
+  severity: FinanceGovernanceSeverity;
+  title: string;
+  detail: string;
+  amount: number;
+  referenceLabel?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface FinanceGovernanceSummary {
+  filters: {
+    academicYearId: number | null;
+    generatedAt: string;
+  };
+  overview: {
+    riskLevel: FinanceGovernanceSeverity;
+    dominantArea: FinanceGovernanceArea;
+    headline: string;
+    detail: string;
+    attentionItems: number;
+    attentionAmount: number;
+  };
+  collection: {
+    criticalCount: number;
+    highPriorityCount: number;
+    dueSoonCount: number;
+    dueSoonOutstanding: number;
+    overdueInvoices: number;
+    overdueOutstanding: number;
+    totalOutstanding: number;
+  };
+  treasury: {
+    openCashSessions: number;
+    pendingCashSessionApprovals: number;
+    totalCashVarianceAmount: number;
+    openBankReconciliations: number;
+    unmatchedStatementEntries: number;
+    totalBankVarianceAmount: number;
+    pendingBankVerificationAmount: number;
+  };
+  approvals: {
+    pendingHeadTuWriteOffs: number;
+    pendingPrincipalWriteOffs: number;
+    pendingHeadTuPaymentReversals: number;
+    pendingPrincipalPaymentReversals: number;
+    pendingHeadTuCashSessions: number;
+    pendingPrincipalCashSessions: number;
+    pendingHeadTuClosingPeriods: number;
+    pendingPrincipalClosingPeriods: number;
+    totalPendingCount: number;
+    totalPendingAmount: number;
+  };
+  budgetControl: {
+    approvedBudgetAmount: number;
+    actualRealizedAmount: number;
+    varianceAmount: number;
+    financeReviewCount: number;
+    returnedByFinanceCount: number;
+    followUpCount: number;
+  };
+  closingControl: {
+    openCount: number;
+    reviewCount: number;
+    closedCount: number;
+    pendingVerificationAmount: number;
+    unmatchedBankAmount: number;
+    openCashSessionCount: number;
+    openReconciliationCount: number;
+  };
+  followUpQueue: FinanceGovernanceFollowUpItem[];
+}
+
 export interface FinanceReportQueryParams {
   academicYearId?: number;
   semester?: SemesterCode;
@@ -1698,6 +1775,17 @@ export const staffFinanceService = {
   }) {
     const response = await api.get<ApiResponse<FinanceBudgetRealizationSnapshot>>(
       '/payments/budget-realization',
+      { params },
+    );
+    return response.data.data;
+  },
+
+  async getGovernanceSummary(params?: {
+    academicYearId?: number;
+    limit?: number;
+  }) {
+    const response = await api.get<ApiResponse<FinanceGovernanceSummary>>(
+      '/payments/governance-summary',
       { params },
     );
     return response.data.data;

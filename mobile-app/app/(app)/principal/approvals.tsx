@@ -25,6 +25,7 @@ import {
   type FinanceBudgetProgressStage,
   type StaffFinanceCashSession,
   type StaffFinanceClosingPeriod,
+  type StaffFinanceGovernanceSummary,
   type StaffFinancePaymentReversalRequest,
   type StaffFinanceWriteOffRequest,
 } from '../../../src/features/staff/staffFinanceApi';
@@ -87,6 +88,20 @@ function getBudgetProgressStyle(stage: FinanceBudgetProgressStage) {
   return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b', label: 'Ditolak' };
 }
 
+function getGovernanceRiskStyle(level: StaffFinanceGovernanceSummary['overview']['riskLevel']) {
+  if (level === 'CRITICAL') return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b', label: 'Kritis' };
+  if (level === 'HIGH') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e', label: 'Tinggi' };
+  if (level === 'MEDIUM') return { bg: '#e0f2fe', border: '#bae6fd', text: '#075985', label: 'Pantau' };
+  return { bg: '#dcfce7', border: '#86efac', text: '#166534', label: 'Stabil' };
+}
+
+function getGovernanceSeverityStyle(level: StaffFinanceGovernanceSummary['followUpQueue'][number]['severity']) {
+  if (level === 'CRITICAL') return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
+  if (level === 'HIGH') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+  if (level === 'MEDIUM') return { bg: '#e0f2fe', border: '#bae6fd', text: '#075985' };
+  return { bg: '#f8fafc', border: '#cbd5e1', text: '#475569' };
+}
+
 export default function PrincipalApprovalsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -144,6 +159,17 @@ export default function PrincipalApprovalsScreen() {
       staffFinanceApi.getBudgetRealizationSummary({
         academicYearId: activeYearQuery.data?.id,
         limit: 8,
+    }),
+    staleTime: 60 * 1000,
+  });
+
+  const governanceQuery = useQuery({
+    queryKey: ['mobile-principal-governance', user?.id, activeYearQuery.data?.id || 'none'],
+    enabled: isAuthenticated && user?.role === 'PRINCIPAL',
+    queryFn: () =>
+      staffFinanceApi.getGovernanceSummary({
+        academicYearId: activeYearQuery.data?.id,
+        limit: 6,
       }),
     staleTime: 60 * 1000,
   });
@@ -246,6 +272,7 @@ export default function PrincipalApprovalsScreen() {
   );
   const financeBankReconciliationSummary = bankReconciliationsQuery.data?.summary;
   const financeBudgetRealization = budgetRealizationQuery.data || null;
+  const financeGovernance = governanceQuery.data || null;
   const financeClosingPeriods = useMemo(
     () => closingPeriodsQuery.data?.periods || [],
     [closingPeriodsQuery.data],
@@ -408,6 +435,7 @@ export default function PrincipalApprovalsScreen() {
             void cashSessionsQuery.refetch();
             void cashSessionApprovalsQuery.refetch();
             void bankReconciliationsQuery.refetch();
+            void governanceQuery.refetch();
             void budgetRealizationQuery.refetch();
             void closingPeriodsQuery.refetch();
             void closingPeriodApprovalsQuery.refetch();
@@ -602,6 +630,151 @@ export default function PrincipalApprovalsScreen() {
           </View>
         )
       ) : null}
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#d6e2f7',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Governance Summary</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+              Ringkasan kontrol finance untuk membantu keputusan Kepala Sekolah.
+            </Text>
+          </View>
+          {financeGovernance ? (
+            <View
+              style={{
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: getGovernanceRiskStyle(financeGovernance.overview.riskLevel).border,
+                backgroundColor: getGovernanceRiskStyle(financeGovernance.overview.riskLevel).bg,
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+              }}
+            >
+              <Text style={{ color: getGovernanceRiskStyle(financeGovernance.overview.riskLevel).text, fontSize: 11, fontWeight: '700' }}>
+                {getGovernanceRiskStyle(financeGovernance.overview.riskLevel).label}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        {governanceQuery.isLoading ? (
+          <QueryStateView type="loading" message="Mengambil governance finance..." />
+        ) : !financeGovernance ? (
+          <View
+            style={{
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderStyle: 'dashed',
+              backgroundColor: '#fff',
+              padding: 14,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textMuted }}>Ringkasan governance finance belum tersedia.</Text>
+          </View>
+        ) : (
+          <>
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                backgroundColor: '#f8fafc',
+                borderRadius: 10,
+                padding: 10,
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{financeGovernance.overview.headline}</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>{financeGovernance.overview.detail}</Text>
+              <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                {financeGovernance.overview.attentionItems} item perhatian • {formatCurrency(financeGovernance.overview.attentionAmount)}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, padding: 12 }}>
+                  <Text style={{ color: '#64748b', fontSize: 11 }}>Kolektibilitas</Text>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 3 }}>
+                    {financeGovernance.collection.criticalCount}
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+                    High {financeGovernance.collection.highPriorityCount}
+                  </Text>
+                </View>
+              </View>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, padding: 12 }}>
+                  <Text style={{ color: '#64748b', fontSize: 11 }}>Treasury</Text>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 3 }}>
+                    {financeGovernance.treasury.openCashSessions + financeGovernance.treasury.openBankReconciliations}
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>Kas/bank terbuka</Text>
+                </View>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, padding: 12 }}>
+                  <Text style={{ color: '#64748b', fontSize: 11 }}>Approval</Text>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 3 }}>
+                    {financeGovernance.approvals.totalPendingCount}
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>Menunggu review</Text>
+                </View>
+              </View>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, padding: 12 }}>
+                  <Text style={{ color: '#64748b', fontSize: 11 }}>Budget/Close</Text>
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 3 }}>
+                    {financeGovernance.budgetControl.followUpCount + financeGovernance.closingControl.reviewCount}
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>Butuh tindak lanjut</Text>
+                </View>
+              </View>
+            </View>
+
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Antrian Prioritas</Text>
+            {!financeGovernance.followUpQueue.length ? (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada antrian governance yang memerlukan tindakan.</Text>
+            ) : (
+              financeGovernance.followUpQueue.map((item) => {
+                const badge = getGovernanceSeverityStyle(item.severity);
+                return (
+                  <View key={item.key} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 10 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                          <View style={{ borderRadius: 999, borderWidth: 1, borderColor: badge.border, backgroundColor: badge.bg, paddingHorizontal: 8, paddingVertical: 2 }}>
+                            <Text style={{ color: badge.text, fontSize: 11, fontWeight: '700' }}>{item.severity}</Text>
+                          </View>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }}>{item.category}</Text>
+                        </View>
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.title}</Text>
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>{item.detail}</Text>
+                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>
+                          {item.referenceLabel ? `${item.referenceLabel} • ` : ''}
+                          {item.updatedAt ? formatDate(item.updatedAt) : 'Perlu ditinjau'}
+                        </Text>
+                      </View>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{formatCurrency(item.amount)}</Text>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </>
+        )}
+      </View>
 
       <View
         style={{

@@ -28,6 +28,7 @@ import {
   type FinanceBudgetProgressStage,
   type FinanceCashSession,
   type FinanceClosingPeriod,
+  type FinanceGovernanceSummary,
   type FinancePaymentReversalRequest,
   type FinanceReportSnapshot,
   type FinanceWriteOffRequest,
@@ -141,6 +142,32 @@ function getBudgetProgressTone(stage: FinanceBudgetProgressStage) {
     return { label: 'Terealisasi', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
   }
   return { label: 'Ditolak', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
+}
+
+function getGovernanceRiskTone(level: FinanceGovernanceSummary['overview']['riskLevel']) {
+  if (level === 'CRITICAL') {
+    return { label: 'Kritis', className: 'bg-rose-50 text-rose-700 border border-rose-200' };
+  }
+  if (level === 'HIGH') {
+    return { label: 'Tinggi', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  }
+  if (level === 'MEDIUM') {
+    return { label: 'Pantau', className: 'bg-sky-50 text-sky-700 border border-sky-200' };
+  }
+  return { label: 'Stabil', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+}
+
+function getGovernanceSeverityTone(level: FinanceGovernanceSummary['followUpQueue'][number]['severity']) {
+  if (level === 'CRITICAL') {
+    return { className: 'bg-rose-50 text-rose-700 border border-rose-200' };
+  }
+  if (level === 'HIGH') {
+    return { className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  }
+  if (level === 'MEDIUM') {
+    return { className: 'bg-sky-50 text-sky-700 border border-sky-200' };
+  }
+  return { className: 'bg-slate-50 text-slate-700 border border-slate-200' };
 }
 
 function escapeHtml(value: string) {
@@ -372,6 +399,18 @@ const HeadTuWorkspace = () => {
     refetchOnWindowFocus: false,
   });
 
+  const financeGovernanceQuery = useQuery({
+    queryKey: ['head-tu-finance-governance', activeYear?.id || 'none'],
+    queryFn: () =>
+      staffFinanceService.getGovernanceSummary({
+        academicYearId: activeYear?.id,
+        limit: 6,
+      }),
+    enabled: (isFinancePage || isDashboardPage) && Boolean(activeYear?.id),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
   const financeClosingPeriodsQuery = useQuery({
     queryKey: ['head-tu-finance-closing-periods'],
     queryFn: () => staffFinanceService.listClosingPeriods({ limit: 8 }),
@@ -556,6 +595,7 @@ const HeadTuWorkspace = () => {
   const financeBankReconciliations = financeBankReconciliationsQuery.data?.reconciliations || [];
   const financeBankReconciliationSummary = financeBankReconciliationsQuery.data?.summary;
   const financeBudgetRealization = financeBudgetRealizationQuery.data || null;
+  const financeGovernance = financeGovernanceQuery.data || null;
   const financeClosingPeriods = financeClosingPeriodsQuery.data?.periods || [];
   const financeClosingPeriodSummary = financeClosingPeriodsQuery.data?.summary;
   const pendingHeadTuClosingPeriods = financeClosingPeriodApprovalsQuery.data?.periods || [];
@@ -1977,6 +2017,107 @@ const HeadTuWorkspace = () => {
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Monitoring Keuangan</h2>
           <p className="mt-1 text-sm text-gray-500">Ringkasan performa tagihan dan piutang siswa untuk kontrol Kepala TU.</p>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Governance Summary</h3>
+              <p className="mt-1 text-xs text-gray-500">
+                Satu ringkasan kontrol untuk kolektibilitas, treasury, approval, budget, dan kesiapan closing.
+              </p>
+            </div>
+            {financeGovernance ? (
+              <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getGovernanceRiskTone(financeGovernance.overview.riskLevel).className}`}>
+                {getGovernanceRiskTone(financeGovernance.overview.riskLevel).label}
+              </span>
+            ) : null}
+          </div>
+          {financeGovernanceQuery.isLoading ? (
+            <div className="py-10 flex items-center justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+            </div>
+          ) : !financeGovernance ? (
+            <div className="py-10 text-center text-sm text-gray-500">Ringkasan governance finance belum tersedia.</div>
+          ) : (
+            <div className="p-4 space-y-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="text-sm font-semibold text-slate-900">{financeGovernance.overview.headline}</div>
+                <div className="mt-1 text-xs text-slate-600">{financeGovernance.overview.detail}</div>
+                <div className="mt-2 text-xs text-slate-500">
+                  {financeGovernance.overview.attentionItems} item perhatian • {formatCurrency(financeGovernance.overview.attentionAmount)}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3">
+                  <div className="text-xs uppercase tracking-wider text-rose-700/80">Kolektibilitas</div>
+                  <div className="mt-2 text-lg font-bold text-rose-900">{financeGovernance.collection.criticalCount} kritis</div>
+                  <div className="mt-1 text-xs text-rose-800/80">
+                    High {financeGovernance.collection.highPriorityCount} • overdue {formatCurrency(financeGovernance.collection.overdueOutstanding)}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3">
+                  <div className="text-xs uppercase tracking-wider text-sky-700/80">Treasury</div>
+                  <div className="mt-2 text-lg font-bold text-sky-900">
+                    {financeGovernance.treasury.openCashSessions + financeGovernance.treasury.openBankReconciliations} terbuka
+                  </div>
+                  <div className="mt-1 text-xs text-sky-800/80">
+                    Pending verifikasi {formatCurrency(financeGovernance.treasury.pendingBankVerificationAmount)}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+                  <div className="text-xs uppercase tracking-wider text-amber-700/80">Approval</div>
+                  <div className="mt-2 text-lg font-bold text-amber-900">{financeGovernance.approvals.totalPendingCount} menunggu</div>
+                  <div className="mt-1 text-xs text-amber-800/80">
+                    Nilai approval {formatCurrency(financeGovernance.approvals.totalPendingAmount)}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-violet-100 bg-violet-50 px-4 py-3">
+                  <div className="text-xs uppercase tracking-wider text-violet-700/80">Budget & Closing</div>
+                  <div className="mt-2 text-lg font-bold text-violet-900">
+                    {financeGovernance.budgetControl.followUpCount + financeGovernance.closingControl.reviewCount} blocker
+                  </div>
+                  <div className="mt-1 text-xs text-violet-800/80">
+                    Pending closing {formatCurrency(financeGovernance.closingControl.pendingVerificationAmount)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100">
+                  <h4 className="text-sm font-semibold text-gray-900">Antrian Prioritas</h4>
+                </div>
+                {!financeGovernance.followUpQueue.length ? (
+                  <div className="px-4 py-6 text-sm text-gray-500">Belum ada antrian governance yang perlu ditindaklanjuti.</div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {financeGovernance.followUpQueue.map((item) => (
+                      <div key={item.key} className="px-4 py-3 flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${getGovernanceSeverityTone(item.severity).className}`}>
+                              {item.severity}
+                            </span>
+                            <span className="text-[11px] font-medium text-gray-500">{item.category}</span>
+                          </div>
+                          <div className="mt-2 text-sm font-semibold text-gray-900">{item.title}</div>
+                          <div className="mt-1 text-xs text-gray-500">{item.detail}</div>
+                          <div className="mt-1 text-xs text-gray-400">
+                            {item.referenceLabel ? `${item.referenceLabel} • ` : ''}
+                            {item.updatedAt ? formatDate(item.updatedAt) : 'Perlu ditinjau'}
+                          </div>
+                        </div>
+                        <div className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+                          {formatCurrency(item.amount)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

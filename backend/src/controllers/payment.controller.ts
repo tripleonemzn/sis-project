@@ -3511,6 +3511,11 @@ const listFinanceBudgetRealizationSummaryQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional().default(12),
 });
 
+const listFinanceGovernanceSummaryQuerySchema = z.object({
+  academicYearId: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().min(1).max(20).optional().default(8),
+});
+
 const listFinanceBankReconciliationsQuerySchema = z.object({
   bankAccountId: z.coerce.number().int().positive().optional(),
   status: z.enum(FINANCE_BANK_RECONCILIATION_STATUSES).optional(),
@@ -7115,6 +7120,674 @@ async function buildFinanceBudgetRealizationSummary(filters: {
   };
 }
 
+type FinanceGovernanceArea = 'COLLECTION' | 'TREASURY' | 'APPROVAL' | 'BUDGET' | 'CLOSING';
+type FinanceGovernanceSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+function getFinanceGovernanceSeverityWeight(severity: FinanceGovernanceSeverity) {
+  if (severity === 'CRITICAL') return 4;
+  if (severity === 'HIGH') return 3;
+  if (severity === 'MEDIUM') return 2;
+  return 1;
+}
+
+function getFinanceGovernanceBudgetSeverity(stage: FinanceBudgetProgressStage): FinanceGovernanceSeverity {
+  if (stage === 'RETURNED_BY_FINANCE' || stage === 'FINANCE_REVIEW') return 'HIGH';
+  if (stage === 'WAITING_LPJ' || stage === 'LPJ_PREPARATION' || stage === 'WAITING_REALIZATION') {
+    return 'MEDIUM';
+  }
+  if (stage === 'PENDING_APPROVAL') return 'LOW';
+  return 'LOW';
+}
+
+function resolveFinanceGovernanceRiskLevel(score: number): FinanceGovernanceSeverity {
+  if (score >= 14) return 'CRITICAL';
+  if (score >= 7) return 'HIGH';
+  if (score >= 3) return 'MEDIUM';
+  return 'LOW';
+}
+
+function formatFinanceGovernanceCurrency(value: number) {
+  return `Rp ${Math.round(Number(value || 0)).toLocaleString('id-ID')}`;
+}
+
+async function buildFinanceGovernanceSummary(filters: {
+  academicYearId?: number;
+  limit: number;
+}) {
+  const today = new Date();
+  const recentCashWindowStart = new Date(today);
+  recentCashWindowStart.setDate(recentCashWindowStart.getDate() - 120);
+  recentCashWindowStart.setHours(0, 0, 0, 0);
+  const recentBankWindowStart = new Date(today);
+  recentBankWindowStart.setDate(recentBankWindowStart.getDate() - 120);
+  recentBankWindowStart.setHours(0, 0, 0, 0);
+  const recentClosingWindowStart = new Date(today);
+  recentClosingWindowStart.setDate(recentClosingWindowStart.getDate() - 370);
+  recentClosingWindowStart.setHours(0, 0, 0, 0);
+
+  const [
+    financeReport,
+    budgetSummary,
+    cashSessionRows,
+    bankReconciliationRows,
+    closingPeriodRows,
+    writeOffGroupedSummary,
+    paymentReversalGroupedSummary,
+  ] = await Promise.all([
+    buildFinanceReportSnapshot({
+      academicYearId: filters.academicYearId,
+    }),
+    buildFinanceBudgetRealizationSummary({
+      academicYearId: filters.academicYearId,
+      limit: Math.max(filters.limit, 8),
+    }),
+    prisma.financeCashSession.findMany({
+      where: {
+        OR: [
+          { status: FinanceCashSessionStatus.OPEN },
+          {
+            approvalStatus: {
+              in: [
+                FinanceCashSessionApprovalStatus.PENDING_HEAD_TU,
+                FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL,
+              ],
+            },
+          },
+          {
+            businessDate: {
+              gte: recentCashWindowStart,
+            },
+          },
+        ],
+      },
+      include: financeCashSessionRecordInclude,
+      orderBy: [{ status: 'asc' }, { openedAt: 'desc' }, { id: 'desc' }],
+      take: Math.max(filters.limit * 3, 18),
+    }),
+    prisma.financeBankReconciliation.findMany({
+      where: {
+        OR: [
+          { status: 'OPEN' },
+          {
+            periodEnd: {
+              gte: recentBankWindowStart,
+            },
+          },
+        ],
+      },
+      include: financeBankReconciliationRecordInclude,
+      orderBy: [{ status: 'asc' }, { periodEnd: 'desc' }, { id: 'desc' }],
+      take: Math.max(filters.limit * 3, 18),
+    }),
+    prisma.financeClosingPeriod.findMany({
+      where: {
+        OR: [
+          { status: { not: FinanceClosingPeriodStatus.CLOSED } },
+          {
+            approvalStatus: {
+              in: [
+                FinanceClosingPeriodApprovalStatus.PENDING_HEAD_TU,
+                FinanceClosingPeriodApprovalStatus.PENDING_PRINCIPAL,
+              ],
+            },
+          },
+          {
+            periodEnd: {
+              gte: recentClosingWindowStart,
+            },
+          },
+        ],
+      },
+      include: financeClosingPeriodRecordInclude,
+      orderBy: [{ periodEnd: 'desc' }, { id: 'desc' }],
+      take: Math.max(filters.limit * 3, 18),
+    }),
+    prisma.financeWriteOffRequest.groupBy({
+      by: ['status'],
+      _count: { _all: true },
+      _sum: {
+        requestedAmount: true,
+        approvedAmount: true,
+      },
+    }),
+    prisma.financePaymentReversalRequest.groupBy({
+      by: ['status'],
+      _count: { _all: true },
+      _sum: {
+        requestedAmount: true,
+        approvedAmount: true,
+      },
+    }),
+  ]);
+
+  const cashSessions = await Promise.all(
+    cashSessionRows.map(async (session) => {
+      const liveSummary = await buildFinanceCashSessionSummary(prisma, session);
+      const resolvedSummary =
+        session.status === FinanceCashSessionStatus.OPEN
+          ? liveSummary
+          : {
+              ...liveSummary,
+              expectedCashIn: Number(session.expectedCashIn || 0),
+              expectedCashOut: Number(session.expectedCashOut || 0),
+              expectedClosingBalance: Number(session.expectedClosingBalance || 0),
+              totalCashPayments: Number(session.totalCashPayments || 0),
+              totalCashRefunds: Number(session.totalCashRefunds || 0),
+            };
+
+      return serializeFinanceCashSessionRecord(session, resolvedSummary);
+    }),
+  );
+
+  const bankReconciliations = await Promise.all(
+    bankReconciliationRows.map((row) => serializeFinanceBankReconciliationRecord(prisma, row)),
+  );
+
+  const closingPeriods = closingPeriodRows.map((row) => serializeFinanceClosingPeriodRecord(row));
+
+  const cashSummary = cashSessions.reduce(
+    (acc, session) => {
+      acc.totalSessions += 1;
+      if (session.status === FinanceCashSessionStatus.OPEN) acc.openCount += 1;
+      if (session.status === FinanceCashSessionStatus.CLOSED) acc.closedCount += 1;
+      if (session.approvalStatus === FinanceCashSessionApprovalStatus.PENDING_HEAD_TU) acc.pendingHeadTuCount += 1;
+      if (session.approvalStatus === FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL) {
+        acc.pendingPrincipalCount += 1;
+      }
+      acc.totalVarianceAmount += Math.abs(Number(session.varianceAmount || 0));
+      return acc;
+    },
+    {
+      totalSessions: 0,
+      openCount: 0,
+      closedCount: 0,
+      pendingHeadTuCount: 0,
+      pendingPrincipalCount: 0,
+      totalVarianceAmount: 0,
+    },
+  );
+
+  const bankSummary = bankReconciliations.reduce(
+    (acc, reconciliation) => {
+      acc.totalReconciliations += 1;
+      if (reconciliation.status === 'OPEN') acc.openCount += 1;
+      if (reconciliation.status === 'FINALIZED') acc.finalizedCount += 1;
+      acc.totalVarianceAmount += Math.abs(Number(reconciliation.summary.varianceAmount || 0));
+      acc.totalStatementGapAmount += Math.abs(Number(reconciliation.summary.statementGapAmount || 0));
+      acc.totalUnmatchedPayments += Number(reconciliation.summary.unmatchedPaymentCount || 0);
+      acc.totalUnmatchedRefunds += Number(reconciliation.summary.unmatchedRefundCount || 0);
+      acc.totalUnmatchedStatementEntries += Number(reconciliation.summary.unmatchedStatementEntryCount || 0);
+      acc.totalPendingVerificationAmount += Number(reconciliation.summary.pendingVerificationAmount || 0);
+      return acc;
+    },
+    {
+      totalReconciliations: 0,
+      openCount: 0,
+      finalizedCount: 0,
+      totalVarianceAmount: 0,
+      totalStatementGapAmount: 0,
+      totalUnmatchedPayments: 0,
+      totalUnmatchedRefunds: 0,
+      totalUnmatchedStatementEntries: 0,
+      totalPendingVerificationAmount: 0,
+    },
+  );
+
+  const closingSummary = closingPeriods.reduce(
+    (acc, period) => {
+      acc.totalPeriods += 1;
+      if (period.status === FinanceClosingPeriodStatus.OPEN) acc.openCount += 1;
+      if (period.status === FinanceClosingPeriodStatus.CLOSING_REVIEW) acc.reviewCount += 1;
+      if (period.status === FinanceClosingPeriodStatus.CLOSED) acc.closedCount += 1;
+      if (period.approvalStatus === FinanceClosingPeriodApprovalStatus.PENDING_HEAD_TU) acc.pendingHeadTuCount += 1;
+      if (period.approvalStatus === FinanceClosingPeriodApprovalStatus.PENDING_PRINCIPAL) {
+        acc.pendingPrincipalCount += 1;
+      }
+      acc.totalPendingVerificationAmount += Number(period.summary.pendingVerificationAmount || 0);
+      acc.totalUnmatchedBankAmount += Number(period.summary.unmatchedBankAmount || 0);
+      acc.totalOpenCashSessionCount += Number(period.summary.openCashSessionCount || 0);
+      acc.totalOpenReconciliationCount += Number(period.summary.openReconciliationCount || 0);
+      return acc;
+    },
+    {
+      totalPeriods: 0,
+      openCount: 0,
+      reviewCount: 0,
+      closedCount: 0,
+      pendingHeadTuCount: 0,
+      pendingPrincipalCount: 0,
+      totalPendingVerificationAmount: 0,
+      totalUnmatchedBankAmount: 0,
+      totalOpenCashSessionCount: 0,
+      totalOpenReconciliationCount: 0,
+    },
+  );
+
+  const writeOffSummary = writeOffGroupedSummary.reduce(
+    (acc, row) => {
+      const requestedAmount = Number(row._sum.requestedAmount || 0);
+      if (row.status === FinanceWriteOffStatus.PENDING_HEAD_TU) {
+        acc.pendingHeadTuCount += row._count._all;
+        acc.pendingHeadTuAmount += requestedAmount;
+      }
+      if (row.status === FinanceWriteOffStatus.PENDING_PRINCIPAL) {
+        acc.pendingPrincipalCount += row._count._all;
+        acc.pendingPrincipalAmount += requestedAmount;
+      }
+      return acc;
+    },
+    {
+      pendingHeadTuCount: 0,
+      pendingHeadTuAmount: 0,
+      pendingPrincipalCount: 0,
+      pendingPrincipalAmount: 0,
+    },
+  );
+
+  const paymentReversalSummary = paymentReversalGroupedSummary.reduce(
+    (acc, row) => {
+      const requestedAmount = Number(row._sum.requestedAmount || 0);
+      if (row.status === FinancePaymentReversalStatus.PENDING_HEAD_TU) {
+        acc.pendingHeadTuCount += row._count._all;
+        acc.pendingHeadTuAmount += requestedAmount;
+      }
+      if (row.status === FinancePaymentReversalStatus.PENDING_PRINCIPAL) {
+        acc.pendingPrincipalCount += row._count._all;
+        acc.pendingPrincipalAmount += requestedAmount;
+      }
+      return acc;
+    },
+    {
+      pendingHeadTuCount: 0,
+      pendingHeadTuAmount: 0,
+      pendingPrincipalCount: 0,
+      pendingPrincipalAmount: 0,
+    },
+  );
+
+  const pendingApprovalCount =
+    writeOffSummary.pendingHeadTuCount +
+    writeOffSummary.pendingPrincipalCount +
+    paymentReversalSummary.pendingHeadTuCount +
+    paymentReversalSummary.pendingPrincipalCount +
+    cashSummary.pendingHeadTuCount +
+    cashSummary.pendingPrincipalCount +
+    closingSummary.pendingHeadTuCount +
+    closingSummary.pendingPrincipalCount;
+
+  const pendingApprovalAmount =
+    writeOffSummary.pendingHeadTuAmount +
+    writeOffSummary.pendingPrincipalAmount +
+    paymentReversalSummary.pendingHeadTuAmount +
+    paymentReversalSummary.pendingPrincipalAmount;
+
+  const followUpQueue: Array<{
+    key: string;
+    category: FinanceGovernanceArea;
+    severity: FinanceGovernanceSeverity;
+    title: string;
+    detail: string;
+    amount: number;
+    referenceLabel: string | null;
+    updatedAt: string | null;
+  }> = [];
+
+  financeReport.collectionPriorityQueue.slice(0, Math.max(2, Math.ceil(filters.limit / 2))).forEach((row) => {
+    followUpQueue.push({
+      key: `collection-${row.studentId}`,
+      category: 'COLLECTION',
+      severity: row.priority === 'KRITIS' ? 'CRITICAL' : row.priority === 'TINGGI' ? 'HIGH' : 'MEDIUM',
+      title: `Piutang ${row.studentName}`,
+      detail: `${row.className} • overdue ${row.overdueInvoices} invoice • ${row.maxDaysPastDue} hari`,
+      amount: Number(row.overdueOutstanding || row.totalOutstanding || 0),
+      referenceLabel: row.nis || row.username || null,
+      updatedAt: row.nextDueDate || row.lastPaymentDate || null,
+    });
+  });
+
+  bankReconciliations
+    .filter((row) => row.status === 'OPEN')
+    .sort((left, right) => {
+      const leftAttention =
+        Number(left.summary.unmatchedStatementEntryCount || 0) +
+        Number(left.summary.unmatchedPaymentCount || 0) +
+        Number(left.summary.unmatchedRefundCount || 0);
+      const rightAttention =
+        Number(right.summary.unmatchedStatementEntryCount || 0) +
+        Number(right.summary.unmatchedPaymentCount || 0) +
+        Number(right.summary.unmatchedRefundCount || 0);
+      if (rightAttention !== leftAttention) return rightAttention - leftAttention;
+      return (
+        Math.abs(Number(right.summary.varianceAmount || 0)) -
+        Math.abs(Number(left.summary.varianceAmount || 0))
+      );
+    })
+    .slice(0, Math.max(2, Math.ceil(filters.limit / 3)))
+    .forEach((row) => {
+      const unmatchedCount =
+        Number(row.summary.unmatchedStatementEntryCount || 0) +
+        Number(row.summary.unmatchedPaymentCount || 0) +
+        Number(row.summary.unmatchedRefundCount || 0);
+      const severity =
+        unmatchedCount > 0 && Math.abs(Number(row.summary.varianceAmount || 0)) > 0
+          ? 'HIGH'
+          : unmatchedCount > 0
+            ? 'MEDIUM'
+            : 'LOW';
+      followUpQueue.push({
+        key: `treasury-reconciliation-${row.id}`,
+        category: 'TREASURY',
+        severity,
+        title: `Rekonsiliasi ${row.reconciliationNo}`,
+        detail: `${row.bankAccount.bankName} • variance ${formatFinanceGovernanceCurrency(Number(row.summary.varianceAmount || 0))} • unmatched ${unmatchedCount}`,
+        amount: Math.max(
+          Math.abs(Number(row.summary.varianceAmount || 0)),
+          Math.abs(Number(row.summary.statementGapAmount || 0)),
+        ),
+        referenceLabel: row.bankAccount.accountNumber,
+        updatedAt: toIsoDate(row.updatedAt || row.finalizedAt),
+      });
+    });
+
+  cashSessions
+    .filter(
+      (row) =>
+        row.status === FinanceCashSessionStatus.OPEN ||
+        row.approvalStatus === FinanceCashSessionApprovalStatus.PENDING_HEAD_TU ||
+        row.approvalStatus === FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL ||
+        Math.abs(Number(row.varianceAmount || 0)) > 0,
+    )
+    .sort((left, right) => {
+      const leftVariance = Math.abs(Number(left.varianceAmount || 0));
+      const rightVariance = Math.abs(Number(right.varianceAmount || 0));
+      if (rightVariance !== leftVariance) return rightVariance - leftVariance;
+      return new Date(right.openedAt).getTime() - new Date(left.openedAt).getTime();
+    })
+    .slice(0, Math.max(2, Math.ceil(filters.limit / 3)))
+    .forEach((row) => {
+      const severity =
+        Math.abs(Number(row.varianceAmount || 0)) > 0
+          ? 'HIGH'
+          : row.approvalStatus === FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL
+            ? 'HIGH'
+            : 'MEDIUM';
+      followUpQueue.push({
+        key: `treasury-cash-${row.id}`,
+        category: 'TREASURY',
+        severity,
+        title: `Settlement ${row.sessionNo}`,
+        detail: `${toIsoDate(row.businessDate) || '-'} • ${row.approvalStatus === FinanceCashSessionApprovalStatus.PENDING_PRINCIPAL ? 'menunggu Kepsek' : row.approvalStatus === FinanceCashSessionApprovalStatus.PENDING_HEAD_TU ? 'menunggu Head TU' : row.status === FinanceCashSessionStatus.OPEN ? 'sesi masih terbuka' : 'perlu review variance'}`,
+        amount: Math.abs(Number(row.varianceAmount || 0)),
+        referenceLabel: row.openedBy?.name || null,
+        updatedAt: toIsoDate(row.closedAt || row.openedAt),
+      });
+    });
+
+  if (writeOffSummary.pendingHeadTuCount + writeOffSummary.pendingPrincipalCount > 0) {
+    followUpQueue.push({
+      key: 'approval-write-off',
+      category: 'APPROVAL',
+      severity: writeOffSummary.pendingPrincipalCount > 0 ? 'HIGH' : 'MEDIUM',
+      title: 'Approval write-off menunggu',
+      detail: `${writeOffSummary.pendingHeadTuCount} Head TU • ${writeOffSummary.pendingPrincipalCount} Kepala Sekolah`,
+      amount: normalizeFinanceAmount(
+        writeOffSummary.pendingHeadTuAmount + writeOffSummary.pendingPrincipalAmount,
+      ),
+      referenceLabel: null,
+      updatedAt: null,
+    });
+  }
+
+  if (paymentReversalSummary.pendingHeadTuCount + paymentReversalSummary.pendingPrincipalCount > 0) {
+    followUpQueue.push({
+      key: 'approval-reversal',
+      category: 'APPROVAL',
+      severity: paymentReversalSummary.pendingPrincipalCount > 0 ? 'HIGH' : 'MEDIUM',
+      title: 'Approval reversal menunggu',
+      detail: `${paymentReversalSummary.pendingHeadTuCount} Head TU • ${paymentReversalSummary.pendingPrincipalCount} Kepala Sekolah`,
+      amount: normalizeFinanceAmount(
+        paymentReversalSummary.pendingHeadTuAmount + paymentReversalSummary.pendingPrincipalAmount,
+      ),
+      referenceLabel: null,
+      updatedAt: null,
+    });
+  }
+
+  if (cashSummary.pendingHeadTuCount + cashSummary.pendingPrincipalCount > 0) {
+    followUpQueue.push({
+      key: 'approval-cash-session',
+      category: 'APPROVAL',
+      severity: cashSummary.pendingPrincipalCount > 0 ? 'HIGH' : 'MEDIUM',
+      title: 'Approval settlement kas menunggu',
+      detail: `${cashSummary.pendingHeadTuCount} Head TU • ${cashSummary.pendingPrincipalCount} Kepala Sekolah`,
+      amount: normalizeFinanceAmount(cashSummary.totalVarianceAmount),
+      referenceLabel: null,
+      updatedAt: null,
+    });
+  }
+
+  if (closingSummary.pendingHeadTuCount + closingSummary.pendingPrincipalCount > 0) {
+    followUpQueue.push({
+      key: 'approval-closing-period',
+      category: 'APPROVAL',
+      severity: closingSummary.pendingPrincipalCount > 0 ? 'HIGH' : 'MEDIUM',
+      title: 'Approval closing period menunggu',
+      detail: `${closingSummary.pendingHeadTuCount} Head TU • ${closingSummary.pendingPrincipalCount} Kepala Sekolah`,
+      amount: normalizeFinanceAmount(closingSummary.totalPendingVerificationAmount),
+      referenceLabel: null,
+      updatedAt: null,
+    });
+  }
+
+  budgetSummary.followUpQueue.slice(0, Math.max(2, Math.ceil(filters.limit / 2))).forEach((row) => {
+    followUpQueue.push({
+      key: `budget-${row.budgetId}`,
+      category: 'BUDGET',
+      severity: getFinanceGovernanceBudgetSeverity(row.stage),
+      title: row.title,
+      detail: `${row.additionalDutyLabel} • ${row.stageLabel} • ${row.daysInStage} hari`,
+      amount: Math.abs(Number(row.varianceAmount || row.approvedBudgetAmount || 0)),
+      referenceLabel: row.requesterName,
+      updatedAt: row.updatedAt || row.pendingSince || null,
+    });
+  });
+
+  closingPeriods
+    .filter(
+      (row) =>
+        row.status === FinanceClosingPeriodStatus.CLOSING_REVIEW ||
+        row.approvalStatus === FinanceClosingPeriodApprovalStatus.PENDING_HEAD_TU ||
+        row.approvalStatus === FinanceClosingPeriodApprovalStatus.PENDING_PRINCIPAL ||
+        Number(row.summary.pendingVerificationAmount || 0) > 0 ||
+        Number(row.summary.unmatchedBankAmount || 0) > 0 ||
+        Number(row.summary.openCashSessionCount || 0) > 0 ||
+        Number(row.summary.openReconciliationCount || 0) > 0,
+    )
+    .slice(0, Math.max(2, Math.ceil(filters.limit / 3)))
+    .forEach((row) => {
+      const severity =
+        row.approvalStatus === FinanceClosingPeriodApprovalStatus.PENDING_PRINCIPAL
+          ? 'HIGH'
+          : Number(row.summary.unmatchedBankAmount || 0) > 0 ||
+              Number(row.summary.pendingVerificationAmount || 0) > 0
+            ? 'HIGH'
+            : 'MEDIUM';
+      followUpQueue.push({
+        key: `closing-${row.id}`,
+        category: 'CLOSING',
+        severity,
+        title: row.label,
+        detail: `${row.periodNo} • pending ${formatFinanceGovernanceCurrency(Number(row.summary.pendingVerificationAmount || 0))} • unmatched ${formatFinanceGovernanceCurrency(Number(row.summary.unmatchedBankAmount || 0))}`,
+        amount: Math.max(
+          Number(row.summary.pendingVerificationAmount || 0),
+          Number(row.summary.unmatchedBankAmount || 0),
+        ),
+        referenceLabel: row.approvalStatus,
+        updatedAt: toIsoDate(row.closedAt || row.requestedAt),
+      });
+    });
+
+  const sortedFollowUpQueue = followUpQueue
+    .sort((left, right) => {
+      const severityDiff =
+        getFinanceGovernanceSeverityWeight(right.severity) -
+        getFinanceGovernanceSeverityWeight(left.severity);
+      if (severityDiff !== 0) return severityDiff;
+      if (right.amount !== left.amount) return right.amount - left.amount;
+      return (right.updatedAt || '').localeCompare(left.updatedAt || '');
+    })
+    .slice(0, filters.limit);
+
+  const collectionScore =
+    financeReport.collectionOverview.criticalCount * 4 +
+    financeReport.collectionOverview.highPriorityCount * 2 +
+    (financeReport.summary.overdueInvoices > 0 ? 1 : 0);
+  const treasuryScore =
+    cashSummary.openCount +
+    cashSummary.pendingHeadTuCount +
+    cashSummary.pendingPrincipalCount * 2 +
+    bankSummary.openCount * 2 +
+    (bankSummary.totalUnmatchedStatementEntries > 0 ? 2 : 0) +
+    (bankSummary.totalPendingVerificationAmount > 0 ? 1 : 0);
+  const approvalScore =
+    writeOffSummary.pendingHeadTuCount +
+    paymentReversalSummary.pendingHeadTuCount +
+    cashSummary.pendingHeadTuCount +
+    closingSummary.pendingHeadTuCount +
+    (writeOffSummary.pendingPrincipalCount +
+      paymentReversalSummary.pendingPrincipalCount +
+      cashSummary.pendingPrincipalCount +
+      closingSummary.pendingPrincipalCount) *
+      2;
+  const budgetScore =
+    budgetSummary.overview.stageSummary.financeReviewCount * 2 +
+    budgetSummary.overview.stageSummary.returnedByFinanceCount * 2 +
+    Math.min(3, budgetSummary.followUpQueue.length);
+  const closingScore =
+    closingSummary.reviewCount * 2 +
+    closingSummary.pendingHeadTuCount +
+    closingSummary.pendingPrincipalCount * 2 +
+    (closingSummary.totalPendingVerificationAmount > 0 ? 1 : 0) +
+    (closingSummary.totalUnmatchedBankAmount > 0 ? 1 : 0);
+
+  const dominantAreaEntry = (
+    [
+      ['COLLECTION', collectionScore],
+      ['TREASURY', treasuryScore],
+      ['APPROVAL', approvalScore],
+      ['BUDGET', budgetScore],
+      ['CLOSING', closingScore],
+    ] as Array<[FinanceGovernanceArea, number]>
+  ).sort((left, right) => right[1] - left[1])[0];
+
+  const totalRiskScore =
+    collectionScore + treasuryScore + approvalScore + budgetScore + closingScore;
+  const riskLevel = resolveFinanceGovernanceRiskLevel(totalRiskScore);
+  const dominantArea = dominantAreaEntry?.[0] || 'COLLECTION';
+
+  const dominantAreaLabelMap: Record<FinanceGovernanceArea, string> = {
+    COLLECTION: 'kolektibilitas piutang siswa',
+    TREASURY: 'kontrol treasury kas dan bank',
+    APPROVAL: 'approval keuangan bertingkat',
+    BUDGET: 'progress budget dan LPJ',
+    CLOSING: 'kesiapan closing period',
+  };
+
+  const attentionItems =
+    financeReport.collectionOverview.criticalCount +
+    financeReport.collectionOverview.highPriorityCount +
+    bankSummary.openCount +
+    pendingApprovalCount +
+    budgetSummary.followUpQueue.length +
+    closingSummary.reviewCount;
+  const attentionAmount = normalizeFinanceAmount(
+    Number(financeReport.summary.overdueOutstanding || 0) +
+      Number(cashSummary.totalVarianceAmount || 0) +
+      Number(bankSummary.totalVarianceAmount || 0) +
+      Number(bankSummary.totalPendingVerificationAmount || 0) +
+      Number(closingSummary.totalPendingVerificationAmount || 0) +
+      Math.abs(Number(budgetSummary.overview.varianceAmount || 0)),
+  );
+
+  const headline =
+    riskLevel === 'CRITICAL'
+      ? 'Perlu eskalasi finance segera'
+      : riskLevel === 'HIGH'
+        ? 'Kontrol finance butuh tindak lanjut cepat'
+        : riskLevel === 'MEDIUM'
+          ? 'Ada item finance yang perlu dipantau'
+          : 'Kontrol finance relatif stabil';
+
+  const detail = `Fokus terbesar saat ini ada di ${dominantAreaLabelMap[dominantArea]} dengan ${Math.max(
+    1,
+    dominantAreaEntry?.[1] || 0,
+  )} sinyal perhatian operasional.`;
+
+  return {
+    filters: {
+      academicYearId: filters.academicYearId || null,
+      generatedAt: new Date().toISOString(),
+    },
+    overview: {
+      riskLevel,
+      dominantArea,
+      headline,
+      detail,
+      attentionItems,
+      attentionAmount,
+    },
+    collection: {
+      criticalCount: financeReport.collectionOverview.criticalCount,
+      highPriorityCount: financeReport.collectionOverview.highPriorityCount,
+      dueSoonCount: financeReport.collectionOverview.dueSoonCount,
+      dueSoonOutstanding: financeReport.collectionOverview.dueSoonOutstanding,
+      overdueInvoices: financeReport.summary.overdueInvoices,
+      overdueOutstanding: financeReport.summary.overdueOutstanding,
+      totalOutstanding: financeReport.summary.totalOutstanding,
+    },
+    treasury: {
+      openCashSessions: cashSummary.openCount,
+      pendingCashSessionApprovals:
+        cashSummary.pendingHeadTuCount + cashSummary.pendingPrincipalCount,
+      totalCashVarianceAmount: normalizeFinanceAmount(cashSummary.totalVarianceAmount),
+      openBankReconciliations: bankSummary.openCount,
+      unmatchedStatementEntries: bankSummary.totalUnmatchedStatementEntries,
+      totalBankVarianceAmount: normalizeFinanceAmount(bankSummary.totalVarianceAmount),
+      pendingBankVerificationAmount: normalizeFinanceAmount(bankSummary.totalPendingVerificationAmount),
+    },
+    approvals: {
+      pendingHeadTuWriteOffs: writeOffSummary.pendingHeadTuCount,
+      pendingPrincipalWriteOffs: writeOffSummary.pendingPrincipalCount,
+      pendingHeadTuPaymentReversals: paymentReversalSummary.pendingHeadTuCount,
+      pendingPrincipalPaymentReversals: paymentReversalSummary.pendingPrincipalCount,
+      pendingHeadTuCashSessions: cashSummary.pendingHeadTuCount,
+      pendingPrincipalCashSessions: cashSummary.pendingPrincipalCount,
+      pendingHeadTuClosingPeriods: closingSummary.pendingHeadTuCount,
+      pendingPrincipalClosingPeriods: closingSummary.pendingPrincipalCount,
+      totalPendingCount: pendingApprovalCount,
+      totalPendingAmount: normalizeFinanceAmount(pendingApprovalAmount),
+    },
+    budgetControl: {
+      approvedBudgetAmount: budgetSummary.overview.approvedBudgetAmount,
+      actualRealizedAmount: budgetSummary.overview.actualRealizedAmount,
+      varianceAmount: budgetSummary.overview.varianceAmount,
+      financeReviewCount: budgetSummary.overview.stageSummary.financeReviewCount,
+      returnedByFinanceCount: budgetSummary.overview.stageSummary.returnedByFinanceCount,
+      followUpCount: budgetSummary.followUpQueue.length,
+    },
+    closingControl: {
+      openCount: closingSummary.openCount,
+      reviewCount: closingSummary.reviewCount,
+      closedCount: closingSummary.closedCount,
+      pendingVerificationAmount: normalizeFinanceAmount(closingSummary.totalPendingVerificationAmount),
+      unmatchedBankAmount: normalizeFinanceAmount(closingSummary.totalUnmatchedBankAmount),
+      openCashSessionCount: closingSummary.totalOpenCashSessionCount,
+      openReconciliationCount: closingSummary.totalOpenReconciliationCount,
+    },
+    followUpQueue: sortedFollowUpQueue,
+  };
+}
+
 function isDateInsideRange(date: Date, start?: Date | null, end?: Date | null): boolean {
   if (start && date < start) return false;
   if (end && date > end) return false;
@@ -9461,6 +10134,19 @@ export const getFinanceBudgetRealizationSummary = asyncHandler(async (req: Reque
   res
     .status(200)
     .json(new ApiResponse(200, snapshot, 'Ringkasan budget vs realization berhasil diambil'));
+});
+
+export const getFinanceGovernanceSummary = asyncHandler(async (req: Request, res: Response) => {
+  await ensureFinanceActor((req as any).user || {}, {
+    allowPrincipalReadOnly: true,
+    allowHeadTuReadOnly: true,
+  });
+
+  const filters = listFinanceGovernanceSummaryQuerySchema.parse(req.query || {});
+  const snapshot = await buildFinanceGovernanceSummary(filters);
+  res
+    .status(200)
+    .json(new ApiResponse(200, snapshot, 'Ringkasan governance finance berhasil diambil'));
 });
 
 export const exportFinanceReports = asyncHandler(async (req: Request, res: Response) => {
