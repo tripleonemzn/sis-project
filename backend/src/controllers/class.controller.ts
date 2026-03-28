@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { ApiResponse, asyncHandler } from '../utils/api';
 import { z } from 'zod';
+import { listHistoricalStudentsForClass } from '../utils/studentAcademicHistory';
 
 const classSchema = z.object({
   name: z.string().min(1, 'Nama kelas wajib diisi'),
@@ -14,6 +15,21 @@ const classSchema = z.object({
 const updatePresidentSchema = z.object({
   presidentId: z.number().int().nullable(),
 });
+
+async function runWithConcurrencyLimit<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const normalizedLimit = Math.max(1, Math.floor(limit));
+  const results: R[] = [];
+  for (let index = 0; index < items.length; index += normalizedLimit) {
+    const batch = items.slice(index, index + normalizedLimit);
+    const batchResults = await Promise.all(batch.map((item) => worker(item)));
+    results.push(...batchResults);
+  }
+  return results;
+}
 
 export const updateClassPresident = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -86,11 +102,31 @@ export const getClasses = asyncHandler(async (req: Request, res: Response) => {
     }),
   ]);
 
+  const historicalCounts = await runWithConcurrencyLimit(classes, 5, async (classItem) => {
+    const students = await listHistoricalStudentsForClass(classItem.id, classItem.academicYearId);
+    return {
+      classId: classItem.id,
+      studentCount: students.length,
+    };
+  });
+
+  const historicalCountMap = new Map(
+    historicalCounts.map((item) => [item.classId, item.studentCount]),
+  );
+
+  const normalizedClasses = classes.map((classItem) => ({
+    ...classItem,
+    _count: {
+      ...classItem._count,
+      students: historicalCountMap.get(classItem.id) ?? classItem._count.students,
+    },
+  }));
+
   res.status(200).json(
     new ApiResponse(
       200,
       {
-        classes,
+        classes: normalizedClasses,
         pagination: {
           page: pageNum,
           limit: limitNum,
@@ -121,17 +157,6 @@ export const getClassById = asyncHandler(async (req: Request, res: Response) => 
       president: {
         select: { id: true, name: true },
       },
-      students: {
-        select: {
-          id: true,
-          name: true,
-          nis: true,
-          nisn: true,
-          gender: true,
-          studentStatus: true,
-        },
-        orderBy: { name: 'asc' },
-      },
       _count: {
         select: { students: true },
       },
@@ -142,7 +167,28 @@ export const getClassById = asyncHandler(async (req: Request, res: Response) => 
     throw new Error('Kelas tidak ditemukan');
   }
 
-  res.status(200).json(new ApiResponse(200, classData, 'Detail kelas berhasil diambil'));
+  const historicalStudents = await listHistoricalStudentsForClass(
+    classData.id,
+    classData.academicYearId,
+  );
+
+  const normalizedClassData = {
+    ...classData,
+    students: historicalStudents.map((student) => ({
+      id: student.id,
+      name: student.name,
+      nis: student.nis,
+      nisn: student.nisn,
+      gender: student.gender,
+      studentStatus: student.studentStatus,
+    })),
+    _count: {
+      ...classData._count,
+      students: historicalStudents.length,
+    },
+  };
+
+  res.status(200).json(new ApiResponse(200, normalizedClassData, 'Detail kelas berhasil diambil'));
 });
 
 export const createClass = asyncHandler(async (req: Request, res: Response) => {
@@ -218,10 +264,9 @@ export const deleteClass = asyncHandler(async (req: Request, res: Response) => {
   // Check if class exists
   const existingClass = await prisma.class.findUnique({
     where: { id: Number(id) },
-    include: {
-      _count: {
-        select: { students: true },
-      },
+    select: {
+      id: true,
+      academicYearId: true,
     },
   });
 
@@ -229,8 +274,13 @@ export const deleteClass = asyncHandler(async (req: Request, res: Response) => {
     throw new Error('Kelas tidak ditemukan');
   }
 
+  const historicalStudents = await listHistoricalStudentsForClass(
+    existingClass.id,
+    existingClass.academicYearId,
+  );
+
   // Prevent deletion if has students
-  if (existingClass._count.students > 0) {
+  if (historicalStudents.length > 0) {
     res.status(400).json(new ApiResponse(400, null, 'Tidak dapat menghapus kelas yang memiliki siswa'));
     return;
   }

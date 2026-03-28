@@ -28,6 +28,7 @@ const historicalStudentSelect = {
   name: true,
   nis: true,
   nisn: true,
+  gender: true,
   studentStatus: true,
   guardianName: true,
   fatherName: true,

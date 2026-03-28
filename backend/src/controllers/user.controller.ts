@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Role, AdditionalDuty, Gender, StudentStatus, VerificationStatus } from '@prisma/client';
 import { validateCandidateProfileDocuments } from '../utils/candidateAdmissionDocuments';
 import { getNisnValidationMessage, normalizeNisnInput } from '../utils/nisn';
+import { resolveHistoricalStudentScope } from '../utils/studentAcademicHistory';
 
 const dateSchema = z
   .string()
@@ -212,6 +213,7 @@ function normalizeDateOnly(date: Date) {
 export const getUsers = asyncHandler(async (req: Request, res: Response) => {
   const { role, verificationStatus, class_id } = req.query;
   const where: any = {};
+  let historicalStudentScope: Awaited<ReturnType<typeof resolveHistoricalStudentScope>> | null = null;
   
   if (role) {
     where.role = String(role);
@@ -222,7 +224,32 @@ export const getUsers = asyncHandler(async (req: Request, res: Response) => {
   }
 
   if (class_id) {
-    where.classId = Number(class_id);
+    const parsedClassId = Number(class_id);
+    const normalizedRole = String(role || '').trim().toUpperCase();
+    const shouldUseHistoricalStudentScope = !normalizedRole || normalizedRole === Role.STUDENT;
+
+    if (shouldUseHistoricalStudentScope && Number.isFinite(parsedClassId) && parsedClassId > 0) {
+      const selectedClass = await prisma.class.findUnique({
+        where: { id: parsedClassId },
+        select: { id: true, academicYearId: true },
+      });
+
+      if (selectedClass) {
+        historicalStudentScope = await resolveHistoricalStudentScope({
+          academicYearId: selectedClass.academicYearId,
+          classId: selectedClass.id,
+        });
+        where.role = Role.STUDENT;
+        where.id = {
+          in: historicalStudentScope.studentIds.length > 0 ? historicalStudentScope.studentIds : [-1],
+        };
+      } else {
+        where.role = Role.STUDENT;
+        where.id = { in: [-1] };
+      }
+    } else {
+      where.classId = parsedClassId;
+    }
   }
 
   const users = await prisma.user.findMany({
@@ -321,7 +348,30 @@ export const getUsers = asyncHandler(async (req: Request, res: Response) => {
     },
   });
 
-  res.status(200).json(new ApiResponse(200, users, 'Daftar pengguna berhasil diambil'));
+  const normalizedUsers = historicalStudentScope
+    ? (users as Array<any>).map((user) => {
+        const historicalStudent = historicalStudentScope.studentMap.get(Number(user.id));
+        if (!historicalStudent?.studentClass) return user;
+
+        return {
+          ...user,
+          classId: historicalStudent.studentClass.id,
+          studentClass: {
+            id: historicalStudent.studentClass.id,
+            name: historicalStudent.studentClass.name,
+            major: historicalStudent.studentClass.major
+              ? {
+                  id: historicalStudent.studentClass.major.id,
+                  name: historicalStudent.studentClass.major.name,
+                  code: historicalStudent.studentClass.major.code,
+                }
+              : null,
+          },
+        };
+      })
+    : users;
+
+  res.status(200).json(new ApiResponse(200, normalizedUsers, 'Daftar pengguna berhasil diambil'));
 });
 
 export const getUserById = asyncHandler(async (req: Request, res: Response) => {
