@@ -5,7 +5,11 @@ import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { reportService } from '../services/report.service';
 import { Semester, ExamType, GradeComponentType } from '@prisma/client';
-import { listHistoricalStudentsByIds } from '../utils/studentAcademicHistory';
+import {
+  listHistoricalStudentsByIds,
+  listHistoricalStudentsForAcademicYear,
+  listHistoricalStudentsForClass,
+} from '../utils/studentAcademicHistory';
 
 const normalizeProgramCode = (raw: unknown): string =>
   String(raw || '')
@@ -650,7 +654,7 @@ type FinalLedgerPreviewData = {
   }>;
 };
 
-const buildFinalLedgerPreviewData = async (
+export const buildFinalLedgerPreviewData = async (
   parsed: z.infer<typeof finalLedgerPreviewSchema>,
 ): Promise<FinalLedgerPreviewData> => {
   const selectedSemesters = (parsed.semesters || [Semester.ODD, Semester.EVEN]).filter(
@@ -683,38 +687,44 @@ const buildFinalLedgerPreviewData = async (
     throw new ApiError(404, 'Tahun ajaran sumber tidak ditemukan.');
   }
 
-  const studentWhere: any = { role: 'STUDENT' };
-  if (parsed.studentId) studentWhere.id = parsed.studentId;
-  if (parsed.classId) studentWhere.classId = parsed.classId;
-  if (parsed.majorId) {
-    studentWhere.studentClass = { majorId: parsed.majorId };
+  const orderedSelectedAcademicYears = sortAcademicYearsAscending(selectedAcademicYears);
+  const selectedClass = parsed.classId
+    ? await prisma.class.findUnique({
+        where: { id: parsed.classId },
+        select: {
+          id: true,
+          academicYearId: true,
+        },
+      })
+    : null;
+
+  if (parsed.classId && !selectedClass) {
+    throw new ApiError(404, 'Kelas tidak ditemukan.');
+  }
+
+  if (
+    selectedClass &&
+    !selectedAcademicYears.some((item) => item.id === selectedClass.academicYearId)
+  ) {
+    throw new ApiError(400, 'Kelas tidak sesuai dengan tahun ajaran sumber yang dipilih.');
+  }
+
+  const referenceAcademicYearId =
+    selectedClass?.academicYearId ||
+    orderedSelectedAcademicYears[orderedSelectedAcademicYears.length - 1]?.id ||
+    selectedAcademicYears[selectedAcademicYears.length - 1]?.id;
+
+  if (!referenceAcademicYearId) {
+    throw new ApiError(404, 'Tahun ajaran referensi tidak ditemukan.');
   }
 
   const studentLimit = parsed.limitStudents || 1000;
-  const students = await prisma.user.findMany({
-    where: studentWhere,
-    select: {
-      id: true,
-      name: true,
-      nis: true,
-      nisn: true,
-      studentClass: {
-        select: {
-          id: true,
-          name: true,
-          level: true,
-          major: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-            },
-          },
-        },
-      },
-    },
-    orderBy: [{ studentClass: { name: 'asc' } }, { name: 'asc' }],
-    take: studentLimit,
+  const students = await listHistoricalStudentsForAcademicYear({
+    academicYearId: referenceAcademicYearId,
+    studentId: parsed.studentId || null,
+    classId: parsed.classId || null,
+    majorId: parsed.majorId || null,
+    limit: studentLimit,
   });
 
   const allStudentsGradeXii =
@@ -1546,17 +1556,6 @@ export const getClassReportSummary = asyncHandler(async (req: Request, res: Resp
           username: true,
         },
       },
-      students: {
-        select: {
-          id: true,
-          name: true,
-          nis: true,
-          nisn: true,
-        },
-        orderBy: {
-          name: 'asc',
-        },
-      },
     },
   });
 
@@ -1570,7 +1569,8 @@ export const getClassReportSummary = asyncHandler(async (req: Request, res: Resp
     throw new ApiError(400, 'Tahun ajaran tidak sesuai dengan kelas');
   }
 
-  const studentIds = classData.students.map((s) => s.id);
+  const classStudents = await listHistoricalStudentsForClass(classId, effectiveAcademicYearId);
+  const studentIds = classStudents.map((s) => s.id);
 
   if (studentIds.length === 0) {
     res.status(200).json(
@@ -1634,8 +1634,13 @@ export const getClassReportSummary = asyncHandler(async (req: Request, res: Resp
             teacher: classData.teacher,
           },
           subjects: [],
-          students: classData.students.map((student) => ({
-            student,
+          students: classStudents.map((student) => ({
+            student: {
+              id: student.id,
+              name: student.name,
+              nis: student.nis,
+              nisn: student.nisn,
+            },
             subjects: [],
             summary: {
               averageScore: null,
@@ -1721,7 +1726,7 @@ export const getClassReportSummary = asyncHandler(async (req: Request, res: Resp
     kkm: subjectKkmMap.get(ta.subject.id) || 75,
   }));
 
-  const studentsWithGrades = classData.students.map((student) => {
+  const studentsWithGrades = classStudents.map((student) => {
     let totalScore = 0;
     let scoreCount = 0;
     let passedCount = 0;
@@ -1752,7 +1757,12 @@ export const getClassReportSummary = asyncHandler(async (req: Request, res: Resp
     const averageScore = scoreCount > 0 ? totalScore / scoreCount : null;
 
     return {
-      student,
+      student: {
+        id: student.id,
+        name: student.name,
+        nis: student.nis,
+        nisn: student.nisn,
+      },
       subjects: studentSubjects,
       summary: {
         averageScore,

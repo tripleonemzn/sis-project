@@ -106,6 +106,7 @@ node -r ts-node/register <<'NODE' >"$RESULT_JSON"
 const prisma = require('./src/utils/prisma').default;
 const { Semester, ExamType } = require('@prisma/client');
 const { reportService } = require('./src/services/report.service');
+const { buildFinalLedgerPreviewData } = require('./src/controllers/report.controller');
 const {
   createAcademicYearRolloverTarget,
   applyAcademicYearRollover,
@@ -225,6 +226,13 @@ async function pickSourceYear() {
     sourceYear.id,
     Semester.ODD,
   );
+  const beforeFinalLedger = await buildFinalLedgerPreviewData({
+    academicYearIds: [sourceYear.id],
+    semesters: [Semester.ODD],
+    classId: sampleStudent.studentClass.id,
+    studentId: sampleStudent.id,
+    limitStudents: 10,
+  });
 
   const commitResult = await commitAcademicPromotion({
     sourceAcademicYearId: sourceYear.id,
@@ -291,6 +299,13 @@ async function pickSourceYear() {
     sourceYear.id,
     Semester.ODD,
   );
+  const afterFinalLedger = await buildFinalLedgerPreviewData({
+    academicYearIds: [sourceYear.id],
+    semesters: [Semester.ODD],
+    classId: sampleStudent.studentClass.id,
+    studentId: sampleStudent.id,
+    limitStudents: 10,
+  });
 
   const checks = [];
   assertCondition(
@@ -361,6 +376,31 @@ async function pickSourceYear() {
     {
       sampleStudentId: sampleStudent.id,
       rankingCount: afterClassRankings.rankings.length,
+    },
+  );
+  assertCondition(
+    checks,
+    beforeFinalLedger.rows.length === afterFinalLedger.rows.length,
+    'Jumlah baris final ledger source year konsisten sebelum dan sesudah promotion.',
+    {
+      before: beforeFinalLedger.rows.length,
+      after: afterFinalLedger.rows.length,
+    },
+  );
+  assertCondition(
+    checks,
+    afterFinalLedger.rows.some(
+      (item) =>
+        item.student.id === sampleStudent.id &&
+        item.student.class &&
+        item.student.class.id === sampleStudent.studentClass.id &&
+        item.student.class.name === sampleStudent.studentClass.name,
+    ),
+    'Final ledger source year tetap memuat kelas historis siswa sampel setelah promotion.',
+    {
+      sampleStudentId: sampleStudent.id,
+      sampleClassId: sampleStudent.studentClass.id,
+      sampleClassName: sampleStudent.studentClass.name,
     },
   );
   assertCondition(

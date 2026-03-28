@@ -93,6 +93,7 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
 - Hasil audit harus `PASS`.
 - Jika ingin validasi histori report source year tetap aman setelah promotion:
   - `bash ./scripts/smoke-test-academic-report-history-clone.sh --source-year-id <SOURCE_ID>`
+  - Script ini sekarang memverifikasi `student report`, `class ledger`, `extracurricular report`, `ranking`, dan `final ledger preview` tetap membaca kelas historis source year.
 
 ## 5. Go / No-Go Production
 
