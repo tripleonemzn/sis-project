@@ -16,7 +16,10 @@ import {
 } from '@prisma/client';
 import { syncReportGrade } from './grade.controller';
 import { syncScoreEntriesFromStudentGrade, upsertScoreEntryFromExamSession } from '../services/scoreEntry.service';
-import { getHistoricalStudentSnapshotForAcademicYear } from '../utils/studentAcademicHistory';
+import {
+    getHistoricalStudentSnapshotForAcademicYear,
+    listHistoricalStudentsForAcademicYear,
+} from '../utils/studentAcademicHistory';
 
 function normalizeAliasCode(raw: unknown): string {
     return String(raw || '')
@@ -7467,41 +7470,24 @@ export const getExamRestrictions = asyncHandler(async (req: Request, res: Respon
         rawProgramCode: programCode,
     });
 
-    const where: any = { 
-        classId: parsedClassId, 
-        role: 'STUDENT', 
-        studentStatus: 'ACTIVE' 
-    };
-
-    if (search) {
-        where.OR = [
-            { name: { contains: search as string, mode: 'insensitive' } },
-            { nis: { contains: search as string, mode: 'insensitive' } },
-            { nisn: { contains: search as string, mode: 'insensitive' } }
-        ];
-    }
-
-    // Get paginated students in class
-    const [students, total, allClassStudents] = await Promise.all([
-        prisma.user.findMany({
-            where,
-            select: { id: true, nisn: true, name: true },
-            orderBy: { name: 'asc' },
-            skip,
-            take: limitNum
+    const [allClassStudents, filteredStudents] = await Promise.all([
+        listHistoricalStudentsForAcademicYear({
+            academicYearId: parsedAcademicYearId,
+            classId: parsedClassId,
         }),
-        prisma.user.count({
-            where
-        }),
-        prisma.user.findMany({
-            where: {
-                classId: parsedClassId,
-                role: 'STUDENT',
-                studentStatus: 'ACTIVE',
-            },
-            select: { id: true },
+        listHistoricalStudentsForAcademicYear({
+            academicYearId: parsedAcademicYearId,
+            classId: parsedClassId,
+            search: String(search || '').trim() || null,
         }),
     ]);
+
+    const total = filteredStudents.length;
+    const students = filteredStudents.slice(skip, skip + limitNum).map((student) => ({
+        id: student.id,
+        nisn: student.nisn,
+        name: student.name,
+    }));
 
     const studentIds = students.map((s) => s.id);
     const allClassStudentIds = allClassStudents.map((student) => student.id);
@@ -7591,6 +7577,13 @@ export const updateExamRestriction = asyncHandler(async (req: Request, res: Resp
         rawExamType: examType,
         rawProgramCode: programCode,
     });
+    const studentSnapshot = await getHistoricalStudentSnapshotForAcademicYear(
+        parsedStudentId,
+        parsedAcademicYearId,
+    );
+    if (!studentSnapshot) {
+        throw new ApiError(400, 'Siswa tidak valid untuk tahun ajaran restriction yang dipilih.');
+    }
     const normalizedReason = String(reason || '').trim();
     const normalizedBlockState =
         typeof isBlocked === 'string'

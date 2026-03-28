@@ -40,6 +40,11 @@ type PromotionRunSummaryPayload = {
   rollback?: PromotionRunRollbackMeta;
 };
 
+const PROMOTION_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 120_000,
+} as const;
+
 type LoadedYearClass = Prisma.ClassGetPayload<{
   include: {
     major: {
@@ -1027,7 +1032,7 @@ export async function commitAcademicPromotion(params: {
       summary: workspace.summary,
       validation: workspace.validation,
     };
-  });
+  }, PROMOTION_TRANSACTION_OPTIONS);
 }
 
 export async function rollbackAcademicPromotion(params: {
@@ -1354,5 +1359,5 @@ export async function rollbackAcademicPromotion(params: {
         revertedGraduatedStudents: graduatedItems.length,
       },
     };
-  });
+  }, PROMOTION_TRANSACTION_OPTIONS);
 }
