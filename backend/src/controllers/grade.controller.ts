@@ -4,6 +4,12 @@ import prisma from '../utils/prisma'
 import { ApiResponseHelper } from '../utils/ApiResponse'
 import { ApiError } from '../utils/api'
 import {
+  getHistoricalStudentSnapshotForAcademicYear,
+  listHistoricalStudentsByIdsForAcademicYear,
+  resolveHistoricalStudentScope,
+  type HistoricalStudentSnapshot,
+} from '../utils/studentAcademicHistory'
+import {
   syncAdditionalNfSeriesEntriesFromStudentGrade,
   syncScoreEntriesFromStudentGrade,
 } from '../services/scoreEntry.service'
@@ -71,12 +77,108 @@ function isTeacherUser(user: AuthUserLike | null | undefined): boolean {
   return String(user?.role || '').toUpperCase() === 'TEACHER'
 }
 
-async function resolveStudentClassId(studentId: number): Promise<number | null> {
+const buildHistoricalStudentAcademicKey = (studentId: number, academicYearId: number) =>
+  `${studentId}:${academicYearId}`
+
+async function buildHistoricalStudentSnapshotMap(
+  rows: Array<{ studentId: number; academicYearId: number }>,
+): Promise<Map<string, HistoricalStudentSnapshot>> {
+  const byAcademicYear = new Map<number, number[]>()
+
+  rows.forEach((row) => {
+    const studentId = Number(row.studentId)
+    const academicYearId = Number(row.academicYearId)
+    if (!Number.isFinite(studentId) || studentId <= 0) return
+    if (!Number.isFinite(academicYearId) || academicYearId <= 0) return
+    const bucket = byAcademicYear.get(academicYearId) || []
+    bucket.push(studentId)
+    byAcademicYear.set(academicYearId, bucket)
+  })
+
+  const snapshotMap = new Map<string, HistoricalStudentSnapshot>()
+
+  await Promise.all(
+    Array.from(byAcademicYear.entries()).map(async ([academicYearId, studentIds]) => {
+      const snapshots = await listHistoricalStudentsByIdsForAcademicYear(studentIds, academicYearId)
+      snapshots.forEach((snapshot) => {
+        snapshotMap.set(buildHistoricalStudentAcademicKey(snapshot.id, academicYearId), snapshot)
+      })
+    }),
+  )
+
+  return snapshotMap
+}
+
+function resolveHistoricalStudentClassId(params: {
+  snapshotMap?: Map<string, HistoricalStudentSnapshot>
+  studentId: number
+  academicYearId: number
+  fallbackClassId?: number | null
+  fallbackClassAcademicYearId?: number | null
+}) {
+  const snapshot = params.snapshotMap?.get(
+    buildHistoricalStudentAcademicKey(params.studentId, params.academicYearId),
+  )
+  const historicalClassId = Number(snapshot?.studentClass?.id || 0)
+  if (historicalClassId > 0) return historicalClassId
+
+  const fallbackClassId = Number(params.fallbackClassId || 0)
+  if (
+    fallbackClassId > 0 &&
+    Number(params.fallbackClassAcademicYearId || 0) === Number(params.academicYearId)
+  ) {
+    return fallbackClassId
+  }
+
+  return null
+}
+
+async function resolveStudentClassId(
+  studentId: number,
+  academicYearId?: number | null,
+): Promise<number | null> {
+  const normalizedAcademicYearId = Number(academicYearId || 0)
+  if (normalizedAcademicYearId > 0) {
+    const historicalStudent = await getHistoricalStudentSnapshotForAcademicYear(
+      studentId,
+      normalizedAcademicYearId,
+    )
+    const historicalClassId = Number(historicalStudent?.studentClass?.id || 0)
+    if (historicalClassId > 0) return historicalClassId
+  }
+
   const student = await prisma.user.findUnique({
     where: { id: studentId },
-    select: { classId: true },
+    select: {
+      classId: true,
+      studentClass: {
+        select: {
+          academicYearId: true,
+        },
+      },
+    },
   })
+
+  if (
+    normalizedAcademicYearId > 0 &&
+    Number(student?.studentClass?.academicYearId || 0) !== normalizedAcademicYearId
+  ) {
+    return null
+  }
+
   return Number(student?.classId || 0) || null
+}
+
+async function runWithConcurrencyLimit<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+) {
+  const normalizedLimit = Math.max(1, Math.floor(limit))
+  for (let index = 0; index < items.length; index += normalizedLimit) {
+    const batch = items.slice(index, index + normalizedLimit)
+    await Promise.all(batch.map((item) => worker(item)))
+  }
 }
 
 async function ensureTeacherCanAccessGradeContext(params: {
@@ -95,7 +197,8 @@ async function ensureTeacherCanAccessGradeContext(params: {
 
   let resolvedClassId = Number(params.classId || 0)
   if (!resolvedClassId && params.studentId) {
-    resolvedClassId = Number(await resolveStudentClassId(Number(params.studentId))) || 0
+    resolvedClassId =
+      Number(await resolveStudentClassId(Number(params.studentId), Number(params.academicYearId))) || 0
   }
 
   if (!Number.isFinite(resolvedClassId) || resolvedClassId <= 0) {
@@ -1557,15 +1660,12 @@ export const syncReportGrade = async (
 
     // Get KKM
     let kkm = 75;
-    const student = await prisma.user.findUnique({
-        where: { id: studentId },
-        select: { classId: true }
-    });
-    
-    if (student?.classId) {
+    const studentClassId = await resolveStudentClassId(studentId, academicYearId)
+
+    if (studentClassId) {
         const assignment = await prisma.teacherAssignment.findFirst({
             where: {
-                classId: student.classId,
+                classId: studentClassId,
                 subjectId: subjectId,
                 academicYearId: academicYearId
             },
@@ -1637,6 +1737,7 @@ export const getStudentGrades = async (req: Request, res: Response) => {
     const parsedSubjectId = toPositiveInt(subject_id)
     const parsedAcademicYearId = toPositiveInt(academic_year_id)
     const parsedClassId = toPositiveInt(class_id)
+    let resolvedAcademicYearId = parsedAcademicYearId
     // Security: Student can only view their own grades
     if (String(user?.role || '').toUpperCase() === 'STUDENT') {
       where.studentId = user.id
@@ -1661,16 +1762,17 @@ export const getStudentGrades = async (req: Request, res: Response) => {
 
       // If class_id is provided (and not student), filter by students in that class
       if (parsedClassId) {
-        const students = await prisma.user.findMany({
-          where: { classId: parsedClassId },
-          select: { id: true }
+        const classScope = await resolveHistoricalStudentScope({
+          academicYearId: parsedAcademicYearId,
+          classId: parsedClassId,
         })
-        where.studentId = { in: students.map(s => s.id) }
+        resolvedAcademicYearId = resolvedAcademicYearId || classScope.academicYearId
+        where.studentId = { in: classScope.studentIds.length > 0 ? classScope.studentIds : [-1] }
       }
     }
 
     if (parsedSubjectId) where.subjectId = parsedSubjectId
-    if (parsedAcademicYearId) where.academicYearId = parsedAcademicYearId
+    if (resolvedAcademicYearId) where.academicYearId = resolvedAcademicYearId
     if (semester) where.semester = semester as Semester
 
     const grades = await prisma.studentGrade.findMany({
@@ -1682,7 +1784,12 @@ export const getStudentGrades = async (req: Request, res: Response) => {
             name: true,
             nisn: true,
             nis: true,
-            classId: true
+            classId: true,
+            studentClass: {
+              select: {
+                academicYearId: true,
+              },
+            },
           }
         },
         subject: {
@@ -1715,17 +1822,53 @@ export const getStudentGrades = async (req: Request, res: Response) => {
       ]
     })
 
+    const historicalStudentSnapshotMap = await buildHistoricalStudentSnapshotMap(
+      grades.map((grade) => ({
+        studentId: Number(grade.studentId),
+        academicYearId: Number(grade.academicYearId),
+      })),
+    )
+
+    const gradesWithHistoricalStudents = grades.map((grade) => {
+      const historicalClassId = resolveHistoricalStudentClassId({
+        snapshotMap: historicalStudentSnapshotMap,
+        studentId: Number(grade.studentId),
+        academicYearId: Number(grade.academicYearId),
+        fallbackClassId: grade.student?.classId,
+        fallbackClassAcademicYearId: grade.student?.studentClass?.academicYearId,
+      })
+
+      return {
+        ...grade,
+        student: grade.student
+          ? {
+              id: grade.student.id,
+              name: grade.student.name,
+              nisn: grade.student.nisn,
+              nis: grade.student.nis,
+              classId: historicalClassId,
+            }
+          : grade.student,
+      }
+    })
+
     // Fetch KKM data
-    let gradesWithKkm = [...grades] as any[];
+    let gradesWithKkm = [...gradesWithHistoricalStudents] as any[];
     
     // We need to attach KKM. 
     // If we have a single student, we can look up their class level.
     // If multiple students, we might need to look up each.
     // For optimization, if user.role === STUDENT, we know the student.
     
-    if (grades.length > 0) {
+    if (gradesWithHistoricalStudents.length > 0) {
       // Get all unique class IDs involved
-      const classIds = [...new Set(grades.map(g => g.student?.classId).filter(id => id))];
+      const classIds = [
+        ...new Set(
+          gradesWithHistoricalStudents
+            .map((grade) => Number(grade.student?.classId || 0))
+            .filter((id) => Number.isFinite(id) && id > 0),
+        ),
+      ];
       
       if (classIds.length > 0) {
         const classes = await prisma.class.findMany({
@@ -1735,31 +1878,37 @@ export const getStudentGrades = async (req: Request, res: Response) => {
         
         const classLevelMap = new Map(classes.map(c => [c.id, c.level]));
         const levels = [...new Set(classes.map(c => c.level))];
-        const academicYearId = grades[0].academicYearId; // Assuming filtered by one academic year usually
+        const academicYearIds = [
+          ...new Set(
+            gradesWithHistoricalStudents
+              .map((grade) => Number(grade.academicYearId))
+              .filter((id) => Number.isFinite(id) && id > 0),
+          ),
+        ]
 
         // Fetch KKMs for these levels and subjects
-        const subjectIds = [...new Set(grades.map(g => g.subjectId))];
+        const subjectIds = [...new Set(gradesWithHistoricalStudents.map(g => g.subjectId))];
         
         const kkms = await prisma.subjectKKM.findMany({
           where: {
             subjectId: { in: subjectIds },
-            academicYearId: academicYearId,
+            academicYearId: { in: academicYearIds },
             classLevel: { in: levels }
           }
         });
 
-        // Map KKMs for easy lookup: subjectId-level -> kkm
+        // Map KKMs for easy lookup: academicYearId-subjectId-level -> kkm
         const kkmMap = new Map<string, number>();
         kkms.forEach(k => {
-          kkmMap.set(`${k.subjectId}-${k.classLevel}`, k.kkm);
+          kkmMap.set(`${k.academicYearId}-${k.subjectId}-${k.classLevel}`, k.kkm);
         });
 
-        gradesWithKkm = grades.map(grade => {
+        gradesWithKkm = gradesWithHistoricalStudents.map(grade => {
           const classLevel = grade.student?.classId ? classLevelMap.get(grade.student.classId) : null;
           let kkm = 75; // Default
           
           if (classLevel) {
-            const foundKkm = kkmMap.get(`${grade.subjectId}-${classLevel}`);
+            const foundKkm = kkmMap.get(`${grade.academicYearId}-${grade.subjectId}-${classLevel}`);
             if (foundKkm !== undefined) kkm = foundKkm;
           }
           
@@ -2225,13 +2374,41 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
 
       const studentRows = await prisma.user.findMany({
         where: { id: { in: studentIds } },
-        select: { id: true, classId: true },
+        select: {
+          id: true,
+          classId: true,
+          studentClass: {
+            select: {
+              academicYearId: true,
+            },
+          },
+        },
       })
-      const studentClassMap = new Map<number, number>()
-      studentRows.forEach((row) => {
-        const classId = Number(row.classId || 0)
-        if (Number.isFinite(classId) && classId > 0) {
-          studentClassMap.set(Number(row.id), classId)
+      const studentRowMap = new Map(studentRows.map((row) => [Number(row.id), row]))
+      const historicalStudentSnapshotMap = await buildHistoricalStudentSnapshotMap(
+        academicYearIds.flatMap((academicYearId) =>
+          studentIds.map((studentId) => ({
+            studentId,
+            academicYearId,
+          })),
+        ),
+      )
+      const studentClassMap = new Map<string, number>()
+
+      grades.forEach((gradeData: any) => {
+        const studentId = toPositiveInt(gradeData?.student_id)
+        const academicYearId = toPositiveInt(gradeData?.academic_year_id)
+        if (!studentId || !academicYearId) return
+        const studentRow = studentRowMap.get(studentId)
+        const classId = resolveHistoricalStudentClassId({
+          snapshotMap: historicalStudentSnapshotMap,
+          studentId,
+          academicYearId,
+          fallbackClassId: studentRow?.classId,
+          fallbackClassAcademicYearId: studentRow?.studentClass?.academicYearId,
+        })
+        if (classId) {
+          studentClassMap.set(`${studentId}:${academicYearId}`, classId)
         }
       })
       const classIds = Array.from(new Set(Array.from(studentClassMap.values())))
@@ -2265,9 +2442,12 @@ export const bulkCreateOrUpdateStudentGrades = async (req: Request, res: Respons
         if (!studentId || !subjectId || !academicYearId) {
           throw new ApiError(400, 'Data bulk nilai tidak valid pada salah satu baris.')
         }
-        const classId = Number(studentClassMap.get(studentId) || 0)
+        const classId = Number(studentClassMap.get(`${studentId}:${academicYearId}`) || 0)
         if (!classId) {
-          throw new ApiError(400, `Siswa ${studentId} tidak memiliki kelas aktif.`)
+          throw new ApiError(
+            400,
+            `Siswa ${studentId} tidak terdaftar pada tahun ajaran ${academicYearId}.`,
+          )
         }
         const key = `${subjectId}:${academicYearId}:${classId}`
         if (!assignmentKeySet.has(key)) {
@@ -2541,20 +2721,15 @@ export const generateReportGrades = async (req: Request, res: Response) => {
       throw new ApiError(400, 'student_id, academic_year_id, and semester are required')
     }
 
-    // Get student class to determine KKM
-    const student = await prisma.user.findUnique({
-      where: { id: Number(student_id) },
-      select: { classId: true }
-    })
-
-    if (!student) {
-      throw new ApiError(404, 'Student not found')
+    const studentClassId = await resolveStudentClassId(Number(student_id), Number(academic_year_id))
+    if (!studentClassId) {
+      throw new ApiError(404, 'Student historical class for selected academic year not found')
     }
 
     // Pre-fetch KKM for all subjects in this class
     const assignments = await prisma.teacherAssignment.findMany({
       where: {
-        classId: student.classId || 0,
+        classId: studentClassId,
         academicYearId: Number(academic_year_id)
       },
       select: {
@@ -2744,6 +2919,7 @@ export const getReportGrades = async (req: Request, res: Response) => {
     const parsedAcademicYearId = toPositiveInt(academic_year_id)
     const parsedClassId = toPositiveInt(class_id)
     const parsedSubjectId = toPositiveInt(subject_id)
+    let resolvedAcademicYearId = parsedAcademicYearId
     const where: any = {}
     
     // Security: Students can only view their own grades
@@ -2770,19 +2946,21 @@ export const getReportGrades = async (req: Request, res: Response) => {
       
       // If class_id is provided, filter by students in that class
       if (parsedClassId) {
-        const students = await prisma.user.findMany({
-          where: { classId: parsedClassId },
-          select: { id: true }
+        const classScope = await resolveHistoricalStudentScope({
+          academicYearId: parsedAcademicYearId,
+          classId: parsedClassId,
         })
-        where.studentId = { in: students.map(s => s.id) }
+        resolvedAcademicYearId = resolvedAcademicYearId || classScope.academicYearId
+        const students = classScope.students.map((student) => ({ id: student.id }))
+        where.studentId = { in: students.length > 0 ? students.map((s) => s.id) : [-1] }
   
         // LAZY SYNC: If we are in a specific context (Class + Subject + Year + Sem),
         // ensure ReportGrades exist for all students.
-        if (students.length > 0 && parsedSubjectId && parsedAcademicYearId && semester) {
+        if (students.length > 0 && parsedSubjectId && resolvedAcademicYearId && semester) {
           const syncWhere: Prisma.ReportGradeWhereInput = {
             studentId: { in: students.map((s) => s.id) },
             subjectId: parsedSubjectId,
-            academicYearId: parsedAcademicYearId,
+            academicYearId: resolvedAcademicYearId,
             semester: semester as Semester,
           };
           const existingCount = await prisma.reportGrade.count({ where: syncWhere });
@@ -2790,21 +2968,20 @@ export const getReportGrades = async (req: Request, res: Response) => {
           // If count mismatch (or force check), run sync
           if (existingCount < students.length) {
               console.log(`[LazySync] Syncing ReportGrades for Class ${parsedClassId} Subject ${parsedSubjectId}`);
-              // Use Promise.all with chunking or just all at once (assuming class size < 50)
-              await Promise.all(students.map(s => 
-                  syncReportGrade(
-                      s.id, 
-                      parsedSubjectId, 
-                      parsedAcademicYearId, 
-                      semester as Semester
-                  ).catch(err => console.error(`Failed to sync student ${s.id}:`, err))
-              ));
+              await runWithConcurrencyLimit(students, 4, async (studentRow) => {
+                await syncReportGrade(
+                  studentRow.id,
+                  parsedSubjectId,
+                  Number(resolvedAcademicYearId),
+                  semester as Semester,
+                ).catch((err) => console.error(`Failed to sync student ${studentRow.id}:`, err))
+              })
           }
         }
       }
     }
 
-    if (parsedAcademicYearId) where.academicYearId = parsedAcademicYearId
+    if (resolvedAcademicYearId) where.academicYearId = resolvedAcademicYearId
     if (semester) where.semester = semester as Semester
     if (parsedSubjectId) where.subjectId = parsedSubjectId
 
@@ -2843,6 +3020,7 @@ export const getReportGrades = async (req: Request, res: Response) => {
           select: {
             id: true,
             name: true,
+            academicYearId: true,
             major: {
               select: {
                 name: true
@@ -2852,6 +3030,13 @@ export const getReportGrades = async (req: Request, res: Response) => {
         }
       }
     })
+
+    const historicalStudentSnapshotMap = await buildHistoricalStudentSnapshotMap(
+      reportGrades.map((grade) => ({
+        studentId: Number(grade.studentId),
+        academicYearId: Number(grade.academicYearId),
+      })),
+    )
     
     const studentMap = students.reduce((acc, student) => {
       acc[student.id] = student
@@ -2861,7 +3046,35 @@ export const getReportGrades = async (req: Request, res: Response) => {
     const result = reportGrades.map(grade => ({
       ...grade,
       finalScore: resolveEffectiveReportFinalScore(grade),
-      student: studentMap[grade.studentId]
+      student: (() => {
+        const student = studentMap[grade.studentId]
+        const snapshot = historicalStudentSnapshotMap.get(
+          buildHistoricalStudentAcademicKey(Number(grade.studentId), Number(grade.academicYearId)),
+        )
+        if (!student) return null
+
+        if (snapshot?.studentClass) {
+          return {
+            ...student,
+            studentClass: {
+              id: snapshot.studentClass.id,
+              name: snapshot.studentClass.name,
+              major: {
+                name: snapshot.studentClass.major?.name || student.studentClass?.major?.name || '',
+              },
+            },
+          }
+        }
+
+        if (Number(student.studentClass?.academicYearId || 0) === Number(grade.academicYearId)) {
+          return student
+        }
+
+        return {
+          ...student,
+          studentClass: null,
+        }
+      })(),
     }))
 
     // Sort by student name alphabetically
@@ -2876,7 +3089,7 @@ export const getReportGrades = async (req: Request, res: Response) => {
       return ApiResponseHelper.success(res, result, 'Report grades retrieved successfully')
     }
 
-    const resolvedAcademicYearId = Number(academic_year_id)
+    const metaAcademicYearId = Number(resolvedAcademicYearId || academic_year_id)
     const discoveredSlotSet = new Set<string>()
     result.forEach((row: any) => {
       const parsed = parseSlotScoreMap(row?.slotScores)
@@ -2953,13 +3166,13 @@ export const getReportGrades = async (req: Request, res: Response) => {
       slotLabels: fallbackSlotLabels,
     }
 
-    if (Number.isFinite(resolvedAcademicYearId) && resolvedAcademicYearId > 0) {
+    if (Number.isFinite(metaAcademicYearId) && metaAcademicYearId > 0) {
       const [componentRuleMap, masterComponents] = await Promise.all([
-        getExamComponentRuleMap(resolvedAcademicYearId).catch(() => new Map<string, ExamComponentRule>()),
+        getExamComponentRuleMap(metaAcademicYearId).catch(() => new Map<string, ExamComponentRule>()),
         prisma.examGradeComponent
           .findMany({
             where: {
-              academicYearId: resolvedAcademicYearId,
+              academicYearId: metaAcademicYearId,
               isActive: true,
             },
             select: {
@@ -3122,15 +3335,15 @@ export const updateReportGrade = async (req: Request, res: Response) => {
       )
 
       let kkm = 75
-      const student = await prisma.user.findUnique({
-        where: { id: existingGrade.studentId },
-        select: { classId: true },
-      })
+      const studentClassId = await resolveStudentClassId(
+        existingGrade.studentId,
+        existingGrade.academicYearId,
+      )
 
-      if (student?.classId) {
+      if (studentClassId) {
         const assignment = await prisma.teacherAssignment.findFirst({
           where: {
-            classId: student.classId,
+            classId: studentClassId,
             subjectId: existingGrade.subjectId,
             academicYearId: existingGrade.academicYearId,
           },
@@ -3241,6 +3454,39 @@ export const getStudentReportCard = async (req: Request, res: Response) => {
       throw new ApiError(404, 'Student not found')
     }
 
+    const historicalStudentSnapshot = await getHistoricalStudentSnapshotForAcademicYear(
+      targetStudentId,
+      Number(academic_year_id),
+    )
+    const historicalStudentClassId = Number(historicalStudentSnapshot?.studentClass?.id || 0)
+    const currentStudentClassAcademicYearId = Number(student.studentClass?.academicYearId || 0)
+    const resolvedStudentClassId =
+      historicalStudentClassId > 0
+        ? historicalStudentClassId
+        : currentStudentClassAcademicYearId === Number(academic_year_id)
+          ? Number(student.classId || 0) || null
+          : null
+
+    const historicalStudentClass =
+      historicalStudentClassId > 0
+        ? await prisma.class.findUnique({
+            where: { id: historicalStudentClassId },
+            include: {
+              major: true,
+              academicYear: true,
+              teacher: true,
+            },
+          })
+        : null
+
+    const resolvedStudent = {
+      ...student,
+      classId: resolvedStudentClassId,
+      studentClass:
+        historicalStudentClass ||
+        (currentStudentClassAcademicYearId === Number(academic_year_id) ? student.studentClass : null),
+    }
+
     // Get report grades
     const reportGrades = await prisma.reportGrade.findMany({
       where: {
@@ -3269,7 +3515,7 @@ export const getStudentReportCard = async (req: Request, res: Response) => {
     // Get attendance summary
     const attendances = await prisma.attendance.findMany({
       where: {
-        classId: student.classId || undefined,
+        classId: resolvedStudent.classId || undefined,
         academicYearId: Number(academic_year_id)
       },
       include: {
@@ -3315,7 +3561,7 @@ export const getStudentReportCard = async (req: Request, res: Response) => {
       : 0
 
     return ApiResponseHelper.success(res, {
-      student,
+      student: resolvedStudent,
       reportGrades: normalizedReportGrades,
       reportNotes,
       attendanceSummary,
