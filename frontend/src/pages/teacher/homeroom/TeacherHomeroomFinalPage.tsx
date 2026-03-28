@@ -270,6 +270,7 @@ export const TeacherHomeroomFinalPage = ({
             {activeTab === 'ledger' && (
               <HomeroomLedgerPage
                 classId={classSummary.id}
+                academicYearId={activeAcademicYear?.id}
                 semester={semester}
                 reportType={resolvedReportType}
                 programCode={programCode}
@@ -279,6 +280,7 @@ export const TeacherHomeroomFinalPage = ({
             {activeTab === 'extracurriculars' && (
               <HomeroomExtracurricularsPage
                 classId={classSummary.id}
+                academicYearId={activeAcademicYear?.id}
                 semester={semester}
                 reportType={resolvedReportType}
                 programCode={programCode}
@@ -295,6 +297,7 @@ export const TeacherHomeroomFinalPage = ({
               (semester === 'EVEN' ? (
                 <HomeroomReportSatPage
                   classId={classSummary.id}
+                  academicYearId={activeAcademicYear?.id}
                   semester={semester}
                   reportType={resolvedReportType}
                   programCode={programCode}
@@ -303,6 +306,7 @@ export const TeacherHomeroomFinalPage = ({
               ) : (
                 <HomeroomReportSasPage
                   classId={classSummary.id}
+                  academicYearId={activeAcademicYear?.id}
                   semester={semester}
                   reportType={resolvedReportType}
                   programCode={programCode}
@@ -312,6 +316,7 @@ export const TeacherHomeroomFinalPage = ({
             {activeTab === 'report-support' && (
               <HomeroomReportPage2
                 classId={classSummary.id}
+                academicYearId={activeAcademicYear?.id}
                 semester={semester}
                 reportType={resolvedReportType}
                 programCode={programCode}

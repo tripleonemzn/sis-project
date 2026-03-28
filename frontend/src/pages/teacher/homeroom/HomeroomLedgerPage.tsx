@@ -5,6 +5,7 @@ import api from '../../../services/api';
 
 interface HomeroomLedgerPageProps {
   classId: number;
+  academicYearId?: number;
   semester: 'ODD' | 'EVEN' | '';
   reportType?: string;
   programCode?: string;
@@ -81,6 +82,7 @@ const isFinalAliasCode = (raw: unknown): boolean => {
 
 export const HomeroomLedgerPage = ({
   classId,
+  academicYearId,
   semester,
   reportType = '',
   programCode,
@@ -89,11 +91,12 @@ export const HomeroomLedgerPage = ({
   const normalizedReportType = normalizeLedgerCode(reportType);
 
   const { data: ledgerData, isLoading, error } = useQuery<LedgerResponse>({
-    queryKey: ['class-ledger', classId, semester, normalizedReportType, String(programCode || '')],
+    queryKey: ['class-ledger', classId, academicYearId || null, semester, normalizedReportType, String(programCode || '')],
     queryFn: async () => {
       const response = await api.get('/reports/ledger', {
         params: {
           classId,
+          ...(academicYearId ? { academicYearId } : {}),
           semester,
           ...(programCode ? { programCode } : {}),
           ...(!programCode && normalizedReportType ? { reportType: normalizedReportType } : {}),

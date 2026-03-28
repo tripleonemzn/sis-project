@@ -42,6 +42,7 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
   - `bash ./scripts/smoke-test-academic-promotion-clone.sh`
   - `bash ./scripts/smoke-test-academic-promotion-rollback-clone.sh`
   - `bash ./scripts/smoke-test-academic-report-history-clone.sh`
+  - `bash ./scripts/smoke-test-academic-report-archive-access-clone.sh`
   - `bash ./scripts/smoke-test-academic-class-roster-history-clone.sh`
   - `bash ./scripts/smoke-test-academic-grade-history-clone.sh`
   - `bash ./scripts/smoke-test-academic-attendance-history-clone.sh`
@@ -115,6 +116,9 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
 - Jika ingin validasi histori report source year tetap aman setelah promotion:
   - `bash ./scripts/smoke-test-academic-report-history-clone.sh --source-year-id <SOURCE_ID>`
   - Script ini sekarang memverifikasi `student report`, `class ledger`, `extracurricular report`, `ranking`, dan `final ledger preview` tetap membaca kelas historis source year.
+- Jika ingin validasi permission akses arsip report sudah mengikuti `role + duty + historical ownership`:
+  - `bash ./scripts/smoke-test-academic-report-archive-access-clone.sh --source-year-id <SOURCE_ID>`
+  - Script ini memverifikasi source year benar-benar masuk status arsip setelah target diaktifkan, wali kelas historis tetap boleh membuka arsip report source year, guru non-owner ditolak, dan pejabat kurikulum tetap boleh membaca arsip lintas kelas.
 - Jika ingin validasi roster kelas dan filter user source year tetap aman setelah promotion:
   - `bash ./scripts/smoke-test-academic-class-roster-history-clone.sh --source-year-id <SOURCE_ID>`
   - Script ini memverifikasi list kelas, detail kelas, filter `/users?class_id=...`, dan guard delete class source year tetap membaca roster historis yang benar sesudah siswa naik kelas atau menjadi alumni.

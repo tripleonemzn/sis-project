@@ -713,11 +713,12 @@ export function HomeroomReportModuleScreen({
   const selectedStudent = students.find((item) => item.id === selectedStudentId) || null;
 
   const ledgerQuery = useQuery({
-    queryKey: ['mobile-homeroom-report-ledger', user?.id, activeProgramCode, selectedClassId, semester],
+    queryKey: ['mobile-homeroom-report-ledger', user?.id, activeProgramCode, selectedClassId, activeYearQuery.data?.id, semester],
     enabled: isAuthenticated && !!isAllowed && !!selectedClassId && activeTab === 'LEDGER',
     queryFn: async () =>
       homeroomReportApi.getClassLedger({
         classId: Number(selectedClassId),
+        academicYearId: activeYearQuery.data?.id,
         semester,
         reportType: activeProgramCode ? undefined : resolvedMode,
         programCode: activeProgramCode,
@@ -725,11 +726,12 @@ export function HomeroomReportModuleScreen({
   });
 
   const extracurricularQuery = useQuery({
-    queryKey: ['mobile-homeroom-report-extracurricular', user?.id, activeProgramCode, selectedClassId, semester],
+    queryKey: ['mobile-homeroom-report-extracurricular', user?.id, activeProgramCode, selectedClassId, activeYearQuery.data?.id, semester],
     enabled: isAuthenticated && !!isAllowed && !!selectedClassId && activeTab === 'EXTRACURRICULAR',
     queryFn: async () =>
       homeroomReportApi.getClassExtracurricular({
         classId: Number(selectedClassId),
+        academicYearId: activeYearQuery.data?.id,
         semester,
         reportType: activeProgramCode ? undefined : resolvedMode,
         programCode: activeProgramCode,
@@ -748,11 +750,12 @@ export function HomeroomReportModuleScreen({
   });
 
   const studentReportQuery = useQuery({
-    queryKey: ['mobile-homeroom-report-student', user?.id, activeProgramCode, selectedStudentId, semester],
+    queryKey: ['mobile-homeroom-report-student', user?.id, activeProgramCode, selectedStudentId, activeYearQuery.data?.id, semester],
     enabled: isAuthenticated && !!isAllowed && !!selectedStudentId && activeTab === 'RAPOR',
     queryFn: async () =>
       homeroomReportApi.getStudentReport({
         studentId: Number(selectedStudentId),
+        academicYearId: activeYearQuery.data?.id,
         semester,
         type: activeProgramCode ? undefined : resolvedMode,
         programCode: activeProgramCode,

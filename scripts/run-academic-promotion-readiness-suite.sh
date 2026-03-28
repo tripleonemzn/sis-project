@@ -126,6 +126,7 @@ run_step "Academic Year Rollover Smoke" bash "$ROOT_DIR/scripts/smoke-test-acade
 run_step "Academic Promotion Commit Smoke" bash "$ROOT_DIR/scripts/smoke-test-academic-promotion-clone.sh" "${COMMON_ARGS[@]}" || exit 1
 run_step "Academic Promotion Rollback Smoke" bash "$ROOT_DIR/scripts/smoke-test-academic-promotion-rollback-clone.sh" "${COMMON_ARGS[@]}" || exit 1
 run_step "Academic Report History Smoke" bash "$ROOT_DIR/scripts/smoke-test-academic-report-history-clone.sh" "${COMMON_ARGS[@]}" || exit 1
+run_step "Academic Report Archive Access Smoke" bash "$ROOT_DIR/scripts/smoke-test-academic-report-archive-access-clone.sh" "${COMMON_ARGS[@]}" || exit 1
 run_step "Academic Class Roster History Smoke" bash "$ROOT_DIR/scripts/smoke-test-academic-class-roster-history-clone.sh" "${COMMON_ARGS[@]}" || exit 1
 run_step "Academic Grade History Smoke" bash "$ROOT_DIR/scripts/smoke-test-academic-grade-history-clone.sh" "${COMMON_ARGS[@]}" || exit 1
 run_step "Academic Attendance History Smoke" bash "$ROOT_DIR/scripts/smoke-test-academic-attendance-history-clone.sh" "${COMMON_ARGS[@]}" || exit 1

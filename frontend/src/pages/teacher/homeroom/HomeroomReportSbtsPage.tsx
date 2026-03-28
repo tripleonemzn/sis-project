@@ -6,6 +6,7 @@ import api from '../../../services/api';
 
 interface HomeroomReportSbtsPageProps {
   classId: number;
+  academicYearId?: number;
   semester: 'ODD' | 'EVEN' | '';
   reportType?: string;
   programCode?: string;
@@ -65,6 +66,7 @@ type StudentReportPayload = {
 
 export const HomeroomReportSbtsPage = ({
   classId,
+  academicYearId,
   semester,
   reportType,
   programCode,
@@ -100,6 +102,7 @@ export const HomeroomReportSbtsPage = ({
       const response = await api.get('/reports/student', {
         params: {
           studentId,
+          ...(academicYearId ? { academicYearId } : {}),
           semester,
           ...(programCode ? { programCode } : {}),
           ...(!programCode && resolvedReportType ? { type: resolvedReportType } : {}),

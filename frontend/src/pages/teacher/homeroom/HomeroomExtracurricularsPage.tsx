@@ -6,6 +6,7 @@ import { toast } from 'react-hot-toast';
 
 interface HomeroomExtracurricularsPageProps {
   classId: number;
+  academicYearId?: number;
   semester: 'ODD' | 'EVEN' | '';
   reportType?: string;
   programCode?: string;
@@ -182,6 +183,7 @@ const StudentRow = ({
 
 export const HomeroomExtracurricularsPage = ({
   classId,
+  academicYearId,
   semester,
   reportType = '',
   programCode,
@@ -193,6 +195,7 @@ export const HomeroomExtracurricularsPage = ({
   const extracurricularQueryKey = [
     'extracurricular-report',
     classId,
+    academicYearId || null,
     semester,
     normalizedReportType,
     String(programCode || ''),
@@ -211,6 +214,7 @@ export const HomeroomExtracurricularsPage = ({
       const res = await api.get('/reports/extracurricular', {
         params: {
           classId,
+          ...(academicYearId ? { academicYearId } : {}),
           semester,
           ...(programCode ? { programCode } : {}),
           ...(!programCode && normalizedReportType ? { reportType: normalizedReportType } : {}),

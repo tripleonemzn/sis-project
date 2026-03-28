@@ -225,6 +225,7 @@ export const TeacherHomeroomSbtsPage = ({
             {effectiveTab === 'report-main' && (
               <HomeroomReportSbtsPage 
                 classId={classSummary.id} 
+                academicYearId={activeAcademicYearId}
                 semester={semester}
                 reportType={resolvedReportType}
                 programCode={programCode}
@@ -234,6 +235,7 @@ export const TeacherHomeroomSbtsPage = ({
             {effectiveTab === 'ledger' && (
               <HomeroomLedgerPage 
                 classId={classSummary.id} 
+                academicYearId={activeAcademicYearId}
                 semester={semester}
                 reportType={resolvedReportType}
                 programCode={programCode}
@@ -243,6 +245,7 @@ export const TeacherHomeroomSbtsPage = ({
             {effectiveTab === 'extracurriculars' && (
               <HomeroomExtracurricularsPage 
                 classId={classSummary.id} 
+                academicYearId={activeAcademicYearId}
                 semester={semester}
                 reportType={resolvedReportType}
                 programCode={programCode}

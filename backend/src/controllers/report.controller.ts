@@ -10,6 +10,7 @@ import {
   listHistoricalStudentsForAcademicYear,
   listHistoricalStudentsForClass,
 } from '../utils/studentAcademicHistory';
+import { ensureAcademicYearArchiveReadAccess } from '../utils/academicYearArchiveAccess';
 
 const normalizeProgramCode = (raw: unknown): string =>
   String(raw || '')
@@ -598,6 +599,51 @@ const isCurriculumAccessAllowed = async (user: { id?: number | string; role?: st
   });
   const duties = (teacher?.additionalDuties || []).map((item) => String(item || '').toUpperCase());
   return duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
+};
+
+const resolveReportReader = (user: { id?: number | string; role?: string | null } | null | undefined) => {
+  const actorId = Number(user?.id || 0);
+  const actorRole = String(user?.role || '').trim().toUpperCase();
+  if (!Number.isFinite(actorId) || actorId <= 0 || !actorRole) {
+    throw new ApiError(401, 'Tidak memiliki otorisasi.');
+  }
+  return {
+    actorId,
+    actorRole,
+  };
+};
+
+const resolveReadableReportAcademicYearId = async (params: {
+  user: { id?: number | string; role?: string | null } | null | undefined;
+  academicYearId?: number;
+  classId?: number;
+  studentId?: number;
+}) => {
+  const requestedAcademicYearId = Number(params.academicYearId || 0);
+  let effectiveAcademicYearId = requestedAcademicYearId;
+
+  if (!Number.isFinite(effectiveAcademicYearId) || effectiveAcademicYearId <= 0) {
+    const activeYear = await prisma.academicYear.findFirst({
+      where: { isActive: true },
+      select: { id: true },
+    });
+    if (!activeYear) {
+      throw new ApiError(400, 'Tahun ajaran aktif tidak ditemukan');
+    }
+    effectiveAcademicYearId = activeYear.id;
+  }
+
+  const actor = resolveReportReader(params.user);
+  await ensureAcademicYearArchiveReadAccess({
+    actorId: actor.actorId,
+    actorRole: actor.actorRole,
+    academicYearId: effectiveAcademicYearId,
+    module: 'REPORTS',
+    classId: params.classId || null,
+    studentId: params.studentId || null,
+  });
+
+  return effectiveAcademicYearId;
 };
 
 type FinalLedgerPreviewData = {
@@ -1518,7 +1564,11 @@ export const getClassRankings = asyncHandler(async (req: Request, res: Response)
     throw new ApiError(404, 'Kelas tidak ditemukan');
   }
 
-  const effectiveAcademicYearId = academicYearId ?? classData.academicYearId;
+  const effectiveAcademicYearId = await resolveReadableReportAcademicYearId({
+    user: (req as any).user,
+    academicYearId: academicYearId ?? classData.academicYearId,
+    classId,
+  });
 
   const result = await reportService.getClassRankings(classId, effectiveAcademicYearId, semester);
 
@@ -1798,23 +1848,21 @@ export const getClassReportSummary = asyncHandler(async (req: Request, res: Resp
 export const getStudentReport = asyncHandler(async (req: Request, res: Response) => {
   const querySchema = z.object({
     studentId: z.coerce.number().int(),
+    academicYearId: z.coerce.number().int().optional(),
     semester: z.nativeEnum(Semester),
     type: z.string().optional(),
     programCode: z.string().optional(),
   });
 
-  const { studentId, semester, type, programCode } = querySchema.parse(req.query);
-
-  const activeYear = await prisma.academicYear.findFirst({
-    where: { isActive: true },
+  const { studentId, academicYearId, semester, type, programCode } = querySchema.parse(req.query);
+  const effectiveAcademicYearId = await resolveReadableReportAcademicYearId({
+    user: (req as any).user,
+    academicYearId,
+    studentId,
   });
 
-  if (!activeYear) {
-    throw new ApiError(400, 'Tahun ajaran aktif tidak ditemukan');
-  }
-
   const context = await resolveReportTypeContext({
-    academicYearId: activeYear.id,
+    academicYearId: effectiveAcademicYearId,
     semester,
     reportType: type,
     programCode,
@@ -1822,7 +1870,7 @@ export const getStudentReport = asyncHandler(async (req: Request, res: Response)
 
   const reportData = await reportService.getStudentReport(
     studentId,
-    activeYear.id,
+    effectiveAcademicYearId,
     semester,
     context.reportType,
     context.programCode,
@@ -1836,22 +1884,26 @@ export const getStudentSbtsReport = getStudentReport;
 export const getClassLedger = asyncHandler(async (req: Request, res: Response) => {
   const querySchema = z.object({
     classId: z.coerce.number().int(),
+    academicYearId: z.coerce.number().int().optional(),
     semester: z.nativeEnum(Semester),
     reportType: z.string().optional(),
     programCode: z.string().optional(),
   });
-  const { classId, semester, reportType, programCode } = querySchema.parse(req.query);
-  const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } });
-  if (!activeYear) throw new ApiError(400, 'Tahun ajaran aktif tidak ditemukan');
+  const { classId, academicYearId, semester, reportType, programCode } = querySchema.parse(req.query);
+  const effectiveAcademicYearId = await resolveReadableReportAcademicYearId({
+    user: (req as any).user,
+    academicYearId,
+    classId,
+  });
   const context = await resolveReportTypeContext({
-    academicYearId: activeYear.id,
+    academicYearId: effectiveAcademicYearId,
     semester,
     reportType,
     programCode,
   });
   const ledgerData = await reportService.getClassLedger(
     classId,
-    activeYear.id,
+    effectiveAcademicYearId,
     semester,
     context.reportType,
     context.programCode,
@@ -1864,18 +1916,21 @@ export const getClassLedger = asyncHandler(async (req: Request, res: Response) =
 export const getClassExtracurricularReport = asyncHandler(async (req: Request, res: Response) => {
   const querySchema = z.object({
     classId: z.coerce.number().int(),
+    academicYearId: z.coerce.number().int().optional(),
     semester: z.nativeEnum(Semester),
     reportType: z.string().optional(),
     programCode: z.string().optional(),
   });
 
-  const { classId, semester, reportType, programCode } = querySchema.parse(req.query);
-
-  const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } });
-  if (!activeYear) throw new ApiError(400, 'Tahun ajaran aktif tidak ditemukan');
+  const { classId, academicYearId, semester, reportType, programCode } = querySchema.parse(req.query);
+  const effectiveAcademicYearId = await resolveReadableReportAcademicYearId({
+    user: (req as any).user,
+    academicYearId,
+    classId,
+  });
 
   const context = await resolveReportTypeContext({
-    academicYearId: activeYear.id,
+    academicYearId: effectiveAcademicYearId,
     semester,
     reportType,
     programCode,
@@ -1883,7 +1938,7 @@ export const getClassExtracurricularReport = asyncHandler(async (req: Request, r
 
   const reportData = await reportService.getClassExtracurricularReport(
     classId,
-    activeYear.id,
+    effectiveAcademicYearId,
     semester,
     context.reportType,
     context.programCode,

@@ -41,6 +41,7 @@ Suite ini menjalankan:
 - `smoke-test-academic-promotion-clone.sh`
 - `smoke-test-academic-promotion-rollback-clone.sh`
 - `smoke-test-academic-report-history-clone.sh`
+- `smoke-test-academic-report-archive-access-clone.sh`
 - `smoke-test-academic-class-roster-history-clone.sh`
 - `smoke-test-academic-grade-history-clone.sh`
 - `smoke-test-academic-attendance-history-clone.sh`
@@ -60,6 +61,7 @@ Suite ini menjalankan:
 - jalur setup tahun ajaran baru aman
 - commit promotion aman di clone DB
 - rollback promotion aman di clone DB
+- permission arsip report sudah mengikuti `role + duty + historical ownership`
 - histori domain utama tetap membaca snapshot tahun ajaran yang benar setelah promotion
 
 `FAIL` berarti rollout belum boleh dilanjutkan ke staging/production sampai log step yang gagal diperiksa dan diperbaiki.
