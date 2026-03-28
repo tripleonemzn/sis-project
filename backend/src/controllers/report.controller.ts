@@ -5,6 +5,7 @@ import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { reportService } from '../services/report.service';
 import { Semester, ExamType, GradeComponentType } from '@prisma/client';
+import { listHistoricalStudentsByIds } from '../utils/studentAcademicHistory';
 
 const normalizeProgramCode = (raw: unknown): string =>
   String(raw || '')
@@ -1231,33 +1232,7 @@ export const getPrincipalAcademicOverview = asyncHandler(
 
     const studentIds = Array.from(aggregateByStudent.keys());
 
-    const students = await prisma.user.findMany({
-      where: {
-        id: {
-          in: studentIds,
-        },
-      },
-      select: {
-        id: true,
-        name: true,
-        nis: true,
-        nisn: true,
-        studentClass: {
-          select: {
-            id: true,
-            name: true,
-            level: true,
-            major: {
-              select: {
-                id: true,
-                name: true,
-                code: true,
-              },
-            },
-          },
-        },
-      },
-    });
+    const students = await listHistoricalStudentsByIds(studentIds, academicYear.id);
 
     const studentMap = new Map<number, any>();
     students.forEach((s) => {

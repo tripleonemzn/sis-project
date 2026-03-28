@@ -37,6 +37,7 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
   - `npm run promotion:audit -- --source-year <SOURCE_ID> --target-year <TARGET_ID>`
 - Jika ingin smoke test otomatis di clone DB terisolasi:
   - `bash ./scripts/smoke-test-academic-promotion-clone.sh`
+  - `bash ./scripts/smoke-test-academic-report-history-clone.sh`
 
 ## 3. Deploy ke Staging
 
@@ -90,6 +91,8 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
   - `cd backend`
   - `npm run promotion:audit -- --source-year <SOURCE_ID> --target-year <TARGET_ID> --run-id <RUN_ID>`
 - Hasil audit harus `PASS`.
+- Jika ingin validasi histori report source year tetap aman setelah promotion:
+  - `bash ./scripts/smoke-test-academic-report-history-clone.sh --source-year-id <SOURCE_ID>`
 
 ## 5. Go / No-Go Production
 

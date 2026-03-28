@@ -1,6 +1,10 @@
 import prisma from '../utils/prisma';
 import { Semester, ExamType, Prisma, GradeComponentType } from '@prisma/client';
 import { ApiError } from '../utils/api';
+import {
+  getHistoricalStudentSnapshot,
+  listHistoricalStudentsForClass,
+} from '../utils/studentAcademicHistory';
 
 const normalizeLedgerCode = (raw: unknown): string =>
   String(raw || '')
@@ -631,19 +635,8 @@ export class ReportService {
     type: ExamType,
     reportProgramCode?: string | null,
   ) {
-    // 1. Fetch Student Info
-    const student = await prisma.user.findUnique({
-      where: { id: studentId },
-      include: {
-        studentClass: {
-          include: {
-            major: true,
-            teacher: true, // Wali Kelas
-          },
-        },
-        parents: true, // To get parent name
-      },
-    });
+    // 1. Fetch Student Info using historical membership when available.
+    const student = await getHistoricalStudentSnapshot(studentId, academicYearId);
 
     if (!student || !student.studentClass) {
       throw new ApiError(404, 'Siswa atau kelas tidak ditemukan');
@@ -1177,19 +1170,13 @@ export class ReportService {
     // 1. Fetch Class & Students
     const classData = await prisma.class.findUnique({
       where: { id: classId },
-      include: {
-        students: {
-          orderBy: { name: 'asc' },
-          where: {
-            studentStatus: 'ACTIVE',
-          },
-        },
-      },
     });
 
     if (!classData) {
       throw new ApiError(404, 'Kelas tidak ditemukan');
     }
+
+    const classStudents = await listHistoricalStudentsForClass(classId, academicYearId);
 
     // 2. Fetch Subjects assigned to this class
     const teacherAssignments = await prisma.teacherAssignment.findMany({
@@ -1231,7 +1218,7 @@ export class ReportService {
       });
 
     // 3. Fetch Grades & dynamic exam config for this class context
-    const studentIds = classData.students.map(s => s.id);
+    const studentIds = classStudents.map(s => s.id);
     
     const [studentGrades, reportGrades, examGradeComponents, examPrograms] = await Promise.all([
       prisma.studentGrade.findMany({
@@ -1348,7 +1335,7 @@ export class ReportService {
         : 'Capaian Kompetensi';
 
     // 4. Transform data
-    const students = classData.students.map(student => {
+    const students = classStudents.map(student => {
       const grades: Record<number, any> = {};
       
       subjects.forEach(subject => {
@@ -1446,19 +1433,14 @@ export class ReportService {
     // 1. Fetch Class & Students
     const classData = await prisma.class.findUnique({
       where: { id: classId },
-      include: {
-        students: {
-          orderBy: { name: 'asc' },
-          where: { studentStatus: 'ACTIVE' },
-        },
-      },
     });
 
     if (!classData) {
       throw new ApiError(404, 'Kelas tidak ditemukan');
     }
 
-    const studentIds = classData.students.map(s => s.id);
+    const classStudents = await listHistoricalStudentsForClass(classId, academicYearId);
+    const studentIds = classStudents.map(s => s.id);
 
     // 2. Fetch Attendance Stats
     const academicYear = await prisma.academicYear.findUnique({
@@ -1532,7 +1514,7 @@ export class ReportService {
     });
 
     // 6. Map Data
-    const students = classData.students.map(student => {
+    const students = classStudents.map(student => {
       // Attendance
       const studentAttendance = attendanceStats.filter(a => a.studentId === student.id);
       const s = studentAttendance.find(a => a.status === 'SICK')?._count.status || 0;
@@ -1631,12 +1613,6 @@ export class ReportService {
     const classData = await prisma.class.findUnique({
       where: { id: classId },
       include: {
-        students: {
-          orderBy: { name: 'asc' },
-          where: {
-            studentStatus: 'ACTIVE',
-          },
-        },
         teacher: true, // Wali Kelas
         academicYear: true, // For default signing date if needed
       },
@@ -1647,7 +1623,8 @@ export class ReportService {
     }
 
     // 2. Fetch All Report Grades for these students
-    const studentIds = classData.students.map((s) => s.id);
+    const classStudents = await listHistoricalStudentsForClass(classId, academicYearId);
+    const studentIds = classStudents.map((s) => s.id);
     const reportGrades = await prisma.reportGrade.findMany({
       where: {
         studentId: { in: studentIds },
@@ -1658,13 +1635,13 @@ export class ReportService {
 
     // 3. Aggregate Scores
     const rankingMap = new Map<number, { 
-      student: typeof classData.students[0], 
-      totalScore: number, 
-      subjectCount: number 
+      student: (typeof classStudents)[number],
+      totalScore: number,
+      subjectCount: number
     }>();
 
     // Initialize map
-    classData.students.forEach((s) => {
+    classStudents.forEach((s) => {
       rankingMap.set(s.id, {
         student: s,
         totalScore: 0,

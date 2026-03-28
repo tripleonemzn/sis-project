@@ -16,7 +16,7 @@ Usage:
 Options:
   --source-year <id>   Tahun ajaran sumber yang akan dipromosikan.
   --target-year <id>   Tahun ajaran target tujuan kenaikan kelas.
-  --with-smoke-test    Jalankan smoke test clone DB setelah audit utama.
+  --with-smoke-test    Jalankan smoke test clone DB promotion + histori report setelah audit utama.
   --skip-gate          Lewati repo safety gate web.
   --allow-flag-off     Jangan block jika ACADEMIC_PROMOTION_V2_ENABLED masih OFF.
   -h, --help           Tampilkan bantuan.
@@ -95,8 +95,12 @@ echo "-> Menjalankan audit pasangan tahun"
 echo
 
 if [ "$WITH_SMOKE_TEST" -eq 1 ]; then
-  echo "-> Menjalankan smoke test clone DB"
+  echo "-> Menjalankan smoke test clone DB promotion"
   bash "$ROOT_DIR/scripts/smoke-test-academic-promotion-clone.sh" --source-year-id "$SOURCE_YEAR_ID"
+  echo
+
+  echo "-> Menjalankan smoke test histori report pasca-promotion"
+  bash "$ROOT_DIR/scripts/smoke-test-academic-report-history-clone.sh" --source-year-id "$SOURCE_YEAR_ID"
   echo
 fi
 
