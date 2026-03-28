@@ -88,7 +88,7 @@ npx prisma validate
 
 if [ "$CHECK_ONLY" -eq 0 ]; then
   echo "-> Syncing database schema"
-  npx prisma db push
+  npx prisma db push --skip-generate
 else
   echo "-> Check only: skip prisma db push"
 fi
