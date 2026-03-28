@@ -35,8 +35,12 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
 - Audit promotion untuk pasangan tahun yang akan diuji:
   - `cd backend`
   - `npm run promotion:audit -- --source-year <SOURCE_ID> --target-year <TARGET_ID>`
+- Jika ingin satu command readiness penuh sebelum staging/production:
+  - `bash ./scripts/run-academic-promotion-readiness-suite.sh --source-year <SOURCE_ID>`
+  - Suite ini menjalankan `repo safety gate all`, smoke test rollover, commit promotion, rollback, dan seluruh smoke test histori lintas domain di clone DB terisolasi.
 - Jika ingin smoke test otomatis di clone DB terisolasi:
   - `bash ./scripts/smoke-test-academic-promotion-clone.sh`
+  - `bash ./scripts/smoke-test-academic-promotion-rollback-clone.sh`
   - `bash ./scripts/smoke-test-academic-report-history-clone.sh`
   - `bash ./scripts/smoke-test-academic-class-roster-history-clone.sh`
   - `bash ./scripts/smoke-test-academic-grade-history-clone.sh`
@@ -102,6 +106,12 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
   - `cd backend`
   - `npm run promotion:audit -- --source-year <SOURCE_ID> --target-year <TARGET_ID> --run-id <RUN_ID>`
 - Hasil audit harus `PASS`.
+- Jika ingin validasi penuh satu command untuk readiness sebelum go/no-go:
+  - `bash ./scripts/run-academic-promotion-readiness-suite.sh --source-year <SOURCE_ID>`
+  - Script ini akan menahan status `PASS` hanya jika build/typecheck/repo gate, rollover, commit promotion, rollback, dan seluruh smoke test histori clone DB sama-sama lolos.
+- Jika ingin validasi rollback promotion source year tetap aman:
+  - `bash ./scripts/smoke-test-academic-promotion-rollback-clone.sh --source-year-id <SOURCE_ID>`
+  - Script ini memverifikasi commit promotion berhasil, siswa X/XI benar-benar naik kelas, siswa XII benar-benar menjadi alumni, rollback mengembalikan siswa ke kelas asal, membership source year kembali `ACTIVE/current`, membership target hasil promotion terhapus, dan tahun sumber kembali aktif.
 - Jika ingin validasi histori report source year tetap aman setelah promotion:
   - `bash ./scripts/smoke-test-academic-report-history-clone.sh --source-year-id <SOURCE_ID>`
   - Script ini sekarang memverifikasi `student report`, `class ledger`, `extracurricular report`, `ranking`, dan `final ledger preview` tetap membaca kelas historis source year.
