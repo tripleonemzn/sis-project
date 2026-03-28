@@ -4027,6 +4027,7 @@ const financePaymentReversalRecordInclude =
       select: {
         id: true,
         invoiceNo: true,
+        academicYearId: true,
         periodKey: true,
         semester: true,
         title: true,
@@ -4828,6 +4829,7 @@ async function loadFinanceBankReconciliationTransactions(
               select: {
                 id: true,
                 invoiceNo: true,
+                academicYearId: true,
                 periodKey: true,
                 semester: true,
               },
@@ -5503,6 +5505,7 @@ async function buildFinanceLedgerSnapshot(
               select: {
                 id: true,
                 invoiceNo: true,
+                academicYearId: true,
                 periodKey: true,
                 semester: true,
               },
@@ -5584,6 +5587,7 @@ async function buildFinanceLedgerSnapshot(
               select: {
                 id: true,
                 invoiceNo: true,
+                academicYearId: true,
                 periodKey: true,
                 semester: true,
               },
@@ -5664,6 +5668,11 @@ async function buildFinanceLedgerSnapshot(
           },
         })
       : Promise.resolve([]),
+  ]);
+
+  const [normalizedCashPayments, normalizedBankPayments] = await Promise.all([
+    hydrateFinanceHistoricalStudentClass(cashPayments as any[]),
+    hydrateFinanceHistoricalStudentClass(bankPayments as any[]),
   ]);
 
   const openingCashBalance = wantsCash
@@ -5773,7 +5782,7 @@ async function buildFinanceLedgerSnapshot(
   }
 
   const cashEntryDrafts = [
-    ...(cashPayments as any[])
+    ...(normalizedCashPayments as any[])
       .map((payment) => {
         const serializedPayment = serializeFinancePaymentRecord(payment);
         const amount = normalizeFinanceAmount(
@@ -5833,7 +5842,7 @@ async function buildFinanceLedgerSnapshot(
   ] as Array<Omit<SerializedFinanceLedgerEntry, 'runningBalance' | 'accountRunningBalance'>>;
 
   const bankEntryDrafts = [
-    ...(bankPayments as any[])
+    ...(normalizedBankPayments as any[])
       .map((payment) => {
         const serializedPayment = serializeFinancePaymentRecord(payment);
         const amount = normalizeFinanceAmount(
@@ -17472,6 +17481,8 @@ export const listFinancePaymentReversals = asyncHandler(async (req: Request, res
     },
   );
 
+  const normalizedRequests = await hydrateFinanceHistoricalStudentClass(requests);
+
   res.status(200).json(
     new ApiResponse(
       200,
@@ -17482,7 +17493,7 @@ export const listFinancePaymentReversals = asyncHandler(async (req: Request, res
           totalApprovedAmount: normalizeFinanceAmount(summary.totalApprovedAmount),
           totalAppliedAmount: normalizeFinanceAmount(summary.totalAppliedAmount),
         },
-        requests: requests.map((request) => serializeFinancePaymentReversalRecord(request)),
+        requests: normalizedRequests.map((request) => serializeFinancePaymentReversalRecord(request)),
       },
       'Daftar reversal pembayaran berhasil diambil',
     ),
@@ -17619,7 +17630,8 @@ export const createFinancePaymentReversalRequest = asyncHandler(async (req: Requ
     return request;
   });
 
-  const serializedRequest = serializeFinancePaymentReversalRecord(result);
+  const [normalizedRequest] = await hydrateFinanceHistoricalStudentClass([result]);
+  const serializedRequest = serializeFinancePaymentReversalRecord(normalizedRequest);
 
   await createFinanceInternalNotifications({
     scopes: ['HEAD_TU'],
@@ -17723,7 +17735,8 @@ export const decideFinancePaymentReversalAsHeadTu = asyncHandler(async (req: Req
     include: financePaymentReversalRecordInclude,
   });
 
-  const serializedRequest = serializeFinancePaymentReversalRecord(updated);
+  const [normalizedRequest] = await hydrateFinanceHistoricalStudentClass([updated]);
+  const serializedRequest = serializeFinancePaymentReversalRecord(normalizedRequest);
 
   await createFinanceInternalNotifications({
     scopes: payload.approved ? ['PRINCIPAL', 'FINANCE'] : ['FINANCE'],
@@ -17823,7 +17836,8 @@ export const decideFinancePaymentReversalAsPrincipal = asyncHandler(async (req: 
     include: financePaymentReversalRecordInclude,
   });
 
-  const serializedRequest = serializeFinancePaymentReversalRecord(updated);
+  const [normalizedRequest] = await hydrateFinanceHistoricalStudentClass([updated]);
+  const serializedRequest = serializeFinancePaymentReversalRecord(normalizedRequest);
 
   await createFinanceInternalNotifications({
     scopes: ['FINANCE', 'HEAD_TU'],
@@ -18256,9 +18270,11 @@ export const applyFinancePaymentReversal = asyncHandler(async (req: Request, res
     };
   });
 
-  const serializedRequest = serializeFinancePaymentReversalRecord(result.request);
+  const [normalizedRequest] = await hydrateFinanceHistoricalStudentClass([result.request]);
+  const [normalizedInvoice] = await hydrateFinanceHistoricalStudentClass([result.invoice]);
+  const serializedRequest = serializeFinancePaymentReversalRecord(normalizedRequest);
   const serializedPayment = serializeFinancePaymentRecord(result.payment);
-  const serializedInvoice = serializeFinanceInvoiceRecord(result.invoice);
+  const serializedInvoice = serializeFinanceInvoiceRecord(normalizedInvoice);
 
   await Promise.all([
     createFinanceInternalNotifications({

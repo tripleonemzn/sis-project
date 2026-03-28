@@ -113,9 +113,15 @@ const { commitAcademicPromotion } = require('./src/services/academicPromotion.se
 const {
   listFinanceInvoices,
   listFinanceReports,
+  listFinanceLedgerBooks,
   listFinancePaymentVerifications,
   createFinanceWriteOffRequest,
   listFinanceWriteOffs,
+  listFinancePaymentReversals,
+  createFinancePaymentReversalRequest,
+  decideFinancePaymentReversalAsHeadTu,
+  decideFinancePaymentReversalAsPrincipal,
+  applyFinancePaymentReversal,
 } = require('./src/controllers/payment.controller');
 
 function deriveTargetName(sourceName) {
@@ -227,20 +233,41 @@ async function callHandler(handler, req) {
     throw new Error('Tidak ada siswa X/XI aktif yang siap diuji.');
   }
 
-  const adminActor =
-    (await prisma.user.findFirst({
-      where: { role: 'ADMIN' },
-      select: { id: true, role: true },
-      orderBy: [{ id: 'asc' }],
-    })) ||
-    (await prisma.user.findFirst({
-      where: { role: 'PRINCIPAL' },
-      select: { id: true, role: true },
-      orderBy: [{ id: 'asc' }],
-    }));
+  const financeActor = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { role: 'ADMIN' },
+        { role: 'STAFF', ptkType: 'STAFF_KEUANGAN' },
+        { additionalDuties: { has: 'BENDAHARA' } },
+      ],
+    },
+    select: { id: true, role: true },
+    orderBy: [{ id: 'asc' }],
+  });
+  const headTuActor = await prisma.user.findFirst({
+    where: {
+      role: 'STAFF',
+      ptkType: {
+        in: ['KEPALA_TU', 'KEPALA_TATA_USAHA'],
+      },
+    },
+    select: { id: true, role: true },
+    orderBy: [{ id: 'asc' }],
+  });
+  const principalActor = await prisma.user.findFirst({
+    where: { role: 'PRINCIPAL' },
+    select: { id: true, role: true },
+    orderBy: [{ id: 'asc' }],
+  });
 
-  if (!adminActor) {
-    throw new Error('Aktor admin/principal untuk smoke test finance tidak ditemukan.');
+  if (!financeActor) {
+    throw new Error('Aktor finance staff untuk smoke test finance tidak ditemukan.');
+  }
+  if (!headTuActor) {
+    throw new Error('Aktor Kepala TU untuk smoke test finance tidak ditemukan.');
+  }
+  if (!principalActor) {
+    throw new Error('Aktor principal untuk smoke test finance tidak ditemukan.');
   }
 
   const periodKey = '2099-01';
@@ -259,7 +286,7 @@ async function callHandler(handler, req) {
       paidAmount: 0,
       balanceAmount: 150000,
       status: 'UNPAID',
-      createdById: adminActor.id,
+      createdById: financeActor.id,
       issuedAt: new Date('2026-01-05T00:00:00.000Z'),
       items: {
         create: [
@@ -293,17 +320,25 @@ async function callHandler(handler, req) {
       referenceNo: `REF-${paymentNo}`,
       note: 'Smoke test histori payment verification setelah promotion',
       paidAt: new Date('2026-01-10T00:00:00.000Z'),
-      createdById: adminActor.id,
+      createdById: financeActor.id,
     },
     select: {
       id: true,
       paymentNo: true,
     },
   });
+  await prisma.financeInvoice.update({
+    where: { id: invoice.id },
+    data: {
+      paidAmount: 50000,
+      balanceAmount: 100000,
+      status: 'PARTIAL',
+    },
+  });
 
-  const baseReq = { user: { id: adminActor.id, role: adminActor.role } };
+  const financeReq = { user: { id: financeActor.id, role: financeActor.role } };
   const beforeInvoiceSearch = await callHandler(listFinanceInvoices, {
-    ...baseReq,
+    ...financeReq,
     query: {
       academicYearId: String(sourceYear.id),
       search: invoice.invoiceNo,
@@ -311,7 +346,7 @@ async function callHandler(handler, req) {
     },
   });
   const beforeInvoiceClass = await callHandler(listFinanceInvoices, {
-    ...baseReq,
+    ...financeReq,
     query: {
       academicYearId: String(sourceYear.id),
       classId: String(sampleStudent.studentClass.id),
@@ -320,7 +355,7 @@ async function callHandler(handler, req) {
     },
   });
   const beforeInvoiceGrade = await callHandler(listFinanceInvoices, {
-    ...baseReq,
+    ...financeReq,
     query: {
       academicYearId: String(sourceYear.id),
       gradeLevel: sampleStudent.studentClass.level,
@@ -329,7 +364,7 @@ async function callHandler(handler, req) {
     },
   });
   const beforeReportClass = await callHandler(listFinanceReports, {
-    ...baseReq,
+    ...financeReq,
     query: {
       academicYearId: String(sourceYear.id),
       classId: String(sampleStudent.studentClass.id),
@@ -338,7 +373,7 @@ async function callHandler(handler, req) {
     },
   });
   const beforeReportGrade = await callHandler(listFinanceReports, {
-    ...baseReq,
+    ...financeReq,
     query: {
       academicYearId: String(sourceYear.id),
       gradeLevel: sampleStudent.studentClass.level,
@@ -347,7 +382,14 @@ async function callHandler(handler, req) {
     },
   });
   const beforePaymentVerifications = await callHandler(listFinancePaymentVerifications, {
-    ...baseReq,
+    ...financeReq,
+    query: {
+      search: payment.paymentNo,
+      limit: '20',
+    },
+  });
+  const beforeLedgerSearch = await callHandler(listFinanceLedgerBooks, {
+    ...financeReq,
     query: {
       search: payment.paymentNo,
       limit: '20',
@@ -377,7 +419,7 @@ async function callHandler(handler, req) {
   });
 
   const afterInvoiceSearch = await callHandler(listFinanceInvoices, {
-    ...baseReq,
+    ...financeReq,
     query: {
       academicYearId: String(sourceYear.id),
       search: invoice.invoiceNo,
@@ -385,7 +427,7 @@ async function callHandler(handler, req) {
     },
   });
   const afterInvoiceClass = await callHandler(listFinanceInvoices, {
-    ...baseReq,
+    ...financeReq,
     query: {
       academicYearId: String(sourceYear.id),
       classId: String(sampleStudent.studentClass.id),
@@ -394,7 +436,7 @@ async function callHandler(handler, req) {
     },
   });
   const afterInvoiceGrade = await callHandler(listFinanceInvoices, {
-    ...baseReq,
+    ...financeReq,
     query: {
       academicYearId: String(sourceYear.id),
       gradeLevel: sampleStudent.studentClass.level,
@@ -403,7 +445,7 @@ async function callHandler(handler, req) {
     },
   });
   const afterReportClass = await callHandler(listFinanceReports, {
-    ...baseReq,
+    ...financeReq,
     query: {
       academicYearId: String(sourceYear.id),
       classId: String(sampleStudent.studentClass.id),
@@ -412,7 +454,7 @@ async function callHandler(handler, req) {
     },
   });
   const afterReportGrade = await callHandler(listFinanceReports, {
-    ...baseReq,
+    ...financeReq,
     query: {
       academicYearId: String(sourceYear.id),
       gradeLevel: sampleStudent.studentClass.level,
@@ -421,14 +463,21 @@ async function callHandler(handler, req) {
     },
   });
   const afterPaymentVerifications = await callHandler(listFinancePaymentVerifications, {
-    ...baseReq,
+    ...financeReq,
+    query: {
+      search: payment.paymentNo,
+      limit: '20',
+    },
+  });
+  const afterLedgerSearch = await callHandler(listFinanceLedgerBooks, {
+    ...financeReq,
     query: {
       search: payment.paymentNo,
       limit: '20',
     },
   });
   const createdWriteOff = await callHandler(createFinanceWriteOffRequest, {
-    ...baseReq,
+    ...financeReq,
     params: {
       id: String(invoice.id),
     },
@@ -439,9 +488,63 @@ async function callHandler(handler, req) {
     },
   });
   const afterWriteOffList = await callHandler(listFinanceWriteOffs, {
-    ...baseReq,
+    ...financeReq,
     query: {
       search: createdWriteOff.data?.request?.requestNo || '',
+      limit: '20',
+    },
+  });
+  const createdReversal = await callHandler(createFinancePaymentReversalRequest, {
+    ...financeReq,
+    params: {
+      id: String(payment.id),
+    },
+    body: {
+      amount: 10000,
+      reason: 'Smoke test reversal historis finance',
+      note: 'Dibuat sesudah promotion untuk source year',
+    },
+  });
+  const headTuApprovedReversal = await callHandler(decideFinancePaymentReversalAsHeadTu, {
+    user: { id: headTuActor.id, role: headTuActor.role },
+    params: {
+      id: String(createdReversal.data?.request?.id || ''),
+    },
+    body: {
+      approved: true,
+      note: 'Disetujui Kepala TU untuk smoke test historis',
+    },
+  });
+  const principalApprovedReversal = await callHandler(decideFinancePaymentReversalAsPrincipal, {
+    user: { id: principalActor.id, role: principalActor.role },
+    params: {
+      id: String(createdReversal.data?.request?.id || ''),
+    },
+    body: {
+      approved: true,
+      note: 'Disetujui Kepala Sekolah untuk smoke test historis',
+    },
+  });
+  const appliedReversal = await callHandler(applyFinancePaymentReversal, {
+    ...financeReq,
+    params: {
+      id: String(createdReversal.data?.request?.id || ''),
+    },
+    body: {
+      note: 'Diterapkan finance sesudah promotion untuk source year',
+    },
+  });
+  const afterReversalList = await callHandler(listFinancePaymentReversals, {
+    ...financeReq,
+    query: {
+      search: createdReversal.data?.request?.requestNo || '',
+      limit: '20',
+    },
+  });
+  const afterLedgerSearchPostReversal = await callHandler(listFinanceLedgerBooks, {
+    ...financeReq,
+    query: {
+      search: payment.paymentNo,
       limit: '20',
     },
   });
@@ -478,9 +581,28 @@ async function callHandler(handler, req) {
     (beforePaymentVerifications.data?.payments || []).find((row) => row.id === payment.id) || null;
   const afterPaymentVerificationRow =
     (afterPaymentVerifications.data?.payments || []).find((row) => row.id === payment.id) || null;
+  const beforeLedgerPaymentRow =
+    (beforeLedgerSearch.data?.entries || []).find(
+      (row) => row.sourceType === 'PAYMENT' && row.transactionNo === payment.paymentNo,
+    ) || null;
+  const afterLedgerPaymentRow =
+    (afterLedgerSearch.data?.entries || []).find(
+      (row) => row.sourceType === 'PAYMENT' && row.transactionNo === payment.paymentNo,
+    ) || null;
+  const afterLedgerPaymentRowPostReversal =
+    (afterLedgerSearchPostReversal.data?.entries || []).find(
+      (row) => row.sourceType === 'PAYMENT' && row.transactionNo === payment.paymentNo,
+    ) || null;
   const createdWriteOffRequest = createdWriteOff.data?.request || null;
   const afterWriteOffListRow =
     (afterWriteOffList.data?.requests || []).find((row) => row.id === createdWriteOffRequest?.id) || null;
+  const createdReversalRequest = createdReversal.data?.request || null;
+  const headTuApprovedReversalRequest = headTuApprovedReversal.data?.request || null;
+  const principalApprovedReversalRequest = principalApprovedReversal.data?.request || null;
+  const appliedReversalRequest = appliedReversal.data?.request || null;
+  const appliedReversalInvoice = appliedReversal.data?.invoice || null;
+  const afterReversalListRow =
+    (afterReversalList.data?.requests || []).find((row) => row.id === createdReversalRequest?.id) || null;
   const afterCollectionQueueRow =
     (afterReportClass.data?.collectionPriorityQueue || []).find((row) => row.studentId === sampleStudent.id) ||
     null;
@@ -594,6 +716,18 @@ async function callHandler(handler, req) {
   );
   assertCondition(
     checks,
+    beforeLedgerPaymentRow?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Ledger finance source year menampilkan kelas historis payment sebelum promotion.',
+    beforeLedgerPaymentRow,
+  );
+  assertCondition(
+    checks,
+    afterLedgerPaymentRow?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Ledger finance source year tetap menampilkan kelas historis payment setelah promotion.',
+    afterLedgerPaymentRow,
+  );
+  assertCondition(
+    checks,
     createdWriteOffRequest?.student?.studentClass?.name === sampleStudent.studentClass.name,
     'Create write-off source year setelah promotion tetap mengembalikan kelas historis.',
     createdWriteOffRequest,
@@ -603,6 +737,54 @@ async function callHandler(handler, req) {
     afterWriteOffListRow?.student?.studentClass?.name === sampleStudent.studentClass.name,
     'List write-off source year setelah promotion tetap menampilkan kelas historis.',
     afterWriteOffListRow,
+  );
+  assertCondition(
+    checks,
+    createdReversalRequest?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Create reversal source year setelah promotion tetap mengembalikan kelas historis.',
+    createdReversalRequest,
+  );
+  assertCondition(
+    checks,
+    headTuApprovedReversalRequest?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Approval Kepala TU pada reversal tetap membawa kelas historis source year.',
+    headTuApprovedReversalRequest,
+  );
+  assertCondition(
+    checks,
+    principalApprovedReversalRequest?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Approval Kepala Sekolah pada reversal tetap membawa kelas historis source year.',
+    principalApprovedReversalRequest,
+  );
+  assertCondition(
+    checks,
+    appliedReversalRequest?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Apply reversal source year tetap mengembalikan kelas historis pada request.',
+    appliedReversalRequest,
+  );
+  assertCondition(
+    checks,
+    appliedReversalInvoice?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Apply reversal source year tetap mengembalikan kelas historis pada invoice.',
+    appliedReversalInvoice,
+  );
+  assertCondition(
+    checks,
+    afterReversalListRow?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'List reversal source year setelah approval/apply tetap menampilkan kelas historis.',
+    afterReversalListRow,
+  );
+  assertCondition(
+    checks,
+    afterLedgerPaymentRowPostReversal?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Ledger finance source year tetap menampilkan kelas historis payment setelah reversal diterapkan.',
+    afterLedgerPaymentRowPostReversal,
+  );
+  assertCondition(
+    checks,
+    Number(afterLedgerPaymentRowPostReversal?.amount || 0) === 40000,
+    'Ledger finance menampilkan nominal payment neto setelah reversal diterapkan.',
+    afterLedgerPaymentRowPostReversal,
   );
 
   const summary = {
@@ -625,6 +807,13 @@ async function callHandler(handler, req) {
       id: payment.id,
       paymentNo: payment.paymentNo,
     },
+    reversalRequest: createdReversalRequest
+      ? {
+          id: createdReversalRequest.id,
+          requestNo: createdReversalRequest.requestNo,
+          status: afterReversalListRow?.status || appliedReversalRequest?.status || null,
+        }
+      : null,
     writeOffRequest: createdWriteOffRequest
       ? {
           id: createdWriteOffRequest.id,
@@ -632,6 +821,11 @@ async function callHandler(handler, req) {
         }
       : null,
     commitRunId: commitResult.run.id,
+    actors: {
+      financeActorId: financeActor.id,
+      headTuActorId: headTuActor.id,
+      principalActorId: principalActor.id,
+    },
     totals: {
       checks: checks.length,
       passed: checks.filter((item) => item.pass).length,
