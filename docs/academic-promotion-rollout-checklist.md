@@ -38,6 +38,7 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
 - Jika ingin smoke test otomatis di clone DB terisolasi:
   - `bash ./scripts/smoke-test-academic-promotion-clone.sh`
   - `bash ./scripts/smoke-test-academic-report-history-clone.sh`
+  - `bash ./scripts/smoke-test-academic-attendance-history-clone.sh`
 
 ## 3. Deploy ke Staging
 
@@ -94,6 +95,9 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
 - Jika ingin validasi histori report source year tetap aman setelah promotion:
   - `bash ./scripts/smoke-test-academic-report-history-clone.sh --source-year-id <SOURCE_ID>`
   - Script ini sekarang memverifikasi `student report`, `class ledger`, `extracurricular report`, `ranking`, dan `final ledger preview` tetap membaca kelas historis source year.
+- Jika ingin validasi histori absensi source year tetap aman setelah promotion:
+  - `bash ./scripts/smoke-test-academic-attendance-history-clone.sh --source-year-id <SOURCE_ID>`
+  - Script ini memverifikasi `daily attendance`, `daily recap`, dan `late summary` tetap membaca siswa historis source year.
 
 ## 5. Go / No-Go Production
 

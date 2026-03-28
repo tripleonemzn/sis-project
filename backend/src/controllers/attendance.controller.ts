@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import { listHistoricalStudentsForClass } from '../utils/studentAcademicHistory';
 
 const saveSubjectAttendanceSchema = z.object({
   date: z.string().transform((str) => new Date(str)),
@@ -90,23 +91,8 @@ export const getDailyAttendance = asyncHandler(async (req: Request, res: Respons
   const { date, classId, academicYearId } = getDailyAttendanceSchema.parse(req.query);
   const targetDate = new Date(date);
 
-  // 1. Fetch ALL active students
-  const students = await prisma.user.findMany({
-    where: {
-      classId: Number(classId),
-      role: 'STUDENT',
-      studentStatus: 'ACTIVE',
-    },
-    select: {
-      id: true,
-      name: true,
-      nis: true,
-      nisn: true,
-    },
-    orderBy: {
-      name: 'asc',
-    },
-  });
+  // 1. Fetch students from the requested academic year/class snapshot.
+  const students = await listHistoricalStudentsForClass(Number(classId), academicYearId);
 
   // 2. Fetch attendance records
   const attendances = await prisma.dailyAttendance.findMany({
@@ -128,7 +114,12 @@ export const getDailyAttendance = asyncHandler(async (req: Request, res: Respons
   const result = students.map((student) => {
     const record = attendances.find((a) => a.studentId === student.id);
     return {
-      student,
+      student: {
+        id: student.id,
+        name: student.name,
+        nis: student.nis,
+        nisn: student.nisn,
+      },
       status: record?.status || null,
       note: record?.note || null,
     };
@@ -272,23 +263,8 @@ export const getDailyAttendanceRecap = asyncHandler(async (req: Request, res: Re
     endDate = academicYear.semester2End;
   }
 
-  // 1. Fetch ALL active students in the class first
-  const students = await prisma.user.findMany({
-    where: {
-      classId: Number(classId),
-      studentStatus: 'ACTIVE', // Only active students
-      role: 'STUDENT',
-    },
-    select: {
-      id: true,
-      name: true,
-      nis: true,
-      nisn: true,
-    },
-    orderBy: {
-      name: 'asc',
-    },
-  });
+  // 1. Fetch students from the requested academic year/class snapshot.
+  const students = await listHistoricalStudentsForClass(Number(classId), academicYear.id);
 
   // 2. Initialize map with all students
   const studentMap = new Map<
@@ -348,9 +324,6 @@ export const getDailyAttendanceRecap = asyncHandler(async (req: Request, res: Re
   for (const record of records) {
     const studentId = record.studentId;
 
-    // Only update if student exists in map (i.e., is currently active in this class)
-    // If we want to include historical data for students who moved out, we might need to adjust logic,
-    // but typically "recap" is for current class members.
     if (studentMap.has(studentId)) {
       const summary = studentMap.get(studentId)!;
 
@@ -433,23 +406,8 @@ export const getLateSummaryByClass = asyncHandler(async (req: Request, res: Resp
     }
   }
 
-  // 1. Fetch ALL students
-  const students = await prisma.user.findMany({
-    where: {
-      classId: Number(classId),
-      role: 'STUDENT',
-      studentStatus: 'ACTIVE',
-    },
-    select: {
-      id: true,
-      name: true,
-      nis: true,
-      nisn: true,
-    },
-    orderBy: {
-      name: 'asc',
-    },
-  });
+  // 1. Fetch students from the requested academic year/class snapshot.
+  const students = await listHistoricalStudentsForClass(Number(classId), academicYear.id);
 
   const studentMap = new Map<
     number,
@@ -496,9 +454,6 @@ export const getLateSummaryByClass = asyncHandler(async (req: Request, res: Resp
         gte: semester1Start,
         lte: semester2End,
       },
-      student: {
-        studentStatus: 'ACTIVE',
-      }
     },
     select: {
       studentId: true,
