@@ -25,6 +25,7 @@ import ExcelJS from 'exceljs';
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
+import { resolveAcademicYearIdFromDate } from '../utils/academicYearDateResolution';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { writeAuditLog } from '../utils/auditLog';
 import { listHistoricalStudentsByIds, resolveHistoricalStudentScope } from '../utils/studentAcademicHistory';
@@ -5245,10 +5246,47 @@ async function hydrateFinanceHistoricalMatchedRefunds<
 async function resolveFinanceRefundAcademicYearId(
   db: Prisma.TransactionClient | typeof prisma,
   studentId: number,
+  refundedAt: Date,
 ): Promise<number | null> {
   const normalizedStudentId = Number(studentId);
   if (!Number.isFinite(normalizedStudentId) || normalizedStudentId <= 0) {
     return null;
+  }
+
+  const [academicYears, memberships] = await Promise.all([
+    db.academicYear.findMany({
+      select: {
+        id: true,
+        name: true,
+        semester1Start: true,
+        semester1End: true,
+        semester2Start: true,
+        semester2End: true,
+      },
+      orderBy: [{ semester1Start: 'asc' }, { id: 'asc' }],
+    }),
+    db.studentAcademicMembership.findMany({
+      where: {
+        studentId: normalizedStudentId,
+      },
+      select: {
+        studentId: true,
+        academicYearId: true,
+        isCurrent: true,
+        startedAt: true,
+        endedAt: true,
+      },
+      orderBy: [{ academicYearId: 'asc' }, { id: 'asc' }],
+    }),
+  ]);
+
+  const dateResolution = resolveAcademicYearIdFromDate({
+    eventAt: refundedAt,
+    memberships,
+    academicYears,
+  });
+  if (dateResolution.academicYearId) {
+    return dateResolution.academicYearId;
   }
 
   const currentMembership = await db.studentAcademicMembership.findFirst({
@@ -14578,7 +14616,11 @@ export const createFinanceRefund = asyncHandler(async (req: Request, res: Respon
     );
 
     const balanceAfter = Math.max(balanceBefore - payload.amount, 0);
-    const refundAcademicYearId = await resolveFinanceRefundAcademicYearId(tx, studentId);
+    const refundAcademicYearId = await resolveFinanceRefundAcademicYearId(
+      tx,
+      studentId,
+      refundEffectiveDate,
+    );
 
     const updatedBalance = await tx.financeCreditBalance.update({
       where: { id: creditBalance.id },

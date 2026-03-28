@@ -42,6 +42,7 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
   - `bash ./scripts/smoke-test-academic-permission-history-clone.sh`
   - `bash ./scripts/smoke-test-academic-internship-history-clone.sh`
   - `bash ./scripts/smoke-test-academic-finance-history-clone.sh`
+  - `bash ./scripts/smoke-test-finance-refund-backfill-clone.sh`
 
 ## 3. Deploy ke Staging
 
@@ -110,6 +111,12 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
 - Jika ingin validasi histori finance source year tetap aman setelah promotion:
   - `bash ./scripts/smoke-test-academic-finance-history-clone.sh --source-year-id <SOURCE_ID>`
   - Script ini memverifikasi list invoice, filter `classId` dan `gradeLevel`, class recap finance report, detail report, collection queue, payment verification, ledger/payment-refund history, create/list refund, serta create/approve/apply/list reversal dan create/list write-off source year tetap membaca kelas historis source year.
+- Jika migration refund academic context baru diterapkan dan ada refund lama yang masih `NULL` pada `academicYearId`:
+  - `cd backend && npm run finance:refund-backfill-academic-year --`
+  - Tambahkan `--apply` hanya setelah dry-run aman. Opsi `--strict-membership-only` tersedia jika ingin mode backfill yang lebih konservatif.
+- Jika ingin validasi refund backdated dan CLI backfill berjalan aman setelah promotion:
+  - `bash ./scripts/smoke-test-finance-refund-backfill-clone.sh --source-year-id <SOURCE_ID>`
+  - Script ini memverifikasi refund backdated setelah promotion tetap masuk ke source year yang benar, lalu dry-run backfill tidak menulis data, dan mode `--apply` mengisi kembali `academicYearId` refund lama yang di-null-kan secara simulatif.
 
 ## 5. Go / No-Go Production
 
