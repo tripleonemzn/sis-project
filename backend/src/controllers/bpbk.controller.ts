@@ -5,6 +5,7 @@ import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import {
   listHistoricalStudentsByIds,
   resolveHistoricalStudentScope,
+  validateHistoricalStudentClassMembership,
 } from '../utils/studentAcademicHistory';
 
 const optionalDateSchema = z.preprocess((value) => {
@@ -106,29 +107,15 @@ async function ensureClassAndStudentValid(params: {
   studentId: number;
   academicYearId: number;
 }) {
-  const cls = await prisma.class.findFirst({
-    where: { id: params.classId, academicYearId: params.academicYearId },
-    select: { id: true, name: true },
-  });
-
-  if (!cls) {
-    throw new ApiError(400, 'Kelas tidak valid untuk tahun ajaran aktif.');
+  const validation = await validateHistoricalStudentClassMembership(params);
+  if (!validation?.cls) {
+    throw new ApiError(400, 'Kelas tidak valid untuk tahun ajaran yang dipilih.');
   }
-
-  const student = await prisma.user.findFirst({
-    where: {
-      id: params.studentId,
-      classId: params.classId,
-      role: 'STUDENT',
-    },
-    select: { id: true, name: true },
-  });
-
-  if (!student) {
+  if (!validation.student) {
     throw new ApiError(400, 'Siswa tidak valid pada kelas yang dipilih.');
   }
 
-  return { cls, student };
+  return validation;
 }
 
 async function ensureBehaviorValid(params: {

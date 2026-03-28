@@ -110,10 +110,13 @@ const {
 } = require('./src/services/academicYearRollover.service');
 const { commitAcademicPromotion } = require('./src/services/academicPromotion.service');
 const { getPermissions } = require('./src/controllers/permission.controller');
+const { createBehavior } = require('./src/controllers/behavior.controller');
 const {
+  createBpBkCounseling,
   getBpBkSummary,
   getBpBkPermissions,
   getBpBkPrincipalSummary,
+  updateBpBkCounseling,
 } = require('./src/controllers/bpbk.controller');
 const { getAdministrationSummary } = require('./src/controllers/office.controller');
 
@@ -385,6 +388,44 @@ async function callHandler(handler, req) {
       academicYearId: String(sourceYear.id),
     },
   });
+  const createdBehavior = await callHandler(createBehavior, {
+    ...baseReq,
+    body: {
+      studentId: sampleStudent.id,
+      classId: sampleStudent.studentClass.id,
+      academicYearId: sourceYear.id,
+      date: '2026-08-15T00:00:00.000Z',
+      type: 'NEGATIVE',
+      category: 'Smoke Test',
+      description: 'Kasus pasca promotion',
+      point: 5,
+    },
+  });
+  const createdCounseling = await callHandler(createBpBkCounseling, {
+    ...baseReq,
+    body: {
+      academicYearId: sourceYear.id,
+      classId: sampleStudent.studentClass.id,
+      studentId: sampleStudent.id,
+      behaviorId: createdBehavior.data.id,
+      sessionDate: '2026-08-16T00:00:00.000Z',
+      issueSummary: 'Konseling pasca promotion',
+      counselingNote: 'Catatan awal',
+      followUpPlan: 'Monitoring',
+      summonParent: false,
+      status: 'OPEN',
+    },
+  });
+  const updatedCounseling = await callHandler(updateBpBkCounseling, {
+    ...baseReq,
+    params: {
+      id: String(createdCounseling.data.id),
+    },
+    body: {
+      status: 'IN_PROGRESS',
+      counselingNote: 'Catatan pembaruan pasca promotion',
+    },
+  });
 
   const beforePermissionsRows = beforePermissions.data?.permissions || [];
   const afterPermissionsRows = afterPermissions.data?.permissions || [];
@@ -510,6 +551,27 @@ async function callHandler(handler, req) {
     afterAdministrationClassRecapRow?.className === sampleStudent.studentClass.name,
     'Rekap kelas administrasi source year tetap memuat kelas historis setelah promotion.',
     afterAdministrationClassRecapRow,
+  );
+  assertCondition(
+    checks,
+    createdBehavior?.data?.classId === sampleStudent.studentClass.id &&
+      createdBehavior?.data?.studentId === sampleStudent.id &&
+      createdBehavior?.data?.academicYearId === sourceYear.id,
+    'Input kasus perilaku source year tetap diterima setelah promotion.',
+    createdBehavior?.data || null,
+  );
+  assertCondition(
+    checks,
+    createdCounseling?.data?.class?.name === sampleStudent.studentClass.name &&
+      createdCounseling?.data?.student?.id === sampleStudent.id,
+    'Input konseling BP/BK source year tetap diterima setelah promotion.',
+    createdCounseling?.data || null,
+  );
+  assertCondition(
+    checks,
+    updatedCounseling?.data?.status === 'IN_PROGRESS',
+    'Update konseling BP/BK source year tetap diterima setelah promotion.',
+    updatedCounseling?.data || null,
   );
 
   console.log(

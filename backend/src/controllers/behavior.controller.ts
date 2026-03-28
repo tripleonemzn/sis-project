@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import { validateHistoricalStudentClassMembership } from '../utils/studentAcademicHistory';
 
 // Schema for creating behavior record
 const createBehaviorSchema = z.object({
@@ -269,6 +270,19 @@ export const getPrincipalBehaviorSummary = asyncHandler(async (req: Request, res
 
 export const createBehavior = asyncHandler(async (req: Request, res: Response) => {
   const data = createBehaviorSchema.parse(req.body);
+  const validation = await validateHistoricalStudentClassMembership({
+    academicYearId: data.academicYearId,
+    classId: data.classId,
+    studentId: data.studentId,
+  });
+
+  if (!validation?.cls) {
+    throw new ApiError(400, 'Kelas tidak valid untuk tahun ajaran yang dipilih');
+  }
+
+  if (!validation.student) {
+    throw new ApiError(400, 'Siswa tidak valid pada kelas yang dipilih');
+  }
 
   const behavior = await prisma.studentBehavior.create({
     data,

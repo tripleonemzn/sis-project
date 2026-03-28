@@ -65,6 +65,15 @@ export type HistoricalStudentScope = {
   studentMap: Map<number, HistoricalStudentSnapshot>;
 };
 
+export type HistoricalStudentClassValidation = {
+  cls: {
+    id: number;
+    name: string;
+    academicYearId: number;
+  };
+  student: HistoricalStudentSnapshot | null;
+};
+
 const sortStudentsByName = (rows: HistoricalStudentSnapshot[]) =>
   [...rows].sort((a, b) => a.name.localeCompare(b.name, 'id-ID'));
 
@@ -305,6 +314,56 @@ export const resolveHistoricalStudentScope = async (params: {
     students,
     studentIds: students.map((item) => item.id),
     studentMap: new Map(students.map((item) => [item.id, item])),
+  };
+};
+
+export const validateHistoricalStudentClassMembership = async (params: {
+  academicYearId: number;
+  classId: number;
+  studentId: number;
+}): Promise<HistoricalStudentClassValidation | null> => {
+  const academicYearId = Number(params.academicYearId);
+  const classId = Number(params.classId);
+  const studentId = Number(params.studentId);
+
+  if (
+    !Number.isFinite(academicYearId) ||
+    academicYearId <= 0 ||
+    !Number.isFinite(classId) ||
+    classId <= 0 ||
+    !Number.isFinite(studentId) ||
+    studentId <= 0
+  ) {
+    return null;
+  }
+
+  const cls = await prisma.class.findFirst({
+    where: {
+      id: classId,
+      academicYearId,
+    },
+    select: {
+      id: true,
+      name: true,
+      academicYearId: true,
+    },
+  });
+
+  if (!cls) {
+    return null;
+  }
+
+  const students = await listHistoricalStudentsForAcademicYear({
+    academicYearId,
+    classId,
+    studentId,
+    limit: 1,
+  });
+
+  const student = students[0] || null;
+  return {
+    cls,
+    student,
   };
 };
 
