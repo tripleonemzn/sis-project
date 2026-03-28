@@ -128,6 +128,8 @@ No-Go jika salah satu terjadi:
 - Screenshot / catat ringkasan preview sebelum commit.
 - Jalankan commit promotion.
 - Catat `runId` yang dihasilkan.
+- Jika ingin jalur CLI yang lebih terstruktur dan menyimpan artifact snapshot:
+  - `bash ./scripts/run-academic-promotion-cutover.sh --source-year <SOURCE_ID> --target-year <TARGET_ID> --actor-id <ADMIN_ID> --activate-target --yes`
 
 ### Setelah Commit
 
