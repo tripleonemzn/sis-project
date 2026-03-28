@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "audit:parity": "node ./scripts/audit-mobile-parity.js",
+    "audit:parity:check": "node ./scripts/audit-mobile-parity.js --no-write",
     "doctor": "npx expo-doctor",
     "readiness": "bash ./scripts/check-mobile-readiness.sh",
     "release:check": "bash ./scripts/check-release-config.sh",

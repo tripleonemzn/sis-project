@@ -120,7 +120,7 @@ run_check() {
 
 if [ "$MODE" = "mobile" ] || [ "$MODE" = "all" ]; then
   run_check "mobile-app" "npm run typecheck"
-  run_check "mobile-app" "npm run audit:parity"
+  run_check "mobile-app" "npm run audit:parity:check"
 fi
 
 if [ "$MODE" = "exambrowser" ] || [ "$MODE" = "all" ]; then

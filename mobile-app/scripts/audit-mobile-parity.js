@@ -11,6 +11,8 @@ const APP_ROOT = path.join(PROJECT_ROOT, 'app', '(app)');
 const SRC_ROOT = path.join(PROJECT_ROOT, 'src');
 const OUTPUT_DIR = path.join(PROJECT_ROOT, 'docs', 'audit');
 const transpiledModuleCache = new Map();
+const args = new Set(process.argv.slice(2));
+const WRITE_OUTPUT = !args.has('--no-write');
 
 function readFile(filePath) {
   return fs.readFileSync(filePath, 'utf8');
@@ -326,8 +328,15 @@ function writeReport(report) {
 
 function main() {
   const report = buildReport();
-  const output = writeReport(report);
   console.log(`Audit selesai.`);
+  console.log(`- Generated: ${report.generatedAt}`);
+
+  if (!WRITE_OUTPUT) {
+    console.log(`- Output file: skipped (--no-write)`);
+    return;
+  }
+
+  const output = writeReport(report);
   console.log(`- JSON: ${output.jsonPath}`);
   console.log(`- Markdown: ${output.mdPath}`);
 }
