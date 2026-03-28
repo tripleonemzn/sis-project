@@ -4398,6 +4398,7 @@ async function buildFinanceCashSessionSummary(
           select: {
             id: true,
             invoiceNo: true,
+            academicYearId: true,
             periodKey: true,
             semester: true,
           },
@@ -4435,6 +4436,11 @@ async function buildFinanceCashSessionSummary(
     }),
   ]);
 
+  const [normalizedRecentPayments, normalizedRecentRefunds] = await Promise.all([
+    hydrateFinanceHistoricalStudentClass(recentPayments as any[]),
+    hydrateFinanceHistoricalStudentClass(recentRefunds as any[]),
+  ]);
+
   const grossCashIn = normalizeFinanceAmount(Number(paymentAggregate._sum.amount || 0));
   const reversedCashIn = normalizeFinanceAmount(Number(paymentAggregate._sum.reversedAmount || 0));
   const expectedCashIn = normalizeFinanceAmount(Math.max(grossCashIn - reversedCashIn, 0));
@@ -4449,7 +4455,7 @@ async function buildFinanceCashSessionSummary(
     expectedClosingBalance,
     totalCashPayments: paymentAggregate._count._all,
     totalCashRefunds: refundAggregate._count._all,
-    recentCashPayments: recentPayments.map((payment) => {
+    recentCashPayments: normalizedRecentPayments.map((payment) => {
       const reversedAmount = normalizeFinanceAmount(Number(payment.reversedAmount || 0));
       return {
         id: payment.id,
@@ -4462,7 +4468,7 @@ async function buildFinanceCashSessionSummary(
         invoice: payment.invoice || null,
       };
     }),
-    recentCashRefunds: recentRefunds.map((refund) => serializeFinanceRefundRecord(refund)),
+    recentCashRefunds: normalizedRecentRefunds.map((refund) => serializeFinanceRefundRecord(refund)),
   };
 }
 
@@ -4727,6 +4733,7 @@ async function loadFinanceBankReconciliationTransactions(
       orderBy: [{ refundedAt: 'desc' }, { id: 'desc' }],
       select: {
         id: true,
+        academicYearId: true,
         refundNo: true,
         amount: true,
         method: true,
@@ -4875,7 +4882,12 @@ async function loadFinanceBankReconciliationTransactions(
     }),
   ]);
 
-  return { payments, refunds, statementEntries };
+  const [normalizedRefunds, normalizedStatementEntries] = await Promise.all([
+    hydrateFinanceHistoricalStudentClass(refunds as any[]),
+    hydrateFinanceHistoricalMatchedRefunds(statementEntries as any[]),
+  ]);
+
+  return { payments, refunds: normalizedRefunds, statementEntries: normalizedStatementEntries };
 }
 
 async function buildFinanceBankReconciliationSummary(
@@ -5192,6 +5204,104 @@ async function hydrateFinanceHistoricalStudentClass<
       writeOffRequests: normalizedWriteOffRequests,
     };
   });
+}
+
+async function hydrateFinanceHistoricalMatchedRefunds<
+  T extends {
+    [key: string]: any;
+    matchedRefund?: {
+      id: number;
+      academicYearId?: number | null;
+      studentId?: number | null;
+      student?: FinanceHistoricalStudentLike;
+    } | null;
+  },
+>(rows: T[]): Promise<T[]> {
+  const matchedRefunds = rows
+    .map((row) => row.matchedRefund || null)
+    .filter((refund): refund is NonNullable<T['matchedRefund']> => Boolean(refund));
+
+  if (!matchedRefunds.length) {
+    return rows;
+  }
+
+  const normalizedRefunds = await hydrateFinanceHistoricalStudentClass(matchedRefunds as any[]);
+  const normalizedRefundMap = new Map(
+    (normalizedRefunds as Array<{ id: number }>).map((refund) => [refund.id, refund]),
+  );
+
+  return rows.map((row) => {
+    const matchedRefundId = Number(row.matchedRefund?.id || 0);
+    if (!matchedRefundId) return row;
+    const normalizedMatchedRefund = normalizedRefundMap.get(matchedRefundId);
+    if (!normalizedMatchedRefund) return row;
+    return {
+      ...row,
+      matchedRefund: normalizedMatchedRefund,
+    };
+  });
+}
+
+async function resolveFinanceRefundAcademicYearId(
+  db: Prisma.TransactionClient | typeof prisma,
+  studentId: number,
+): Promise<number | null> {
+  const normalizedStudentId = Number(studentId);
+  if (!Number.isFinite(normalizedStudentId) || normalizedStudentId <= 0) {
+    return null;
+  }
+
+  const currentMembership = await db.studentAcademicMembership.findFirst({
+    where: {
+      studentId: normalizedStudentId,
+      isCurrent: true,
+    },
+    orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+    select: {
+      academicYearId: true,
+    },
+  });
+
+  if (currentMembership?.academicYearId) {
+    return currentMembership.academicYearId;
+  }
+
+  const student = await db.user.findUnique({
+    where: { id: normalizedStudentId },
+    select: {
+      studentClass: {
+        select: {
+          academicYearId: true,
+        },
+      },
+    },
+  });
+
+  if (student?.studentClass?.academicYearId) {
+    return student.studentClass.academicYearId;
+  }
+
+  const latestMembership = await db.studentAcademicMembership.findFirst({
+    where: {
+      studentId: normalizedStudentId,
+    },
+    orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+    select: {
+      academicYearId: true,
+    },
+  });
+
+  if (latestMembership?.academicYearId) {
+    return latestMembership.academicYearId;
+  }
+
+  const activeAcademicYear = await db.academicYear.findFirst({
+    where: { isActive: true },
+    orderBy: [{ id: 'desc' }],
+    select: { id: true },
+  });
+
+  return activeAcademicYear?.id || null;
 }
 
 async function resolveFinanceHistoricalStudentFilter(params: {
@@ -5670,9 +5780,11 @@ async function buildFinanceLedgerSnapshot(
       : Promise.resolve([]),
   ]);
 
-  const [normalizedCashPayments, normalizedBankPayments] = await Promise.all([
+  const [normalizedCashPayments, normalizedBankPayments, normalizedCashRefunds, normalizedBankRefunds] = await Promise.all([
     hydrateFinanceHistoricalStudentClass(cashPayments as any[]),
     hydrateFinanceHistoricalStudentClass(bankPayments as any[]),
+    hydrateFinanceHistoricalStudentClass(cashRefunds as any[]),
+    hydrateFinanceHistoricalStudentClass(bankRefunds as any[]),
   ]);
 
   const openingCashBalance = wantsCash
@@ -5817,7 +5929,7 @@ async function buildFinanceLedgerSnapshot(
         } satisfies Omit<SerializedFinanceLedgerEntry, 'runningBalance' | 'accountRunningBalance'>;
       })
       .filter(Boolean),
-    ...(cashRefunds as any[]).map((refund) => {
+    ...(normalizedCashRefunds as any[]).map((refund) => {
       const serializedRefund = serializeFinanceRefundRecord(refund);
       return {
         id: `CASH-REFUND-${refund.id}`,
@@ -5879,7 +5991,7 @@ async function buildFinanceLedgerSnapshot(
         } satisfies Omit<SerializedFinanceLedgerEntry, 'runningBalance' | 'accountRunningBalance'>;
       })
       .filter(Boolean),
-    ...(bankRefunds as any[]).map((refund) => {
+    ...(normalizedBankRefunds as any[]).map((refund) => {
       const serializedRefund = serializeFinanceRefundRecord(refund);
       const matchedStatementEntry = serializeFinanceLedgerMatchedStatementEntry(
         (refund.bankStatementEntries || [])[0] || null,
@@ -14351,6 +14463,8 @@ export const listFinanceCredits = asyncHandler(async (req: Request, res: Respons
       }),
     ]);
 
+  const normalizedRecentRefunds = await hydrateFinanceHistoricalStudentClass(recentRefunds as any[]);
+
   res.status(200).json(
     new ApiResponse(
       200,
@@ -14397,7 +14511,7 @@ export const listFinanceCredits = asyncHandler(async (req: Request, res: Respons
               : null,
           })),
         })),
-        recentRefunds: recentRefunds.map((refund) => serializeFinanceRefundRecord(refund)),
+        recentRefunds: normalizedRecentRefunds.map((refund) => serializeFinanceRefundRecord(refund)),
       },
       'Saldo kredit dan refund berhasil diambil',
     ),
@@ -14464,6 +14578,7 @@ export const createFinanceRefund = asyncHandler(async (req: Request, res: Respon
     );
 
     const balanceAfter = Math.max(balanceBefore - payload.amount, 0);
+    const refundAcademicYearId = await resolveFinanceRefundAcademicYearId(tx, studentId);
 
     const updatedBalance = await tx.financeCreditBalance.update({
       where: { id: creditBalance.id },
@@ -14501,6 +14616,7 @@ export const createFinanceRefund = asyncHandler(async (req: Request, res: Respon
         creditTransactionId: creditTransaction.id,
         amount: payload.amount,
         method: payload.method,
+        academicYearId: refundAcademicYearId,
         bankAccountId: bankAccount?.id || null,
         referenceNo: payload.referenceNo?.trim() || null,
         note: payload.note?.trim() || null,
@@ -14548,23 +14664,25 @@ export const createFinanceRefund = asyncHandler(async (req: Request, res: Respon
         amount: Number(updatedBalance.balanceAmount || 0),
         updatedAt: updatedBalance.updatedAt,
       },
-      refund: serializeFinanceRefundRecord(refund),
-      student: creditBalance.student,
+      refund,
       balanceBefore,
     };
   });
 
+  const [normalizedRefund] = await hydrateFinanceHistoricalStudentClass([result.refund as any]);
+  const serializedRefund = serializeFinanceRefundRecord(normalizedRefund);
+
   await createFinanceNotifications({
     studentId,
     title: 'Refund Saldo Kredit Diproses',
-    message: `Refund saldo kredit sebesar Rp${Math.round(result.refund.amount).toLocaleString('id-ID')} berhasil diproses. Sisa saldo kredit: Rp${Math.round(result.balance.amount).toLocaleString('id-ID')}.`,
+    message: `Refund saldo kredit sebesar Rp${Math.round(serializedRefund.amount).toLocaleString('id-ID')} berhasil diproses. Sisa saldo kredit: Rp${Math.round(result.balance.amount).toLocaleString('id-ID')}.`,
     type: 'FINANCE_CREDIT_REFUND_RECORDED',
     data: {
       module: 'FINANCE',
       studentId,
-      refundId: result.refund.id,
-      refundNo: result.refund.refundNo,
-      refundAmount: result.refund.amount,
+      refundId: serializedRefund.id,
+      refundNo: serializedRefund.refundNo,
+      refundAmount: serializedRefund.amount,
       balanceBefore: result.balanceBefore,
       balanceAfter: result.balance.amount,
     },
@@ -14577,13 +14695,13 @@ export const createFinanceRefund = asyncHandler(async (req: Request, res: Respon
       (actor.additionalDuties || []).map((duty) => String(duty)),
       'CREATE',
       'FINANCE_REFUND',
-      result.refund.id,
+      serializedRefund.id,
       null,
       {
         studentId,
-        refundNo: result.refund.refundNo,
-        amount: result.refund.amount,
-        method: result.refund.method,
+        refundNo: serializedRefund.refundNo,
+        amount: serializedRefund.amount,
+        method: serializedRefund.method,
         balanceBefore: result.balanceBefore,
         balanceAfter: result.balance.amount,
       },
@@ -14597,7 +14715,7 @@ export const createFinanceRefund = asyncHandler(async (req: Request, res: Respon
     new ApiResponse(
       201,
       {
-        refund: result.refund,
+        refund: serializedRefund,
         balance: result.balance,
       },
       'Refund saldo kredit berhasil dicatat',

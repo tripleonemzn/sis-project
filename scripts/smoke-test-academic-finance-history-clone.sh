@@ -111,6 +111,8 @@ const {
 } = require('./src/services/academicYearRollover.service');
 const { commitAcademicPromotion } = require('./src/services/academicPromotion.service');
 const {
+  listFinanceCredits,
+  createFinanceRefund,
   listFinanceInvoices,
   listFinanceReports,
   listFinanceLedgerBooks,
@@ -336,7 +338,43 @@ async function callHandler(handler, req) {
     },
   });
 
+  const existingCreditBalance = await prisma.financeCreditBalance.findUnique({
+    where: { studentId: sampleStudent.id },
+    select: {
+      id: true,
+      balanceAmount: true,
+    },
+  });
+
+  if (!existingCreditBalance) {
+    await prisma.financeCreditBalance.create({
+      data: {
+        studentId: sampleStudent.id,
+        balanceAmount: 20000,
+      },
+    });
+  } else if (Number(existingCreditBalance.balanceAmount || 0) < 20000) {
+    await prisma.financeCreditBalance.update({
+      where: { id: existingCreditBalance.id },
+      data: {
+        balanceAmount: 20000,
+      },
+    });
+  }
+
   const financeReq = { user: { id: financeActor.id, role: financeActor.role } };
+  const createdRefundBeforePromotion = await callHandler(createFinanceRefund, {
+    ...financeReq,
+    params: {
+      studentId: String(sampleStudent.id),
+    },
+    body: {
+      amount: 5000,
+      method: 'CASH',
+      note: 'Smoke test refund historis finance sebelum promotion',
+      refundedAt: new Date('2026-01-09T00:00:00.000Z'),
+    },
+  });
   const beforeInvoiceSearch = await callHandler(listFinanceInvoices, {
     ...financeReq,
     query: {
@@ -388,10 +426,24 @@ async function callHandler(handler, req) {
       limit: '20',
     },
   });
+  const beforeCredits = await callHandler(listFinanceCredits, {
+    ...financeReq,
+    query: {
+      studentId: String(sampleStudent.id),
+      limit: '20',
+    },
+  });
   const beforeLedgerSearch = await callHandler(listFinanceLedgerBooks, {
     ...financeReq,
     query: {
       search: payment.paymentNo,
+      limit: '20',
+    },
+  });
+  const beforeLedgerRefundSearch = await callHandler(listFinanceLedgerBooks, {
+    ...financeReq,
+    query: {
+      search: createdRefundBeforePromotion.data?.refund?.refundNo || '',
       limit: '20',
     },
   });
@@ -469,10 +521,24 @@ async function callHandler(handler, req) {
       limit: '20',
     },
   });
+  const afterCredits = await callHandler(listFinanceCredits, {
+    ...financeReq,
+    query: {
+      studentId: String(sampleStudent.id),
+      limit: '20',
+    },
+  });
   const afterLedgerSearch = await callHandler(listFinanceLedgerBooks, {
     ...financeReq,
     query: {
       search: payment.paymentNo,
+      limit: '20',
+    },
+  });
+  const afterLedgerRefundSearch = await callHandler(listFinanceLedgerBooks, {
+    ...financeReq,
+    query: {
+      search: createdRefundBeforePromotion.data?.refund?.refundNo || '',
       limit: '20',
     },
   });
@@ -592,6 +658,19 @@ async function callHandler(handler, req) {
   const afterLedgerPaymentRowPostReversal =
     (afterLedgerSearchPostReversal.data?.entries || []).find(
       (row) => row.sourceType === 'PAYMENT' && row.transactionNo === payment.paymentNo,
+    ) || null;
+  const createdRefundRecord = createdRefundBeforePromotion.data?.refund || null;
+  const beforeCreditRefundRow =
+    (beforeCredits.data?.recentRefunds || []).find((row) => row.id === createdRefundRecord?.id) || null;
+  const afterCreditRefundRow =
+    (afterCredits.data?.recentRefunds || []).find((row) => row.id === createdRefundRecord?.id) || null;
+  const beforeLedgerRefundRow =
+    (beforeLedgerRefundSearch.data?.entries || []).find(
+      (row) => row.sourceType === 'REFUND' && row.transactionNo === createdRefundRecord?.refundNo,
+    ) || null;
+  const afterLedgerRefundRow =
+    (afterLedgerRefundSearch.data?.entries || []).find(
+      (row) => row.sourceType === 'REFUND' && row.transactionNo === createdRefundRecord?.refundNo,
     ) || null;
   const createdWriteOffRequest = createdWriteOff.data?.request || null;
   const afterWriteOffListRow =
@@ -728,6 +807,42 @@ async function callHandler(handler, req) {
   );
   assertCondition(
     checks,
+    createdRefundRecord?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Create refund sebelum promotion mengembalikan kelas source year yang benar.',
+    createdRefundRecord,
+  );
+  assertCondition(
+    checks,
+    beforeCreditRefundRow?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Daftar refund admin menampilkan kelas historis refund sebelum promotion.',
+    beforeCreditRefundRow,
+  );
+  assertCondition(
+    checks,
+    afterCreditRefundRow?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Daftar refund admin tetap menampilkan kelas historis refund setelah promotion.',
+    afterCreditRefundRow,
+  );
+  assertCondition(
+    checks,
+    beforeLedgerRefundRow?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Ledger finance menampilkan kelas historis refund sebelum promotion.',
+    beforeLedgerRefundRow,
+  );
+  assertCondition(
+    checks,
+    afterLedgerRefundRow?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Ledger finance tetap menampilkan kelas historis refund setelah promotion.',
+    afterLedgerRefundRow,
+  );
+  assertCondition(
+    checks,
+    Number(afterLedgerRefundRow?.amount || 0) === Number(createdRefundRecord?.amount || 0),
+    'Ledger finance menampilkan nominal refund yang benar setelah promotion.',
+    afterLedgerRefundRow,
+  );
+  assertCondition(
+    checks,
     createdWriteOffRequest?.student?.studentClass?.name === sampleStudent.studentClass.name,
     'Create write-off source year setelah promotion tetap mengembalikan kelas historis.',
     createdWriteOffRequest,
@@ -807,6 +922,13 @@ async function callHandler(handler, req) {
       id: payment.id,
       paymentNo: payment.paymentNo,
     },
+    refund: createdRefundRecord
+      ? {
+          id: createdRefundRecord.id,
+          refundNo: createdRefundRecord.refundNo,
+          amount: createdRefundRecord.amount,
+        }
+      : null,
     reversalRequest: createdReversalRequest
       ? {
           id: createdReversalRequest.id,

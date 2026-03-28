@@ -290,6 +290,7 @@ model AcademicYear {
   financeTariffRules             FinanceTariffRule[]
   financeAdjustmentRules         FinanceAdjustmentRule[]
   financeInvoices                FinanceInvoice[]
+  financeRefunds                 FinanceRefund[]
   teacherAssignments             TeacherAssignment[]
   teachingDevices                TeachingDevice[]
   trainingClasses                TrainingClass[]
@@ -1960,6 +1961,7 @@ model FinanceRefund {
   id                   Int                         @id @default(autoincrement())
   refundNo             String                      @unique
   studentId            Int
+  academicYearId       Int?
   creditBalanceId      Int
   creditTransactionId  Int?                        @unique
   bankAccountId        Int?
@@ -1972,6 +1974,7 @@ model FinanceRefund {
   createdAt            DateTime                    @default(now())
   updatedAt            DateTime                    @updatedAt
   student              User                        @relation("FinanceRefundStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear         AcademicYear?               @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
   creditBalance        FinanceCreditBalance        @relation(fields: [creditBalanceId], references: [id], onDelete: Cascade)
   creditTransaction    FinanceCreditTransaction?   @relation(fields: [creditTransactionId], references: [id], onDelete: SetNull)
   bankAccount          FinanceBankAccount?         @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
@@ -1979,6 +1982,7 @@ model FinanceRefund {
   bankStatementEntries FinanceBankStatementEntry[] @relation("FinanceBankStatementEntryRefund")
 
   @@index([studentId, refundedAt])
+  @@index([academicYearId, refundedAt])
   @@index([creditBalanceId, refundedAt])
   @@index([bankAccountId, refundedAt])
   @@map("finance_refunds")
