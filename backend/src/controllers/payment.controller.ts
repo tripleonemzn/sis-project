@@ -3198,6 +3198,7 @@ async function settleFinanceVerifiedPayment(
         select: {
           id: true,
           invoiceNo: true,
+          academicYearId: true,
           periodKey: true,
           semester: true,
         },
@@ -3940,6 +3941,7 @@ const financeWriteOffRecordInclude = Prisma.validator<Prisma.FinanceWriteOffRequ
     select: {
       id: true,
       invoiceNo: true,
+      academicYearId: true,
       periodKey: true,
       semester: true,
       title: true,
@@ -4276,6 +4278,7 @@ const financeBankStatementEntryRecordInclude = Prisma.validator<Prisma.FinanceBa
         select: {
           id: true,
           invoiceNo: true,
+          academicYearId: true,
           periodKey: true,
           semester: true,
         },
@@ -5043,6 +5046,35 @@ type FinanceHistoricalStudentLike = {
   studentClass?: FinanceHistoricalStudentClass;
 } | null;
 
+function resolveFinanceHistoricalAcademicYearId(row: {
+  academicYearId?: number | null;
+  invoice?: {
+    academicYearId?: number | null;
+  } | null;
+  payment?: {
+    invoice?: {
+      academicYearId?: number | null;
+    } | null;
+  } | null;
+}) {
+  const directAcademicYearId = Number(row.academicYearId);
+  if (Number.isFinite(directAcademicYearId) && directAcademicYearId > 0) {
+    return directAcademicYearId;
+  }
+
+  const invoiceAcademicYearId = Number(row.invoice?.academicYearId);
+  if (Number.isFinite(invoiceAcademicYearId) && invoiceAcademicYearId > 0) {
+    return invoiceAcademicYearId;
+  }
+
+  const paymentInvoiceAcademicYearId = Number(row.payment?.invoice?.academicYearId);
+  if (Number.isFinite(paymentInvoiceAcademicYearId) && paymentInvoiceAcademicYearId > 0) {
+    return paymentInvoiceAcademicYearId;
+  }
+
+  return null;
+}
+
 function mergeFinanceHistoricalStudentClass(
   currentClass?: FinanceHistoricalStudentClass,
   historicalClass?: FinanceHistoricalStudentClass,
@@ -5076,6 +5108,7 @@ function normalizeFinanceHistoricalStudent<T extends FinanceHistoricalStudentLik
 
 async function hydrateFinanceHistoricalStudentClass<
   T extends {
+    [key: string]: any;
     academicYearId?: number | null;
     studentId?: number | null;
     student?: FinanceHistoricalStudentLike;
@@ -5087,9 +5120,9 @@ async function hydrateFinanceHistoricalStudentClass<
   const studentIdsByAcademicYear = new Map<number, Set<number>>();
 
   rows.forEach((row) => {
-    const academicYearId = Number(row.academicYearId);
+    const academicYearId = resolveFinanceHistoricalAcademicYearId(row as any);
     const studentId = Number(row.studentId ?? row.student?.id);
-    if (!Number.isFinite(academicYearId) || academicYearId <= 0) return;
+    if (!academicYearId) return;
     if (!Number.isFinite(studentId) || studentId <= 0) return;
 
     const bucket = studentIdsByAcademicYear.get(academicYearId) || new Set<number>();
@@ -5120,8 +5153,8 @@ async function hydrateFinanceHistoricalStudentClass<
   );
 
   return rows.map((row) => {
-    const academicYearId = Number(row.academicYearId);
-    if (!Number.isFinite(academicYearId) || academicYearId <= 0) {
+    const academicYearId = resolveFinanceHistoricalAcademicYearId(row as any);
+    if (!academicYearId) {
       return row;
     }
 
@@ -12592,6 +12625,7 @@ export const listFinancePaymentVerifications = asyncHandler(async (req: Request,
         select: {
           id: true,
           invoiceNo: true,
+          academicYearId: true,
           periodKey: true,
           semester: true,
         },
@@ -12640,7 +12674,8 @@ export const listFinancePaymentVerifications = asyncHandler(async (req: Request,
     },
   });
 
-  const rows = payments.map((payment) => ({
+  const normalizedPayments = await hydrateFinanceHistoricalStudentClass(payments);
+  const rows = normalizedPayments.map((payment) => ({
     ...serializeFinancePaymentRecord(payment),
     student: payment.student,
   }));
@@ -16651,6 +16686,8 @@ export const listFinanceWriteOffs = asyncHandler(async (req: Request, res: Respo
     },
   );
 
+  const normalizedRequests = await hydrateFinanceHistoricalStudentClass(requests);
+
   res.status(200).json(
     new ApiResponse(
       200,
@@ -16661,7 +16698,7 @@ export const listFinanceWriteOffs = asyncHandler(async (req: Request, res: Respo
           totalApprovedAmount: normalizeFinanceAmount(summary.totalApprovedAmount),
           totalAppliedAmount: normalizeFinanceAmount(summary.totalAppliedAmount),
         },
-        requests: requests.map((request) => serializeFinanceWriteOffRecord(request)),
+        requests: normalizedRequests.map((request) => serializeFinanceWriteOffRecord(request)),
       },
       'Daftar write-off berhasil diambil',
     ),
@@ -16764,7 +16801,8 @@ export const createFinanceWriteOffRequest = asyncHandler(async (req: Request, re
     return request;
   });
 
-  const serializedRequest = serializeFinanceWriteOffRecord(result);
+  const [normalizedResult] = await hydrateFinanceHistoricalStudentClass([result]);
+  const serializedRequest = serializeFinanceWriteOffRecord(normalizedResult);
 
   await createFinanceInternalNotifications({
     scopes: ['HEAD_TU'],
@@ -16858,7 +16896,8 @@ export const decideFinanceWriteOffAsHeadTu = asyncHandler(async (req: Request, r
     include: financeWriteOffRecordInclude,
   });
 
-  const serializedRequest = serializeFinanceWriteOffRecord(updated);
+  const [normalizedUpdated] = await hydrateFinanceHistoricalStudentClass([updated]);
+  const serializedRequest = serializeFinanceWriteOffRecord(normalizedUpdated);
 
   await createFinanceInternalNotifications({
     scopes: payload.approved ? ['PRINCIPAL', 'FINANCE'] : ['FINANCE'],
@@ -16954,7 +16993,8 @@ export const decideFinanceWriteOffAsPrincipal = asyncHandler(async (req: Request
     include: financeWriteOffRecordInclude,
   });
 
-  const serializedRequest = serializeFinanceWriteOffRecord(updated);
+  const [normalizedUpdated] = await hydrateFinanceHistoricalStudentClass([updated]);
+  const serializedRequest = serializeFinanceWriteOffRecord(normalizedUpdated);
 
   await createFinanceInternalNotifications({
     scopes: ['FINANCE', 'HEAD_TU'],
@@ -17265,8 +17305,10 @@ export const applyFinanceWriteOff = asyncHandler(async (req: Request, res: Respo
     };
   });
 
-  const serializedRequest = serializeFinanceWriteOffRecord(result.request);
-  const serializedInvoice = serializeFinanceInvoiceRecord(result.invoice);
+  const [normalizedRequest] = await hydrateFinanceHistoricalStudentClass([result.request]);
+  const [normalizedInvoice] = await hydrateFinanceHistoricalStudentClass([result.invoice]);
+  const serializedRequest = serializeFinanceWriteOffRecord(normalizedRequest);
+  const serializedInvoice = serializeFinanceInvoiceRecord(normalizedInvoice);
 
   await Promise.all([
     createFinanceInternalNotifications({

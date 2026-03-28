@@ -110,7 +110,13 @@ const {
   applyAcademicYearRollover,
 } = require('./src/services/academicYearRollover.service');
 const { commitAcademicPromotion } = require('./src/services/academicPromotion.service');
-const { listFinanceInvoices, listFinanceReports } = require('./src/controllers/payment.controller');
+const {
+  listFinanceInvoices,
+  listFinanceReports,
+  listFinancePaymentVerifications,
+  createFinanceWriteOffRequest,
+  listFinanceWriteOffs,
+} = require('./src/controllers/payment.controller');
 
 function deriveTargetName(sourceName) {
   const match = String(sourceName || '').match(/^(\d{4})\/(\d{4})$/);
@@ -272,6 +278,28 @@ async function callHandler(handler, req) {
       title: true,
     },
   });
+  const paymentNo = `PAY-QA-HIST-${sampleStudent.id}-${Date.now()}`;
+  const payment = await prisma.financePayment.create({
+    data: {
+      paymentNo,
+      studentId: sampleStudent.id,
+      invoiceId: invoice.id,
+      amount: 50000,
+      allocatedAmount: 50000,
+      creditedAmount: 0,
+      source: 'DIRECT',
+      method: 'BANK_TRANSFER',
+      verificationStatus: 'PENDING',
+      referenceNo: `REF-${paymentNo}`,
+      note: 'Smoke test histori payment verification setelah promotion',
+      paidAt: new Date('2026-01-10T00:00:00.000Z'),
+      createdById: adminActor.id,
+    },
+    select: {
+      id: true,
+      paymentNo: true,
+    },
+  });
 
   const baseReq = { user: { id: adminActor.id, role: adminActor.role } };
   const beforeInvoiceSearch = await callHandler(listFinanceInvoices, {
@@ -316,6 +344,13 @@ async function callHandler(handler, req) {
       gradeLevel: sampleStudent.studentClass.level,
       periodFrom: periodKey,
       periodTo: periodKey,
+    },
+  });
+  const beforePaymentVerifications = await callHandler(listFinancePaymentVerifications, {
+    ...baseReq,
+    query: {
+      search: payment.paymentNo,
+      limit: '20',
     },
   });
 
@@ -385,6 +420,31 @@ async function callHandler(handler, req) {
       periodTo: periodKey,
     },
   });
+  const afterPaymentVerifications = await callHandler(listFinancePaymentVerifications, {
+    ...baseReq,
+    query: {
+      search: payment.paymentNo,
+      limit: '20',
+    },
+  });
+  const createdWriteOff = await callHandler(createFinanceWriteOffRequest, {
+    ...baseReq,
+    params: {
+      id: String(invoice.id),
+    },
+    body: {
+      amount: 25000,
+      reason: 'Smoke test write-off historis finance',
+      note: 'Dibuat sesudah promotion untuk source year',
+    },
+  });
+  const afterWriteOffList = await callHandler(listFinanceWriteOffs, {
+    ...baseReq,
+    query: {
+      search: createdWriteOff.data?.request?.requestNo || '',
+      limit: '20',
+    },
+  });
 
   const beforeInvoiceSearchRow =
     (beforeInvoiceSearch.data?.invoices || []).find((row) => row.id === invoice.id) || null;
@@ -414,6 +474,13 @@ async function callHandler(handler, req) {
   const afterReportClassRecap =
     (afterReportClass.data?.classRecap || []).find((row) => row.className === sampleStudent.studentClass.name) ||
     null;
+  const beforePaymentVerificationRow =
+    (beforePaymentVerifications.data?.payments || []).find((row) => row.id === payment.id) || null;
+  const afterPaymentVerificationRow =
+    (afterPaymentVerifications.data?.payments || []).find((row) => row.id === payment.id) || null;
+  const createdWriteOffRequest = createdWriteOff.data?.request || null;
+  const afterWriteOffListRow =
+    (afterWriteOffList.data?.requests || []).find((row) => row.id === createdWriteOffRequest?.id) || null;
   const afterCollectionQueueRow =
     (afterReportClass.data?.collectionPriorityQueue || []).find((row) => row.studentId === sampleStudent.id) ||
     null;
@@ -513,6 +580,30 @@ async function callHandler(handler, req) {
     'Collection queue finance source year tetap memakai kelas historis setelah promotion.',
     afterCollectionQueueRow,
   );
+  assertCondition(
+    checks,
+    beforePaymentVerificationRow?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Payment verification menampilkan kelas historis source year sebelum promotion.',
+    beforePaymentVerificationRow,
+  );
+  assertCondition(
+    checks,
+    afterPaymentVerificationRow?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Payment verification tetap menampilkan kelas historis source year setelah promotion.',
+    afterPaymentVerificationRow,
+  );
+  assertCondition(
+    checks,
+    createdWriteOffRequest?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Create write-off source year setelah promotion tetap mengembalikan kelas historis.',
+    createdWriteOffRequest,
+  );
+  assertCondition(
+    checks,
+    afterWriteOffListRow?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'List write-off source year setelah promotion tetap menampilkan kelas historis.',
+    afterWriteOffListRow,
+  );
 
   const summary = {
     sourceYear,
@@ -530,6 +621,16 @@ async function callHandler(handler, req) {
       title: invoice.title,
       periodKey,
     },
+    payment: {
+      id: payment.id,
+      paymentNo: payment.paymentNo,
+    },
+    writeOffRequest: createdWriteOffRequest
+      ? {
+          id: createdWriteOffRequest.id,
+          requestNo: createdWriteOffRequest.requestNo,
+        }
+      : null,
     commitRunId: commitResult.run.id,
     totals: {
       checks: checks.length,
