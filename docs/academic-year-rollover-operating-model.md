@@ -1,5 +1,10 @@
 # Model Operasional Tahun Ajaran dan Promotion
 
+Catatan:
+
+- Dokumen ini tetap berlaku sebagai model operasional dasar.
+- Keputusan final lintas domain, termasuk carry-forward guru/wali kelas, arsip tahun ajaran, dan matrix akses arsip, dirangkum lebih lengkap di [academic-year-final-operating-agreement.md](/var/www/sis-project/docs/academic-year-final-operating-agreement.md).
+
 Dokumen ini merinci cara agar konsep promotion siswa, alumni, dan rollover tahun ajaran bisa berjalan aman di production, tetap fleksibel untuk kebutuhan sekolah, dan tetap konsisten antara web dan mobile.
 
 ## 1. Kesimpulan Inti
