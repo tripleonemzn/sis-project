@@ -168,6 +168,37 @@ function getPromotionResolvedTargetClassId(
   return row.targetClassId ?? null;
 }
 
+function getRolloverPreviewItemLabel(item: unknown) {
+  if (!item || typeof item !== 'object') return '-';
+  const row = item as Record<string, unknown>;
+
+  if ('sourceClassName' in row && 'targetClassName' in row && 'action' in row) {
+    return `${String(row.sourceClassName || '-')} -> ${String(row.targetClassName || '-')} (${String(row.action || '-')})`;
+  }
+  if ('sourceAssignmentId' in row && 'subject' in row && 'sourceClassName' in row && 'action' in row) {
+    const subject = row.subject as { code?: string; name?: string } | undefined;
+    return `${String(row.sourceClassName || '-')} • ${String(subject?.code || subject?.name || '-')} (${String(row.action || '-')})`;
+  }
+  if ('sourceEventId' in row && 'title' in row && 'action' in row) {
+    return `${String(row.title || '-')} (${String(row.action || '-')})`;
+  }
+  if ('sourceSubjectKkmId' in row && 'subject' in row && 'classLevel' in row && 'sourceKkm' in row && 'action' in row) {
+    const subject = row.subject as { code?: string; name?: string } | undefined;
+    return `${String(subject?.code || subject?.name || '-')} ${String(row.classLevel || '-')} • ${String(row.sourceKkm || '-')} (${String(row.action || '-')})`;
+  }
+  if ('sourceComponentId' in row && 'code' in row && 'label' in row && 'action' in row) {
+    return `${String(row.code || '-')} • ${String(row.label || '-')} (${String(row.action || '-')})`;
+  }
+  if ('sourceProgramId' in row && 'code' in row && 'displayLabel' in row && 'action' in row) {
+    return `${String(row.code || '-')} • ${String(row.displayLabel || '-')} (${String(row.action || '-')})`;
+  }
+  if ('sourceSessionId' in row && 'programCode' in row && 'label' in row && 'action' in row) {
+    return `${String(row.programCode || '-')} • ${String(row.label || '-')} (${String(row.action || '-')})`;
+  }
+
+  return '-';
+}
+
 type AcademicEventType =
   | 'LIBUR_NASIONAL'
   | 'LIBUR_SEKOLAH'
@@ -600,6 +631,10 @@ export default function AdminAcademicScreen() {
       teacherAssignments: true,
       scheduleTimeConfig: true,
       academicEvents: true,
+      subjectKkms: true,
+      examGradeComponents: true,
+      examProgramConfigs: true,
+      examProgramSessions: true,
     });
   const [calendarAcademicYearId, setCalendarAcademicYearId] = useState('');
   const [calendarSemesterFilter, setCalendarSemesterFilter] = useState<'ALL' | 'ODD' | 'EVEN'>('ALL');
@@ -782,6 +817,71 @@ export default function AdminAcademicScreen() {
         effectivePromotionTargetAcademicYearId as number,
       ),
   });
+  const rolloverWorkspace = rolloverWorkspaceQuery.data;
+  const rolloverComponentEntries = rolloverWorkspace
+    ? ([
+        ['classPreparation', rolloverWorkspace.components.classPreparation],
+        ['teacherAssignments', rolloverWorkspace.components.teacherAssignments],
+        ['scheduleTimeConfig', rolloverWorkspace.components.scheduleTimeConfig],
+        ['academicEvents', rolloverWorkspace.components.academicEvents],
+        ['subjectKkms', rolloverWorkspace.components.subjectKkms],
+        ['examGradeComponents', rolloverWorkspace.components.examGradeComponents],
+        ['examProgramConfigs', rolloverWorkspace.components.examProgramConfigs],
+        ['examProgramSessions', rolloverWorkspace.components.examProgramSessions],
+      ] as const)
+    : [];
+  const rolloverStatCards = rolloverWorkspace
+    ? [
+        {
+          key: 'stat-classPreparation',
+          title: 'Kelas Target',
+          value: String(rolloverWorkspace.components.classPreparation.summary.createCount || 0),
+          subtitle: 'XI/XII yang perlu dibuat',
+        },
+        {
+          key: 'stat-teacherAssignments',
+          title: 'Assignment Baru',
+          value: String(rolloverWorkspace.components.teacherAssignments.summary.createCount || 0),
+          subtitle: 'Guru-mapel target',
+        },
+        {
+          key: 'stat-subjectKkms',
+          title: 'KKM Tahunan',
+          value: String(rolloverWorkspace.components.subjectKkms.summary.createCount || 0),
+          subtitle: 'KKM year-scoped baru',
+        },
+        {
+          key: 'stat-examGradeComponents',
+          title: 'Komponen Nilai',
+          value: String(rolloverWorkspace.components.examGradeComponents.summary.createCount || 0),
+          subtitle: 'Komponen ujian baru',
+        },
+        {
+          key: 'stat-examProgramConfigs',
+          title: 'Program Ujian',
+          value: String(rolloverWorkspace.components.examProgramConfigs.summary.createCount || 0),
+          subtitle: 'Program target baru',
+        },
+        {
+          key: 'stat-examProgramSessions',
+          title: 'Sesi Program',
+          value: String(rolloverWorkspace.components.examProgramSessions.summary.createCount || 0),
+          subtitle: 'Sesi ujian baru',
+        },
+        {
+          key: 'stat-scheduleTimeConfig',
+          title: 'Jam Jadwal',
+          value: String(rolloverWorkspace.components.scheduleTimeConfig.summary.createCount || 0),
+          subtitle: 'Buat jika target kosong',
+        },
+        {
+          key: 'stat-academicEvents',
+          title: 'Kalender',
+          value: String(rolloverWorkspace.components.academicEvents.summary.createCount || 0),
+          subtitle: 'Event yang bisa di-clone',
+        },
+      ]
+    : [];
 
   useEffect(() => {
     if (!promotionWorkspaceQuery.data) return;
@@ -1571,7 +1671,7 @@ export default function AdminAcademicScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-rollover-workspace'] });
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-promotion-workspace'] });
       notifySuccess(
-        `Setup tahunan diterapkan. Kelas baru ${result?.applied.classPreparation.created || 0}, assignment baru ${result?.applied.teacherAssignments.created || 0}.`,
+        `Setup tahunan diterapkan. Kelas ${result?.applied.classPreparation.created || 0}, assignment ${result?.applied.teacherAssignments.created || 0}, KKM ${result?.applied.subjectKkms.created || 0}, program ujian ${result?.applied.examProgramConfigs.created || 0}.`,
       );
     },
     onError: (error: unknown) => {
@@ -2982,7 +3082,7 @@ export default function AdminAcademicScreen() {
                     </View>
                   ) : rolloverWorkspaceQuery.isLoading ? (
                     <QueryStateView type="loading" message="Memuat workspace rollover..." />
-                  ) : rolloverWorkspaceQuery.isError || !rolloverWorkspaceQuery.data ? (
+                  ) : rolloverWorkspaceQuery.isError || !rolloverWorkspace ? (
                     <QueryStateView
                       type="error"
                       message="Gagal memuat workspace rollover."
@@ -2990,32 +3090,22 @@ export default function AdminAcademicScreen() {
                     />
                   ) : (
                     <>
-                      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-                        <StatCard
-                          title="Kelas Target"
-                          value={String(rolloverWorkspaceQuery.data.components.classPreparation.summary.createCount || 0)}
-                          subtitle="XI/XII yang perlu dibuat"
-                        />
-                        <StatCard
-                          title="Assignment Baru"
-                          value={String(rolloverWorkspaceQuery.data.components.teacherAssignments.summary.createCount || 0)}
-                          subtitle="Guru-mapel target"
-                        />
-                      </View>
-                      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-                        <StatCard
-                          title="Jam Jadwal"
-                          value={String(rolloverWorkspaceQuery.data.components.scheduleTimeConfig.summary.createCount || 0)}
-                          subtitle="Buat jika target kosong"
-                        />
-                        <StatCard
-                          title="Kalender"
-                          value={String(rolloverWorkspaceQuery.data.components.academicEvents.summary.createCount || 0)}
-                          subtitle="Event yang bisa di-clone"
-                        />
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          flexWrap: 'wrap',
+                          justifyContent: 'space-between',
+                          marginBottom: 2,
+                        }}
+                      >
+                        {rolloverStatCards.map((item) => (
+                          <View key={item.key} style={{ width: '48%', marginBottom: 10 }}>
+                            <StatCard title={item.title} value={item.value} subtitle={item.subtitle} />
+                          </View>
+                        ))}
                       </View>
 
-                      {rolloverWorkspaceQuery.data.validation.errors.length > 0 ? (
+                      {rolloverWorkspace.validation.errors.length > 0 ? (
                         <View
                           style={{
                             borderWidth: 1,
@@ -3027,7 +3117,7 @@ export default function AdminAcademicScreen() {
                           }}
                         >
                           <Text style={{ color: '#b91c1c', fontWeight: '700', marginBottom: 6 }}>Blocking Issues</Text>
-                          {rolloverWorkspaceQuery.data.validation.errors.map((item) => (
+                          {rolloverWorkspace.validation.errors.map((item) => (
                             <Text key={`rollover-global-error-${item}`} style={{ color: '#b91c1c', fontSize: 12, marginBottom: 4 }}>
                               • {item}
                             </Text>
@@ -3035,7 +3125,7 @@ export default function AdminAcademicScreen() {
                         </View>
                       ) : null}
 
-                      {rolloverWorkspaceQuery.data.validation.warnings.length > 0 ? (
+                      {rolloverWorkspace.validation.warnings.length > 0 ? (
                         <View
                           style={{
                             borderWidth: 1,
@@ -3047,7 +3137,7 @@ export default function AdminAcademicScreen() {
                           }}
                         >
                           <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 6 }}>Catatan Wizard</Text>
-                          {rolloverWorkspaceQuery.data.validation.warnings.map((item) => (
+                          {rolloverWorkspace.validation.warnings.map((item) => (
                             <Text key={`rollover-global-warning-${item}`} style={{ color: '#92400e', fontSize: 12, marginBottom: 4 }}>
                               • {item}
                             </Text>
@@ -3058,39 +3148,20 @@ export default function AdminAcademicScreen() {
                       <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Pilih Komponen Clone</Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
                         <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                          <SelectChip
-                            active={rolloverSelectedComponents.classPreparation}
-                            label="Kelas Target"
-                            onPress={() => toggleRolloverComponent('classPreparation')}
-                          />
-                          <SelectChip
-                            active={rolloverSelectedComponents.teacherAssignments}
-                            label="Assignment"
-                            onPress={() => toggleRolloverComponent('teacherAssignments')}
-                          />
-                          <SelectChip
-                            active={rolloverSelectedComponents.scheduleTimeConfig}
-                            label="Jam Jadwal"
-                            onPress={() => toggleRolloverComponent('scheduleTimeConfig')}
-                          />
-                          <SelectChip
-                            active={rolloverSelectedComponents.academicEvents}
-                            label="Kalender"
-                            onPress={() => toggleRolloverComponent('academicEvents')}
-                          />
+                          {rolloverComponentEntries.map(([key, component]) => (
+                            <SelectChip
+                              key={`rollover-chip-${key}`}
+                              active={rolloverSelectedComponents[key]}
+                              label={component.label}
+                              onPress={() => toggleRolloverComponent(key)}
+                            />
+                          ))}
                         </View>
                       </ScrollView>
 
-                      {(
-                        [
-                          rolloverWorkspaceQuery.data.components.classPreparation,
-                          rolloverWorkspaceQuery.data.components.teacherAssignments,
-                          rolloverWorkspaceQuery.data.components.scheduleTimeConfig,
-                          rolloverWorkspaceQuery.data.components.academicEvents,
-                        ] as const
-                      ).map((component) => (
+                      {rolloverComponentEntries.map(([key, component]) => (
                         <View
-                          key={component.key}
+                          key={key}
                           style={{
                             borderWidth: 1,
                             borderColor: '#dbe5f4',
@@ -3107,19 +3178,84 @@ export default function AdminAcademicScreen() {
                             {component.description}
                           </Text>
                           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
-                            Sumber: {component.summary.sourceItems} | Create: {'createCount' in component.summary ? component.summary.createCount : 0} | Skip existing:{' '}
+                            Sumber: {component.summary.sourceItems} | Create:{' '}
+                            {'createCount' in component.summary ? component.summary.createCount : 0} | Skip existing:{' '}
                             {'existingCount' in component.summary ? component.summary.existingCount : 0}
                           </Text>
+                          {'globalFallbackCount' in component.summary && component.summary.globalFallbackCount > 0 ? (
+                            <Text style={{ color: '#92400e', fontSize: 12, marginTop: 8 }}>
+                              Fallback global: {component.summary.globalFallbackCount}
+                            </Text>
+                          ) : null}
+                          {'missingGradeComponentCount' in component.summary && component.summary.missingGradeComponentCount > 0 ? (
+                            <Text style={{ color: '#92400e', fontSize: 12, marginTop: 8 }}>
+                              Dependency komponen nilai: {component.summary.missingGradeComponentCount}
+                            </Text>
+                          ) : null}
+                          {'skipNoTargetProgramCount' in component.summary && component.summary.skipNoTargetProgramCount > 0 ? (
+                            <Text style={{ color: '#92400e', fontSize: 12, marginTop: 8 }}>
+                              Menunggu program target: {component.summary.skipNoTargetProgramCount}
+                            </Text>
+                          ) : null}
+                          {'skipNoTargetClassCount' in component.summary && component.summary.skipNoTargetClassCount > 0 ? (
+                            <Text style={{ color: '#92400e', fontSize: 12, marginTop: 8 }}>
+                              Menunggu kelas target: {component.summary.skipNoTargetClassCount}
+                            </Text>
+                          ) : null}
+                          {'skipNoSourceCount' in component.summary && component.summary.skipNoSourceCount > 0 ? (
+                            <Text style={{ color: '#92400e', fontSize: 12, marginTop: 8 }}>
+                              Tidak ada source: {component.summary.skipNoSourceCount}
+                            </Text>
+                          ) : null}
+                          {'skipOutsideTargetRangeCount' in component.summary && component.summary.skipOutsideTargetRangeCount > 0 ? (
+                            <Text style={{ color: '#92400e', fontSize: 12, marginTop: 8 }}>
+                              Di luar rentang target: {component.summary.skipOutsideTargetRangeCount}
+                            </Text>
+                          ) : null}
+                          {component.errors.length > 0 ? (
+                            <View
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#fecaca',
+                                backgroundColor: '#fff1f2',
+                                borderRadius: 10,
+                                padding: 10,
+                                marginTop: 8,
+                              }}
+                            >
+                              {component.errors.slice(0, 3).map((item) => (
+                                <Text key={`${key}-error-${item}`} style={{ color: '#b91c1c', fontSize: 12, marginBottom: 4 }}>
+                                  • {item}
+                                </Text>
+                              ))}
+                            </View>
+                          ) : null}
+                          {component.warnings.length > 0 ? (
+                            <View
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#fcd34d',
+                                backgroundColor: '#fffbeb',
+                                borderRadius: 10,
+                                padding: 10,
+                                marginTop: 8,
+                              }}
+                            >
+                              {component.warnings.slice(0, 2).map((item) => (
+                                <Text key={`${key}-warning-${item}`} style={{ color: '#92400e', fontSize: 12, marginBottom: 4 }}>
+                                  • {item}
+                                </Text>
+                              ))}
+                            </View>
+                          ) : null}
                           {'items' in component && component.items.length > 0 ? (
                             <View style={{ marginTop: 8 }}>
-                              {component.items.slice(0, 6).map((item) => (
+                              {component.items.slice(0, 6).map((item, index) => (
                                 <Text
-                                  key={`${component.key}-${'sourceAssignmentId' in item ? item.sourceAssignmentId : 'sourceClassId' in item ? item.sourceClassId : item.sourceEventId}`}
+                                  key={`${key}-${index}`}
                                   style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}
                                 >
-                                  {'sourceClassName' in item && 'targetClassName' in item
-                                    ? `• ${item.sourceClassName} -> ${item.targetClassName || '-'} (${item.action})`
-                                    : `• ${item.title} (${item.action})`}
+                                  • {getRolloverPreviewItemLabel(item)}
                                 </Text>
                               ))}
                               {component.items.length > 6 ? (
@@ -3142,8 +3278,11 @@ export default function AdminAcademicScreen() {
                           marginBottom: 12,
                         }}
                       >
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
+                          Tahun target: {rolloverWorkspace.targetAcademicYear.name}
+                        </Text>
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Catatan Operasional</Text>
-                        {rolloverWorkspaceQuery.data.notes.map((item) => (
+                        {rolloverWorkspace.notes.map((item) => (
                           <Text key={`rollover-note-${item}`} style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>
                             • {item}
                           </Text>

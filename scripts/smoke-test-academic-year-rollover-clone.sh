@@ -228,6 +228,10 @@ function assertCondition(checks, condition, description, details = undefined) {
     components: {
       classPreparation: true,
       teacherAssignments: true,
+      subjectKkms: true,
+      examGradeComponents: true,
+      examProgramConfigs: true,
+      examProgramSessions: true,
       scheduleTimeConfig: true,
       academicEvents: true,
     },
@@ -241,6 +245,10 @@ function assertCondition(checks, condition, description, details = undefined) {
     components: {
       classPreparation: true,
       teacherAssignments: true,
+      subjectKkms: true,
+      examGradeComponents: true,
+      examProgramConfigs: true,
+      examProgramSessions: true,
       scheduleTimeConfig: true,
       academicEvents: true,
     },
@@ -266,6 +274,18 @@ function assertCondition(checks, condition, description, details = undefined) {
   const targetScheduleTimeConfig = await prisma.scheduleTimeConfig.findUnique({
     where: { academicYearId: targetResult.targetAcademicYear.id },
     select: { id: true },
+  });
+  const targetSubjectKkmCount = await prisma.subjectKKM.count({
+    where: { academicYearId: targetResult.targetAcademicYear.id },
+  });
+  const targetExamGradeComponentCount = await prisma.examGradeComponent.count({
+    where: { academicYearId: targetResult.targetAcademicYear.id },
+  });
+  const targetExamProgramConfigCount = await prisma.examProgramConfig.count({
+    where: { academicYearId: targetResult.targetAcademicYear.id },
+  });
+  const targetExamProgramSessionCount = await prisma.examProgramSession.count({
+    where: { academicYearId: targetResult.targetAcademicYear.id },
   });
 
   const checks = [];
@@ -312,6 +332,45 @@ function assertCondition(checks, condition, description, details = undefined) {
   );
   assertCondition(
     checks,
+    firstApply.applied.subjectKkms.created === workspaceBefore.components.subjectKkms.summary.createCount,
+    'KKM tahunan yang dibuat sesuai preview.',
+    {
+      preview: workspaceBefore.components.subjectKkms.summary.createCount,
+      applied: firstApply.applied.subjectKkms.created,
+      globalFallbackCount: workspaceBefore.components.subjectKkms.summary.globalFallbackCount,
+    },
+  );
+  assertCondition(
+    checks,
+    firstApply.applied.examGradeComponents.created === workspaceBefore.components.examGradeComponents.summary.createCount,
+    'Komponen nilai ujian yang dibuat sesuai preview.',
+    {
+      preview: workspaceBefore.components.examGradeComponents.summary.createCount,
+      applied: firstApply.applied.examGradeComponents.created,
+    },
+  );
+  assertCondition(
+    checks,
+    firstApply.applied.examProgramConfigs.created === workspaceBefore.components.examProgramConfigs.summary.createCount,
+    'Program ujian target yang dibuat sesuai preview.',
+    {
+      preview: workspaceBefore.components.examProgramConfigs.summary.createCount,
+      applied: firstApply.applied.examProgramConfigs.created,
+      missingGradeComponentCount: workspaceBefore.components.examProgramConfigs.summary.missingGradeComponentCount,
+    },
+  );
+  assertCondition(
+    checks,
+    firstApply.applied.examProgramSessions.created === workspaceBefore.components.examProgramSessions.summary.createCount,
+    'Sesi program ujian yang dibuat sesuai preview.',
+    {
+      preview: workspaceBefore.components.examProgramSessions.summary.createCount,
+      applied: firstApply.applied.examProgramSessions.created,
+      skipNoTargetProgramCount: workspaceBefore.components.examProgramSessions.summary.skipNoTargetProgramCount,
+    },
+  );
+  assertCondition(
+    checks,
     workspaceAfterFirst.components.classPreparation.summary.createCount === 0,
     'Setelah apply pertama, kelas target tidak punya item create tersisa.',
     workspaceAfterFirst.components.classPreparation.summary,
@@ -330,8 +389,36 @@ function assertCondition(checks, condition, description, details = undefined) {
   );
   assertCondition(
     checks,
+    workspaceAfterFirst.components.subjectKkms.summary.createCount === 0,
+    'Setelah apply pertama, KKM target tidak punya item create tersisa.',
+    workspaceAfterFirst.components.subjectKkms.summary,
+  );
+  assertCondition(
+    checks,
+    workspaceAfterFirst.components.examGradeComponents.summary.createCount === 0,
+    'Setelah apply pertama, komponen nilai tidak punya item create tersisa.',
+    workspaceAfterFirst.components.examGradeComponents.summary,
+  );
+  assertCondition(
+    checks,
+    workspaceAfterFirst.components.examProgramConfigs.summary.createCount === 0,
+    'Setelah apply pertama, program ujian tidak punya item create tersisa.',
+    workspaceAfterFirst.components.examProgramConfigs.summary,
+  );
+  assertCondition(
+    checks,
+    workspaceAfterFirst.components.examProgramSessions.summary.createCount === 0,
+    'Setelah apply pertama, sesi program ujian tidak punya item create tersisa.',
+    workspaceAfterFirst.components.examProgramSessions.summary,
+  );
+  assertCondition(
+    checks,
     secondApply.applied.classPreparation.created === 0 &&
       secondApply.applied.teacherAssignments.created === 0 &&
+      secondApply.applied.subjectKkms.created === 0 &&
+      secondApply.applied.examGradeComponents.created === 0 &&
+      secondApply.applied.examProgramConfigs.created === 0 &&
+      secondApply.applied.examProgramSessions.created === 0 &&
       secondApply.applied.scheduleTimeConfig.created === 0 &&
       secondApply.applied.academicEvents.created === 0,
     'Apply kedua idempotent dan tidak membuat data tambahan.',
@@ -372,6 +459,42 @@ function assertCondition(checks, condition, description, details = undefined) {
     'Workspace tetap sehat setelah apply berulang.',
     workspaceAfterSecond.validation,
   );
+  assertCondition(
+    checks,
+    targetSubjectKkmCount >= firstApply.applied.subjectKkms.created,
+    'Target year menyimpan KKM tahunan yang baru dibuat.',
+    {
+      targetSubjectKkmCount,
+      created: firstApply.applied.subjectKkms.created,
+    },
+  );
+  assertCondition(
+    checks,
+    targetExamGradeComponentCount >= firstApply.applied.examGradeComponents.created,
+    'Target year menyimpan komponen nilai ujian.',
+    {
+      targetExamGradeComponentCount,
+      created: firstApply.applied.examGradeComponents.created,
+    },
+  );
+  assertCondition(
+    checks,
+    targetExamProgramConfigCount >= firstApply.applied.examProgramConfigs.created,
+    'Target year menyimpan program ujian.',
+    {
+      targetExamProgramConfigCount,
+      created: firstApply.applied.examProgramConfigs.created,
+    },
+  );
+  assertCondition(
+    checks,
+    targetExamProgramSessionCount >= firstApply.applied.examProgramSessions.created,
+    'Target year menyimpan sesi program ujian.',
+    {
+      targetExamProgramSessionCount,
+      created: firstApply.applied.examProgramSessions.created,
+    },
+  );
 
   console.log(JSON.stringify({
     sourceYear,
@@ -380,6 +503,10 @@ function assertCondition(checks, condition, description, details = undefined) {
     previewBefore: {
       classPreparation: workspaceBefore.components.classPreparation.summary,
       teacherAssignments: workspaceBefore.components.teacherAssignments.summary,
+      subjectKkms: workspaceBefore.components.subjectKkms.summary,
+      examGradeComponents: workspaceBefore.components.examGradeComponents.summary,
+      examProgramConfigs: workspaceBefore.components.examProgramConfigs.summary,
+      examProgramSessions: workspaceBefore.components.examProgramSessions.summary,
       scheduleTimeConfig: workspaceBefore.components.scheduleTimeConfig.summary,
       academicEvents: workspaceBefore.components.academicEvents.summary,
       warnings: workspaceBefore.validation.warnings,
@@ -409,14 +536,26 @@ console.log('Target year : ' + result.targetYear.id + ' (' + result.targetYear.n
 console.log('Target made : ' + (result.targetCreated ? 'created' : 'reused'));
 console.log('Preview     : classes=' + result.previewBefore.classPreparation.createCount
   + ', assignments=' + result.previewBefore.teacherAssignments.createCount
+  + ', kkms=' + result.previewBefore.subjectKkms.createCount
+  + ', examComponents=' + result.previewBefore.examGradeComponents.createCount
+  + ', examPrograms=' + result.previewBefore.examProgramConfigs.createCount
+  + ', examSessions=' + result.previewBefore.examProgramSessions.createCount
   + ', schedule=' + result.previewBefore.scheduleTimeConfig.createCount
   + ', events=' + result.previewBefore.academicEvents.createCount);
 console.log('1st apply   : classes=' + result.firstApply.classPreparation.created
   + ', assignments=' + result.firstApply.teacherAssignments.created
+  + ', kkms=' + result.firstApply.subjectKkms.created
+  + ', examComponents=' + result.firstApply.examGradeComponents.created
+  + ', examPrograms=' + result.firstApply.examProgramConfigs.created
+  + ', examSessions=' + result.firstApply.examProgramSessions.created
   + ', schedule=' + result.firstApply.scheduleTimeConfig.created
   + ', events=' + result.firstApply.academicEvents.created);
 console.log('2nd apply   : classes=' + result.secondApply.classPreparation.created
   + ', assignments=' + result.secondApply.teacherAssignments.created
+  + ', kkms=' + result.secondApply.subjectKkms.created
+  + ', examComponents=' + result.secondApply.examGradeComponents.created
+  + ', examPrograms=' + result.secondApply.examProgramConfigs.created
+  + ', examSessions=' + result.secondApply.examProgramSessions.created
   + ', schedule=' + result.secondApply.scheduleTimeConfig.created
   + ', events=' + result.secondApply.academicEvents.created);
 console.log('Checks      : ' + result.checks.filter((item) => item.pass).length + '/' + result.checks.length + ' PASS');

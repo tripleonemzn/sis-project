@@ -9,6 +9,10 @@ Wizard yang sudah diimplementasikan saat ini mencakup:
 - membuat atau memakai draft `AcademicYear` target yang nonaktif
 - clone kelas target promotion `XI/XII` dari source `X/XI`
 - clone `teacher_assignments` yang belum ada di target
+- clone `subject_kkms` untuk target year dengan fallback aman dari data global/source year
+- clone `exam_grade_components`
+- clone `exam_program_configs`
+- clone `exam_program_sessions`
 - clone `schedule_time_config` jika target belum punya
 - clone `academic_events` dengan pergeseran tanggal relatif ke awal semester 1
 
@@ -17,7 +21,7 @@ Belum dicakup di MVP ini:
 - kelas `X` untuk intake baru
 - mapel dan kategori mapel karena tetap master global
 - histori siswa, nilai, absensi, rapor, dan dokumen lama
-- KKM, report dates, exam/program config
+- `report_dates` karena admin flow-nya belum matang dan data existing saat ini masih kosong
 
 ## 2. Guardrail Sebelum Uji
 
@@ -47,7 +51,7 @@ Smoke test ini memverifikasi:
 
 - draft target year dibuat/reuse dengan aman
 - preview dan hasil apply selaras
-- apply pertama membuat data sesuai preview
+- apply pertama membuat data sesuai preview, termasuk KKM dan konfigurasi ujian
 - apply kedua idempotent dan tidak membuat duplikasi baru
 - status year target tetap nonaktif
 - data siswa source year tidak berubah
@@ -62,7 +66,7 @@ Smoke test ini memverifikasi:
 - Pastikan web dan mobile menampilkan:
   - daftar source year yang sama
   - daftar target year yang sama
-  - summary component yang sama
+  - summary component yang sama untuk kelas, assignment, KKM, komponen nilai, program ujian, sesi, jam jadwal, dan kalender
   - error dan warning yang sama
   - hasil apply yang sama
 

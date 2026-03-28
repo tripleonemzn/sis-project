@@ -21,6 +21,10 @@ export interface AcademicYearRolloverComponentSelection {
   teacherAssignments: boolean;
   scheduleTimeConfig: boolean;
   academicEvents: boolean;
+  subjectKkms: boolean;
+  examGradeComponents: boolean;
+  examProgramConfigs: boolean;
+  examProgramSessions: boolean;
 }
 
 export interface AcademicYearRolloverWorkspace {
@@ -168,6 +172,115 @@ export interface AcademicYearRolloverWorkspace {
         reason: string | null;
       }>;
     };
+    subjectKkms: {
+      key: 'subjectKkms';
+      label: string;
+      description: string;
+      selectedByDefault: boolean;
+      ready: boolean;
+      summary: {
+        sourceItems: number;
+        createCount: number;
+        existingCount: number;
+        globalFallbackCount: number;
+      };
+      errors: string[];
+      warnings: string[];
+      items: Array<{
+        sourceSubjectKkmId: number;
+        sourceAcademicYearId: number | null;
+        sourceScope: 'ACADEMIC_YEAR' | 'GLOBAL_FALLBACK';
+        subject: {
+          id: number;
+          code: string;
+          name: string;
+        };
+        classLevel: string;
+        sourceKkm: number;
+        targetSubjectKkmId: number | null;
+        targetKkm: number | null;
+        action: 'CREATE' | 'SKIP_EXISTING';
+        reason: string | null;
+      }>;
+    };
+    examGradeComponents: {
+      key: 'examGradeComponents';
+      label: string;
+      description: string;
+      selectedByDefault: boolean;
+      ready: boolean;
+      summary: {
+        sourceItems: number;
+        createCount: number;
+        existingCount: number;
+      };
+      errors: string[];
+      warnings: string[];
+      items: Array<{
+        sourceComponentId: number;
+        code: string;
+        label: string;
+        type: string;
+        entryMode: string;
+        reportSlot: string;
+        includeInFinalScore: boolean;
+        targetComponentId: number | null;
+        action: 'CREATE' | 'SKIP_EXISTING';
+        reason: string | null;
+      }>;
+    };
+    examProgramConfigs: {
+      key: 'examProgramConfigs';
+      label: string;
+      description: string;
+      selectedByDefault: boolean;
+      ready: boolean;
+      summary: {
+        sourceItems: number;
+        createCount: number;
+        existingCount: number;
+        missingGradeComponentCount: number;
+      };
+      errors: string[];
+      warnings: string[];
+      items: Array<{
+        sourceProgramId: number;
+        code: string;
+        displayLabel: string;
+        baseType: string;
+        fixedSemester: string | null;
+        gradeComponentCode: string;
+        targetProgramId: number | null;
+        targetHasGradeComponent: boolean;
+        action: 'CREATE' | 'SKIP_EXISTING';
+        reason: string | null;
+      }>;
+    };
+    examProgramSessions: {
+      key: 'examProgramSessions';
+      label: string;
+      description: string;
+      selectedByDefault: boolean;
+      ready: boolean;
+      summary: {
+        sourceItems: number;
+        createCount: number;
+        existingCount: number;
+        skipNoTargetProgramCount: number;
+      };
+      errors: string[];
+      warnings: string[];
+      items: Array<{
+        sourceSessionId: number;
+        programCode: string;
+        label: string;
+        normalizedLabel: string;
+        displayOrder: number;
+        targetSessionId: number | null;
+        action: 'CREATE' | 'SKIP_EXISTING' | 'SKIP_NO_TARGET_PROGRAM';
+        reason: string | null;
+      }>;
+    };
   };
   notes: string[];
 }
@@ -208,6 +321,25 @@ export interface AcademicYearRolloverApplyResult {
       created: number;
       skippedExisting: number;
       skippedOutsideTargetRange: number;
+    };
+    subjectKkms: {
+      created: number;
+      skippedExisting: number;
+      globalFallbackCount: number;
+    };
+    examGradeComponents: {
+      created: number;
+      skippedExisting: number;
+    };
+    examProgramConfigs: {
+      created: number;
+      skippedExisting: number;
+      missingGradeComponentCount: number;
+    };
+    examProgramSessions: {
+      created: number;
+      skippedExisting: number;
+      skippedNoTargetProgram: number;
     };
   };
   workspace: AcademicYearRolloverWorkspace;

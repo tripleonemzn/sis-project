@@ -84,6 +84,37 @@ function getResolvedTargetClassId(row: AcademicPromotionWorkspaceClass, drafts: 
   return row.targetClassId ?? null;
 }
 
+function getRolloverPreviewItemLabel(item: unknown) {
+  if (!item || typeof item !== 'object') return '-';
+  const row = item as Record<string, unknown>;
+
+  if ('sourceClassName' in row && 'targetClassName' in row && 'action' in row) {
+    return `${String(row.sourceClassName || '-')} -> ${String(row.targetClassName || '-')} (${String(row.action || '-')})`;
+  }
+  if ('sourceAssignmentId' in row && 'subject' in row && 'sourceClassName' in row && 'action' in row) {
+    const subject = row.subject as { code?: string; name?: string } | undefined;
+    return `${String(row.sourceClassName || '-')} • ${String(subject?.code || subject?.name || '-')} (${String(row.action || '-')})`;
+  }
+  if ('sourceEventId' in row && 'title' in row && 'action' in row) {
+    return `${String(row.title || '-')} (${String(row.action || '-')})`;
+  }
+  if ('sourceSubjectKkmId' in row && 'subject' in row && 'classLevel' in row && 'sourceKkm' in row && 'action' in row) {
+    const subject = row.subject as { code?: string; name?: string } | undefined;
+    return `${String(subject?.code || subject?.name || '-')} ${String(row.classLevel || '-')} • ${String(row.sourceKkm || '-')} (${String(row.action || '-')})`;
+  }
+  if ('sourceComponentId' in row && 'code' in row && 'label' in row && 'action' in row) {
+    return `${String(row.code || '-')} • ${String(row.label || '-')} (${String(row.action || '-')})`;
+  }
+  if ('sourceProgramId' in row && 'code' in row && 'displayLabel' in row && 'action' in row) {
+    return `${String(row.code || '-')} • ${String(row.displayLabel || '-')} (${String(row.action || '-')})`;
+  }
+  if ('sourceSessionId' in row && 'programCode' in row && 'label' in row && 'action' in row) {
+    return `${String(row.programCode || '-')} • ${String(row.label || '-')} (${String(row.action || '-')})`;
+  }
+
+  return '-';
+}
+
 export const AcademicYearPage = () => {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -101,6 +132,10 @@ export const AcademicYearPage = () => {
     teacherAssignments: true,
     scheduleTimeConfig: true,
     academicEvents: true,
+    subjectKkms: true,
+    examGradeComponents: true,
+    examProgramConfigs: true,
+    examProgramSessions: true,
   });
 
   useEffect(() => {
@@ -291,7 +326,7 @@ export const AcademicYearPage = () => {
         queryClient.invalidateQueries({ queryKey: ['academic-promotion-workspace'] }),
       ]);
       toast.success(
-        `Setup target year diterapkan. Kelas baru: ${response.data.applied.classPreparation.created}, assignment baru: ${response.data.applied.teacherAssignments.created}.`,
+        `Setup target year diterapkan. Kelas: ${response.data.applied.classPreparation.created}, assignment: ${response.data.applied.teacherAssignments.created}, KKM: ${response.data.applied.subjectKkms.created}, program ujian: ${response.data.applied.examProgramConfigs.created}.`,
       );
     },
     onError: (error: unknown) => {
@@ -440,6 +475,70 @@ export const AcademicYearPage = () => {
 
   const list: AcademicYear[] = data?.data?.academicYears || [];
   const pagination = data?.data?.pagination || { page: 1, limit: 10, total: 0, totalPages: 1 };
+  const rolloverComponentEntries = rolloverWorkspace
+    ? ([
+        ['classPreparation', rolloverWorkspace.components.classPreparation],
+        ['teacherAssignments', rolloverWorkspace.components.teacherAssignments],
+        ['scheduleTimeConfig', rolloverWorkspace.components.scheduleTimeConfig],
+        ['academicEvents', rolloverWorkspace.components.academicEvents],
+        ['subjectKkms', rolloverWorkspace.components.subjectKkms],
+        ['examGradeComponents', rolloverWorkspace.components.examGradeComponents],
+        ['examProgramConfigs', rolloverWorkspace.components.examProgramConfigs],
+        ['examProgramSessions', rolloverWorkspace.components.examProgramSessions],
+      ] as const)
+    : [];
+  const rolloverStatCards = rolloverWorkspace
+    ? [
+        {
+          key: 'stat-classPreparation',
+          title: 'Kelas Target',
+          value: rolloverWorkspace.components.classPreparation.summary.createCount,
+          subtitle: 'Kelas XI/XII yang perlu dibuat.',
+        },
+        {
+          key: 'stat-teacherAssignments',
+          title: 'Assignment Baru',
+          value: rolloverWorkspace.components.teacherAssignments.summary.createCount,
+          subtitle: 'Guru-mapel yang bisa di-clone.',
+        },
+        {
+          key: 'stat-subjectKkms',
+          title: 'KKM Tahunan',
+          value: rolloverWorkspace.components.subjectKkms.summary.createCount,
+          subtitle: 'KKM year-scoped yang perlu dibuat.',
+        },
+        {
+          key: 'stat-examGradeComponents',
+          title: 'Komponen Nilai',
+          value: rolloverWorkspace.components.examGradeComponents.summary.createCount,
+          subtitle: 'Komponen nilai ujian baru.',
+        },
+        {
+          key: 'stat-examProgramConfigs',
+          title: 'Program Ujian',
+          value: rolloverWorkspace.components.examProgramConfigs.summary.createCount,
+          subtitle: 'Program ujian yang bisa di-clone.',
+        },
+        {
+          key: 'stat-examProgramSessions',
+          title: 'Sesi Program',
+          value: rolloverWorkspace.components.examProgramSessions.summary.createCount,
+          subtitle: 'Sesi ujian terjadwal baru.',
+        },
+        {
+          key: 'stat-scheduleTimeConfig',
+          title: 'Schedule Config',
+          value: rolloverWorkspace.components.scheduleTimeConfig.summary.createCount,
+          subtitle: 'Buat baru jika target belum punya.',
+        },
+        {
+          key: 'stat-academicEvents',
+          title: 'Academic Events',
+          value: rolloverWorkspace.components.academicEvents.summary.createCount,
+          subtitle: 'Event yang bisa di-clone ke target.',
+        },
+      ]
+    : [];
 
   return (
     <div className="space-y-6">
@@ -817,35 +916,14 @@ export const AcademicYearPage = () => {
               </div>
             ) : (
               <>
-                <div className="grid gap-3 md:grid-cols-4">
-                  <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Kelas Target Promotion</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">
-                      {rolloverWorkspace.components.classPreparation.summary.createCount}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">Kelas XI/XII yang perlu dibuat.</p>
-                  </div>
-                  <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Assignment Baru</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">
-                      {rolloverWorkspace.components.teacherAssignments.summary.createCount}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">Guru-mapel yang bisa di-clone.</p>
-                  </div>
-                  <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Schedule Config</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">
-                      {rolloverWorkspace.components.scheduleTimeConfig.summary.createCount}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">Buat baru jika target belum punya.</p>
-                  </div>
-                  <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Academic Events</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">
-                      {rolloverWorkspace.components.academicEvents.summary.createCount}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">Event yang bisa di-clone ke target.</p>
-                  </div>
+              <div className="grid gap-3 md:grid-cols-4">
+                  {rolloverStatCards.map((item) => (
+                    <div key={item.key} className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                      <p className="text-xs uppercase tracking-wide text-slate-500">{item.title}</p>
+                      <p className="mt-2 text-2xl font-semibold text-slate-900">{item.value}</p>
+                      <p className="mt-1 text-xs text-slate-500">{item.subtitle}</p>
+                    </div>
+                  ))}
                 </div>
 
                 {rolloverWorkspace.validation.errors.length > 0 && (
@@ -871,14 +949,7 @@ export const AcademicYearPage = () => {
                 )}
 
                 <div className="grid gap-4 lg:grid-cols-2">
-                  {(
-                    [
-                      ['classPreparation', rolloverWorkspace.components.classPreparation],
-                      ['teacherAssignments', rolloverWorkspace.components.teacherAssignments],
-                      ['scheduleTimeConfig', rolloverWorkspace.components.scheduleTimeConfig],
-                      ['academicEvents', rolloverWorkspace.components.academicEvents],
-                    ] as const
-                  ).map(([key, component]) => (
+                  {rolloverComponentEntries.map(([key, component]) => (
                     <div key={key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                       <label className="flex items-start gap-3">
                         <input
@@ -910,23 +981,59 @@ export const AcademicYearPage = () => {
                           <p>Skip existing</p>
                         </div>
                       </div>
+                      {'globalFallbackCount' in component.summary && component.summary.globalFallbackCount > 0 && (
+                        <p className="mt-2 text-xs text-amber-700">
+                          Fallback global: {component.summary.globalFallbackCount}
+                        </p>
+                      )}
+                      {'missingGradeComponentCount' in component.summary && component.summary.missingGradeComponentCount > 0 && (
+                        <p className="mt-2 text-xs text-amber-700">
+                          Dependency komponen nilai: {component.summary.missingGradeComponentCount}
+                        </p>
+                      )}
+                      {'skipNoTargetProgramCount' in component.summary && component.summary.skipNoTargetProgramCount > 0 && (
+                        <p className="mt-2 text-xs text-amber-700">
+                          Menunggu program target: {component.summary.skipNoTargetProgramCount}
+                        </p>
+                      )}
+                      {'skipNoTargetClassCount' in component.summary && component.summary.skipNoTargetClassCount > 0 && (
+                        <p className="mt-2 text-xs text-amber-700">
+                          Menunggu kelas target: {component.summary.skipNoTargetClassCount}
+                        </p>
+                      )}
+                      {'skipNoSourceCount' in component.summary && component.summary.skipNoSourceCount > 0 && (
+                        <p className="mt-2 text-xs text-amber-700">
+                          Tidak ada source: {component.summary.skipNoSourceCount}
+                        </p>
+                      )}
+                      {'skipOutsideTargetRangeCount' in component.summary && component.summary.skipOutsideTargetRangeCount > 0 && (
+                        <p className="mt-2 text-xs text-amber-700">
+                          Di luar rentang target: {component.summary.skipOutsideTargetRangeCount}
+                        </p>
+                      )}
+                      {component.errors.length > 0 && (
+                        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                          {component.errors.slice(0, 3).map((item) => (
+                            <p key={`${key}-error-${item}`}>• {item}</p>
+                          ))}
+                        </div>
+                      )}
+                      {component.warnings.length > 0 && (
+                        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                          {component.warnings.slice(0, 2).map((item) => (
+                            <p key={`${key}-warning-${item}`}>• {item}</p>
+                          ))}
+                        </div>
+                      )}
                       {'items' in component && component.items.length > 0 && (
                         <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
                           <summary className="cursor-pointer text-sm font-medium text-slate-700">
                             Lihat rencana {component.label.toLowerCase()}
                           </summary>
                           <div className="mt-3 space-y-2 text-xs text-slate-600">
-                            {component.items.slice(0, 8).map((item) => (
-                              <div key={`${key}-${'sourceClassId' in item ? item.sourceClassId : item.sourceEventId}-${'sourceAssignmentId' in item ? item.sourceAssignmentId : 'row'}`}>
-                                {'sourceClassName' in item && 'targetClassName' in item ? (
-                                  <span>
-                                    {item.sourceClassName} {'->'} {item.targetClassName || '-'} ({item.action})
-                                  </span>
-                                ) : (
-                                  <span>
-                                    {item.title} ({item.action})
-                                  </span>
-                                )}
+                            {component.items.slice(0, 8).map((item, index) => (
+                              <div key={`${key}-${index}`}>
+                                <span>{getRolloverPreviewItemLabel(item)}</span>
                               </div>
                             ))}
                             {component.items.length > 8 && (

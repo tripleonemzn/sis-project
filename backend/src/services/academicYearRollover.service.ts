@@ -9,6 +9,10 @@ export type AcademicYearRolloverComponentSelection = {
   teacherAssignments: boolean;
   scheduleTimeConfig: boolean;
   academicEvents: boolean;
+  subjectKkms: boolean;
+  examGradeComponents: boolean;
+  examProgramConfigs: boolean;
+  examProgramSessions: boolean;
 };
 
 type RolloverCreateTargetPayload = {
@@ -156,6 +160,136 @@ type LoadedRolloverContext = {
     startDate: Date;
     endDate: Date;
   }>;
+  sourceSubjectKkms: Array<{
+    id: number;
+    subjectId: number;
+    academicYearId: number | null;
+    classLevel: string;
+    kkm: number;
+    subject: {
+      id: number;
+      name: string;
+      code: string;
+    };
+  }>;
+  targetSubjectKkms: Array<{
+    id: number;
+    subjectId: number;
+    academicYearId: number | null;
+    classLevel: string;
+    kkm: number;
+    subject: {
+      id: number;
+      name: string;
+      code: string;
+    };
+  }>;
+  sourceExamGradeComponents: Array<{
+    id: number;
+    academicYearId: number;
+    code: string;
+    label: string;
+    type: string;
+    typeCode: string;
+    entryMode: string;
+    entryModeCode: string;
+    reportSlot: string;
+    reportSlotCode: string;
+    includeInFinalScore: boolean;
+    description: string | null;
+    displayOrder: number;
+    isActive: boolean;
+  }>;
+  targetExamGradeComponents: Array<{
+    id: number;
+    academicYearId: number;
+    code: string;
+    label: string;
+    type: string;
+    typeCode: string;
+    entryMode: string;
+    entryModeCode: string;
+    reportSlot: string;
+    reportSlotCode: string;
+    includeInFinalScore: boolean;
+    description: string | null;
+    displayOrder: number;
+    isActive: boolean;
+  }>;
+  sourceExamProgramConfigs: Array<{
+    id: number;
+    academicYearId: number;
+    code: string;
+    baseType: string;
+    baseTypeCode: string;
+    gradeComponentType: string;
+    gradeComponentTypeCode: string;
+    gradeComponentCode: string;
+    gradeComponentLabel: string | null;
+    gradeEntryMode: string;
+    gradeEntryModeCode: string;
+    displayLabel: string;
+    shortLabel: string | null;
+    description: string | null;
+    fixedSemester: string | null;
+    displayOrder: number;
+    isActive: boolean;
+    showOnTeacherMenu: boolean;
+    showOnStudentMenu: boolean;
+    targetClassLevels: string[];
+    allowedSubjectIds: number[];
+    allowedAuthorIds: number[];
+    financeClearanceMode: string;
+    financeMinOutstandingAmount: number;
+    financeMinOverdueInvoices: number;
+    financeClearanceNotes: string | null;
+  }>;
+  targetExamProgramConfigs: Array<{
+    id: number;
+    academicYearId: number;
+    code: string;
+    baseType: string;
+    baseTypeCode: string;
+    gradeComponentType: string;
+    gradeComponentTypeCode: string;
+    gradeComponentCode: string;
+    gradeComponentLabel: string | null;
+    gradeEntryMode: string;
+    gradeEntryModeCode: string;
+    displayLabel: string;
+    shortLabel: string | null;
+    description: string | null;
+    fixedSemester: string | null;
+    displayOrder: number;
+    isActive: boolean;
+    showOnTeacherMenu: boolean;
+    showOnStudentMenu: boolean;
+    targetClassLevels: string[];
+    allowedSubjectIds: number[];
+    allowedAuthorIds: number[];
+    financeClearanceMode: string;
+    financeMinOutstandingAmount: number;
+    financeMinOverdueInvoices: number;
+    financeClearanceNotes: string | null;
+  }>;
+  sourceExamProgramSessions: Array<{
+    id: number;
+    academicYearId: number;
+    programCode: string;
+    label: string;
+    normalizedLabel: string;
+    displayOrder: number;
+    isActive: boolean;
+  }>;
+  targetExamProgramSessions: Array<{
+    id: number;
+    academicYearId: number;
+    programCode: string;
+    label: string;
+    normalizedLabel: string;
+    displayOrder: number;
+    isActive: boolean;
+  }>;
 };
 
 type RolloverClassPlanItem = {
@@ -207,6 +341,60 @@ type RolloverAcademicEventPlanItem = {
   targetStartDate: Date | null;
   targetEndDate: Date | null;
   action: 'CREATE' | 'SKIP_DUPLICATE' | 'SKIP_OUTSIDE_TARGET_RANGE';
+  reason: string | null;
+};
+
+type RolloverSubjectKkmPlanItem = {
+  sourceSubjectKkmId: number;
+  sourceAcademicYearId: number | null;
+  sourceScope: 'ACADEMIC_YEAR' | 'GLOBAL_FALLBACK';
+  subject: {
+    id: number;
+    code: string;
+    name: string;
+  };
+  classLevel: string;
+  sourceKkm: number;
+  targetSubjectKkmId: number | null;
+  targetKkm: number | null;
+  action: 'CREATE' | 'SKIP_EXISTING';
+  reason: string | null;
+};
+
+type RolloverExamGradeComponentPlanItem = {
+  sourceComponentId: number;
+  code: string;
+  label: string;
+  type: string;
+  entryMode: string;
+  reportSlot: string;
+  includeInFinalScore: boolean;
+  targetComponentId: number | null;
+  action: 'CREATE' | 'SKIP_EXISTING';
+  reason: string | null;
+};
+
+type RolloverExamProgramConfigPlanItem = {
+  sourceProgramId: number;
+  code: string;
+  displayLabel: string;
+  baseType: string;
+  fixedSemester: string | null;
+  gradeComponentCode: string;
+  targetProgramId: number | null;
+  targetHasGradeComponent: boolean;
+  action: 'CREATE' | 'SKIP_EXISTING';
+  reason: string | null;
+};
+
+type RolloverExamProgramSessionPlanItem = {
+  sourceSessionId: number;
+  programCode: string;
+  label: string;
+  normalizedLabel: string;
+  displayOrder: number;
+  targetSessionId: number | null;
+  action: 'CREATE' | 'SKIP_EXISTING' | 'SKIP_NO_TARGET_PROGRAM';
   reason: string | null;
 };
 
@@ -309,6 +497,69 @@ type RolloverWorkspace = {
       warnings: string[];
       items: RolloverAcademicEventPlanItem[];
     };
+    subjectKkms: {
+      key: 'subjectKkms';
+      label: string;
+      description: string;
+      selectedByDefault: boolean;
+      ready: boolean;
+      summary: {
+        sourceItems: number;
+        createCount: number;
+        existingCount: number;
+        globalFallbackCount: number;
+      };
+      errors: string[];
+      warnings: string[];
+      items: RolloverSubjectKkmPlanItem[];
+    };
+    examGradeComponents: {
+      key: 'examGradeComponents';
+      label: string;
+      description: string;
+      selectedByDefault: boolean;
+      ready: boolean;
+      summary: {
+        sourceItems: number;
+        createCount: number;
+        existingCount: number;
+      };
+      errors: string[];
+      warnings: string[];
+      items: RolloverExamGradeComponentPlanItem[];
+    };
+    examProgramConfigs: {
+      key: 'examProgramConfigs';
+      label: string;
+      description: string;
+      selectedByDefault: boolean;
+      ready: boolean;
+      summary: {
+        sourceItems: number;
+        createCount: number;
+        existingCount: number;
+        missingGradeComponentCount: number;
+      };
+      errors: string[];
+      warnings: string[];
+      items: RolloverExamProgramConfigPlanItem[];
+    };
+    examProgramSessions: {
+      key: 'examProgramSessions';
+      label: string;
+      description: string;
+      selectedByDefault: boolean;
+      ready: boolean;
+      summary: {
+        sourceItems: number;
+        createCount: number;
+        existingCount: number;
+        skipNoTargetProgramCount: number;
+      };
+      errors: string[];
+      warnings: string[];
+      items: RolloverExamProgramSessionPlanItem[];
+    };
   };
   notes: string[];
 };
@@ -350,6 +601,25 @@ type ApplyAcademicYearRolloverResult = {
       skippedExisting: number;
       skippedOutsideTargetRange: number;
     };
+    subjectKkms: {
+      created: number;
+      skippedExisting: number;
+      globalFallbackCount: number;
+    };
+    examGradeComponents: {
+      created: number;
+      skippedExisting: number;
+    };
+    examProgramConfigs: {
+      created: number;
+      skippedExisting: number;
+      missingGradeComponentCount: number;
+    };
+    examProgramSessions: {
+      created: number;
+      skippedExisting: number;
+      skippedNoTargetProgram: number;
+    };
   };
   workspace: RolloverWorkspace;
 };
@@ -359,6 +629,10 @@ const DEFAULT_COMPONENT_SELECTION: AcademicYearRolloverComponentSelection = {
   teacherAssignments: true,
   scheduleTimeConfig: true,
   academicEvents: true,
+  subjectKkms: true,
+  examGradeComponents: true,
+  examProgramConfigs: true,
+  examProgramSessions: true,
 };
 
 const PROMOTION_SOURCE_LEVELS = new Set(['X', 'XI']);
@@ -432,6 +706,10 @@ function normalizeComponentSelection(
     teacherAssignments: input?.teacherAssignments ?? DEFAULT_COMPONENT_SELECTION.teacherAssignments,
     scheduleTimeConfig: input?.scheduleTimeConfig ?? DEFAULT_COMPONENT_SELECTION.scheduleTimeConfig,
     academicEvents: input?.academicEvents ?? DEFAULT_COMPONENT_SELECTION.academicEvents,
+    subjectKkms: input?.subjectKkms ?? DEFAULT_COMPONENT_SELECTION.subjectKkms,
+    examGradeComponents: input?.examGradeComponents ?? DEFAULT_COMPONENT_SELECTION.examGradeComponents,
+    examProgramConfigs: input?.examProgramConfigs ?? DEFAULT_COMPONENT_SELECTION.examProgramConfigs,
+    examProgramSessions: input?.examProgramSessions ?? DEFAULT_COMPONENT_SELECTION.examProgramSessions,
   };
 }
 
@@ -771,6 +1049,308 @@ function getAcademicEventPlan(
   };
 }
 
+function normalizeSessionLabelKey(rawLabel?: string | null) {
+  const normalized = String(rawLabel || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return normalized || null;
+}
+
+function buildEffectiveSourceSubjectKkms(
+  sourceSubjectKkms: LoadedRolloverContext['sourceSubjectKkms'],
+): RolloverSubjectKkmPlanItem[] {
+  const yearlyMap = new Map(
+    sourceSubjectKkms
+      .filter((item) => item.academicYearId !== null)
+      .map((item) => [`${item.subjectId}-${normalizeLevel(item.classLevel)}`, item]),
+  );
+  const globalRows = sourceSubjectKkms.filter((item) => item.academicYearId === null);
+  const merged = [...yearlyMap.values()];
+
+  globalRows.forEach((item) => {
+    const key = `${item.subjectId}-${normalizeLevel(item.classLevel)}`;
+    if (!yearlyMap.has(key)) {
+      merged.push(item);
+    }
+  });
+
+  return merged
+    .map((item) => ({
+      sourceSubjectKkmId: item.id,
+      sourceAcademicYearId: item.academicYearId,
+      sourceScope: item.academicYearId ? ('ACADEMIC_YEAR' as const) : ('GLOBAL_FALLBACK' as const),
+      subject: {
+        id: item.subject.id,
+        code: item.subject.code,
+        name: item.subject.name,
+      },
+      classLevel: normalizeLevel(item.classLevel),
+      sourceKkm: item.kkm,
+      targetSubjectKkmId: null,
+      targetKkm: null,
+      action: 'CREATE' as const,
+      reason: item.academicYearId
+        ? null
+        : 'KKM ini diambil dari data global karena tahun sumber belum memiliki versi tahunan untuk kombinasi mapel-level tersebut.',
+    }))
+    .sort((left, right) => {
+      const bySubject = left.subject.code.localeCompare(right.subject.code, 'id');
+      if (bySubject !== 0) return bySubject;
+      return left.classLevel.localeCompare(right.classLevel, 'id');
+    });
+}
+
+function getSubjectKkmPlan(
+  sourceSubjectKkms: LoadedRolloverContext['sourceSubjectKkms'],
+  targetSubjectKkms: LoadedRolloverContext['targetSubjectKkms'],
+): RolloverWorkspace['components']['subjectKkms'] {
+  const effectiveSourceRows = buildEffectiveSourceSubjectKkms(sourceSubjectKkms);
+  const targetByKey = new Map(
+    targetSubjectKkms
+      .filter((item) => item.academicYearId !== null)
+      .map((item) => [`${item.subjectId}-${normalizeLevel(item.classLevel)}`, item]),
+  );
+
+  const items = effectiveSourceRows.map((item) => {
+    const key = `${item.subject.id}-${item.classLevel}`;
+    const existingTarget = targetByKey.get(key) || null;
+    return {
+      ...item,
+      targetSubjectKkmId: existingTarget?.id || null,
+      targetKkm: existingTarget?.kkm || null,
+      action: existingTarget ? ('SKIP_EXISTING' as const) : ('CREATE' as const),
+      reason: existingTarget
+        ? 'KKM target untuk mapel-level ini sudah ada sehingga wizard tidak menimpanya.'
+        : item.reason,
+    };
+  });
+
+  const createCount = items.filter((item) => item.action === 'CREATE').length;
+  const existingCount = items.length - createCount;
+  const globalFallbackCount = items.filter((item) => item.sourceScope === 'GLOBAL_FALLBACK').length;
+  const warnings: string[] = [];
+
+  if (globalFallbackCount > 0) {
+    warnings.push(
+      `${globalFallbackCount} KKM memakai fallback data global karena source year belum punya versi tahunan lengkap.`,
+    );
+  }
+  if (items.length === 0) {
+    warnings.push('Tahun sumber belum memiliki data KKM yang bisa diclone.');
+  }
+
+  return {
+    key: 'subjectKkms',
+    label: 'KKM Tahunan',
+    description: 'Clone KKM mapel per level ke tahun target tanpa menimpa KKM target yang sudah ada.',
+    selectedByDefault: true,
+    ready: true,
+    summary: {
+      sourceItems: items.length,
+      createCount,
+      existingCount,
+      globalFallbackCount,
+    },
+    errors: [],
+    warnings,
+    items,
+  };
+}
+
+function getExamGradeComponentPlan(
+  sourceComponents: LoadedRolloverContext['sourceExamGradeComponents'],
+  targetComponents: LoadedRolloverContext['targetExamGradeComponents'],
+): RolloverWorkspace['components']['examGradeComponents'] {
+  const targetByCode = new Map(targetComponents.map((item) => [item.code, item]));
+  const items: RolloverExamGradeComponentPlanItem[] = sourceComponents
+    .map((item) => {
+      const existingTarget = targetByCode.get(item.code) || null;
+      return {
+        sourceComponentId: item.id,
+        code: item.code,
+        label: item.label,
+        type: item.typeCode || item.type,
+        entryMode: item.entryModeCode || item.entryMode,
+        reportSlot: item.reportSlotCode || item.reportSlot,
+        includeInFinalScore: item.includeInFinalScore,
+        targetComponentId: existingTarget?.id || null,
+        action: existingTarget ? ('SKIP_EXISTING' as const) : ('CREATE' as const),
+        reason: existingTarget
+          ? 'Komponen nilai target dengan kode yang sama sudah ada, jadi wizard tidak menimpanya.'
+          : null,
+      };
+    })
+    .sort((left, right) => left.code.localeCompare(right.code, 'id'));
+
+  return {
+    key: 'examGradeComponents',
+    label: 'Komponen Nilai Ujian',
+    description: 'Clone master komponen nilai ujian ke target year secara additive.',
+    selectedByDefault: true,
+    ready: true,
+    summary: {
+      sourceItems: items.length,
+      createCount: items.filter((item) => item.action === 'CREATE').length,
+      existingCount: items.filter((item) => item.action === 'SKIP_EXISTING').length,
+    },
+    errors: [],
+    warnings: items.length === 0 ? ['Tahun sumber belum memiliki master komponen nilai ujian.'] : [],
+    items,
+  };
+}
+
+function getExamProgramConfigPlan(
+  sourcePrograms: LoadedRolloverContext['sourceExamProgramConfigs'],
+  targetPrograms: LoadedRolloverContext['targetExamProgramConfigs'],
+  sourceComponents: LoadedRolloverContext['sourceExamGradeComponents'],
+  targetComponents: LoadedRolloverContext['targetExamGradeComponents'],
+): RolloverWorkspace['components']['examProgramConfigs'] {
+  const targetByCode = new Map(targetPrograms.map((item) => [item.code, item]));
+  const sourceComponentCodes = new Set(sourceComponents.map((item) => item.code));
+  const targetComponentCodes = new Set(targetComponents.map((item) => item.code));
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  const items: RolloverExamProgramConfigPlanItem[] = sourcePrograms
+    .map((item) => {
+      const existingTarget = targetByCode.get(item.code) || null;
+      const targetHasGradeComponent =
+        targetComponentCodes.has(item.gradeComponentCode) || sourceComponentCodes.has(item.gradeComponentCode);
+      if (!targetHasGradeComponent) {
+        errors.push(
+          `Program ujian "${item.code}" memakai komponen nilai "${item.gradeComponentCode}" yang tidak tersedia di source maupun target.`,
+        );
+      } else if (!targetComponentCodes.has(item.gradeComponentCode)) {
+        warnings.push(
+          `Program "${item.code}" bergantung pada komponen "${item.gradeComponentCode}" yang perlu ikut diclone ke target year.`,
+        );
+      }
+
+      return {
+        sourceProgramId: item.id,
+        code: item.code,
+        displayLabel: item.displayLabel,
+        baseType: item.baseTypeCode || item.baseType,
+        fixedSemester: item.fixedSemester,
+        gradeComponentCode: item.gradeComponentCode,
+        targetProgramId: existingTarget?.id || null,
+        targetHasGradeComponent,
+        action: existingTarget ? ('SKIP_EXISTING' as const) : ('CREATE' as const),
+        reason: existingTarget
+          ? 'Program ujian target dengan kode yang sama sudah ada, jadi wizard tidak menimpanya.'
+          : !targetComponentCodes.has(item.gradeComponentCode)
+            ? 'Program ini membutuhkan komponen nilai yang sebaiknya ikut diclone.'
+            : null,
+      };
+    })
+    .sort((left, right) => left.code.localeCompare(right.code, 'id'));
+
+  return {
+    key: 'examProgramConfigs',
+    label: 'Program Ujian',
+    description: 'Clone konfigurasi program ujian ke target year secara additive.',
+    selectedByDefault: true,
+    ready: errors.length === 0,
+    summary: {
+      sourceItems: items.length,
+      createCount: items.filter((item) => item.action === 'CREATE').length,
+      existingCount: items.filter((item) => item.action === 'SKIP_EXISTING').length,
+      missingGradeComponentCount: items.filter((item) => !item.targetHasGradeComponent).length,
+    },
+    errors: [...new Set(errors)],
+    warnings: items.length === 0
+      ? ['Tahun sumber belum memiliki konfigurasi program ujian.']
+      : [...new Set(warnings)],
+    items,
+  };
+}
+
+function getExamProgramSessionPlan(
+  sourceSessions: LoadedRolloverContext['sourceExamProgramSessions'],
+  targetSessions: LoadedRolloverContext['targetExamProgramSessions'],
+  sourcePrograms: LoadedRolloverContext['sourceExamProgramConfigs'],
+  targetPrograms: LoadedRolloverContext['targetExamProgramConfigs'],
+): RolloverWorkspace['components']['examProgramSessions'] {
+  const targetProgramCodes = new Set(targetPrograms.map((item) => item.code));
+  const sourceProgramCodes = new Set(sourcePrograms.map((item) => item.code));
+  const targetSessionByKey = new Map(
+    targetSessions.map((item) => [`${item.programCode}::${item.normalizedLabel}`, item]),
+  );
+
+  const items: RolloverExamProgramSessionPlanItem[] = sourceSessions
+    .map((item) => {
+      const sessionKey = `${item.programCode}::${item.normalizedLabel}`;
+      const existingTarget = targetSessionByKey.get(sessionKey) || null;
+      const targetProgramAvailable = targetProgramCodes.has(item.programCode) || sourceProgramCodes.has(item.programCode);
+
+      if (existingTarget) {
+        return {
+          sourceSessionId: item.id,
+          programCode: item.programCode,
+          label: item.label,
+          normalizedLabel: item.normalizedLabel,
+          displayOrder: item.displayOrder,
+          targetSessionId: existingTarget.id,
+          action: 'SKIP_EXISTING' as const,
+          reason: 'Sesi program target dengan label yang sama sudah ada.',
+        };
+      }
+
+      if (!targetProgramAvailable) {
+        return {
+          sourceSessionId: item.id,
+          programCode: item.programCode,
+          label: item.label,
+          normalizedLabel: item.normalizedLabel,
+          displayOrder: item.displayOrder,
+          targetSessionId: null,
+          action: 'SKIP_NO_TARGET_PROGRAM' as const,
+          reason: 'Program ujian target belum tersedia untuk sesi ini.',
+        };
+      }
+
+      return {
+        sourceSessionId: item.id,
+        programCode: item.programCode,
+        label: item.label,
+        normalizedLabel: item.normalizedLabel,
+        displayOrder: item.displayOrder,
+        targetSessionId: null,
+        action: 'CREATE' as const,
+        reason: !targetProgramCodes.has(item.programCode)
+          ? 'Program ujian akan dibuat terlebih dahulu saat apply wizard.'
+          : null,
+      };
+    })
+    .sort((left, right) => {
+      const byProgram = left.programCode.localeCompare(right.programCode, 'id');
+      if (byProgram !== 0) return byProgram;
+      return left.displayOrder - right.displayOrder || left.label.localeCompare(right.label, 'id');
+    });
+
+  return {
+    key: 'examProgramSessions',
+    label: 'Sesi Program Ujian',
+    description: 'Clone label sesi terjadwal per program ujian ke target year secara additive.',
+    selectedByDefault: true,
+    ready: true,
+    summary: {
+      sourceItems: items.length,
+      createCount: items.filter((item) => item.action === 'CREATE').length,
+      existingCount: items.filter((item) => item.action === 'SKIP_EXISTING').length,
+      skipNoTargetProgramCount: items.filter((item) => item.action === 'SKIP_NO_TARGET_PROGRAM').length,
+    },
+    errors: [],
+    warnings: items.some((item) => item.action === 'SKIP_NO_TARGET_PROGRAM')
+      ? ['Beberapa sesi tidak bisa diclone sampai program ujian target tersedia.']
+      : items.length === 0
+        ? ['Tahun sumber belum memiliki sesi program ujian yang bisa diclone.']
+        : [],
+    items,
+  };
+}
+
 async function loadAcademicYearRolloverContext(
   db: DbClient,
   sourceAcademicYearId: number,
@@ -786,7 +1366,24 @@ async function loadAcademicYearRolloverContext(
     throw new ApiError(400, 'Tahun ajaran sumber dan target harus berbeda.');
   }
 
-  const [sourceYear, targetYear, sourceAssignments, targetAssignments, sourceScheduleTimeConfig, targetScheduleTimeConfig, sourceAcademicEvents, targetAcademicEvents] =
+  const [
+    sourceYear,
+    targetYear,
+    sourceAssignments,
+    targetAssignments,
+    sourceScheduleTimeConfig,
+    targetScheduleTimeConfig,
+    sourceAcademicEvents,
+    targetAcademicEvents,
+    sourceSubjectKkms,
+    targetSubjectKkms,
+    sourceExamGradeComponents,
+    targetExamGradeComponents,
+    sourceExamProgramConfigs,
+    targetExamProgramConfigs,
+    sourceExamProgramSessions,
+    targetExamProgramSessions,
+  ] =
     await Promise.all([
       db.academicYear.findUnique({
         where: { id: sourceAcademicYearId },
@@ -929,6 +1526,179 @@ async function loadAcademicYearRolloverContext(
           endDate: true,
         },
       }),
+      db.subjectKKM.findMany({
+        where: {
+          OR: [
+            { academicYearId: sourceAcademicYearId },
+            { academicYearId: null },
+          ],
+        },
+        orderBy: [{ subject: { code: 'asc' } }, { classLevel: 'asc' }],
+        select: {
+          id: true,
+          subjectId: true,
+          academicYearId: true,
+          classLevel: true,
+          kkm: true,
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+        },
+      }),
+      db.subjectKKM.findMany({
+        where: {
+          academicYearId: targetAcademicYearId,
+        },
+        orderBy: [{ subject: { code: 'asc' } }, { classLevel: 'asc' }],
+        select: {
+          id: true,
+          subjectId: true,
+          academicYearId: true,
+          classLevel: true,
+          kkm: true,
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+        },
+      }),
+      db.examGradeComponent.findMany({
+        where: { academicYearId: sourceAcademicYearId },
+        orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
+        select: {
+          id: true,
+          academicYearId: true,
+          code: true,
+          label: true,
+          type: true,
+          typeCode: true,
+          entryMode: true,
+          entryModeCode: true,
+          reportSlot: true,
+          reportSlotCode: true,
+          includeInFinalScore: true,
+          description: true,
+          displayOrder: true,
+          isActive: true,
+        },
+      }),
+      db.examGradeComponent.findMany({
+        where: { academicYearId: targetAcademicYearId },
+        orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
+        select: {
+          id: true,
+          academicYearId: true,
+          code: true,
+          label: true,
+          type: true,
+          typeCode: true,
+          entryMode: true,
+          entryModeCode: true,
+          reportSlot: true,
+          reportSlotCode: true,
+          includeInFinalScore: true,
+          description: true,
+          displayOrder: true,
+          isActive: true,
+        },
+      }),
+      db.examProgramConfig.findMany({
+        where: { academicYearId: sourceAcademicYearId },
+        orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
+        select: {
+          id: true,
+          academicYearId: true,
+          code: true,
+          baseType: true,
+          baseTypeCode: true,
+          gradeComponentType: true,
+          gradeComponentTypeCode: true,
+          gradeComponentCode: true,
+          gradeComponentLabel: true,
+          gradeEntryMode: true,
+          gradeEntryModeCode: true,
+          displayLabel: true,
+          shortLabel: true,
+          description: true,
+          fixedSemester: true,
+          displayOrder: true,
+          isActive: true,
+          showOnTeacherMenu: true,
+          showOnStudentMenu: true,
+          targetClassLevels: true,
+          allowedSubjectIds: true,
+          allowedAuthorIds: true,
+          financeClearanceMode: true,
+          financeMinOutstandingAmount: true,
+          financeMinOverdueInvoices: true,
+          financeClearanceNotes: true,
+        },
+      }),
+      db.examProgramConfig.findMany({
+        where: { academicYearId: targetAcademicYearId },
+        orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
+        select: {
+          id: true,
+          academicYearId: true,
+          code: true,
+          baseType: true,
+          baseTypeCode: true,
+          gradeComponentType: true,
+          gradeComponentTypeCode: true,
+          gradeComponentCode: true,
+          gradeComponentLabel: true,
+          gradeEntryMode: true,
+          gradeEntryModeCode: true,
+          displayLabel: true,
+          shortLabel: true,
+          description: true,
+          fixedSemester: true,
+          displayOrder: true,
+          isActive: true,
+          showOnTeacherMenu: true,
+          showOnStudentMenu: true,
+          targetClassLevels: true,
+          allowedSubjectIds: true,
+          allowedAuthorIds: true,
+          financeClearanceMode: true,
+          financeMinOutstandingAmount: true,
+          financeMinOverdueInvoices: true,
+          financeClearanceNotes: true,
+        },
+      }),
+      db.examProgramSession.findMany({
+        where: { academicYearId: sourceAcademicYearId },
+        orderBy: [{ programCode: 'asc' }, { displayOrder: 'asc' }, { label: 'asc' }],
+        select: {
+          id: true,
+          academicYearId: true,
+          programCode: true,
+          label: true,
+          normalizedLabel: true,
+          displayOrder: true,
+          isActive: true,
+        },
+      }),
+      db.examProgramSession.findMany({
+        where: { academicYearId: targetAcademicYearId },
+        orderBy: [{ programCode: 'asc' }, { displayOrder: 'asc' }, { label: 'asc' }],
+        select: {
+          id: true,
+          academicYearId: true,
+          programCode: true,
+          label: true,
+          normalizedLabel: true,
+          displayOrder: true,
+          isActive: true,
+        },
+      }),
     ]);
 
   if (!sourceYear) {
@@ -947,6 +1717,14 @@ async function loadAcademicYearRolloverContext(
     targetScheduleTimeConfig,
     sourceAcademicEvents,
     targetAcademicEvents,
+    sourceSubjectKkms,
+    targetSubjectKkms,
+    sourceExamGradeComponents,
+    targetExamGradeComponents,
+    sourceExamProgramConfigs,
+    targetExamProgramConfigs,
+    sourceExamProgramSessions,
+    targetExamProgramSessions,
   };
 }
 
@@ -969,18 +1747,46 @@ function buildAcademicYearRolloverWorkspace(context: LoadedRolloverContext): Rol
     context.sourceAcademicEvents,
     context.targetAcademicEvents,
   );
+  const subjectKkms = getSubjectKkmPlan(
+    context.sourceSubjectKkms,
+    context.targetSubjectKkms,
+  );
+  const examGradeComponents = getExamGradeComponentPlan(
+    context.sourceExamGradeComponents,
+    context.targetExamGradeComponents,
+  );
+  const examProgramConfigs = getExamProgramConfigPlan(
+    context.sourceExamProgramConfigs,
+    context.targetExamProgramConfigs,
+    context.sourceExamGradeComponents,
+    context.targetExamGradeComponents,
+  );
+  const examProgramSessions = getExamProgramSessionPlan(
+    context.sourceExamProgramSessions,
+    context.targetExamProgramSessions,
+    context.sourceExamProgramConfigs,
+    context.targetExamProgramConfigs,
+  );
 
   const errors = [
     ...classPreparation.errors,
     ...teacherAssignments.errors,
     ...scheduleTimeConfig.errors,
     ...academicEvents.errors,
+    ...subjectKkms.errors,
+    ...examGradeComponents.errors,
+    ...examProgramConfigs.errors,
+    ...examProgramSessions.errors,
   ];
   const warnings = [
     ...classPreparation.warnings,
     ...teacherAssignments.warnings,
     ...scheduleTimeConfig.warnings,
     ...academicEvents.warnings,
+    ...subjectKkms.warnings,
+    ...examGradeComponents.warnings,
+    ...examProgramConfigs.warnings,
+    ...examProgramSessions.warnings,
   ];
   if (context.targetYear.isActive) {
     warnings.push(
@@ -1018,10 +1824,15 @@ function buildAcademicYearRolloverWorkspace(context: LoadedRolloverContext): Rol
       teacherAssignments,
       scheduleTimeConfig,
       academicEvents,
+      subjectKkms,
+      examGradeComponents,
+      examProgramConfigs,
+      examProgramSessions,
     },
     notes: [
       'Mapel dan kategori mapel tetap global, jadi tidak di-clone per tahun ajaran.',
       'Wizard ini additive: hanya membuat data target yang belum ada dan tidak memindahkan histori nilai/absensi/rapor.',
+      'Report dates belum diikutkan dalam wizard karena data ini belum punya flow admin yang matang di codebase saat ini.',
       'Jalankan promotion setelah target year dan komponen tahunan siap.',
     ],
   };
@@ -1164,6 +1975,25 @@ export async function applyAcademicYearRollover(params: {
         skippedExisting: 0,
         skippedOutsideTargetRange: 0,
       },
+      subjectKkms: {
+        created: 0,
+        skippedExisting: 0,
+        globalFallbackCount: 0,
+      },
+      examGradeComponents: {
+        created: 0,
+        skippedExisting: 0,
+      },
+      examProgramConfigs: {
+        created: 0,
+        skippedExisting: 0,
+        missingGradeComponentCount: 0,
+      },
+      examProgramSessions: {
+        created: 0,
+        skippedExisting: 0,
+        skippedNoTargetProgram: 0,
+      },
     };
 
     if (selectedComponents.classPreparation) {
@@ -1295,6 +2125,215 @@ export async function applyAcademicYearRollover(params: {
         workspaceAfterSchedule.components.academicEvents.summary.existingCount;
       applied.academicEvents.skippedOutsideTargetRange =
         workspaceAfterSchedule.components.academicEvents.summary.skipOutsideTargetRangeCount;
+    }
+
+    const workspaceAfterEvents = buildAcademicYearRolloverWorkspace(
+      await loadAcademicYearRolloverContext(tx, params.sourceAcademicYearId, params.targetAcademicYearId),
+    );
+
+    if (selectedComponents.subjectKkms) {
+      const kkmItemsToCreate = workspaceAfterEvents.components.subjectKkms.items.filter(
+        (item) => item.action === 'CREATE',
+      );
+
+      if (kkmItemsToCreate.length > 0) {
+        await tx.subjectKKM.createMany({
+          data: kkmItemsToCreate.map((item) => ({
+            subjectId: item.subject.id,
+            classLevel: item.classLevel,
+            kkm: item.sourceKkm,
+            academicYearId: params.targetAcademicYearId,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      applied.subjectKkms.created = kkmItemsToCreate.length;
+      applied.subjectKkms.skippedExisting =
+        workspaceAfterEvents.components.subjectKkms.summary.existingCount;
+      applied.subjectKkms.globalFallbackCount =
+        workspaceAfterEvents.components.subjectKkms.summary.globalFallbackCount;
+    }
+
+    const workspaceAfterKkms = buildAcademicYearRolloverWorkspace(
+      await loadAcademicYearRolloverContext(tx, params.sourceAcademicYearId, params.targetAcademicYearId),
+    );
+
+    if (selectedComponents.examGradeComponents) {
+      const componentItemsToCreate = workspaceAfterKkms.components.examGradeComponents.items.filter(
+        (item) => item.action === 'CREATE',
+      );
+      const sourceComponentById = new Map(
+        contextBefore.sourceExamGradeComponents.map((item) => [item.id, item]),
+      );
+
+      if (componentItemsToCreate.length > 0) {
+        await tx.examGradeComponent.createMany({
+          data: componentItemsToCreate.map((item) => {
+            const sourceComponent = sourceComponentById.get(item.sourceComponentId);
+            if (!sourceComponent) {
+              throw new ApiError(500, 'Komponen nilai source tidak ditemukan saat apply rollover.');
+            }
+            return {
+              academicYearId: params.targetAcademicYearId,
+              code: sourceComponent.code,
+              label: sourceComponent.label,
+              type: sourceComponent.type as any,
+              typeCode: sourceComponent.typeCode,
+              entryMode: sourceComponent.entryMode as any,
+              entryModeCode: sourceComponent.entryModeCode,
+              reportSlot: sourceComponent.reportSlot as any,
+              reportSlotCode: sourceComponent.reportSlotCode,
+              includeInFinalScore: sourceComponent.includeInFinalScore,
+              description: sourceComponent.description,
+              displayOrder: sourceComponent.displayOrder,
+              isActive: sourceComponent.isActive,
+            };
+          }),
+          skipDuplicates: true,
+        });
+      }
+
+      applied.examGradeComponents.created = componentItemsToCreate.length;
+      applied.examGradeComponents.skippedExisting =
+        workspaceAfterKkms.components.examGradeComponents.summary.existingCount;
+    }
+
+    const contextAfterComponents = await loadAcademicYearRolloverContext(
+      tx,
+      params.sourceAcademicYearId,
+      params.targetAcademicYearId,
+    );
+    const workspaceAfterComponents = buildAcademicYearRolloverWorkspace(contextAfterComponents);
+
+    if (selectedComponents.examProgramConfigs) {
+      const targetComponentCodes = new Set(
+        contextAfterComponents.targetExamGradeComponents.map((item) => item.code),
+      );
+      const programItemsToCreate = workspaceAfterComponents.components.examProgramConfigs.items.filter(
+        (item) => item.action === 'CREATE',
+      );
+      const sourceProgramById = new Map(
+        contextAfterComponents.sourceExamProgramConfigs.map((item) => [item.id, item]),
+      );
+
+      const missingGradeComponentPrograms = programItemsToCreate.filter(
+        (item) => !targetComponentCodes.has(item.gradeComponentCode),
+      );
+      if (missingGradeComponentPrograms.length > 0) {
+        throw new ApiError(
+          400,
+          `Program ujian belum bisa diclone karena komponen nilai target belum tersedia: ${missingGradeComponentPrograms
+            .map((item) => `${item.code}:${item.gradeComponentCode}`)
+            .join(', ')}`,
+        );
+      }
+
+      if (programItemsToCreate.length > 0) {
+        await tx.examProgramConfig.createMany({
+          data: programItemsToCreate.map((item) => {
+            const sourceProgram = sourceProgramById.get(item.sourceProgramId);
+            if (!sourceProgram) {
+              throw new ApiError(500, 'Program ujian source tidak ditemukan saat apply rollover.');
+            }
+            return {
+              academicYearId: params.targetAcademicYearId,
+              code: sourceProgram.code,
+              baseType: sourceProgram.baseType as any,
+              baseTypeCode: sourceProgram.baseTypeCode,
+              gradeComponentType: sourceProgram.gradeComponentType as any,
+              gradeComponentTypeCode: sourceProgram.gradeComponentTypeCode,
+              gradeComponentCode: sourceProgram.gradeComponentCode,
+              gradeComponentLabel: sourceProgram.gradeComponentLabel,
+              gradeEntryMode: sourceProgram.gradeEntryMode as any,
+              gradeEntryModeCode: sourceProgram.gradeEntryModeCode,
+              displayLabel: sourceProgram.displayLabel,
+              shortLabel: sourceProgram.shortLabel,
+              description: sourceProgram.description,
+              fixedSemester: sourceProgram.fixedSemester as any,
+              displayOrder: sourceProgram.displayOrder,
+              isActive: sourceProgram.isActive,
+              showOnTeacherMenu: sourceProgram.showOnTeacherMenu,
+              showOnStudentMenu: sourceProgram.showOnStudentMenu,
+              targetClassLevels: sourceProgram.targetClassLevels,
+              allowedSubjectIds: sourceProgram.allowedSubjectIds,
+              allowedAuthorIds: sourceProgram.allowedAuthorIds,
+              financeClearanceMode: sourceProgram.financeClearanceMode,
+              financeMinOutstandingAmount: sourceProgram.financeMinOutstandingAmount,
+              financeMinOverdueInvoices: sourceProgram.financeMinOverdueInvoices,
+              financeClearanceNotes: sourceProgram.financeClearanceNotes,
+            };
+          }),
+          skipDuplicates: true,
+        });
+      }
+
+      applied.examProgramConfigs.created = programItemsToCreate.length;
+      applied.examProgramConfigs.skippedExisting =
+        workspaceAfterComponents.components.examProgramConfigs.summary.existingCount;
+      applied.examProgramConfigs.missingGradeComponentCount =
+        workspaceAfterComponents.components.examProgramConfigs.summary.missingGradeComponentCount;
+    }
+
+    const contextAfterPrograms = await loadAcademicYearRolloverContext(
+      tx,
+      params.sourceAcademicYearId,
+      params.targetAcademicYearId,
+    );
+    const workspaceAfterPrograms = buildAcademicYearRolloverWorkspace(contextAfterPrograms);
+
+    if (selectedComponents.examProgramSessions) {
+      const targetProgramCodes = new Set(
+        contextAfterPrograms.targetExamProgramConfigs.map((item) => item.code),
+      );
+      const sessionItemsToCreate = workspaceAfterPrograms.components.examProgramSessions.items.filter(
+        (item) => item.action === 'CREATE',
+      );
+      const sourceSessionById = new Map(
+        contextAfterPrograms.sourceExamProgramSessions.map((item) => [item.id, item]),
+      );
+
+      const sessionsWithoutPrograms = sessionItemsToCreate.filter(
+        (item) => !targetProgramCodes.has(item.programCode),
+      );
+      if (sessionsWithoutPrograms.length > 0) {
+        throw new ApiError(
+          400,
+          `Sesi program ujian belum bisa diclone karena program target belum tersedia: ${sessionsWithoutPrograms
+            .map((item) => `${item.programCode}:${item.label}`)
+            .join(', ')}`,
+        );
+      }
+
+      if (sessionItemsToCreate.length > 0) {
+        await tx.examProgramSession.createMany({
+          data: sessionItemsToCreate.map((item) => {
+            const sourceSession = sourceSessionById.get(item.sourceSessionId);
+            const normalizedLabel = sourceSession?.normalizedLabel || normalizeSessionLabelKey(sourceSession?.label);
+            if (!sourceSession) {
+              throw new ApiError(500, 'Sesi program ujian source tidak ditemukan saat apply rollover.');
+            }
+            if (!normalizedLabel) {
+              throw new ApiError(500, 'Normalized label sesi program ujian source tidak valid.');
+            }
+            return {
+              academicYearId: params.targetAcademicYearId,
+              programCode: sourceSession.programCode,
+              label: sourceSession.label,
+              normalizedLabel,
+              displayOrder: sourceSession.displayOrder,
+              isActive: sourceSession.isActive,
+            };
+          }),
+          skipDuplicates: true,
+        });
+      }
+
+      applied.examProgramSessions.created = sessionItemsToCreate.length;
+      applied.examProgramSessions.skippedExisting =
+        workspaceAfterPrograms.components.examProgramSessions.summary.existingCount;
+      applied.examProgramSessions.skippedNoTargetProgram =
+        workspaceAfterPrograms.components.examProgramSessions.summary.skipNoTargetProgramCount;
     }
 
     const finalWorkspace = buildAcademicYearRolloverWorkspace(
