@@ -8,6 +8,7 @@ import { Role, AdditionalDuty, Gender, StudentStatus, VerificationStatus } from 
 import { validateCandidateProfileDocuments } from '../utils/candidateAdmissionDocuments';
 import { getNisnValidationMessage, normalizeNisnInput } from '../utils/nisn';
 import { resolveHistoricalStudentScope } from '../utils/studentAcademicHistory';
+import { ensureAcademicYearArchiveReadAccess } from '../utils/academicYearArchiveAccess';
 
 const dateSchema = z
   .string()
@@ -212,6 +213,7 @@ function normalizeDateOnly(date: Date) {
 
 export const getUsers = asyncHandler(async (req: Request, res: Response) => {
   const { role, verificationStatus, class_id } = req.query;
+  const user = (req as any).user;
   const where: any = {};
   let historicalStudentScope: Awaited<ReturnType<typeof resolveHistoricalStudentScope>> | null = null;
   
@@ -235,6 +237,14 @@ export const getUsers = asyncHandler(async (req: Request, res: Response) => {
       });
 
       if (selectedClass) {
+        await ensureAcademicYearArchiveReadAccess({
+          actorId: Number(user?.id || 0),
+          actorRole: user?.role || null,
+          academicYearId: selectedClass.academicYearId,
+          module: 'CLASS_ROSTER',
+          classId: selectedClass.id,
+        });
+
         historicalStudentScope = await resolveHistoricalStudentScope({
           academicYearId: selectedClass.academicYearId,
           classId: selectedClass.id,

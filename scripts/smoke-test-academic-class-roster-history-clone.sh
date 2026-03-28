@@ -130,6 +130,19 @@ function assertCondition(checks, condition, description, details = undefined) {
   });
 }
 
+async function expectAccessFailure(run) {
+  try {
+    await run();
+    return { blocked: false, message: null, statusCode: null };
+  } catch (error) {
+    return {
+      blocked: true,
+      message: String(error?.message || error),
+      statusCode: Number(error?.statusCode || error?.status || 0) || null,
+    };
+  }
+}
+
 async function pickSourceYear() {
   const requestedSourceYearId = Number(process.env.SOURCE_YEAR_ID || '');
   if (Number.isFinite(requestedSourceYearId) && requestedSourceYearId > 0) {
@@ -201,6 +214,7 @@ async function callHandler(handler, req) {
         studentClass: {
           academicYearId: sourceYear.id,
           level,
+          teacherId: { not: null },
         },
       },
       orderBy: [{ classId: 'asc' }, { id: 'asc' }],
@@ -214,6 +228,7 @@ async function callHandler(handler, req) {
             id: true,
             name: true,
             level: true,
+            teacherId: true,
           },
         },
       },
@@ -238,13 +253,13 @@ async function callHandler(handler, req) {
 
   const sampleStudents = sourceClassStudents.slice(0, 2);
   const sourceClass = sampleStudents[0].studentClass;
-  if (!sourceClass?.id) {
+  if (!sourceClass?.id || !sourceClass?.teacherId) {
     throw new Error('Kelas sumber smoke test roster kelas tidak valid.');
   }
 
   const adminActor = await prisma.user.findFirst({
     where: {
-      role: { in: ['ADMIN', 'PRINCIPAL', 'TEACHER'] },
+      role: { in: ['ADMIN', 'PRINCIPAL'] },
     },
     orderBy: [{ id: 'asc' }],
     select: { id: true, role: true, name: true },
@@ -253,10 +268,42 @@ async function callHandler(handler, req) {
     throw new Error('Aktor admin smoke test roster kelas tidak ditemukan.');
   }
 
+  const homeroomTeacher = await prisma.user.findUnique({
+    where: { id: sourceClass.teacherId },
+    select: { id: true, role: true, name: true },
+  });
+  const unrelatedTeacher = await prisma.user.findFirst({
+    where: {
+      role: 'TEACHER',
+      id: { not: sourceClass.teacherId },
+      NOT: {
+        additionalDuties: {
+          hasSome: ['WAKASEK_KURIKULUM', 'SEKRETARIS_KURIKULUM'],
+        },
+      },
+    },
+    orderBy: [{ id: 'asc' }],
+    select: { id: true, role: true, name: true },
+  });
+  const archiveStaffActor = await prisma.user.findFirst({
+    where: {
+      role: 'STAFF',
+      ptkType: {
+        in: ['KEPALA_TU', 'KEPALA_TATA_USAHA', 'STAFF_ADMINISTRASI'],
+      },
+    },
+    orderBy: [{ id: 'asc' }],
+    select: { id: true, role: true, name: true, ptkType: true },
+  });
+
+  if (!homeroomTeacher || !unrelatedTeacher) {
+    throw new Error('Aktor wali kelas/unrelated teacher untuk smoke test roster kelas tidak ditemukan.');
+  }
+
   const commitResult = await commitAcademicPromotion({
     sourceAcademicYearId: sourceYear.id,
     targetAcademicYearId: targetSetup.targetAcademicYear.id,
-    activateTargetYear: false,
+    activateTargetYear: true,
     actor: adminActor,
   });
 
@@ -301,6 +348,26 @@ async function callHandler(handler, req) {
       role: adminActor.role,
     },
   });
+  const homeroomClassDetailResponse = await callHandler(getClassById, {
+    params: {
+      id: String(sourceClass.id),
+    },
+    user: {
+      id: homeroomTeacher.id,
+      role: homeroomTeacher.role,
+    },
+  });
+  const unrelatedClassDetailAccess = await expectAccessFailure(() =>
+    callHandler(getClassById, {
+      params: {
+        id: String(sourceClass.id),
+      },
+      user: {
+        id: unrelatedTeacher.id,
+        role: unrelatedTeacher.role,
+      },
+    }),
+  );
 
   const usersByClassResponse = await callHandler(getUsers, {
     query: {
@@ -312,16 +379,30 @@ async function callHandler(handler, req) {
       role: adminActor.role,
     },
   });
+  const staffUsersByClassResponse = archiveStaffActor
+    ? await callHandler(getUsers, {
+        query: {
+          class_id: String(sourceClass.id),
+          role: 'STUDENT',
+        },
+        user: {
+          id: archiveStaffActor.id,
+          role: archiveStaffActor.role,
+        },
+      })
+    : null;
 
-  const deleteResponse = await callHandler(deleteClass, {
-    params: {
-      id: String(sourceClass.id),
-    },
-    user: {
-      id: adminActor.id,
-      role: adminActor.role,
-    },
-  });
+  const deleteResponse = await expectAccessFailure(() =>
+    callHandler(deleteClass, {
+      params: {
+        id: String(sourceClass.id),
+      },
+      user: {
+        id: adminActor.id,
+        role: adminActor.role,
+      },
+    }),
+  );
 
   const classRows = classesResponse?.data?.classes || [];
   const sourceClassRow = classRows.find((item) => Number(item?.id || 0) === Number(sourceClass.id)) || null;
@@ -390,8 +471,32 @@ async function callHandler(handler, req) {
   );
   assertCondition(
     checks,
-    Number(deleteResponse?.statusCode || 0) === 400 && deleteResponse?.success === false,
-    'Delete class source year tetap diblokir jika roster historis masih ada',
+    Array.isArray(homeroomClassDetailResponse?.data?.students) &&
+      homeroomClassDetailResponse.data.students.some((row) => Number(row?.id || 0) === Number(sampleStudents[0].id)),
+    'Wali kelas historis tetap boleh membaca roster kelas arsip source year.',
+    homeroomClassDetailResponse?.data?.students?.slice(0, 3) || null,
+  );
+  assertCondition(
+    checks,
+    unrelatedClassDetailAccess.blocked === true && unrelatedClassDetailAccess.statusCode === 403,
+    'Guru yang bukan pemilik historis ditolak saat membuka roster kelas arsip source year.',
+    unrelatedClassDetailAccess,
+  );
+  assertCondition(
+    checks,
+    archiveStaffActor
+      ? Array.isArray(staffUsersByClassResponse?.data) &&
+        staffUsersByClassResponse.data.some((row) => Number(row?.id || 0) === Number(sampleStudents[0].id))
+      : true,
+    archiveStaffActor
+      ? 'Staff administrasi/Kepala TU tetap boleh membaca roster siswa arsip source year.'
+      : 'Tidak ada aktor staff arsip untuk diverifikasi, smoke test tidak memblokir batch.',
+    archiveStaffActor ? staffUsersByClassResponse?.data?.slice(0, 3) || null : null,
+  );
+  assertCondition(
+    checks,
+    deleteResponse.blocked === true && Number(deleteResponse?.statusCode || 0) === 403,
+    'Delete class source year diblokir karena tahun ajaran sudah menjadi arsip read-only.',
     deleteResponse,
   );
 
@@ -412,6 +517,11 @@ async function callHandler(handler, req) {
           name: student.name,
           nis: student.nis,
         })),
+        actors: {
+          homeroomTeacher,
+          unrelatedTeacher,
+          archiveStaffActor,
+        },
         summary: {
           totalChecks: checks.length,
           passedChecks: checks.length - failedChecks.length,

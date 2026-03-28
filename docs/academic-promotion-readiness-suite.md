@@ -63,5 +63,6 @@ Suite ini menjalankan:
 - rollback promotion aman di clone DB
 - permission arsip report sudah mengikuti `role + duty + historical ownership`
 - histori domain utama tetap membaca snapshot tahun ajaran yang benar setelah promotion
+- arsip attendance, permissions/BP-BK, dan class roster sekarang tunduk pada ownership policy dan write lock yang benar
 
 `FAIL` berarti rollout belum boleh dilanjutkan ke staging/production sampai log step yang gagal diperiksa dan diperbaiki.

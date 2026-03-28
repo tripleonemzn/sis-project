@@ -16,7 +16,7 @@ Usage:
 Options:
   --source-year <id>   Tahun ajaran sumber yang akan dipromosikan.
   --target-year <id>   Tahun ajaran target tujuan kenaikan kelas.
-  --with-smoke-test    Jalankan smoke test clone DB promotion + rollback + histori roster kelas/user + histori grade/rapor + histori report + akses arsip report + histori absensi + histori izin/BP-BK/TU + histori PKL + histori UKK + histori proctor + histori exam sitting/session + histori exam restriction + histori finance + refund backfill setelah audit utama.
+  --with-smoke-test    Jalankan smoke test clone DB promotion + rollback + histori roster kelas/user + akses arsip roster + histori grade/rapor + histori report + akses arsip report + histori absensi + akses/lock arsip absensi + histori izin/BP-BK/TU + akses/lock arsip izin/BP-BK + histori PKL + histori UKK + histori proctor + histori exam sitting/session + histori exam restriction + histori finance + refund backfill setelah audit utama.
   --skip-gate          Lewati repo safety gate web.
   --allow-flag-off     Jangan block jika ACADEMIC_PROMOTION_V2_ENABLED masih OFF.
   -h, --help           Tampilkan bantuan.
@@ -111,7 +111,7 @@ if [ "$WITH_SMOKE_TEST" -eq 1 ]; then
   bash "$ROOT_DIR/scripts/smoke-test-academic-report-archive-access-clone.sh" --source-year-id "$SOURCE_YEAR_ID"
   echo
 
-  echo "-> Menjalankan smoke test histori roster kelas/user pasca-promotion"
+  echo "-> Menjalankan smoke test histori roster kelas/user + akses arsip roster pasca-promotion"
   bash "$ROOT_DIR/scripts/smoke-test-academic-class-roster-history-clone.sh" --source-year-id "$SOURCE_YEAR_ID"
   echo
 
@@ -119,11 +119,11 @@ if [ "$WITH_SMOKE_TEST" -eq 1 ]; then
   bash "$ROOT_DIR/scripts/smoke-test-academic-grade-history-clone.sh" --source-year-id "$SOURCE_YEAR_ID"
   echo
 
-  echo "-> Menjalankan smoke test histori absensi pasca-promotion"
+  echo "-> Menjalankan smoke test histori absensi + akses/lock arsip absensi pasca-promotion"
   bash "$ROOT_DIR/scripts/smoke-test-academic-attendance-history-clone.sh" --source-year-id "$SOURCE_YEAR_ID"
   echo
 
-  echo "-> Menjalankan smoke test histori izin/BP-BK/TU pasca-promotion"
+  echo "-> Menjalankan smoke test histori izin/BP-BK/TU + akses/lock arsip izin/BP-BK pasca-promotion"
   bash "$ROOT_DIR/scripts/smoke-test-academic-permission-history-clone.sh" --source-year-id "$SOURCE_YEAR_ID"
   echo
 

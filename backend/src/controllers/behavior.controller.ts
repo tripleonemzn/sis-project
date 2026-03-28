@@ -3,6 +3,10 @@ import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { validateHistoricalStudentClassMembership } from '../utils/studentAcademicHistory';
+import {
+  ensureAcademicYearArchiveReadAccess,
+  ensureAcademicYearArchiveWriteAccess,
+} from '../utils/academicYearArchiveAccess';
 
 // Schema for creating behavior record
 const createBehaviorSchema = z.object({
@@ -41,6 +45,16 @@ const principalBehaviorSummaryQuerySchema = z.object({
 
 export const getBehaviors = asyncHandler(async (req: Request, res: Response) => {
   const { classId, academicYearId, studentId, type, search, page, limit } = getBehaviorsSchema.parse(req.query);
+  const user = (req as any).user;
+
+  await ensureAcademicYearArchiveReadAccess({
+    actorId: Number(user?.id || 0),
+    actorRole: user?.role || null,
+    academicYearId,
+    module: 'BPBK',
+    classId,
+    studentId: studentId || null,
+  });
 
   const skip = (page - 1) * limit;
 
@@ -97,6 +111,7 @@ export const getBehaviors = asyncHandler(async (req: Request, res: Response) => 
 
 export const getPrincipalBehaviorSummary = asyncHandler(async (req: Request, res: Response) => {
   const { academicYearId } = principalBehaviorSummaryQuerySchema.parse(req.query);
+  const user = (req as any).user;
 
   let academicYear = null as any;
 
@@ -113,6 +128,13 @@ export const getPrincipalBehaviorSummary = asyncHandler(async (req: Request, res
   if (!academicYear) {
     throw new ApiError(404, 'Tahun ajaran aktif tidak ditemukan');
   }
+
+  await ensureAcademicYearArchiveReadAccess({
+    actorId: Number(user?.id || 0),
+    actorRole: user?.role || null,
+    academicYearId: academicYear.id,
+    module: 'BPBK',
+  });
 
   const grouped = await prisma.studentBehavior.groupBy({
     by: ['classId', 'type'],
@@ -270,6 +292,10 @@ export const getPrincipalBehaviorSummary = asyncHandler(async (req: Request, res
 
 export const createBehavior = asyncHandler(async (req: Request, res: Response) => {
   const data = createBehaviorSchema.parse(req.body);
+  await ensureAcademicYearArchiveWriteAccess({
+    academicYearId: data.academicYearId,
+    module: 'BPBK',
+  });
   const validation = await validateHistoricalStudentClassMembership({
     academicYearId: data.academicYearId,
     classId: data.classId,
@@ -303,6 +329,11 @@ export const updateBehavior = asyncHandler(async (req: Request, res: Response) =
     throw new ApiError(404, 'Data perilaku tidak ditemukan');
   }
 
+  await ensureAcademicYearArchiveWriteAccess({
+    academicYearId: existing.academicYearId,
+    module: 'BPBK',
+  });
+
   const behavior = await prisma.studentBehavior.update({
     where: { id: Number(id) },
     data,
@@ -321,6 +352,11 @@ export const deleteBehavior = asyncHandler(async (req: Request, res: Response) =
   if (!existing) {
     throw new ApiError(404, 'Data perilaku tidak ditemukan');
   }
+
+  await ensureAcademicYearArchiveWriteAccess({
+    academicYearId: existing.academicYearId,
+    module: 'BPBK',
+  });
 
   await prisma.studentBehavior.delete({
     where: { id: Number(id) },

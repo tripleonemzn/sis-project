@@ -3,6 +3,10 @@ import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { listHistoricalStudentsForClass } from '../utils/studentAcademicHistory';
+import {
+  ensureAcademicYearArchiveReadAccess,
+  ensureAcademicYearArchiveWriteAccess,
+} from '../utils/academicYearArchiveAccess';
 
 const saveSubjectAttendanceSchema = z.object({
   date: z.string().transform((str) => new Date(str)),
@@ -34,6 +38,11 @@ const saveDailyAttendanceSchema = z.object({
 export const saveDailyAttendance = asyncHandler(async (req: Request, res: Response) => {
   const { date, classId, academicYearId, records } = saveDailyAttendanceSchema.parse(req.body);
   const user = (req as any).user;
+
+  await ensureAcademicYearArchiveWriteAccess({
+    academicYearId,
+    module: 'ATTENDANCE',
+  });
 
   // Authorization Check
   if (user.role === 'STUDENT') {
@@ -90,6 +99,15 @@ const getDailyAttendanceSchema = z.object({
 export const getDailyAttendance = asyncHandler(async (req: Request, res: Response) => {
   const { date, classId, academicYearId } = getDailyAttendanceSchema.parse(req.query);
   const targetDate = new Date(date);
+  const user = (req as any).user;
+
+  await ensureAcademicYearArchiveReadAccess({
+    actorId: Number(user?.id || 0),
+    actorRole: user?.role || null,
+    academicYearId,
+    module: 'ATTENDANCE',
+    classId,
+  });
 
   // 1. Fetch students from the requested academic year/class snapshot.
   const students = await listHistoricalStudentsForClass(Number(classId), academicYearId);
@@ -137,10 +155,20 @@ const getSubjectAttendanceSchema = z.object({
 
 export const getSubjectAttendanceByDate = asyncHandler(async (req: Request, res: Response) => {
   const { date, classId, subjectId, academicYearId } = getSubjectAttendanceSchema.parse(req.query);
+  const user = (req as any).user;
 
   const targetDate = new Date(date);
   // Set to start of day in UTC or consistent timezone handling
   // For now, assuming date string is YYYY-MM-DD
+
+  await ensureAcademicYearArchiveReadAccess({
+    actorId: Number(user?.id || 0),
+    actorRole: user?.role || null,
+    academicYearId,
+    module: 'ATTENDANCE',
+    classId,
+    subjectId,
+  });
   
   const attendance = await prisma.attendance.findFirst({
     where: {
@@ -169,6 +197,11 @@ export const saveSubjectAttendance = asyncHandler(async (req: Request, res: Resp
   const { date, classId, subjectId, academicYearId, records } = saveSubjectAttendanceSchema.parse(
     req.body,
   );
+
+  await ensureAcademicYearArchiveWriteAccess({
+    academicYearId,
+    module: 'ATTENDANCE',
+  });
 
   // Transaction to ensure atomicity
   const result = await prisma.$transaction(async (tx) => {
@@ -222,6 +255,7 @@ export const saveSubjectAttendance = asyncHandler(async (req: Request, res: Resp
 
 export const getDailyAttendanceRecap = asyncHandler(async (req: Request, res: Response) => {
   const { classId, academicYearId, semester } = req.query;
+  const user = (req as any).user;
 
   if (!classId) {
     throw new ApiError(400, 'classId wajib diisi');
@@ -246,6 +280,14 @@ export const getDailyAttendanceRecap = asyncHandler(async (req: Request, res: Re
       throw new ApiError(404, 'Tidak ada tahun akademik aktif');
     }
   }
+
+  await ensureAcademicYearArchiveReadAccess({
+    actorId: Number(user?.id || 0),
+    actorRole: user?.role || null,
+    academicYearId: academicYear.id,
+    module: 'ATTENDANCE',
+    classId: Number(classId),
+  });
 
   const sem = semester ? String(semester).toUpperCase() : null;
 
@@ -381,6 +423,7 @@ export const getDailyAttendanceRecap = asyncHandler(async (req: Request, res: Re
 
 export const getLateSummaryByClass = asyncHandler(async (req: Request, res: Response) => {
   const { classId, academicYearId } = req.query;
+  const user = (req as any).user;
 
   if (!classId) {
     throw new ApiError(400, 'classId wajib diisi');
@@ -405,6 +448,14 @@ export const getLateSummaryByClass = asyncHandler(async (req: Request, res: Resp
       throw new ApiError(404, 'Tidak ada tahun akademik aktif');
     }
   }
+
+  await ensureAcademicYearArchiveReadAccess({
+    actorId: Number(user?.id || 0),
+    actorRole: user?.role || null,
+    academicYearId: academicYear.id,
+    module: 'ATTENDANCE',
+    classId: Number(classId),
+  });
 
   // 1. Fetch students from the requested academic year/class snapshot.
   const students = await listHistoricalStudentsForClass(Number(classId), academicYear.id);

@@ -4,6 +4,10 @@ import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { AttendanceStatus } from '@prisma/client';
 import { resolveHistoricalStudentScope } from '../utils/studentAcademicHistory';
+import {
+  ensureAcademicYearArchiveReadAccess,
+  ensureAcademicYearArchiveWriteAccess,
+} from '../utils/academicYearArchiveAccess';
 
 const requestPermissionSchema = z.object({
   type: z.enum(['SICK', 'PERMISSION', 'OTHER']),
@@ -44,6 +48,20 @@ export const getPermissions = asyncHandler(async (req: Request, res: Response) =
             search: searchText || null,
           })
         : null;
+  const effectiveAcademicYearId = Number(
+    studentScope?.academicYearId || academicYearIdNum || 0,
+  );
+
+  if (effectiveAcademicYearId > 0) {
+    await ensureAcademicYearArchiveReadAccess({
+      actorId: Number(user?.id || 0),
+      actorRole: user?.role || null,
+      academicYearId: effectiveAcademicYearId,
+      module: 'PERMISSIONS',
+      classId: classIdNum || null,
+      studentId: user.role === 'STUDENT' ? Number(user.id) : null,
+    });
+  }
 
   if (studentScope?.academicYearId) {
     where.academicYearId = studentScope.academicYearId;
@@ -206,6 +224,11 @@ export const updatePermissionStatus = asyncHandler(async (req: Request, res: Res
   if (!permission) {
     throw new ApiError(404, 'Data perizinan tidak ditemukan');
   }
+
+  await ensureAcademicYearArchiveWriteAccess({
+    academicYearId: permission.academicYearId,
+    module: 'PERMISSIONS',
+  });
 
   const updated = await prisma.studentPermission.update({
     where: { id: Number(id) },

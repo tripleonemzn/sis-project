@@ -121,16 +121,16 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
   - Script ini memverifikasi source year benar-benar masuk status arsip setelah target diaktifkan, wali kelas historis tetap boleh membuka arsip report source year, guru non-owner ditolak, dan pejabat kurikulum tetap boleh membaca arsip lintas kelas.
 - Jika ingin validasi roster kelas dan filter user source year tetap aman setelah promotion:
   - `bash ./scripts/smoke-test-academic-class-roster-history-clone.sh --source-year-id <SOURCE_ID>`
-  - Script ini memverifikasi list kelas, detail kelas, filter `/users?class_id=...`, dan guard delete class source year tetap membaca roster historis yang benar sesudah siswa naik kelas atau menjadi alumni.
+  - Script ini memverifikasi list kelas, detail kelas, filter `/users?class_id=...`, akses roster arsip untuk wali kelas historis/staff administrasi, penolakan untuk guru non-owner, dan lock delete class source year sesudah siswa naik kelas atau menjadi alumni.
 - Jika ingin validasi histori grade dan report card source year tetap aman setelah promotion:
   - `bash ./scripts/smoke-test-academic-grade-history-clone.sh --source-year-id <SOURCE_ID>`
   - Script ini memverifikasi simpan nilai tunggal, bulk save nilai, daftar `student grades`, generate/list/update `report grades`, dan `report card` source year tetap membaca kelas historis yang benar setelah siswa naik kelas atau menjadi alumni.
 - Jika ingin validasi histori absensi source year tetap aman setelah promotion:
   - `bash ./scripts/smoke-test-academic-attendance-history-clone.sh --source-year-id <SOURCE_ID>`
-  - Script ini memverifikasi `daily attendance`, `daily recap`, dan `late summary` tetap membaca siswa historis source year.
+  - Script ini memverifikasi `daily attendance`, `daily recap`, dan `late summary` tetap membaca siswa historis source year, wali kelas historis tetap bisa membaca arsip absensi, guru non-owner ditolak, dan write ke arsip absensi diblokir.
 - Jika ingin validasi histori izin dan BP/BK source year tetap aman setelah promotion:
   - `bash ./scripts/smoke-test-academic-permission-history-clone.sh --source-year-id <SOURCE_ID>`
-  - Script ini memverifikasi endpoint `permissions`, `BP/BK permissions`, `BP/BK summary recent permissions`, `BP/BK principal high risk`, dashboard administrasi TU, serta input `behavior` dan `counseling` source year tetap aman setelah promotion.
+  - Script ini memverifikasi endpoint `permissions`, `BP/BK permissions`, `BP/BK summary recent permissions`, `BP/BK principal high risk`, dashboard administrasi TU, akses arsip untuk wali kelas/staff administrasi/BP-BK, penolakan untuk guru non-owner, serta lock write `permission`, `behavior`, dan `counseling` pada source year yang sudah menjadi arsip.
 - Jika ingin validasi histori PKL source year tetap aman setelah promotion:
   - `bash ./scripts/smoke-test-academic-internship-history-clone.sh --source-year-id <SOURCE_ID>`
   - Script ini memverifikasi list/detail PKL, filter kelas dan search PKL source year, daftar pembimbing/penguji, print surat PKL, dan magic link PKL tetap membaca kelas historis source year.

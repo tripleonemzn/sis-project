@@ -7,6 +7,10 @@ import {
   resolveHistoricalStudentScope,
   validateHistoricalStudentClassMembership,
 } from '../utils/studentAcademicHistory';
+import {
+  ensureAcademicYearArchiveReadAccess,
+  ensureAcademicYearArchiveWriteAccess,
+} from '../utils/academicYearArchiveAccess';
 
 const optionalDateSchema = z.preprocess((value) => {
   if (value === null || value === undefined || value === '') return undefined;
@@ -141,7 +145,17 @@ async function ensureBehaviorValid(params: {
 
 export const getBpBkSummary = asyncHandler(async (req: Request, res: Response) => {
   const { academicYearId, classId } = baseQuerySchema.parse(req.query);
+  const user = (req as any).user;
   const activeYear = await resolveAcademicYearId(academicYearId);
+
+  await ensureAcademicYearArchiveReadAccess({
+    actorId: Number(user?.id || 0),
+    actorRole: user?.role || null,
+    academicYearId: activeYear.id,
+    module: 'BPBK',
+    classId: classId || null,
+  });
+
   const permissionStudentScope = await resolveHistoricalStudentScope({
     academicYearId: activeYear.id,
     classId: classId || null,
@@ -335,7 +349,15 @@ export const getBpBkSummary = asyncHandler(async (req: Request, res: Response) =
 
 export const getBpBkPrincipalSummary = asyncHandler(async (req: Request, res: Response) => {
   const { academicYearId } = principalSummaryQuerySchema.parse(req.query);
+  const user = (req as any).user;
   const activeYear = await resolveAcademicYearId(academicYearId);
+
+  await ensureAcademicYearArchiveReadAccess({
+    actorId: Number(user?.id || 0),
+    actorRole: user?.role || null,
+    academicYearId: activeYear.id,
+    module: 'BPBK',
+  });
 
   const behaviorWhere: any = { academicYearId: activeYear.id };
   const counselingWhere: any = { academicYearId: activeYear.id };
@@ -497,7 +519,18 @@ export const getBpBkPrincipalSummary = asyncHandler(async (req: Request, res: Re
 
 export const getBpBkBehaviors = asyncHandler(async (req: Request, res: Response) => {
   const { academicYearId, classId, studentId, type, search, page, limit } = behaviorListQuerySchema.parse(req.query);
+  const user = (req as any).user;
   const activeYear = await resolveAcademicYearId(academicYearId);
+
+  await ensureAcademicYearArchiveReadAccess({
+    actorId: Number(user?.id || 0),
+    actorRole: user?.role || null,
+    academicYearId: activeYear.id,
+    module: 'BPBK',
+    classId: classId || null,
+    studentId: studentId || null,
+  });
+
   const skip = (page - 1) * limit;
 
   const where: any = {
@@ -567,7 +600,18 @@ export const getBpBkBehaviors = asyncHandler(async (req: Request, res: Response)
 
 export const getBpBkPermissions = asyncHandler(async (req: Request, res: Response) => {
   const { academicYearId, classId, studentId, type, status, search, page, limit } = permissionListQuerySchema.parse(req.query);
+  const user = (req as any).user;
   const activeYear = await resolveAcademicYearId(academicYearId);
+
+  await ensureAcademicYearArchiveReadAccess({
+    actorId: Number(user?.id || 0),
+    actorRole: user?.role || null,
+    academicYearId: activeYear.id,
+    module: 'BPBK',
+    classId: classId || null,
+    studentId: studentId || null,
+  });
+
   const skip = (page - 1) * limit;
   const searchText = String(search || '').trim();
   const permissionStudentScope = await resolveHistoricalStudentScope({
@@ -675,7 +719,18 @@ export const getBpBkPermissions = asyncHandler(async (req: Request, res: Respons
 
 export const getBpBkCounselings = asyncHandler(async (req: Request, res: Response) => {
   const { academicYearId, classId, studentId, status, summonParent, search, page, limit } = counselingListQuerySchema.parse(req.query);
+  const user = (req as any).user;
   const activeYear = await resolveAcademicYearId(academicYearId);
+
+  await ensureAcademicYearArchiveReadAccess({
+    actorId: Number(user?.id || 0),
+    actorRole: user?.role || null,
+    academicYearId: activeYear.id,
+    module: 'BPBK',
+    classId: classId || null,
+    studentId: studentId || null,
+  });
+
   const skip = (page - 1) * limit;
 
   const where: any = {
@@ -750,6 +805,10 @@ export const createBpBkCounseling = asyncHandler(async (req: Request, res: Respo
   const payload = counselingCreateSchema.parse(req.body);
 
   const activeYear = await resolveAcademicYearId(payload.academicYearId);
+  await ensureAcademicYearArchiveWriteAccess({
+    academicYearId: activeYear.id,
+    module: 'BPBK',
+  });
   await ensureClassAndStudentValid({
     classId: payload.classId,
     studentId: payload.studentId,
@@ -803,6 +862,11 @@ export const updateBpBkCounseling = asyncHandler(async (req: Request, res: Respo
   if (!existing) {
     throw new ApiError(404, 'Data konseling tidak ditemukan');
   }
+
+  await ensureAcademicYearArchiveWriteAccess({
+    academicYearId: existing.academicYearId,
+    module: 'BPBK',
+  });
 
   const nextClassId = payload.classId ?? existing.classId;
   const nextStudentId = payload.studentId ?? existing.studentId;

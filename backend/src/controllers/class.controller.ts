@@ -3,6 +3,10 @@ import prisma from '../utils/prisma';
 import { ApiResponse, asyncHandler } from '../utils/api';
 import { z } from 'zod';
 import { listHistoricalStudentsForClass } from '../utils/studentAcademicHistory';
+import {
+  ensureAcademicYearArchiveReadAccess,
+  ensureAcademicYearArchiveWriteAccess,
+} from '../utils/academicYearArchiveAccess';
 
 const classSchema = z.object({
   name: z.string().min(1, 'Nama kelas wajib diisi'),
@@ -34,6 +38,19 @@ async function runWithConcurrencyLimit<T, R>(
 export const updateClassPresident = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const { presidentId } = updatePresidentSchema.parse(req.body);
+  const existingClass = await prisma.class.findUnique({
+    where: { id: Number(id) },
+    select: { id: true, academicYearId: true },
+  });
+
+  if (!existingClass) {
+    throw new Error('Kelas tidak ditemukan');
+  }
+
+  await ensureAcademicYearArchiveWriteAccess({
+    academicYearId: existingClass.academicYearId,
+    module: 'CLASS_ROSTER',
+  });
 
   const updatedClass = await prisma.class.update({
     where: { id: Number(id) },
@@ -45,6 +62,7 @@ export const updateClassPresident = asyncHandler(async (req: Request, res: Respo
 
 export const getClasses = asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 10, search, level, majorId, academicYearId, teacherId } = req.query;
+  const user = (req as any).user;
   const pageNum = Number(page);
   const limitNum = Number(limit);
   const skip = (pageNum - 1) * limitNum;
@@ -69,6 +87,17 @@ export const getClasses = asyncHandler(async (req: Request, res: Response) => {
 
   if (teacherId) {
     where.teacherId = Number(teacherId);
+  }
+
+  const academicYearIdNum = Number(academicYearId || 0);
+  if (Number.isFinite(academicYearIdNum) && academicYearIdNum > 0) {
+    await ensureAcademicYearArchiveReadAccess({
+      actorId: Number(user?.id || 0),
+      actorRole: user?.role || null,
+      academicYearId: academicYearIdNum,
+      module: 'CLASS_ROSTER',
+      teacherId: teacherId ? Number(teacherId) : null,
+    });
   }
 
   const [total, classes] = await Promise.all([
@@ -141,6 +170,7 @@ export const getClasses = asyncHandler(async (req: Request, res: Response) => {
 
 export const getClassById = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const user = (req as any).user;
 
   const classData = await prisma.class.findUnique({
     where: { id: Number(id) },
@@ -166,6 +196,14 @@ export const getClassById = asyncHandler(async (req: Request, res: Response) => 
   if (!classData) {
     throw new Error('Kelas tidak ditemukan');
   }
+
+  await ensureAcademicYearArchiveReadAccess({
+    actorId: Number(user?.id || 0),
+    actorRole: user?.role || null,
+    academicYearId: classData.academicYearId,
+    module: 'CLASS_ROSTER',
+    classId: classData.id,
+  });
 
   const historicalStudents = await listHistoricalStudentsForClass(
     classData.id,
@@ -193,6 +231,11 @@ export const getClassById = asyncHandler(async (req: Request, res: Response) => 
 
 export const createClass = asyncHandler(async (req: Request, res: Response) => {
   const validatedData = classSchema.parse(req.body);
+
+  await ensureAcademicYearArchiveWriteAccess({
+    academicYearId: validatedData.academicYearId,
+    module: 'CLASS_ROSTER',
+  });
 
   // Check for duplicate name in same academic year
   const existingClass = await prisma.class.findFirst({
@@ -229,6 +272,18 @@ export const updateClass = asyncHandler(async (req: Request, res: Response) => {
 
   if (!existingClass) {
     throw new Error('Kelas tidak ditemukan');
+  }
+
+  await ensureAcademicYearArchiveWriteAccess({
+    academicYearId: existingClass.academicYearId,
+    module: 'CLASS_ROSTER',
+  });
+
+  if (existingClass.academicYearId !== validatedData.academicYearId) {
+    await ensureAcademicYearArchiveWriteAccess({
+      academicYearId: validatedData.academicYearId,
+      module: 'CLASS_ROSTER',
+    });
   }
 
   // Check for duplicate name in same academic year (excluding current class)
@@ -273,6 +328,11 @@ export const deleteClass = asyncHandler(async (req: Request, res: Response) => {
   if (!existingClass) {
     throw new Error('Kelas tidak ditemukan');
   }
+
+  await ensureAcademicYearArchiveWriteAccess({
+    academicYearId: existingClass.academicYearId,
+    module: 'CLASS_ROSTER',
+  });
 
   const historicalStudents = await listHistoricalStudentsForClass(
     existingClass.id,

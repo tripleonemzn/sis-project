@@ -109,7 +109,7 @@ const {
   applyAcademicYearRollover,
 } = require('./src/services/academicYearRollover.service');
 const { commitAcademicPromotion } = require('./src/services/academicPromotion.service');
-const { getPermissions } = require('./src/controllers/permission.controller');
+const { getPermissions, updatePermissionStatus } = require('./src/controllers/permission.controller');
 const { createBehavior } = require('./src/controllers/behavior.controller');
 const {
   createBpBkCounseling,
@@ -136,6 +136,19 @@ function assertCondition(checks, condition, description, details = undefined) {
     pass: Boolean(condition),
     details: details === undefined ? null : details,
   });
+}
+
+async function expectAccessFailure(run) {
+  try {
+    await run();
+    return { blocked: false, message: null, statusCode: null };
+  } catch (error) {
+    return {
+      blocked: true,
+      message: String(error?.message || error),
+      statusCode: Number(error?.statusCode || error?.status || 0) || null,
+    };
+  }
 }
 
 async function pickSourceYear() {
@@ -204,6 +217,7 @@ async function callHandler(handler, req) {
       studentClass: {
         academicYearId: sourceYear.id,
         level: { in: ['X', 'XI'] },
+        teacherId: { not: null },
       },
     },
     orderBy: [{ id: 'asc' }],
@@ -216,13 +230,14 @@ async function callHandler(handler, req) {
         select: {
           id: true,
           name: true,
+          teacherId: true,
         },
       },
     },
   });
 
-  if (!sampleStudent?.studentClass) {
-    throw new Error('Tidak ada siswa X/XI aktif yang siap diuji.');
+  if (!sampleStudent?.studentClass?.teacherId) {
+    throw new Error('Tidak ada siswa X/XI aktif dengan wali kelas yang siap diuji.');
   }
 
   const adminActor =
@@ -239,6 +254,48 @@ async function callHandler(handler, req) {
 
   if (!adminActor) {
     throw new Error('Aktor admin/principal untuk smoke test tidak ditemukan.');
+  }
+
+  const homeroomTeacher = await prisma.user.findUnique({
+    where: { id: sampleStudent.studentClass.teacherId },
+    select: { id: true, role: true, name: true, additionalDuties: true },
+  });
+  const unrelatedTeacher = await prisma.user.findFirst({
+    where: {
+      role: 'TEACHER',
+      id: { not: sampleStudent.studentClass.teacherId },
+      NOT: {
+        additionalDuties: {
+          hasSome: ['BP_BK', 'WAKASEK_KESISWAAN', 'SEKRETARIS_KESISWAAN'],
+        },
+      },
+    },
+    orderBy: [{ id: 'asc' }],
+    select: { id: true, role: true, name: true, additionalDuties: true },
+  });
+  const bpbkTeacher = await prisma.user.findFirst({
+    where: {
+      role: 'TEACHER',
+      additionalDuties: {
+        has: 'BP_BK',
+      },
+    },
+    orderBy: [{ id: 'asc' }],
+    select: { id: true, role: true, name: true, additionalDuties: true },
+  });
+  const archiveStaffActor = await prisma.user.findFirst({
+    where: {
+      role: 'STAFF',
+      ptkType: {
+        in: ['KEPALA_TU', 'KEPALA_TATA_USAHA', 'STAFF_ADMINISTRASI'],
+      },
+    },
+    orderBy: [{ id: 'asc' }],
+    select: { id: true, role: true, name: true, ptkType: true },
+  });
+
+  if (!homeroomTeacher || !unrelatedTeacher) {
+    throw new Error('Aktor wali kelas/unrelated teacher untuk smoke test izin tidak ditemukan.');
   }
 
   const permissionRecord = await prisma.studentPermission.create({
@@ -289,6 +346,33 @@ async function callHandler(handler, req) {
       },
     ],
   });
+  const counselingBehavior = await prisma.studentBehavior.create({
+    data: {
+      studentId: sampleStudent.id,
+      classId: sampleStudent.studentClass.id,
+      academicYearId: sourceYear.id,
+      date: new Date('2026-08-15T00:00:00.000Z'),
+      type: 'NEGATIVE',
+      category: 'Smoke Test',
+      description: 'Kasus konseling arsip',
+      point: 5,
+    },
+  });
+  const existingCounseling = await prisma.bpBkCounseling.create({
+    data: {
+      classId: sampleStudent.studentClass.id,
+      studentId: sampleStudent.id,
+      academicYearId: sourceYear.id,
+      counselorId: adminActor.id,
+      behaviorId: counselingBehavior.id,
+      sessionDate: new Date('2026-08-16T00:00:00.000Z'),
+      issueSummary: 'Konseling sebelum arsip',
+      counselingNote: 'Catatan awal',
+      followUpPlan: 'Monitoring',
+      summonParent: false,
+      status: 'OPEN',
+    },
+  });
 
   const baseReq = { user: { id: adminActor.id, role: adminActor.role } };
   const beforePermissions = await callHandler(getPermissions, {
@@ -332,7 +416,7 @@ async function callHandler(handler, req) {
   const commitResult = await commitAcademicPromotion({
     sourceAcademicYearId: sourceYear.id,
     targetAcademicYearId: targetSetup.targetAcademicYear.id,
-    activateTargetYear: false,
+    activateTargetYear: true,
     actor: null,
   });
 
@@ -388,44 +472,110 @@ async function callHandler(handler, req) {
       academicYearId: String(sourceYear.id),
     },
   });
-  const createdBehavior = await callHandler(createBehavior, {
-    ...baseReq,
-    body: {
-      studentId: sampleStudent.id,
-      classId: sampleStudent.studentClass.id,
-      academicYearId: sourceYear.id,
-      date: '2026-08-15T00:00:00.000Z',
-      type: 'NEGATIVE',
-      category: 'Smoke Test',
-      description: 'Kasus pasca promotion',
-      point: 5,
+  const archivedHomeroomPermissions = await callHandler(getPermissions, {
+    user: { id: homeroomTeacher.id, role: homeroomTeacher.role },
+    query: {
+      classId: String(sampleStudent.studentClass.id),
+      academicYearId: String(sourceYear.id),
+      page: '1',
+      limit: '20',
     },
   });
-  const createdCounseling = await callHandler(createBpBkCounseling, {
-    ...baseReq,
-    body: {
-      academicYearId: sourceYear.id,
-      classId: sampleStudent.studentClass.id,
-      studentId: sampleStudent.id,
-      behaviorId: createdBehavior.data.id,
-      sessionDate: '2026-08-16T00:00:00.000Z',
-      issueSummary: 'Konseling pasca promotion',
-      counselingNote: 'Catatan awal',
-      followUpPlan: 'Monitoring',
-      summonParent: false,
-      status: 'OPEN',
+  const archivedUnrelatedPermissionAccess = await expectAccessFailure(() =>
+    callHandler(getPermissions, {
+      user: { id: unrelatedTeacher.id, role: unrelatedTeacher.role },
+      query: {
+        classId: String(sampleStudent.studentClass.id),
+        academicYearId: String(sourceYear.id),
+        page: '1',
+        limit: '20',
+      },
+    }),
+  );
+  const archivedBpbkSummaryByDuty = await callHandler(getBpBkSummary, {
+    user: {
+      id: (bpbkTeacher || adminActor).id,
+      role: (bpbkTeacher || adminActor).role,
+    },
+    query: {
+      classId: String(sampleStudent.studentClass.id),
+      academicYearId: String(sourceYear.id),
     },
   });
-  const updatedCounseling = await callHandler(updateBpBkCounseling, {
-    ...baseReq,
-    params: {
-      id: String(createdCounseling.data.id),
-    },
-    body: {
-      status: 'IN_PROGRESS',
-      counselingNote: 'Catatan pembaruan pasca promotion',
-    },
-  });
+  const archivedUnrelatedBpBkAccess = await expectAccessFailure(() =>
+    callHandler(getBpBkSummary, {
+      user: { id: unrelatedTeacher.id, role: unrelatedTeacher.role },
+      query: {
+        classId: String(sampleStudent.studentClass.id),
+        academicYearId: String(sourceYear.id),
+      },
+    }),
+  );
+  const archivedStaffPermissions = archiveStaffActor
+    ? await callHandler(getPermissions, {
+        user: { id: archiveStaffActor.id, role: archiveStaffActor.role },
+        query: {
+          classId: String(sampleStudent.studentClass.id),
+          academicYearId: String(sourceYear.id),
+          page: '1',
+          limit: '20',
+        },
+      })
+    : null;
+  const blockedPermissionApproval = await expectAccessFailure(() =>
+    callHandler(updatePermissionStatus, {
+      ...baseReq,
+      params: { id: String(permissionRecord.id) },
+      body: {
+        status: 'APPROVED',
+        approvalNote: 'Approval arsip yang seharusnya diblokir',
+      },
+    }),
+  );
+  const blockedBehaviorCreate = await expectAccessFailure(() =>
+    callHandler(createBehavior, {
+      ...baseReq,
+      body: {
+        studentId: sampleStudent.id,
+        classId: sampleStudent.studentClass.id,
+        academicYearId: sourceYear.id,
+        date: '2026-08-17T00:00:00.000Z',
+        type: 'NEGATIVE',
+        category: 'Smoke Test',
+        description: 'Kasus pasca arsip',
+        point: 5,
+      },
+    }),
+  );
+  const blockedCounselingCreate = await expectAccessFailure(() =>
+    callHandler(createBpBkCounseling, {
+      ...baseReq,
+      body: {
+        academicYearId: sourceYear.id,
+        classId: sampleStudent.studentClass.id,
+        studentId: sampleStudent.id,
+        behaviorId: counselingBehavior.id,
+        sessionDate: '2026-08-18T00:00:00.000Z',
+        issueSummary: 'Konseling pasca arsip',
+        counselingNote: 'Catatan',
+        followUpPlan: 'Monitoring',
+        summonParent: false,
+        status: 'OPEN',
+      },
+    }),
+  );
+  const blockedCounselingUpdate = await expectAccessFailure(() =>
+    callHandler(updateBpBkCounseling, {
+      ...baseReq,
+      params: {
+        id: String(existingCounseling.id),
+      },
+      body: {
+        status: 'IN_PROGRESS',
+        counselingNote: 'Pembaruan arsip yang seharusnya diblokir',
+      },
+    }),
+  );
 
   const beforePermissionsRows = beforePermissions.data?.permissions || [];
   const afterPermissionsRows = afterPermissions.data?.permissions || [];
@@ -456,6 +606,8 @@ async function callHandler(handler, req) {
     beforeAdministrationClassRecap.find((item) => item.classId === sampleStudent.studentClass.id) || null;
   const afterAdministrationClassRecapRow =
     afterAdministrationClassRecap.find((item) => item.classId === sampleStudent.studentClass.id) || null;
+  const archivedHomeroomPermissionRow =
+    (archivedHomeroomPermissions.data?.permissions || []).find((item) => item.id === permissionRecord.id) || null;
 
   const checks = [];
   assertCondition(
@@ -554,24 +706,62 @@ async function callHandler(handler, req) {
   );
   assertCondition(
     checks,
-    createdBehavior?.data?.classId === sampleStudent.studentClass.id &&
-      createdBehavior?.data?.studentId === sampleStudent.id &&
-      createdBehavior?.data?.academicYearId === sourceYear.id,
-    'Input kasus perilaku source year tetap diterima setelah promotion.',
-    createdBehavior?.data || null,
+    archivedHomeroomPermissionRow?.student?.studentClass?.name === sampleStudent.studentClass.name,
+    'Wali kelas historis tetap boleh membaca arsip izin source year.',
+    archivedHomeroomPermissionRow,
   );
   assertCondition(
     checks,
-    createdCounseling?.data?.class?.name === sampleStudent.studentClass.name &&
-      createdCounseling?.data?.student?.id === sampleStudent.id,
-    'Input konseling BP/BK source year tetap diterima setelah promotion.',
-    createdCounseling?.data || null,
+    archivedUnrelatedPermissionAccess.blocked === true &&
+      archivedUnrelatedPermissionAccess.statusCode === 403,
+    'Guru yang bukan pemilik historis ditolak saat membuka arsip izin source year.',
+    archivedUnrelatedPermissionAccess,
   );
   assertCondition(
     checks,
-    updatedCounseling?.data?.status === 'IN_PROGRESS',
-    'Update konseling BP/BK source year tetap diterima setelah promotion.',
-    updatedCounseling?.data || null,
+    Number(archivedBpbkSummaryByDuty.data?.summary?.totalCases || 0) >= 1,
+    'Guru BP/BK/pejabat berwenang tetap boleh membaca ringkasan arsip BP/BK source year.',
+    archivedBpbkSummaryByDuty.data?.summary || null,
+  );
+  assertCondition(
+    checks,
+    archivedUnrelatedBpBkAccess.blocked === true && archivedUnrelatedBpBkAccess.statusCode === 403,
+    'Guru yang bukan pemilik historis atau duty BP/BK ditolak saat membuka arsip BP/BK source year.',
+    archivedUnrelatedBpBkAccess,
+  );
+  assertCondition(
+    checks,
+    archiveStaffActor
+      ? (archivedStaffPermissions?.data?.permissions || []).some((item) => item.id === permissionRecord.id)
+      : true,
+    archiveStaffActor
+      ? 'Staff administrasi/Kepala TU tetap boleh membaca arsip izin source year.'
+      : 'Tidak ada aktor staff arsip untuk diverifikasi, smoke test tidak memblokir batch.',
+    archiveStaffActor ? archivedStaffPermissions?.data?.permissions?.slice(0, 3) || null : null,
+  );
+  assertCondition(
+    checks,
+    blockedPermissionApproval.blocked === true && blockedPermissionApproval.statusCode === 403,
+    'Approval izin pada tahun ajaran arsip diblokir.',
+    blockedPermissionApproval,
+  );
+  assertCondition(
+    checks,
+    blockedBehaviorCreate.blocked === true && blockedBehaviorCreate.statusCode === 403,
+    'Input kasus perilaku pada tahun ajaran arsip diblokir.',
+    blockedBehaviorCreate,
+  );
+  assertCondition(
+    checks,
+    blockedCounselingCreate.blocked === true && blockedCounselingCreate.statusCode === 403,
+    'Input konseling BP/BK pada tahun ajaran arsip diblokir.',
+    blockedCounselingCreate,
+  );
+  assertCondition(
+    checks,
+    blockedCounselingUpdate.blocked === true && blockedCounselingUpdate.statusCode === 403,
+    'Update konseling BP/BK pada tahun ajaran arsip diblokir.',
+    blockedCounselingUpdate,
   );
 
   console.log(
@@ -584,6 +774,12 @@ async function callHandler(handler, req) {
           name: sampleStudent.name,
           sourceClassId: sampleStudent.studentClass.id,
           sourceClassName: sampleStudent.studentClass.name,
+        },
+        actors: {
+          homeroomTeacher,
+          unrelatedTeacher,
+          bpbkTeacher,
+          archiveStaffActor,
         },
         promotedStudent,
         summary: commitResult.summary,

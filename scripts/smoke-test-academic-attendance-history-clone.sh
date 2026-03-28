@@ -113,6 +113,7 @@ const {
   getDailyAttendance,
   getDailyAttendanceRecap,
   getLateSummaryByClass,
+  saveDailyAttendance,
 } = require('./src/controllers/attendance.controller');
 
 function deriveTargetName(sourceName) {
@@ -131,6 +132,19 @@ function assertCondition(checks, condition, description, details = undefined) {
     pass: Boolean(condition),
     details: details === undefined ? null : details,
   });
+}
+
+async function expectAccessFailure(run) {
+  try {
+    await run();
+    return { blocked: false, message: null, statusCode: null };
+  } catch (error) {
+    return {
+      blocked: true,
+      message: String(error?.message || error),
+      statusCode: Number(error?.statusCode || error?.status || 0) || null,
+    };
+  }
 }
 
 async function pickSourceYear() {
@@ -199,6 +213,7 @@ async function callHandler(handler, req) {
       studentClass: {
         academicYearId: sourceYear.id,
         level: { in: ['X', 'XI'] },
+        teacherId: { not: null },
       },
     },
     orderBy: [{ id: 'asc' }],
@@ -209,13 +224,36 @@ async function callHandler(handler, req) {
         select: {
           id: true,
           name: true,
+          teacherId: true,
         },
       },
     },
   });
 
-  if (!sampleStudent?.studentClass) {
-    throw new Error('Tidak ada siswa X/XI aktif yang siap diuji.');
+  if (!sampleStudent?.studentClass?.teacherId) {
+    throw new Error('Tidak ada siswa X/XI aktif dengan wali kelas yang siap diuji.');
+  }
+
+  const homeroomTeacher = await prisma.user.findUnique({
+    where: { id: sampleStudent.studentClass.teacherId },
+    select: { id: true, role: true, name: true },
+  });
+  const unrelatedTeacher = await prisma.user.findFirst({
+    where: {
+      role: 'TEACHER',
+      id: { not: sampleStudent.studentClass.teacherId },
+      NOT: {
+        additionalDuties: {
+          hasSome: ['WAKASEK_KURIKULUM', 'SEKRETARIS_KURIKULUM', 'WAKASEK_KESISWAAN', 'SEKRETARIS_KESISWAAN'],
+        },
+      },
+    },
+    orderBy: [{ id: 'asc' }],
+    select: { id: true, role: true, name: true },
+  });
+
+  if (!homeroomTeacher || !unrelatedTeacher) {
+    throw new Error('Aktor wali kelas/unrelated teacher untuk smoke test absensi tidak ditemukan.');
   }
 
   const presentDate = new Date(sourceYear.semester1Start);
@@ -270,7 +308,7 @@ async function callHandler(handler, req) {
   const commitResult = await commitAcademicPromotion({
     sourceAcademicYearId: sourceYear.id,
     targetAcademicYearId: targetSetup.targetAcademicYear.id,
-    activateTargetYear: false,
+    activateTargetYear: true,
     actor: null,
   });
 
@@ -312,6 +350,50 @@ async function callHandler(handler, req) {
     },
     user: { id: 1, role: 'ADMIN' },
   });
+  const archivedHomeroomRecap = await callHandler(getDailyAttendanceRecap, {
+    query: {
+      classId: String(sampleStudent.studentClass.id),
+      academicYearId: String(sourceYear.id),
+      semester: 'ODD',
+    },
+    user: {
+      id: homeroomTeacher.id,
+      role: homeroomTeacher.role,
+    },
+  });
+  const archivedUnrelatedRecapAccess = await expectAccessFailure(() =>
+    callHandler(getDailyAttendanceRecap, {
+      query: {
+        classId: String(sampleStudent.studentClass.id),
+        academicYearId: String(sourceYear.id),
+        semester: 'ODD',
+      },
+      user: {
+        id: unrelatedTeacher.id,
+        role: unrelatedTeacher.role,
+      },
+    }),
+  );
+  const archivedDailyWriteAccess = await expectAccessFailure(() =>
+    callHandler(saveDailyAttendance, {
+      body: {
+        date: lateDate.toISOString(),
+        classId: sampleStudent.studentClass.id,
+        academicYearId: sourceYear.id,
+        records: [
+          {
+            studentId: sampleStudent.id,
+            status: 'PRESENT',
+            note: 'Update arsip yang seharusnya diblokir',
+          },
+        ],
+      },
+      user: {
+        id: 1,
+        role: 'ADMIN',
+      },
+    }),
+  );
 
   const beforeDailyRows = beforeDaily.data || [];
   const afterDailyRows = afterDaily.data || [];
@@ -407,6 +489,25 @@ async function callHandler(handler, req) {
       rowCount: afterLateRows.length,
     },
   );
+  assertCondition(
+    checks,
+    Array.isArray(archivedHomeroomRecap?.data?.recap) &&
+      archivedHomeroomRecap.data.recap.some((item) => item.student.id === sampleStudent.id),
+    'Wali kelas historis tetap boleh membaca rekap absensi arsip source year.',
+    archivedHomeroomRecap?.data?.recap?.slice(0, 3) || null,
+  );
+  assertCondition(
+    checks,
+    archivedUnrelatedRecapAccess.blocked === true && archivedUnrelatedRecapAccess.statusCode === 403,
+    'Guru yang bukan pemilik historis ditolak saat membuka arsip absensi source year.',
+    archivedUnrelatedRecapAccess,
+  );
+  assertCondition(
+    checks,
+    archivedDailyWriteAccess.blocked === true && archivedDailyWriteAccess.statusCode === 403,
+    'Perubahan absensi pada tahun ajaran arsip diblokir.',
+    archivedDailyWriteAccess,
+  );
 
   console.log(
     JSON.stringify(
@@ -418,6 +519,10 @@ async function callHandler(handler, req) {
           name: sampleStudent.name,
           sourceClassId: sampleStudent.studentClass.id,
           sourceClassName: sampleStudent.studentClass.name,
+        },
+        actors: {
+          homeroomTeacher,
+          unrelatedTeacher,
         },
         promotedStudent,
         summary: commitResult.summary,
