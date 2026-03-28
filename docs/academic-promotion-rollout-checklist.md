@@ -40,6 +40,7 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
   - `bash ./scripts/smoke-test-academic-report-history-clone.sh`
   - `bash ./scripts/smoke-test-academic-attendance-history-clone.sh`
   - `bash ./scripts/smoke-test-academic-permission-history-clone.sh`
+  - `bash ./scripts/smoke-test-academic-internship-history-clone.sh`
 
 ## 3. Deploy ke Staging
 
@@ -102,6 +103,9 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
 - Jika ingin validasi histori izin dan BP/BK source year tetap aman setelah promotion:
   - `bash ./scripts/smoke-test-academic-permission-history-clone.sh --source-year-id <SOURCE_ID>`
   - Script ini memverifikasi endpoint `permissions`, `BP/BK permissions`, `BP/BK summary recent permissions`, `BP/BK principal high risk`, dashboard administrasi TU, serta input `behavior` dan `counseling` source year tetap aman setelah promotion.
+- Jika ingin validasi histori PKL source year tetap aman setelah promotion:
+  - `bash ./scripts/smoke-test-academic-internship-history-clone.sh --source-year-id <SOURCE_ID>`
+  - Script ini memverifikasi list/detail PKL, filter kelas dan search PKL source year, daftar pembimbing/penguji, print surat PKL, dan magic link PKL tetap membaca kelas historis source year.
 
 ## 5. Go / No-Go Production
 

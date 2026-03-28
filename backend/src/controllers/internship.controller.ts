@@ -4,6 +4,10 @@ import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import crypto from 'crypto';
 import { InternshipStatus } from '@prisma/client';
 import { AuthRequest } from '../types';
+import {
+  listHistoricalStudentsByIds,
+  resolveHistoricalStudentScope,
+} from '../utils/studentAcademicHistory';
 
 function hasHumasDuty(duties?: string[] | null) {
   if (!Array.isArray(duties)) return false;
@@ -53,6 +57,68 @@ async function assertCanManageInternshipExaminer(userId: number) {
   }
 
   throw new ApiError(403, 'Hanya Wakasek/sekretaris Humas yang boleh mengelola penguji sidang PKL.');
+}
+
+function mergeHistoricalStudentClass(currentClass: any, historicalClass: any) {
+  if (!historicalClass) return currentClass ?? null;
+  return {
+    ...(currentClass || {}),
+    id: historicalClass.id,
+    name: historicalClass.name,
+    level: historicalClass.level ?? currentClass?.level ?? null,
+    academicYearId: historicalClass.academicYearId,
+    major: historicalClass.major ?? currentClass?.major,
+    teacher: historicalClass.teacher ?? currentClass?.teacher,
+  };
+}
+
+async function hydrateInternshipsWithHistoricalStudentClass<
+  T extends { studentId?: number | null; academicYearId?: number | null; student?: any | null }
+>(rows: T[]): Promise<T[]> {
+  if (!Array.isArray(rows) || rows.length === 0) return rows;
+
+  const groupedStudentIds = new Map<number, Set<number>>();
+  rows.forEach((row) => {
+    const academicYearId = Number(row.academicYearId || 0);
+    const studentId = Number(row.studentId || 0);
+    if (!Number.isFinite(academicYearId) || academicYearId <= 0) return;
+    if (!Number.isFinite(studentId) || studentId <= 0) return;
+    const bucket = groupedStudentIds.get(academicYearId) || new Set<number>();
+    bucket.add(studentId);
+    groupedStudentIds.set(academicYearId, bucket);
+  });
+
+  const historicalStudentMap = new Map<string, any>();
+  for (const [academicYearId, studentIds] of groupedStudentIds.entries()) {
+    const snapshots = await listHistoricalStudentsByIds(Array.from(studentIds), academicYearId);
+    snapshots.forEach((snapshot) => {
+      historicalStudentMap.set(`${academicYearId}:${snapshot.id}`, snapshot);
+    });
+  }
+
+  return rows.map((row) => {
+    if (!row?.student) return row;
+    const academicYearId = Number(row.academicYearId || 0);
+    const studentId = Number(row.studentId || 0);
+    const snapshot = historicalStudentMap.get(`${academicYearId}:${studentId}`);
+    if (!snapshot) return row;
+
+    return {
+      ...row,
+      student: {
+        ...row.student,
+        studentClass: mergeHistoricalStudentClass(row.student.studentClass, snapshot.studentClass),
+      },
+    };
+  });
+}
+
+async function hydrateInternshipWithHistoricalStudentClass<
+  T extends { studentId?: number | null; academicYearId?: number | null; student?: any | null }
+>(row: T | null): Promise<T | null> {
+  if (!row) return row;
+  const [normalized] = await hydrateInternshipsWithHistoricalStudentClass([row]);
+  return normalized || row;
 }
 
 export const getMyInternship = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -147,10 +213,13 @@ export const getMyInternship = asyncHandler(async (req: AuthRequest, res: Respon
     where: { additionalDuties: { has: 'WAKASEK_HUMAS' } }
   });
 
+  const normalizedInternship = await hydrateInternshipWithHistoricalStudentClass(internship);
+  const normalizedColleagues = await hydrateInternshipsWithHistoricalStudentClass(colleagues);
+
   res.status(200).json(new ApiResponse(200, { 
-    internship, 
+    internship: normalizedInternship,
     isEligible, 
-    colleagues,
+    colleagues: normalizedColleagues,
     officials: {
       headOfMajor,
       principal,
@@ -232,34 +301,67 @@ export const getInternshipDetail = asyncHandler(async (req: Request, res: Respon
     }
   });
 
-  res.status(200).json(new ApiResponse(200, { ...internship, colleagues }, 'Detail PKL berhasil diambil'));
+  const normalizedInternship = await hydrateInternshipWithHistoricalStudentClass(internship);
+  const normalizedColleagues = await hydrateInternshipsWithHistoricalStudentClass(colleagues);
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      { ...normalizedInternship, colleagues: normalizedColleagues },
+      'Detail PKL berhasil diambil',
+    ),
+  );
 });
 
 export const getAllInternships = asyncHandler(async (req: Request, res: Response) => {
   const { status, classId, page = 1, limit = 10, search, academicYearId } = req.query;
-  
-  console.log('[getAllInternships] Query Params:', { status, classId, page, limit, search, academicYearId });
 
   const pageNum = Number(page);
   const limitNum = Number(limit);
   const skip = (pageNum - 1) * limitNum;
+  const academicYearIdNum = academicYearId ? Number(academicYearId) : null;
+  const classIdNum = classId ? Number(classId) : null;
+  const searchText = String(search || '').trim();
 
   const where: any = {};
+  const historicalStudentScope =
+    academicYearIdNum && (classIdNum || searchText)
+      ? await resolveHistoricalStudentScope({
+          academicYearId: academicYearIdNum,
+          classId: classIdNum,
+          search: searchText || null,
+        })
+      : null;
   
   if (status) {
     const statuses = String(status).split(',');
     where.status = { in: statuses };
   }
-  if (classId) where.student = { classId: Number(classId) };
-  if (academicYearId) where.academicYearId = Number(academicYearId);
-  if (search) {
-    where.student = {
-      ...where.student,
-      OR: [
-        { name: { contains: String(search), mode: 'insensitive' } },
-        { nisn: { contains: String(search), mode: 'insensitive' } }
-      ]
-    };
+  if (classIdNum) {
+    if (historicalStudentScope?.academicYearId) {
+      where.studentId = {
+        in: historicalStudentScope.studentIds.length > 0 ? historicalStudentScope.studentIds : [-1],
+      };
+    } else {
+      where.student = { classId: classIdNum };
+    }
+  }
+  if (academicYearIdNum) where.academicYearId = academicYearIdNum;
+  if (searchText) {
+    if (historicalStudentScope?.academicYearId) {
+      where.studentId = {
+        in: historicalStudentScope.studentIds.length > 0 ? historicalStudentScope.studentIds : [-1],
+      };
+    } else {
+      where.student = {
+        ...where.student,
+        OR: [
+          { name: { contains: searchText, mode: 'insensitive' } },
+          { nisn: { contains: searchText, mode: 'insensitive' } },
+          { studentClass: { name: { contains: searchText, mode: 'insensitive' } } },
+        ]
+      };
+    }
   }
 
   const [total, internships] = await Promise.all([
@@ -278,8 +380,10 @@ export const getAllInternships = asyncHandler(async (req: Request, res: Response
     })
   ]);
 
+  const normalizedInternships = await hydrateInternshipsWithHistoricalStudentClass(internships);
+
   res.status(200).json(new ApiResponse(200, {
-    internships,
+    internships: normalizedInternships,
     pagination: {
       total,
       page: pageNum,
@@ -409,7 +513,8 @@ export const getExaminerInternships = asyncHandler(async (req: AuthRequest, res:
     }
   });
 
-  res.status(200).json(new ApiResponse(200, internships, 'Data PKL (Penguji) berhasil diambil'));
+  const normalizedInternships = await hydrateInternshipsWithHistoricalStudentClass(internships);
+  res.status(200).json(new ApiResponse(200, normalizedInternships, 'Data PKL (Penguji) berhasil diambil'));
 });
 
 export const getAssignedInternships = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -421,7 +526,8 @@ export const getAssignedInternships = asyncHandler(async (req: AuthRequest, res:
     }
   });
 
-  res.status(200).json(new ApiResponse(200, internships, 'Data PKL (Pembimbing) berhasil diambil'));
+  const normalizedInternships = await hydrateInternshipsWithHistoricalStudentClass(internships);
+  res.status(200).json(new ApiResponse(200, normalizedInternships, 'Data PKL (Pembimbing) berhasil diambil'));
 });
 
 export const getJournals = asyncHandler(async (req: Request, res: Response) => {
@@ -759,10 +865,11 @@ export const printGroupLetter = asyncHandler(async (req: Request, res: Response)
       { student: { name: 'asc' } }
     ]
   });
+  const normalizedInternships = await hydrateInternshipsWithHistoricalStudentClass(internships);
 
   // Group by company name
   const groupedInternships: { [key: string]: any[] } = {};
-  internships.forEach(internship => {
+  normalizedInternships.forEach(internship => {
     const key = internship.companyName.trim().toLowerCase();
     if (!groupedInternships[key]) {
       groupedInternships[key] = [];
@@ -795,6 +902,7 @@ export const getPrintLetterHtml = asyncHandler(async (req: Request, res: Respons
   });
 
   if (!internship) throw new ApiError(404, 'Data PKL tidak ditemukan');
+  const normalizedInternship = await hydrateInternshipWithHistoricalStudentClass(internship);
 
   // Parse contact persons if string
   let parsedConfig = { ...config };
@@ -812,7 +920,7 @@ export const getPrintLetterHtml = asyncHandler(async (req: Request, res: Respons
     select: { name: true, nuptk: true }
   });
 
-  const html = generateLetterHTML([internship], parsedConfig, principal);
+  const html = generateLetterHTML([normalizedInternship], parsedConfig, principal);
 
   res.status(200).json(new ApiResponse(200, { html }, 'HTML surat berhasil diambil'));
 });
@@ -878,14 +986,16 @@ export const verifyAccessCode = asyncHandler(async (req: Request, res: Response)
     throw new ApiError(400, 'Link sudah kadaluarsa');
   }
 
+  const normalizedInternship = await hydrateInternshipWithHistoricalStudentClass(internship);
+
   res.status(200).json(new ApiResponse(200, {
-    nis: internship.student.nis,
-    studentName: internship.student.name,
-    studentClass: internship.student.studentClass?.name,
-    companyName: internship.companyName,
-    mentorName: internship.mentorName,
-    industryScore: internship.industryScore,
-    status: internship.status
+    nis: normalizedInternship!.student.nis,
+    studentName: normalizedInternship!.student.name,
+    studentClass: normalizedInternship!.student.studentClass?.name,
+    companyName: normalizedInternship!.companyName,
+    mentorName: normalizedInternship!.mentorName,
+    industryScore: normalizedInternship!.industryScore,
+    status: normalizedInternship!.status
   }, 'Link valid'));
 });
 
