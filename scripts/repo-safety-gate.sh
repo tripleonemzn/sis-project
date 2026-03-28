@@ -124,7 +124,15 @@ if [ "$MODE" = "mobile" ] || [ "$MODE" = "all" ]; then
 fi
 
 if [ "$MODE" = "exambrowser" ] || [ "$MODE" = "all" ]; then
-  run_check "exam-browser-app" "npm run typecheck"
+  if [ -d "$ROOT_DIR/exam-browser-app" ]; then
+    run_check "exam-browser-app" "npm run typecheck"
+  elif [ "$MODE" = "exambrowser" ]; then
+    echo "[BLOCKED] exam-browser-app directory tidak ditemukan."
+    exit 2
+  else
+    echo "[WARN] exam-browser-app directory tidak ditemukan. Check exambrowser dilewati."
+    echo
+  fi
 fi
 
 if [ "$MODE" = "web" ] || [ "$MODE" = "all" ]; then
