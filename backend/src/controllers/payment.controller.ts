@@ -27,6 +27,7 @@ import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { writeAuditLog } from '../utils/auditLog';
+import { listHistoricalStudentsByIds, resolveHistoricalStudentScope } from '../utils/studentAcademicHistory';
 
 const listParentPaymentsQuerySchema = z.object({
   studentId: z.coerce.number().int().positive().optional(),
@@ -5026,6 +5027,173 @@ function serializeFinanceLedgerStudent(student?: {
   };
 }
 
+type FinanceHistoricalStudentClass = {
+  id: number;
+  name: string;
+  level?: string | null;
+  major?: {
+    id: number;
+    name: string;
+    code: string;
+  } | null;
+} | null;
+
+type FinanceHistoricalStudentLike = {
+  id: number;
+  studentClass?: FinanceHistoricalStudentClass;
+} | null;
+
+function mergeFinanceHistoricalStudentClass(
+  currentClass?: FinanceHistoricalStudentClass,
+  historicalClass?: FinanceHistoricalStudentClass,
+): FinanceHistoricalStudentClass {
+  if (!currentClass && !historicalClass) return null;
+  if (!historicalClass) return currentClass || null;
+  if (!currentClass) return historicalClass || null;
+
+  return {
+    ...currentClass,
+    ...historicalClass,
+    major: historicalClass.major ?? currentClass.major ?? null,
+  };
+}
+
+function normalizeFinanceHistoricalStudent<T extends FinanceHistoricalStudentLike>(
+  student: T,
+  historicalStudent?: {
+    studentClass?: FinanceHistoricalStudentClass;
+  } | null,
+): T {
+  if (!student || !historicalStudent?.studentClass) {
+    return student;
+  }
+
+  return {
+    ...student,
+    studentClass: mergeFinanceHistoricalStudentClass(student.studentClass, historicalStudent.studentClass),
+  };
+}
+
+async function hydrateFinanceHistoricalStudentClass<
+  T extends {
+    academicYearId?: number | null;
+    studentId?: number | null;
+    student?: FinanceHistoricalStudentLike;
+    writeOffRequests?: Array<{
+      student?: FinanceHistoricalStudentLike;
+    }> | null;
+  },
+>(rows: T[]): Promise<T[]> {
+  const studentIdsByAcademicYear = new Map<number, Set<number>>();
+
+  rows.forEach((row) => {
+    const academicYearId = Number(row.academicYearId);
+    const studentId = Number(row.studentId ?? row.student?.id);
+    if (!Number.isFinite(academicYearId) || academicYearId <= 0) return;
+    if (!Number.isFinite(studentId) || studentId <= 0) return;
+
+    const bucket = studentIdsByAcademicYear.get(academicYearId) || new Set<number>();
+    bucket.add(studentId);
+    studentIdsByAcademicYear.set(academicYearId, bucket);
+
+    (row.writeOffRequests || []).forEach((request) => {
+      const requestStudentId = Number(request?.student?.id);
+      if (!Number.isFinite(requestStudentId) || requestStudentId <= 0) return;
+      bucket.add(requestStudentId);
+    });
+  });
+
+  if (!studentIdsByAcademicYear.size) {
+    return rows;
+  }
+
+  const historicalStudentMapByAcademicYear = new Map<number, Map<number, any>>();
+
+  await Promise.all(
+    Array.from(studentIdsByAcademicYear.entries()).map(async ([academicYearId, studentIds]) => {
+      const snapshots = await listHistoricalStudentsByIds(Array.from(studentIds), academicYearId);
+      historicalStudentMapByAcademicYear.set(
+        academicYearId,
+        new Map(snapshots.map((snapshot) => [snapshot.id, snapshot])),
+      );
+    }),
+  );
+
+  return rows.map((row) => {
+    const academicYearId = Number(row.academicYearId);
+    if (!Number.isFinite(academicYearId) || academicYearId <= 0) {
+      return row;
+    }
+
+    const historicalStudentMap = historicalStudentMapByAcademicYear.get(academicYearId);
+    if (!historicalStudentMap) {
+      return row;
+    }
+
+    const studentId = Number(row.studentId ?? row.student?.id);
+    const historicalStudent =
+      Number.isFinite(studentId) && studentId > 0 ? historicalStudentMap.get(studentId) || null : null;
+
+    const normalizedWriteOffRequests = Array.isArray(row.writeOffRequests)
+      ? row.writeOffRequests.map((request) => {
+          if (!request?.student) return request;
+          const requestStudentId = Number(request.student.id);
+          const requestHistoricalStudent =
+            Number.isFinite(requestStudentId) && requestStudentId > 0
+              ? historicalStudentMap.get(requestStudentId) || null
+              : null;
+
+          if (!requestHistoricalStudent) return request;
+          return {
+            ...request,
+            student: normalizeFinanceHistoricalStudent(request.student, requestHistoricalStudent),
+          };
+        })
+      : row.writeOffRequests;
+
+    return {
+      ...row,
+      student: normalizeFinanceHistoricalStudent(row.student || null, historicalStudent),
+      writeOffRequests: normalizedWriteOffRequests,
+    };
+  });
+}
+
+async function resolveFinanceHistoricalStudentFilter(params: {
+  academicYearId?: number | null;
+  classId?: number | null;
+  gradeLevel?: string | null;
+}) {
+  const academicYearId =
+    params.academicYearId && Number.isFinite(Number(params.academicYearId))
+      ? Number(params.academicYearId)
+      : null;
+  const classId =
+    params.classId && Number.isFinite(Number(params.classId)) ? Number(params.classId) : null;
+  const normalizedGradeLevel = normalizeFinanceComparableText(params.gradeLevel);
+
+  if (!academicYearId || (!classId && !normalizedGradeLevel)) {
+    return null;
+  }
+
+  const scope = await resolveHistoricalStudentScope({
+    academicYearId,
+    classId,
+  });
+
+  const students = normalizedGradeLevel
+    ? scope.students.filter(
+        (student) =>
+          normalizeFinanceComparableText(student.studentClass?.level) === normalizedGradeLevel,
+      )
+    : scope.students;
+
+  return {
+    academicYearId: scope.academicYearId,
+    studentIds: students.map((student) => student.id),
+  };
+}
+
 function serializeFinanceLedgerMatchedStatementEntry(entry?: {
   id: number;
   entryDate: Date;
@@ -6604,6 +6772,11 @@ function toCsvContent(headers: string[], rows: Array<Record<string, unknown>>): 
 async function buildFinanceReportSnapshot(filters: FinanceReportFilters) {
   const asOfDate = filters.asOfDate ? new Date(filters.asOfDate) : new Date();
   asOfDate.setHours(0, 0, 0, 0);
+  const historicalStudentFilter = await resolveFinanceHistoricalStudentFilter({
+    academicYearId: filters.academicYearId || null,
+    classId: filters.classId || null,
+    gradeLevel: filters.gradeLevel || null,
+  });
 
   const periodFilter =
     filters.periodFrom || filters.periodTo
@@ -6615,29 +6788,43 @@ async function buildFinanceReportSnapshot(filters: FinanceReportFilters) {
         }
       : {};
 
-  const invoices = await prisma.financeInvoice.findMany({
-    where: {
-      ...(filters.academicYearId ? { academicYearId: filters.academicYearId } : {}),
-      ...(filters.semester ? { semester: filters.semester } : {}),
-      ...((filters.classId || filters.gradeLevel)
-        ? {
-            student: {
-              ...(filters.classId ? { classId: filters.classId } : {}),
-              ...(filters.gradeLevel
-                ? {
-                    studentClass: {
-                      level: {
-                        equals: filters.gradeLevel.trim(),
-                        mode: 'insensitive' as const,
-                      },
-                    },
-                  }
-                : {}),
-            },
-          }
-        : {}),
-      ...periodFilter,
-    },
+  const invoiceWhere: Prisma.FinanceInvoiceWhereInput = {
+    ...(filters.academicYearId ? { academicYearId: filters.academicYearId } : {}),
+    ...(filters.semester ? { semester: filters.semester } : {}),
+    ...periodFilter,
+  };
+  const invoiceWhereAnd: Prisma.FinanceInvoiceWhereInput[] = [];
+
+  if (historicalStudentFilter) {
+    invoiceWhereAnd.push({
+      studentId: {
+        in: historicalStudentFilter.studentIds,
+      },
+    });
+  } else if (filters.classId || filters.gradeLevel) {
+    invoiceWhereAnd.push({
+      student: {
+        ...(filters.classId ? { classId: filters.classId } : {}),
+        ...(filters.gradeLevel
+          ? {
+              studentClass: {
+                level: {
+                  equals: filters.gradeLevel.trim(),
+                  mode: 'insensitive' as const,
+                },
+              },
+            }
+          : {}),
+      },
+    });
+  }
+
+  if (invoiceWhereAnd.length) {
+    invoiceWhere.AND = invoiceWhereAnd;
+  }
+
+  const rawInvoices = await prisma.financeInvoice.findMany({
+    where: invoiceWhere,
     select: {
       id: true,
       invoiceNo: true,
@@ -6690,6 +6877,7 @@ async function buildFinanceReportSnapshot(filters: FinanceReportFilters) {
     },
     orderBy: [{ periodKey: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
   });
+  const invoices = await hydrateFinanceHistoricalStudentClass(rawInvoices);
 
   const monthlyMap = new Map<
     string,
@@ -11810,42 +11998,64 @@ export const listFinanceInvoices = asyncHandler(async (req: Request, res: Respon
     listFinanceInvoicesQuerySchema.parse(req.query);
 
   const normalizedSearch = search?.trim();
+  const historicalStudentFilter = await resolveFinanceHistoricalStudentFilter({
+    academicYearId: academicYearId || null,
+    classId: classId || null,
+    gradeLevel: gradeLevel || null,
+  });
 
-  const invoices = await prisma.financeInvoice.findMany({
-    where: {
-      ...(academicYearId ? { academicYearId } : {}),
-      ...(semester ? { semester } : {}),
-      ...(status ? { status } : {}),
-      ...(studentId ? { studentId } : {}),
-      ...((classId || gradeLevel)
-        ? {
-            student: {
-              ...(classId ? { classId } : {}),
-              ...(gradeLevel
-                ? {
-                    studentClass: {
-                      level: {
-                        equals: gradeLevel.trim(),
-                        mode: 'insensitive' as const,
-                      },
-                    },
-                  }
-                : {}),
-            },
-          }
-        : {}),
-      ...(normalizedSearch
-        ? {
-            OR: [
-              { invoiceNo: { contains: normalizedSearch, mode: 'insensitive' } },
-              { title: { contains: normalizedSearch, mode: 'insensitive' } },
-              { student: { name: { contains: normalizedSearch, mode: 'insensitive' } } },
-              { student: { nis: { contains: normalizedSearch, mode: 'insensitive' } } },
-              { student: { nisn: { contains: normalizedSearch, mode: 'insensitive' } } },
-            ],
-          }
-        : {}),
-    },
+  const invoiceWhere: Prisma.FinanceInvoiceWhereInput = {
+    ...(academicYearId ? { academicYearId } : {}),
+    ...(semester ? { semester } : {}),
+    ...(status ? { status } : {}),
+    ...(normalizedSearch
+      ? {
+          OR: [
+            { invoiceNo: { contains: normalizedSearch, mode: 'insensitive' } },
+            { title: { contains: normalizedSearch, mode: 'insensitive' } },
+            { student: { name: { contains: normalizedSearch, mode: 'insensitive' } } },
+            { student: { nis: { contains: normalizedSearch, mode: 'insensitive' } } },
+            { student: { nisn: { contains: normalizedSearch, mode: 'insensitive' } } },
+          ],
+        }
+      : {}),
+  };
+  const invoiceWhereAnd: Prisma.FinanceInvoiceWhereInput[] = [];
+
+  if (studentId) {
+    invoiceWhereAnd.push({ studentId });
+  }
+
+  if (historicalStudentFilter) {
+    invoiceWhereAnd.push({
+      studentId: {
+        in: historicalStudentFilter.studentIds,
+      },
+    });
+  } else if (classId || gradeLevel) {
+    invoiceWhereAnd.push({
+      student: {
+        ...(classId ? { classId } : {}),
+        ...(gradeLevel
+          ? {
+              studentClass: {
+                level: {
+                  equals: gradeLevel.trim(),
+                  mode: 'insensitive' as const,
+                },
+              },
+            }
+          : {}),
+      },
+    });
+  }
+
+  if (invoiceWhereAnd.length) {
+    invoiceWhere.AND = invoiceWhereAnd;
+  }
+
+  const rawInvoices = await prisma.financeInvoice.findMany({
+    where: invoiceWhere,
     include: {
       student: {
         select: {
@@ -11952,6 +12162,7 @@ export const listFinanceInvoices = asyncHandler(async (req: Request, res: Respon
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit,
   });
+  const invoices = await hydrateFinanceHistoricalStudentClass(rawInvoices);
 
   const serializedInvoices = invoices.map((invoice) => serializeFinanceInvoiceRecord(invoice));
 

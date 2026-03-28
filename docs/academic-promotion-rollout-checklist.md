@@ -41,6 +41,7 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
   - `bash ./scripts/smoke-test-academic-attendance-history-clone.sh`
   - `bash ./scripts/smoke-test-academic-permission-history-clone.sh`
   - `bash ./scripts/smoke-test-academic-internship-history-clone.sh`
+  - `bash ./scripts/smoke-test-academic-finance-history-clone.sh`
 
 ## 3. Deploy ke Staging
 
@@ -106,6 +107,9 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
 - Jika ingin validasi histori PKL source year tetap aman setelah promotion:
   - `bash ./scripts/smoke-test-academic-internship-history-clone.sh --source-year-id <SOURCE_ID>`
   - Script ini memverifikasi list/detail PKL, filter kelas dan search PKL source year, daftar pembimbing/penguji, print surat PKL, dan magic link PKL tetap membaca kelas historis source year.
+- Jika ingin validasi histori finance source year tetap aman setelah promotion:
+  - `bash ./scripts/smoke-test-academic-finance-history-clone.sh --source-year-id <SOURCE_ID>`
+  - Script ini memverifikasi list invoice, filter `classId` dan `gradeLevel`, class recap finance report, detail report, dan collection queue source year tetap membaca kelas historis source year.
 
 ## 5. Go / No-Go Production
 
