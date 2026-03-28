@@ -10,6 +10,7 @@ import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import {
   adminApi,
+  type AdminAcademicFeatureFlags,
   type AdminAcademicPromotionWorkspaceClass,
   type AdminExamQuestionType,
   type AdminExamType,
@@ -700,6 +701,11 @@ export default function AdminAcademicScreen() {
     },
   });
 
+  const academicFeatureFlagsQuery = useQuery({
+    queryKey: ['mobile-admin-academic-feature-flags'],
+    queryFn: () => adminApi.getAcademicFeatureFlags(),
+  });
+
   useEffect(() => {
     const years = academicQuery.data?.years.items || [];
     if (years.length === 0) return;
@@ -736,13 +742,16 @@ export default function AdminAcademicScreen() {
     !!effectivePromotionTargetAcademicYearId &&
     effectivePromotionSourceAcademicYearId !== effectivePromotionTargetAcademicYearId;
 
+  const academicFeatureFlags: AdminAcademicFeatureFlags | undefined = academicFeatureFlagsQuery.data;
+  const isPromotionFeatureEnabled = academicFeatureFlags?.academicPromotionV2Enabled === true;
+
   const promotionWorkspaceQuery = useQuery({
     queryKey: [
       'mobile-admin-academic-promotion-workspace',
       effectivePromotionSourceAcademicYearId,
       effectivePromotionTargetAcademicYearId,
     ],
-    enabled: promotionSelectionValid,
+    enabled: promotionSelectionValid && isPromotionFeatureEnabled,
     queryFn: async () =>
       adminApi.getAcademicPromotionWorkspace(
         effectivePromotionSourceAcademicYearId as number,
@@ -2721,62 +2730,88 @@ export default function AdminAcademicScreen() {
               title="Promotion Center"
               subtitle="Preview, mapping, dan commit kenaikan kelas/alumni dengan kontrak yang sama seperti web."
             >
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Sumber</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  {(academicQuery.data?.years.items || []).map((item) => (
-                    <SelectChip
-                      key={`promotion-source-${item.id}`}
-                      active={promotionSourceAcademicYearId === String(item.id)}
-                      label={`${item.name}${item.isActive ? ' (Aktif)' : ''}`}
-                      onPress={() => setPromotionSourceAcademicYearId(String(item.id))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
-
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Target</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  {(academicQuery.data?.years.items || []).map((item) => (
-                    <SelectChip
-                      key={`promotion-target-${item.id}`}
-                      active={promotionTargetAcademicYearId === String(item.id)}
-                      label={`${item.name}${item.isActive ? ' (Aktif)' : ''}`}
-                      onPress={() => setPromotionTargetAcademicYearId(String(item.id))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
-
-              <Pressable
-                onPress={() => setActivateTargetYearAfterCommit((current) => !current)}
-                style={{
-                  borderWidth: 1,
-                  borderColor: activateTargetYearAfterCommit ? BRAND_COLORS.blue : '#cbd5e1',
-                  backgroundColor: activateTargetYearAfterCommit ? '#eaf1ff' : '#fff',
-                  borderRadius: 12,
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                  marginBottom: 12,
-                }}
-              >
-                <Text
+              {academicFeatureFlagsQuery.isLoading ? (
+                <QueryStateView type="loading" message="Memuat feature flag promotion..." />
+              ) : academicFeatureFlagsQuery.isError ? (
+                <QueryStateView
+                  type="error"
+                  message="Gagal memuat feature flag promotion."
+                  onRetry={() => academicFeatureFlagsQuery.refetch()}
+                />
+              ) : !isPromotionFeatureEnabled ? (
+                <View
                   style={{
-                    color: activateTargetYearAfterCommit ? BRAND_COLORS.blue : BRAND_COLORS.textMuted,
-                    fontWeight: '700',
-                    fontSize: 12,
+                    borderWidth: 1,
+                    borderColor: '#fcd34d',
+                    backgroundColor: '#fffbeb',
+                    borderRadius: 12,
+                    padding: 12,
+                    marginBottom: 8,
                   }}
                 >
-                  {activateTargetYearAfterCommit ? 'Aktifkan tahun target setelah commit: ON' : 'Aktifkan tahun target setelah commit: OFF'}
-                </Text>
-              </Pressable>
+                  <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Promotion dimatikan</Text>
+                  <Text style={{ color: '#92400e', fontSize: 12 }}>
+                    Nyalakan env ACADEMIC_PROMOTION_V2_ENABLED=true di server saat siap uji.
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Sumber</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                    <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
+                      {(academicQuery.data?.years.items || []).map((item) => (
+                        <SelectChip
+                          key={`promotion-source-${item.id}`}
+                          active={promotionSourceAcademicYearId === String(item.id)}
+                          label={`${item.name}${item.isActive ? ' (Aktif)' : ''}`}
+                          onPress={() => setPromotionSourceAcademicYearId(String(item.id))}
+                        />
+                      ))}
+                    </View>
+                  </ScrollView>
 
-              {!promotionSourceAcademicYearId || !promotionTargetAcademicYearId ? (
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Target</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                    <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
+                      {(academicQuery.data?.years.items || []).map((item) => (
+                        <SelectChip
+                          key={`promotion-target-${item.id}`}
+                          active={promotionTargetAcademicYearId === String(item.id)}
+                          label={`${item.name}${item.isActive ? ' (Aktif)' : ''}`}
+                          onPress={() => setPromotionTargetAcademicYearId(String(item.id))}
+                        />
+                      ))}
+                    </View>
+                  </ScrollView>
+
+                  <Pressable
+                    onPress={() => setActivateTargetYearAfterCommit((current) => !current)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: activateTargetYearAfterCommit ? BRAND_COLORS.blue : '#cbd5e1',
+                      backgroundColor: activateTargetYearAfterCommit ? '#eaf1ff' : '#fff',
+                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: activateTargetYearAfterCommit ? BRAND_COLORS.blue : BRAND_COLORS.textMuted,
+                        fontWeight: '700',
+                        fontSize: 12,
+                      }}
+                    >
+                      {activateTargetYearAfterCommit ? 'Aktifkan tahun target setelah commit: ON' : 'Aktifkan tahun target setelah commit: OFF'}
+                    </Text>
+                  </Pressable>
+
+                  {!promotionSourceAcademicYearId || !promotionTargetAcademicYearId ? (
                 <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center', paddingVertical: 8 }}>
                   Pilih tahun sumber dan target untuk memuat workspace promotion.
                 </Text>
-              ) : !promotionSelectionValid ? (
+                  ) : !promotionSelectionValid ? (
                 <View
                   style={{
                     borderWidth: 1,
@@ -2792,15 +2827,15 @@ export default function AdminAcademicScreen() {
                     Tahun sumber dan target harus berbeda.
                   </Text>
                 </View>
-              ) : promotionWorkspaceQuery.isLoading ? (
+                  ) : promotionWorkspaceQuery.isLoading ? (
                 <QueryStateView type="loading" message="Memuat workspace promotion..." />
-              ) : promotionWorkspaceQuery.isError || !promotionWorkspaceQuery.data ? (
+                  ) : promotionWorkspaceQuery.isError || !promotionWorkspaceQuery.data ? (
                 <QueryStateView
                   type="error"
                   message="Gagal memuat workspace promotion."
                   onRetry={() => promotionWorkspaceQuery.refetch()}
                 />
-              ) : (
+                  ) : (
                 <>
                   <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
                     <StatCard
@@ -3063,6 +3098,8 @@ export default function AdminAcademicScreen() {
                       ))
                     )}
                   </View>
+                </>
+                  )}
                 </>
               )}
             </SectionCard>

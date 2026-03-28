@@ -7,6 +7,7 @@ import {
   updateAcademicYear,
   deleteAcademicYear,
   activateAcademicYear,
+  getAcademicFeatureFlagsController,
   getAcademicPromotionWorkspaceController,
   saveAcademicPromotionMappingsController,
   commitAcademicPromotionController,
@@ -31,6 +32,7 @@ router.patch('/pkl-config', updatePklConfig);
 // Admin only routes
 router.use(roleMiddleware(['ADMIN']));
 
+router.get('/features', getAcademicFeatureFlagsController);
 router.get('/:id', getAcademicYearById);
 router.post('/', createAcademicYear);
 router.put('/:id', updateAcademicYear);

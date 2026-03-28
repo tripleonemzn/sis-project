@@ -8,6 +8,7 @@ import {
   saveAcademicPromotionMappings,
 } from '../services/academicPromotion.service';
 import { writeAuditLog } from '../utils/auditLog';
+import { getAcademicFeatureFlags, isAcademicPromotionV2Enabled } from '../config/featureFlags';
 
 const academicYearSchema = z.object({
   name: z.string().min(1),
@@ -62,6 +63,12 @@ function setActiveAcademicYearCache(payload: unknown) {
     payload,
     expiresAt: Date.now() + ACTIVE_ACADEMIC_YEAR_CACHE_TTL_MS,
   };
+}
+
+function assertAcademicPromotionV2Enabled() {
+  if (!isAcademicPromotionV2Enabled()) {
+    throw new ApiError(403, 'Fitur promotion kenaikan kelas belum diaktifkan di server.');
+  }
 }
 
 export const getAcademicYears = asyncHandler(async (req: Request, res: Response) => {
@@ -379,7 +386,14 @@ export const updatePklConfig = asyncHandler(async (req: Request, res: Response) 
   res.status(200).json(new ApiResponse(200, updatedYear, 'Konfigurasi PKL berhasil diperbarui'));
 });
 
+export const getAcademicFeatureFlagsController = asyncHandler(async (_req: Request, res: Response) => {
+  res.status(200).json(
+    new ApiResponse(200, getAcademicFeatureFlags(), 'Feature flag akademik berhasil diambil'),
+  );
+});
+
 export const getAcademicPromotionWorkspaceController = asyncHandler(async (req: Request, res: Response) => {
+  assertAcademicPromotionV2Enabled();
   const { id } = req.params;
   const query = promotionWorkspaceQuerySchema.parse(req.query);
 
@@ -391,6 +405,7 @@ export const getAcademicPromotionWorkspaceController = asyncHandler(async (req: 
 });
 
 export const saveAcademicPromotionMappingsController = asyncHandler(async (req: Request, res: Response) => {
+  assertAcademicPromotionV2Enabled();
   const { id } = req.params;
   const body = savePromotionMappingsSchema.parse(req.body);
 
@@ -406,6 +421,7 @@ export const saveAcademicPromotionMappingsController = asyncHandler(async (req: 
 });
 
 export const commitAcademicPromotionController = asyncHandler(async (req: Request, res: Response) => {
+  assertAcademicPromotionV2Enabled();
   const { id } = req.params;
   const body = commitPromotionSchema.parse(req.body);
   const actor = (req as any).user;

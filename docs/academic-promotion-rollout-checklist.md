@@ -12,6 +12,9 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
 ## 2. Guardrail Sebelum Staging
 
 - Pastikan branch yang akan dirilis sudah committed.
+- Default server-side flag promotion v2 adalah `OFF`.
+- Nyalakan hanya saat siap uji di staging atau saat jendela eksekusi production:
+  - `ACADEMIC_PROMOTION_V2_ENABLED=true`
 - Pastikan worktree clean:
   - `git status --short`
 - Jalankan safety gate web:
@@ -99,6 +102,8 @@ No-Go jika salah satu terjadi:
 ### Sebelum Commit Promotion
 
 - Backup database / snapshot.
+- Pastikan env backend sudah mengaktifkan:
+  - `ACADEMIC_PROMOTION_V2_ENABLED=true`
 - Jalankan:
   - `bash ./scripts/repo-safety-gate.sh web`
   - `cd backend && npm run promotion:audit -- --source-year <SOURCE_ID> --target-year <TARGET_ID>`
@@ -118,6 +123,8 @@ No-Go jika salah satu terjadi:
 - Jalankan audit run:
   - `cd backend`
   - `npm run promotion:audit -- --source-year <SOURCE_ID> --target-year <TARGET_ID> --run-id <RUN_ID>`
+- Jika jendela promotion selesai dan fitur tidak perlu tetap terbuka, matikan lagi flag server:
+  - `ACADEMIC_PROMOTION_V2_ENABLED=false`
 - Verifikasi login admin web dan mobile.
 - Verifikasi beberapa akun sampel:
   - 1 siswa X

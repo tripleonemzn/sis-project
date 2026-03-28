@@ -11,6 +11,10 @@ export interface AcademicYear {
   pklEligibleGrades?: string | null;
 }
 
+export interface AcademicFeatureFlags {
+  academicPromotionV2Enabled: boolean;
+}
+
 export type AcademicPromotionAction = 'PROMOTE' | 'GRADUATE';
 
 export interface AcademicPromotionWorkspaceClass {
@@ -217,6 +221,15 @@ export const academicYearService = {
     const response = await api.patch('/academic-years/pkl-config', { pklEligibleGrades });
     clearActiveYearCache();
     return response.data;
+  },
+  getFeatureFlags: async () => {
+    const response = await api.get('/academic-years/features');
+    return response.data as {
+      data: AcademicFeatureFlags;
+      message: string;
+      success: boolean;
+      statusCode: number;
+    };
   },
   getPromotionWorkspace: async (sourceAcademicYearId: number, targetAcademicYearId: number) => {
     const response = await api.get(`/academic-years/${sourceAcademicYearId}/promotion-v2`, {

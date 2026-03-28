@@ -211,6 +211,10 @@ export type AdminAcademicYear = {
   pklEligibleGrades?: string | null;
 };
 
+export type AdminAcademicFeatureFlags = {
+  academicPromotionV2Enabled: boolean;
+};
+
 export type AdminAcademicPromotionAction = 'PROMOTE' | 'GRADUATE';
 
 export type AdminAcademicPromotionWorkspaceClass = {
@@ -1082,6 +1086,11 @@ export const adminApi = {
     const response = await apiClient.get<ApiEnvelope<AdminAcademicYear & { semester?: 'ODD' | 'EVEN' }>>(
       '/academic-years/active',
     );
+    return response.data?.data;
+  },
+
+  async getAcademicFeatureFlags() {
+    const response = await apiClient.get<ApiEnvelope<AdminAcademicFeatureFlags>>('/academic-years/features');
     return response.data?.data;
   },
 

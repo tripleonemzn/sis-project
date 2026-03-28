@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { academicYearService } from '../../../services/academicYear.service';
 import type {
+  AcademicFeatureFlags,
   AcademicPromotionWorkspace,
   AcademicPromotionWorkspaceClass,
   AcademicYear,
@@ -117,6 +118,14 @@ export const AcademicYearPage = () => {
     [academicYearsOptionsData],
   );
 
+  const promotionFeatureFlagsQuery = useQuery({
+    queryKey: ['academic-feature-flags'],
+    queryFn: () => academicYearService.getFeatureFlags(),
+  });
+
+  const promotionFeatureFlags: AcademicFeatureFlags | undefined = promotionFeatureFlagsQuery.data?.data;
+  const isPromotionFeatureEnabled = promotionFeatureFlags?.academicPromotionV2Enabled === true;
+
   useEffect(() => {
     if (academicYearOptions.length === 0) return;
 
@@ -144,7 +153,7 @@ export const AcademicYearPage = () => {
 
   const promotionWorkspaceQuery = useQuery({
     queryKey: ['academic-promotion-workspace', selectedSourceAcademicYearId, selectedTargetAcademicYearId],
-    enabled: isPromotionSelectionValid,
+    enabled: isPromotionFeatureEnabled && isPromotionSelectionValid,
     queryFn: () =>
       academicYearService.getPromotionWorkspace(selectedSourceAcademicYearId, selectedTargetAcademicYearId),
   });
@@ -612,65 +621,79 @@ export const AcademicYearPage = () => {
           </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Tahun Sumber</label>
-            <select
-              value={promotionSourceAcademicYearId}
-              onChange={(event) => setPromotionSourceAcademicYearId(event.target.value)}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            >
-              <option value="">Pilih tahun sumber</option>
-              {academicYearOptions.map((item) => (
-                <option key={`source-${item.id}`} value={item.id}>
-                  {item.name} {item.isActive ? '(Aktif)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Tahun Target</label>
-            <select
-              value={promotionTargetAcademicYearId}
-              onChange={(event) => setPromotionTargetAcademicYearId(event.target.value)}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            >
-              <option value="">Pilih tahun target</option>
-              {academicYearOptions.map((item) => (
-                <option key={`target-${item.id}`} value={item.id}>
-                  {item.name} {item.isActive ? '(Aktif)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
-            <input
-              type="checkbox"
-              checked={activateTargetYearAfterCommit}
-              onChange={(event) => setActivateTargetYearAfterCommit(event.target.checked)}
-              className="rounded border-slate-300"
-            />
-            Aktifkan tahun target setelah commit
-          </label>
-        </div>
-
-        {!promotionSourceAcademicYearId || !promotionTargetAcademicYearId ? (
-          <div className="rounded-xl border border-dashed border-slate-300 bg-white/80 px-4 py-5 text-sm text-slate-600">
-            Pilih tahun sumber dan tahun target untuk memuat workspace promotion.
-          </div>
-        ) : !isPromotionSelectionValid ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-800">
-            Tahun sumber dan target harus berbeda.
-          </div>
-        ) : promotionWorkspaceQuery.isLoading ? (
+        {promotionFeatureFlagsQuery.isLoading ? (
           <div className="flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-12">
             <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
           </div>
-        ) : promotionWorkspaceQuery.isError || !promotionWorkspace ? (
+        ) : promotionFeatureFlagsQuery.isError ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-5 text-sm text-red-700">
+            {getErrorMessage(promotionFeatureFlagsQuery.error) || 'Gagal memuat feature flag promotion.'}
+          </div>
+        ) : !isPromotionFeatureEnabled ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-800">
+            Promotion v2 sedang dimatikan di server. Nyalakan env <code>ACADEMIC_PROMOTION_V2_ENABLED=true</code> saat siap uji.
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Tahun Sumber</label>
+                <select
+                  value={promotionSourceAcademicYearId}
+                  onChange={(event) => setPromotionSourceAcademicYearId(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                >
+                  <option value="">Pilih tahun sumber</option>
+                  {academicYearOptions.map((item) => (
+                    <option key={`source-${item.id}`} value={item.id}>
+                      {item.name} {item.isActive ? '(Aktif)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Tahun Target</label>
+                <select
+                  value={promotionTargetAcademicYearId}
+                  onChange={(event) => setPromotionTargetAcademicYearId(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                >
+                  <option value="">Pilih tahun target</option>
+                  {academicYearOptions.map((item) => (
+                    <option key={`target-${item.id}`} value={item.id}>
+                      {item.name} {item.isActive ? '(Aktif)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
+                <input
+                  type="checkbox"
+                  checked={activateTargetYearAfterCommit}
+                  onChange={(event) => setActivateTargetYearAfterCommit(event.target.checked)}
+                  className="rounded border-slate-300"
+                />
+                Aktifkan tahun target setelah commit
+              </label>
+            </div>
+
+            {!promotionSourceAcademicYearId || !promotionTargetAcademicYearId ? (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white/80 px-4 py-5 text-sm text-slate-600">
+            Pilih tahun sumber dan tahun target untuk memuat workspace promotion.
+          </div>
+            ) : !isPromotionSelectionValid ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-800">
+            Tahun sumber dan target harus berbeda.
+          </div>
+            ) : promotionWorkspaceQuery.isLoading ? (
+          <div className="flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+          </div>
+            ) : promotionWorkspaceQuery.isError || !promotionWorkspace ? (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-5 text-sm text-red-700">
             {getErrorMessage(promotionWorkspaceQuery.error) || 'Gagal memuat workspace promotion.'}
           </div>
-        ) : (
+            ) : (
           <>
             <div className="grid gap-3 md:grid-cols-4">
               <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
@@ -905,6 +928,8 @@ export const AcademicYearPage = () => {
                 </div>
               )}
             </div>
+          </>
+            )}
           </>
         )}
       </div>
