@@ -5,6 +5,7 @@ import { z } from 'zod';
 import {
   commitAcademicPromotion,
   getAcademicPromotionWorkspace,
+  rollbackAcademicPromotion,
   saveAcademicPromotionMappings,
 } from '../services/academicPromotion.service';
 import { writeAuditLog } from '../utils/auditLog';
@@ -460,6 +461,65 @@ export const commitAcademicPromotionController = asyncHandler(async (req: Reques
 
   res.status(200).json(
     new ApiResponse(200, result, 'Promotion berhasil di-commit'),
+  );
+});
+
+export const rollbackAcademicPromotionController = asyncHandler(async (req: Request, res: Response) => {
+  assertAcademicPromotionV2Enabled();
+  const { id, runId } = req.params;
+  const actor = (req as any).user;
+
+  const actorUser = actor?.id
+    ? await prisma.user.findUnique({
+        where: { id: Number(actor.id) },
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          role: true,
+          additionalDuties: true,
+        },
+      })
+    : null;
+
+  const result = await rollbackAcademicPromotion({
+    runId: Number(runId),
+    sourceAcademicYearId: Number(id),
+    actor: actorUser
+      ? {
+          id: actorUser.id,
+          name: actorUser.name,
+          username: actorUser.username,
+        }
+      : actor,
+  });
+
+  clearActiveAcademicYearCache();
+
+  try {
+    if (actorUser?.id) {
+      await writeAuditLog(
+        actorUser.id,
+        String(actorUser.role || 'ADMIN'),
+        Array.isArray(actorUser.additionalDuties) ? actorUser.additionalDuties : null,
+        'ROLLBACK',
+        'ACADEMIC_PROMOTION',
+        Number(runId),
+        null,
+        {
+          sourceAcademicYearId: Number(id),
+          targetAcademicYearId: result.run.targetAcademicYearId,
+          rollback: result.rollback,
+        },
+        'Rollback promotion kenaikan kelas dan alumni',
+      );
+    }
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat rollback academic promotion', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(200, result, 'Promotion berhasil di-rollback'),
   );
 });
 

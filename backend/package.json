@@ -15,6 +15,7 @@
     "promotion:audit": "node -r ts-node/register src/scripts/audit_academic_promotion.ts",
     "promotion:export-snapshot": "node -r ts-node/register src/scripts/export_academic_promotion_snapshot.ts",
     "promotion:commit": "node -r ts-node/register src/scripts/commit_academic_promotion.ts",
+    "promotion:rollback": "node -r ts-node/register src/scripts/rollback_academic_promotion.ts",
     "promotion:prepare-target": "node -r ts-node/register src/scripts/prepare_academic_promotion_target.ts",
     "import:students": "node -r ts-node/register src/scripts/import_students_from_input.ts",
     "import:subjects": "node -r ts-node/register src/scripts/import_subjects_from_input.ts",

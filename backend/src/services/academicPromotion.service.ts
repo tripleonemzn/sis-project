@@ -19,6 +19,27 @@ type PromotionActor = {
   id?: number | null;
 };
 
+type PromotionRunRollbackMeta = {
+  rolledBackAt: string;
+  rolledBackBy: {
+    id: number | null;
+    name: string | null;
+    username: string | null;
+  } | null;
+  restoredStudents: number;
+  revertedPromotedStudents: number;
+  revertedGraduatedStudents: number;
+  sourceAcademicYearId: number;
+  targetAcademicYearId: number;
+};
+
+type PromotionRunSummaryPayload = {
+  summary?: unknown;
+  validation?: unknown;
+  classes?: unknown;
+  rollback?: PromotionRunRollbackMeta;
+};
+
 type LoadedYearClass = Prisma.ClassGetPayload<{
   include: {
     major: {
@@ -98,7 +119,7 @@ type LoadedPromotionContext = {
   }>;
   recentRuns: Array<{
     id: number;
-    status: PromotionRunStatus;
+    status: PromotionRunStatus | 'ROLLED_BACK';
     totalClasses: number;
     totalStudents: number;
     promotedStudents: number;
@@ -111,6 +132,14 @@ type LoadedPromotionContext = {
       name: string;
       username: string;
     } | null;
+    rolledBackAt: Date | null;
+    rolledBackBy: {
+      id: number | null;
+      name: string | null;
+      username: string | null;
+    } | null;
+    canRollback: boolean;
+    rollbackBlockedReason: string | null;
   }>;
 };
 
@@ -187,6 +216,124 @@ type PreparedPromotionWorkspace = {
 };
 
 const PROMOTION_LEVELS = ['X', 'XI', 'XII'] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parsePromotionRunSummaryPayload(value: Prisma.JsonValue | null): PromotionRunSummaryPayload {
+  if (!isRecord(value)) return {};
+  return value as PromotionRunSummaryPayload;
+}
+
+function parsePromotionRunRollbackMeta(value: Prisma.JsonValue | null): PromotionRunRollbackMeta | null {
+  const payload = parsePromotionRunSummaryPayload(value);
+  if (!isRecord(payload.rollback)) return null;
+
+  const rolledBackAtRaw = String(payload.rollback.rolledBackAt || '').trim();
+  const rolledBackBy = isRecord(payload.rollback.rolledBackBy)
+    ? {
+        id:
+          payload.rollback.rolledBackBy.id === null || payload.rollback.rolledBackBy.id === undefined
+            ? null
+            : Number(payload.rollback.rolledBackBy.id),
+        name:
+          payload.rollback.rolledBackBy.name === null || payload.rollback.rolledBackBy.name === undefined
+            ? null
+            : String(payload.rollback.rolledBackBy.name),
+        username:
+          payload.rollback.rolledBackBy.username === null || payload.rollback.rolledBackBy.username === undefined
+            ? null
+            : String(payload.rollback.rolledBackBy.username),
+      }
+    : null;
+
+  if (!rolledBackAtRaw) return null;
+
+  return {
+    rolledBackAt: rolledBackAtRaw,
+    rolledBackBy,
+    restoredStudents: Number(payload.rollback.restoredStudents || 0),
+    revertedPromotedStudents: Number(payload.rollback.revertedPromotedStudents || 0),
+    revertedGraduatedStudents: Number(payload.rollback.revertedGraduatedStudents || 0),
+    sourceAcademicYearId: Number(payload.rollback.sourceAcademicYearId || 0),
+    targetAcademicYearId: Number(payload.rollback.targetAcademicYearId || 0),
+  };
+}
+
+function serializePromotionRunSummaryPayload(
+  summary: Prisma.JsonValue | null,
+  rollbackMeta?: PromotionRunRollbackMeta,
+): Prisma.InputJsonValue {
+  const payload = parsePromotionRunSummaryPayload(summary);
+  if (rollbackMeta) {
+    payload.rollback = rollbackMeta;
+  }
+  return payload as Prisma.InputJsonValue;
+}
+
+function toDateOrNull(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function mapRecentPromotionRuns(
+  runs: Array<{
+    id: number;
+    status: PromotionRunStatus;
+    totalClasses: number;
+    totalStudents: number;
+    promotedStudents: number;
+    graduatedStudents: number;
+    activateTargetYear: boolean;
+    committedAt: Date | null;
+    createdAt: Date;
+    summary: Prisma.JsonValue | null;
+    createdBy: {
+      id: number;
+      name: string;
+      username: string;
+    } | null;
+  }>,
+): LoadedPromotionContext['recentRuns'] {
+  const latestRollbackableRun = runs.find(
+    (item) => item.status === PromotionRunStatus.COMMITTED && !parsePromotionRunRollbackMeta(item.summary),
+  );
+
+  return runs.map((item) => {
+    const rollbackMeta = parsePromotionRunRollbackMeta(item.summary);
+    const rolledBackAt = toDateOrNull(rollbackMeta?.rolledBackAt || null);
+    const publicStatus: PromotionRunStatus | 'ROLLED_BACK' = rolledBackAt ? 'ROLLED_BACK' : item.status;
+    const canRollback = latestRollbackableRun?.id === item.id && !rolledBackAt;
+
+    let rollbackBlockedReason: string | null = null;
+    if (rolledBackAt) {
+      rollbackBlockedReason = 'Run ini sudah di-rollback.';
+    } else if (item.status !== PromotionRunStatus.COMMITTED) {
+      rollbackBlockedReason = 'Run ini tidak berstatus committed.';
+    } else if (!canRollback) {
+      rollbackBlockedReason = 'Hanya run committed terbaru yang bisa di-rollback.';
+    }
+
+    return {
+      id: item.id,
+      status: publicStatus,
+      totalClasses: item.totalClasses,
+      totalStudents: item.totalStudents,
+      promotedStudents: item.promotedStudents,
+      graduatedStudents: item.graduatedStudents,
+      activateTargetYear: item.activateTargetYear,
+      committedAt: item.committedAt,
+      createdAt: item.createdAt,
+      createdBy: item.createdBy,
+      rolledBackAt,
+      rolledBackBy: rollbackMeta?.rolledBackBy || null,
+      canRollback,
+      rollbackBlockedReason,
+    };
+  });
+}
 
 function normalizeLevel(level?: string | null) {
   return String(level || '').trim().toUpperCase();
@@ -301,6 +448,7 @@ async function loadPromotionContext(
         activateTargetYear: true,
         committedAt: true,
         createdAt: true,
+        summary: true,
         createdBy: {
           select: {
             id: true,
@@ -323,7 +471,7 @@ async function loadPromotionContext(
     sourceYear,
     targetYear,
     savedMappings,
-    recentRuns,
+    recentRuns: mapRecentPromotionRuns(recentRuns),
   };
 }
 
@@ -878,6 +1026,333 @@ export async function commitAcademicPromotion(params: {
       run,
       summary: workspace.summary,
       validation: workspace.validation,
+    };
+  });
+}
+
+export async function rollbackAcademicPromotion(params: {
+  runId: number;
+  sourceAcademicYearId?: number;
+  actor?: {
+    id?: number | null;
+    name?: string | null;
+    username?: string | null;
+  };
+}) {
+  const runId = Number(params.runId);
+  if (!Number.isFinite(runId) || runId <= 0) {
+    throw new ApiError(400, 'Run promotion tidak valid');
+  }
+
+  const expectedSourceAcademicYearId =
+    params.sourceAcademicYearId && Number.isFinite(Number(params.sourceAcademicYearId))
+      ? Number(params.sourceAcademicYearId)
+      : null;
+
+  return prisma.$transaction(async (tx) => {
+    const run = await tx.promotionRun.findUnique({
+      where: { id: runId },
+      include: {
+        items: {
+          orderBy: [{ id: 'asc' }],
+        },
+        sourceAcademicYear: {
+          select: {
+            id: true,
+            name: true,
+            isActive: true,
+          },
+        },
+        targetAcademicYear: {
+          select: {
+            id: true,
+            name: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    if (!run) {
+      throw new ApiError(404, `Promotion run #${runId} tidak ditemukan.`);
+    }
+
+    if (expectedSourceAcademicYearId && run.sourceAcademicYearId !== expectedSourceAcademicYearId) {
+      throw new ApiError(400, 'Run promotion tidak sesuai dengan tahun sumber yang dipilih.');
+    }
+
+    if (run.status !== PromotionRunStatus.COMMITTED) {
+      throw new ApiError(400, 'Hanya run committed yang bisa di-rollback.');
+    }
+
+    if (parsePromotionRunRollbackMeta(run.summary)) {
+      throw new ApiError(400, 'Run promotion ini sudah pernah di-rollback.');
+    }
+
+    const siblingRuns = await tx.promotionRun.findMany({
+      where: {
+        sourceAcademicYearId: run.sourceAcademicYearId,
+        targetAcademicYearId: run.targetAcademicYearId,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        status: true,
+        summary: true,
+      },
+    });
+
+    const latestRollbackableRun = siblingRuns.find(
+      (item) => item.status === PromotionRunStatus.COMMITTED && !parsePromotionRunRollbackMeta(item.summary),
+    );
+
+    if (!latestRollbackableRun || latestRollbackableRun.id !== run.id) {
+      throw new ApiError(400, 'Hanya run committed terbaru yang bisa di-rollback.');
+    }
+
+    if (run.items.length === 0) {
+      throw new ApiError(400, 'Run promotion ini tidak memiliki item siswa untuk di-rollback.');
+    }
+
+    const studentIds = Array.from(new Set(run.items.map((item) => item.studentId)));
+    const promotedItems = run.items.filter((item) => item.action === PromotionAction.PROMOTE && item.targetClassId);
+    const graduatedItems = run.items.filter((item) => item.action === PromotionAction.GRADUATE);
+    const promotedStudentIds = promotedItems.map((item) => item.studentId);
+
+    const [users, memberships, activeYear] = await Promise.all([
+      tx.user.findMany({
+        where: { id: { in: studentIds } },
+        select: {
+          id: true,
+          classId: true,
+          studentStatus: true,
+        },
+      }),
+      tx.studentAcademicMembership.findMany({
+        where: {
+          studentId: { in: studentIds },
+          academicYearId: {
+            in: [run.sourceAcademicYearId, run.targetAcademicYearId],
+          },
+        },
+        select: {
+          id: true,
+          studentId: true,
+          academicYearId: true,
+          classId: true,
+          status: true,
+          isCurrent: true,
+          promotionRunId: true,
+        },
+      }),
+      tx.academicYear.findFirst({
+        where: { isActive: true },
+        select: {
+          id: true,
+          name: true,
+        },
+      }),
+    ]);
+
+    const membershipsByKey = new Map(
+      memberships.map((item) => [`${item.studentId}:${item.academicYearId}`, item] as const),
+    );
+    const userById = new Map(users.map((item) => [item.id, item]));
+    const rollbackErrors: string[] = [];
+
+    for (const item of promotedItems) {
+      const user = userById.get(item.studentId);
+      const sourceMembership = membershipsByKey.get(`${item.studentId}:${run.sourceAcademicYearId}`);
+      const targetMembership = membershipsByKey.get(`${item.studentId}:${run.targetAcademicYearId}`);
+
+      if (!user) {
+        rollbackErrors.push(`Siswa #${item.studentId} tidak ditemukan.`);
+        continue;
+      }
+      if (user.studentStatus !== StudentStatus.ACTIVE || user.classId !== item.targetClassId) {
+        rollbackErrors.push(
+          `Siswa #${item.studentId} sudah berubah dari snapshot promote run ini (class/status tidak cocok).`,
+        );
+      }
+      if (
+        !sourceMembership ||
+        sourceMembership.classId !== item.sourceClassId ||
+        sourceMembership.status !== StudentAcademicMembershipStatus.PROMOTED ||
+        sourceMembership.isCurrent !== false ||
+        sourceMembership.promotionRunId !== run.id
+      ) {
+        rollbackErrors.push(`Membership source siswa #${item.studentId} tidak cocok untuk rollback.`);
+      }
+      if (
+        !targetMembership ||
+        targetMembership.classId !== item.targetClassId ||
+        targetMembership.status !== StudentAcademicMembershipStatus.ACTIVE ||
+        targetMembership.isCurrent !== true ||
+        targetMembership.promotionRunId !== run.id
+      ) {
+        rollbackErrors.push(`Membership target siswa #${item.studentId} tidak cocok untuk rollback.`);
+      }
+    }
+
+    for (const item of graduatedItems) {
+      const user = userById.get(item.studentId);
+      const sourceMembership = membershipsByKey.get(`${item.studentId}:${run.sourceAcademicYearId}`);
+      const targetMembership = membershipsByKey.get(`${item.studentId}:${run.targetAcademicYearId}`);
+
+      if (!user) {
+        rollbackErrors.push(`Siswa #${item.studentId} tidak ditemukan.`);
+        continue;
+      }
+      if (user.studentStatus !== StudentStatus.GRADUATED || user.classId !== null) {
+        rollbackErrors.push(
+          `Siswa #${item.studentId} sudah berubah dari snapshot graduate run ini (class/status tidak cocok).`,
+        );
+      }
+      if (
+        !sourceMembership ||
+        sourceMembership.classId !== item.sourceClassId ||
+        sourceMembership.status !== StudentAcademicMembershipStatus.GRADUATED ||
+        sourceMembership.isCurrent !== false ||
+        sourceMembership.promotionRunId !== run.id
+      ) {
+        rollbackErrors.push(`Membership source alumni #${item.studentId} tidak cocok untuk rollback.`);
+      }
+      if (targetMembership?.isCurrent) {
+        rollbackErrors.push(`Siswa alumni #${item.studentId} sudah memiliki membership current di tahun target.`);
+      }
+    }
+
+    if (run.activateTargetYear && activeYear && ![run.sourceAcademicYearId, run.targetAcademicYearId].includes(activeYear.id)) {
+      rollbackErrors.push(
+        `Tahun aktif saat ini adalah ${activeYear.name} (#${activeYear.id}), bukan source/target run ini.`,
+      );
+    }
+
+    if (rollbackErrors.length > 0) {
+      throw new ApiError(400, 'Rollback belum aman dijalankan.', rollbackErrors);
+    }
+
+    const now = new Date();
+    const actorId = params.actor?.id && Number.isFinite(Number(params.actor.id)) ? Number(params.actor.id) : null;
+    const rollbackMeta: PromotionRunRollbackMeta = {
+      rolledBackAt: now.toISOString(),
+      rolledBackBy: {
+        id: actorId,
+        name: params.actor?.name ? String(params.actor.name) : null,
+        username: params.actor?.username ? String(params.actor.username) : null,
+      },
+      restoredStudents: studentIds.length,
+      revertedPromotedStudents: promotedItems.length,
+      revertedGraduatedStudents: graduatedItems.length,
+      sourceAcademicYearId: run.sourceAcademicYearId,
+      targetAcademicYearId: run.targetAcademicYearId,
+    };
+
+    await tx.studentAcademicMembership.updateMany({
+      where: {
+        studentId: { in: studentIds },
+      },
+      data: {
+        isCurrent: false,
+      },
+    });
+
+    for (const item of run.items) {
+      await tx.user.update({
+        where: { id: item.studentId },
+        data: {
+          classId: item.sourceClassId,
+          studentStatus: StudentStatus.ACTIVE,
+        },
+      });
+
+      await tx.studentAcademicMembership.upsert({
+        where: {
+          studentId_academicYearId: {
+            studentId: item.studentId,
+            academicYearId: run.sourceAcademicYearId,
+          },
+        },
+        create: {
+          studentId: item.studentId,
+          academicYearId: run.sourceAcademicYearId,
+          classId: item.sourceClassId,
+          status: StudentAcademicMembershipStatus.ACTIVE,
+          isCurrent: true,
+          endedAt: null,
+          promotionRunId: null,
+        },
+        update: {
+          classId: item.sourceClassId,
+          status: StudentAcademicMembershipStatus.ACTIVE,
+          isCurrent: true,
+          endedAt: null,
+          promotionRunId: null,
+        },
+      });
+    }
+
+    if (promotedStudentIds.length > 0) {
+      await tx.studentAcademicMembership.deleteMany({
+        where: {
+          studentId: { in: promotedStudentIds },
+          academicYearId: run.targetAcademicYearId,
+          promotionRunId: run.id,
+        },
+      });
+    }
+
+    if (run.activateTargetYear) {
+      await tx.academicYear.updateMany({
+        where: {
+          isActive: true,
+          id: {
+            not: run.sourceAcademicYearId,
+          },
+        },
+        data: {
+          isActive: false,
+        },
+      });
+
+      await tx.academicYear.update({
+        where: { id: run.sourceAcademicYearId },
+        data: { isActive: true },
+      });
+    }
+
+    const updatedRun = await tx.promotionRun.update({
+      where: { id: run.id },
+      data: {
+        summary: serializePromotionRunSummaryPayload(run.summary, rollbackMeta),
+      },
+      select: {
+        id: true,
+        sourceAcademicYearId: true,
+        targetAcademicYearId: true,
+        status: true,
+        activateTargetYear: true,
+        totalClasses: true,
+        totalStudents: true,
+        promotedStudents: true,
+        graduatedStudents: true,
+        committedAt: true,
+        createdAt: true,
+      },
+    });
+
+    return {
+      run: {
+        ...updatedRun,
+        status: 'ROLLED_BACK' as const,
+        rolledBackAt: rollbackMeta.rolledBackAt,
+        rolledBackBy: rollbackMeta.rolledBackBy,
+      },
+      rollback: {
+        restoredStudents: studentIds.length,
+        revertedPromotedStudents: promotedItems.length,
+        revertedGraduatedStudents: graduatedItems.length,
+      },
     };
   });
 }

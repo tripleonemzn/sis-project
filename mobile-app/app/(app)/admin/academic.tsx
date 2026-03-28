@@ -11,6 +11,7 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import {
   adminApi,
   type AdminAcademicFeatureFlags,
+  type AdminAcademicPromotionRollbackResult,
   type AdminAcademicPromotionWorkspaceClass,
   type AdminExamQuestionType,
   type AdminExamType,
@@ -1470,6 +1471,23 @@ export default function AdminAcademicScreen() {
     },
   });
 
+  const rollbackPromotionMutation = useMutation({
+    mutationFn: async (runId: number) => {
+      if (!effectivePromotionSourceAcademicYearId) {
+        throw new Error('Tahun sumber promotion belum valid.');
+      }
+      return adminApi.rollbackAcademicPromotionRun(effectivePromotionSourceAcademicYearId, runId);
+    },
+    onSuccess: async (result: AdminAcademicPromotionRollbackResult | undefined) => {
+      await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-overview'] });
+      await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-promotion-workspace'] });
+      notifySuccess(`Run #${result?.run.id || '-'} berhasil di-rollback.`);
+    },
+    onError: (error: unknown) => {
+      notifyApiError(error, 'Gagal rollback promotion.');
+    },
+  });
+
   const createAcademicYearMutation = useMutation({
     mutationFn: async () =>
       // PKL eligible grades are managed in Humas settings, not in admin academic-year form.
@@ -1735,6 +1753,27 @@ export default function AdminAcademicScreen() {
           style: 'default',
           onPress: () => {
             commitPromotionMutation.mutate();
+          },
+        },
+      ],
+    );
+  };
+
+  const handleRollbackPromotionRun = (runId: number, blockedReason?: string | null) => {
+    if (blockedReason) {
+      notifyInfo(blockedReason);
+      return;
+    }
+    Alert.alert(
+      'Rollback Promotion',
+      `Rollback run #${runId}? Snapshot siswa akan dikembalikan ke state sebelum run ini.`,
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Rollback',
+          style: 'destructive',
+          onPress: () => {
+            rollbackPromotionMutation.mutate(runId);
           },
         },
       ],
@@ -3082,18 +3121,77 @@ export default function AdminAcademicScreen() {
                             borderRadius: 12,
                             padding: 10,
                             backgroundColor: '#f8fbff',
-                            marginBottom: 8,
-                          }}
-                        >
-                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
-                            Run #{run.id} • {run.promotedStudents} naik • {run.graduatedStudents} alumni
-                          </Text>
+                          marginBottom: 8,
+                        }}
+                      >
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                              Run #{run.id} • {run.promotedStudents} naik • {run.graduatedStudents} alumni
+                            </Text>
+                            <View
+                              style={{
+                                borderRadius: 999,
+                                paddingHorizontal: 8,
+                                paddingVertical: 3,
+                                backgroundColor:
+                                  run.status === 'ROLLED_BACK'
+                                    ? '#fef3c7'
+                                    : run.status === 'COMMITTED'
+                                      ? '#dcfce7'
+                                      : '#e2e8f0',
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: '700',
+                                  color:
+                                    run.status === 'ROLLED_BACK'
+                                      ? '#92400e'
+                                      : run.status === 'COMMITTED'
+                                        ? '#15803d'
+                                        : '#475569',
+                                }}
+                              >
+                                {run.status}
+                              </Text>
+                            </View>
+                          </View>
                           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
                             Commit: {formatDateTime(run.committedAt || run.createdAt)}
                           </Text>
                           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
                             {run.createdBy ? `Oleh ${run.createdBy.name}` : 'Oleh sistem'}
                           </Text>
+                          {run.rolledBackAt ? (
+                            <Text style={{ color: '#92400e', fontSize: 12, marginTop: 2 }}>
+                              Rollback: {formatDateTime(run.rolledBackAt)}
+                              {run.rolledBackBy?.name ? ` oleh ${run.rolledBackBy.name}` : ''}
+                            </Text>
+                          ) : null}
+                          <Pressable
+                            onPress={() => handleRollbackPromotionRun(run.id, run.canRollback ? null : run.rollbackBlockedReason)}
+                            disabled={!run.canRollback || rollbackPromotionMutation.isPending}
+                            style={{
+                              marginTop: 8,
+                              borderWidth: 1,
+                              borderColor: '#fcd34d',
+                              borderRadius: 10,
+                              paddingVertical: 8,
+                              alignItems: 'center',
+                              backgroundColor: '#fff',
+                              opacity: !run.canRollback || rollbackPromotionMutation.isPending ? 0.6 : 1,
+                            }}
+                          >
+                            <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 12 }}>
+                              {rollbackPromotionMutation.isPending ? 'Rollback...' : 'Rollback Run'}
+                            </Text>
+                          </Pressable>
+                          {!run.canRollback && run.rollbackBlockedReason ? (
+                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 6 }}>
+                              {run.rollbackBlockedReason}
+                            </Text>
+                          ) : null}
                         </View>
                       ))
                     )}

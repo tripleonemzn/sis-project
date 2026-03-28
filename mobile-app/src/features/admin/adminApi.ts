@@ -279,7 +279,7 @@ export type AdminAcademicPromotionWorkspace = {
   classes: AdminAcademicPromotionWorkspaceClass[];
   recentRuns: Array<{
     id: number;
-    status: 'COMMITTED' | 'FAILED';
+    status: 'COMMITTED' | 'FAILED' | 'ROLLED_BACK';
     totalClasses: number;
     totalStudents: number;
     promotedStudents: number;
@@ -292,6 +292,14 @@ export type AdminAcademicPromotionWorkspace = {
       name: string;
       username: string;
     } | null;
+    rolledBackAt: string | null;
+    rolledBackBy: {
+      id: number | null;
+      name: string | null;
+      username: string | null;
+    } | null;
+    canRollback: boolean;
+    rollbackBlockedReason: string | null;
   }>;
 };
 
@@ -311,6 +319,33 @@ export type AdminAcademicPromotionCommitResult = {
   };
   summary: AdminAcademicPromotionWorkspace['summary'];
   validation: AdminAcademicPromotionWorkspace['validation'];
+};
+
+export type AdminAcademicPromotionRollbackResult = {
+  run: {
+    id: number;
+    sourceAcademicYearId: number;
+    targetAcademicYearId: number;
+    status: 'ROLLED_BACK';
+    activateTargetYear: boolean;
+    totalClasses: number;
+    totalStudents: number;
+    promotedStudents: number;
+    graduatedStudents: number;
+    committedAt: string | null;
+    createdAt: string;
+    rolledBackAt: string;
+    rolledBackBy: {
+      id: number | null;
+      name: string | null;
+      username: string | null;
+    } | null;
+  };
+  rollback: {
+    restoredStudents: number;
+    revertedPromotedStudents: number;
+    revertedGraduatedStudents: number;
+  };
 };
 
 export type AdminTeacherAssignment = {
@@ -1553,6 +1588,13 @@ export const adminApi = {
     const response = await apiClient.post<ApiEnvelope<AdminAcademicPromotionCommitResult>>(
       `/academic-years/${sourceAcademicYearId}/promotion-v2/commit`,
       payload,
+    );
+    return response.data?.data;
+  },
+
+  async rollbackAcademicPromotionRun(sourceAcademicYearId: number, runId: number) {
+    const response = await apiClient.post<ApiEnvelope<AdminAcademicPromotionRollbackResult>>(
+      `/academic-years/${sourceAcademicYearId}/promotion-v2/runs/${runId}/rollback`,
     );
     return response.data?.data;
   },

@@ -79,7 +79,7 @@ export interface AcademicPromotionWorkspace {
   classes: AcademicPromotionWorkspaceClass[];
   recentRuns: Array<{
     id: number;
-    status: 'COMMITTED' | 'FAILED';
+    status: 'COMMITTED' | 'FAILED' | 'ROLLED_BACK';
     totalClasses: number;
     totalStudents: number;
     promotedStudents: number;
@@ -92,6 +92,14 @@ export interface AcademicPromotionWorkspace {
       name: string;
       username: string;
     } | null;
+    rolledBackAt: string | null;
+    rolledBackBy: {
+      id: number | null;
+      name: string | null;
+      username: string | null;
+    } | null;
+    canRollback: boolean;
+    rollbackBlockedReason: string | null;
   }>;
 }
 
@@ -111,6 +119,33 @@ export interface AcademicPromotionCommitResult {
   };
   summary: AcademicPromotionWorkspace['summary'];
   validation: AcademicPromotionWorkspace['validation'];
+}
+
+export interface AcademicPromotionRollbackResult {
+  run: {
+    id: number;
+    sourceAcademicYearId: number;
+    targetAcademicYearId: number;
+    status: 'ROLLED_BACK';
+    activateTargetYear: boolean;
+    totalClasses: number;
+    totalStudents: number;
+    promotedStudents: number;
+    graduatedStudents: number;
+    committedAt: string | null;
+    createdAt: string;
+    rolledBackAt: string;
+    rolledBackBy: {
+      id: number | null;
+      name: string | null;
+      username: string | null;
+    } | null;
+  };
+  rollback: {
+    restoredStudents: number;
+    revertedPromotedStudents: number;
+    revertedGraduatedStudents: number;
+  };
 }
 
 type ActiveYearLite = {
@@ -271,6 +306,16 @@ export const academicYearService = {
     clearActiveYearCache();
     return response.data as {
       data: AcademicPromotionCommitResult;
+      message: string;
+      success: boolean;
+      statusCode: number;
+    };
+  },
+  rollbackPromotionRun: async (sourceAcademicYearId: number, runId: number) => {
+    const response = await api.post(`/academic-years/${sourceAcademicYearId}/promotion-v2/runs/${runId}/rollback`);
+    clearActiveYearCache();
+    return response.data as {
+      data: AcademicPromotionRollbackResult;
       message: string;
       success: boolean;
       statusCode: number;

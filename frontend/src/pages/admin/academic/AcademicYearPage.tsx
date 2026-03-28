@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { academicYearService } from '../../../services/academicYear.service';
 import type {
   AcademicFeatureFlags,
+  AcademicPromotionRollbackResult,
   AcademicPromotionWorkspace,
   AcademicPromotionWorkspaceClass,
   AcademicYear,
@@ -287,6 +288,26 @@ export const AcademicYearPage = () => {
     },
     onError: (error: unknown) => {
       toast.error(getErrorMessage(error) || 'Gagal commit promotion');
+    },
+  });
+
+  const rollbackPromotionMutation = useMutation({
+    mutationFn: async (runId: number) => {
+      if (!selectedSourceAcademicYearId) {
+        throw new Error('Tahun sumber belum valid.');
+      }
+      return academicYearService.rollbackPromotionRun(selectedSourceAcademicYearId, runId);
+    },
+    onSuccess: async (response: { data: AcademicPromotionRollbackResult }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['academic-years'] }),
+        queryClient.invalidateQueries({ queryKey: ['academic-years-options-all'] }),
+        queryClient.invalidateQueries({ queryKey: ['academic-promotion-workspace'] }),
+      ]);
+      toast.success(`Run #${response.data.run.id} berhasil di-rollback`);
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error) || 'Gagal rollback promotion');
     },
   });
 
@@ -912,17 +933,57 @@ export const AcademicYearPage = () => {
                     >
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <p className="font-semibold text-slate-900">
-                            Run #{run.id} • {run.promotedStudents} naik • {run.graduatedStudents} alumni
-                          </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-semibold text-slate-900">
+                              Run #{run.id} • {run.promotedStudents} naik • {run.graduatedStudents} alumni
+                            </p>
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                                run.status === 'ROLLED_BACK'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : run.status === 'COMMITTED'
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-slate-200 text-slate-700'
+                              }`}
+                            >
+                              {run.status}
+                            </span>
+                          </div>
                           <p className="mt-1 text-xs text-slate-500">
                             Commit: {formatDateTime(run.committedAt || run.createdAt)}
                           </p>
+                          {run.rolledBackAt && (
+                            <p className="mt-1 text-xs text-amber-700">
+                              Rollback: {formatDateTime(run.rolledBackAt)}
+                              {run.rolledBackBy?.name ? ` oleh ${run.rolledBackBy.name}` : ''}
+                            </p>
+                          )}
                         </div>
-                        <div className="text-xs text-slate-500">
-                          {run.createdBy ? `Oleh ${run.createdBy.name}` : 'Oleh sistem'}
+                        <div className="flex flex-col items-start gap-2 text-xs text-slate-500 sm:items-end">
+                          <div>{run.createdBy ? `Oleh ${run.createdBy.name}` : 'Oleh sistem'}</div>
+                          <button
+                            type="button"
+                            disabled={!run.canRollback || rollbackPromotionMutation.isPending}
+                            onClick={() => {
+                              if (!run.canRollback) {
+                                toast.error(run.rollbackBlockedReason || 'Run ini belum bisa di-rollback.');
+                                return;
+                              }
+                              if (!confirm(`Rollback run #${run.id}? Snapshot siswa akan dikembalikan ke state sebelum run ini.`)) {
+                                return;
+                              }
+                              rollbackPromotionMutation.mutate(run.id);
+                            }}
+                            className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            title={run.rollbackBlockedReason || 'Rollback run ini'}
+                          >
+                            {rollbackPromotionMutation.isPending ? 'Rollback...' : 'Rollback Run'}
+                          </button>
                         </div>
                       </div>
+                      {!run.canRollback && run.rollbackBlockedReason && (
+                        <p className="mt-2 text-xs text-slate-500">{run.rollbackBlockedReason}</p>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -138,6 +138,15 @@ No-Go jika salah satu terjadi:
   - `npm run promotion:audit -- --source-year <SOURCE_ID> --target-year <TARGET_ID> --run-id <RUN_ID>`
 - Jika jendela promotion selesai dan fitur tidak perlu tetap terbuka, matikan lagi flag server:
   - `bash ./scripts/set-academic-promotion-flag.sh off --reload`
+
+## 7. Prosedur Rollback Terkontrol
+
+- Rollback hanya untuk run committed terbaru yang belum pernah di-rollback.
+- Pastikan feature flag masih aktif saat rollback dijalankan.
+- Gunakan satu kanal saja untuk rollback.
+- Jalur CLI terstruktur:
+  - `bash ./scripts/run-academic-promotion-rollback.sh --source-year <SOURCE_ID> --target-year <TARGET_ID> --run-id <RUN_ID> --actor-id <ADMIN_ID> --yes`
+- Artifact rollback akan ditulis ke `ops/snapshots/academic-promotion-rollback/`
 - Verifikasi login admin web dan mobile.
 - Verifikasi beberapa akun sampel:
   - 1 siswa X
