@@ -39,6 +39,7 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
   - `bash ./scripts/smoke-test-academic-promotion-clone.sh`
   - `bash ./scripts/smoke-test-academic-report-history-clone.sh`
   - `bash ./scripts/smoke-test-academic-attendance-history-clone.sh`
+  - `bash ./scripts/smoke-test-academic-permission-history-clone.sh`
 
 ## 3. Deploy ke Staging
 
@@ -98,6 +99,9 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
 - Jika ingin validasi histori absensi source year tetap aman setelah promotion:
   - `bash ./scripts/smoke-test-academic-attendance-history-clone.sh --source-year-id <SOURCE_ID>`
   - Script ini memverifikasi `daily attendance`, `daily recap`, dan `late summary` tetap membaca siswa historis source year.
+- Jika ingin validasi histori izin dan BP/BK source year tetap aman setelah promotion:
+  - `bash ./scripts/smoke-test-academic-permission-history-clone.sh --source-year-id <SOURCE_ID>`
+  - Script ini memverifikasi endpoint `permissions`, `BP/BK permissions`, `BP/BK summary recent permissions`, dan `BP/BK principal high risk` tetap membaca kelas historis source year.
 
 ## 5. Go / No-Go Production
 
@@ -162,16 +166,6 @@ No-Go jika salah satu terjadi:
   - 1 siswa X
   - 1 siswa XI
   - 1 siswa XII
-
-## 7. Containment / Rollback
-
-Rollback otomatis belum disediakan. Jika hasil commit salah:
-
-- Stop perubahan lanjutan.
-- Ambil `runId` yang terdampak.
-- Isolasi user yang salah dari `promotion_run_items`.
-- Restore dari backup database jika dampaknya luas.
-- Jika hanya sedikit siswa, lakukan koreksi terkontrol berbasis `promotion_run_items` dan `student_academic_memberships`.
 
 ## 8. Catatan Operasional
 

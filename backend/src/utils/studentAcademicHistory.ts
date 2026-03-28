@@ -58,6 +58,13 @@ export type HistoricalStudentSnapshot = Omit<HistoricalStudentBase, 'studentClas
   academicMembershipStatus: StudentAcademicMembershipStatus | null;
 };
 
+export type HistoricalStudentScope = {
+  academicYearId: number | null;
+  students: HistoricalStudentSnapshot[];
+  studentIds: number[];
+  studentMap: Map<number, HistoricalStudentSnapshot>;
+};
+
 const sortStudentsByName = (rows: HistoricalStudentSnapshot[]) =>
   [...rows].sort((a, b) => a.name.localeCompare(b.name, 'id-ID'));
 
@@ -134,6 +141,7 @@ export const listHistoricalStudentsForAcademicYear = async (params: {
   classId?: number | null;
   majorId?: number | null;
   limit?: number | null;
+  search?: string | null;
 }): Promise<HistoricalStudentSnapshot[]> => {
   const academicYearId = Number(params.academicYearId);
   if (!Number.isFinite(academicYearId) || academicYearId <= 0) return [];
@@ -148,6 +156,7 @@ export const listHistoricalStudentsForAcademicYear = async (params: {
     params.limit && Number.isFinite(Number(params.limit)) && Number(params.limit) > 0
       ? Number(params.limit)
       : null;
+  const normalizedSearch = String(params.search || '').trim().toLowerCase();
 
   const membershipWhere: Prisma.StudentAcademicMembershipWhereInput = {
     academicYearId,
@@ -217,7 +226,86 @@ export const listHistoricalStudentsForAcademicYear = async (params: {
     ...fallbackCurrentStudents.map((item) => resolveHistoricalStudent(item, null)),
   ]);
 
-  return limit ? mergedRows.slice(0, limit) : mergedRows;
+  const filteredRows = normalizedSearch
+    ? mergedRows.filter((student) =>
+        [
+          student.name,
+          student.nis,
+          student.nisn,
+          student.studentClass?.name,
+          student.studentClass?.major?.name,
+          student.studentClass?.major?.code,
+        ]
+          .map((item) => String(item || '').toLowerCase())
+          .some((value) => value.includes(normalizedSearch)),
+      )
+    : mergedRows;
+
+  return limit ? filteredRows.slice(0, limit) : filteredRows;
+};
+
+export const resolveHistoricalStudentScope = async (params: {
+  academicYearId?: number | null;
+  studentId?: number | null;
+  classId?: number | null;
+  majorId?: number | null;
+  limit?: number | null;
+  search?: string | null;
+}): Promise<HistoricalStudentScope> => {
+  const explicitAcademicYearId =
+    params.academicYearId && Number.isFinite(Number(params.academicYearId))
+      ? Number(params.academicYearId)
+      : null;
+  const classId =
+    params.classId && Number.isFinite(Number(params.classId)) ? Number(params.classId) : null;
+
+  let classAcademicYearId: number | null = null;
+  if (classId) {
+    const cls = await prisma.class.findUnique({
+      where: { id: classId },
+      select: { academicYearId: true },
+    });
+    classAcademicYearId = cls?.academicYearId ?? null;
+  }
+
+  if (
+    explicitAcademicYearId &&
+    classAcademicYearId &&
+    explicitAcademicYearId !== classAcademicYearId
+  ) {
+    return {
+      academicYearId: explicitAcademicYearId,
+      students: [],
+      studentIds: [],
+      studentMap: new Map(),
+    };
+  }
+
+  const effectiveAcademicYearId = explicitAcademicYearId || classAcademicYearId;
+  if (!effectiveAcademicYearId) {
+    return {
+      academicYearId: null,
+      students: [],
+      studentIds: [],
+      studentMap: new Map(),
+    };
+  }
+
+  const students = await listHistoricalStudentsForAcademicYear({
+    academicYearId: effectiveAcademicYearId,
+    studentId: params.studentId || null,
+    classId,
+    majorId: params.majorId || null,
+    limit: params.limit || null,
+    search: params.search || null,
+  });
+
+  return {
+    academicYearId: effectiveAcademicYearId,
+    students,
+    studentIds: students.map((item) => item.id),
+    studentMap: new Map(students.map((item) => [item.id, item])),
+  };
 };
 
 export const listHistoricalStudentsForClass = async (

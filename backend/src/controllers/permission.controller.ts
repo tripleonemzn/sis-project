@@ -3,6 +3,7 @@ import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { AttendanceStatus } from '@prisma/client';
+import { resolveHistoricalStudentScope } from '../utils/studentAcademicHistory';
 
 const requestPermissionSchema = z.object({
   type: z.enum(['SICK', 'PERMISSION', 'OTHER']),
@@ -26,32 +27,63 @@ export const getPermissions = asyncHandler(async (req: Request, res: Response) =
   const skip = (pageNum - 1) * limitNum;
 
   const where: any = {};
+  const classIdNum = classId ? Number(classId) : null;
+  const academicYearIdNum = academicYearId ? Number(academicYearId) : null;
+  const searchText = String(search || '').trim();
+  const studentScope =
+    user.role === 'STUDENT'
+      ? await resolveHistoricalStudentScope({
+          academicYearId: academicYearIdNum,
+          studentId: Number(user.id),
+          search: searchText || null,
+        })
+      : classIdNum || academicYearIdNum
+        ? await resolveHistoricalStudentScope({
+            academicYearId: academicYearIdNum,
+            classId: classIdNum,
+            search: searchText || null,
+          })
+        : null;
 
-  if (academicYearId) {
-    where.academicYearId = Number(academicYearId);
+  if (studentScope?.academicYearId) {
+    where.academicYearId = studentScope.academicYearId;
+  } else if (academicYearIdNum) {
+    where.academicYearId = academicYearIdNum;
   }
 
   if (user.role === 'STUDENT') {
     where.studentId = user.id;
-  } else if (classId) {
-    where.student = {
-      classId: Number(classId)
+  } else if (studentScope && classIdNum) {
+    where.studentId = {
+      in: studentScope.studentIds.length > 0 ? studentScope.studentIds : [-1],
     };
   }
 
-  if (search) {
-    const searchFilter = {
-      OR: [
-        { name: { contains: search as string, mode: 'insensitive' } },
-        { nis: { contains: search as string, mode: 'insensitive' } },
-        { nisn: { contains: search as string, mode: 'insensitive' } }
-      ]
-    };
-    
-    if (where.student) {
-      where.student = { ...where.student, ...searchFilter };
-    } else {
-      where.student = searchFilter;
+  if (searchText) {
+    const matchedStudentIds = studentScope?.studentIds || [];
+    where.OR = [
+      { reason: { contains: searchText, mode: 'insensitive' } },
+      ...(matchedStudentIds.length > 0
+        ? [
+            {
+              studentId: {
+                in: matchedStudentIds,
+              },
+            },
+          ]
+        : !studentScope
+          ? [
+              { student: { name: { contains: searchText, mode: 'insensitive' } } },
+              { student: { nis: { contains: searchText, mode: 'insensitive' } } },
+              { student: { nisn: { contains: searchText, mode: 'insensitive' } } },
+            ]
+        : []),
+    ];
+
+    if (!where.OR.length) {
+      where.studentId = {
+        in: [-1],
+      };
     }
   }
 
@@ -69,6 +101,12 @@ export const getPermissions = asyncHandler(async (req: Request, res: Response) =
             nis: true,
             nisn: true,
             photo: true,
+            studentClass: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
           },
         },
         approvedBy: {
@@ -87,8 +125,27 @@ export const getPermissions = asyncHandler(async (req: Request, res: Response) =
     prisma.studentPermission.count({ where })
   ]);
 
+  const historicalStudentMap = studentScope?.studentMap || new Map();
+  const normalizedPermissions = permissions.map((permission) => {
+    const historicalStudent = historicalStudentMap.get(permission.studentId);
+    return {
+      ...permission,
+      student: permission.student
+        ? {
+            ...permission.student,
+            studentClass: historicalStudent?.studentClass
+              ? {
+                  id: historicalStudent.studentClass.id,
+                  name: historicalStudent.studentClass.name,
+                }
+              : permission.student.studentClass || null,
+          }
+        : null,
+    };
+  });
+
   res.status(200).json(new ApiResponse(200, {
-    permissions,
+    permissions: normalizedPermissions,
     meta: {
       page: pageNum,
       limit: limitNum,

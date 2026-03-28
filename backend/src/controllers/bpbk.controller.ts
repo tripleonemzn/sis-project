@@ -2,6 +2,10 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import {
+  listHistoricalStudentsByIds,
+  resolveHistoricalStudentScope,
+} from '../utils/studentAcademicHistory';
 
 const optionalDateSchema = z.preprocess((value) => {
   if (value === null || value === undefined || value === '') return undefined;
@@ -151,6 +155,10 @@ async function ensureBehaviorValid(params: {
 export const getBpBkSummary = asyncHandler(async (req: Request, res: Response) => {
   const { academicYearId, classId } = baseQuerySchema.parse(req.query);
   const activeYear = await resolveAcademicYearId(academicYearId);
+  const permissionStudentScope = await resolveHistoricalStudentScope({
+    academicYearId: activeYear.id,
+    classId: classId || null,
+  });
 
   const behaviorWhere: any = {
     academicYearId: activeYear.id,
@@ -159,7 +167,13 @@ export const getBpBkSummary = asyncHandler(async (req: Request, res: Response) =
 
   const permissionWhere: any = {
     academicYearId: activeYear.id,
-    ...(classId ? { student: { classId } } : {}),
+    ...(classId
+      ? {
+          studentId: {
+            in: permissionStudentScope.studentIds.length > 0 ? permissionStudentScope.studentIds : [-1],
+          },
+        }
+      : {}),
   };
 
   const counselingWhere: any = {
@@ -187,7 +201,7 @@ export const getBpBkSummary = asyncHandler(async (req: Request, res: Response) =
     closedCounselings,
     summonPendingCounselings,
     recentBehaviors,
-    recentPermissions,
+    recentPermissionsRaw,
     recentCounselings,
     riskAggregation,
   ] = await Promise.all([
@@ -285,6 +299,24 @@ export const getBpBkSummary = asyncHandler(async (req: Request, res: Response) =
   const highRiskStudents = riskAggregation.filter(
     (item) => (item._sum.point ?? 0) >= 20 || (item._count.id ?? 0) >= 3,
   ).length;
+
+  const recentPermissions = recentPermissionsRaw.map((permission) => {
+    const historicalStudent = permissionStudentScope.studentMap.get(permission.studentId);
+    return {
+      ...permission,
+      student: permission.student
+        ? {
+            ...permission.student,
+            studentClass: historicalStudent?.studentClass
+              ? {
+                  id: historicalStudent.studentClass.id,
+                  name: historicalStudent.studentClass.name,
+                }
+              : permission.student.studentClass || null,
+          }
+        : null,
+    };
+  });
 
   res.status(200).json(
     new ApiResponse(
@@ -418,23 +450,7 @@ export const getBpBkPrincipalSummary = asyncHandler(async (req: Request, res: Re
   }>();
 
   if (highRiskStudentIds.length > 0) {
-    const students = await prisma.user.findMany({
-      where: {
-        id: { in: highRiskStudentIds },
-      },
-      select: {
-        id: true,
-        name: true,
-        nis: true,
-        nisn: true,
-        studentClass: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
-    });
+    const students = await listHistoricalStudentsByIds(highRiskStudentIds, activeYear.id);
 
     students.forEach((student) => {
       highRiskStudentsMap.set(student.id, student);
@@ -566,6 +582,13 @@ export const getBpBkPermissions = asyncHandler(async (req: Request, res: Respons
   const { academicYearId, classId, studentId, type, status, search, page, limit } = permissionListQuerySchema.parse(req.query);
   const activeYear = await resolveAcademicYearId(academicYearId);
   const skip = (page - 1) * limit;
+  const searchText = String(search || '').trim();
+  const permissionStudentScope = await resolveHistoricalStudentScope({
+    academicYearId: activeYear.id,
+    classId: classId || null,
+    studentId: studentId || null,
+    search: searchText || null,
+  });
 
   const where: any = {
     academicYearId: activeYear.id,
@@ -575,19 +598,33 @@ export const getBpBkPermissions = asyncHandler(async (req: Request, res: Respons
   };
 
   if (classId) {
-    where.student = { classId };
+    where.studentId = {
+      in: permissionStudentScope.studentIds.length > 0 ? permissionStudentScope.studentIds : [-1],
+    };
   }
 
-  if (search) {
+  if (searchText) {
     where.OR = [
-      { reason: { contains: search, mode: 'insensitive' } },
-      { student: { name: { contains: search, mode: 'insensitive' } } },
-      { student: { nis: { contains: search, mode: 'insensitive' } } },
-      { student: { nisn: { contains: search, mode: 'insensitive' } } },
+      { reason: { contains: searchText, mode: 'insensitive' } },
+      ...(permissionStudentScope.studentIds.length > 0
+        ? [
+            {
+              studentId: {
+                in: permissionStudentScope.studentIds,
+              },
+            },
+          ]
+        : []),
     ];
+
+    if (!where.OR.length) {
+      where.studentId = {
+        in: [-1],
+      };
+    }
   }
 
-  const [permissions, total] = await Promise.all([
+  const [permissionsRaw, total] = await Promise.all([
     prisma.studentPermission.findMany({
       where,
       include: {
@@ -612,6 +649,24 @@ export const getBpBkPermissions = asyncHandler(async (req: Request, res: Respons
     }),
     prisma.studentPermission.count({ where }),
   ]);
+
+  const permissions = permissionsRaw.map((permission) => {
+    const historicalStudent = permissionStudentScope.studentMap.get(permission.studentId);
+    return {
+      ...permission,
+      student: permission.student
+        ? {
+            ...permission.student,
+            studentClass: historicalStudent?.studentClass
+              ? {
+                  id: historicalStudent.studentClass.id,
+                  name: historicalStudent.studentClass.name,
+                }
+              : permission.student.studentClass || null,
+          }
+        : null,
+    };
+  });
 
   res.status(200).json(
     new ApiResponse(
