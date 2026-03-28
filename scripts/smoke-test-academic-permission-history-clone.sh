@@ -75,7 +75,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "== Academic Permission/BPBK History Smoke Test =="
+echo "== Academic Permission/BPBK/Office History Smoke Test =="
 echo "Source DB    : ${PGDATABASE}"
 echo "Clone DB     : ${CLONE_DB}"
 echo "Keep clone   : ${KEEP_CLONE}"
@@ -115,6 +115,7 @@ const {
   getBpBkPermissions,
   getBpBkPrincipalSummary,
 } = require('./src/controllers/bpbk.controller');
+const { getAdministrationSummary } = require('./src/controllers/office.controller');
 
 function deriveTargetName(sourceName) {
   const match = String(sourceName || '').match(/^(\d{4})\/(\d{4})$/);
@@ -221,6 +222,22 @@ async function callHandler(handler, req) {
     throw new Error('Tidak ada siswa X/XI aktif yang siap diuji.');
   }
 
+  const adminActor =
+    (await prisma.user.findFirst({
+      where: { role: 'ADMIN' },
+      select: { id: true, role: true },
+      orderBy: [{ id: 'asc' }],
+    })) ||
+    (await prisma.user.findFirst({
+      where: { role: 'PRINCIPAL' },
+      select: { id: true, role: true },
+      orderBy: [{ id: 'asc' }],
+    }));
+
+  if (!adminActor) {
+    throw new Error('Aktor admin/principal untuk smoke test tidak ditemukan.');
+  }
+
   const permissionRecord = await prisma.studentPermission.create({
     data: {
       studentId: sampleStudent.id,
@@ -270,7 +287,7 @@ async function callHandler(handler, req) {
     ],
   });
 
-  const baseReq = { user: { id: 1, role: 'ADMIN' } };
+  const baseReq = { user: { id: adminActor.id, role: adminActor.role } };
   const beforePermissions = await callHandler(getPermissions, {
     ...baseReq,
     query: {
@@ -297,6 +314,12 @@ async function callHandler(handler, req) {
     },
   });
   const beforePrincipalSummary = await callHandler(getBpBkPrincipalSummary, {
+    ...baseReq,
+    query: {
+      academicYearId: String(sourceYear.id),
+    },
+  });
+  const beforeAdministrationSummary = await callHandler(getAdministrationSummary, {
     ...baseReq,
     query: {
       academicYearId: String(sourceYear.id),
@@ -356,6 +379,12 @@ async function callHandler(handler, req) {
       academicYearId: String(sourceYear.id),
     },
   });
+  const afterAdministrationSummary = await callHandler(getAdministrationSummary, {
+    ...baseReq,
+    query: {
+      academicYearId: String(sourceYear.id),
+    },
+  });
 
   const beforePermissionsRows = beforePermissions.data?.permissions || [];
   const afterPermissionsRows = afterPermissions.data?.permissions || [];
@@ -365,6 +394,10 @@ async function callHandler(handler, req) {
   const afterRecentPermissions = afterBpBkSummary.data?.recentPermissions || [];
   const beforeHighRiskStudents = beforePrincipalSummary.data?.highRiskStudents || [];
   const afterHighRiskStudents = afterPrincipalSummary.data?.highRiskStudents || [];
+  const beforeAdministrationPermissionQueue = beforeAdministrationSummary.data?.permissionQueue || [];
+  const afterAdministrationPermissionQueue = afterAdministrationSummary.data?.permissionQueue || [];
+  const beforeAdministrationClassRecap = beforeAdministrationSummary.data?.studentClassRecap || [];
+  const afterAdministrationClassRecap = afterAdministrationSummary.data?.studentClassRecap || [];
 
   const beforePermissionRow = beforePermissionsRows.find((item) => item.id === permissionRecord.id) || null;
   const afterPermissionRow = afterPermissionsRows.find((item) => item.id === permissionRecord.id) || null;
@@ -374,6 +407,14 @@ async function callHandler(handler, req) {
   const afterRecentPermissionRow = afterRecentPermissions.find((item) => item.id === permissionRecord.id) || null;
   const beforeHighRiskRow = beforeHighRiskStudents.find((item) => item.studentId === sampleStudent.id) || null;
   const afterHighRiskRow = afterHighRiskStudents.find((item) => item.studentId === sampleStudent.id) || null;
+  const beforeAdministrationPermissionRow =
+    beforeAdministrationPermissionQueue.find((item) => item.id === permissionRecord.id) || null;
+  const afterAdministrationPermissionRow =
+    afterAdministrationPermissionQueue.find((item) => item.id === permissionRecord.id) || null;
+  const beforeAdministrationClassRecapRow =
+    beforeAdministrationClassRecap.find((item) => item.classId === sampleStudent.studentClass.id) || null;
+  const afterAdministrationClassRecapRow =
+    afterAdministrationClassRecap.find((item) => item.classId === sampleStudent.studentClass.id) || null;
 
   const checks = [];
   assertCondition(
@@ -445,6 +486,30 @@ async function callHandler(handler, req) {
     Number(afterBpBkSummary.data?.summary?.pendingPermissions || 0) >= 1,
     'Ringkasan BP/BK class filter source year masih menghitung permission historis setelah promotion.',
     afterBpBkSummary.data?.summary || null,
+  );
+  assertCondition(
+    checks,
+    beforeAdministrationPermissionRow?.className === sampleStudent.studentClass.name,
+    'Dashboard administrasi TU memakai kelas historis source year sebelum promotion.',
+    beforeAdministrationPermissionRow,
+  );
+  assertCondition(
+    checks,
+    afterAdministrationPermissionRow?.className === sampleStudent.studentClass.name,
+    'Dashboard administrasi TU tetap memakai kelas historis source year setelah promotion.',
+    afterAdministrationPermissionRow,
+  );
+  assertCondition(
+    checks,
+    beforeAdministrationClassRecapRow?.className === sampleStudent.studentClass.name,
+    'Rekap kelas administrasi source year memuat kelas historis sebelum promotion.',
+    beforeAdministrationClassRecapRow,
+  );
+  assertCondition(
+    checks,
+    afterAdministrationClassRecapRow?.className === sampleStudent.studentClass.name,
+    'Rekap kelas administrasi source year tetap memuat kelas historis setelah promotion.',
+    afterAdministrationClassRecapRow,
   );
 
   console.log(

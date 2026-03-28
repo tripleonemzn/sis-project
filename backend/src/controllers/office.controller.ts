@@ -9,6 +9,7 @@ import {
   generateOfficeLetterNumber,
   resolveOfficeLetterTitle,
 } from '../utils/officeLetters';
+import { listHistoricalStudentsForAcademicYear } from '../utils/studentAcademicHistory';
 
 const listOfficeLettersQuerySchema = z.object({
   academicYearId: z.coerce.number().int().positive().optional(),
@@ -359,28 +360,9 @@ export const getAdministrationSummary = asyncHandler(async (req: AuthRequest, re
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const [students, teachers, permissionCounts, pendingPermissions] = await Promise.all([
-    prisma.user.findMany({
-      where: { role: 'STUDENT' },
-      select: {
-        id: true,
-        name: true,
-        username: true,
-        nis: true,
-        nisn: true,
-        address: true,
-        phone: true,
-        motherName: true,
-        verificationStatus: true,
-        studentStatus: true,
-        studentClass: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+  const [historicalStudents, teachers, permissionCounts, pendingPermissions] = await Promise.all([
+    listHistoricalStudentsForAcademicYear({
+      academicYearId,
     }),
     prisma.user.findMany({
       where: { role: 'TEACHER' },
@@ -437,23 +419,46 @@ export const getAdministrationSummary = asyncHandler(async (req: AuthRequest, re
     }),
   ]);
 
-  const studentRows = students.map((student) => ({
-    id: student.id,
-    name: student.name,
-    username: student.username,
-    classId: student.studentClass?.id ?? null,
-    className: student.studentClass?.name || 'Tanpa Kelas',
-    verificationStatus: student.verificationStatus,
-    studentStatus: student.studentStatus,
-    completeness: buildAdministrationCompletenessSummary([
-      ['NIS', student.nis],
-      ['NISN', student.nisn],
-      ['Kelas', student.studentClass?.name],
-      ['Alamat', student.address],
-      ['No. HP', student.phone],
-      ['Nama Ibu', student.motherName],
-    ]),
-  }));
+  const historicalStudentIds = historicalStudents.map((student) => student.id);
+  const studentDetailRows = historicalStudentIds.length
+    ? await prisma.user.findMany({
+        where: {
+          role: 'STUDENT',
+          id: { in: historicalStudentIds },
+        },
+        select: {
+          id: true,
+          username: true,
+          address: true,
+          phone: true,
+          verificationStatus: true,
+        },
+      })
+    : [];
+
+  const historicalStudentMap = new Map(historicalStudents.map((student) => [student.id, student]));
+  const studentDetailMap = new Map(studentDetailRows.map((student) => [student.id, student]));
+
+  const studentRows = historicalStudents.map((student) => {
+    const detail = studentDetailMap.get(student.id);
+    return {
+      id: student.id,
+      name: student.name,
+      username: detail?.username || '',
+      classId: student.studentClass?.id ?? null,
+      className: student.studentClass?.name || 'Tanpa Kelas',
+      verificationStatus: detail?.verificationStatus,
+      studentStatus: student.studentStatus,
+      completeness: buildAdministrationCompletenessSummary([
+        ['NIS', student.nis],
+        ['NISN', student.nisn],
+        ['Kelas', student.studentClass?.name],
+        ['Alamat', detail?.address],
+        ['No. HP', detail?.phone],
+        ['Nama Ibu', student.motherName],
+      ]),
+    };
+  });
 
   const teacherRows = teachers.map((teacher) => ({
     id: teacher.id,
@@ -653,7 +658,10 @@ export const getAdministrationSummary = asyncHandler(async (req: AuthRequest, re
       studentName: permission.student?.name || '-',
       nis: permission.student?.nis || '',
       nisn: permission.student?.nisn || '',
-      className: permission.student?.studentClass?.name || 'Tanpa Kelas',
+      className:
+        historicalStudentMap.get(permission.studentId)?.studentClass?.name ||
+        permission.student?.studentClass?.name ||
+        'Tanpa Kelas',
       type: permission.type,
       status: permission.status,
       startDate: permission.startDate.toISOString(),
