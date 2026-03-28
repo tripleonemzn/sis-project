@@ -2,6 +2,10 @@ import { Request, Response } from 'express';
 import { AdditionalDuty, ExamSessionStatus } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { ApiError, asyncHandler, ApiResponse } from '../utils/api';
+import {
+    listHistoricalStudentsByIdsForAcademicYear,
+    listHistoricalStudentsForClass,
+} from '../utils/studentAcademicHistory';
 
 function countAnsweredEntries(rawAnswers: unknown): number {
     if (!rawAnswers || typeof rawAnswers !== 'object' || Array.isArray(rawAnswers)) return 0;
@@ -234,13 +238,168 @@ type ProctorRoomSittingRow = {
     endTime: Date | null;
     students: Array<{
         studentId: number;
-        student: {
-            studentClass: {
-                name: string;
-            } | null;
-        };
     }>;
 };
+
+type ProctorHistoricalStudentRow = {
+    id: number;
+    name: string;
+    nis: string | null;
+    classId: number | null;
+    className: string | null;
+};
+
+function buildProctorHistoricalStudentRowFromCurrentStudent(student: {
+    id: number;
+    name: string | null;
+    nis: string | null;
+    classId: number | null;
+    studentClass?: { name?: string | null } | null;
+}): ProctorHistoricalStudentRow {
+    return {
+        id: Number(student.id),
+        name: String(student.name || '-'),
+        nis: student.nis ? String(student.nis) : null,
+        classId: Number.isFinite(Number(student.classId)) && Number(student.classId) > 0 ? Number(student.classId) : null,
+        className: student.studentClass?.name ? String(student.studentClass.name) : null,
+    };
+}
+
+function buildProctorHistoricalStudentRow(snapshot: {
+    id: number;
+    name: string;
+    nis: string | null;
+    studentClass?: { id?: number | null; name?: string | null } | null;
+}): ProctorHistoricalStudentRow {
+    return {
+        id: Number(snapshot.id),
+        name: String(snapshot.name || '-'),
+        nis: snapshot.nis ? String(snapshot.nis) : null,
+        classId:
+            Number.isFinite(Number(snapshot.studentClass?.id)) && Number(snapshot.studentClass?.id) > 0
+                ? Number(snapshot.studentClass?.id)
+                : null,
+        className: snapshot.studentClass?.name ? String(snapshot.studentClass.name) : null,
+    };
+}
+
+function sortProctorHistoricalStudents(rows: ProctorHistoricalStudentRow[]): ProctorHistoricalStudentRow[] {
+    return [...rows].sort((a, b) => {
+        const classCompare = String(a.className || '').localeCompare(String(b.className || ''), 'id', {
+            numeric: true,
+            sensitivity: 'base',
+        });
+        if (classCompare !== 0) return classCompare;
+        return String(a.name || '').localeCompare(String(b.name || ''), 'id', {
+            numeric: true,
+            sensitivity: 'base',
+        });
+    });
+}
+
+function collectHistoricalClassNames(rows: Array<{ className: string | null }>): string[] {
+    return Array.from(new Set(rows.map((row) => String(row.className || '').trim()).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, 'id', { numeric: true, sensitivity: 'base' }),
+    );
+}
+
+async function listHistoricalProctorStudentsByIds(
+    studentIds: number[],
+    academicYearId: number | null | undefined,
+): Promise<ProctorHistoricalStudentRow[]> {
+    const normalizedStudentIds = Array.from(
+        new Set(
+            studentIds
+                .map((item) => Number(item))
+                .filter((item) => Number.isFinite(item) && item > 0),
+        ),
+    );
+    if (normalizedStudentIds.length === 0) return [];
+
+    if (Number.isFinite(Number(academicYearId)) && Number(academicYearId) > 0) {
+        return sortProctorHistoricalStudents(
+            (
+                await listHistoricalStudentsByIdsForAcademicYear(normalizedStudentIds, Number(academicYearId))
+            ).map((snapshot) => buildProctorHistoricalStudentRow(snapshot)),
+        );
+    }
+
+    return sortProctorHistoricalStudents(
+        (
+            await prisma.user.findMany({
+                where: {
+                    id: { in: normalizedStudentIds },
+                    role: 'STUDENT',
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    nis: true,
+                    classId: true,
+                    studentClass: {
+                        select: {
+                            name: true,
+                        },
+                    },
+                },
+            })
+        ).map((student) => buildProctorHistoricalStudentRowFromCurrentStudent(student)),
+    );
+}
+
+async function listHistoricalProctorStudentsForClasses(
+    classIds: number[],
+    academicYearId: number | null | undefined,
+): Promise<ProctorHistoricalStudentRow[]> {
+    const normalizedClassIds = Array.from(
+        new Set(
+            classIds
+                .map((item) => Number(item))
+                .filter((item) => Number.isFinite(item) && item > 0),
+        ),
+    );
+    if (normalizedClassIds.length === 0) return [];
+
+    if (Number.isFinite(Number(academicYearId)) && Number(academicYearId) > 0) {
+        const seenStudentIds = new Set<number>();
+        const rosterGroups = await Promise.all(
+            normalizedClassIds.map(async (classId) => listHistoricalStudentsForClass(classId, Number(academicYearId))),
+        );
+
+        return sortProctorHistoricalStudents(
+            rosterGroups
+                .flatMap((rows) => rows)
+                .map((snapshot) => buildProctorHistoricalStudentRow(snapshot))
+                .filter((row) => {
+                    if (seenStudentIds.has(row.id)) return false;
+                    seenStudentIds.add(row.id);
+                    return true;
+                }),
+        );
+    }
+
+    return sortProctorHistoricalStudents(
+        (
+            await prisma.user.findMany({
+                where: {
+                    role: 'STUDENT',
+                    classId: { in: normalizedClassIds },
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    nis: true,
+                    classId: true,
+                    studentClass: {
+                        select: {
+                            name: true,
+                        },
+                    },
+                },
+            })
+        ).map((student) => buildProctorHistoricalStudentRowFromCurrentStudent(student)),
+    );
+}
 
 async function resolveRoomScopeSchedules(baseScheduleId: number): Promise<{
     baseSchedule: ProctorRoomScheduleScope | null;
@@ -408,24 +567,19 @@ function filterMatchedSittingsForSlot(params: {
 
 function collectSittingParticipants(sittings: ProctorRoomSittingRow[]): {
     studentIds: Set<number>;
-    classNames: string[];
 } {
     const studentIds = new Set<number>();
-    const classNames = new Set<string>();
 
     sittings.forEach((sitting) => {
         sitting.students.forEach((row) => {
             if (Number.isFinite(Number(row.studentId)) && Number(row.studentId) > 0) {
                 studentIds.add(Number(row.studentId));
             }
-            const className = String(row.student?.studentClass?.name || '').trim();
-            if (className) classNames.add(className);
         });
     });
 
     return {
         studentIds,
-        classNames: Array.from(classNames).sort((a, b) => a.localeCompare(b, 'id')),
     };
 }
 
@@ -619,13 +773,6 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
                   students: {
                       select: {
                           studentId: true,
-                          student: {
-                              select: {
-                                  studentClass: {
-                                      select: { name: true },
-                                  },
-                              },
-                          },
                       },
                   },
               },
@@ -658,16 +805,10 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
     });
 
     // Get Students in all monitored classes + their session status.
-    const students = await prisma.user.findMany({
-        where: {
-            role: 'STUDENT',
-            ...(sittingParticipantIds.length > 0
-                ? { id: { in: sittingParticipantIds } }
-                : { classId: { in: monitoredClassIds } }),
-        },
-        select: { id: true, name: true, nis: true, classId: true, studentClass: { select: { name: true } } },
-        orderBy: { name: 'asc' }
-    });
+    const students =
+        sittingParticipantIds.length > 0
+            ? await listHistoricalProctorStudentsByIds(sittingParticipantIds, resolvedAcademicYearId)
+            : await listHistoricalProctorStudentsForClasses(monitoredClassIds, resolvedAcademicYearId);
 
     const monitoredStudentIds = students
         .map((row) => Number(row.id))
@@ -681,6 +822,7 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
     );
     const effectiveMonitoredClassIds =
         monitoredClassIdsFromRoom.length > 0 ? monitoredClassIdsFromRoom : monitoredClassIds;
+    const sittingParticipantClassNames = collectHistoricalClassNames(students);
 
     const sessionScheduleScope: any = {
         isActive: true,
@@ -825,7 +967,7 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
             id: s.id,
             name: s.name,
             nis: s.nis,
-            className: s.studentClass?.name || '-',
+            className: s.className || '-',
             status: session ? session.status : 'NOT_STARTED',
             startTime: session?.startTime,
             submitTime: session?.submitTime,
@@ -866,7 +1008,7 @@ export const getProctoringDetail = asyncHandler(async (req: Request, res: Respon
             subjectName,
             displayTitle,
             classNames:
-                sittingParticipants.classNames.length > 0 ? sittingParticipants.classNames : monitoredClassNames,
+                sittingParticipantClassNames.length > 0 ? sittingParticipantClassNames : monitoredClassNames,
             teacherNames,
             monitoredScheduleIds,
             serverNow: new Date().toISOString(),
@@ -917,13 +1059,7 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
 
     const [roomStudents, roomSittings] = await Promise.all([
         scope.monitoredClassIds.length > 0
-            ? prisma.user.findMany({
-                  where: {
-                      role: 'STUDENT',
-                      classId: { in: scope.monitoredClassIds },
-                  },
-                  select: { id: true },
-              })
+            ? listHistoricalProctorStudentsForClasses(scope.monitoredClassIds, scope.baseSchedule.academicYearId)
             : Promise.resolve([]),
         schedule.room
             ? prisma.examSitting.findMany({
@@ -955,13 +1091,6 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
                       students: {
                           select: {
                               studentId: true,
-                              student: {
-                                  select: {
-                                      studentClass: {
-                                          select: { name: true },
-                                      },
-                                  },
-                              },
                           },
                       },
                   },
@@ -980,6 +1109,11 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
         sessionLabel: scope.baseSchedule?.sessionLabel ?? null,
     });
     const sittingParticipants = collectSittingParticipants(matchedSittings);
+    const sittingParticipantProfiles = await listHistoricalProctorStudentsByIds(
+        Array.from(sittingParticipants.studentIds.values()),
+        scope.baseSchedule.academicYearId,
+    );
+    const sittingParticipantClassNames = collectHistoricalClassNames(sittingParticipantProfiles);
 
     const expectedStudentIds =
         sittingParticipants.studentIds.size > 0
@@ -1046,7 +1180,7 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
     const absentCount = Math.max(0, expectedCount - presentCount);
 
     const monitoredClassNames =
-        sittingParticipants.classNames.length > 0 ? sittingParticipants.classNames : scope.monitoredClassNames;
+        sittingParticipantClassNames.length > 0 ? sittingParticipantClassNames : scope.monitoredClassNames;
 
     const normalizedNotes = String(notes || '').trim();
     const normalizedIncident = String(incident || '').trim();
@@ -1306,58 +1440,36 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
                 .filter((classId) => Number.isFinite(classId) && classId > 0),
         ),
     );
-    const classStudentCounts = allClassIds.length > 0
-        ? await prisma.user.groupBy({
-              by: ['classId'],
-              where: {
-                  role: 'STUDENT',
-                  classId: { in: allClassIds },
-              },
-              _count: {
-                  _all: true,
-              },
-          })
-        : [];
-    const classStudents = allClassIds.length > 0
-        ? await prisma.user.findMany({
-              where: {
-                  role: 'STUDENT',
-                  classId: { in: allClassIds },
-              },
-              select: {
-                  id: true,
-                  name: true,
-                  nis: true,
-                  classId: true,
-                  studentClass: {
-                      select: {
-                          name: true,
-                      },
-                  },
-              },
-          })
-        : [];
+    const classRosterByClassId = new Map<number, ProctorHistoricalStudentRow[]>();
+    await Promise.all(
+        allClassIds.map(async (classId) => {
+            const classAcademicYearId =
+                groupedRows.find((group) => group.classIds.includes(classId))?.academicYearId ?? parsedAcademicYearId ?? null;
+            classRosterByClassId.set(
+                classId,
+                await listHistoricalProctorStudentsForClasses([classId], classAcademicYearId),
+            );
+        }),
+    );
     const classStudentCountMap = new Map<number, number>(
-        classStudentCounts.map((row) => [Number(row.classId), Number(row._count?._all || 0)]),
+        Array.from(classRosterByClassId.entries()).map(([classId, rows]) => [classId, rows.length]),
     );
     const classStudentsByClassId = new Map<
         number,
         Array<{ id: number; name: string; nis: string | null; className: string | null }>
     >();
     const studentInfoById = new Map<number, { id: number; name: string; nis: string | null; className: string | null }>();
-    classStudents.forEach((student) => {
-        const classId = Number(student.classId);
-        if (!Number.isFinite(classId) || classId <= 0) return;
-        const row = {
+    classRosterByClassId.forEach((students, classId) => {
+        const bucket = students.map((student) => ({
             id: Number(student.id),
             name: String(student.name || '-'),
             nis: student.nis ? String(student.nis) : null,
-            className: student.studentClass?.name ? String(student.studentClass.name) : null,
-        };
-        const bucket = classStudentsByClassId.get(classId) || [];
-        bucket.push(row);
+            className: student.className || null,
+        }));
         classStudentsByClassId.set(classId, bucket);
-        studentInfoById.set(row.id, row);
+        bucket.forEach((row) => {
+            studentInfoById.set(row.id, row);
+        });
     });
 
     const uniqueRooms = Array.from(
@@ -1414,15 +1526,6 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
                       students: {
                           select: {
                               studentId: true,
-                              student: {
-                                  select: {
-                                      studentClass: {
-                                          select: {
-                                              name: true,
-                                          },
-                                      },
-                                  },
-                              },
                           },
                       },
                   },
@@ -1442,39 +1545,32 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
         }),
     );
     const sittingParticipantsByGroup = matchedSittingsByGroup.map((sittings) => collectSittingParticipants(sittings));
+    const sittingParticipantProfilesByGroup = await Promise.all(
+        groupedRows.map(async (group, index) =>
+            listHistoricalProctorStudentsByIds(
+                Array.from((sittingParticipantsByGroup[index]?.studentIds || new Set<number>()).values()),
+                group.academicYearId,
+            ),
+        ),
+    );
+    const sittingParticipantClassNamesByGroup = sittingParticipantProfilesByGroup.map((rows) =>
+        collectHistoricalClassNames(rows),
+    );
+    sittingParticipantProfilesByGroup.forEach((rows) => {
+        rows.forEach((row) => {
+            studentInfoById.set(row.id, {
+                id: row.id,
+                name: row.name,
+                nis: row.nis,
+                className: row.className,
+            });
+        });
+    });
     const allSittingStudentIds = Array.from(
         new Set(
             sittingParticipantsByGroup.flatMap((bucket) => Array.from(bucket.studentIds.values())),
         ),
     );
-    const missingSittingStudentIds = allSittingStudentIds.filter((studentId) => !studentInfoById.has(studentId));
-    if (missingSittingStudentIds.length > 0) {
-        const missingStudents = await prisma.user.findMany({
-            where: {
-                id: { in: missingSittingStudentIds },
-                role: 'STUDENT',
-            },
-            select: {
-                id: true,
-                name: true,
-                nis: true,
-                studentClass: {
-                    select: {
-                        name: true,
-                    },
-                },
-            },
-        });
-        missingStudents.forEach((student) => {
-            const row = {
-                id: Number(student.id),
-                name: String(student.name || '-'),
-                nis: student.nis ? String(student.nis) : null,
-                className: student.studentClass?.name ? String(student.studentClass.name) : null,
-            };
-            studentInfoById.set(row.id, row);
-        });
-    }
 
     const slotScopedSessionRows =
         allSittingStudentIds.length > 0
@@ -1592,8 +1688,8 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
 
             const sittingParticipants = sittingParticipantsByGroup[groupIndex] || {
                 studentIds: new Set<number>(),
-                classNames: [],
             };
+            const historicalClassNames = sittingParticipantClassNamesByGroup[groupIndex] || [];
             const expectedStudentIds =
                 sittingParticipants.studentIds.size > 0 ? sittingParticipants.studentIds : fallbackExpectedIds;
             const expectedParticipants =
@@ -1721,8 +1817,8 @@ export const getProctoringReports = asyncHandler(async (req: Request, res: Respo
                     sessionLabel: group.sessionLabel,
                     examType: group.examType,
                     classNames:
-                        sittingParticipants.classNames.length > 0
-                            ? sittingParticipants.classNames
+                        historicalClassNames.length > 0
+                            ? historicalClassNames
                             : fallbackClassNames,
                     scheduleIds: group.scheduleIds,
                     expectedParticipants,

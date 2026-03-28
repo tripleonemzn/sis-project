@@ -42,6 +42,7 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
   - `bash ./scripts/smoke-test-academic-permission-history-clone.sh`
   - `bash ./scripts/smoke-test-academic-internship-history-clone.sh`
   - `bash ./scripts/smoke-test-academic-ukk-history-clone.sh`
+  - `bash ./scripts/smoke-test-academic-proctor-history-clone.sh`
   - `bash ./scripts/smoke-test-academic-finance-history-clone.sh`
   - `bash ./scripts/smoke-test-finance-refund-backfill-clone.sh`
 
@@ -112,6 +113,9 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
 - Jika ingin validasi histori UKK source year tetap aman setelah promotion:
   - `bash ./scripts/smoke-test-academic-ukk-history-clone.sh --source-year-id <SOURCE_ID>`
   - Script ini memverifikasi input UKK source year untuk siswa XII yang sudah jadi alumni tetap aman, daftar assessment examiner tetap membaca `className` historis source year, detail UKK tetap membawa kelas historis, dan input ke target year yang tidak valid ditolak.
+- Jika ingin validasi histori proctor source year tetap aman setelah promotion:
+  - `bash ./scripts/smoke-test-academic-proctor-history-clone.sh --source-year-id <SOURCE_ID>`
+  - Script ini memverifikasi detail ruang ujian, submit berita acara, dan rekap `proctor reports` tetap menghitung roster source year yang benar serta menampilkan `className` historis setelah siswa dipromosikan.
 - Jika ingin validasi histori finance source year tetap aman setelah promotion:
   - `bash ./scripts/smoke-test-academic-finance-history-clone.sh --source-year-id <SOURCE_ID>`
   - Script ini memverifikasi list invoice, filter `classId` dan `gradeLevel`, class recap finance report, detail report, collection queue, payment verification, ledger/payment-refund history, create/list refund, serta create/approve/apply/list reversal dan create/list write-off source year tetap membaca kelas historis source year.

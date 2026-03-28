@@ -16,7 +16,7 @@ Usage:
 Options:
   --source-year <id>   Tahun ajaran sumber yang akan dipromosikan.
   --target-year <id>   Tahun ajaran target tujuan kenaikan kelas.
-  --with-smoke-test    Jalankan smoke test clone DB promotion + histori report + histori absensi + histori izin/BP-BK/TU + histori PKL + histori UKK + histori finance + refund backfill setelah audit utama.
+  --with-smoke-test    Jalankan smoke test clone DB promotion + histori report + histori absensi + histori izin/BP-BK/TU + histori PKL + histori UKK + histori proctor + histori finance + refund backfill setelah audit utama.
   --skip-gate          Lewati repo safety gate web.
   --allow-flag-off     Jangan block jika ACADEMIC_PROMOTION_V2_ENABLED masih OFF.
   -h, --help           Tampilkan bantuan.
@@ -117,6 +117,10 @@ if [ "$WITH_SMOKE_TEST" -eq 1 ]; then
 
   echo "-> Menjalankan smoke test histori UKK pasca-promotion"
   bash "$ROOT_DIR/scripts/smoke-test-academic-ukk-history-clone.sh" --source-year-id "$SOURCE_YEAR_ID"
+  echo
+
+  echo "-> Menjalankan smoke test histori proctor pasca-promotion"
+  bash "$ROOT_DIR/scripts/smoke-test-academic-proctor-history-clone.sh" --source-year-id "$SOURCE_YEAR_ID"
   echo
 
   echo "-> Menjalankan smoke test histori finance pasca-promotion"
