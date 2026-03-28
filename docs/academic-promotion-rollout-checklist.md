@@ -15,10 +15,19 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
 - Default server-side flag promotion v2 adalah `OFF`.
 - Nyalakan hanya saat siap uji di staging atau saat jendela eksekusi production:
   - `ACADEMIC_PROMOTION_V2_ENABLED=true`
+- Untuk menghindari edit manual `.env`, gunakan helper:
+  - `bash ./scripts/set-academic-promotion-flag.sh --check`
+  - `bash ./scripts/set-academic-promotion-flag.sh on --reload`
+- Jika target year belum ada, siapkan dulu secara dry-run:
+  - `bash ./scripts/prepare-academic-promotion-target.sh --source-year <SOURCE_ID>`
+- Jika hasil dry-run sudah benar, baru apply:
+  - `bash ./scripts/prepare-academic-promotion-target.sh --source-year <SOURCE_ID> --apply`
 - Pastikan worktree clean:
   - `git status --short`
 - Jalankan safety gate web:
   - `bash ./scripts/repo-safety-gate.sh web`
+- Atau jalankan preflight staging/production secara terstruktur:
+  - `bash ./scripts/run-academic-promotion-preflight.sh --source-year <SOURCE_ID> --target-year <TARGET_ID>`
 - Jalankan safety gate mobile:
   - `bash ./scripts/repo-safety-gate.sh mobile`
 - Audit promotion untuk pasangan tahun yang akan diuji:
@@ -104,6 +113,8 @@ No-Go jika salah satu terjadi:
 - Backup database / snapshot.
 - Pastikan env backend sudah mengaktifkan:
   - `ACADEMIC_PROMOTION_V2_ENABLED=true`
+- Verifikasi cepat flag:
+  - `bash ./scripts/set-academic-promotion-flag.sh --check`
 - Jalankan:
   - `bash ./scripts/repo-safety-gate.sh web`
   - `cd backend && npm run promotion:audit -- --source-year <SOURCE_ID> --target-year <TARGET_ID>`
@@ -124,7 +135,7 @@ No-Go jika salah satu terjadi:
   - `cd backend`
   - `npm run promotion:audit -- --source-year <SOURCE_ID> --target-year <TARGET_ID> --run-id <RUN_ID>`
 - Jika jendela promotion selesai dan fitur tidak perlu tetap terbuka, matikan lagi flag server:
-  - `ACADEMIC_PROMOTION_V2_ENABLED=false`
+  - `bash ./scripts/set-academic-promotion-flag.sh off --reload`
 - Verifikasi login admin web dan mobile.
 - Verifikasi beberapa akun sampel:
   - 1 siswa X
