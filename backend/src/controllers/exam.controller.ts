@@ -16,6 +16,7 @@ import {
 } from '@prisma/client';
 import { syncReportGrade } from './grade.controller';
 import { syncScoreEntriesFromStudentGrade, upsertScoreEntryFromExamSession } from '../services/scoreEntry.service';
+import { getHistoricalStudentSnapshotForAcademicYear } from '../utils/studentAcademicHistory';
 
 function normalizeAliasCode(raw: unknown): string {
     return String(raw || '')
@@ -4335,6 +4336,10 @@ async function buildSessionDetail(
     });
 
     const packet = session.schedule.packet;
+    const historicalStudent =
+        packet.academicYear?.id
+            ? await getHistoricalStudentSnapshotForAcademicYear(session.student.id, packet.academicYear.id)
+            : null;
     const questions = normalizePacketQuestionsForAnalysis(packet.questions);
     const answersMap = parseSessionAnswers(session.answers);
 
@@ -4434,10 +4439,14 @@ async function buildSessionDetail(
                 id: session.student.id,
                 name: session.student.name,
                 nis: session.student.nis || null,
-                class: session.student.studentClass
+                class: historicalStudent?.studentClass || session.student.studentClass
                     ? {
-                          id: session.student.studentClass.id,
-                          name: session.student.studentClass.name,
+                          id: Number(
+                              historicalStudent?.studentClass?.id || session.student.studentClass?.id || 0,
+                          ),
+                          name: String(
+                              historicalStudent?.studentClass?.name || session.student.studentClass?.name || '',
+                          ),
                       }
                     : null,
             },

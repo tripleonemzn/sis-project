@@ -2,6 +2,10 @@ import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { ApiError, asyncHandler, ApiResponse } from '../utils/api';
 import { ExamType, Semester, Prisma } from '@prisma/client';
+import {
+    type HistoricalStudentSnapshot,
+    listHistoricalStudentsByIdsForAcademicYear,
+} from '../utils/studentAcademicHistory';
 
 function normalizeAliasCode(raw: unknown): string {
     return String(raw || '')
@@ -297,6 +301,40 @@ async function assertSittingClassLevelScope(params: {
     }
 }
 
+function buildHistoricalClassSummary(student: HistoricalStudentSnapshot | null | undefined) {
+    if (!student?.studentClass) return null;
+    return {
+        id: student.studentClass.id,
+        name: student.studentClass.name,
+    };
+}
+
+async function listHistoricalSittingStudentsByIds(
+    studentIds: number[],
+    academicYearId: number,
+): Promise<HistoricalStudentSnapshot[]> {
+    const normalizedStudentIds = Array.from(
+        new Set(
+            (Array.isArray(studentIds) ? studentIds : [])
+                .map((value) => Number(value))
+                .filter((value) => Number.isFinite(value) && value > 0),
+        ),
+    );
+
+    if (!normalizedStudentIds.length) return [];
+    return listHistoricalStudentsByIdsForAcademicYear(normalizedStudentIds, academicYearId);
+}
+
+function collectHistoricalClassIds(students: HistoricalStudentSnapshot[]): number[] {
+    return Array.from(
+        new Set(
+            students
+                .map((student) => Number(student.studentClass?.id || 0))
+                .filter((classId): classId is number => Number.isFinite(classId) && classId > 0),
+        ),
+    );
+}
+
 async function resolveRoomNameFromSarpras(rawRoomName: unknown): Promise<string> {
     const roomName = String(rawRoomName || '').trim();
     if (!roomName) {
@@ -401,15 +439,12 @@ export const createExamSitting = asyncHandler(async (req: Request, res: Response
         ),
     );
 
-    const students = normalizedStudentIds.length
-        ? await prisma.user.findMany({
-              where: { id: { in: normalizedStudentIds } },
-              select: { classId: true },
-          })
-        : [];
-    const classIds = Array.from(
-        new Set(students.map((student) => student.classId).filter((value): value is number => Boolean(value))),
+    const historicalStudents = await listHistoricalSittingStudentsByIds(
+        normalizedStudentIds,
+        parsedAcademicYearId,
     );
+    const historicalStudentMap = new Map(historicalStudents.map((student) => [student.id, student]));
+    const classIds = collectHistoricalClassIds(historicalStudents);
     await assertSittingClassLevelScope({
         academicYearId: parsedAcademicYearId,
         programCode: resolvedExamType,
@@ -476,7 +511,25 @@ export const createExamSitting = asyncHandler(async (req: Request, res: Response
         return created;
     });
 
-    res.json(new ApiResponse(200, sitting, 'Exam Sitting created successfully'));
+    const normalizedStudents = sitting.students.map((item) => ({
+        ...item,
+        student: {
+            ...item.student,
+            studentClass:
+                buildHistoricalClassSummary(historicalStudentMap.get(item.student.id)) || item.student.studentClass,
+        },
+    }));
+
+    res.json(
+        new ApiResponse(
+            200,
+            {
+                ...sitting,
+                students: normalizedStudents,
+            },
+            'Exam Sitting created successfully',
+        ),
+    );
 });
 
 export const getMyExamSitting = asyncHandler(async (req: Request, res: Response) => {
@@ -620,6 +673,8 @@ export const getExamSittingDetail = asyncHandler(async (req: Request, res: Respo
     // Logic: Find sessions that overlap with sitting time
     const sittingAny = sitting as any;
     const studentIds = sittingAny.students.map((s: any) => s.studentId);
+    const historicalStudents = await listHistoricalSittingStudentsByIds(studentIds, sitting.academicYearId);
+    const historicalStudentMap = new Map(historicalStudents.map((student) => [student.id, student]));
     
     let sessions: any[] = [];
     if (sitting.startTime && sitting.endTime) {
@@ -649,9 +704,11 @@ export const getExamSittingDetail = asyncHandler(async (req: Request, res: Respo
     
     // Merge session info
     const studentList = sittingAny.students.map((item: any) => {
+        const historicalStudent = historicalStudentMap.get(item.studentId);
         const session = sessions.find((s: any) => s.studentId === item.studentId);
         return {
             ...item.student,
+            studentClass: buildHistoricalClassSummary(historicalStudent) || item.student.studentClass,
             sessionStatus: session ? session.status : 'NOT_STARTED',
             examTitle: session?.schedule?.packet?.title || '-',
             startTime: session?.startTime,
@@ -711,15 +768,8 @@ export const updateExamSitting = asyncHandler(async (req: Request, res: Response
     }
 
     const studentIds = existingSitting.students.map((item) => item.studentId);
-    const students = studentIds.length
-        ? await prisma.user.findMany({
-              where: { id: { in: studentIds } },
-              select: { classId: true },
-          })
-        : [];
-    const classIds = Array.from(
-        new Set(students.map((student) => student.classId).filter((value): value is number => Boolean(value))),
-    );
+    const historicalStudents = await listHistoricalSittingStudentsByIds(studentIds, resolvedAcademicYearId);
+    const classIds = collectHistoricalClassIds(historicalStudents);
     const hasSessionPayload = sessionId !== undefined || sessionLabel !== undefined;
     const resolvedProgramSession =
         hasSessionPayload
@@ -818,26 +868,12 @@ export const updateSittingStudents = asyncHandler(async (req: Request, res: Resp
     const previousStudentIds = targetSitting.students.map((item) => item.studentId);
 
     const [previousStudents, nextStudents] = await Promise.all([
-        previousStudentIds.length > 0
-            ? prisma.user.findMany({
-                  where: { id: { in: previousStudentIds } },
-                  select: { id: true, classId: true },
-              })
-            : Promise.resolve([]),
-        normalizedStudentIds.length > 0
-            ? prisma.user.findMany({
-                  where: { id: { in: normalizedStudentIds } },
-                  select: { id: true, classId: true },
-              })
-            : Promise.resolve([]),
+        listHistoricalSittingStudentsByIds(previousStudentIds, targetSitting.academicYearId),
+        listHistoricalSittingStudentsByIds(normalizedStudentIds, targetSitting.academicYearId),
     ]);
 
-    const previousClassIds = Array.from(
-        new Set(previousStudents.map((student) => student.classId).filter((value): value is number => Boolean(value))),
-    );
-    const nextClassIds = Array.from(
-        new Set(nextStudents.map((student) => student.classId).filter((value): value is number => Boolean(value))),
-    );
+    const previousClassIds = collectHistoricalClassIds(previousStudents);
+    const nextClassIds = collectHistoricalClassIds(nextStudents);
     await assertSittingClassLevelScope({
         academicYearId: targetSitting.academicYearId,
         programCode: targetSitting.examType,
