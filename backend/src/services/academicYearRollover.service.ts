@@ -37,6 +37,13 @@ type LoadedAcademicYearClass = Prisma.ClassGetPayload<{
         name: true;
       };
     };
+    teacher: {
+      select: {
+        id: true;
+        name: true;
+        username: true;
+      };
+    };
     students: {
       where: {
         role: 'STUDENT';
@@ -61,6 +68,13 @@ type LoadedRolloverContext = {
               name: true;
             };
           };
+          teacher: {
+            select: {
+              id: true;
+              name: true;
+              username: true;
+            };
+          };
           students: {
             where: {
               role: 'STUDENT';
@@ -83,6 +97,13 @@ type LoadedRolloverContext = {
               id: true;
               code: true;
               name: true;
+            };
+          };
+          teacher: {
+            select: {
+              id: true;
+              name: true;
+              username: true;
             };
           };
           students: {
@@ -322,6 +343,21 @@ type RolloverClassPlanItem = {
   targetLevel: string;
   targetClassName: string;
   targetClassId: number | null;
+  sourceHomeroomTeacher: {
+    id: number;
+    name: string;
+    username: string;
+  } | null;
+  targetHomeroomTeacher: {
+    id: number;
+    name: string;
+    username: string;
+  } | null;
+  homeroomAction:
+    | 'CARRY_FORWARD_ON_CREATE'
+    | 'FILL_EXISTING_EMPTY'
+    | 'KEEP_EXISTING'
+    | 'NO_SOURCE_HOMEROOM';
   action: 'CREATE' | 'SKIP_EXISTING';
 };
 
@@ -470,6 +506,10 @@ type RolloverWorkspace = {
         sourceItems: number;
         createCount: number;
         existingCount: number;
+        homeroomCarryCount: number;
+        homeroomExistingFillCount: number;
+        homeroomKeepExistingCount: number;
+        homeroomMissingSourceCount: number;
       };
       errors: string[];
       warnings: string[];
@@ -631,6 +671,10 @@ type ApplyAcademicYearRolloverResult = {
     classPreparation: {
       created: number;
       skippedExisting: number;
+      homeroomCarriedOnCreate: number;
+      homeroomFilledExisting: number;
+      homeroomKeptExisting: number;
+      homeroomMissingSource: number;
     };
     teacherAssignments: {
       created: number;
@@ -785,6 +829,28 @@ function getTargetClassPlan(
       const targetLevel = sourceLevel === 'X' ? 'XI' : 'XII';
       const targetClassName = buildPromotionTargetClassName(sourceClass.name, sourceLevel);
       const existingTargetClass = targetClassByName.get(targetClassName.trim().toLowerCase()) || null;
+      const sourceHomeroomTeacher = sourceClass.teacher
+        ? {
+            id: sourceClass.teacher.id,
+            name: sourceClass.teacher.name,
+            username: sourceClass.teacher.username,
+          }
+        : null;
+      const targetHomeroomTeacher = existingTargetClass?.teacher
+        ? {
+            id: existingTargetClass.teacher.id,
+            name: existingTargetClass.teacher.name,
+            username: existingTargetClass.teacher.username,
+          }
+        : null;
+      const homeroomAction =
+        !sourceHomeroomTeacher
+          ? ('NO_SOURCE_HOMEROOM' as const)
+          : !existingTargetClass
+            ? ('CARRY_FORWARD_ON_CREATE' as const)
+            : !targetHomeroomTeacher
+              ? ('FILL_EXISTING_EMPTY' as const)
+              : ('KEEP_EXISTING' as const);
 
       if (existingTargetClass) {
         const existingLevel = normalizeLevel(existingTargetClass.level);
@@ -796,6 +862,15 @@ function getTargetClassPlan(
         if (existingTargetClass.students.length > 0) {
           warningSet.add(
             `Kelas target "${targetClassName}" di tahun target sudah memiliki ${existingTargetClass.students.length} siswa aktif.`,
+          );
+        }
+        if (
+          sourceHomeroomTeacher &&
+          targetHomeroomTeacher &&
+          targetHomeroomTeacher.id !== sourceHomeroomTeacher.id
+        ) {
+          warningSet.add(
+            `Kelas target "${targetClassName}" sudah memiliki wali kelas "${targetHomeroomTeacher.name}". Wizard mempertahankan wali kelas target yang sudah ada dan tidak menimpa source "${sourceHomeroomTeacher.name}".`,
           );
         }
       }
@@ -813,6 +888,9 @@ function getTargetClassPlan(
         targetLevel,
         targetClassName,
         targetClassId: existingTargetClass?.id || null,
+        sourceHomeroomTeacher,
+        targetHomeroomTeacher,
+        homeroomAction,
         action: existingTargetClass ? ('SKIP_EXISTING' as const) : ('CREATE' as const),
       };
     })
@@ -833,19 +911,28 @@ function getTargetClassPlan(
 
   const createCount = items.filter((item) => item.action === 'CREATE').length;
   const existingCount = items.length - createCount;
+  const homeroomCarryCount = items.filter((item) => item.homeroomAction === 'CARRY_FORWARD_ON_CREATE').length;
+  const homeroomExistingFillCount = items.filter((item) => item.homeroomAction === 'FILL_EXISTING_EMPTY').length;
+  const homeroomKeepExistingCount = items.filter((item) => item.homeroomAction === 'KEEP_EXISTING').length;
+  const homeroomMissingSourceCount = items.filter((item) => item.homeroomAction === 'NO_SOURCE_HOMEROOM').length;
   const uniqueErrors = [...new Set(errors)];
   const warnings = [...warningSet];
 
   return {
     key: 'classPreparation',
     label: 'Kelas Target Promotion',
-    description: 'Menyiapkan kelas XI/XII yang dibutuhkan untuk promotion dari kelas X/XI tahun sumber.',
+    description:
+      'Menyiapkan kelas XI/XII yang dibutuhkan untuk promotion dari kelas X/XI tahun sumber, termasuk carry-forward wali kelas default bila tersedia.',
     selectedByDefault: true,
     ready: uniqueErrors.length === 0,
     summary: {
       sourceItems: items.length,
       createCount,
       existingCount,
+      homeroomCarryCount,
+      homeroomExistingFillCount,
+      homeroomKeepExistingCount,
+      homeroomMissingSourceCount,
     },
     errors: uniqueErrors,
     warnings,
@@ -1531,6 +1618,9 @@ async function loadAcademicYearRolloverContext(
               major: {
                 select: { id: true, code: true, name: true },
               },
+              teacher: {
+                select: { id: true, name: true, username: true },
+              },
               students: {
                 where: {
                   role: 'STUDENT',
@@ -1550,6 +1640,9 @@ async function loadAcademicYearRolloverContext(
             include: {
               major: {
                 select: { id: true, code: true, name: true },
+              },
+              teacher: {
+                select: { id: true, name: true, username: true },
               },
               students: {
                 where: {
@@ -2004,6 +2097,7 @@ function buildAcademicYearRolloverWorkspace(context: LoadedRolloverContext): Rol
     notes: [
       'Mapel dan kategori mapel tetap global, jadi tidak di-clone per tahun ajaran.',
       'Wizard ini additive: hanya membuat data target yang belum ada dan tidak memindahkan histori nilai/absensi/rapor.',
+      'Wali kelas source dibawa default ke kelas target baru, tetapi kelas target yang sudah punya wali kelas tetap dipertahankan.',
       'Tanggal rapor diclone secara additive berdasarkan semester dan tipe rapor tanpa menimpa target yang sudah disusun manual.',
       'Jalankan promotion setelah target year dan komponen tahunan siap.',
     ],
@@ -2131,6 +2225,10 @@ export async function applyAcademicYearRollover(params: {
       classPreparation: {
         created: 0,
         skippedExisting: 0,
+        homeroomCarriedOnCreate: 0,
+        homeroomFilledExisting: 0,
+        homeroomKeptExisting: 0,
+        homeroomMissingSource: 0,
       },
       teacherAssignments: {
         created: 0,
@@ -2185,15 +2283,38 @@ export async function applyAcademicYearRollover(params: {
             level: item.targetLevel,
             majorId: item.major.id,
             academicYearId: params.targetAcademicYearId,
-            teacherId: null,
+            teacherId: item.sourceHomeroomTeacher?.id || null,
             presidentId: null,
           })),
         });
       }
 
+      const existingClassItemsToFill = workspaceBefore.components.classPreparation.items.filter(
+        (item) => item.homeroomAction === 'FILL_EXISTING_EMPTY' && item.targetClassId && item.sourceHomeroomTeacher?.id,
+      );
+      for (const item of existingClassItemsToFill) {
+        const updated = await tx.class.updateMany({
+          where: {
+            id: item.targetClassId!,
+            academicYearId: params.targetAcademicYearId,
+            teacherId: null,
+          },
+          data: {
+            teacherId: item.sourceHomeroomTeacher!.id,
+          },
+        });
+        applied.classPreparation.homeroomFilledExisting += updated.count;
+      }
+
       applied.classPreparation.created = classItemsToCreate.length;
       applied.classPreparation.skippedExisting =
         workspaceBefore.components.classPreparation.summary.existingCount;
+      applied.classPreparation.homeroomCarriedOnCreate =
+        workspaceBefore.components.classPreparation.summary.homeroomCarryCount;
+      applied.classPreparation.homeroomKeptExisting =
+        workspaceBefore.components.classPreparation.summary.homeroomKeepExistingCount;
+      applied.classPreparation.homeroomMissingSource =
+        workspaceBefore.components.classPreparation.summary.homeroomMissingSourceCount;
     }
 
     const contextAfterClasses = await loadAcademicYearRolloverContext(

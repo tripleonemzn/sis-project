@@ -173,7 +173,26 @@ function getRolloverPreviewItemLabel(item: unknown) {
   const row = item as Record<string, unknown>;
 
   if ('sourceClassName' in row && 'targetClassName' in row && 'action' in row) {
-    return `${String(row.sourceClassName || '-')} -> ${String(row.targetClassName || '-')} (${String(row.action || '-')})`;
+    const sourceHomeroomTeacher =
+      typeof row.sourceHomeroomTeacher === 'object' && row.sourceHomeroomTeacher !== null
+        ? (row.sourceHomeroomTeacher as { name?: string })
+        : null;
+    const targetHomeroomTeacher =
+      typeof row.targetHomeroomTeacher === 'object' && row.targetHomeroomTeacher !== null
+        ? (row.targetHomeroomTeacher as { name?: string })
+        : null;
+    const homeroomAction = String(row.homeroomAction || '');
+    const homeroomLabel =
+      homeroomAction === 'CARRY_FORWARD_ON_CREATE'
+        ? `Wali ikut: ${String(sourceHomeroomTeacher?.name || '-')}`
+        : homeroomAction === 'FILL_EXISTING_EMPTY'
+          ? `Isi wali target: ${String(sourceHomeroomTeacher?.name || '-')}`
+          : homeroomAction === 'KEEP_EXISTING'
+            ? `Wali target tetap: ${String(targetHomeroomTeacher?.name || '-')}`
+            : 'Source tanpa wali kelas';
+    return `${String(row.sourceClassName || '-')} -> ${String(row.targetClassName || '-')} • ${homeroomLabel} (${String(
+      row.action || '-',
+    )})`;
   }
   if ('sourceAssignmentId' in row && 'subject' in row && 'sourceClassName' in row && 'action' in row) {
     const subject = row.subject as { code?: string; name?: string } | undefined;
@@ -1679,7 +1698,7 @@ export default function AdminAcademicScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-rollover-workspace'] });
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-promotion-workspace'] });
       notifySuccess(
-        `Setup tahunan diterapkan. Kelas ${result?.applied.classPreparation.created || 0}, assignment ${result?.applied.teacherAssignments.created || 0}, tanggal rapor ${result?.applied.reportDates.created || 0}, KKM ${result?.applied.subjectKkms.created || 0}, program ujian ${result?.applied.examProgramConfigs.created || 0}.`,
+        `Setup tahunan diterapkan. Kelas ${result?.applied.classPreparation.created || 0}, wali ikut ${result?.applied.classPreparation.homeroomCarriedOnCreate || 0}, isi target kosong ${result?.applied.classPreparation.homeroomFilledExisting || 0}, assignment ${result?.applied.teacherAssignments.created || 0}, tanggal rapor ${result?.applied.reportDates.created || 0}, KKM ${result?.applied.subjectKkms.created || 0}, program ujian ${result?.applied.examProgramConfigs.created || 0}.`,
       );
     },
     onError: (error: unknown) => {
@@ -3219,6 +3238,22 @@ export default function AdminAcademicScreen() {
                             <Text style={{ color: '#92400e', fontSize: 12, marginTop: 8 }}>
                               Di luar rentang target: {component.summary.skipOutsideTargetRangeCount}
                             </Text>
+                          ) : null}
+                          {'homeroomCarryCount' in component.summary ? (
+                            <View style={{ marginTop: 8 }}>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                                Wali ikut pada kelas baru: {component.summary.homeroomCarryCount}
+                              </Text>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                                Isi target kosong dari source: {component.summary.homeroomExistingFillCount}
+                              </Text>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                                Target sudah punya wali: {component.summary.homeroomKeepExistingCount}
+                              </Text>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                                Source tanpa wali: {component.summary.homeroomMissingSourceCount}
+                              </Text>
+                            </View>
                           ) : null}
                           {component.errors.length > 0 ? (
                             <View

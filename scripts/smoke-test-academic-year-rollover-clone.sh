@@ -110,6 +110,19 @@ const {
   applyAcademicYearRollover,
 } = require('./src/services/academicYearRollover.service');
 
+function buildPromotionTargetClassName(sourceName, sourceLevel) {
+  const trimmed = String(sourceName || '').trim();
+  if (String(sourceLevel || '').trim().toUpperCase() === 'X') {
+    if (/^X\s+/i.test(trimmed)) return trimmed.replace(/^X(\s+)/i, 'XI$1');
+    return `XI ${trimmed}`;
+  }
+  if (String(sourceLevel || '').trim().toUpperCase() === 'XI') {
+    if (/^XI\s+/i.test(trimmed)) return trimmed.replace(/^XI(\s+)/i, 'XII$1');
+    return `XII ${trimmed}`;
+  }
+  return trimmed;
+}
+
 function deriveTargetName(sourceName) {
   const match = String(sourceName || '').match(/^(\d{4})\/(\d{4})$/);
   if (!match) {
@@ -212,6 +225,77 @@ async function collectSourceSummary(sourceYearId) {
   };
 }
 
+async function seedExistingTargetClassWithoutHomeroom(sourceYearId, targetYearId) {
+  const sourceClass = await prisma.class.findFirst({
+    where: {
+      academicYearId: sourceYearId,
+      level: { in: ['X', 'XI'] },
+      teacherId: { not: null },
+    },
+    orderBy: [{ level: 'asc' }, { name: 'asc' }],
+    select: {
+      id: true,
+      name: true,
+      level: true,
+      majorId: true,
+      teacherId: true,
+      teacher: { select: { id: true, name: true } },
+    },
+  });
+
+  if (!sourceClass || !sourceClass.teacherId) {
+    return null;
+  }
+
+  const targetLevel = String(sourceClass.level || '').trim().toUpperCase() === 'X' ? 'XI' : 'XII';
+  const targetClassName = buildPromotionTargetClassName(sourceClass.name, sourceClass.level);
+  const existingTargetClass = await prisma.class.findFirst({
+    where: {
+      academicYearId: targetYearId,
+      name: targetClassName,
+    },
+    select: { id: true, teacherId: true },
+  });
+
+  if (existingTargetClass) {
+    return {
+      sourceClassId: sourceClass.id,
+      sourceClassName: sourceClass.name,
+      sourceTeacherId: sourceClass.teacherId,
+      sourceTeacherName: sourceClass.teacher?.name || null,
+      targetClassId: existingTargetClass.id,
+      targetClassName,
+      targetLevel,
+      seeded: false,
+    };
+  }
+
+  const created = await prisma.class.create({
+    data: {
+      name: targetClassName,
+      level: targetLevel,
+      majorId: sourceClass.majorId,
+      academicYearId: targetYearId,
+      teacherId: null,
+      presidentId: null,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  return {
+    sourceClassId: sourceClass.id,
+    sourceClassName: sourceClass.name,
+    sourceTeacherId: sourceClass.teacherId,
+    sourceTeacherName: sourceClass.teacher?.name || null,
+    targetClassId: created.id,
+    targetClassName,
+    targetLevel,
+    seeded: true,
+  };
+}
+
 function assertCondition(checks, condition, description, details = undefined) {
   checks.push({
     description,
@@ -232,6 +316,10 @@ function assertCondition(checks, condition, description, details = undefined) {
     sourceAcademicYearId: sourceYear.id,
     payload: { name: targetName },
   });
+  const seededExistingTargetClass = await seedExistingTargetClassWithoutHomeroom(
+    sourceYear.id,
+    targetResult.targetAcademicYear.id,
+  );
 
   const preSamples = await collectStudentSamples(sourceYear.id);
   const sourceSummaryBefore = await collectSourceSummary(sourceYear.id);
@@ -337,6 +425,15 @@ function assertCondition(checks, condition, description, details = undefined) {
   const targetReportDateCount = await prisma.reportDate.count({
     where: { academicYearId: targetResult.targetAcademicYear.id },
   });
+  const targetClassesAfter = await prisma.class.findMany({
+    where: { academicYearId: targetResult.targetAcademicYear.id },
+    select: {
+      id: true,
+      name: true,
+      teacherId: true,
+    },
+  });
+  const targetClassByName = new Map(targetClassesAfter.map((item) => [item.name, item]));
 
   const checks = [];
   assertCondition(
@@ -353,6 +450,71 @@ function assertCondition(checks, condition, description, details = undefined) {
       applied: firstApply.applied.classPreparation.created,
     },
   );
+  assertCondition(
+    checks,
+    firstApply.applied.classPreparation.homeroomCarriedOnCreate ===
+      workspaceBefore.components.classPreparation.summary.homeroomCarryCount,
+    'Jumlah carry-forward wali kelas pada kelas baru sesuai preview.',
+    {
+      preview: workspaceBefore.components.classPreparation.summary.homeroomCarryCount,
+      applied: firstApply.applied.classPreparation.homeroomCarriedOnCreate,
+    },
+  );
+  assertCondition(
+    checks,
+    firstApply.applied.classPreparation.homeroomFilledExisting ===
+      workspaceBefore.components.classPreparation.summary.homeroomExistingFillCount,
+    'Jumlah target existing kosong yang diisi wali kelas sesuai preview.',
+    {
+      preview: workspaceBefore.components.classPreparation.summary.homeroomExistingFillCount,
+      applied: firstApply.applied.classPreparation.homeroomFilledExisting,
+      seededExistingTargetClass,
+    },
+  );
+  const carryOnCreateItems = workspaceBefore.components.classPreparation.items.filter(
+    (item) => item.homeroomAction === 'CARRY_FORWARD_ON_CREATE',
+  );
+  assertCondition(
+    checks,
+    carryOnCreateItems.every((item) => {
+      const targetClass = targetClassByName.get(item.targetClassName);
+      return (targetClass?.teacherId || null) === (item.sourceHomeroomTeacher?.id || null);
+    }),
+    'Wali kelas source ikut terbawa ke kelas target baru.',
+    carryOnCreateItems.slice(0, 5).map((item) => ({
+      targetClassName: item.targetClassName,
+      expectedTeacherId: item.sourceHomeroomTeacher?.id || null,
+      actualTeacherId: targetClassByName.get(item.targetClassName)?.teacherId || null,
+    })),
+  );
+  const noSourceHomeroomItems = workspaceBefore.components.classPreparation.items.filter(
+    (item) => item.homeroomAction === 'NO_SOURCE_HOMEROOM' && item.action === 'CREATE',
+  );
+  assertCondition(
+    checks,
+    noSourceHomeroomItems.every((item) => {
+      const targetClass = targetClassByName.get(item.targetClassName);
+      return (targetClass?.teacherId || null) === null;
+    }),
+    'Kelas target tetap kosong jika source memang belum punya wali kelas.',
+    noSourceHomeroomItems.slice(0, 5).map((item) => ({
+      targetClassName: item.targetClassName,
+      actualTeacherId: targetClassByName.get(item.targetClassName)?.teacherId || null,
+    })),
+  );
+  if (seededExistingTargetClass) {
+    const filledExistingClass = targetClassesAfter.find((item) => item.id === seededExistingTargetClass.targetClassId) || null;
+    assertCondition(
+      checks,
+      filledExistingClass?.teacherId === seededExistingTargetClass.sourceTeacherId,
+      'Kelas target existing yang kosong otomatis diisi wali kelas source.',
+      {
+        targetClassName: seededExistingTargetClass.targetClassName,
+        expectedTeacherId: seededExistingTargetClass.sourceTeacherId,
+        actualTeacherId: filledExistingClass?.teacherId || null,
+      },
+    );
+  }
   assertCondition(
     checks,
     firstApply.applied.teacherAssignments.created === workspaceBefore.components.teacherAssignments.summary.createCount,
@@ -592,6 +754,7 @@ function assertCondition(checks, condition, description, details = undefined) {
     sourceSummaryBefore,
     sourceSummaryPrepared,
     sourceSummaryAfter,
+    seededExistingTargetClass,
     seededReportDates,
     checks,
     pass: checks.every((item) => item.pass),

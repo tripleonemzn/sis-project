@@ -89,7 +89,26 @@ function getRolloverPreviewItemLabel(item: unknown) {
   const row = item as Record<string, unknown>;
 
   if ('sourceClassName' in row && 'targetClassName' in row && 'action' in row) {
-    return `${String(row.sourceClassName || '-')} -> ${String(row.targetClassName || '-')} (${String(row.action || '-')})`;
+    const sourceHomeroomTeacher =
+      typeof row.sourceHomeroomTeacher === 'object' && row.sourceHomeroomTeacher !== null
+        ? (row.sourceHomeroomTeacher as { name?: string })
+        : null;
+    const targetHomeroomTeacher =
+      typeof row.targetHomeroomTeacher === 'object' && row.targetHomeroomTeacher !== null
+        ? (row.targetHomeroomTeacher as { name?: string })
+        : null;
+    const homeroomAction = String(row.homeroomAction || '');
+    const homeroomLabel =
+      homeroomAction === 'CARRY_FORWARD_ON_CREATE'
+        ? `Wali ikut: ${String(sourceHomeroomTeacher?.name || '-')}`
+        : homeroomAction === 'FILL_EXISTING_EMPTY'
+          ? `Isi wali target: ${String(sourceHomeroomTeacher?.name || '-')}`
+          : homeroomAction === 'KEEP_EXISTING'
+            ? `Wali target tetap: ${String(targetHomeroomTeacher?.name || '-')}`
+            : 'Source tanpa wali kelas';
+    return `${String(row.sourceClassName || '-')} -> ${String(row.targetClassName || '-')} • ${homeroomLabel} (${String(
+      row.action || '-',
+    )})`;
   }
   if ('sourceAssignmentId' in row && 'subject' in row && 'sourceClassName' in row && 'action' in row) {
     const subject = row.subject as { code?: string; name?: string } | undefined;
@@ -327,7 +346,7 @@ export const AcademicYearPage = () => {
         queryClient.invalidateQueries({ queryKey: ['academic-promotion-workspace'] }),
       ]);
       toast.success(
-        `Setup target year diterapkan. Kelas: ${response.data.applied.classPreparation.created}, assignment: ${response.data.applied.teacherAssignments.created}, tanggal rapor: ${response.data.applied.reportDates.created}, KKM: ${response.data.applied.subjectKkms.created}, program ujian: ${response.data.applied.examProgramConfigs.created}.`,
+        `Setup target year diterapkan. Kelas: ${response.data.applied.classPreparation.created}, wali ikut: ${response.data.applied.classPreparation.homeroomCarriedOnCreate}, isi target kosong: ${response.data.applied.classPreparation.homeroomFilledExisting}, assignment: ${response.data.applied.teacherAssignments.created}, tanggal rapor: ${response.data.applied.reportDates.created}, KKM: ${response.data.applied.subjectKkms.created}, program ujian: ${response.data.applied.examProgramConfigs.created}.`,
       );
     },
     onError: (error: unknown) => {
@@ -1018,6 +1037,14 @@ export const AcademicYearPage = () => {
                         <p className="mt-2 text-xs text-amber-700">
                           Di luar rentang target: {component.summary.skipOutsideTargetRangeCount}
                         </p>
+                      )}
+                      {'homeroomCarryCount' in component.summary && (
+                        <div className="mt-2 space-y-1 text-xs text-slate-600">
+                          <p>Wali ikut pada kelas baru: {component.summary.homeroomCarryCount}</p>
+                          <p>Isi target kosong dari source: {component.summary.homeroomExistingFillCount}</p>
+                          <p>Target sudah punya wali: {component.summary.homeroomKeepExistingCount}</p>
+                          <p>Source tanpa wali: {component.summary.homeroomMissingSourceCount}</p>
+                        </div>
                       )}
                       {component.errors.length > 0 && (
                         <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">

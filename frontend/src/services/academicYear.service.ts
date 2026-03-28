@@ -70,6 +70,10 @@ export interface AcademicYearRolloverWorkspace {
         sourceItems: number;
         createCount: number;
         existingCount: number;
+        homeroomCarryCount: number;
+        homeroomExistingFillCount: number;
+        homeroomKeepExistingCount: number;
+        homeroomMissingSourceCount: number;
       };
       errors: string[];
       warnings: string[];
@@ -86,6 +90,21 @@ export interface AcademicYearRolloverWorkspace {
         targetLevel: string;
         targetClassName: string;
         targetClassId: number | null;
+        sourceHomeroomTeacher: {
+          id: number;
+          name: string;
+          username: string;
+        } | null;
+        targetHomeroomTeacher: {
+          id: number;
+          name: string;
+          username: string;
+        } | null;
+        homeroomAction:
+          | 'CARRY_FORWARD_ON_CREATE'
+          | 'FILL_EXISTING_EMPTY'
+          | 'KEEP_EXISTING'
+          | 'NO_SOURCE_HOMEROOM';
         action: 'CREATE' | 'SKIP_EXISTING';
       }>;
     };
@@ -334,6 +353,10 @@ export interface AcademicYearRolloverApplyResult {
     classPreparation: {
       created: number;
       skippedExisting: number;
+      homeroomCarriedOnCreate: number;
+      homeroomFilledExisting: number;
+      homeroomKeptExisting: number;
+      homeroomMissingSource: number;
     };
     teacherAssignments: {
       created: number;

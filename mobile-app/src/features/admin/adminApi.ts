@@ -270,6 +270,10 @@ export type AdminAcademicYearRolloverWorkspace = {
         sourceItems: number;
         createCount: number;
         existingCount: number;
+        homeroomCarryCount: number;
+        homeroomExistingFillCount: number;
+        homeroomKeepExistingCount: number;
+        homeroomMissingSourceCount: number;
       };
       errors: string[];
       warnings: string[];
@@ -286,6 +290,21 @@ export type AdminAcademicYearRolloverWorkspace = {
         targetLevel: string;
         targetClassName: string;
         targetClassId: number | null;
+        sourceHomeroomTeacher: {
+          id: number;
+          name: string;
+          username: string;
+        } | null;
+        targetHomeroomTeacher: {
+          id: number;
+          name: string;
+          username: string;
+        } | null;
+        homeroomAction:
+          | 'CARRY_FORWARD_ON_CREATE'
+          | 'FILL_EXISTING_EMPTY'
+          | 'KEEP_EXISTING'
+          | 'NO_SOURCE_HOMEROOM';
         action: 'CREATE' | 'SKIP_EXISTING';
       }>;
     };
@@ -534,6 +553,10 @@ export type AdminAcademicYearRolloverApplyResult = {
     classPreparation: {
       created: number;
       skippedExisting: number;
+      homeroomCarriedOnCreate: number;
+      homeroomFilledExisting: number;
+      homeroomKeptExisting: number;
+      homeroomMissingSource: number;
     };
     teacherAssignments: {
       created: number;
