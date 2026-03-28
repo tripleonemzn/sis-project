@@ -95,6 +95,21 @@ if [ "${#DIRTY_FILES[@]}" -gt 0 ] && [ "$MODE" != "all" ]; then
   fi
 fi
 
+if [ "${#DIRTY_FILES[@]}" -gt 0 ] && [ "${ALLOW_DIRTY_REPO:-0}" != "1" ]; then
+  echo "[BLOCKED] Working tree harus clean sebelum check/release."
+  echo "Action: commit/stash/revert perubahan lokal dulu."
+  exit 2
+fi
+
+if [ "${ALLOW_GIT_UNSYNC:-0}" != "1" ] && [ -x "$ROOT_DIR/scripts/git-sync-gate.sh" ]; then
+  echo
+  bash "$ROOT_DIR/scripts/git-sync-gate.sh"
+  echo
+else
+  echo "[WARN] Git sync gate skipped (ALLOW_GIT_UNSYNC=${ALLOW_GIT_UNSYNC:-0})."
+  echo
+fi
+
 run_check() {
   local dir="$1"
   local cmd="$2"

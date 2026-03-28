@@ -24,6 +24,8 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
   - `bash ./scripts/prepare-academic-promotion-target.sh --source-year <SOURCE_ID> --apply`
 - Pastikan worktree clean:
   - `git status --short`
+- Pastikan branch sinkron dengan upstream:
+  - `bash ./scripts/git-sync-gate.sh`
 - Jalankan safety gate web:
   - `bash ./scripts/repo-safety-gate.sh web`
 - Atau jalankan preflight staging/production secara terstruktur:
@@ -168,5 +170,8 @@ Rollback otomatis belum disediakan. Jika hasil commit salah:
 - Commit promotion bersifat write ke data aktif, jadi wajib dilakukan pada jendela operasional yang disepakati.
 - Workspace harus clean setelah setiap batch rilis:
   - `git status --short`
+- Branch release juga harus sinkron:
+  - `git status -sb`
+  - `bash ./scripts/git-sync-gate.sh`
 - Untuk mobile, gunakan OTA isolated worktree; jangan publish dari tree yang kotor.
 - Untuk web, tetap utamakan safety gate sebelum deploy.

@@ -21,6 +21,7 @@ Actions:
 Options:
   --report                 Generate scope report before action
   --allow-dirty            Bypass dirty-tree gate (darurat)
+  --allow-unsynced         Izinkan branch ahead/behind remote (darurat)
   --channel <name>         Mobile OTA channel: pilot|staging|production|pilot-live (default: pilot)
   --profile <name>         Exam-browser EAS profile (default: internal-live)
   -h, --help               Show this help
@@ -29,6 +30,7 @@ Examples:
   bash ./scripts/release-manager.sh web check --report
   bash ./scripts/release-manager.sh web deploy
   bash ./scripts/release-manager.sh web deploy --allow-dirty
+  bash ./scripts/release-manager.sh web deploy --allow-unsynced
   bash ./scripts/release-manager.sh mobile check
   bash ./scripts/release-manager.sh mobile deploy --channel pilot
   bash ./scripts/release-manager.sh exambrowser deploy --profile internal-live
@@ -45,6 +47,7 @@ ACTION="$2"
 shift 2
 
 ALLOW_DIRTY=0
+ALLOW_UNSYNCED=0
 WITH_REPORT=0
 CHANNEL="pilot"
 PROFILE="internal-live"
@@ -53,6 +56,9 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --allow-dirty)
       ALLOW_DIRTY=1
+      ;;
+    --allow-unsynced)
+      ALLOW_UNSYNCED=1
       ;;
     --report)
       WITH_REPORT=1
@@ -121,6 +127,9 @@ run_gate() {
   local mode="$1"
   if [ "$ALLOW_DIRTY" -eq 1 ]; then
     echo "⚠️  Skip safety gate ($mode) karena --allow-dirty dipakai."
+  elif [ "$ALLOW_UNSYNCED" -eq 1 ]; then
+    echo "⚠️  Repo sync drift diizinkan untuk mode $mode karena --allow-unsynced dipakai."
+    ALLOW_GIT_UNSYNC=1 bash "$ROOT_DIR/scripts/repo-safety-gate.sh" "$mode"
   else
     bash "$ROOT_DIR/scripts/repo-safety-gate.sh" "$mode"
   fi
@@ -130,6 +139,7 @@ echo "== Release Manager =="
 echo "Scope       : $SCOPE"
 echo "Action      : $ACTION"
 echo "Allow dirty : $ALLOW_DIRTY"
+echo "Allow drift : $ALLOW_UNSYNCED"
 if [ "$SCOPE" = "mobile" ]; then
   echo "Channel     : $CHANNEL"
 fi
@@ -147,6 +157,8 @@ fi
 if [ "$SCOPE" = "web" ]; then
   if [ "$ALLOW_DIRTY" -eq 1 ]; then
     ALLOW_DIRTY_DEPLOY=1 bash "$ROOT_DIR/scripts/deploy-web-isolated.sh"
+  elif [ "$ALLOW_UNSYNCED" -eq 1 ]; then
+    ALLOW_GIT_UNSYNC=1 bash "$ROOT_DIR/scripts/deploy-web-isolated.sh"
   else
     bash "$ROOT_DIR/scripts/deploy-web-isolated.sh"
   fi
@@ -167,6 +179,8 @@ if [ "$SCOPE" = "mobile" ]; then
 
   if [ "$ALLOW_DIRTY" -eq 1 ]; then
     ALLOW_DIRTY_OTA=1 bash "$ROOT_DIR/scripts/publish-mobile-ota-isolated.sh" "$CHANNEL"
+  elif [ "$ALLOW_UNSYNCED" -eq 1 ]; then
+    ALLOW_GIT_UNSYNC=1 bash "$ROOT_DIR/scripts/publish-mobile-ota-isolated.sh" "$CHANNEL"
   else
     bash "$ROOT_DIR/scripts/publish-mobile-ota-isolated.sh" "$CHANNEL"
   fi
@@ -187,6 +201,8 @@ if [ "$SCOPE" = "exambrowser" ]; then
 
   if [ "$ALLOW_DIRTY" -eq 1 ]; then
     ALLOW_DIRTY_EXAMBROWSER=1 bash "$ROOT_DIR/scripts/publish-exam-browser-build-isolated.sh" "$PROFILE"
+  elif [ "$ALLOW_UNSYNCED" -eq 1 ]; then
+    ALLOW_GIT_UNSYNC=1 bash "$ROOT_DIR/scripts/publish-exam-browser-build-isolated.sh" "$PROFILE"
   else
     bash "$ROOT_DIR/scripts/publish-exam-browser-build-isolated.sh" "$PROFILE"
   fi
