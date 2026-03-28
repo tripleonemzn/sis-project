@@ -146,9 +146,9 @@ fi
 
 if [ "$SCOPE" = "web" ]; then
   if [ "$ALLOW_DIRTY" -eq 1 ]; then
-    ALLOW_DIRTY_DEPLOY=1 bash "$ROOT_DIR/update_all.sh"
+    ALLOW_DIRTY_DEPLOY=1 bash "$ROOT_DIR/scripts/deploy-web-isolated.sh"
   else
-    bash "$ROOT_DIR/update_all.sh"
+    bash "$ROOT_DIR/scripts/deploy-web-isolated.sh"
   fi
   echo "✅ Web deploy selesai."
   exit 0

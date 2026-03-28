@@ -21,6 +21,8 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
 - Audit promotion untuk pasangan tahun yang akan diuji:
   - `cd backend`
   - `npm run promotion:audit -- --source-year <SOURCE_ID> --target-year <TARGET_ID>`
+- Jika ingin smoke test otomatis di clone DB terisolasi:
+  - `bash ./scripts/smoke-test-academic-promotion-clone.sh`
 
 ## 3. Deploy ke Staging
 
@@ -28,6 +30,8 @@ Checklist ini dipakai untuk rollout fitur promotion kenaikan kelas/alumni dengan
 
 - Deploy web stack:
   - `bash ./scripts/release-manager.sh web deploy`
+- Deploy web sekarang berjalan via worktree terisolasi:
+  - `bash ./scripts/deploy-web-isolated.sh`
 
 ### Mobile
 
