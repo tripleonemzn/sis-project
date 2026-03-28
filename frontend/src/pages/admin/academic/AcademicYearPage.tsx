@@ -132,6 +132,7 @@ export const AcademicYearPage = () => {
     teacherAssignments: true,
     scheduleTimeConfig: true,
     academicEvents: true,
+    reportDates: true,
     subjectKkms: true,
     examGradeComponents: true,
     examProgramConfigs: true,
@@ -326,7 +327,7 @@ export const AcademicYearPage = () => {
         queryClient.invalidateQueries({ queryKey: ['academic-promotion-workspace'] }),
       ]);
       toast.success(
-        `Setup target year diterapkan. Kelas: ${response.data.applied.classPreparation.created}, assignment: ${response.data.applied.teacherAssignments.created}, KKM: ${response.data.applied.subjectKkms.created}, program ujian: ${response.data.applied.examProgramConfigs.created}.`,
+        `Setup target year diterapkan. Kelas: ${response.data.applied.classPreparation.created}, assignment: ${response.data.applied.teacherAssignments.created}, tanggal rapor: ${response.data.applied.reportDates.created}, KKM: ${response.data.applied.subjectKkms.created}, program ujian: ${response.data.applied.examProgramConfigs.created}.`,
       );
     },
     onError: (error: unknown) => {
@@ -481,6 +482,7 @@ export const AcademicYearPage = () => {
         ['teacherAssignments', rolloverWorkspace.components.teacherAssignments],
         ['scheduleTimeConfig', rolloverWorkspace.components.scheduleTimeConfig],
         ['academicEvents', rolloverWorkspace.components.academicEvents],
+        ['reportDates', rolloverWorkspace.components.reportDates],
         ['subjectKkms', rolloverWorkspace.components.subjectKkms],
         ['examGradeComponents', rolloverWorkspace.components.examGradeComponents],
         ['examProgramConfigs', rolloverWorkspace.components.examProgramConfigs],
@@ -500,6 +502,12 @@ export const AcademicYearPage = () => {
           title: 'Assignment Baru',
           value: rolloverWorkspace.components.teacherAssignments.summary.createCount,
           subtitle: 'Guru-mapel yang bisa di-clone.',
+        },
+        {
+          key: 'stat-reportDates',
+          title: 'Tanggal Rapor',
+          value: rolloverWorkspace.components.reportDates.summary.createCount,
+          subtitle: 'Tanggal rapor tahunan yang perlu dibuat.',
         },
         {
           key: 'stat-subjectKkms',

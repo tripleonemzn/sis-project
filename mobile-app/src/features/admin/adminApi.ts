@@ -221,6 +221,7 @@ export type AdminAcademicYearRolloverComponentSelection = {
   teacherAssignments: boolean;
   scheduleTimeConfig: boolean;
   academicEvents: boolean;
+  reportDates: boolean;
   subjectKkms: boolean;
   examGradeComponents: boolean;
   examProgramConfigs: boolean;
@@ -372,6 +373,33 @@ export type AdminAcademicYearRolloverWorkspace = {
         reason: string | null;
       }>;
     };
+    reportDates: {
+      key: 'reportDates';
+      label: string;
+      description: string;
+      selectedByDefault: boolean;
+      ready: boolean;
+      summary: {
+        sourceItems: number;
+        createCount: number;
+        existingCount: number;
+        skipOutsideTargetRangeCount: number;
+      };
+      errors: string[];
+      warnings: string[];
+      items: Array<{
+        sourceReportDateId: number;
+        semester: string;
+        reportType: string;
+        place: string;
+        sourceDate: string;
+        targetDate: string | null;
+        targetReportDateId: number | null;
+        targetPlace: string | null;
+        action: 'CREATE' | 'SKIP_EXISTING' | 'SKIP_OUTSIDE_TARGET_RANGE';
+        reason: string | null;
+      }>;
+    };
     subjectKkms: {
       key: 'subjectKkms';
       label: string;
@@ -518,6 +546,11 @@ export type AdminAcademicYearRolloverApplyResult = {
       skippedNoSource: number;
     };
     academicEvents: {
+      created: number;
+      skippedExisting: number;
+      skippedOutsideTargetRange: number;
+    };
+    reportDates: {
       created: number;
       skippedExisting: number;
       skippedOutsideTargetRange: number;

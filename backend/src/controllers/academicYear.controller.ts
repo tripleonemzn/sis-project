@@ -49,6 +49,7 @@ const rolloverComponentSelectionSchema = z.object({
   teacherAssignments: z.boolean().optional(),
   scheduleTimeConfig: z.boolean().optional(),
   academicEvents: z.boolean().optional(),
+  reportDates: z.boolean().optional(),
   subjectKkms: z.boolean().optional(),
   examGradeComponents: z.boolean().optional(),
   examProgramConfigs: z.boolean().optional(),

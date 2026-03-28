@@ -125,12 +125,28 @@ async function pickSourceYear() {
   if (Number.isFinite(requestedSourceYearId) && requestedSourceYearId > 0) {
     return prisma.academicYear.findUnique({
       where: { id: requestedSourceYearId },
-      select: { id: true, name: true, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        isActive: true,
+        semester1Start: true,
+        semester1End: true,
+        semester2Start: true,
+        semester2End: true,
+      },
     });
   }
   return prisma.academicYear.findFirst({
     where: { isActive: true },
-    select: { id: true, name: true, isActive: true },
+    select: {
+      id: true,
+      name: true,
+      isActive: true,
+      semester1Start: true,
+      semester1End: true,
+      semester2Start: true,
+      semester2End: true,
+    },
   });
 }
 
@@ -183,6 +199,9 @@ async function collectSourceSummary(sourceYearId) {
     sourceAcademicEventCount: await prisma.academicEvent.count({
       where: { academicYearId: sourceYearId },
     }),
+    sourceReportDateCount: await prisma.reportDate.count({
+      where: { academicYearId: sourceYearId },
+    }),
     activeStudentsInSourceYear: await prisma.user.count({
       where: {
         role: 'STUDENT',
@@ -216,6 +235,32 @@ function assertCondition(checks, condition, description, details = undefined) {
 
   const preSamples = await collectStudentSamples(sourceYear.id);
   const sourceSummaryBefore = await collectSourceSummary(sourceYear.id);
+  let seededReportDates = 0;
+  if (sourceSummaryBefore.sourceReportDateCount === 0) {
+    await prisma.reportDate.createMany({
+      data: [
+        {
+          academicYearId: sourceYear.id,
+          semester: 'ODD',
+          reportType: 'SAS',
+          place: 'Bekasi',
+          date: new Date(sourceYear.semester1End),
+        },
+        {
+          academicYearId: sourceYear.id,
+          semester: 'EVEN',
+          reportType: 'SAT',
+          place: 'Bekasi',
+          date: new Date(sourceYear.semester2End),
+        },
+      ],
+      skipDuplicates: true,
+    });
+    seededReportDates = await prisma.reportDate.count({
+      where: { academicYearId: sourceYear.id },
+    });
+  }
+  const sourceSummaryPrepared = await collectSourceSummary(sourceYear.id);
   const workspaceBefore = await getAcademicYearRolloverWorkspace(sourceYear.id, targetResult.targetAcademicYear.id);
 
   if (!workspaceBefore.validation.readyToApply) {
@@ -234,6 +279,7 @@ function assertCondition(checks, condition, description, details = undefined) {
       examProgramSessions: true,
       scheduleTimeConfig: true,
       academicEvents: true,
+      reportDates: true,
     },
     actor: null,
   });
@@ -251,6 +297,7 @@ function assertCondition(checks, condition, description, details = undefined) {
       examProgramSessions: true,
       scheduleTimeConfig: true,
       academicEvents: true,
+      reportDates: true,
     },
     actor: null,
   });
@@ -285,6 +332,9 @@ function assertCondition(checks, condition, description, details = undefined) {
     where: { academicYearId: targetResult.targetAcademicYear.id },
   });
   const targetExamProgramSessionCount = await prisma.examProgramSession.count({
+    where: { academicYearId: targetResult.targetAcademicYear.id },
+  });
+  const targetReportDateCount = await prisma.reportDate.count({
     where: { academicYearId: targetResult.targetAcademicYear.id },
   });
 
@@ -328,6 +378,15 @@ function assertCondition(checks, condition, description, details = undefined) {
     {
       preview: workspaceBefore.components.academicEvents.summary.createCount,
       applied: firstApply.applied.academicEvents.created,
+    },
+  );
+  assertCondition(
+    checks,
+    firstApply.applied.reportDates.created === workspaceBefore.components.reportDates.summary.createCount,
+    'Tanggal rapor yang dibuat sesuai preview.',
+    {
+      preview: workspaceBefore.components.reportDates.summary.createCount,
+      applied: firstApply.applied.reportDates.created,
     },
   );
   assertCondition(
@@ -389,6 +448,12 @@ function assertCondition(checks, condition, description, details = undefined) {
   );
   assertCondition(
     checks,
+    workspaceAfterFirst.components.reportDates.summary.createCount === 0,
+    'Setelah apply pertama, tanggal rapor target tidak punya item create tersisa.',
+    workspaceAfterFirst.components.reportDates.summary,
+  );
+  assertCondition(
+    checks,
     workspaceAfterFirst.components.subjectKkms.summary.createCount === 0,
     'Setelah apply pertama, KKM target tidak punya item create tersisa.',
     workspaceAfterFirst.components.subjectKkms.summary,
@@ -415,6 +480,7 @@ function assertCondition(checks, condition, description, details = undefined) {
     checks,
     secondApply.applied.classPreparation.created === 0 &&
       secondApply.applied.teacherAssignments.created === 0 &&
+      secondApply.applied.reportDates.created === 0 &&
       secondApply.applied.subjectKkms.created === 0 &&
       secondApply.applied.examGradeComponents.created === 0 &&
       secondApply.applied.examProgramConfigs.created === 0 &&
@@ -470,6 +536,15 @@ function assertCondition(checks, condition, description, details = undefined) {
   );
   assertCondition(
     checks,
+    targetReportDateCount >= firstApply.applied.reportDates.created,
+    'Target year menyimpan tanggal rapor yang baru dibuat.',
+    {
+      targetReportDateCount,
+      created: firstApply.applied.reportDates.created,
+    },
+  );
+  assertCondition(
+    checks,
     targetExamGradeComponentCount >= firstApply.applied.examGradeComponents.created,
     'Target year menyimpan komponen nilai ujian.',
     {
@@ -503,6 +578,7 @@ function assertCondition(checks, condition, description, details = undefined) {
     previewBefore: {
       classPreparation: workspaceBefore.components.classPreparation.summary,
       teacherAssignments: workspaceBefore.components.teacherAssignments.summary,
+      reportDates: workspaceBefore.components.reportDates.summary,
       subjectKkms: workspaceBefore.components.subjectKkms.summary,
       examGradeComponents: workspaceBefore.components.examGradeComponents.summary,
       examProgramConfigs: workspaceBefore.components.examProgramConfigs.summary,
@@ -514,7 +590,9 @@ function assertCondition(checks, condition, description, details = undefined) {
     firstApply: firstApply.applied,
     secondApply: secondApply.applied,
     sourceSummaryBefore,
+    sourceSummaryPrepared,
     sourceSummaryAfter,
+    seededReportDates,
     checks,
     pass: checks.every((item) => item.pass),
   }, null, 2));
@@ -536,6 +614,7 @@ console.log('Target year : ' + result.targetYear.id + ' (' + result.targetYear.n
 console.log('Target made : ' + (result.targetCreated ? 'created' : 'reused'));
 console.log('Preview     : classes=' + result.previewBefore.classPreparation.createCount
   + ', assignments=' + result.previewBefore.teacherAssignments.createCount
+  + ', reportDates=' + result.previewBefore.reportDates.createCount
   + ', kkms=' + result.previewBefore.subjectKkms.createCount
   + ', examComponents=' + result.previewBefore.examGradeComponents.createCount
   + ', examPrograms=' + result.previewBefore.examProgramConfigs.createCount
@@ -544,6 +623,7 @@ console.log('Preview     : classes=' + result.previewBefore.classPreparation.cre
   + ', events=' + result.previewBefore.academicEvents.createCount);
 console.log('1st apply   : classes=' + result.firstApply.classPreparation.created
   + ', assignments=' + result.firstApply.teacherAssignments.created
+  + ', reportDates=' + result.firstApply.reportDates.created
   + ', kkms=' + result.firstApply.subjectKkms.created
   + ', examComponents=' + result.firstApply.examGradeComponents.created
   + ', examPrograms=' + result.firstApply.examProgramConfigs.created
@@ -552,6 +632,7 @@ console.log('1st apply   : classes=' + result.firstApply.classPreparation.create
   + ', events=' + result.firstApply.academicEvents.created);
 console.log('2nd apply   : classes=' + result.secondApply.classPreparation.created
   + ', assignments=' + result.secondApply.teacherAssignments.created
+  + ', reportDates=' + result.secondApply.reportDates.created
   + ', kkms=' + result.secondApply.subjectKkms.created
   + ', examComponents=' + result.secondApply.examGradeComponents.created
   + ', examPrograms=' + result.secondApply.examProgramConfigs.created

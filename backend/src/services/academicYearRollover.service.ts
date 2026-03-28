@@ -9,6 +9,7 @@ export type AcademicYearRolloverComponentSelection = {
   teacherAssignments: boolean;
   scheduleTimeConfig: boolean;
   academicEvents: boolean;
+  reportDates: boolean;
   subjectKkms: boolean;
   examGradeComponents: boolean;
   examProgramConfigs: boolean;
@@ -159,6 +160,22 @@ type LoadedRolloverContext = {
     type: string;
     startDate: Date;
     endDate: Date;
+  }>;
+  sourceReportDates: Array<{
+    id: number;
+    academicYearId: number;
+    semester: string;
+    reportType: string;
+    place: string;
+    date: Date;
+  }>;
+  targetReportDates: Array<{
+    id: number;
+    academicYearId: number;
+    semester: string;
+    reportType: string;
+    place: string;
+    date: Date;
   }>;
   sourceSubjectKkms: Array<{
     id: number;
@@ -344,6 +361,19 @@ type RolloverAcademicEventPlanItem = {
   reason: string | null;
 };
 
+type RolloverReportDatePlanItem = {
+  sourceReportDateId: number;
+  semester: string;
+  reportType: string;
+  place: string;
+  sourceDate: Date;
+  targetDate: Date | null;
+  targetReportDateId: number | null;
+  targetPlace: string | null;
+  action: 'CREATE' | 'SKIP_EXISTING' | 'SKIP_OUTSIDE_TARGET_RANGE';
+  reason: string | null;
+};
+
 type RolloverSubjectKkmPlanItem = {
   sourceSubjectKkmId: number;
   sourceAcademicYearId: number | null;
@@ -497,6 +527,22 @@ type RolloverWorkspace = {
       warnings: string[];
       items: RolloverAcademicEventPlanItem[];
     };
+    reportDates: {
+      key: 'reportDates';
+      label: string;
+      description: string;
+      selectedByDefault: boolean;
+      ready: boolean;
+      summary: {
+        sourceItems: number;
+        createCount: number;
+        existingCount: number;
+        skipOutsideTargetRangeCount: number;
+      };
+      errors: string[];
+      warnings: string[];
+      items: RolloverReportDatePlanItem[];
+    };
     subjectKkms: {
       key: 'subjectKkms';
       label: string;
@@ -601,6 +647,11 @@ type ApplyAcademicYearRolloverResult = {
       skippedExisting: number;
       skippedOutsideTargetRange: number;
     };
+    reportDates: {
+      created: number;
+      skippedExisting: number;
+      skippedOutsideTargetRange: number;
+    };
     subjectKkms: {
       created: number;
       skippedExisting: number;
@@ -629,6 +680,7 @@ const DEFAULT_COMPONENT_SELECTION: AcademicYearRolloverComponentSelection = {
   teacherAssignments: true,
   scheduleTimeConfig: true,
   academicEvents: true,
+  reportDates: true,
   subjectKkms: true,
   examGradeComponents: true,
   examProgramConfigs: true,
@@ -706,6 +758,7 @@ function normalizeComponentSelection(
     teacherAssignments: input?.teacherAssignments ?? DEFAULT_COMPONENT_SELECTION.teacherAssignments,
     scheduleTimeConfig: input?.scheduleTimeConfig ?? DEFAULT_COMPONENT_SELECTION.scheduleTimeConfig,
     academicEvents: input?.academicEvents ?? DEFAULT_COMPONENT_SELECTION.academicEvents,
+    reportDates: input?.reportDates ?? DEFAULT_COMPONENT_SELECTION.reportDates,
     subjectKkms: input?.subjectKkms ?? DEFAULT_COMPONENT_SELECTION.subjectKkms,
     examGradeComponents: input?.examGradeComponents ?? DEFAULT_COMPONENT_SELECTION.examGradeComponents,
     examProgramConfigs: input?.examProgramConfigs ?? DEFAULT_COMPONENT_SELECTION.examProgramConfigs,
@@ -1057,6 +1110,88 @@ function normalizeSessionLabelKey(rawLabel?: string | null) {
   return normalized || null;
 }
 
+function getReportDatePlan(
+  sourceYear: LoadedRolloverContext['sourceYear'],
+  targetYear: LoadedRolloverContext['targetYear'],
+  sourceReportDates: LoadedRolloverContext['sourceReportDates'],
+  targetReportDates: LoadedRolloverContext['targetReportDates'],
+): RolloverWorkspace['components']['reportDates'] {
+  const targetByKey = new Map(
+    targetReportDates.map((item) => [`${item.semester}-${item.reportType}`, item]),
+  );
+
+  const items: RolloverReportDatePlanItem[] = sourceReportDates
+    .map((item) => {
+      const existingTarget = targetByKey.get(`${item.semester}-${item.reportType}`) || null;
+      const targetDate = shiftDateByAcademicYear(item.date, sourceYear.semester1Start, targetYear.semester1Start);
+
+      if (existingTarget) {
+        return {
+          sourceReportDateId: item.id,
+          semester: item.semester,
+          reportType: item.reportType,
+          place: item.place,
+          sourceDate: item.date,
+          targetDate: existingTarget.date,
+          targetReportDateId: existingTarget.id,
+          targetPlace: existingTarget.place,
+          action: 'SKIP_EXISTING' as const,
+          reason: 'Target year sudah memiliki tanggal rapor untuk semester dan tipe rapor yang sama.',
+        };
+      }
+
+      if (targetDate < targetYear.semester1Start || targetDate > targetYear.semester2End) {
+        return {
+          sourceReportDateId: item.id,
+          semester: item.semester,
+          reportType: item.reportType,
+          place: item.place,
+          sourceDate: item.date,
+          targetDate: null,
+          targetReportDateId: null,
+          targetPlace: null,
+          action: 'SKIP_OUTSIDE_TARGET_RANGE' as const,
+          reason: 'Tanggal rapor hasil clone berada di luar rentang tahun ajaran target.',
+        };
+      }
+
+      return {
+        sourceReportDateId: item.id,
+        semester: item.semester,
+        reportType: item.reportType,
+        place: item.place,
+        sourceDate: item.date,
+        targetDate,
+        targetReportDateId: null,
+        targetPlace: null,
+        action: 'CREATE' as const,
+        reason: null,
+      };
+    })
+    .sort((left, right) => {
+      const bySemester = left.semester.localeCompare(right.semester, 'id');
+      if (bySemester !== 0) return bySemester;
+      return left.reportType.localeCompare(right.reportType, 'id');
+    });
+
+  return {
+    key: 'reportDates',
+    label: 'Tanggal Rapor',
+    description: 'Clone tanggal rapor tahunan berdasarkan semester dan tipe rapor tanpa menimpa target yang sudah ada.',
+    selectedByDefault: true,
+    ready: true,
+    summary: {
+      sourceItems: items.length,
+      createCount: items.filter((item) => item.action === 'CREATE').length,
+      existingCount: items.filter((item) => item.action === 'SKIP_EXISTING').length,
+      skipOutsideTargetRangeCount: items.filter((item) => item.action === 'SKIP_OUTSIDE_TARGET_RANGE').length,
+    },
+    errors: [],
+    warnings: items.length === 0 ? ['Tahun sumber belum memiliki tanggal rapor yang bisa diclone.'] : [],
+    items,
+  };
+}
+
 function buildEffectiveSourceSubjectKkms(
   sourceSubjectKkms: LoadedRolloverContext['sourceSubjectKkms'],
 ): RolloverSubjectKkmPlanItem[] {
@@ -1375,6 +1510,8 @@ async function loadAcademicYearRolloverContext(
     targetScheduleTimeConfig,
     sourceAcademicEvents,
     targetAcademicEvents,
+    sourceReportDates,
+    targetReportDates,
     sourceSubjectKkms,
     targetSubjectKkms,
     sourceExamGradeComponents,
@@ -1524,6 +1661,30 @@ async function loadAcademicYearRolloverContext(
           type: true,
           startDate: true,
           endDate: true,
+        },
+      }),
+      db.reportDate.findMany({
+        where: { academicYearId: sourceAcademicYearId },
+        orderBy: [{ semester: 'asc' }, { reportType: 'asc' }, { date: 'asc' }],
+        select: {
+          id: true,
+          academicYearId: true,
+          semester: true,
+          reportType: true,
+          place: true,
+          date: true,
+        },
+      }),
+      db.reportDate.findMany({
+        where: { academicYearId: targetAcademicYearId },
+        orderBy: [{ semester: 'asc' }, { reportType: 'asc' }, { date: 'asc' }],
+        select: {
+          id: true,
+          academicYearId: true,
+          semester: true,
+          reportType: true,
+          place: true,
+          date: true,
         },
       }),
       db.subjectKKM.findMany({
@@ -1717,6 +1878,8 @@ async function loadAcademicYearRolloverContext(
     targetScheduleTimeConfig,
     sourceAcademicEvents,
     targetAcademicEvents,
+    sourceReportDates,
+    targetReportDates,
     sourceSubjectKkms,
     targetSubjectKkms,
     sourceExamGradeComponents,
@@ -1747,6 +1910,12 @@ function buildAcademicYearRolloverWorkspace(context: LoadedRolloverContext): Rol
     context.sourceAcademicEvents,
     context.targetAcademicEvents,
   );
+  const reportDates = getReportDatePlan(
+    context.sourceYear,
+    context.targetYear,
+    context.sourceReportDates,
+    context.targetReportDates,
+  );
   const subjectKkms = getSubjectKkmPlan(
     context.sourceSubjectKkms,
     context.targetSubjectKkms,
@@ -1773,6 +1942,7 @@ function buildAcademicYearRolloverWorkspace(context: LoadedRolloverContext): Rol
     ...teacherAssignments.errors,
     ...scheduleTimeConfig.errors,
     ...academicEvents.errors,
+    ...reportDates.errors,
     ...subjectKkms.errors,
     ...examGradeComponents.errors,
     ...examProgramConfigs.errors,
@@ -1783,6 +1953,7 @@ function buildAcademicYearRolloverWorkspace(context: LoadedRolloverContext): Rol
     ...teacherAssignments.warnings,
     ...scheduleTimeConfig.warnings,
     ...academicEvents.warnings,
+    ...reportDates.warnings,
     ...subjectKkms.warnings,
     ...examGradeComponents.warnings,
     ...examProgramConfigs.warnings,
@@ -1824,6 +1995,7 @@ function buildAcademicYearRolloverWorkspace(context: LoadedRolloverContext): Rol
       teacherAssignments,
       scheduleTimeConfig,
       academicEvents,
+      reportDates,
       subjectKkms,
       examGradeComponents,
       examProgramConfigs,
@@ -1832,7 +2004,7 @@ function buildAcademicYearRolloverWorkspace(context: LoadedRolloverContext): Rol
     notes: [
       'Mapel dan kategori mapel tetap global, jadi tidak di-clone per tahun ajaran.',
       'Wizard ini additive: hanya membuat data target yang belum ada dan tidak memindahkan histori nilai/absensi/rapor.',
-      'Report dates belum diikutkan dalam wizard karena data ini belum punya flow admin yang matang di codebase saat ini.',
+      'Tanggal rapor diclone secara additive berdasarkan semester dan tipe rapor tanpa menimpa target yang sudah disusun manual.',
       'Jalankan promotion setelah target year dan komponen tahunan siap.',
     ],
   };
@@ -1971,6 +2143,11 @@ export async function applyAcademicYearRollover(params: {
         skippedNoSource: 0,
       },
       academicEvents: {
+        created: 0,
+        skippedExisting: 0,
+        skippedOutsideTargetRange: 0,
+      },
+      reportDates: {
         created: 0,
         skippedExisting: 0,
         skippedOutsideTargetRange: 0,
@@ -2131,8 +2308,47 @@ export async function applyAcademicYearRollover(params: {
       await loadAcademicYearRolloverContext(tx, params.sourceAcademicYearId, params.targetAcademicYearId),
     );
 
+    if (selectedComponents.reportDates) {
+      const reportDateItemsToCreate = workspaceAfterEvents.components.reportDates.items.filter(
+        (item) => item.action === 'CREATE' && item.targetDate,
+      );
+      const sourceReportDateById = new Map(
+        contextAfterClasses.sourceReportDates.map((item) => [item.id, item]),
+      );
+
+      if (reportDateItemsToCreate.length > 0) {
+        await tx.reportDate.createMany({
+          data: reportDateItemsToCreate.map((item) => {
+            const sourceReportDate = sourceReportDateById.get(item.sourceReportDateId);
+            if (!sourceReportDate || !item.targetDate) {
+              throw new ApiError(500, 'Tanggal rapor source tidak ditemukan saat apply rollover.');
+            }
+
+            return {
+              academicYearId: params.targetAcademicYearId,
+              semester: sourceReportDate.semester as any,
+              reportType: sourceReportDate.reportType as any,
+              place: sourceReportDate.place,
+              date: item.targetDate,
+            };
+          }),
+          skipDuplicates: true,
+        });
+      }
+
+      applied.reportDates.created = reportDateItemsToCreate.length;
+      applied.reportDates.skippedExisting =
+        workspaceAfterEvents.components.reportDates.summary.existingCount;
+      applied.reportDates.skippedOutsideTargetRange =
+        workspaceAfterEvents.components.reportDates.summary.skipOutsideTargetRangeCount;
+    }
+
+    const workspaceAfterReportDates = buildAcademicYearRolloverWorkspace(
+      await loadAcademicYearRolloverContext(tx, params.sourceAcademicYearId, params.targetAcademicYearId),
+    );
+
     if (selectedComponents.subjectKkms) {
-      const kkmItemsToCreate = workspaceAfterEvents.components.subjectKkms.items.filter(
+      const kkmItemsToCreate = workspaceAfterReportDates.components.subjectKkms.items.filter(
         (item) => item.action === 'CREATE',
       );
 
@@ -2150,9 +2366,9 @@ export async function applyAcademicYearRollover(params: {
 
       applied.subjectKkms.created = kkmItemsToCreate.length;
       applied.subjectKkms.skippedExisting =
-        workspaceAfterEvents.components.subjectKkms.summary.existingCount;
+        workspaceAfterReportDates.components.subjectKkms.summary.existingCount;
       applied.subjectKkms.globalFallbackCount =
-        workspaceAfterEvents.components.subjectKkms.summary.globalFallbackCount;
+        workspaceAfterReportDates.components.subjectKkms.summary.globalFallbackCount;
     }
 
     const workspaceAfterKkms = buildAcademicYearRolloverWorkspace(

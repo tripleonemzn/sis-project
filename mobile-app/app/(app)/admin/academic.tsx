@@ -631,6 +631,7 @@ export default function AdminAcademicScreen() {
       teacherAssignments: true,
       scheduleTimeConfig: true,
       academicEvents: true,
+      reportDates: true,
       subjectKkms: true,
       examGradeComponents: true,
       examProgramConfigs: true,
@@ -824,6 +825,7 @@ export default function AdminAcademicScreen() {
         ['teacherAssignments', rolloverWorkspace.components.teacherAssignments],
         ['scheduleTimeConfig', rolloverWorkspace.components.scheduleTimeConfig],
         ['academicEvents', rolloverWorkspace.components.academicEvents],
+        ['reportDates', rolloverWorkspace.components.reportDates],
         ['subjectKkms', rolloverWorkspace.components.subjectKkms],
         ['examGradeComponents', rolloverWorkspace.components.examGradeComponents],
         ['examProgramConfigs', rolloverWorkspace.components.examProgramConfigs],
@@ -843,6 +845,12 @@ export default function AdminAcademicScreen() {
           title: 'Assignment Baru',
           value: String(rolloverWorkspace.components.teacherAssignments.summary.createCount || 0),
           subtitle: 'Guru-mapel target',
+        },
+        {
+          key: 'stat-reportDates',
+          title: 'Tanggal Rapor',
+          value: String(rolloverWorkspace.components.reportDates.summary.createCount || 0),
+          subtitle: 'Tanggal rapor tahunan',
         },
         {
           key: 'stat-subjectKkms',
@@ -1671,7 +1679,7 @@ export default function AdminAcademicScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-rollover-workspace'] });
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-promotion-workspace'] });
       notifySuccess(
-        `Setup tahunan diterapkan. Kelas ${result?.applied.classPreparation.created || 0}, assignment ${result?.applied.teacherAssignments.created || 0}, KKM ${result?.applied.subjectKkms.created || 0}, program ujian ${result?.applied.examProgramConfigs.created || 0}.`,
+        `Setup tahunan diterapkan. Kelas ${result?.applied.classPreparation.created || 0}, assignment ${result?.applied.teacherAssignments.created || 0}, tanggal rapor ${result?.applied.reportDates.created || 0}, KKM ${result?.applied.subjectKkms.created || 0}, program ujian ${result?.applied.examProgramConfigs.created || 0}.`,
       );
     },
     onError: (error: unknown) => {

@@ -107,7 +107,7 @@ Catatan:
 
 - hasil clone harus masuk sebagai `draft`, bukan langsung dianggap final
 - operator tetap harus bisa menghapus, mengubah, atau menambah item setelah clone
-- `report dates` tetap diposisikan sebagai data tahunan, tetapi implementasi wizard boleh ditunda sampai admin flow-nya matang
+- `report dates` tetap diposisikan sebagai data tahunan dan sekarang bisa ikut di-clone secara additive tanpa menimpa target yang sudah ada
 
 ### 3.3 Data yang otomatis mengikuti promotion
 
@@ -219,8 +219,7 @@ Pilihan yang tidak perlu ada di clone:
 
 Catatan implementasi MVP saat ini:
 
-- sudah tersedia untuk `kelas target XI/XII`, `teacher assignment`, `KKM`, `exam grade components`, `exam program configs`, `exam program sessions`, `schedule time config`, dan `academic events`
-- `report dates` masih sengaja ditunda sampai admin flow-nya matang dan ada data operasional yang siap di-clone
+- sudah tersedia untuk `kelas target XI/XII`, `teacher assignment`, `KKM`, `report dates`, `exam grade components`, `exam program configs`, `exam program sessions`, `schedule time config`, dan `academic events`
 - kelas `X` intake baru tetap disiapkan lewat alur PPDB/rombel baru
 
 ### Langkah 3. Review yearly setup
