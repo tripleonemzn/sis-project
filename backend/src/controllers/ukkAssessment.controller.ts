@@ -4,6 +4,10 @@ import prisma from '../utils/prisma';
 import { ApiResponseHelper } from '../utils/ApiResponse';
 import { ApiError } from '../utils/api';
 import { syncReportGrade } from './grade.controller';
+import {
+  getHistoricalStudentSnapshotForAcademicYear,
+  listHistoricalStudentsByIdsForAcademicYear,
+} from '../utils/studentAcademicHistory';
 
 export const upsertUKKAssessment = async (req: Request, res: Response) => {
   try {
@@ -17,17 +21,44 @@ export const upsertUKKAssessment = async (req: Request, res: Response) => {
     } = req.body;
     
     const examinerId = (req as any).user.id;
+    const normalizedStudentId = Number(studentId);
+    const normalizedSubjectId = Number(subjectId);
+    const normalizedAcademicYearId = Number(academicYearId);
+    const normalizedExaminerId = Number(examinerId);
+    const normalizedFinalScore = Number(finalScore);
 
     if (!studentId || !subjectId || !academicYearId || !criteria || !scores) {
       throw new ApiError(400, 'Missing required fields');
     }
 
+    if (
+      !Number.isFinite(normalizedStudentId) ||
+      normalizedStudentId <= 0 ||
+      !Number.isFinite(normalizedSubjectId) ||
+      normalizedSubjectId <= 0 ||
+      !Number.isFinite(normalizedAcademicYearId) ||
+      normalizedAcademicYearId <= 0 ||
+      !Number.isFinite(normalizedExaminerId) ||
+      normalizedExaminerId <= 0 ||
+      !Number.isFinite(normalizedFinalScore)
+    ) {
+      throw new ApiError(400, 'Invalid numeric payload');
+    }
+
+    const studentSnapshot = await getHistoricalStudentSnapshotForAcademicYear(
+      normalizedStudentId,
+      normalizedAcademicYearId,
+    );
+    if (!studentSnapshot) {
+      throw new ApiError(400, 'Siswa tidak valid untuk tahun ajaran yang dipilih');
+    }
+
     // Check if assessment already exists for this student+subject+year
     const existing = await prisma.ukkAssessment.findFirst({
       where: {
-        studentId: Number(studentId),
-        subjectId: Number(subjectId),
-        academicYearId: Number(academicYearId)
+        studentId: normalizedStudentId,
+        subjectId: normalizedSubjectId,
+        academicYearId: normalizedAcademicYearId
       }
     });
 
@@ -38,20 +69,20 @@ export const upsertUKKAssessment = async (req: Request, res: Response) => {
         data: {
           criteria,
           scores,
-          finalScore: Number(finalScore),
-          examinerId: Number(examinerId)
+          finalScore: normalizedFinalScore,
+          examinerId: normalizedExaminerId
         }
       });
     } else {
       result = await prisma.ukkAssessment.create({
         data: {
-          studentId: Number(studentId),
-          subjectId: Number(subjectId),
-          academicYearId: Number(academicYearId),
-          examinerId: Number(examinerId),
+          studentId: normalizedStudentId,
+          subjectId: normalizedSubjectId,
+          academicYearId: normalizedAcademicYearId,
+          examinerId: normalizedExaminerId,
           criteria,
           scores,
-          finalScore: Number(finalScore)
+          finalScore: normalizedFinalScore
         }
       });
     }
@@ -64,7 +95,7 @@ export const upsertUKKAssessment = async (req: Request, res: Response) => {
       // We assume US_PRACTICE is the component type for UKK
       const usPracticeComponent = await prisma.gradeComponent.findFirst({
         where: {
-          subjectId: Number(subjectId),
+          subjectId: normalizedSubjectId,
           type: GradeComponentType.US_PRACTICE,
           isActive: true
         }
@@ -74,9 +105,9 @@ export const upsertUKKAssessment = async (req: Request, res: Response) => {
         // Find existing grade
         const existingGrade = await prisma.studentGrade.findFirst({
           where: {
-            studentId: Number(studentId),
+            studentId: normalizedStudentId,
             componentId: usPracticeComponent.id,
-            academicYearId: Number(academicYearId),
+            academicYearId: normalizedAcademicYearId,
             semester: Semester.EVEN // Default to EVEN for US/UKK
           }
         });
@@ -84,17 +115,17 @@ export const upsertUKKAssessment = async (req: Request, res: Response) => {
         if (existingGrade) {
           await prisma.studentGrade.update({
             where: { id: existingGrade.id },
-            data: { score: Number(finalScore) }
+            data: { score: normalizedFinalScore }
           });
         } else {
           await prisma.studentGrade.create({
             data: {
-              studentId: Number(studentId),
-              subjectId: Number(subjectId),
+              studentId: normalizedStudentId,
+              subjectId: normalizedSubjectId,
               componentId: usPracticeComponent.id,
-              academicYearId: Number(academicYearId),
+              academicYearId: normalizedAcademicYearId,
               semester: Semester.EVEN,
-              score: Number(finalScore)
+              score: normalizedFinalScore
             }
           });
         }
@@ -102,9 +133,9 @@ export const upsertUKKAssessment = async (req: Request, res: Response) => {
 
         try {
           await syncReportGrade(
-            Number(studentId),
-            Number(subjectId),
-            Number(academicYearId),
+            normalizedStudentId,
+            normalizedSubjectId,
+            normalizedAcademicYearId,
             Semester.EVEN,
           );
         } catch (reportSyncError) {
@@ -127,16 +158,31 @@ export const upsertUKKAssessment = async (req: Request, res: Response) => {
 export const getUKKAssessment = async (req: Request, res: Response) => {
   try {
     const { studentId, subjectId, academicYearId } = req.query;
+    const normalizedStudentId = Number(studentId);
+    const normalizedSubjectId = Number(subjectId);
+    const normalizedAcademicYearId = Number(academicYearId);
 
     if (!studentId || !subjectId || !academicYearId) {
       throw new ApiError(400, 'Missing required query parameters');
     }
 
+    if (
+      !Number.isFinite(normalizedStudentId) ||
+      normalizedStudentId <= 0 ||
+      !Number.isFinite(normalizedSubjectId) ||
+      normalizedSubjectId <= 0 ||
+      !Number.isFinite(normalizedAcademicYearId)
+      ||
+      normalizedAcademicYearId <= 0
+    ) {
+      throw new ApiError(400, 'Invalid numeric query parameters');
+    }
+
     const assessment = await prisma.ukkAssessment.findFirst({
       where: {
-        studentId: Number(studentId),
-        subjectId: Number(subjectId),
-        academicYearId: Number(academicYearId)
+        studentId: normalizedStudentId,
+        subjectId: normalizedSubjectId,
+        academicYearId: normalizedAcademicYearId
       },
       include: {
         examiner: {
@@ -148,7 +194,21 @@ export const getUKKAssessment = async (req: Request, res: Response) => {
       }
     });
 
-    return ApiResponseHelper.success(res, assessment, 'UKK Assessment retrieved successfully');
+    const studentSnapshot = assessment
+      ? await getHistoricalStudentSnapshotForAcademicYear(assessment.student.id, normalizedAcademicYearId)
+      : null;
+
+    const payload = assessment
+      ? {
+          ...assessment,
+          student: {
+            ...assessment.student,
+            studentClass: studentSnapshot?.studentClass || null,
+          },
+        }
+      : assessment;
+
+    return ApiResponseHelper.success(res, payload, 'UKK Assessment retrieved successfully');
   } catch (error) {
     console.error('Get UKK Assessment error:', error);
     if (error instanceof ApiError) throw error;
@@ -160,9 +220,20 @@ export const getAssessmentsByExaminer = async (req: Request, res: Response) => {
   try {
     const examinerId = (req as any).user.id;
     const { academicYearId } = req.query;
+    const normalizedAcademicYearId =
+      academicYearId !== undefined && academicYearId !== null && String(academicYearId).trim() !== ''
+        ? Number(academicYearId)
+        : null;
+
+    if (
+      normalizedAcademicYearId !== null &&
+      (!Number.isFinite(normalizedAcademicYearId) || normalizedAcademicYearId <= 0)
+    ) {
+      throw new ApiError(400, 'Invalid academic year');
+    }
 
     const where: any = { examinerId };
-    if (academicYearId) where.academicYearId = Number(academicYearId);
+    if (normalizedAcademicYearId) where.academicYearId = normalizedAcademicYearId;
 
     const assessments = await prisma.ukkAssessment.findMany({
       where,
@@ -182,10 +253,26 @@ export const getAssessmentsByExaminer = async (req: Request, res: Response) => {
       }
     });
 
+    const historicalStudents =
+      normalizedAcademicYearId && assessments.length > 0
+        ? await listHistoricalStudentsByIdsForAcademicYear(
+            assessments.map((item) => item.student.id),
+            normalizedAcademicYearId,
+          )
+        : [];
+    const studentSnapshotMap = new Map(historicalStudents.map((item) => [item.id, item]));
+
     const formattedAssessments = assessments.map(a => ({
       ...a,
+      student: studentSnapshotMap.has(a.student.id)
+        ? {
+            ...a.student,
+            studentClass: studentSnapshotMap.get(a.student.id)?.studentClass || null,
+          }
+        : a.student,
       studentName: a.student.name,
-      className: a.student.studentClass?.name || '-',
+      className:
+        studentSnapshotMap.get(a.student.id)?.studentClass?.name || a.student.studentClass?.name || '-',
       subjectName: a.subject.name
     }));
 

@@ -95,17 +95,20 @@ const resolveHistoricalStudent = (
   academicMembershipStatus: membership?.status ?? null,
 });
 
-export const listHistoricalStudentsByIds = async (
-  studentIds: number[],
-  academicYearId: number,
-): Promise<HistoricalStudentSnapshot[]> => {
-  const normalizedIds = Array.from(
+const normalizeStudentIds = (studentIds: number[]) =>
+  Array.from(
     new Set(
       studentIds
         .map((item) => Number(item))
         .filter((item) => Number.isFinite(item) && item > 0),
     ),
   );
+
+export const listHistoricalStudentsByIds = async (
+  studentIds: number[],
+  academicYearId: number,
+): Promise<HistoricalStudentSnapshot[]> => {
+  const normalizedIds = normalizeStudentIds(studentIds);
 
   if (!normalizedIds.length) return [];
 
@@ -136,11 +139,72 @@ export const listHistoricalStudentsByIds = async (
   );
 };
 
+export const listHistoricalStudentsByIdsForAcademicYear = async (
+  studentIds: number[],
+  academicYearId: number,
+): Promise<HistoricalStudentSnapshot[]> => {
+  const normalizedIds = normalizeStudentIds(studentIds);
+  if (!normalizedIds.length) return [];
+
+  const [students, memberships] = await Promise.all([
+    prisma.user.findMany({
+      where: {
+        id: { in: normalizedIds },
+        role: 'STUDENT',
+        OR: [
+          {
+            studentClass: {
+              academicYearId,
+            },
+          },
+          {
+            academicMemberships: {
+              some: {
+                academicYearId,
+              },
+            },
+          },
+        ],
+      },
+      select: historicalStudentSelect,
+    }),
+    prisma.studentAcademicMembership.findMany({
+      where: {
+        studentId: { in: normalizedIds },
+        academicYearId,
+      },
+      select: historicalMembershipSelect,
+    }),
+  ]);
+
+  const membershipMap = new Map<number, HistoricalMembershipBase>();
+  memberships.forEach((item) => {
+    membershipMap.set(item.studentId, item);
+  });
+
+  return sortStudentsByName(
+    students
+      .map((student) => resolveHistoricalStudent(student, membershipMap.get(student.id) || null))
+      .filter((student) => {
+        if (membershipMap.has(student.id)) return true;
+        return Number(student.studentClass?.academicYearId || 0) === academicYearId;
+      }),
+  );
+};
+
 export const getHistoricalStudentSnapshot = async (
   studentId: number,
   academicYearId: number,
 ): Promise<HistoricalStudentSnapshot | null> => {
   const rows = await listHistoricalStudentsByIds([studentId], academicYearId);
+  return rows[0] || null;
+};
+
+export const getHistoricalStudentSnapshotForAcademicYear = async (
+  studentId: number,
+  academicYearId: number,
+): Promise<HistoricalStudentSnapshot | null> => {
+  const rows = await listHistoricalStudentsByIdsForAcademicYear([studentId], academicYearId);
   return rows[0] || null;
 };
 
