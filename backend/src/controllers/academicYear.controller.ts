@@ -3,13 +3,22 @@ import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { z } from 'zod';
 import {
+  applyAcademicYearRollover,
+  createAcademicYearRolloverTarget,
+  getAcademicYearRolloverWorkspace,
+} from '../services/academicYearRollover.service';
+import {
   commitAcademicPromotion,
   getAcademicPromotionWorkspace,
   rollbackAcademicPromotion,
   saveAcademicPromotionMappings,
 } from '../services/academicPromotion.service';
 import { writeAuditLog } from '../utils/auditLog';
-import { getAcademicFeatureFlags, isAcademicPromotionV2Enabled } from '../config/featureFlags';
+import {
+  getAcademicFeatureFlags,
+  isAcademicPromotionV2Enabled,
+  isAcademicYearRolloverEnabled,
+} from '../config/featureFlags';
 
 const academicYearSchema = z.object({
   name: z.string().min(1),
@@ -24,6 +33,26 @@ const academicYearSchema = z.object({
 const updateAcademicYearSchema = academicYearSchema.partial();
 const promotionWorkspaceQuerySchema = z.object({
   targetAcademicYearId: z.coerce.number().int().positive(),
+});
+const rolloverTargetPayloadSchema = z.object({
+  name: z.string().min(1).optional(),
+  semester1Start: z.string().transform((value) => new Date(value)).optional(),
+  semester1End: z.string().transform((value) => new Date(value)).optional(),
+  semester2Start: z.string().transform((value) => new Date(value)).optional(),
+  semester2End: z.string().transform((value) => new Date(value)).optional(),
+});
+const rolloverWorkspaceQuerySchema = z.object({
+  targetAcademicYearId: z.coerce.number().int().positive(),
+});
+const rolloverComponentSelectionSchema = z.object({
+  classPreparation: z.boolean().optional(),
+  teacherAssignments: z.boolean().optional(),
+  scheduleTimeConfig: z.boolean().optional(),
+  academicEvents: z.boolean().optional(),
+});
+const applyRolloverSchema = z.object({
+  targetAcademicYearId: z.number().int().positive(),
+  components: rolloverComponentSelectionSchema.optional(),
 });
 const savePromotionMappingsSchema = z.object({
   targetAcademicYearId: z.number().int().positive(),
@@ -69,6 +98,12 @@ function setActiveAcademicYearCache(payload: unknown) {
 function assertAcademicPromotionV2Enabled() {
   if (!isAcademicPromotionV2Enabled()) {
     throw new ApiError(403, 'Fitur promotion kenaikan kelas belum diaktifkan di server.');
+  }
+}
+
+function assertAcademicYearRolloverEnabled() {
+  if (!isAcademicYearRolloverEnabled()) {
+    throw new ApiError(403, 'Fitur rollover tahun ajaran belum diaktifkan di server.');
   }
 }
 
@@ -390,6 +425,123 @@ export const updatePklConfig = asyncHandler(async (req: Request, res: Response) 
 export const getAcademicFeatureFlagsController = asyncHandler(async (_req: Request, res: Response) => {
   res.status(200).json(
     new ApiResponse(200, getAcademicFeatureFlags(), 'Feature flag akademik berhasil diambil'),
+  );
+});
+
+export const createAcademicYearRolloverTargetController = asyncHandler(async (req: Request, res: Response) => {
+  assertAcademicYearRolloverEnabled();
+  const { id } = req.params;
+  const actor = (req as any).user;
+  const payload = rolloverTargetPayloadSchema.parse(req.body || {});
+
+  const result = await createAcademicYearRolloverTarget({
+    sourceAcademicYearId: Number(id),
+    payload,
+  });
+
+  try {
+    if (actor?.id) {
+      const actorUser = await prisma.user.findUnique({
+        where: { id: Number(actor.id) },
+        select: {
+          id: true,
+          role: true,
+          additionalDuties: true,
+        },
+      });
+
+      if (actorUser) {
+        await writeAuditLog(
+          actorUser.id,
+          String(actorUser.role || 'ADMIN'),
+          Array.isArray(actorUser.additionalDuties) ? actorUser.additionalDuties : null,
+          result.created ? 'CREATE_TARGET' : 'REUSE_TARGET',
+          'ACADEMIC_YEAR_ROLLOVER',
+          result.targetAcademicYear.id,
+          null,
+          {
+            sourceAcademicYearId: Number(id),
+            targetAcademicYearId: result.targetAcademicYear.id,
+            created: result.created,
+            notes: result.notes,
+          },
+          'Membuat atau memakai draft tahun ajaran target untuk rollover',
+        );
+      }
+    }
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat create target academic rollover', auditError);
+  }
+
+  res.status(result.created ? 201 : 200).json(
+    new ApiResponse(
+      result.created ? 201 : 200,
+      result,
+      result.created ? 'Draft tahun ajaran target berhasil dibuat' : 'Draft tahun ajaran target sudah tersedia',
+    ),
+  );
+});
+
+export const getAcademicYearRolloverWorkspaceController = asyncHandler(async (req: Request, res: Response) => {
+  assertAcademicYearRolloverEnabled();
+  const { id } = req.params;
+  const query = rolloverWorkspaceQuerySchema.parse(req.query);
+
+  const workspace = await getAcademicYearRolloverWorkspace(Number(id), query.targetAcademicYearId);
+
+  res.status(200).json(
+    new ApiResponse(200, workspace, 'Workspace rollover tahun ajaran berhasil diambil'),
+  );
+});
+
+export const applyAcademicYearRolloverController = asyncHandler(async (req: Request, res: Response) => {
+  assertAcademicYearRolloverEnabled();
+  const { id } = req.params;
+  const actor = (req as any).user;
+  const body = applyRolloverSchema.parse(req.body);
+
+  const result = await applyAcademicYearRollover({
+    sourceAcademicYearId: Number(id),
+    targetAcademicYearId: body.targetAcademicYearId,
+    components: body.components,
+    actor,
+  });
+
+  try {
+    if (actor?.id) {
+      const actorUser = await prisma.user.findUnique({
+        where: { id: Number(actor.id) },
+        select: {
+          id: true,
+          role: true,
+          additionalDuties: true,
+        },
+      });
+
+      if (actorUser) {
+        await writeAuditLog(
+          actorUser.id,
+          String(actorUser.role || 'ADMIN'),
+          Array.isArray(actorUser.additionalDuties) ? actorUser.additionalDuties : null,
+          'APPLY',
+          'ACADEMIC_YEAR_ROLLOVER',
+          result.targetAcademicYear.id,
+          null,
+          {
+            sourceAcademicYearId: Number(id),
+            targetAcademicYearId: result.targetAcademicYear.id,
+            applied: result.applied,
+          },
+          'Menerapkan clone setup tahun ajaran sebelum promotion',
+        );
+      }
+    }
+  } catch (auditError) {
+    console.warn('[AUDIT] gagal mencatat apply academic rollover', auditError);
+  }
+
+  res.status(200).json(
+    new ApiResponse(200, result, 'Clone setup tahun ajaran berhasil diterapkan'),
   );
 });
 

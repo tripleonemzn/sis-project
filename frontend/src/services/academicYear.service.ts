@@ -13,6 +13,204 @@ export interface AcademicYear {
 
 export interface AcademicFeatureFlags {
   academicPromotionV2Enabled: boolean;
+  academicYearRolloverEnabled: boolean;
+}
+
+export interface AcademicYearRolloverComponentSelection {
+  classPreparation: boolean;
+  teacherAssignments: boolean;
+  scheduleTimeConfig: boolean;
+  academicEvents: boolean;
+}
+
+export interface AcademicYearRolloverWorkspace {
+  sourceAcademicYear: {
+    id: number;
+    name: string;
+    isActive: boolean;
+    semester1Start: string;
+    semester1End: string;
+    semester2Start: string;
+    semester2End: string;
+  };
+  targetAcademicYear: {
+    id: number;
+    name: string;
+    isActive: boolean;
+    semester1Start: string;
+    semester1End: string;
+    semester2Start: string;
+    semester2End: string;
+  };
+  targetDraftSuggestion: {
+    name: string;
+    semester1Start: string;
+    semester1End: string;
+    semester2Start: string;
+    semester2End: string;
+  };
+  validation: {
+    readyToApply: boolean;
+    errors: string[];
+    warnings: string[];
+  };
+  components: {
+    classPreparation: {
+      key: 'classPreparation';
+      label: string;
+      description: string;
+      selectedByDefault: boolean;
+      ready: boolean;
+      summary: {
+        sourceItems: number;
+        createCount: number;
+        existingCount: number;
+      };
+      errors: string[];
+      warnings: string[];
+      items: Array<{
+        sourceClassId: number;
+        sourceClassName: string;
+        sourceLevel: string;
+        studentCount: number;
+        major: {
+          id: number;
+          code: string;
+          name: string;
+        };
+        targetLevel: string;
+        targetClassName: string;
+        targetClassId: number | null;
+        action: 'CREATE' | 'SKIP_EXISTING';
+      }>;
+    };
+    teacherAssignments: {
+      key: 'teacherAssignments';
+      label: string;
+      description: string;
+      selectedByDefault: boolean;
+      ready: boolean;
+      summary: {
+        sourceItems: number;
+        createCount: number;
+        existingCount: number;
+        skipNoTargetClassCount: number;
+      };
+      errors: string[];
+      warnings: string[];
+      items: Array<{
+        sourceAssignmentId: number;
+        sourceClassId: number;
+        sourceClassName: string;
+        sourceClassLevel: string;
+        targetClassId: number | null;
+        targetClassName: string | null;
+        teacher: {
+          id: number;
+          name: string;
+          username: string;
+        };
+        subject: {
+          id: number;
+          name: string;
+          code: string;
+        };
+        kkm: number;
+        action: 'CREATE' | 'SKIP_EXISTING' | 'SKIP_NO_TARGET_CLASS';
+        reason: string | null;
+      }>;
+    };
+    scheduleTimeConfig: {
+      key: 'scheduleTimeConfig';
+      label: string;
+      description: string;
+      selectedByDefault: boolean;
+      ready: boolean;
+      summary: {
+        sourceItems: number;
+        createCount: number;
+        existingCount: number;
+        skipNoSourceCount: number;
+      };
+      errors: string[];
+      warnings: string[];
+      item: {
+        action: 'CREATE' | 'SKIP_EXISTING' | 'SKIP_NO_SOURCE';
+        sourceAcademicYearId: number | null;
+        targetAcademicYearId: number;
+      };
+    };
+    academicEvents: {
+      key: 'academicEvents';
+      label: string;
+      description: string;
+      selectedByDefault: boolean;
+      ready: boolean;
+      summary: {
+        sourceItems: number;
+        createCount: number;
+        existingCount: number;
+        skipOutsideTargetRangeCount: number;
+      };
+      errors: string[];
+      warnings: string[];
+      items: Array<{
+        sourceEventId: number;
+        title: string;
+        type: string;
+        semester: string | null;
+        isHoliday: boolean;
+        sourceStartDate: string;
+        sourceEndDate: string;
+        targetStartDate: string | null;
+        targetEndDate: string | null;
+        action: 'CREATE' | 'SKIP_DUPLICATE' | 'SKIP_OUTSIDE_TARGET_RANGE';
+        reason: string | null;
+      }>;
+    };
+  };
+  notes: string[];
+}
+
+export interface AcademicYearRolloverTargetResult {
+  created: boolean;
+  targetAcademicYear: {
+    id: number;
+    name: string;
+    isActive: boolean;
+    semester1Start: string;
+    semester1End: string;
+    semester2Start: string;
+    semester2End: string;
+  };
+  targetDraftSuggestion: AcademicYearRolloverWorkspace['targetDraftSuggestion'];
+  notes: string[];
+}
+
+export interface AcademicYearRolloverApplyResult {
+  targetAcademicYear: AcademicYearRolloverWorkspace['targetAcademicYear'];
+  applied: {
+    classPreparation: {
+      created: number;
+      skippedExisting: number;
+    };
+    teacherAssignments: {
+      created: number;
+      skippedExisting: number;
+      skippedNoTargetClass: number;
+    };
+    scheduleTimeConfig: {
+      created: number;
+      skippedExisting: number;
+      skippedNoSource: number;
+    };
+    academicEvents: {
+      created: number;
+      skippedExisting: number;
+      skippedOutsideTargetRange: number;
+    };
+  };
+  workspace: AcademicYearRolloverWorkspace;
 }
 
 export type AcademicPromotionAction = 'PROMOTE' | 'GRADUATE';
@@ -261,6 +459,50 @@ export const academicYearService = {
     const response = await api.get('/academic-years/features');
     return response.data as {
       data: AcademicFeatureFlags;
+      message: string;
+      success: boolean;
+      statusCode: number;
+    };
+  },
+  createRolloverTarget: async (
+    sourceAcademicYearId: number,
+    data?: {
+      name?: string;
+      semester1Start?: string;
+      semester1End?: string;
+      semester2Start?: string;
+      semester2End?: string;
+    },
+  ) => {
+    const response = await api.post(`/academic-years/${sourceAcademicYearId}/rollover-v1/target`, data || {});
+    return response.data as {
+      data: AcademicYearRolloverTargetResult;
+      message: string;
+      success: boolean;
+      statusCode: number;
+    };
+  },
+  getRolloverWorkspace: async (sourceAcademicYearId: number, targetAcademicYearId: number) => {
+    const response = await api.get(`/academic-years/${sourceAcademicYearId}/rollover-v1`, {
+      params: { targetAcademicYearId },
+    });
+    return response.data as {
+      data: AcademicYearRolloverWorkspace;
+      message: string;
+      success: boolean;
+      statusCode: number;
+    };
+  },
+  applyRollover: async (
+    sourceAcademicYearId: number,
+    data: {
+      targetAcademicYearId: number;
+      components?: Partial<AcademicYearRolloverComponentSelection>;
+    },
+  ) => {
+    const response = await api.post(`/academic-years/${sourceAcademicYearId}/rollover-v1/apply`, data);
+    return response.data as {
+      data: AcademicYearRolloverApplyResult;
       message: string;
       success: boolean;
       statusCode: number;

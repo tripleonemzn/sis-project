@@ -11,6 +11,8 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import {
   adminApi,
   type AdminAcademicFeatureFlags,
+  type AdminAcademicYearRolloverApplyResult,
+  type AdminAcademicYearRolloverComponentSelection,
   type AdminAcademicPromotionRollbackResult,
   type AdminAcademicPromotionWorkspaceClass,
   type AdminExamQuestionType,
@@ -592,6 +594,13 @@ export default function AdminAcademicScreen() {
   const [promotionTargetAcademicYearId, setPromotionTargetAcademicYearId] = useState('');
   const [activateTargetYearAfterCommit, setActivateTargetYearAfterCommit] = useState(true);
   const [promotionMappingDrafts, setPromotionMappingDrafts] = useState<Record<number, number | null>>({});
+  const [rolloverSelectedComponents, setRolloverSelectedComponents] =
+    useState<AdminAcademicYearRolloverComponentSelection>({
+      classPreparation: true,
+      teacherAssignments: true,
+      scheduleTimeConfig: true,
+      academicEvents: true,
+    });
   const [calendarAcademicYearId, setCalendarAcademicYearId] = useState('');
   const [calendarSemesterFilter, setCalendarSemesterFilter] = useState<'ALL' | 'ODD' | 'EVEN'>('ALL');
   const [calendarTypeFilter, setCalendarTypeFilter] = useState<'ALL' | AcademicEventType>('ALL');
@@ -745,6 +754,7 @@ export default function AdminAcademicScreen() {
 
   const academicFeatureFlags: AdminAcademicFeatureFlags | undefined = academicFeatureFlagsQuery.data;
   const isPromotionFeatureEnabled = academicFeatureFlags?.academicPromotionV2Enabled === true;
+  const isRolloverFeatureEnabled = academicFeatureFlags?.academicYearRolloverEnabled === true;
 
   const promotionWorkspaceQuery = useQuery({
     queryKey: [
@@ -755,6 +765,19 @@ export default function AdminAcademicScreen() {
     enabled: promotionSelectionValid && isPromotionFeatureEnabled,
     queryFn: async () =>
       adminApi.getAcademicPromotionWorkspace(
+        effectivePromotionSourceAcademicYearId as number,
+        effectivePromotionTargetAcademicYearId as number,
+      ),
+  });
+  const rolloverWorkspaceQuery = useQuery({
+    queryKey: [
+      'mobile-admin-academic-rollover-workspace',
+      effectivePromotionSourceAcademicYearId,
+      effectivePromotionTargetAcademicYearId,
+    ],
+    enabled: promotionSelectionValid && isRolloverFeatureEnabled,
+    queryFn: async () =>
+      adminApi.getAcademicYearRolloverWorkspace(
         effectivePromotionSourceAcademicYearId as number,
         effectivePromotionTargetAcademicYearId as number,
       ),
@@ -1509,6 +1532,53 @@ export default function AdminAcademicScreen() {
     },
   });
 
+  const createRolloverTargetMutation = useMutation({
+    mutationFn: async () => {
+      if (!effectivePromotionSourceAcademicYearId) {
+        throw new Error('Tahun sumber rollover belum valid.');
+      }
+      return adminApi.createAcademicYearRolloverTarget(effectivePromotionSourceAcademicYearId);
+    },
+    onSuccess: async (result) => {
+      if (result?.targetAcademicYear?.id) {
+        setPromotionTargetAcademicYearId(String(result.targetAcademicYear.id));
+      }
+      await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-overview'] });
+      await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-rollover-workspace'] });
+      await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-promotion-workspace'] });
+      notifySuccess(
+        result?.created
+          ? `Draft ${result.targetAcademicYear.name} berhasil dibuat.`
+          : `Draft ${result?.targetAcademicYear?.name || 'target year'} sudah tersedia.`,
+      );
+    },
+    onError: (error: unknown) => {
+      notifyApiError(error, 'Gagal menyiapkan draft tahun ajaran target.');
+    },
+  });
+
+  const applyRolloverMutation = useMutation({
+    mutationFn: async () => {
+      if (!effectivePromotionSourceAcademicYearId || !effectivePromotionTargetAcademicYearId) {
+        throw new Error('Tahun sumber/target rollover belum valid.');
+      }
+      return adminApi.applyAcademicYearRollover(effectivePromotionSourceAcademicYearId, {
+        targetAcademicYearId: effectivePromotionTargetAcademicYearId,
+        components: rolloverSelectedComponents,
+      });
+    },
+    onSuccess: async (result: AdminAcademicYearRolloverApplyResult | undefined) => {
+      await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-rollover-workspace'] });
+      await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-promotion-workspace'] });
+      notifySuccess(
+        `Setup tahunan diterapkan. Kelas baru ${result?.applied.classPreparation.created || 0}, assignment baru ${result?.applied.teacherAssignments.created || 0}.`,
+      );
+    },
+    onError: (error: unknown) => {
+      notifyApiError(error, 'Gagal menerapkan setup tahun ajaran.');
+    },
+  });
+
   const updateAcademicYearMutation = useMutation({
     mutationFn: async () => {
       if (!editingAcademicYearId) throw new Error('ID tahun ajaran tidak valid.');
@@ -1732,6 +1802,50 @@ export default function AdminAcademicScreen() {
       nextDrafts[item.sourceClassId] = item.action === 'GRADUATE' ? null : item.suggestedTargetClassId ?? null;
     });
     setPromotionMappingDrafts(nextDrafts);
+  };
+
+  const toggleRolloverComponent = (key: keyof AdminAcademicYearRolloverComponentSelection) => {
+    setRolloverSelectedComponents((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+  };
+
+  const handleCreateRolloverTarget = () => {
+    if (!effectivePromotionSourceAcademicYearId) {
+      notifyInfo('Pilih tahun sumber terlebih dahulu.');
+      return;
+    }
+    createRolloverTargetMutation.mutate();
+  };
+
+  const handleApplyRollover = () => {
+    if (!rolloverWorkspaceQuery.data) {
+      notifyInfo('Workspace rollover belum tersedia.');
+      return;
+    }
+    if (!rolloverWorkspaceQuery.data.validation.readyToApply) {
+      notifyInfo('Masih ada issue pada workspace rollover.');
+      return;
+    }
+    if (!Object.values(rolloverSelectedComponents).some(Boolean)) {
+      notifyInfo('Pilih minimal satu komponen untuk di-clone.');
+      return;
+    }
+    Alert.alert(
+      'Apply Setup Tahunan',
+      'Wizard akan membuat data target yang belum ada tanpa menimpa data target yang sudah disusun manual. Lanjutkan?',
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Apply',
+          style: 'default',
+          onPress: () => {
+            applyRolloverMutation.mutate();
+          },
+        },
+      ],
+    );
   };
 
   const handleCommitPromotion = () => {
@@ -2761,6 +2875,300 @@ export default function AdminAcademicScreen() {
                   Belum ada data tahun ajaran.
                 </Text>
               ) : null}
+            </SectionCard>
+          ) : null}
+
+          {shouldShow('academic-years') ? (
+            <SectionCard
+              title="Year Setup Clone Wizard"
+              subtitle="Buat draft target year lalu clone komponen tahunan secara additive sebelum promotion."
+            >
+              {academicFeatureFlagsQuery.isLoading ? (
+                <QueryStateView type="loading" message="Memuat feature flag rollover..." />
+              ) : academicFeatureFlagsQuery.isError ? (
+                <QueryStateView
+                  type="error"
+                  message="Gagal memuat feature flag rollover."
+                  onRetry={() => academicFeatureFlagsQuery.refetch()}
+                />
+              ) : !isRolloverFeatureEnabled ? (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#fcd34d',
+                    backgroundColor: '#fffbeb',
+                    borderRadius: 12,
+                    padding: 12,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Rollover dimatikan</Text>
+                  <Text style={{ color: '#92400e', fontSize: 12 }}>
+                    Nyalakan env ACADEMIC_YEAR_ROLLOVER_ENABLED=true di server saat siap uji.
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Sumber</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                    <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
+                      {(academicQuery.data?.years.items || []).map((item) => (
+                        <SelectChip
+                          key={`rollover-source-${item.id}`}
+                          active={promotionSourceAcademicYearId === String(item.id)}
+                          label={`${item.name}${item.isActive ? ' (Aktif)' : ''}`}
+                          onPress={() => setPromotionSourceAcademicYearId(String(item.id))}
+                        />
+                      ))}
+                    </View>
+                  </ScrollView>
+
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Target</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                    <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
+                      {(academicQuery.data?.years.items || []).map((item) => (
+                        <SelectChip
+                          key={`rollover-target-${item.id}`}
+                          active={promotionTargetAcademicYearId === String(item.id)}
+                          label={`${item.name}${item.isActive ? ' (Aktif)' : ''}`}
+                          onPress={() => setPromotionTargetAcademicYearId(String(item.id))}
+                        />
+                      ))}
+                    </View>
+                  </ScrollView>
+
+                  <Pressable
+                    onPress={handleCreateRolloverTarget}
+                    disabled={!effectivePromotionSourceAcademicYearId || createRolloverTargetMutation.isPending}
+                    style={{
+                      backgroundColor: '#059669',
+                      borderRadius: 12,
+                      paddingVertical: 10,
+                      paddingHorizontal: 14,
+                      alignItems: 'center',
+                      marginBottom: 12,
+                      opacity:
+                        !effectivePromotionSourceAcademicYearId || createRolloverTargetMutation.isPending ? 0.65 : 1,
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700' }}>
+                      {createRolloverTargetMutation.isPending ? 'Menyiapkan...' : 'Buat Draft Tahun Berikutnya'}
+                    </Text>
+                  </Pressable>
+
+                  {!promotionSourceAcademicYearId ? (
+                    <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center', paddingVertical: 8 }}>
+                      Pilih tahun sumber untuk mulai wizard rollover.
+                    </Text>
+                  ) : !promotionTargetAcademicYearId ? (
+                    <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center', paddingVertical: 8 }}>
+                      Pilih target year atau buat draft tahun berikutnya terlebih dahulu.
+                    </Text>
+                  ) : !promotionSelectionValid ? (
+                    <View
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#fcd34d',
+                        backgroundColor: '#fffbeb',
+                        borderRadius: 12,
+                        padding: 12,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tahun tidak valid</Text>
+                      <Text style={{ color: '#92400e', fontSize: 12 }}>
+                        Tahun sumber dan target harus berbeda.
+                      </Text>
+                    </View>
+                  ) : rolloverWorkspaceQuery.isLoading ? (
+                    <QueryStateView type="loading" message="Memuat workspace rollover..." />
+                  ) : rolloverWorkspaceQuery.isError || !rolloverWorkspaceQuery.data ? (
+                    <QueryStateView
+                      type="error"
+                      message="Gagal memuat workspace rollover."
+                      onRetry={() => rolloverWorkspaceQuery.refetch()}
+                    />
+                  ) : (
+                    <>
+                      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+                        <StatCard
+                          title="Kelas Target"
+                          value={String(rolloverWorkspaceQuery.data.components.classPreparation.summary.createCount || 0)}
+                          subtitle="XI/XII yang perlu dibuat"
+                        />
+                        <StatCard
+                          title="Assignment Baru"
+                          value={String(rolloverWorkspaceQuery.data.components.teacherAssignments.summary.createCount || 0)}
+                          subtitle="Guru-mapel target"
+                        />
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+                        <StatCard
+                          title="Jam Jadwal"
+                          value={String(rolloverWorkspaceQuery.data.components.scheduleTimeConfig.summary.createCount || 0)}
+                          subtitle="Buat jika target kosong"
+                        />
+                        <StatCard
+                          title="Kalender"
+                          value={String(rolloverWorkspaceQuery.data.components.academicEvents.summary.createCount || 0)}
+                          subtitle="Event yang bisa di-clone"
+                        />
+                      </View>
+
+                      {rolloverWorkspaceQuery.data.validation.errors.length > 0 ? (
+                        <View
+                          style={{
+                            borderWidth: 1,
+                            borderColor: '#fecaca',
+                            backgroundColor: '#fff1f2',
+                            borderRadius: 12,
+                            padding: 12,
+                            marginBottom: 10,
+                          }}
+                        >
+                          <Text style={{ color: '#b91c1c', fontWeight: '700', marginBottom: 6 }}>Blocking Issues</Text>
+                          {rolloverWorkspaceQuery.data.validation.errors.map((item) => (
+                            <Text key={`rollover-global-error-${item}`} style={{ color: '#b91c1c', fontSize: 12, marginBottom: 4 }}>
+                              • {item}
+                            </Text>
+                          ))}
+                        </View>
+                      ) : null}
+
+                      {rolloverWorkspaceQuery.data.validation.warnings.length > 0 ? (
+                        <View
+                          style={{
+                            borderWidth: 1,
+                            borderColor: '#fcd34d',
+                            backgroundColor: '#fffbeb',
+                            borderRadius: 12,
+                            padding: 12,
+                            marginBottom: 10,
+                          }}
+                        >
+                          <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 6 }}>Catatan Wizard</Text>
+                          {rolloverWorkspaceQuery.data.validation.warnings.map((item) => (
+                            <Text key={`rollover-global-warning-${item}`} style={{ color: '#92400e', fontSize: 12, marginBottom: 4 }}>
+                              • {item}
+                            </Text>
+                          ))}
+                        </View>
+                      ) : null}
+
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Pilih Komponen Clone</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                        <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
+                          <SelectChip
+                            active={rolloverSelectedComponents.classPreparation}
+                            label="Kelas Target"
+                            onPress={() => toggleRolloverComponent('classPreparation')}
+                          />
+                          <SelectChip
+                            active={rolloverSelectedComponents.teacherAssignments}
+                            label="Assignment"
+                            onPress={() => toggleRolloverComponent('teacherAssignments')}
+                          />
+                          <SelectChip
+                            active={rolloverSelectedComponents.scheduleTimeConfig}
+                            label="Jam Jadwal"
+                            onPress={() => toggleRolloverComponent('scheduleTimeConfig')}
+                          />
+                          <SelectChip
+                            active={rolloverSelectedComponents.academicEvents}
+                            label="Kalender"
+                            onPress={() => toggleRolloverComponent('academicEvents')}
+                          />
+                        </View>
+                      </ScrollView>
+
+                      {(
+                        [
+                          rolloverWorkspaceQuery.data.components.classPreparation,
+                          rolloverWorkspaceQuery.data.components.teacherAssignments,
+                          rolloverWorkspaceQuery.data.components.scheduleTimeConfig,
+                          rolloverWorkspaceQuery.data.components.academicEvents,
+                        ] as const
+                      ).map((component) => (
+                        <View
+                          key={component.key}
+                          style={{
+                            borderWidth: 1,
+                            borderColor: '#dbe5f4',
+                            borderRadius: 12,
+                            padding: 12,
+                            backgroundColor: '#f8fbff',
+                            marginBottom: 10,
+                          }}
+                        >
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>
+                            {component.label}
+                          </Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+                            {component.description}
+                          </Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                            Sumber: {component.summary.sourceItems} | Create: {'createCount' in component.summary ? component.summary.createCount : 0} | Skip existing:{' '}
+                            {'existingCount' in component.summary ? component.summary.existingCount : 0}
+                          </Text>
+                          {'items' in component && component.items.length > 0 ? (
+                            <View style={{ marginTop: 8 }}>
+                              {component.items.slice(0, 6).map((item) => (
+                                <Text
+                                  key={`${component.key}-${'sourceAssignmentId' in item ? item.sourceAssignmentId : 'sourceClassId' in item ? item.sourceClassId : item.sourceEventId}`}
+                                  style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}
+                                >
+                                  {'sourceClassName' in item && 'targetClassName' in item
+                                    ? `• ${item.sourceClassName} -> ${item.targetClassName || '-'} (${item.action})`
+                                    : `• ${item.title} (${item.action})`}
+                                </Text>
+                              ))}
+                              {component.items.length > 6 ? (
+                                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                                  + {component.items.length - 6} item lainnya
+                                </Text>
+                              ) : null}
+                            </View>
+                          ) : null}
+                        </View>
+                      ))}
+
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#dbe5f4',
+                          borderRadius: 12,
+                          padding: 12,
+                          backgroundColor: '#fff',
+                          marginBottom: 12,
+                        }}
+                      >
+                        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Catatan Operasional</Text>
+                        {rolloverWorkspaceQuery.data.notes.map((item) => (
+                          <Text key={`rollover-note-${item}`} style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>
+                            • {item}
+                          </Text>
+                        ))}
+                      </View>
+
+                      <Pressable
+                        onPress={handleApplyRollover}
+                        disabled={applyRolloverMutation.isPending}
+                        style={{
+                          backgroundColor: '#0f172a',
+                          borderRadius: 12,
+                          paddingVertical: 10,
+                          alignItems: 'center',
+                          opacity: applyRolloverMutation.isPending ? 0.65 : 1,
+                        }}
+                      >
+                        <Text style={{ color: '#fff', fontWeight: '700' }}>
+                          {applyRolloverMutation.isPending ? 'Menerapkan...' : 'Apply Setup Tahunan'}
+                        </Text>
+                      </Pressable>
+                    </>
+                  )}
+                </>
+              )}
             </SectionCard>
           ) : null}
 

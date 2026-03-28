@@ -6,6 +6,10 @@ import type {
   AcademicPromotionRollbackResult,
   AcademicPromotionWorkspace,
   AcademicPromotionWorkspaceClass,
+  AcademicYearRolloverApplyResult,
+  AcademicYearRolloverComponentSelection,
+  AcademicYearRolloverTargetResult,
+  AcademicYearRolloverWorkspace,
   AcademicYear,
 } from '../../../services/academicYear.service';
 import { z } from 'zod';
@@ -92,6 +96,12 @@ export const AcademicYearPage = () => {
   const [promotionTargetAcademicYearId, setPromotionTargetAcademicYearId] = useState('');
   const [activateTargetYearAfterCommit, setActivateTargetYearAfterCommit] = useState(true);
   const [mappingDrafts, setMappingDrafts] = useState<MappingDrafts>({});
+  const [rolloverSelectedComponents, setRolloverSelectedComponents] = useState<AcademicYearRolloverComponentSelection>({
+    classPreparation: true,
+    teacherAssignments: true,
+    scheduleTimeConfig: true,
+    academicEvents: true,
+  });
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -126,6 +136,7 @@ export const AcademicYearPage = () => {
 
   const promotionFeatureFlags: AcademicFeatureFlags | undefined = promotionFeatureFlagsQuery.data?.data;
   const isPromotionFeatureEnabled = promotionFeatureFlags?.academicPromotionV2Enabled === true;
+  const isRolloverFeatureEnabled = promotionFeatureFlags?.academicYearRolloverEnabled === true;
 
   useEffect(() => {
     if (academicYearOptions.length === 0) return;
@@ -158,8 +169,15 @@ export const AcademicYearPage = () => {
     queryFn: () =>
       academicYearService.getPromotionWorkspace(selectedSourceAcademicYearId, selectedTargetAcademicYearId),
   });
+  const rolloverWorkspaceQuery = useQuery({
+    queryKey: ['academic-rollover-workspace', selectedSourceAcademicYearId, selectedTargetAcademicYearId],
+    enabled: isRolloverFeatureEnabled && isPromotionSelectionValid,
+    queryFn: () =>
+      academicYearService.getRolloverWorkspace(selectedSourceAcademicYearId, selectedTargetAcademicYearId),
+  });
 
   const promotionWorkspace: AcademicPromotionWorkspace | undefined = promotionWorkspaceQuery.data?.data;
+  const rolloverWorkspace: AcademicYearRolloverWorkspace | undefined = rolloverWorkspaceQuery.data?.data;
 
   useEffect(() => {
     if (!promotionWorkspace) return;
@@ -228,6 +246,56 @@ export const AcademicYearPage = () => {
     },
     onError: (error: unknown) => {
       toast.error(getErrorMessage(error) || 'Gagal mengaktifkan tahun ajaran');
+    },
+  });
+
+  const createRolloverTargetMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedSourceAcademicYearId) {
+        throw new Error('Tahun sumber belum valid.');
+      }
+      return academicYearService.createRolloverTarget(selectedSourceAcademicYearId);
+    },
+    onSuccess: async (response: { data: AcademicYearRolloverTargetResult }) => {
+      setPromotionTargetAcademicYearId(String(response.data.targetAcademicYear.id));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['academic-years'] }),
+        queryClient.invalidateQueries({ queryKey: ['academic-years-options-all'] }),
+        queryClient.invalidateQueries({ queryKey: ['academic-rollover-workspace'] }),
+        queryClient.invalidateQueries({ queryKey: ['academic-promotion-workspace'] }),
+      ]);
+      toast.success(
+        response.data.created
+          ? `Draft ${response.data.targetAcademicYear.name} berhasil dibuat`
+          : `Draft ${response.data.targetAcademicYear.name} sudah tersedia`,
+      );
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error) || 'Gagal menyiapkan draft tahun ajaran target');
+    },
+  });
+
+  const applyRolloverMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedSourceAcademicYearId || !selectedTargetAcademicYearId) {
+        throw new Error('Tahun sumber/target belum valid.');
+      }
+      return academicYearService.applyRollover(selectedSourceAcademicYearId, {
+        targetAcademicYearId: selectedTargetAcademicYearId,
+        components: rolloverSelectedComponents,
+      });
+    },
+    onSuccess: async (response: { data: AcademicYearRolloverApplyResult }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['academic-rollover-workspace'] }),
+        queryClient.invalidateQueries({ queryKey: ['academic-promotion-workspace'] }),
+      ]);
+      toast.success(
+        `Setup target year diterapkan. Kelas baru: ${response.data.applied.classPreparation.created}, assignment baru: ${response.data.applied.teacherAssignments.created}.`,
+      );
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error) || 'Gagal menerapkan setup tahun ajaran');
     },
   });
 
@@ -338,6 +406,36 @@ export const AcademicYearPage = () => {
         item.action === 'GRADUATE' ? null : item.suggestedTargetClassId ?? null;
     });
     setMappingDrafts(nextDrafts);
+  };
+
+  const toggleRolloverComponent = (key: keyof AcademicYearRolloverComponentSelection) => {
+    setRolloverSelectedComponents((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+  };
+
+  const handleApplyRollover = () => {
+    if (!rolloverWorkspace) {
+      toast.error('Workspace rollover belum tersedia.');
+      return;
+    }
+    if (!rolloverWorkspace.validation.readyToApply) {
+      toast.error('Masih ada issue pada workspace rollover. Perbaiki dulu sebelum apply.');
+      return;
+    }
+    if (!Object.values(rolloverSelectedComponents).some(Boolean)) {
+      toast.error('Pilih minimal satu komponen untuk di-clone.');
+      return;
+    }
+    if (
+      !window.confirm(
+        'Clone setup tahunan akan membuat data target yang belum ada tanpa menimpa data target yang sudah disusun manual. Lanjutkan?',
+      )
+    ) {
+      return;
+    }
+    applyRolloverMutation.mutate();
   };
 
   const list: AcademicYear[] = data?.data?.academicYears || [];
@@ -628,6 +726,246 @@ export const AcademicYearPage = () => {
           )}
         </div>
       )}
+
+      <div className="space-y-5 rounded-2xl border border-slate-200 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-6 shadow-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">Year Setup Clone Wizard</h2>
+            <p className="text-sm text-slate-600">
+              Siapkan target year dan clone komponen tahunan secara additive sebelum promotion dijalankan.
+            </p>
+          </div>
+          <div className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">
+            Draft first, promote later
+          </div>
+        </div>
+
+        {promotionFeatureFlagsQuery.isLoading ? (
+          <div className="flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+          </div>
+        ) : promotionFeatureFlagsQuery.isError ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-5 text-sm text-red-700">
+            {getErrorMessage(promotionFeatureFlagsQuery.error) || 'Gagal memuat feature flag rollover.'}
+          </div>
+        ) : !isRolloverFeatureEnabled ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-800">
+            Rollover wizard sedang dimatikan di server. Nyalakan env <code>ACADEMIC_YEAR_ROLLOVER_ENABLED=true</code> saat siap uji.
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Tahun Sumber</label>
+                <select
+                  value={promotionSourceAcademicYearId}
+                  onChange={(event) => setPromotionSourceAcademicYearId(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                >
+                  <option value="">Pilih tahun sumber</option>
+                  {academicYearOptions.map((item) => (
+                    <option key={`rollover-source-${item.id}`} value={item.id}>
+                      {item.name} {item.isActive ? '(Aktif)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Tahun Target</label>
+                <select
+                  value={promotionTargetAcademicYearId}
+                  onChange={(event) => setPromotionTargetAcademicYearId(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                >
+                  <option value="">Pilih tahun target</option>
+                  {academicYearOptions.map((item) => (
+                    <option key={`rollover-target-${item.id}`} value={item.id}>
+                      {item.name} {item.isActive ? '(Aktif)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={() => createRolloverTargetMutation.mutate()}
+                disabled={!selectedSourceAcademicYearId || createRolloverTargetMutation.isPending}
+                className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {createRolloverTargetMutation.isPending ? 'Menyiapkan...' : 'Buat Draft Tahun Berikutnya'}
+              </button>
+            </div>
+
+            {!promotionSourceAcademicYearId ? (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-white/80 px-4 py-5 text-sm text-slate-600">
+                Pilih tahun sumber terlebih dahulu. Kalau target belum ada, wizard bisa membuat draft tahun berikutnya otomatis.
+              </div>
+            ) : !promotionTargetAcademicYearId ? (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-white/80 px-4 py-5 text-sm text-slate-600">
+                Pilih target year yang sudah ada atau klik <strong>Buat Draft Tahun Berikutnya</strong> untuk membuat target year nonaktif.
+              </div>
+            ) : !isPromotionSelectionValid ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-800">
+                Tahun sumber dan target harus berbeda.
+              </div>
+            ) : rolloverWorkspaceQuery.isLoading ? (
+              <div className="flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+              </div>
+            ) : rolloverWorkspaceQuery.isError || !rolloverWorkspace ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-5 text-sm text-red-700">
+                {getErrorMessage(rolloverWorkspaceQuery.error) || 'Gagal memuat workspace rollover.'}
+              </div>
+            ) : (
+              <>
+                <div className="grid gap-3 md:grid-cols-4">
+                  <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Kelas Target Promotion</p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">
+                      {rolloverWorkspace.components.classPreparation.summary.createCount}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">Kelas XI/XII yang perlu dibuat.</p>
+                  </div>
+                  <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Assignment Baru</p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">
+                      {rolloverWorkspace.components.teacherAssignments.summary.createCount}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">Guru-mapel yang bisa di-clone.</p>
+                  </div>
+                  <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Schedule Config</p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">
+                      {rolloverWorkspace.components.scheduleTimeConfig.summary.createCount}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">Buat baru jika target belum punya.</p>
+                  </div>
+                  <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Academic Events</p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">
+                      {rolloverWorkspace.components.academicEvents.summary.createCount}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">Event yang bisa di-clone ke target.</p>
+                  </div>
+                </div>
+
+                {rolloverWorkspace.validation.errors.length > 0 && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                    <h3 className="text-sm font-semibold text-red-800">Blocking Issues</h3>
+                    <ul className="mt-2 space-y-1 text-sm text-red-700">
+                      {rolloverWorkspace.validation.errors.map((item) => (
+                        <li key={`rollover-error-${item}`}>• {item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {rolloverWorkspace.validation.warnings.length > 0 && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <h3 className="text-sm font-semibold text-amber-800">Catatan Wizard</h3>
+                    <ul className="mt-2 space-y-1 text-sm text-amber-700">
+                      {rolloverWorkspace.validation.warnings.map((item) => (
+                        <li key={`rollover-warning-${item}`}>• {item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {(
+                    [
+                      ['classPreparation', rolloverWorkspace.components.classPreparation],
+                      ['teacherAssignments', rolloverWorkspace.components.teacherAssignments],
+                      ['scheduleTimeConfig', rolloverWorkspace.components.scheduleTimeConfig],
+                      ['academicEvents', rolloverWorkspace.components.academicEvents],
+                    ] as const
+                  ).map(([key, component]) => (
+                    <div key={key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <label className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={rolloverSelectedComponents[key]}
+                          onChange={() => toggleRolloverComponent(key)}
+                          className="mt-1 rounded border-slate-300"
+                        />
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-slate-900">{component.label}</p>
+                          <p className="text-sm text-slate-600">{component.description}</p>
+                        </div>
+                      </label>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                        <div className="rounded-lg bg-slate-50 px-3 py-2 text-slate-700">
+                          <p className="font-semibold">{component.summary.sourceItems}</p>
+                          <p>Sumber</p>
+                        </div>
+                        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-emerald-700">
+                          <p className="font-semibold">
+                            {'createCount' in component.summary ? component.summary.createCount : 0}
+                          </p>
+                          <p>Create</p>
+                        </div>
+                        <div className="rounded-lg bg-slate-50 px-3 py-2 text-slate-700">
+                          <p className="font-semibold">
+                            {'existingCount' in component.summary ? component.summary.existingCount : 0}
+                          </p>
+                          <p>Skip existing</p>
+                        </div>
+                      </div>
+                      {'items' in component && component.items.length > 0 && (
+                        <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <summary className="cursor-pointer text-sm font-medium text-slate-700">
+                            Lihat rencana {component.label.toLowerCase()}
+                          </summary>
+                          <div className="mt-3 space-y-2 text-xs text-slate-600">
+                            {component.items.slice(0, 8).map((item) => (
+                              <div key={`${key}-${'sourceClassId' in item ? item.sourceClassId : item.sourceEventId}-${'sourceAssignmentId' in item ? item.sourceAssignmentId : 'row'}`}>
+                                {'sourceClassName' in item && 'targetClassName' in item ? (
+                                  <span>
+                                    {item.sourceClassName} {'->'} {item.targetClassName || '-'} ({item.action})
+                                  </span>
+                                ) : (
+                                  <span>
+                                    {item.title} ({item.action})
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                            {component.items.length > 8 && (
+                              <p className="text-slate-500">+ {component.items.length - 8} item lainnya</p>
+                            )}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <p className="text-sm font-semibold text-slate-900">Catatan Operasional</p>
+                  <ul className="mt-2 space-y-1 text-sm text-slate-600">
+                    {rolloverWorkspace.notes.map((item) => (
+                      <li key={`rollover-note-${item}`}>• {item}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-slate-600">
+                    Tahun target: <span className="font-medium text-slate-900">{rolloverWorkspace.targetAcademicYear.name}</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleApplyRollover}
+                    disabled={applyRolloverMutation.isPending}
+                    className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {applyRolloverMutation.isPending ? 'Menerapkan...' : 'Apply Setup Tahunan'}
+                  </button>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
 
       <div className="space-y-5 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50 p-6 shadow-sm">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

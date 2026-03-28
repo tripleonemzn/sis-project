@@ -216,6 +216,12 @@ Pilihan yang tidak perlu ada di clone:
 - histori nilai/absensi
 - data transaksi yang sudah berjalan
 
+Catatan implementasi MVP saat ini:
+
+- sudah tersedia untuk `kelas target XI/XII`, `teacher assignment`, `schedule time config`, dan `academic events`
+- belum mencakup `KKM`, `report dates`, dan `exam/program config`
+- kelas `X` intake baru tetap disiapkan lewat alur PPDB/rombel baru
+
 ### Langkah 3. Review yearly setup
 
 Sistem harus menampilkan ringkasan:

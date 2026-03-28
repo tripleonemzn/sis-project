@@ -11,14 +11,20 @@ function readBooleanEnv(name: string, fallback: boolean) {
 
 export type AcademicFeatureFlags = {
   academicPromotionV2Enabled: boolean;
+  academicYearRolloverEnabled: boolean;
 };
 
 export function getAcademicFeatureFlags(): AcademicFeatureFlags {
   return {
     academicPromotionV2Enabled: readBooleanEnv('ACADEMIC_PROMOTION_V2_ENABLED', false),
+    academicYearRolloverEnabled: readBooleanEnv('ACADEMIC_YEAR_ROLLOVER_ENABLED', false),
   };
 }
 
 export function isAcademicPromotionV2Enabled() {
   return getAcademicFeatureFlags().academicPromotionV2Enabled;
+}
+
+export function isAcademicYearRolloverEnabled() {
+  return getAcademicFeatureFlags().academicYearRolloverEnabled;
 }

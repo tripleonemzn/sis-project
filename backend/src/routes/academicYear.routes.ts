@@ -8,6 +8,9 @@ import {
   deleteAcademicYear,
   activateAcademicYear,
   getAcademicFeatureFlagsController,
+  createAcademicYearRolloverTargetController,
+  getAcademicYearRolloverWorkspaceController,
+  applyAcademicYearRolloverController,
   getAcademicPromotionWorkspaceController,
   saveAcademicPromotionMappingsController,
   commitAcademicPromotionController,
@@ -39,6 +42,9 @@ router.post('/', createAcademicYear);
 router.put('/:id', updateAcademicYear);
 router.delete('/:id', deleteAcademicYear);
 router.post('/:id/activate', activateAcademicYear);
+router.post('/:id/rollover-v1/target', createAcademicYearRolloverTargetController);
+router.get('/:id/rollover-v1', getAcademicYearRolloverWorkspaceController);
+router.post('/:id/rollover-v1/apply', applyAcademicYearRolloverController);
 router.get('/:id/promotion-v2', getAcademicPromotionWorkspaceController);
 router.put('/:id/promotion-v2/mappings', saveAcademicPromotionMappingsController);
 router.post('/:id/promotion-v2/commit', commitAcademicPromotionController);
