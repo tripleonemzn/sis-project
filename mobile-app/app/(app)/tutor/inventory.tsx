@@ -8,6 +8,7 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
+import { isOsisExtracurricularCategory } from '../../../src/features/extracurricular/category';
 import { tutorApi } from '../../../src/features/tutor/tutorApi';
 import { canAccessTutorWorkspace } from '../../../src/features/tutor/tutorAccess';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
@@ -56,7 +57,14 @@ export default function TutorInventoryScreen() {
   });
 
   const rows = useMemo(() => inventoryQuery.data || [], [inventoryQuery.data]);
-  const rowsWithRoom = useMemo(() => rows.filter((row) => Boolean(row.room?.id)), [rows]);
+  const extracurricularRows = useMemo(
+    () => rows.filter((row) => !isOsisExtracurricularCategory(row.ekskulCategory)),
+    [rows],
+  );
+  const rowsWithRoom = useMemo(
+    () => extracurricularRows.filter((row) => Boolean(row.room?.id)),
+    [extracurricularRows],
+  );
 
   const effectiveTargetAssignmentId = useMemo(() => {
     if (rowsWithRoom.length === 0) return null;
@@ -68,8 +76,8 @@ export default function TutorInventoryScreen() {
 
   const filteredRows = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return rows;
-    return rows.filter((row) => {
+    if (!keyword) return extracurricularRows;
+    return extracurricularRows.filter((row) => {
       const haystacks = [
         row.ekskulName,
         row.room?.name || '',
@@ -78,7 +86,7 @@ export default function TutorInventoryScreen() {
       ];
       return haystacks.some((value) => String(value || '').toLowerCase().includes(keyword));
     });
-  }, [rows, search]);
+  }, [extracurricularRows, search]);
 
   const createMutation = useMutation({
     mutationFn: async () => {

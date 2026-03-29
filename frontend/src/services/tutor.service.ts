@@ -1,4 +1,5 @@
 import api from './api';
+import type { ExtracurricularCategory } from '../features/extracurricular/category';
 
 export type ExtracurricularPredicate = 'SB' | 'B' | 'C' | 'K';
 export type ExtracurricularGradeTemplate = Record<
@@ -16,6 +17,7 @@ export type TutorAssignmentSummary = {
     id: number;
     name: string;
     description?: string | null;
+    category?: ExtracurricularCategory;
   } | null;
   academicYear?: {
     id: number;
@@ -136,10 +138,9 @@ export const tutorService = {
       ? (response.data.data as TutorAssignmentSummary[])
       : [];
     return assignments.some((assignment) =>
-      String(assignment?.ekskul?.name || '')
+      String(assignment?.ekskul?.category || '')
         .trim()
-        .toUpperCase()
-        .includes('OSIS'),
+        .toUpperCase() === 'OSIS',
     );
   },
 };

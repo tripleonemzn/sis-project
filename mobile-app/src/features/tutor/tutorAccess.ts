@@ -1,5 +1,6 @@
 import type { AuthUser } from '../auth/types';
 import type { TutorAssignment } from './tutorApi';
+import { isOsisExtracurricularCategory } from '../extracurricular/category';
 
 function normalizeRole(role: unknown): string {
   return String(role || '').trim().toUpperCase();
@@ -15,5 +16,17 @@ export function getActiveTutorAssignments(assignments?: TutorAssignment[] | null
 }
 
 export function hasTutorAssignments(assignments?: TutorAssignment[] | null): boolean {
-  return getActiveTutorAssignments(assignments).length > 0;
+  return getExtracurricularTutorAssignments(assignments).length > 0;
+}
+
+export function isOsisTutorAssignment(assignment?: TutorAssignment | null): boolean {
+  return isOsisExtracurricularCategory(assignment?.ekskul?.category);
+}
+
+export function getOsisTutorAssignments(assignments?: TutorAssignment[] | null): TutorAssignment[] {
+  return getActiveTutorAssignments(assignments).filter((assignment) => isOsisTutorAssignment(assignment));
+}
+
+export function getExtracurricularTutorAssignments(assignments?: TutorAssignment[] | null): TutorAssignment[] {
+  return getActiveTutorAssignments(assignments).filter((assignment) => !isOsisTutorAssignment(assignment));
 }

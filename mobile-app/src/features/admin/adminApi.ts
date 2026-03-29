@@ -1,4 +1,5 @@
 import { apiClient } from '../../lib/api/client';
+import type { ExtracurricularCategory } from '../extracurricular/category';
 
 type Pagination = {
   page: number;
@@ -852,6 +853,7 @@ export type AdminExtracurricular = {
   id: number;
   name: string;
   description?: string | null;
+  category?: ExtracurricularCategory;
   tutorAssignments?: Array<{
     id: number;
     tutor?: {
@@ -1235,6 +1237,7 @@ export type AdminTrainingClassPayload = {
 export type AdminExtracurricularPayload = {
   name: string;
   description?: string | null;
+  category: ExtracurricularCategory;
 };
 
 export type AdminAcademicYearPayload = {
@@ -1376,7 +1379,12 @@ export const adminApi = {
     return response.data?.data;
   },
 
-  async listExtracurriculars(params?: { page?: number; limit?: number; search?: string }) {
+  async listExtracurriculars(params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    category?: ExtracurricularCategory;
+  }) {
     const response = await apiClient.get<
       ApiEnvelope<{ extracurriculars: AdminExtracurricular[]; pagination: Pagination }>
     >('/extracurriculars', {
@@ -1384,6 +1392,7 @@ export const adminApi = {
         page: params?.page ?? 1,
         limit: params?.limit ?? 100,
         search: params?.search,
+        category: params?.category,
       },
     });
     return toPaginated(

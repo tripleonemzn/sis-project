@@ -11,6 +11,10 @@ import { examService, type ExamProgram } from '../../services/exam.service';
 import { Trophy, Save, Loader2, Filter, ClipboardCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useSearchParams } from 'react-router-dom';
+import {
+  getExtracurricularTutorAssignments,
+  getOsisTutorAssignments,
+} from '../../features/tutor/tutorAccess';
 
 type Semester = 'ODD' | 'EVEN';
 
@@ -184,6 +188,7 @@ function formatProgramSemesterLabel(fixedSemester: Semester | null): string {
 
 export const TutorMembersPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const selectedScope = searchParams.get('scope') === 'osis' ? 'osis' : 'extracurricular';
   const [activeTab, setActiveTab] = useState<PageTab>('GRADE');
   const [semester, setSemester] = useState<Semester>('ODD');
   const [reportType, setReportType] = useState('');
@@ -236,26 +241,33 @@ export const TutorMembersPage = () => {
     () => (assignmentsData?.data || []) as TutorAssignment[],
     [assignmentsData],
   );
+  const visibleAssignments = useMemo<TutorAssignmentSummary[]>(
+    () =>
+      selectedScope === 'osis'
+        ? getOsisTutorAssignments(assignments as TutorAssignmentSummary[])
+        : getExtracurricularTutorAssignments(assignments as TutorAssignmentSummary[]),
+    [assignments, selectedScope],
+  );
   const requestedAssignmentId = Number(searchParams.get('assignmentId') || 0);
   const requestedEkskulId = Number(searchParams.get('ekskulId') || 0);
   const selectedAssignment = useMemo<TutorAssignmentSummary | null>(() => {
-    if (!assignments.length) return null;
+    if (!visibleAssignments.length) return null;
     if (
       selectedAssignmentIdState &&
-      assignments.some((assignment) => Number(assignment.id) === Number(selectedAssignmentIdState))
+      visibleAssignments.some((assignment) => Number(assignment.id) === Number(selectedAssignmentIdState))
     ) {
-      return assignments.find((assignment) => Number(assignment.id) === Number(selectedAssignmentIdState)) || null;
+      return visibleAssignments.find((assignment) => Number(assignment.id) === Number(selectedAssignmentIdState)) || null;
     }
     if (requestedAssignmentId) {
-      return assignments.find((assignment) => Number(assignment.id) === Number(requestedAssignmentId)) || null;
+      return visibleAssignments.find((assignment) => Number(assignment.id) === Number(requestedAssignmentId)) || null;
     }
     if (requestedEkskulId) {
       return (
-        assignments.find((assignment) => Number(assignment.ekskulId) === Number(requestedEkskulId)) || null
+        visibleAssignments.find((assignment) => Number(assignment.ekskulId) === Number(requestedEkskulId)) || null
       );
     }
-    return assignments[0] || null;
-  }, [assignments, requestedAssignmentId, requestedEkskulId, selectedAssignmentIdState]);
+    return visibleAssignments[0] || null;
+  }, [visibleAssignments, requestedAssignmentId, requestedEkskulId, selectedAssignmentIdState]);
   const selectedEkskulId = selectedAssignment?.ekskulId || 0;
 
   useEffect(() => {
@@ -700,7 +712,7 @@ export const TutorMembersPage = () => {
     setSemester(s);
   };
 
-  const currentEkskulName = selectedAssignment?.ekskul?.name || 'Ekstrakurikuler';
+  const currentEkskulName = selectedAssignment?.ekskul?.name || (selectedScope === 'osis' ? 'OSIS' : 'Ekstrakurikuler');
   const attendanceSessionIndexes = useMemo(
     () =>
       Array.from(
@@ -714,8 +726,12 @@ export const TutorMembersPage = () => {
     <div className="space-y-6">
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Anggota Ekstrakurikuler</h1>
-          <p className="text-gray-600">Kelola nilai dan anggota</p>
+          <h1 className="text-2xl font-bold text-gray-800">
+            {selectedScope === 'osis' ? 'Anggota OSIS' : 'Anggota Ekstrakurikuler'}
+          </h1>
+          <p className="text-gray-600">
+            {selectedScope === 'osis' ? 'Kelola anggota dan nilai OSIS' : 'Kelola nilai dan anggota'}
+          </p>
         </div>
         
         <div className="flex flex-wrap gap-3">
@@ -743,15 +759,15 @@ export const TutorMembersPage = () => {
             <select
               value={selectedAssignment?.id || ''}
               onChange={(e) => setSelectedAssignmentIdState(Number(e.target.value || 0) || null)}
-              disabled={assignments.length === 0}
+              disabled={visibleAssignments.length === 0}
               className="bg-transparent border-0 text-sm font-medium text-gray-700 focus:ring-0 cursor-pointer"
             >
-              {assignments.length === 0 ? (
-                <option value="">Belum ada assignment pembina</option>
+              {visibleAssignments.length === 0 ? (
+                <option value="">Belum ada assignment untuk scope ini</option>
               ) : (
-                assignments.map((assignment) => (
+                visibleAssignments.map((assignment) => (
                   <option key={assignment.id} value={assignment.id}>
-                    {assignment.ekskul.name}
+                    {assignment.ekskul?.name || '-'}
                   </option>
                 ))
               )}
@@ -832,9 +848,9 @@ export const TutorMembersPage = () => {
           </div>
         </div>
 
-        {assignments.length === 0 ? (
+        {visibleAssignments.length === 0 ? (
           <div className="px-6 py-5 border-b border-gray-100 bg-amber-50/60 text-sm text-amber-800">
-            Belum ada assignment pembina untuk tahun ajaran yang dipilih.
+            Belum ada assignment {selectedScope === 'osis' ? 'OSIS' : 'pembina'} untuk tahun ajaran yang dipilih.
           </div>
         ) : null}
 

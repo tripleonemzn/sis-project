@@ -2,8 +2,10 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Loader2, Plus, Search, Warehouse, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useSearchParams } from 'react-router-dom';
 import { academicYearService } from '../../services/academicYear.service';
 import { tutorService } from '../../services/tutor.service';
+import { isOsisExtracurricularCategory, type ExtracurricularCategory } from '../../features/extracurricular/category';
 
 interface AcademicYear {
   id: number;
@@ -25,6 +27,7 @@ interface InventoryOverviewRow {
   assignmentId: number;
   ekskulId: number;
   ekskulName: string;
+  ekskulCategory?: ExtracurricularCategory;
   academicYearId: number;
   academicYearName: string;
   room: {
@@ -38,6 +41,8 @@ interface InventoryOverviewRow {
 }
 
 export const TutorInventoryPage = () => {
+  const [searchParams] = useSearchParams();
+  const selectedScope = searchParams.get('scope') === 'osis' ? 'osis' : 'extracurricular';
   const [search, setSearch] = useState('');
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<number | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -77,11 +82,20 @@ export const TutorInventoryPage = () => {
     () => (data?.data || []) as InventoryOverviewRow[],
     [data],
   );
+  const scopedRows = useMemo(
+    () =>
+      rows.filter((row) =>
+        selectedScope === 'osis'
+          ? isOsisExtracurricularCategory(row.ekskulCategory)
+          : !isOsisExtracurricularCategory(row.ekskulCategory),
+      ),
+    [rows, selectedScope],
+  );
 
   const filteredRows = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return rows;
-    return rows.filter((row) => {
+    if (!keyword) return scopedRows;
+    return scopedRows.filter((row) => {
       const haystacks = [
         row.ekskulName,
         row.room?.name || '',
@@ -90,11 +104,11 @@ export const TutorInventoryPage = () => {
       ];
       return haystacks.some((value) => value.toLowerCase().includes(keyword));
     });
-  }, [rows, search]);
+  }, [scopedRows, search]);
 
   const rowsWithRoom = useMemo(
-    () => rows.filter((row) => Boolean(row.room?.id)),
-    [rows],
+    () => scopedRows.filter((row) => Boolean(row.room?.id)),
+    [scopedRows],
   );
 
   const effectiveTargetAssignmentId = useMemo(() => {
@@ -138,9 +152,11 @@ export const TutorInventoryPage = () => {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Inventaris Ekskul</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {selectedScope === 'osis' ? 'Inventaris OSIS' : 'Inventaris Ekskul'}
+          </h1>
           <p className="text-sm text-gray-500">
-            Data inventaris ini terhubung dari modul Sarpras (Fasilitas Ekskul).
+            Data inventaris ini terhubung dari modul Sarpras.
           </p>
         </div>
         <button
@@ -199,11 +215,11 @@ export const TutorInventoryPage = () => {
         {isLoading ? (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 text-center text-gray-500">
             <Loader2 className="inline w-5 h-5 mr-2 animate-spin" />
-            Memuat inventaris ekskul...
+            Memuat inventaris {selectedScope === 'osis' ? 'OSIS' : 'ekskul'}...
           </div>
         ) : filteredRows.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 text-center text-gray-500">
-            Belum ada data inventaris ekskul untuk tahun ajaran ini.
+            Belum ada data inventaris {selectedScope === 'osis' ? 'OSIS' : 'ekskul'} untuk tahun ajaran ini.
           </div>
         ) : (
           filteredRows.map((row) => {

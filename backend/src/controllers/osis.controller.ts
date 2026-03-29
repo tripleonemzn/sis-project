@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { AdditionalDuty, OsisElectionStatus, Prisma } from '@prisma/client';
+import { AdditionalDuty, ExtracurricularCategory, OsisElectionStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
@@ -82,7 +82,7 @@ const getActorAccess = async (req: Request) => {
             where: { isActive: true },
             select: {
               ekskul: {
-                select: { name: true },
+                select: { category: true },
               },
             },
           }
@@ -93,9 +93,9 @@ const getActorAccess = async (req: Request) => {
   const isOsisTutor =
     authUser.role === 'EXTRACURRICULAR_TUTOR' &&
     Boolean(
-      (actor?.ekskulTutorAssignments as Array<{ ekskul?: { name?: string | null } | null }> | undefined)?.some(
+      (actor?.ekskulTutorAssignments as Array<{ ekskul?: { category?: ExtracurricularCategory | null } | null }> | undefined)?.some(
         (assignment) =>
-          String(assignment?.ekskul?.name || '').trim().toUpperCase().includes('OSIS'),
+          assignment?.ekskul?.category === ExtracurricularCategory.OSIS,
       ),
     );
 

@@ -1,9 +1,11 @@
 import api from './api';
+import type { ExtracurricularCategory } from '../features/extracurricular/category';
 
 export interface Extracurricular {
   id: number;
   name: string;
   description?: string | null;
+  category?: ExtracurricularCategory;
   tutorAssignments?: {
     id: number;
     tutor: {
@@ -12,16 +14,27 @@ export interface Extracurricular {
   }[];
 }
 
+export interface ExtracurricularPayload {
+  name: string;
+  description?: string | null;
+  category: ExtracurricularCategory;
+}
+
 export const extracurricularService = {
-  list: async (params?: { page?: number; limit?: number; search?: string }) => {
+  list: async (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    category?: ExtracurricularCategory;
+  }) => {
     const response = await api.get('/extracurriculars', { params });
     return response.data;
   },
-  create: async (data: Omit<Extracurricular, 'id'>) => {
+  create: async (data: ExtracurricularPayload) => {
     const response = await api.post('/extracurriculars', data);
     return response.data;
   },
-  update: async (id: number, data: Partial<Extracurricular>) => {
+  update: async (id: number, data: Partial<ExtracurricularPayload>) => {
     const response = await api.put(`/extracurriculars/${id}`, data);
     return response.data;
   },

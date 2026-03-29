@@ -9,6 +9,11 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { type AdminClass, type AdminExtracurricular, type AdminMajor, type AdminSubject, type AdminSubjectCategory, type AdminTrainingClass, adminApi } from '../../../src/features/admin/adminApi';
+import {
+  EXTRACURRICULAR_CATEGORY_OPTIONS,
+  getExtracurricularCategoryLabel,
+  type ExtracurricularCategory,
+} from '../../../src/features/extracurricular/category';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifyInfo, notifySuccess } from '../../../src/lib/ui/feedback';
 
@@ -32,7 +37,7 @@ const MASTER_DATA_SECTIONS: Array<{
   { key: 'training-classes', label: 'Kelas Training', description: 'Kelola data kelas training sekolah.' },
   { key: 'subjects', label: 'Mapel', description: 'Kelola mata pelajaran dan relasinya.' },
   { key: 'subject-categories', label: 'Kategori', description: 'Kelola kategori mata pelajaran.' },
-  { key: 'extracurriculars', label: 'Ekskul', description: 'Kelola data ekstrakurikuler sekolah.' },
+  { key: 'extracurriculars', label: 'Ekskul', description: 'Kelola data ekstrakurikuler dan organisasi siswa.' },
 ];
 
 const MASTER_DATA_SECTION_BY_KEY = new Map(MASTER_DATA_SECTIONS.map((item) => [item.key, item] as const));
@@ -202,7 +207,15 @@ export default function AdminMasterDataScreen() {
   const [trainingInstructorSearch, setTrainingInstructorSearch] = useState('');
   const [editingTrainingClassId, setEditingTrainingClassId] = useState<number | null>(null);
 
-  const [extracurricularForm, setExtracurricularForm] = useState({ name: '', description: '' });
+  const [extracurricularForm, setExtracurricularForm] = useState<{
+    name: string;
+    description: string;
+    category: ExtracurricularCategory;
+  }>({
+    name: '',
+    description: '',
+    category: 'EXTRACURRICULAR',
+  });
   const [editingExtracurricularId, setEditingExtracurricularId] = useState<number | null>(null);
 
   const isAdmin = user?.role === 'ADMIN';
@@ -746,7 +759,7 @@ export default function AdminMasterDataScreen() {
   };
 
   const resetExtracurricularForm = () => {
-    setExtracurricularForm({ name: '', description: '' });
+    setExtracurricularForm({ name: '', description: '', category: 'EXTRACURRICULAR' });
     setEditingExtracurricularId(null);
   };
 
@@ -754,6 +767,7 @@ export default function AdminMasterDataScreen() {
     const payload = {
       name: extracurricularForm.name.trim(),
       description: extracurricularForm.description.trim() || null,
+      category: extracurricularForm.category,
     };
     if (!payload.name) {
       notifyInfo('Nama ekstrakurikuler wajib diisi.');
@@ -785,6 +799,7 @@ export default function AdminMasterDataScreen() {
     setExtracurricularForm({
       name: item.name || '',
       description: item.description || '',
+      category: item.category || 'EXTRACURRICULAR',
     });
     openSection('extracurriculars');
   };
@@ -1753,7 +1768,7 @@ export default function AdminMasterDataScreen() {
           {shouldShow('extracurriculars') ? (
             <SectionCard
               title={editingExtracurricularId ? 'Edit Ekstrakurikuler' : 'Tambah Ekstrakurikuler'}
-              subtitle="Setara modul web: create, update, delete ekstrakurikuler."
+              subtitle="Setara modul web: create, update, delete ekstrakurikuler dan organisasi siswa."
             >
               {extracurricularsResult === null ? (
                 <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10 }}>
@@ -1792,6 +1807,19 @@ export default function AdminMasterDataScreen() {
                   marginBottom: 8,
                 }}
               />
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Kategori</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
+                  {EXTRACURRICULAR_CATEGORY_OPTIONS.map((option) => (
+                    <SelectChip
+                      key={option.value}
+                      active={extracurricularForm.category === option.value}
+                      label={option.label}
+                      onPress={() => setExtracurricularForm((prev) => ({ ...prev, category: option.value }))}
+                    />
+                  ))}
+                </View>
+              </ScrollView>
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
                 <Pressable
                   onPress={() => {
@@ -1829,6 +1857,9 @@ export default function AdminMasterDataScreen() {
               {filteredExtracurriculars.slice(0, 40).map((item) => (
                 <View key={item.id} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.name}</Text>
+                  <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+                    Kategori: {getExtracurricularCategoryLabel(item.category)}
+                  </Text>
                   <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
                     Pembina aktif: {item.tutorAssignments?.length || 0}
                   </Text>

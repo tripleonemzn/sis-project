@@ -68,7 +68,9 @@ import { resolveStaffDivision } from '../../utils/staffRole';
 import {
   buildTutorMembersHref,
   canAccessTutorWorkspace,
+  getExtracurricularTutorAssignments,
   getActiveTutorAssignments,
+  getOsisTutorAssignments,
   hasOsisTutorAssignments,
   hasTutorAssignments,
 } from '../../features/tutor/tutorAccess';
@@ -275,6 +277,7 @@ export const getMenuItems = (
 
   if (role === 'TEACHER') {
     const activeTutorAssignments = getActiveTutorAssignments(tutorAssignments);
+    const extracurricularTutorAssignments = getExtracurricularTutorAssignments(activeTutorAssignments);
     const isWaliKelas = (user.teacherClasses?.length || 0) > 0;
     const hasTrainingClass = (user.trainingClassesTeaching?.length || 0) > 0;
     const duties = user.additionalDuties || [];
@@ -398,7 +401,7 @@ export const getMenuItems = (
     }
 
     if (hasTutorAssignments(activeTutorAssignments)) {
-      const firstTutorAssignment = activeTutorAssignments[0] || null;
+      const firstTutorAssignment = extracurricularTutorAssignments[0] || null;
       items.push({
         label: 'PEMBINA EKSKUL',
         path: '/tutor/dashboard',
@@ -661,6 +664,8 @@ export const getMenuItems = (
 
   if (role === 'EXTRACURRICULAR_TUTOR') {
     const activeTutorAssignments = getActiveTutorAssignments(tutorAssignments);
+    const extracurricularTutorAssignments = getExtracurricularTutorAssignments(activeTutorAssignments);
+    const osisTutorAssignments = getOsisTutorAssignments(activeTutorAssignments);
     const osisAssignedRoom = (assignedInventoryRooms || []).find(
       (room) => isOsisLabel(room.name),
     );
@@ -673,30 +678,46 @@ export const getMenuItems = (
         path: `/tutor/assigned-inventory/${room.id}`,
         icon: Database,
       })) || [];
-    const firstTutorAssignment = activeTutorAssignments[0] || null;
+    const firstTutorAssignment = extracurricularTutorAssignments[0] || null;
     const hasTutorOsisMenu = hasOsisTutorAssignments(activeTutorAssignments) || Boolean(osisAssignedRoom);
 
     return [
       { label: 'Dashboard', path: '/tutor', icon: LayoutDashboard },
       { label: 'Email', path: '/email', icon: Mail },
+      ...(extracurricularTutorAssignments.length > 0
+        ? [{
+            label: 'PEMBINA EKSKUL',
+            path: '/tutor/dashboard',
+            icon: Trophy,
+            children: [
+              { label: 'Dashboard Pembina', path: '/tutor/dashboard', icon: LayoutDashboard },
+              { label: 'Anggota & Nilai', path: buildTutorMembersHref(firstTutorAssignment), icon: Users },
+              { label: 'Program Kerja', path: '/tutor/work-programs', icon: ClipboardList },
+              { label: 'Inventaris Ekskul', path: '/tutor/inventory', icon: Database },
+            ],
+          } satisfies MenuItem]
+        : []),
       ...(hasTutorOsisMenu
         ? [{
             label: 'PEMBINA OSIS',
             path: '/tutor/osis/election',
             icon: Trophy,
             children: [
-              { label: 'Anggota & Nilai', path: '/tutor/members?scope=osis', icon: Users },
+              {
+                label: 'Anggota & Nilai',
+                path:
+                  osisTutorAssignments[0]
+                    ? `${buildTutorMembersHref(osisTutorAssignments[0])}&scope=osis`
+                    : '/tutor/members?scope=osis',
+                icon: Users,
+              },
               { label: 'Program Kerja', path: '/tutor/work-programs?duty=PEMBINA_OSIS', icon: ClipboardList },
               { label: 'Pemilihan OSIS', path: '/tutor/osis/election', icon: Trophy },
               ...(hasActiveOsisElection ? [{ label: 'Pemungutan Suara', path: '/tutor/osis/vote', icon: Vote }] : []),
               { label: 'Kelola Inventaris', path: '/tutor/inventory?scope=osis', icon: Database },
             ],
           } satisfies MenuItem]
-        : [
-            { label: 'Anggota & Nilai', path: buildTutorMembersHref(firstTutorAssignment), icon: Users } satisfies MenuItem,
-            { label: 'Program Kerja', path: '/tutor/work-programs', icon: ClipboardList } satisfies MenuItem,
-            { label: 'Inventaris Ekskul', path: '/tutor/inventory', icon: Database } satisfies MenuItem,
-          ]
+        : []
       ),
       ...(!hasTutorOsisMenu && hasActiveOsisElection
         ? [{ label: 'Pemungutan Suara OSIS', path: '/tutor/osis/vote', icon: Vote } satisfies MenuItem]

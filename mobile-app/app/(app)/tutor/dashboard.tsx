@@ -8,7 +8,10 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
 import { tutorApi } from '../../../src/features/tutor/tutorApi';
-import { canAccessTutorWorkspace } from '../../../src/features/tutor/tutorAccess';
+import {
+  canAccessTutorWorkspace,
+  getExtracurricularTutorAssignments,
+} from '../../../src/features/tutor/tutorAccess';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 
@@ -51,11 +54,15 @@ export default function TutorDashboardScreen() {
   });
 
   const assignments = useMemo(() => assignmentsQuery.data || [], [assignmentsQuery.data]);
-  const activeAssignments = assignments.filter((item) => item.isActive);
+  const extracurricularAssignments = useMemo(
+    () => getExtracurricularTutorAssignments(assignments),
+    [assignments],
+  );
+  const activeAssignments = extracurricularAssignments.filter((item) => item.isActive);
 
   const uniqueEkskulCount = useMemo(() => {
-    return new Set(assignments.map((item) => item.ekskulId)).size;
-  }, [assignments]);
+    return new Set(extracurricularAssignments.map((item) => item.ekskulId)).size;
+  }, [extracurricularAssignments]);
 
   if (isLoading) return <AppLoadingScreen message="Memuat dashboard pembina..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -92,8 +99,8 @@ export default function TutorDashboardScreen() {
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
           <SummaryCard
             title="Total Assignment"
-            value={String(assignments.length)}
-            subtitle="Seluruh assignment pembina"
+            value={String(extracurricularAssignments.length)}
+            subtitle="Seluruh assignment pembina ekskul"
           />
         </View>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -115,15 +122,15 @@ export default function TutorDashboardScreen() {
       ) : null}
 
       {!assignmentsQuery.isLoading && !assignmentsQuery.isError ? (
-        assignments.length > 0 ? (
+        extracurricularAssignments.length > 0 ? (
           <View style={{ marginBottom: 12 }}>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Assignment Ekskul</Text>
-            {assignments.map((item) => (
+            {extracurricularAssignments.map((item) => (
               <Pressable
                 key={item.id}
                 onPress={() =>
                   router.push(
-                    `/tutor/members?ekskulId=${item.ekskulId}&academicYearId=${item.academicYearId}` as never,
+                    `/tutor/members?assignmentId=${item.id}&ekskulId=${item.ekskulId}&academicYearId=${item.academicYearId}` as never,
                   )
                 }
                 style={{
@@ -158,7 +165,7 @@ export default function TutorDashboardScreen() {
             }}
           >
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>Belum ada assignment</Text>
-            <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data pembina ekskul pada akun ini.</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data pembina ekskul aktif pada akun ini.</Text>
           </View>
         )
       ) : null}

@@ -1,16 +1,26 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { extracurricularService, type Extracurricular } from '../../../services/extracurricular.service';
+import {
+  extracurricularService,
+  type Extracurricular,
+  type ExtracurricularPayload,
+} from '../../../services/extracurricular.service';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Loader2, Search, ChevronLeft, ChevronRight, Plus, Trash2, Edit, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { TutorAssignmentModal } from './TutorAssignmentModal';
+import {
+  EXTRACURRICULAR_CATEGORY_OPTIONS,
+  getExtracurricularCategoryLabel,
+  type ExtracurricularCategory,
+} from '../../../features/extracurricular/category';
 
 const schema = z.object({
   name: z.string().min(1, 'Nama ekstrakurikuler wajib diisi'),
   description: z.string().optional().nullable(),
+  category: z.enum(['EXTRACURRICULAR', 'OSIS']),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -24,6 +34,7 @@ export const ExtracurricularPage = () => {
   const [limit, setLimit] = useState(10);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<'ALL' | ExtracurricularCategory>('ALL');
   const [selectedEkskulForAssignment, setSelectedEkskulForAssignment] = useState<Extracurricular | null>(null);
 
   useEffect(() => {
@@ -35,8 +46,14 @@ export const ExtracurricularPage = () => {
   }, [search]);
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['extracurriculars', page, limit, debouncedSearch],
-    queryFn: () => extracurricularService.list({ page, limit, search: debouncedSearch }),
+    queryKey: ['extracurriculars', page, limit, debouncedSearch, selectedCategoryFilter],
+    queryFn: () =>
+      extracurricularService.list({
+        page,
+        limit,
+        search: debouncedSearch,
+        category: selectedCategoryFilter === 'ALL' ? undefined : selectedCategoryFilter,
+      }),
   });
 
   const {
@@ -50,6 +67,7 @@ export const ExtracurricularPage = () => {
     defaultValues: {
       name: '',
       description: '',
+      category: 'EXTRACURRICULAR',
     },
   });
 
@@ -67,7 +85,7 @@ export const ExtracurricularPage = () => {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<FormValues> }) =>
+    mutationFn: ({ id, data }: { id: number; data: Partial<ExtracurricularPayload> }) =>
       extracurricularService.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['extracurriculars'] });
@@ -104,6 +122,7 @@ export const ExtracurricularPage = () => {
     setEditingId(item.id);
     setValue('name', item.name);
     setValue('description', item.description ?? '');
+    setValue('category', item.category || 'EXTRACURRICULAR');
     setShowForm(true);
   };
 
@@ -120,7 +139,7 @@ export const ExtracurricularPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Ekstrakurikuler</h1>
-          <p className="text-gray-500">Kelola daftar kegiatan ekstrakurikuler sekolah</p>
+          <p className="text-gray-500">Kelola daftar ekstrakurikuler dan organisasi siswa sekolah</p>
         </div>
         {!showForm && (
           <button
@@ -156,6 +175,25 @@ export const ExtracurricularPage = () => {
               />
               {errors.name && (
                 <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">
+                Kategori
+              </label>
+              <select
+                id="category"
+                {...register('category')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                {EXTRACURRICULAR_CATEGORY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label} - {option.description}
+                  </option>
+                ))}
+              </select>
+              {errors.category && (
+                <p className="text-red-500 text-xs mt-1">{errors.category.message}</p>
               )}
             </div>
             <div>
@@ -220,6 +258,22 @@ export const ExtracurricularPage = () => {
               />
             </div>
             <div className="flex items-center gap-2">
+              <label htmlFor="extracurricular-category-filter" className="text-sm text-gray-600">Kategori:</label>
+              <select
+                id="extracurricular-category-filter"
+                name="extracurricular-category-filter"
+                value={selectedCategoryFilter}
+                onChange={(e) => {
+                  setSelectedCategoryFilter(e.target.value as 'ALL' | ExtracurricularCategory);
+                  setPage(1);
+                }}
+                className="w-40 pl-3 pr-8 py-2.5 bg-gray-50 text-sm text-gray-700 rounded-xl border border-gray-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+              >
+                <option value="ALL">Semua</option>
+                {EXTRACURRICULAR_CATEGORY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
               <label htmlFor="limit-extracurricular" className="text-sm text-gray-600">Tampilkan:</label>
               <select
                 id="limit-extracurricular"
@@ -247,7 +301,7 @@ export const ExtracurricularPage = () => {
             <>
               <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
                 <div className="text-sm text-gray-600">
-                  Total: <span className="font-medium">{pagination.total}</span> ekstrakurikuler
+                  Total: <span className="font-medium">{pagination.total}</span> unit kegiatan
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -255,6 +309,7 @@ export const ExtracurricularPage = () => {
                   <thead className="bg-gray-50 text-gray-600 font-medium">
                     <tr>
                       <th className="px-6 py-4">NAMA</th>
+                      <th className="px-6 py-4">KATEGORI</th>
                       <th className="px-6 py-4">DESKRIPSI</th>
                       <th className="px-6 py-4">NAMA PEMBINA</th>
                       <th className="px-6 py-4 text-center">AKSI</th>
@@ -263,7 +318,7 @@ export const ExtracurricularPage = () => {
                   <tbody className="divide-y divide-gray-50">
                     {list.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="px-6 py-8 text-center text-gray-500">
+                        <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
                           {search
                             ? 'Tidak ada data yang cocok dengan pencarian'
                             : 'Belum ada data ekstrakurikuler'}
@@ -273,6 +328,15 @@ export const ExtracurricularPage = () => {
                       list.map((item) => (
                         <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-6 py-4 font-medium text-gray-900">{item.name}</td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+                              item.category === 'OSIS'
+                                ? 'bg-violet-100 text-violet-800'
+                                : 'bg-blue-100 text-blue-800'
+                            }`}>
+                              {getExtracurricularCategoryLabel(item.category)}
+                            </span>
+                          </td>
                           <td className="px-6 py-4 text-gray-600">
                             {item.description || (
                               <span className="text-gray-400 italic">Belum ada deskripsi</span>

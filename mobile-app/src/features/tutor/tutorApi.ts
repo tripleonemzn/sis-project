@@ -1,4 +1,5 @@
 import { apiClient } from '../../lib/api/client';
+import type { ExtracurricularCategory } from '../extracurricular/category';
 
 type ApiEnvelope<T> = {
   statusCode: number;
@@ -17,6 +18,7 @@ export type TutorAssignment = {
     id: number;
     name: string;
     description?: string | null;
+    category?: ExtracurricularCategory;
   } | null;
   academicYear?: {
     id: number;
@@ -65,6 +67,7 @@ export type TutorInventoryOverviewRow = {
   assignmentId: number;
   ekskulId: number;
   ekskulName: string;
+  ekskulCategory?: ExtracurricularCategory;
   academicYearId: number;
   academicYearName: string;
   room: {

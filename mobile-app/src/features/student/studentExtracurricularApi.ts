@@ -1,4 +1,5 @@
 import { apiClient } from '../../lib/api/client';
+import type { ExtracurricularCategory } from '../extracurricular/category';
 
 type ApiEnvelope<T> = {
   statusCode: number;
@@ -11,6 +12,7 @@ export type StudentExtracurricular = {
   id: number;
   name: string;
   description?: string | null;
+  category?: ExtracurricularCategory;
   tutorAssignments?: Array<{
     id: number;
     tutor?: {
@@ -43,6 +45,7 @@ export const studentExtracurricularApi = {
       params: {
         page: 1,
         limit: 100,
+        category: 'EXTRACURRICULAR',
       },
     });
     return response.data?.data?.extracurriculars || [];

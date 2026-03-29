@@ -1,16 +1,27 @@
 import { Request, Response } from 'express';
+import { ExtracurricularCategory } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth';
 
-const ekskulSchema = z.object({
+const extracurricularCategorySchema = z.preprocess((value) => {
+  if (typeof value === 'string') return value.trim().toUpperCase();
+  return value;
+}, z.nativeEnum(ExtracurricularCategory));
+
+const createEkskulSchema = z.object({
   name: z.string().min(1, 'Nama ekstrakurikuler wajib diisi'),
   description: z.string().optional().nullable(),
+  category: extracurricularCategorySchema.default(ExtracurricularCategory.EXTRACURRICULAR),
 });
 
+const updateEkskulSchema = createEkskulSchema.partial();
+
+const STUDENT_EXTRACURRICULAR_CATEGORY = ExtracurricularCategory.EXTRACURRICULAR;
+
 export const getExtracurriculars = asyncHandler(async (req: Request, res: Response) => {
-  const { page = 1, limit = 10, search } = req.query;
+  const { page = 1, limit = 10, search, category } = req.query;
   const pageNum = Number(page);
   const limitNum = Number(limit);
   const skip = (pageNum - 1) * limitNum;
@@ -18,6 +29,9 @@ export const getExtracurriculars = asyncHandler(async (req: Request, res: Respon
   const where: any = {};
   if (search) {
     where.name = { contains: String(search), mode: 'insensitive' };
+  }
+  if (category) {
+    where.category = extracurricularCategorySchema.parse(category);
   }
 
   const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } });
@@ -54,21 +68,29 @@ export const getExtracurriculars = asyncHandler(async (req: Request, res: Respon
 });
 
 export const createExtracurricular = asyncHandler(async (req: Request, res: Response) => {
-  const body = ekskulSchema.parse(req.body);
+  const body = createEkskulSchema.parse(req.body);
   const created = await prisma.ekstrakurikuler.create({
-    data: { name: body.name, description: body.description ?? undefined },
+    data: {
+      name: body.name,
+      description: body.description ?? undefined,
+      category: body.category,
+    },
   });
   res.status(201).json(new ApiResponse(201, created, 'Ekstrakurikuler berhasil dibuat'));
 });
 
 export const updateExtracurricular = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  const body = ekskulSchema.partial().parse(req.body);
+  const body = updateEkskulSchema.parse(req.body);
   const existing = await prisma.ekstrakurikuler.findUnique({ where: { id: Number(id) } });
   if (!existing) throw new ApiError(404, 'Ekstrakurikuler tidak ditemukan');
   const updated = await prisma.ekstrakurikuler.update({
     where: { id: Number(id) },
-    data: { name: body.name ?? undefined, description: body.description ?? undefined },
+    data: {
+      name: body.name ?? undefined,
+      description: body.description ?? undefined,
+      category: body.category ?? undefined,
+    },
   });
   res.status(200).json(new ApiResponse(200, updated, 'Ekstrakurikuler berhasil diperbarui'));
 });
@@ -256,7 +278,13 @@ export const getMyExtracurricularEnrollment = asyncHandler(async (req: AuthReque
   }
 
   const enrollment = await prisma.ekstrakurikulerEnrollment.findFirst({
-    where: { studentId, academicYearId },
+    where: {
+      studentId,
+      academicYearId,
+      ekskul: {
+        category: STUDENT_EXTRACURRICULAR_CATEGORY,
+      },
+    },
     include: { ekskul: true },
   });
 
@@ -278,11 +306,33 @@ export const enrollExtracurricular = asyncHandler(async (req: AuthRequest, res: 
   }
 
   const existing = await prisma.ekstrakurikulerEnrollment.findFirst({
-    where: { studentId, academicYearId },
+    where: {
+      studentId,
+      academicYearId,
+      ekskul: {
+        category: STUDENT_EXTRACURRICULAR_CATEGORY,
+      },
+    },
   });
 
   if (existing) {
     throw new ApiError(400, 'Anda sudah memilih ekstrakurikuler untuk tahun ajaran ini');
+  }
+
+  const selectedEkskul = await prisma.ekstrakurikuler.findUnique({
+    where: { id: ekskulId },
+    select: {
+      id: true,
+      category: true,
+    },
+  });
+
+  if (!selectedEkskul) {
+    throw new ApiError(404, 'Ekstrakurikuler tidak ditemukan');
+  }
+
+  if (selectedEkskul.category !== STUDENT_EXTRACURRICULAR_CATEGORY) {
+    throw new ApiError(400, 'OSIS tidak didaftarkan melalui menu ekstrakurikuler siswa.');
   }
 
   const created = await prisma.ekstrakurikulerEnrollment.create({

@@ -6,6 +6,7 @@ import { extracurricularService, type Extracurricular } from '../../../services/
 import { userService } from '../../../services/user.service';
 import { academicYearService, type AcademicYear } from '../../../services/academicYear.service';
 import type { User } from '../../../types/auth';
+import { getExtracurricularCategoryLabel } from '../../../features/extracurricular/category';
 
 interface TutorAssignmentModalProps {
   ekskul: Extracurricular;
@@ -150,7 +151,12 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
         <div className="p-6 border-b border-gray-100 flex justify-between items-center">
           <div>
             <h2 className="text-xl font-bold text-gray-900">Kelola Pembina</h2>
-            <p className="text-gray-500 text-sm mt-1">Ekstrakurikuler: <span className="font-medium text-blue-600">{ekskul.name}</span></p>
+            <p className="text-gray-500 text-sm mt-1">
+              Unit: <span className="font-medium text-blue-600">{ekskul.name}</span>{' '}
+              <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                {getExtracurricularCategoryLabel(ekskul.category)}
+              </span>
+            </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <X size={24} />

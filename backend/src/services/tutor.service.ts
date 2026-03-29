@@ -919,6 +919,7 @@ export class TutorService {
         assignmentId: assignment.id,
         ekskulId: assignment.ekskulId,
         ekskulName: assignment?.ekskul?.name || '-',
+        ekskulCategory: assignment?.ekskul?.category || 'EXTRACURRICULAR',
         academicYearId: assignment.academicYearId,
         academicYearName: assignment?.academicYear?.name || '-',
         room: selected

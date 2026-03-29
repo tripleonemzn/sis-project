@@ -1077,6 +1077,7 @@ model Ekstrakurikuler {
   id               Int                              @id @default(autoincrement())
   name             String
   description      String?
+  category         ExtracurricularCategory         @default(EXTRACURRICULAR)
   enrollments      EkstrakurikulerEnrollment[]
   tutorAssignments EkstrakurikulerTutorAssignment[]
   gradeTemplates   EkstrakurikulerGradeTemplate[]
@@ -2645,6 +2646,11 @@ enum FinanceBankStatementEntryStatus {
 enum Gender {
   MALE
   FEMALE
+}
+
+enum ExtracurricularCategory {
+  EXTRACURRICULAR
+  OSIS
 }
 
 enum AdditionalDuty {

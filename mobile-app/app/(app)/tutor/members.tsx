@@ -9,7 +9,10 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
 import { examApi, ExamProgramItem } from '../../../src/features/exams/examApi';
 import { tutorApi } from '../../../src/features/tutor/tutorApi';
-import { canAccessTutorWorkspace } from '../../../src/features/tutor/tutorAccess';
+import {
+  canAccessTutorWorkspace,
+  getExtracurricularTutorAssignments,
+} from '../../../src/features/tutor/tutorAccess';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
@@ -80,7 +83,7 @@ function getExistingGrade(
 
 export default function TutorMembersScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ ekskulId?: string; academicYearId?: string }>();
+  const params = useLocalSearchParams<{ assignmentId?: string; ekskulId?: string; academicYearId?: string }>();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -106,7 +109,10 @@ export default function TutorMembersScreen() {
     queryFn: () => tutorApi.listAssignments(activeYearQuery.data?.id),
   });
 
-  const assignments = useMemo(() => assignmentsQuery.data || [], [assignmentsQuery.data]);
+  const assignments = useMemo(
+    () => getExtracurricularTutorAssignments(assignmentsQuery.data || []),
+    [assignmentsQuery.data],
+  );
   const selectedAssignmentId = useMemo(() => {
     if (!assignments.length) return null;
     if (
@@ -114,6 +120,12 @@ export default function TutorMembersScreen() {
       assignments.some((item) => item.id === selectedAssignmentIdState)
     ) {
       return selectedAssignmentIdState;
+    }
+
+    const queryAssignmentId = Number(params.assignmentId || 0);
+    if (queryAssignmentId) {
+      const found = assignments.find((item) => Number(item.id) === queryAssignmentId);
+      if (found) return found.id;
     }
 
     const queryEkskulId = Number(params.ekskulId || 0);
@@ -127,7 +139,7 @@ export default function TutorMembersScreen() {
       if (found) return found.id;
     }
     return assignments[0].id;
-  }, [assignments, params.ekskulId, params.academicYearId, selectedAssignmentIdState]);
+  }, [assignments, params.academicYearId, params.assignmentId, params.ekskulId, selectedAssignmentIdState]);
 
   const selectedAssignment = assignments.find((item) => item.id === selectedAssignmentId) || null;
 

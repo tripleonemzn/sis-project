@@ -9,6 +9,7 @@ interface Extracurricular {
   id: number;
   name: string;
   description?: string | null;
+  category?: 'EXTRACURRICULAR' | 'OSIS';
   tutorAssignments?: { tutor?: { name: string } }[];
 }
 
@@ -59,7 +60,12 @@ export const StudentExtracurricularPage = () => {
     queryKey: ['public-extracurriculars', page, limit, search],
     queryFn: async () => {
       const res = await api.get('/public/extracurriculars', {
-        params: { page, limit, search: search.trim() || undefined }
+        params: {
+          page,
+          limit,
+          search: search.trim() || undefined,
+          category: 'EXTRACURRICULAR',
+        }
       });
       return res.data.data;
     }

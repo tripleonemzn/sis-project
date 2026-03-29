@@ -9,8 +9,8 @@ import type { User as AuthUser } from '../../types/auth';
 import { osisService } from '../../services/osis.service';
 import {
   buildTutorMembersHref,
-  getActiveTutorAssignments,
-  hasOsisTutorAssignments,
+  getExtracurricularTutorAssignments,
+  getOsisTutorAssignments,
 } from '../../features/tutor/tutorAccess';
 
 interface AcademicYear {
@@ -53,9 +53,11 @@ export const TutorDashboardPage = () => {
     enabled: !!activeAcademicYearId,
   });
 
-  const assignments = getActiveTutorAssignments((assignmentsData?.data || []) as TutorAssignmentSummary[]);
-  const hasOsisAssignment = hasOsisTutorAssignments(assignments);
-  const firstAssignment = assignments[0] || null;
+  const assignments = (assignmentsData?.data || []) as TutorAssignmentSummary[];
+  const extracurricularAssignments = getExtracurricularTutorAssignments(assignments);
+  const osisAssignments = getOsisTutorAssignments(assignments);
+  const hasOsisAssignment = osisAssignments.length > 0;
+  const firstAssignment = extracurricularAssignments[0] || null;
 
   const { data: inventoryData } = useQuery({
     queryKey: ['tutor-dashboard-inventory', activeAcademicYearId],
@@ -116,7 +118,7 @@ export const TutorDashboardPage = () => {
             </div>
             <div>
               <p className="text-sm text-blue-700/80">Ekstrakurikuler Binaan</p>
-              <h3 className="text-2xl font-bold text-blue-900">{assignments.length}</h3>
+              <h3 className="text-2xl font-bold text-blue-900">{extracurricularAssignments.length}</h3>
               <p className="mt-1 text-xs text-blue-700/75">Kelola anggota dan nilai ekstrakurikuler.</p>
             </div>
           </div>
@@ -152,7 +154,7 @@ export const TutorDashboardPage = () => {
               </div>
               <div>
                 <p className="text-sm text-amber-700/80">Program Kerja</p>
-                <h3 className="text-2xl font-bold text-amber-900">{assignments.filter((row) => row.isActive).length}</h3>
+                <h3 className="text-2xl font-bold text-amber-900">{extracurricularAssignments.length}</h3>
                 <p className="mt-1 text-xs text-amber-700/75">Ekstrakurikuler aktif siap dikelola.</p>
               </div>
             </div>
@@ -201,12 +203,12 @@ export const TutorDashboardPage = () => {
                   <tr>
                     <td colSpan={3} className="px-6 py-4 text-center text-gray-500">Loading...</td>
                   </tr>
-                ) : assignments.length === 0 ? (
+                ) : extracurricularAssignments.length === 0 ? (
                   <tr>
                     <td colSpan={3} className="px-6 py-4 text-center text-gray-500">Belum ada penugasan</td>
                   </tr>
                 ) : (
-                  assignments.map((assignment) => (
+                  extracurricularAssignments.map((assignment) => (
                     <tr key={assignment.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4">
                         <div className="font-medium text-gray-900">{assignment.ekskul?.name || '-'}</div>

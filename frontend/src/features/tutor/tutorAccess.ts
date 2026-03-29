@@ -1,4 +1,5 @@
 import type { TutorAssignmentSummary } from '../../services/tutor.service';
+import { isOsisExtracurricularCategory } from '../extracurricular/category';
 
 function normalizeRole(role: unknown): string {
   return String(role || '').trim().toUpperCase();
@@ -14,18 +15,25 @@ export function getActiveTutorAssignments(assignments?: TutorAssignmentSummary[]
 }
 
 export function hasTutorAssignments(assignments?: TutorAssignmentSummary[] | null): boolean {
-  return getActiveTutorAssignments(assignments).length > 0;
+  return getExtracurricularTutorAssignments(assignments).length > 0;
 }
 
 export function isOsisTutorAssignment(assignment?: TutorAssignmentSummary | null): boolean {
-  return String(assignment?.ekskul?.name || '')
-    .trim()
-    .toUpperCase()
-    .includes('OSIS');
+  return isOsisExtracurricularCategory(assignment?.ekskul?.category);
+}
+
+export function getOsisTutorAssignments(assignments?: TutorAssignmentSummary[] | null): TutorAssignmentSummary[] {
+  return getActiveTutorAssignments(assignments).filter((assignment) => isOsisTutorAssignment(assignment));
+}
+
+export function getExtracurricularTutorAssignments(
+  assignments?: TutorAssignmentSummary[] | null,
+): TutorAssignmentSummary[] {
+  return getActiveTutorAssignments(assignments).filter((assignment) => !isOsisTutorAssignment(assignment));
 }
 
 export function hasOsisTutorAssignments(assignments?: TutorAssignmentSummary[] | null): boolean {
-  return getActiveTutorAssignments(assignments).some((assignment) => isOsisTutorAssignment(assignment));
+  return getOsisTutorAssignments(assignments).length > 0;
 }
 
 export function buildTutorMembersHref(assignment?: TutorAssignmentSummary | null): string {
