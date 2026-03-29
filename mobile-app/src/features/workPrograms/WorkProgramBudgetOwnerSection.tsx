@@ -11,6 +11,13 @@ import { openWebModuleRoute } from '../../lib/navigation/webModuleRoute';
 import { mobileLiveQueryOptions } from '../../lib/query/liveQuery';
 import { useAuth } from '../auth/AuthProvider';
 import {
+  formatWorkProgramDutyLabel,
+  getAdvisorDutyMeta,
+  getAdvisorEquipmentLabel,
+  getAdvisorEquipmentTitle,
+  isAdvisorDuty,
+} from './advisorDuty';
+import {
   WorkProgramBudgetLpjInvoiceStatus,
   WorkProgramBudgetRequest,
   WorkProgramBudgetStatus,
@@ -22,6 +29,7 @@ type BudgetStatusFilter = 'ALL' | WorkProgramBudgetStatus;
 
 type BudgetFormState = {
   additionalDuty: string;
+  toolName: string;
   description: string;
   executionTime: string;
   brand: string;
@@ -31,6 +39,7 @@ type BudgetFormState = {
 
 const DEFAULT_BUDGET_FORM: BudgetFormState = {
   additionalDuty: '',
+  toolName: '',
   description: '',
   executionTime: '',
   brand: '',
@@ -57,10 +66,7 @@ function formatDateTime(value?: string | null) {
 
 function toDutyLabel(value?: string | null) {
   if (!value) return '-';
-  return String(value)
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(' ');
+  return formatWorkProgramDutyLabel(value);
 }
 
 function budgetStatusStyle(status: WorkProgramBudgetStatus) {
@@ -94,10 +100,12 @@ function lpjInvoiceStatusStyle(status: WorkProgramBudgetLpjInvoiceStatus) {
 function waitingApproverLabel(budget: WorkProgramBudgetRequest) {
   if (budget.status !== 'PENDING') return '';
   const duties = (budget.approver?.additionalDuties || []).map((item) => String(item).toUpperCase());
+  const isKesiswaan = duties.includes('WAKASEK_KESISWAAN') || duties.includes('SEKRETARIS_KESISWAAN');
   const isSarpras = duties.includes('WAKASEK_SARPRAS') || duties.includes('SEKRETARIS_SARPRAS');
   const isPrincipal = String(budget.approver?.role || '').toUpperCase() === 'PRINCIPAL';
   const isFinance =
     String(budget.approver?.role || '').toUpperCase() === 'STAFF' || duties.includes('BENDAHARA');
+  if (isKesiswaan) return 'Menunggu Wakasek/Sekretaris Kesiswaan';
   if (isSarpras) return 'Menunggu Wakasek/Sekretaris Sarpras';
   if (isPrincipal) return 'Menunggu Kepala Sekolah';
   if (isFinance) return 'Menunggu Staff Keuangan / Bendahara';
@@ -240,10 +248,12 @@ export function WorkProgramBudgetOwnerSection({
   activeYearId,
   activeYearName,
   dutyOptions,
+  forcedDuty,
 }: {
   activeYearId?: number | null;
   activeYearName?: string | null;
   dutyOptions: string[];
+  forcedDuty?: string | null;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -263,6 +273,21 @@ export function WorkProgramBudgetOwnerSection({
   const [itemBrand, setItemBrand] = useState('');
   const [itemQuantity, setItemQuantity] = useState('1');
   const [itemUnitPrice, setItemUnitPrice] = useState('0');
+  const forcedAdvisorMeta = getAdvisorDutyMeta(forcedDuty);
+  const selectedAdvisorMeta = getAdvisorDutyMeta(budgetForm.additionalDuty);
+  const isAdvisorEquipmentRequest = Boolean(selectedAdvisorMeta);
+  const budgetSectionTitle = forcedAdvisorMeta
+    ? `${forcedAdvisorMeta.equipmentTitle} & LPJ`
+    : 'Anggaran & LPJ';
+  const budgetCreateTitle = selectedAdvisorMeta
+    ? `Pengajuan ${selectedAdvisorMeta.equipmentTitle} Baru`
+    : 'Pengajuan Anggaran Baru';
+  const budgetCreateButtonLabel = selectedAdvisorMeta
+    ? `Tambah Pengajuan ${selectedAdvisorMeta.equipmentTitle}`
+    : 'Tambah Pengajuan Anggaran';
+  const budgetCreateSubmitLabel = selectedAdvisorMeta
+    ? `Simpan Pengajuan ${selectedAdvisorMeta.equipmentTitle}`
+    : 'Simpan Pengajuan';
 
   useEffect(() => {
     const timerId = setTimeout(() => {
@@ -277,12 +302,32 @@ export function WorkProgramBudgetOwnerSection({
     return () => clearTimeout(timerId);
   }, [dutyOptions]);
 
+  useEffect(() => {
+    if (!isAdvisorEquipmentRequest) return;
+    const timerId = setTimeout(() => {
+      setBudgetForm((prev) => {
+        if (prev.quantity === '1' && prev.unitPrice === '0') {
+          return prev;
+        }
+        return {
+          ...prev,
+          quantity: '1',
+          unitPrice: '0',
+        };
+      });
+    }, 0);
+    return () => clearTimeout(timerId);
+  }, [isAdvisorEquipmentRequest]);
+
   const budgetsQuery = useQuery({
-    queryKey: ['mobile-work-program-owner-budget-requests', user?.id, activeYearId],
-    enabled: isAuthenticated && user?.role === 'TEACHER',
+    queryKey: ['mobile-work-program-owner-budget-requests', user?.id, activeYearId, forcedDuty || 'ALL'],
+    enabled:
+      isAuthenticated &&
+      ['TEACHER', 'EXTRACURRICULAR_TUTOR'].includes(String(user?.role || '').toUpperCase()),
     queryFn: async () =>
       workProgramApi.listBudgetRequests({
         academicYearId: activeYearId || undefined,
+        additionalDuty: forcedDuty || undefined,
         view: 'requester',
       }),
     ...mobileLiveQueryOptions,
@@ -290,7 +335,10 @@ export function WorkProgramBudgetOwnerSection({
 
   const lpjQuery = useQuery({
     queryKey: ['mobile-work-program-owner-budget-lpj', lpjBudgetId],
-    enabled: isAuthenticated && user?.role === 'TEACHER' && !!lpjBudgetId,
+    enabled:
+      isAuthenticated &&
+      ['TEACHER', 'EXTRACURRICULAR_TUTOR'].includes(String(user?.role || '').toUpperCase()) &&
+      !!lpjBudgetId,
     queryFn: async () => workProgramApi.listBudgetLpj(Number(lpjBudgetId)),
     ...mobileLiveQueryOptions,
   });
@@ -299,27 +347,41 @@ export function WorkProgramBudgetOwnerSection({
     mutationFn: async () => {
       if (!activeYearId) throw new Error('Tahun ajaran aktif belum ditemukan.');
       const description = budgetForm.description.trim();
-      if (!description) throw new Error('Uraian pengajuan wajib diisi.');
       if (!budgetForm.additionalDuty) throw new Error('Pilih tugas tambahan.');
+      if (!description) {
+        throw new Error(
+          isAdvisorEquipmentRequest ? 'Keterangan pengajuan wajib diisi.' : 'Uraian pengajuan wajib diisi.',
+        );
+      }
 
-      const quantity = toPositiveInt(budgetForm.quantity, 1);
-      const unitPrice = toNonNegativeInt(budgetForm.unitPrice, 0);
+      const toolName = budgetForm.toolName.trim();
+      if (isAdvisorEquipmentRequest && !toolName) {
+        throw new Error(`Nama ${getAdvisorEquipmentLabel(budgetForm.additionalDuty)} wajib diisi.`);
+      }
+
+      const quantity = isAdvisorEquipmentRequest ? 1 : toPositiveInt(budgetForm.quantity, 1);
+      const unitPrice = isAdvisorEquipmentRequest ? 0 : toNonNegativeInt(budgetForm.unitPrice, 0);
 
       return workProgramApi.createBudgetRequest({
-        title: description,
+        title: isAdvisorEquipmentRequest ? toolName : description,
         description,
-        executionTime: budgetForm.executionTime.trim() || undefined,
+        executionTime: isAdvisorEquipmentRequest ? undefined : budgetForm.executionTime.trim() || undefined,
         brand: budgetForm.brand.trim() || undefined,
         quantity,
         unitPrice,
-        totalAmount: quantity * unitPrice,
+        totalAmount: isAdvisorEquipmentRequest ? 0 : quantity * unitPrice,
         academicYearId: activeYearId,
         additionalDuty: budgetForm.additionalDuty,
       });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['mobile-work-program-owner-budget-requests'] });
-      Alert.alert('Berhasil', 'Pengajuan anggaran berhasil dibuat.');
+      Alert.alert(
+        'Berhasil',
+        isAdvisorEquipmentRequest
+          ? `Pengajuan ${getAdvisorEquipmentLabel(budgetForm.additionalDuty)} berhasil dibuat.`
+          : 'Pengajuan anggaran berhasil dibuat.',
+      );
       setFormVisible(false);
       setBudgetForm({
         ...DEFAULT_BUDGET_FORM,
@@ -516,7 +578,12 @@ export function WorkProgramBudgetOwnerSection({
   };
 
   const askDeleteBudget = (budget: WorkProgramBudgetRequest) => {
-    Alert.alert('Hapus Pengajuan Anggaran', `Hapus pengajuan "${budget.description}"?`, [
+    const equipmentTitle = getAdvisorEquipmentTitle(budget.additionalDuty);
+    const title = isAdvisorDuty(budget.additionalDuty)
+      ? `Hapus Pengajuan ${equipmentTitle}`
+      : 'Hapus Pengajuan Anggaran';
+    const reference = budget.title || budget.description;
+    Alert.alert(title, `Hapus pengajuan "${reference}"?`, [
       { text: 'Batal', style: 'cancel' },
       {
         text: 'Hapus',
@@ -538,18 +605,21 @@ export function WorkProgramBudgetOwnerSection({
   };
 
   const totalDraftAmount = useMemo(() => {
+    if (isAdvisorEquipmentRequest) return 0;
     const qty = toPositiveInt(itemQuantity, 1);
     const unitPrice = toNonNegativeInt(itemUnitPrice, 0);
     return qty * unitPrice;
-  }, [itemQuantity, itemUnitPrice]);
+  }, [isAdvisorEquipmentRequest, itemQuantity, itemUnitPrice]);
 
   return (
     <View style={{ marginTop: 18 }}>
       <Text style={{ fontSize: 22, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
-        Anggaran & LPJ
+        {budgetSectionTitle}
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Kelola pengajuan anggaran program kerja
+        {forcedAdvisorMeta
+          ? `Kelola pengajuan ${forcedAdvisorMeta.equipmentLabel} dan LPJ program kerja`
+          : 'Kelola pengajuan anggaran program kerja'}
         {activeYearName ? ` • ${activeYearName}` : ''}
         {'.'}
       </Text>
@@ -573,7 +643,9 @@ export function WorkProgramBudgetOwnerSection({
           marginBottom: 10,
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: '700' }}>{formVisible ? 'Tutup Form Pengajuan' : 'Tambah Pengajuan Anggaran'}</Text>
+        <Text style={{ color: '#fff', fontWeight: '700' }}>
+          {formVisible ? 'Tutup Form Pengajuan' : budgetCreateButtonLabel}
+        </Text>
       </Pressable>
 
       {formVisible ? (
@@ -587,15 +659,34 @@ export function WorkProgramBudgetOwnerSection({
             marginBottom: 10,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Pengajuan Anggaran Baru</Text>
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>{budgetCreateTitle}</Text>
 
-          <TextField
-            label="Uraian Pengajuan"
-            value={budgetForm.description}
-            onChangeText={(description) => setBudgetForm((prev) => ({ ...prev, description }))}
-            placeholder="Contoh: Pengadaan alat praktik jaringan"
-            multiline
-          />
+          {isAdvisorEquipmentRequest ? (
+            <>
+              <TextField
+                label={`Nama ${getAdvisorEquipmentTitle(budgetForm.additionalDuty)}`}
+                value={budgetForm.toolName}
+                onChangeText={(toolName) => setBudgetForm((prev) => ({ ...prev, toolName }))}
+                placeholder="Contoh: Perlengkapan kegiatan"
+              />
+
+              <TextField
+                label="Keterangan"
+                value={budgetForm.description}
+                onChangeText={(description) => setBudgetForm((prev) => ({ ...prev, description }))}
+                placeholder="Alasan pengajuan atau spesifikasi singkat."
+                multiline
+              />
+            </>
+          ) : (
+            <TextField
+              label="Uraian Pengajuan"
+              value={budgetForm.description}
+              onChangeText={(description) => setBudgetForm((prev) => ({ ...prev, description }))}
+              placeholder="Contoh: Pengadaan alat praktik jaringan"
+              multiline
+            />
+          )}
 
           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Tugas Tambahan</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
@@ -616,56 +707,78 @@ export function WorkProgramBudgetOwnerSection({
           <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
             <View style={{ flex: 1, paddingHorizontal: 4 }}>
               <TextField
-                label="Waktu Pelaksanaan"
-                value={budgetForm.executionTime}
-                onChangeText={(executionTime) => setBudgetForm((prev) => ({ ...prev, executionTime }))}
-                placeholder="Contoh: Juli 2026"
-              />
-            </View>
-            <View style={{ flex: 1, paddingHorizontal: 4 }}>
-              <TextField
-                label="Brand/Merk"
+                label={isAdvisorEquipmentRequest ? 'Merk' : 'Brand/Merk'}
                 value={budgetForm.brand}
                 onChangeText={(brand) => setBudgetForm((prev) => ({ ...prev, brand }))}
                 placeholder="Opsional"
               />
             </View>
+            {!isAdvisorEquipmentRequest ? (
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                <TextField
+                  label="Waktu Pelaksanaan"
+                  value={budgetForm.executionTime}
+                  onChangeText={(executionTime) => setBudgetForm((prev) => ({ ...prev, executionTime }))}
+                  placeholder="Contoh: Juli 2026"
+                />
+              </View>
+            ) : null}
           </View>
 
-          <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
-            <View style={{ flex: 1, paddingHorizontal: 4 }}>
-              <TextField
-                label="Quantity"
-                value={budgetForm.quantity}
-                onChangeText={(quantity) => setBudgetForm((prev) => ({ ...prev, quantity }))}
-                keyboardType="numeric"
-              />
+          {isAdvisorEquipmentRequest ? (
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                borderRadius: 10,
+                backgroundColor: '#eff6ff',
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
+                Pengajuan {getAdvisorEquipmentLabel(budgetForm.additionalDuty)} tidak membutuhkan input harga pada tahap ini.
+              </Text>
             </View>
-            <View style={{ flex: 1, paddingHorizontal: 4 }}>
-              <TextField
-                label="Harga Satuan"
-                value={budgetForm.unitPrice}
-                onChangeText={(unitPrice) => setBudgetForm((prev) => ({ ...prev, unitPrice }))}
-                keyboardType="numeric"
-              />
-            </View>
-          </View>
+          ) : (
+            <>
+              <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+                <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                  <TextField
+                    label="Quantity"
+                    value={budgetForm.quantity}
+                    onChangeText={(quantity) => setBudgetForm((prev) => ({ ...prev, quantity }))}
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                  <TextField
+                    label="Harga Satuan"
+                    value={budgetForm.unitPrice}
+                    onChangeText={(unitPrice) => setBudgetForm((prev) => ({ ...prev, unitPrice }))}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
 
-          <View
-            style={{
-              borderWidth: 1,
-              borderColor: '#bfdbfe',
-              borderRadius: 10,
-              backgroundColor: '#eff6ff',
-              paddingHorizontal: 10,
-              paddingVertical: 8,
-              marginBottom: 10,
-            }}
-          >
-            <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
-              Total: {formatCurrency(toPositiveInt(budgetForm.quantity, 1) * toNonNegativeInt(budgetForm.unitPrice, 0))}
-            </Text>
-          </View>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#bfdbfe',
+                  borderRadius: 10,
+                  backgroundColor: '#eff6ff',
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  marginBottom: 10,
+                }}
+              >
+                <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
+                  Total: {formatCurrency(toPositiveInt(budgetForm.quantity, 1) * toNonNegativeInt(budgetForm.unitPrice, 0))}
+                </Text>
+              </View>
+            </>
+          )}
 
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Pressable
@@ -695,7 +808,7 @@ export function WorkProgramBudgetOwnerSection({
               }}
             >
               <Text style={{ color: '#fff', fontWeight: '700' }}>
-                {createBudgetMutation.isPending ? 'Menyimpan...' : 'Simpan Pengajuan'}
+                {createBudgetMutation.isPending ? 'Menyimpan...' : budgetCreateSubmitLabel}
               </Text>
             </Pressable>
           </View>
@@ -785,9 +898,15 @@ export function WorkProgramBudgetOwnerSection({
               >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{budget.description || budget.title}</Text>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                      {isAdvisorDuty(budget.additionalDuty)
+                        ? budget.title || budget.description
+                        : budget.description || budget.title}
+                    </Text>
                     <Text style={{ color: '#64748b', marginTop: 2, fontSize: 12 }}>
-                      {toDutyLabel(budget.additionalDuty)} • Qty {budget.quantity} • Unit {formatCurrency(budget.unitPrice)}
+                      {isAdvisorDuty(budget.additionalDuty)
+                        ? `${toDutyLabel(budget.additionalDuty)} • ${getAdvisorEquipmentTitle(budget.additionalDuty)}`
+                        : `${toDutyLabel(budget.additionalDuty)} • Qty ${budget.quantity} • Unit ${formatCurrency(budget.unitPrice)}`}
                     </Text>
                   </View>
                   <View
@@ -806,9 +925,20 @@ export function WorkProgramBudgetOwnerSection({
 
                 <View style={{ marginTop: 8 }}>
                   <Text style={{ color: '#334155', fontSize: 12 }}>Total: {formatCurrency(budget.totalAmount)}</Text>
-                  <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
-                    Waktu: {budget.executionTime || '-'} • Brand: {budget.brand || '-'}
-                  </Text>
+                  {isAdvisorDuty(budget.additionalDuty) ? (
+                    <>
+                      <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                        Keterangan: {budget.description || '-'}
+                      </Text>
+                      <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                        Merk: {budget.brand || '-'}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={{ color: '#334155', fontSize: 12, marginTop: 2 }}>
+                      Waktu: {budget.executionTime || '-'} • Brand: {budget.brand || '-'}
+                    </Text>
+                  )}
                   <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
                     Dibuat: {formatDateTime(budget.createdAt)}
                   </Text>

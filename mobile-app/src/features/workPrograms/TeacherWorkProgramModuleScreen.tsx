@@ -10,6 +10,7 @@ import { BRAND_COLORS } from '../../config/brand';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
 import { mobileLiveQueryOptions } from '../../lib/query/liveQuery';
 import { useAuth } from '../auth/AuthProvider';
+import { formatWorkProgramDutyLabel, normalizeDutyCode } from './advisorDuty';
 import { academicYearApi } from '../academicYear/academicYearApi';
 import { WorkProgramBudgetOwnerSection } from './WorkProgramBudgetOwnerSection';
 import { WorkProgramRecord } from './types';
@@ -78,10 +79,7 @@ function formatDateTime(value?: string | null) {
 
 function formatDuty(value?: string | null) {
   if (!value) return '-';
-  return value
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(' ');
+  return formatWorkProgramDutyLabel(value);
 }
 
 function formatSemester(value?: string | null) {
@@ -307,9 +305,7 @@ export function TeacherWorkProgramModuleScreen({
   })();
 
   const dutyOptions = (() => {
-    const normalizedForcedDuty = String(forcedDuty || '')
-      .trim()
-      .toUpperCase();
+    const normalizedForcedDuty = normalizeDutyCode(forcedDuty);
     if (normalizedForcedDuty) {
       return [normalizedForcedDuty];
     }
@@ -322,15 +318,17 @@ export function TeacherWorkProgramModuleScreen({
       .filter((item) => item.length > 0 && !item.startsWith('SEKRETARIS_'));
     return Array.from(new Set(normalized));
   })();
+  const ownerDutyFilter = dutyOptions.length === 1 ? dutyOptions[0] : undefined;
 
   const ownerQuery = useQuery({
-    queryKey: ['mobile-work-program-owner', user?.id, activeYearQuery.data?.id],
+    queryKey: ['mobile-work-program-owner', user?.id, activeYearQuery.data?.id, ownerDutyFilter || 'ALL'],
     enabled: isAuthenticated && isAllowedRole && mode === 'OWNER',
     queryFn: async () =>
       workProgramApi.list({
         page: 1,
         limit: 100,
         academicYearId: activeYearQuery.data?.id,
+        additionalDuty: ownerDutyFilter,
       }),
     ...mobileLiveQueryOptions,
   });
@@ -1350,6 +1348,7 @@ export function TeacherWorkProgramModuleScreen({
           activeYearId={activeYearQuery.data?.id}
           activeYearName={activeYearQuery.data?.name}
           dutyOptions={dutyOptions}
+          forcedDuty={ownerDutyFilter || null}
         />
       ) : null}
 

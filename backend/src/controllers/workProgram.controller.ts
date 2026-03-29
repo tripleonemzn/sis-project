@@ -18,7 +18,6 @@ const listWorkProgramsSchema = z.object({
   additionalDuty: z.nativeEnum(AdditionalDuty).optional(),
   majorId: z.coerce.number().int().optional(),
   semester: z.nativeEnum(Semester).optional(),
-  readOnly: z.string().optional(),
 });
 
 const createWorkProgramSchema = z.object({
@@ -125,7 +124,7 @@ export const getWorkPrograms = asyncHandler(async (req: Request, res: Response) 
   const parsedQuery = listWorkProgramsSchema.parse(req.query);
   const page = parsedQuery.page ?? 1;
   const limit = Math.min(parsedQuery.limit ?? 10, 100);
-  const { search, academicYearId, additionalDuty, majorId, semester, readOnly } = parsedQuery;
+  const { search, academicYearId, additionalDuty, majorId, semester } = parsedQuery;
 
   const authUser = (req as any).user as { id: number; role: string } | undefined;
 
@@ -136,8 +135,6 @@ export const getWorkPrograms = asyncHandler(async (req: Request, res: Response) 
   const skip = (page - 1) * limit;
 
   const where: any = {};
-
-  void readOnly;
 
   if (authUser.role === 'TEACHER' || authUser.role === 'EXTRACURRICULAR_TUTOR') {
     where.ownerId = authUser.id;

@@ -335,7 +335,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     {
       key: 'teacher-extracurricular-work-program',
       label: 'Program Kerja Ekskul',
-      route: '/tutor/work-program',
+      route: '/tutor/work-program?duty=PEMBINA_EKSKUL',
     },
     {
       key: 'teacher-extracurricular-inventory',
@@ -683,7 +683,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     { key: 'tutor-dashboard', label: 'Dashboard', route: '/tutor/dashboard' },
     { key: 'tutor-email', label: 'Email', route: '/email' },
     { key: 'tutor-members', label: 'Anggota & Nilai', route: '/tutor/members' },
-    { key: 'tutor-work-program', label: 'Program Kerja', route: '/tutor/work-program' },
+    { key: 'tutor-work-program', label: 'Program Kerja', route: '/tutor/work-program?duty=PEMBINA_EKSKUL' },
     { key: 'tutor-inventory', label: 'Inventaris Ekskul', route: '/tutor/inventory' },
     {
       key: 'tutor-osis-management',
@@ -694,12 +694,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     {
       key: 'tutor-osis-work-program',
       label: 'Program Kerja',
-      route: createWebModuleRoute(
-        'tutor-osis-work-program',
-        '/tutor/work-programs?duty=PEMBINA_OSIS',
-        'Program Kerja OSIS',
-      ),
-      webPath: '/tutor/work-programs?duty=PEMBINA_OSIS',
+      route: '/tutor/work-program?duty=PEMBINA_OSIS',
     },
     {
       key: 'tutor-osis-election',

@@ -84,7 +84,6 @@ export const workProgramService = {
     additionalDuty?: AdditionalDuty | null;
     majorId?: number | null;
     semester?: 'ODD' | 'EVEN' | null;
-    readOnly?: boolean;
   }) => {
     const response = await api.get('/work-programs', {
       params: {
@@ -95,7 +94,6 @@ export const workProgramService = {
         additionalDuty: params?.additionalDuty ?? undefined,
         majorId: params?.majorId ?? undefined,
         semester: params?.semester ?? undefined,
-        readOnly: params?.readOnly ? '1' : undefined,
       },
     });
     return response.data as { data: WorkProgramListResponse };
