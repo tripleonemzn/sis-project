@@ -56,18 +56,33 @@ export const TutorDashboardPage = () => {
   const assignments = (assignmentsData?.data || []) as TutorAssignmentSummary[];
   const extracurricularAssignments = getExtracurricularTutorAssignments(assignments);
   const osisAssignments = getOsisTutorAssignments(assignments);
+  const hasExtracurricularAssignments = extracurricularAssignments.length > 0;
   const hasOsisAssignment = osisAssignments.length > 0;
   const firstAssignment = extracurricularAssignments[0] || null;
+  const primaryAdvisorPath = hasExtracurricularAssignments
+    ? buildTutorMembersHref(firstAssignment)
+    : hasOsisAssignment
+    ? '/tutor/osis/members'
+    : '/tutor/members';
+  const primaryAdvisorTitle = hasExtracurricularAssignments ? 'Ekstrakurikuler Binaan' : 'Kepengurusan OSIS';
+  const primaryAdvisorCount = hasExtracurricularAssignments ? extracurricularAssignments.length : osisAssignments.length;
+  const primaryAdvisorSubtitle = hasExtracurricularAssignments
+    ? 'Kelola anggota dan nilai ekstrakurikuler.'
+    : hasOsisAssignment
+    ? 'Kelola struktur, anggota, dan nilai OSIS.'
+    : 'Belum ada assignment aktif.';
+  const primaryInventoryPath = hasExtracurricularAssignments ? '/tutor/inventory' : '/tutor/inventory?scope=osis';
+  const primaryInventoryTitle = hasExtracurricularAssignments ? 'Ruang Terkelola' : 'Inventaris OSIS';
   const primaryWorkProgramPath =
-    extracurricularAssignments.length > 0
+    hasExtracurricularAssignments
       ? '/tutor/work-programs?duty=PEMBINA_EKSKUL'
       : hasOsisAssignment
       ? '/tutor/work-programs?duty=PEMBINA_OSIS'
       : '/tutor/work-programs?duty=PEMBINA_EKSKUL';
   const primaryWorkProgramCount =
-    extracurricularAssignments.length > 0 ? extracurricularAssignments.length : osisAssignments.length;
+    hasExtracurricularAssignments ? extracurricularAssignments.length : osisAssignments.length;
   const primaryWorkProgramSubtitle =
-    extracurricularAssignments.length > 0
+    hasExtracurricularAssignments
       ? 'Ekstrakurikuler aktif siap dikelola.'
       : hasOsisAssignment
       ? 'Program kerja OSIS siap dikelola.'
@@ -88,6 +103,9 @@ export const TutorDashboardPage = () => {
   const inventoryRows = ((inventoryData?.data || []) as InventoryOverviewRow[]) || [];
   const inventoryRoomCount = inventoryRows.filter((row) => row.room?.id).length;
   const inventoryItemCount = inventoryRows.reduce((sum, row) => sum + row.items.length, 0);
+  const primaryInventorySubtitle = hasExtracurricularAssignments
+    ? `${inventoryItemCount} item inventaris tercatat.`
+    : `${inventoryItemCount} item inventaris OSIS tercatat.`;
   const osisPeriods = (osisPeriodsData?.data || []) || [];
   const activeOsisPeriods = osisPeriods.filter((period) => period.status === 'PUBLISHED').length;
   const osisCandidateCount = osisPeriods.reduce(
@@ -108,7 +126,11 @@ export const TutorDashboardPage = () => {
             <div>
               <h1 className="text-3xl font-bold text-slate-900">Selamat Datang, {user?.name || 'Pembina Ekskul'}</h1>
               <p className="mt-1 text-sm text-slate-600">
-                Ringkasan pengelolaan ekstrakurikuler{isOsisTutor ? ' dan Pembina OSIS' : ''} pada tahun ajaran aktif.
+                {hasExtracurricularAssignments && isOsisTutor
+                  ? 'Ringkasan pengelolaan ekstrakurikuler dan OSIS pada tahun ajaran aktif.'
+                  : isOsisTutor
+                  ? 'Ringkasan pengelolaan OSIS pada tahun ajaran aktif.'
+                  : 'Ringkasan pengelolaan ekstrakurikuler pada tahun ajaran aktif.'}
               </p>
               {activeAcademicYear?.name ? (
                 <p className="mt-2 text-xs font-medium text-slate-500">
@@ -122,7 +144,7 @@ export const TutorDashboardPage = () => {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Link
-          to={buildTutorMembersHref(firstAssignment)}
+          to={primaryAdvisorPath}
           className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         >
         <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-sky-100/80 p-6 shadow-sm transition-shadow hover:shadow-md">
@@ -131,16 +153,16 @@ export const TutorDashboardPage = () => {
               <Trophy size={24} />
             </div>
             <div>
-              <p className="text-sm text-blue-700/80">Ekstrakurikuler Binaan</p>
-              <h3 className="text-2xl font-bold text-blue-900">{extracurricularAssignments.length}</h3>
-              <p className="mt-1 text-xs text-blue-700/75">Kelola anggota dan nilai ekstrakurikuler.</p>
+              <p className="text-sm text-blue-700/80">{primaryAdvisorTitle}</p>
+              <h3 className="text-2xl font-bold text-blue-900">{primaryAdvisorCount}</h3>
+              <p className="mt-1 text-xs text-blue-700/75">{primaryAdvisorSubtitle}</p>
             </div>
           </div>
         </div>
         </Link>
 
         <Link
-          to="/tutor/inventory"
+          to={primaryInventoryPath}
           className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
         >
           <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-teal-100/80 p-6 shadow-sm transition-shadow hover:shadow-md">
@@ -149,9 +171,9 @@ export const TutorDashboardPage = () => {
                 <Database size={24} />
               </div>
               <div>
-                <p className="text-sm text-emerald-700/80">Ruang Terkelola</p>
+                <p className="text-sm text-emerald-700/80">{primaryInventoryTitle}</p>
                 <h3 className="text-2xl font-bold text-emerald-900">{inventoryRoomCount}</h3>
-                <p className="mt-1 text-xs text-emerald-700/75">{inventoryItemCount} item inventaris tercatat.</p>
+                <p className="mt-1 text-xs text-emerald-700/75">{primaryInventorySubtitle}</p>
               </div>
             </div>
           </div>
@@ -262,19 +284,27 @@ export const TutorDashboardPage = () => {
               </div>
             </div>
             <div className="mt-5 grid grid-cols-1 gap-3">
-              <Link to={buildTutorMembersHref(firstAssignment)} className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-gray-50">
-                <span className="flex items-center gap-2"><Trophy size={16} /> Anggota & Nilai</span>
-                <span>&rsaquo;</span>
-              </Link>
+              {hasExtracurricularAssignments ? (
+                <Link to={buildTutorMembersHref(firstAssignment)} className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-gray-50">
+                  <span className="flex items-center gap-2"><Trophy size={16} /> Anggota & Nilai</span>
+                  <span>&rsaquo;</span>
+                </Link>
+              ) : null}
+              {isOsisTutor && !hasExtracurricularAssignments ? (
+                <Link to="/tutor/osis/members" className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-gray-50">
+                  <span className="flex items-center gap-2"><Users size={16} /> Struktur & Nilai OSIS</span>
+                  <span>&rsaquo;</span>
+                </Link>
+              ) : null}
               <Link to={primaryWorkProgramPath} className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-gray-50">
-                <span className="flex items-center gap-2"><ClipboardList size={16} /> Program Kerja</span>
+                <span className="flex items-center gap-2"><ClipboardList size={16} /> {hasExtracurricularAssignments ? 'Program Kerja Ekskul' : 'Program Kerja OSIS'}</span>
                 <span>&rsaquo;</span>
               </Link>
-              <Link to="/tutor/inventory" className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-gray-50">
-                <span className="flex items-center gap-2"><Boxes size={16} /> Inventaris Ekskul</span>
+              <Link to={primaryInventoryPath} className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-gray-50">
+                <span className="flex items-center gap-2"><Boxes size={16} /> {hasExtracurricularAssignments ? 'Inventaris Ekskul' : 'Inventaris OSIS'}</span>
                 <span>&rsaquo;</span>
               </Link>
-              {isOsisTutor ? (
+              {isOsisTutor && hasExtracurricularAssignments ? (
                 <Link to="/tutor/work-programs?duty=PEMBINA_OSIS" className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-gray-50">
                   <span className="flex items-center gap-2"><ClipboardList size={16} /> Program Kerja OSIS</span>
                   <span>&rsaquo;</span>
@@ -289,6 +319,12 @@ export const TutorDashboardPage = () => {
               {isOsisTutor ? (
                 <Link to="/tutor/osis/election" className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-gray-50">
                   <span className="flex items-center gap-2"><Vote size={16} /> Pemilihan OSIS</span>
+                  <span>&rsaquo;</span>
+                </Link>
+              ) : null}
+              {isOsisTutor && hasExtracurricularAssignments ? (
+                <Link to="/tutor/inventory?scope=osis" className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-gray-50">
+                  <span className="flex items-center gap-2"><Boxes size={16} /> Inventaris OSIS</span>
                   <span>&rsaquo;</span>
                 </Link>
               ) : null}

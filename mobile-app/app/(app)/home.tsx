@@ -390,12 +390,34 @@ const ROLE_PRIMARY_ACTION_KEYS: Record<string, string[]> = {
   UMUM: ['public-vacancies'],
 };
 
-function getRolePrimaryActionKeys(user: AuthUser, options?: { hasExtracurricularAdvisorAssignments?: boolean }) {
+function getRolePrimaryActionKeys(
+  user: AuthUser,
+  options?: {
+    hasExtracurricularAdvisorAssignments?: boolean;
+    hasOsisTutorAssignments?: boolean;
+    hasActiveOsisElection?: boolean;
+  },
+) {
   if (user.role === 'STAFF') {
     return getStaffPreferredMenuKeys(user);
   }
   if (user.role === 'TEACHER' && options?.hasExtracurricularAdvisorAssignments) {
     return ['teacher-extracurricular-members', 'teaching-schedule', 'teacher-extracurricular-work-program'];
+  }
+  if (user.role === 'EXTRACURRICULAR_TUTOR') {
+    if (options?.hasExtracurricularAdvisorAssignments && options?.hasOsisTutorAssignments) {
+      return options.hasActiveOsisElection
+        ? ['tutor-members', 'tutor-osis-management', 'tutor-osis-vote']
+        : ['tutor-members', 'tutor-osis-management', 'tutor-work-program'];
+    }
+    if (options?.hasOsisTutorAssignments) {
+      return options.hasActiveOsisElection
+        ? ['tutor-osis-management', 'tutor-osis-vote', 'tutor-osis-work-program']
+        : ['tutor-osis-management', 'tutor-osis-election', 'tutor-osis-work-program'];
+    }
+    if (options?.hasExtracurricularAdvisorAssignments) {
+      return ['tutor-members', 'tutor-work-program', 'tutor-inventory'];
+    }
   }
   return ROLE_PRIMARY_ACTION_KEYS[user.role] || [];
 }
@@ -999,6 +1021,8 @@ export default function HomeScreen() {
   const roleQuickMenus = useMemo(() => {
     const preferredKeys = getRolePrimaryActionKeys(profile, {
       hasExtracurricularAdvisorAssignments,
+      hasOsisTutorAssignments,
+      hasActiveOsisElection,
     });
     const menuByKey = new Map(allMenuItems.map((item) => [item.key, item]));
     const result: RoleMenuItem[] = [];
@@ -1021,7 +1045,7 @@ export default function HomeScreen() {
     }
 
     return result;
-  }, [allMenuItems, hasExtracurricularAdvisorAssignments, profile]);
+  }, [allMenuItems, hasActiveOsisElection, hasExtracurricularAdvisorAssignments, hasOsisTutorAssignments, profile]);
 
   const teacherStats = useMemo(() => {
     const assignments = teacherAssignmentsQuery.data?.assignments || [];
@@ -1409,13 +1433,19 @@ export default function HomeScreen() {
       case 'EXAMINER':
         return 'Kelola skema UKK dan penilaian uji kompetensi.';
       case 'EXTRACURRICULAR_TUTOR':
+        if (hasExtracurricularAdvisorAssignments && hasOsisTutorAssignments) {
+          return 'Pantau pembinaan ekstrakurikuler, kepengurusan OSIS, dan anggota aktif.';
+        }
+        if (hasOsisTutorAssignments) {
+          return 'Pantau struktur, penilaian, dan pemilihan OSIS pada periode aktif.';
+        }
         return 'Pantau ekstrakurikuler binaan dan anggota aktif.';
       case 'CALON_SISWA':
         return 'Akses informasi dan proses pendaftaran siswa baru.';
       default:
         return 'Pilih modul yang ingin Anda akses hari ini.';
     }
-  }, [hasExtracurricularAdvisorAssignments, profile]);
+  }, [hasExtracurricularAdvisorAssignments, hasOsisTutorAssignments, profile]);
   const todayLabel = useMemo(
     () =>
       new Date().toLocaleDateString('id-ID', {
