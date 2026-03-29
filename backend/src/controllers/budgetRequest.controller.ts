@@ -3,6 +3,11 @@ import { z } from 'zod';
 import { AdditionalDuty } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import {
+  assertTutorOwnsAdvisorDuty,
+  getAdvisorEquipmentLabel,
+  isAdvisorDuty,
+} from '../utils/advisorDuty';
 
 const createBudgetRequestSchema = z.object({
   title: z.string().min(1, 'Judul wajib diisi'),
@@ -33,6 +38,28 @@ const mapBudget = (budget: any) => {
 const normalizeDuties = (duties: unknown[]): string[] =>
   (duties || []).map((duty) => String(duty || '').trim().toUpperCase());
 
+const ensureUserCanCreateBudgetDuty = async (userId: number, duty: AdditionalDuty) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, additionalDuties: true },
+  });
+
+  if (!user) {
+    throw new ApiError(404, 'Pengguna tidak ditemukan');
+  }
+
+  if (user.role === 'ADMIN') return;
+
+  if (user.role === 'EXTRACURRICULAR_TUTOR') {
+    await assertTutorOwnsAdvisorDuty(userId, duty);
+    return;
+  }
+
+  if (!user.additionalDuties.includes(duty)) {
+    throw new ApiError(403, 'Anda tidak memiliki tugas tambahan tersebut');
+  }
+};
+
 export const createBudgetRequest = asyncHandler(async (req: Request, res: Response) => {
   const body = createBudgetRequestSchema.parse(req.body);
   const authUser = (req as any).user;
@@ -41,13 +68,16 @@ export const createBudgetRequest = asyncHandler(async (req: Request, res: Respon
   if (!['ADMIN', 'TEACHER', 'EXTRACURRICULAR_TUTOR'].includes(authUser.role)) {
     throw new ApiError(403, 'Anda tidak memiliki akses membuat pengajuan');
   }
-  if (authUser.role === 'EXTRACURRICULAR_TUTOR' && body.additionalDuty !== 'PEMBINA_EKSKUL') {
-    throw new ApiError(403, 'Pembina ekstrakurikuler hanya dapat mengajukan alat ekskul');
+  if (authUser.role === 'EXTRACURRICULAR_TUTOR' && !isAdvisorDuty(body.additionalDuty)) {
+    throw new ApiError(403, 'Akun tutor hanya dapat mengajukan kebutuhan pembina sesuai assignment aktif');
   }
+
+  await ensureUserCanCreateBudgetDuty(authUser.id, body.additionalDuty);
 
   const normalizedDuty = String(body.additionalDuty || '').trim().toUpperCase();
   const isWakasek = normalizedDuty.startsWith('WAKASEK_');
-  const isPembinaEkskul = normalizedDuty === 'PEMBINA_EKSKUL';
+  const isAdvisorEquipmentRequest = isAdvisorDuty(normalizedDuty);
+  const advisorEquipmentLabel = getAdvisorEquipmentLabel(normalizedDuty);
 
   const [principal, sarpras, kesiswaan] = await Promise.all([
     prisma.user.findFirst({
@@ -64,15 +94,15 @@ export const createBudgetRequest = asyncHandler(async (req: Request, res: Respon
     }),
   ]);
 
-  const initialApproverId = isPembinaEkskul
+  const initialApproverId = isAdvisorEquipmentRequest
     ? kesiswaan?.id ?? sarpras?.id ?? principal?.id ?? null
     : isWakasek
       ? principal?.id ?? null
       : sarpras?.id ?? principal?.id ?? null;
 
   const normalizedQuantity = Math.max(1, Number(body.quantity || 1));
-  const normalizedUnitPrice = isPembinaEkskul ? 0 : Number(body.unitPrice || 0);
-  const normalizedTotalAmount = isPembinaEkskul
+  const normalizedUnitPrice = isAdvisorEquipmentRequest ? 0 : Number(body.unitPrice || 0);
+  const normalizedTotalAmount = isAdvisorEquipmentRequest
     ? 0
     : Number.isFinite(Number(body.totalAmount))
       ? Number(body.totalAmount)
@@ -94,7 +124,13 @@ export const createBudgetRequest = asyncHandler(async (req: Request, res: Respon
   res
     .status(201)
     .json(
-      new ApiResponse(201, mapBudget(budget), 'Pengajuan anggaran berhasil dibuat'),
+      new ApiResponse(
+        201,
+        mapBudget(budget),
+        isAdvisorEquipmentRequest
+          ? `Pengajuan ${advisorEquipmentLabel} berhasil dibuat`
+          : 'Pengajuan anggaran berhasil dibuat',
+      ),
     );
 });
 
@@ -243,7 +279,8 @@ export const updateBudgetRequestStatus = asyncHandler(async (req: Request, res: 
     duties.includes('WAKASEK_SARPRAS') || duties.includes('SEKRETARIS_SARPRAS');
   const isPrincipal = dutyUser.role === 'PRINCIPAL';
   const isAdmin = dutyUser.role === 'ADMIN';
-  const isPembinaEkskulFlow = String(existing.additionalDuty || '').toUpperCase() === 'PEMBINA_EKSKUL';
+  const isAdvisorFlow = isAdvisorDuty(existing.additionalDuty);
+  const advisorEquipmentLabel = getAdvisorEquipmentLabel(existing.additionalDuty);
 
   const finance = await prisma.user.findFirst({
     where: {
@@ -255,11 +292,11 @@ export const updateBudgetRequestStatus = asyncHandler(async (req: Request, res: 
     select: { id: true },
   });
 
-  if (isPembinaEkskulFlow) {
+  if (isAdvisorFlow) {
     if (!isKesiswaan && !isSarpras && !isPrincipal && !isAdmin) {
       throw new ApiError(
         403,
-        'Alur pengajuan alat ekskul hanya dapat diproses oleh Wakasek Kesiswaan, Wakasek Sarpras, atau Kepala Sekolah',
+        `Alur pengajuan ${advisorEquipmentLabel} hanya dapat diproses oleh Wakasek Kesiswaan, Wakasek Sarpras, atau Kepala Sekolah`,
       );
     }
 
@@ -294,7 +331,7 @@ export const updateBudgetRequestStatus = asyncHandler(async (req: Request, res: 
             new ApiResponse(
               200,
               mapBudget(forwarded),
-              'Pengajuan alat ekskul diteruskan ke Wakasek Sarpras',
+              `Pengajuan ${advisorEquipmentLabel} diteruskan ke Wakasek Sarpras`,
             ),
           );
       }
@@ -312,7 +349,11 @@ export const updateBudgetRequestStatus = asyncHandler(async (req: Request, res: 
       return res
         .status(200)
         .json(
-          new ApiResponse(200, mapBudget(rejected), 'Pengajuan alat ekskul ditolak Wakasek Kesiswaan'),
+          new ApiResponse(
+            200,
+            mapBudget(rejected),
+            `Pengajuan ${advisorEquipmentLabel} ditolak Wakasek Kesiswaan`,
+          ),
         );
     }
 
@@ -339,7 +380,7 @@ export const updateBudgetRequestStatus = asyncHandler(async (req: Request, res: 
             new ApiResponse(
               200,
               mapBudget(forwarded),
-              'Pengajuan alat ekskul diteruskan ke Kepala Sekolah',
+              `Pengajuan ${advisorEquipmentLabel} diteruskan ke Kepala Sekolah`,
             ),
           );
       }
@@ -357,7 +398,11 @@ export const updateBudgetRequestStatus = asyncHandler(async (req: Request, res: 
       return res
         .status(200)
         .json(
-          new ApiResponse(200, mapBudget(rejected), 'Pengajuan alat ekskul ditolak Wakasek Sarpras'),
+          new ApiResponse(
+            200,
+            mapBudget(rejected),
+            `Pengajuan ${advisorEquipmentLabel} ditolak Wakasek Sarpras`,
+          ),
         );
     }
 
@@ -376,7 +421,11 @@ export const updateBudgetRequestStatus = asyncHandler(async (req: Request, res: 
     return res
       .status(200)
       .json(
-        new ApiResponse(200, mapBudget(updated), 'Status pengajuan alat ekskul berhasil diperbarui'),
+        new ApiResponse(
+          200,
+          mapBudget(updated),
+          `Status pengajuan ${advisorEquipmentLabel} berhasil diperbarui`,
+        ),
       );
   }
 

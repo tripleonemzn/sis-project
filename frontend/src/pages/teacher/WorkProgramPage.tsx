@@ -21,6 +21,12 @@ import {
 } from '../../services/budgetLpj.service';
 import { authService } from '../../services/auth.service';
 import { liveQueryOptions } from '../../lib/query/liveQuery';
+import {
+  getAdvisorEquipmentLabel,
+  getAdvisorEquipmentTitle,
+  isAdvisorDuty,
+  resolveTutorCompatibleDuty,
+} from '../../utils/advisorDuty';
 import { z } from 'zod';
 import { useForm, useWatch, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -179,9 +185,6 @@ const getLpjStatusMeta = (budget: BudgetRequest): {
   return statusMap[latestInvoice.status];
 };
 
-const isTruthyQueryValue = (value: string | null) =>
-  ['1', 'true', 'yes'].includes(String(value || '').trim().toLowerCase());
-
 const itemSchema = z.object({
   description: z.string().min(1, 'Deskripsi kegiatan wajib diisi'),
   targetDate: z.string().optional(),
@@ -296,14 +299,21 @@ export const WorkProgramPage = () => {
     () => (searchParams.get('section') === 'LPJ' ? 'LPJ' : 'REQUEST'),
   );
   const isTutorRole = user?.role === 'EXTRACURRICULAR_TUTOR';
-  const isPembinaEkskulDuty = selectedDuty === 'PEMBINA_EKSKUL';
-  const isMonitoringReadOnly =
-    user?.role === 'TEACHER' &&
-    Array.isArray(user?.additionalDuties) &&
-    user.additionalDuties.includes('PEMBINA_OSIS') &&
-    searchParams.get('duty') === 'PEMBINA_EKSKUL' &&
-    isTruthyQueryValue(searchParams.get('readonly'));
-  const isReadOnlyMode = isMonitoringReadOnly;
+  const isAdvisorEquipmentDuty = isAdvisorDuty(selectedDuty);
+  const advisorEquipmentLabel = getAdvisorEquipmentLabel(selectedDuty);
+  const advisorEquipmentTitle = getAdvisorEquipmentTitle(selectedDuty);
+  const budgetRequestTitle = isAdvisorEquipmentDuty
+    ? `Pengajuan ${advisorEquipmentTitle}`
+    : 'Pengajuan Anggaran';
+  const budgetCreateActionLabel = isAdvisorEquipmentDuty
+    ? `Ajukan ${advisorEquipmentTitle}`
+    : 'Ajukan Anggaran';
+  const budgetDeleteTitle = isAdvisorEquipmentDuty
+    ? `Hapus Pengajuan ${advisorEquipmentTitle}?`
+    : 'Hapus Pengajuan Anggaran?';
+  const budgetDeleteMessage = isAdvisorEquipmentDuty
+    ? `Data pengajuan ${advisorEquipmentLabel} akan dihapus permanen!`
+    : 'Data pengajuan anggaran akan dihapus permanen!';
   const [isWeekConfigOpen, setIsWeekConfigOpen] = useState(false);
   const [weekConfig, setWeekConfig] = useState<WeekConfig[]>(() => {
     try {
@@ -397,14 +407,15 @@ export const WorkProgramPage = () => {
     const tabParam = searchParams.get('tab');
     const sectionParam = searchParams.get('section');
     if (isTutorRole) {
+      const requestedTutorDuty = resolveTutorCompatibleDuty(dutyParam);
       const normalizedTab = tabParam === 'BUDGET' ? 'BUDGET' : 'PROGRAM';
       const normalizedSection = sectionParam === 'LPJ' ? 'LPJ' : 'REQUEST';
-      if (dutyParam !== 'PEMBINA_EKSKUL' || selectedDuty !== 'PEMBINA_EKSKUL' || !tabParam) {
+      if (dutyParam !== requestedTutorDuty || selectedDuty !== requestedTutorDuty || !tabParam) {
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setSelectedDuty('PEMBINA_EKSKUL');
+        setSelectedDuty(requestedTutorDuty);
         setSearchParams((prev) => {
           const params = new URLSearchParams(prev);
-          params.set('duty', 'PEMBINA_EKSKUL');
+          params.set('duty', requestedTutorDuty);
           params.set('tab', normalizedTab);
           if (normalizedTab === 'BUDGET') {
             params.set('section', normalizedSection);
@@ -701,7 +712,6 @@ export const WorkProgramPage = () => {
       selectedDuty,
       selectedMajor,
       selectedSemester,
-      isReadOnlyMode ? 'readonly' : 'editable',
     ],
     queryFn: () =>
       workProgramService.list({
@@ -712,7 +722,6 @@ export const WorkProgramPage = () => {
         additionalDuty: selectedDuty || null,
         majorId: selectedMajor ? parseInt(selectedMajor) : undefined,
         semester: selectedSemester || undefined,
-        readOnly: isReadOnlyMode,
     }),
     enabled: !!activeYearId,
     ...liveQueryOptions,
@@ -1024,30 +1033,29 @@ export const WorkProgramPage = () => {
   });
 
   useEffect(() => {
-    if (!isPembinaEkskulDuty) return;
+    if (!isAdvisorEquipmentDuty) return;
     setNewBudgetValue('quantity', 1);
     setNewBudgetValue('unitPrice', 0);
-  }, [isPembinaEkskulDuty, setNewBudgetValue]);
+  }, [isAdvisorEquipmentDuty, setNewBudgetValue]);
 
   const newBudgetQty = Number(watchedNewBudgetQty || 0);
-  const newBudgetPrice = isPembinaEkskulDuty ? 0 : Number(watchedNewBudgetPrice || 0);
+  const newBudgetPrice = isAdvisorEquipmentDuty ? 0 : Number(watchedNewBudgetPrice || 0);
   const newBudgetTotal = newBudgetQty * newBudgetPrice;
 
   const createBudgetRequestMutation = useMutation({
     mutationFn: (data: CreateBudgetRequestFormValues) => {
       if (!activeYearId) throw new Error('Tahun ajaran aktif tidak ditemukan');
       if (!selectedDuty) throw new Error('Tugas tambahan tidak ditemukan');
-      const isEkskulEquipmentRequest = selectedDuty === 'PEMBINA_EKSKUL';
       const equipmentName = String(data.toolName || '').trim();
-      if (isEkskulEquipmentRequest && !equipmentName) {
+      if (isAdvisorEquipmentDuty && !equipmentName) {
         throw new Error('Nama alat wajib diisi');
       }
 
-      const quantity = isEkskulEquipmentRequest ? 1 : Math.max(1, Number(data.quantity || 1));
-      const unitPrice = isEkskulEquipmentRequest ? 0 : Number(data.unitPrice || 0);
+      const quantity = isAdvisorEquipmentDuty ? 1 : Math.max(1, Number(data.quantity || 1));
+      const unitPrice = isAdvisorEquipmentDuty ? 0 : Number(data.unitPrice || 0);
       const totalAmount = quantity * unitPrice;
       const description = String(data.description || '').trim();
-      const title = isEkskulEquipmentRequest ? equipmentName : description;
+      const title = isAdvisorEquipmentDuty ? equipmentName : description;
       const brand = String(data.brand || '').trim();
       const executionTime = String(data.executionTime || '').trim();
 
@@ -1065,7 +1073,11 @@ export const WorkProgramPage = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['budget-requests'] });
-      toast.success(isPembinaEkskulDuty ? 'Pengajuan alat berhasil dibuat' : 'Pengajuan anggaran berhasil dibuat');
+      toast.success(
+        isAdvisorEquipmentDuty
+          ? `Pengajuan ${advisorEquipmentLabel} berhasil dibuat`
+          : 'Pengajuan anggaran berhasil dibuat',
+      );
       setIsBudgetModalOpen(false);
       resetNewBudgetForm();
     },
@@ -1236,42 +1248,32 @@ export const WorkProgramPage = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{pageTitle}</h1>
-          <p className="text-gray-500 text-sm">
-            {isReadOnlyMode
-              ? 'Mode monitor read-only untuk memantau pengajuan pembina ekstrakurikuler.'
-              : 'Kelola program kerja dan anggaran untuk tugas tambahan Anda.'}
-          </p>
+          <p className="text-gray-500 text-sm">Kelola program kerja dan anggaran untuk tugas tambahan Anda.</p>
         </div>
-        {!isReadOnlyMode && (
-          <div className="flex gap-2">
-            {activeTab === 'PROGRAM' && (
-              <button
-                onClick={() => setIsWeekConfigOpen(true)}
-                className="inline-flex items-center px-4 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50"
-              >
-                <Settings className="w-4 h-4 mr-2" />
-                Konfigurasi Kalender
-              </button>
-            )}
-            {!(activeTab === 'BUDGET' && budgetSectionTab === 'LPJ') && (
-              <button
-                onClick={() =>
-                  activeTab === 'PROGRAM'
-                    ? setIsCreateModalOpen(true)
-                    : setIsBudgetModalOpen(true)
-                }
-                className="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                {activeTab === 'PROGRAM'
-                  ? 'Tambah Program'
-                  : isPembinaEkskulDuty
-                    ? 'Ajukan Alat'
-                    : 'Ajukan Anggaran'}
-              </button>
-            )}
-          </div>
-        )}
+        <div className="flex gap-2">
+          {activeTab === 'PROGRAM' && (
+            <button
+              onClick={() => setIsWeekConfigOpen(true)}
+              className="inline-flex items-center px-4 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50"
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              Konfigurasi Kalender
+            </button>
+          )}
+          {!(activeTab === 'BUDGET' && budgetSectionTab === 'LPJ') && (
+            <button
+              onClick={() =>
+                activeTab === 'PROGRAM'
+                  ? setIsCreateModalOpen(true)
+                  : setIsBudgetModalOpen(true)
+              }
+              className="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              {activeTab === 'PROGRAM' ? 'Tambah Program' : budgetCreateActionLabel}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
@@ -1300,7 +1302,7 @@ export const WorkProgramPage = () => {
                 }`}
               >
                 <Wrench className="w-4 h-4 mr-2" />
-                Pengajuan Alat
+                {budgetRequestTitle}
               </button>
               <button
                 type="button"
@@ -1340,7 +1342,7 @@ export const WorkProgramPage = () => {
               `}
             >
               <Wrench className="w-4 h-4 mr-2" />
-              {isPembinaEkskulDuty ? 'Pengajuan Alat' : 'Pengajuan Anggaran'}
+              {budgetRequestTitle}
             </button>
             <button
               onClick={() => handleBudgetSectionChange('LPJ')}
@@ -1366,28 +1368,24 @@ export const WorkProgramPage = () => {
             </div>
             <h3 className="text-lg font-medium text-gray-900">Belum Ada Program Kerja</h3>
             <p className="text-gray-500 text-center max-w-sm mt-1 mb-6">
-              {isReadOnlyMode
-                ? 'Belum ada data program kerja pembina ekstrakurikuler untuk dimonitor.'
-                : 'Silakan konfigurasi jumlah minggu per bulan terlebih dahulu, lalu tambahkan program kerja baru.'}
+              Silakan konfigurasi jumlah minggu per bulan terlebih dahulu, lalu tambahkan program kerja baru.
             </p>
-            {!isReadOnlyMode && (
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setIsWeekConfigOpen(true)}
-                  className="inline-flex items-center px-4 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50"
-                >
-                  <Settings className="w-4 h-4 mr-2" />
-                  Konfigurasi Kalender
-                </button>
-                <button
-                  onClick={() => setIsCreateModalOpen(true)}
-                  className="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Tambah Program
-                </button>
-              </div>
-            )}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setIsWeekConfigOpen(true)}
+                className="inline-flex items-center px-4 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50"
+              >
+                <Settings className="w-4 h-4 mr-2" />
+                Konfigurasi Kalender
+              </button>
+              <button
+                onClick={() => setIsCreateModalOpen(true)}
+                className="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Tambah Program
+              </button>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -1678,23 +1676,21 @@ export const WorkProgramPage = () => {
                                     </div>
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    {!isReadOnlyMode && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setConfirmModal({
-                                            isOpen: true,
-                                            title: 'Hapus Program Kerja?',
-                                            message:
-                                              'Program kerja ini beserta semua kegiatan dan anggarannya akan dihapus permanen!',
-                                            onConfirm: () => deleteProgramMutation.mutate(program.id),
-                                          });
-                                        }}
-                                        className="text-red-600 hover:text-red-900"
-                                      >
-                                        <Trash2 size={16} />
-                                      </button>
-                                    )}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setConfirmModal({
+                                          isOpen: true,
+                                          title: 'Hapus Program Kerja?',
+                                          message:
+                                            'Program kerja ini beserta semua kegiatan dan anggarannya akan dihapus permanen!',
+                                          onConfirm: () => deleteProgramMutation.mutate(program.id),
+                                        });
+                                      }}
+                                      className="text-red-600 hover:text-red-900"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
                                   </td>
                                 </tr>
                               );
@@ -2272,7 +2268,7 @@ export const WorkProgramPage = () => {
                       const lpjSummaryForBudget = getLpjSummaryForBudget(budget);
                       const canOpenLpj =
                         budget.status === 'APPROVED' && !!budget.realizationConfirmedAt;
-                      const title = isPembinaEkskulDuty
+                      const title = isAdvisorEquipmentDuty
                         ? budget.title || budget.description
                         : budget.description;
 
@@ -2297,8 +2293,8 @@ export const WorkProgramPage = () => {
                               {formatCurrency(Number(budget.totalAmount || 0))}
                             </p>
                             <p className="text-xs text-gray-500 mt-0.5">
-                              {isPembinaEkskulDuty
-                                ? 'Pengajuan alat ekskul'
+                              {isAdvisorEquipmentDuty
+                                ? `Pengajuan ${advisorEquipmentLabel}`
                                 : `QTY ${budget.quantity} • ${formatCurrency(
                                     Number(budget.unitPrice || 0),
                                   )}`}
@@ -2333,21 +2329,15 @@ export const WorkProgramPage = () => {
                             </div>
                           </td>
                           <td className="px-6 py-4 text-right">
-                            {isReadOnlyMode ? (
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                                Read Only
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                disabled={!canOpenLpj}
-                                onClick={() => setLpjModal({ isOpen: true, budget })}
-                                className="inline-flex items-center px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                <FileText className="w-3.5 h-3.5 mr-1.5" />
-                                Kelola LPJ
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              disabled={!canOpenLpj}
+                              onClick={() => setLpjModal({ isOpen: true, budget })}
+                              className="inline-flex items-center px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <FileText className="w-3.5 h-3.5 mr-1.5" />
+                              Kelola LPJ
+                            </button>
                           </td>
                         </tr>
                       );
@@ -2387,15 +2377,15 @@ export const WorkProgramPage = () => {
                       No
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      {isPembinaEkskulDuty ? 'Nama Alat' : 'Uraian/Kegiatan'}
+                      {isAdvisorEquipmentDuty ? `Nama ${advisorEquipmentTitle}` : 'Uraian/Kegiatan'}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      {isPembinaEkskulDuty ? 'Keterangan' : 'Waktu Pelaksanaan'}
+                      {isAdvisorEquipmentDuty ? 'Keterangan' : 'Waktu Pelaksanaan'}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      {isPembinaEkskulDuty ? 'Merk' : 'Brand'}
+                      {isAdvisorEquipmentDuty ? 'Merk' : 'Brand'}
                     </th>
-                    {!isPembinaEkskulDuty && (
+                    {!isAdvisorEquipmentDuty && (
                       <>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           QTY
@@ -2420,7 +2410,7 @@ export const WorkProgramPage = () => {
                   {isLoadingBudgets ? (
                     <tr>
                       <td
-                        colSpan={isPembinaEkskulDuty ? 6 : 9}
+                        colSpan={isAdvisorEquipmentDuty ? 6 : 9}
                         className="px-6 py-4 text-center"
                       >
                         <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-600" />
@@ -2429,7 +2419,7 @@ export const WorkProgramPage = () => {
                   ) : displayedBudgetRequests.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={isPembinaEkskulDuty ? 6 : 9}
+                        colSpan={isAdvisorEquipmentDuty ? 6 : 9}
                         className="px-6 py-4 text-center text-gray-500 text-sm"
                       >
                         Belum ada pengajuan anggaran
@@ -2442,15 +2432,15 @@ export const WorkProgramPage = () => {
                           {index + 1}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900">
-                          {isPembinaEkskulDuty ? budget.title || budget.description : budget.description}
+                          {isAdvisorEquipmentDuty ? budget.title || budget.description : budget.description}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-500">
-                          {isPembinaEkskulDuty ? budget.description || '-' : budget.executionTime || '-'}
+                          {isAdvisorEquipmentDuty ? budget.description || '-' : budget.executionTime || '-'}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-500">
                           {budget.brand || '-'}
                         </td>
-                        {!isPembinaEkskulDuty && (
+                        {!isAdvisorEquipmentDuty && (
                           <>
                             <td className="px-6 py-4 text-sm text-gray-900">
                               {budget.quantity}
@@ -2510,32 +2500,22 @@ export const WorkProgramPage = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          {isReadOnlyMode ? (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                              Read Only
-                            </span>
-                          ) : (
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => {
-                                  setConfirmModal({
-                                    isOpen: true,
-                                    title: isPembinaEkskulDuty
-                                      ? 'Hapus Pengajuan Alat?'
-                                      : 'Hapus Pengajuan Anggaran?',
-                                    message: isPembinaEkskulDuty
-                                      ? 'Data pengajuan alat akan dihapus permanen!'
-                                      : 'Data pengajuan anggaran akan dihapus permanen!',
-                                    onConfirm: () =>
-                                      deleteBudgetRequestMutation.mutate(budget.id),
-                                  });
-                                }}
-                                className="text-red-600 hover:text-red-900"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          )}
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => {
+                                setConfirmModal({
+                                  isOpen: true,
+                                  title: budgetDeleteTitle,
+                                  message: budgetDeleteMessage,
+                                  onConfirm: () =>
+                                    deleteBudgetRequestMutation.mutate(budget.id),
+                                });
+                              }}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -2547,9 +2527,11 @@ export const WorkProgramPage = () => {
               <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex justify-end items-center">
                 <div className="flex flex-col items-end">
                   <span className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">
-                    {isPembinaEkskulDuty ? 'Total Pengajuan Alat' : 'Total Pengajuan Anggaran'}
+                    {isAdvisorEquipmentDuty
+                      ? `Total Pengajuan ${advisorEquipmentTitle}`
+                      : 'Total Pengajuan Anggaran'}
                   </span>
-                  {isPembinaEkskulDuty ? (
+                  {isAdvisorEquipmentDuty ? (
                     <span className="text-sm font-semibold text-gray-600">
                       {displayedBudgetRequests.length} item
                     </span>
@@ -2874,7 +2856,7 @@ export const WorkProgramPage = () => {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <h3 className="font-semibold text-gray-900">
-                {isPembinaEkskulDuty ? 'Ajukan Alat Ekskul' : 'Ajukan Anggaran'}
+                {budgetCreateActionLabel}
               </h3>
               <button
                 onClick={() => {
@@ -2887,17 +2869,17 @@ export const WorkProgramPage = () => {
               </button>
             </div>
             <form onSubmit={handleSubmitNewBudget((data) => createBudgetRequestMutation.mutate(data))} className="p-6 space-y-4">
-              {isPembinaEkskulDuty ? (
+              {isAdvisorEquipmentDuty ? (
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Nama Alat
+                      Nama {advisorEquipmentTitle}
                     </label>
                     <input
                       type="text"
                       {...registerNewBudget('toolName')}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-                      placeholder="Contoh: Bola futsal"
+                      placeholder="Contoh: Perlengkapan kegiatan"
                     />
                   </div>
                   <div>
@@ -2908,7 +2890,7 @@ export const WorkProgramPage = () => {
                       type="text"
                       {...registerNewBudget('brand')}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-                      placeholder="Contoh: Molten / Mikasa"
+                      placeholder="Contoh: Spesifikasi / merek"
                     />
                   </div>
                   <div>
@@ -2927,7 +2909,7 @@ export const WorkProgramPage = () => {
                   </div>
                   <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
                     <p className="text-xs text-gray-600">
-                      Pengajuan alat ekskul tidak membutuhkan input harga pada tahap ini.
+                      Pengajuan {advisorEquipmentLabel} tidak membutuhkan input harga pada tahap ini.
                     </p>
                   </div>
                 </>
@@ -3026,7 +3008,7 @@ export const WorkProgramPage = () => {
                   {createBudgetRequestMutation.isPending && (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   )}
-                  {isPembinaEkskulDuty ? 'Ajukan Alat' : 'Ajukan'}
+                  {isAdvisorEquipmentDuty ? budgetCreateActionLabel : 'Ajukan'}
                 </button>
               </div>
             </form>

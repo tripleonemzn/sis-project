@@ -14,6 +14,12 @@ import {
   type BudgetLpjInvoice,
 } from '../../../../services/budgetLpj.service';
 import { liveQueryOptions } from '../../../../lib/query/liveQuery';
+import {
+  getAdvisorEquipmentLabel,
+  getAdvisorEquipmentTitle,
+  isAdvisorDuty,
+  summarizeAdvisorDuties,
+} from '../../../../utils/advisorDuty';
 import toast from 'react-hot-toast';
 
 type BudgetApprovalContextUser = {
@@ -111,6 +117,10 @@ export const BudgetApprovalPage = () => {
       return title.includes(searchTerm) || desc.includes(searchTerm) || requester.includes(searchTerm);
     });
   }, [budgetsRaw, search, statusFilter]);
+  const advisorFlowSummary = useMemo(
+    () => summarizeAdvisorDuties(budgetsRaw.map((budget) => budget.additionalDuty)),
+    [budgetsRaw],
+  );
 
   const dutyGroups = useMemo(() => {
     const map = new Map<string, BudgetRequest[]>();
@@ -207,6 +217,8 @@ export const BudgetApprovalPage = () => {
   );
 
   const lpjAuditBudgetId = lpjAuditModal.budget?.id ?? null;
+  const selectedApprovalEquipmentTitle = getAdvisorEquipmentTitle(selectedForApprove?.additionalDuty);
+  const selectedApprovalEquipmentLabel = getAdvisorEquipmentLabel(selectedForApprove?.additionalDuty);
 
   const {
     data: lpjAuditData,
@@ -283,11 +295,13 @@ export const BudgetApprovalPage = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">
-            {isKesiswaanApprover ? 'Persetujuan Pengajuan Alat Ekskul' : 'Persetujuan Anggaran Sarpras'}
+            {isKesiswaanApprover
+              ? `Persetujuan Pengajuan ${advisorFlowSummary.equipmentTitle}`
+              : 'Persetujuan Anggaran Sarpras'}
           </h1>
           <p className="mt-1 text-sm text-gray-500">
             {isKesiswaanApprover
-              ? 'Verifikasi awal pengajuan alat ekskul sebelum diteruskan ke Sarpras.'
+              ? `Verifikasi awal pengajuan ${advisorFlowSummary.equipmentLabel} sebelum diteruskan ke Sarpras.`
               : 'Kelola pengajuan anggaran dari Program Kerja dan kebutuhan operasional.'}
           </p>
         </div>
@@ -568,7 +582,7 @@ export const BudgetApprovalPage = () => {
                                 ? 'Setujui & Kirim ke Sarpras'
                                 : 'Setujui & Ajukan ke Principal'}
                             </button>
-                            {(isKesiswaanApprover || budget.additionalDuty === 'PEMBINA_EKSKUL') && (
+                            {(isKesiswaanApprover || isAdvisorDuty(budget.additionalDuty)) && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -641,7 +655,7 @@ export const BudgetApprovalPage = () => {
                 </h3>
                 <p className="text-xs text-gray-500">
                   {isKesiswaanApprover
-                    ? 'Pengajuan alat ekskul yang disetujui akan diteruskan ke Wakasek Sarpras.'
+                    ? `Pengajuan ${selectedApprovalEquipmentLabel} yang disetujui akan diteruskan ke Wakasek Sarpras.`
                     : 'Pengajuan yang disetujui akan diteruskan ke Kepala Sekolah untuk proses persetujuan berikutnya.'}
                 </p>
               </div>
@@ -666,7 +680,7 @@ export const BudgetApprovalPage = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
                   placeholder={
                     isKesiswaanApprover
-                      ? 'Contoh: Prioritas pembinaan lomba semester ini.'
+                      ? `Contoh: ${selectedApprovalEquipmentTitle} ini menjadi prioritas pembinaan semester ini.`
                       : 'Contoh: Pengadaan ini prioritas karena menggantikan perangkat rusak, mohon dipertimbangkan.'
                   }
                   value={recommendation}

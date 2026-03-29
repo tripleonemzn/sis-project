@@ -71,6 +71,7 @@ const STRICT_WEB_PARITY_KEYS = new Set<string>([
   'teacher-kakom-pkl',
   'teacher-kakom-partners',
   'teacher-wakakur-approvals-work-program',
+  'teacher-wakasis-approvals-work-program',
   'teacher-wakakur-curriculum',
   'teacher-wakakur-exams',
   'teacher-wakakur-performance',
@@ -432,6 +433,11 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       key: 'teacher-wakasis-students',
       label: 'Kelola Kesiswaan',
       route: '/teacher/wakasis-students',
+    },
+    {
+      key: 'teacher-wakasis-approvals-work-program',
+      label: 'Persetujuan Program Kerja',
+      route: '/teacher/wakasis-work-program-approvals',
     },
     {
       key: 'teacher-wakasis-performance',
@@ -844,6 +850,10 @@ function shouldShowMenuItem(user: AuthUser, item: RoleMenuItem, options?: RoleMe
       return hasDuty(user, ['WAKASEK_KURIKULUM']);
     }
 
+    if (item.key === 'teacher-wakasis-approvals-work-program') {
+      return hasDuty(user, ['WAKASEK_KESISWAAN']);
+    }
+
     if (item.key.startsWith('teacher-wakakur-')) {
       return hasDuty(user, ['WAKASEK_KURIKULUM', 'SEKRETARIS_KURIKULUM']);
     }
@@ -1042,6 +1052,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
       key: 'wakasis',
       label: 'WAKASEK KESISWAAN',
       menuKeys: [
+        'teacher-wakasis-approvals-work-program',
         'teacher-wakasis-students',
         'teacher-wakasis-performance',
         'teacher-wakasis-approvals',
@@ -1556,6 +1567,10 @@ function buildTeacherGroups(
     } else if (baseRole === 'WAKASEK_KESISWAAN') {
       label = isSecretary ? 'SEKRETARIS KESISWAAN' : 'WAKASEK KESISWAAN';
       addGenericWorkProgram();
+      if (!isSecretary) {
+        const approvalWp = pickMenu(byKey, 'teacher-wakasis-approvals-work-program');
+        if (approvalWp) items.push(approvalWp);
+      }
       items.push(
         ...pickMenus(byKey, [
           'teacher-wakasis-students',

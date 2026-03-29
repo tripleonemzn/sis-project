@@ -1010,9 +1010,18 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
 
     if (first === 'work-programs') {
       const baseLabel = sidebarConfig?.label || 'Program Kerja';
-      const workProgramPath = sidebarConfig?.group === 'PEMBINA OSIS'
-        ? `/${role}/work-programs`
-        : `/${role}/work-programs?duty=PEMBINA_EKSKUL`;
+      const resolvedDuty =
+        dutyQuery ||
+        (sidebarConfig?.group === 'PEMBINA OSIS' ? 'PEMBINA_OSIS' : null);
+      const workProgramPath = resolvedDuty
+        ? `/${role}/work-programs?duty=${encodeURIComponent(resolvedDuty)}`
+        : `/${role}/work-programs`;
+      const budgetSectionLabel =
+        resolvedDuty === 'PEMBINA_OSIS'
+          ? 'Pengajuan Alat OSIS'
+          : resolvedDuty === 'PEMBINA_EKSKUL'
+            ? 'Pengajuan Alat Ekskul'
+            : 'Pengajuan Anggaran';
 
       if (sidebarConfig?.group && sidebarConfig.group !== 'PEMBINA OSIS') {
         breadcrumbs.push({ label: sidebarConfig.group, path: null });
@@ -1024,7 +1033,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       if (activeTab === 'BUDGET') {
         const section = String(queryParams.get('section') || 'REQUEST').toUpperCase();
         breadcrumbs.push({
-          label: section === 'LPJ' ? 'LPJ Program Kerja' : 'Pengajuan Alat',
+          label: section === 'LPJ' ? 'LPJ Program Kerja' : budgetSectionLabel,
           path: null,
         });
       }

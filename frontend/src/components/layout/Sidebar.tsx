@@ -477,6 +477,13 @@ export const getMenuItems = (
 
         children = [
           ...createGenericItems(duty),
+          ...(!isSecretary
+            ? [{
+                label: 'Persetujuan Program Kerja',
+                path: '/teacher/wakasek/work-program-approvals',
+                icon: ClipboardList,
+              } satisfies MenuItem]
+            : []),
           { label: 'Kelola Kesiswaan', path: '/teacher/wakasek/students', icon: GraduationCap },
           { label: 'Pemilihan OSIS', path: '/teacher/wakasek/student-election', icon: Trophy },
           { label: 'Monitoring Kinerja', path: '/teacher/wakasek/student-performance', icon: BarChart3 },
@@ -691,7 +698,7 @@ export const getMenuItems = (
             children: [
               { label: 'Dashboard Pembina', path: '/tutor/dashboard', icon: LayoutDashboard },
               { label: 'Anggota & Nilai', path: buildTutorMembersHref(firstTutorAssignment), icon: Users },
-              { label: 'Program Kerja', path: '/tutor/work-programs', icon: ClipboardList },
+              { label: 'Program Kerja', path: '/tutor/work-programs?duty=PEMBINA_EKSKUL', icon: ClipboardList },
               { label: 'Inventaris Ekskul', path: '/tutor/inventory', icon: Database },
             ],
           } satisfies MenuItem]

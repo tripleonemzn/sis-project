@@ -3,6 +3,12 @@ import { z } from 'zod';
 import { AdditionalDuty, Semester } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import {
+  ADVISOR_DUTIES,
+  assertTutorOwnsAdvisorDuty,
+  getAdvisorWorkProgramLabel,
+  isAdvisorDuty,
+} from '../utils/advisorDuty';
 
 const listWorkProgramsSchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
@@ -87,7 +93,10 @@ const ensureUserHasDuty = async (userId: number, duty: AdditionalDuty) => {
   }
 
   if (user.role === 'ADMIN') return;
-  if (user.role === 'EXTRACURRICULAR_TUTOR' && duty === 'PEMBINA_EKSKUL') return;
+  if (user.role === 'EXTRACURRICULAR_TUTOR') {
+    await assertTutorOwnsAdvisorDuty(userId, duty);
+    return;
+  }
 
   if (!user.additionalDuties.includes(duty)) {
     throw new ApiError(403, 'Anda tidak memiliki tugas tambahan tersebut');
@@ -128,28 +137,10 @@ export const getWorkPrograms = asyncHandler(async (req: Request, res: Response) 
 
   const where: any = {};
 
-  const actor = await prisma.user.findUnique({
-    where: { id: authUser.id },
-    select: {
-      role: true,
-      additionalDuties: true,
-    },
-  });
-
-  const dutySet = new Set(
-    (actor?.additionalDuties || []).map((duty) => String(duty).trim().toUpperCase()),
-  );
-  const isReadOnly = ['1', 'true', 'yes'].includes(String(readOnly || '').trim().toLowerCase());
-  const canMonitorPembinaEkskulReadOnly =
-    authUser.role === 'TEACHER' &&
-    dutySet.has('PEMBINA_OSIS') &&
-    additionalDuty === 'PEMBINA_EKSKUL' &&
-    isReadOnly;
+  void readOnly;
 
   if (authUser.role === 'TEACHER' || authUser.role === 'EXTRACURRICULAR_TUTOR') {
-    if (!canMonitorPembinaEkskulReadOnly) {
-      where.ownerId = authUser.id;
-    }
+    where.ownerId = authUser.id;
   }
 
   if (academicYearId) {
@@ -242,8 +233,8 @@ export const createWorkProgram = asyncHandler(async (req: Request, res: Response
     throw new ApiError(403, 'Anda tidak memiliki akses membuat program kerja');
   }
 
-  if (authUser.role === 'EXTRACURRICULAR_TUTOR' && body.additionalDuty !== 'PEMBINA_EKSKUL') {
-    throw new ApiError(403, 'Pembina ekstrakurikuler hanya dapat membuat program kerja ekskul');
+  if (authUser.role === 'EXTRACURRICULAR_TUTOR' && !isAdvisorDuty(body.additionalDuty)) {
+    throw new ApiError(403, 'Akun tutor hanya dapat membuat program kerja pembina sesuai assignment aktif');
   }
 
   // Prevent Secretary from creating work program
@@ -300,7 +291,7 @@ export const createWorkProgram = asyncHandler(async (req: Request, res: Response
   ]);
 
   let approverId: number | null = null;
-  if (body.additionalDuty === 'PEMBINA_EKSKUL') {
+  if (isAdvisorDuty(body.additionalDuty)) {
     approverId = wakasekKesiswaan?.id ?? principal?.id ?? null;
   } else if (body.additionalDuty.startsWith('WAKASEK_')) {
     approverId = principal?.id ?? null;
@@ -617,20 +608,17 @@ export const getPendingWorkProgramsForApprover = asyncHandler(
     if (user.role === 'PRINCIPAL') {
       where.assignedApproverId = authUser.id;
     } else if (user.role === 'TEACHER') {
-      const duties = (user.additionalDuties || []).map((d: any) =>
+      const duties = (user.additionalDuties || []).map((d) =>
         String(d).trim().toUpperCase(),
       );
       const isWakasekKurikulum = duties.includes('WAKASEK_KURIKULUM');
       const isWakasekKesiswaan = duties.includes('WAKASEK_KESISWAAN');
-      const isPembinaOsis = duties.includes('PEMBINA_OSIS');
 
       if (isWakasekKurikulum) {
         where.assignedApproverId = authUser.id;
       } else if (isWakasekKesiswaan) {
         where.assignedApproverId = authUser.id;
-        where.additionalDuty = 'PEMBINA_EKSKUL';
-      } else if (isPembinaOsis) {
-        where.additionalDuty = 'PEMBINA_EKSKUL';
+        where.additionalDuty = { in: [...ADVISOR_DUTIES] };
       } else {
         throw new ApiError(403, 'Anda tidak memiliki akses persetujuan program kerja');
       }
@@ -772,7 +760,7 @@ export const updateWorkProgramApprovalStatus = asyncHandler(
       throw new ApiError(401, 'Tidak memiliki otorisasi');
     }
 
-    const duties = (dutyUser.additionalDuties || []).map((d: any) =>
+    const duties = (dutyUser.additionalDuties || []).map((d) =>
       String(d).trim().toUpperCase(),
     );
 
@@ -786,16 +774,16 @@ export const updateWorkProgramApprovalStatus = asyncHandler(
       feedback: body.feedback ?? null,
     };
 
-    if (isWakasekKesiswaan && program.additionalDuty === 'PEMBINA_EKSKUL') {
+    if (isWakasekKesiswaan && isAdvisorDuty(program.additionalDuty)) {
       updateData.approvalStatus = body.status;
       updateData.approvedById = authUser.id;
       updateData.approvedAt = new Date();
       updateData.isApproved = body.status === 'APPROVED';
       updateData.assignedApproverId = null;
-    } else if (isWakasekKesiswaan && program.additionalDuty !== 'PEMBINA_EKSKUL') {
+    } else if (isWakasekKesiswaan && !isAdvisorDuty(program.additionalDuty)) {
       throw new ApiError(
         403,
-        'Wakasek Kesiswaan hanya dapat memproses program kerja Pembina Ekstrakurikuler',
+        'Wakasek Kesiswaan hanya dapat memproses program kerja Pembina Ekstrakurikuler atau Pembina OSIS',
       );
     } else if (isWakasekKurikulum && body.status === 'APPROVED' && !program.isApproved) {
       const principal = await prisma.user.findFirst({
@@ -813,7 +801,10 @@ export const updateWorkProgramApprovalStatus = asyncHandler(
       updateData.isApproved = body.status === 'APPROVED';
       updateData.assignedApproverId = null;
     } else {
-      throw new ApiError(403, 'Anda tidak memiliki akses untuk mengubah status program kerja ini');
+      throw new ApiError(
+        403,
+        `Anda tidak memiliki akses untuk mengubah status ${getAdvisorWorkProgramLabel(program.additionalDuty)} ini`,
+      );
     }
 
     const updated = await prisma.workProgram.update({

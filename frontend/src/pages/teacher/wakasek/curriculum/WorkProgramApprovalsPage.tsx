@@ -1,9 +1,10 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, XCircle, Loader2, Search } from 'lucide-react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { workProgramService } from '../../../../services/workProgram.service';
 import { liveQueryOptions } from '../../../../lib/query/liveQuery';
+import { isAdvisorDuty } from '../../../../utils/advisorDuty';
 import toast from 'react-hot-toast';
 
 const getErrorMessage = (error: unknown) => {
@@ -36,6 +37,7 @@ const DUTY_LABELS: Record<string, string> = {
   WAKASEK_KESISWAAN: 'Wakasek Kesiswaan',
   WAKASEK_HUMAS: 'Wakasek Humas',
   PEMBINA_EKSKUL: 'Pembina Ekstrakurikuler',
+  PEMBINA_OSIS: 'Pembina OSIS',
   WALI_KELAS: 'Wali Kelas',
   GURU_MAPEL: 'Guru Mapel',
   GURU: 'Guru',
@@ -127,13 +129,18 @@ export default function WorkProgramApprovalsPage() {
     [allPrograms, search],
   );
 
-  const getGroupKey = (program: WorkProgramApprovalItem): string => {
-    if (isPrincipalView) {
+  const groupsByDuty = useMemo(
+    () => isPrincipalView || allPrograms.some((program) => isAdvisorDuty(program.additionalDuty)),
+    [allPrograms, isPrincipalView],
+  );
+
+  const getGroupKey = useCallback((program: WorkProgramApprovalItem): string => {
+    if (groupsByDuty) {
       return `DUTY:${toDutyKey(program.additionalDuty)}`;
     }
     const majorId = program.major?.id ?? null;
     return `MAJOR:${majorId !== null ? String(majorId) : 'NO_MAJOR'}`;
-  };
+  }, [groupsByDuty]);
 
   const groups = useMemo(() => {
     const map = new Map<
@@ -148,8 +155,10 @@ export default function WorkProgramApprovalsPage() {
 
     for (const p of filteredPrograms) {
       const key = getGroupKey(p);
-      const name = isPrincipalView ? toDutyLabel(p.additionalDuty) : p.major?.name || 'Umum / Non Kompetensi';
-      const code = isPrincipalView ? 'JABATAN' : p.major?.code || 'NON KOMPETENSI';
+      const name = groupsByDuty
+        ? toDutyLabel(p.additionalDuty)
+        : p.major?.name || 'Umum / Non Kompetensi';
+      const code = groupsByDuty ? 'JABATAN' : p.major?.code || 'NON KOMPETENSI';
       const existing = map.get(key);
       if (existing) {
         existing.count += 1;
@@ -159,7 +168,7 @@ export default function WorkProgramApprovalsPage() {
     }
 
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [filteredPrograms, isPrincipalView]);
+  }, [filteredPrograms, getGroupKey, groupsByDuty]);
 
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
 
@@ -168,7 +177,7 @@ export default function WorkProgramApprovalsPage() {
     const hasSelected = selectedGroupKey && groups.some((g) => g.key === selectedGroupKey);
     const activeKey = hasSelected ? selectedGroupKey : groups[0].key;
     return filteredPrograms.filter((p) => getGroupKey(p) === activeKey);
-  }, [filteredPrograms, groups, selectedGroupKey]);
+  }, [filteredPrograms, getGroupKey, groups, selectedGroupKey]);
 
   useEffect(() => {
     if (!focusProgramId || isReadOnly) return;
@@ -177,6 +186,7 @@ export default function WorkProgramApprovalsPage() {
 
     const targetGroup = getGroupKey(target);
     if (selectedGroupKey !== targetGroup) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedGroupKey(targetGroup);
       return;
     }
@@ -237,6 +247,8 @@ export default function WorkProgramApprovalsPage() {
               ? 'Mode monitor (read-only) untuk melihat progres program kerja pembina ekskul.'
               : isPrincipalView
               ? 'Kelola program kerja lintas jabatan pengaju secara dinamis.'
+              : groupsByDuty
+              ? 'Kelola program kerja pembina OSIS dan pembina ekstrakurikuler yang menunggu persetujuan Anda.'
               : 'Kelola program kerja yang diajukan oleh guru dan KAKOM.'}
           </p>
         </div>
@@ -249,7 +261,7 @@ export default function WorkProgramApprovalsPage() {
             <input
               type="text"
               placeholder={
-                isPrincipalView
+                groupsByDuty
                   ? 'Cari judul program kerja atau nama pengaju...'
                   : 'Cari judul program kerja atau nama guru...'
               }
@@ -281,7 +293,7 @@ export default function WorkProgramApprovalsPage() {
                   }`}
                 >
                   <div className="text-xs font-semibold text-gray-500">
-                    {group.code || (isPrincipalView ? 'UMUM' : 'NON KOMPETENSI')}
+                    {group.code || (groupsByDuty ? 'UMUM' : 'NON KOMPETENSI')}
                   </div>
                   <div className="text-sm font-semibold text-gray-900 mt-0.5">
                     {group.name}
@@ -311,7 +323,7 @@ export default function WorkProgramApprovalsPage() {
                   .filter((id) => Number.isFinite(id));
                 if (!ids.length) return;
                 const confirmed = window.confirm(
-                  isPrincipalView
+                  groupsByDuty
                     ? 'Setujui semua program kerja pada jabatan ini?'
                     : 'Setujui semua program kerja yang ditampilkan pada kompetensi ini?',
                 );
