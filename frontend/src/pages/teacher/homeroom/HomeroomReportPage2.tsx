@@ -23,6 +23,8 @@ type StudentListItem = {
 type ReportRow = {
   name?: string;
   ekskulName?: string;
+  positionName?: string | null;
+  divisionName?: string | null;
   grade?: string | null;
   description?: string | null;
   rank?: string | number | null;
@@ -43,6 +45,7 @@ type StudentReportPayload = {
   };
   body: {
     extracurriculars: ReportRow[];
+    organizations?: ReportRow[];
     achievements: ReportRow[];
     attendance?: {
       sick?: number;
@@ -142,6 +145,28 @@ export const HomeroomReportPage2 = ({
           <td class="align-middle">${item.description || '-'}</td>
         </tr>
       `).join('');
+    };
+
+    const renderOrganizations = (items: ReportRow[]) => {
+      if (!items || items.length === 0) {
+        return `
+          <tr>
+            <td colspan="4" class="center">Tidak ada data OSIS</td>
+          </tr>
+        `;
+      }
+
+      return items.map((item, index) => {
+        const roleLabel = [item.positionName, item.divisionName].filter(Boolean).join(' • ');
+        return `
+          <tr>
+            <td class="center align-middle">${index + 1}</td>
+            <td class="align-middle">${roleLabel || item.name || 'OSIS'}</td>
+            <td class="center align-middle">${item.grade || '-'}</td>
+            <td class="align-middle">${item.description || '-'}</td>
+          </tr>
+        `;
+      }).join('');
     };
 
     // Helper for Achievements (Mocked if missing)
@@ -247,8 +272,24 @@ export const HomeroomReportPage2 = ({
           </tbody>
         </table>
 
-        <!-- E. PRESTASI -->
-        <div class="section-title">E. PRESTASI</div>
+        <!-- E. ORGANISASI SISWA -->
+        <div class="section-title">E. ORGANISASI SISWA (OSIS)</div>
+        <table class="content-table">
+          <thead>
+            <tr>
+              <th width="5%">No</th>
+              <th width="40%">Jabatan / Posisi</th>
+              <th width="15%">Nilai</th>
+              <th>Keterangan</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${renderOrganizations(data.body.organizations || [])}
+          </tbody>
+        </table>
+
+        <!-- F. PRESTASI -->
+        <div class="section-title">F. PRESTASI</div>
         <table class="content-table">
           <thead>
             <tr>
@@ -262,8 +303,8 @@ export const HomeroomReportPage2 = ({
           </tbody>
         </table>
 
-        <!-- F. KETIDAKHADIRAN -->
-        <div class="section-title">F. KETIDAKHADIRAN</div>
+        <!-- G. KETIDAKHADIRAN -->
+        <div class="section-title">G. KETIDAKHADIRAN</div>
         <table class="attendance-table">
           <tr>
             <td width="40%">Sakit</td>
@@ -279,14 +320,14 @@ export const HomeroomReportPage2 = ({
           </tr>
         </table>
 
-        <!-- G. CATATAN WALI KELAS -->
-        <div class="section-title">G. CATATAN WALI KELAS</div>
+        <!-- H. CATATAN WALI KELAS -->
+        <div class="section-title">H. CATATAN WALI KELAS</div>
         <div class="note-box">
           ${data.body.homeroomNote || '-'}
         </div>
 
-        <!-- H. TANGGAPAN ORANG TUA/WALI -->
-        <div class="section-title">H. TANGGAPAN ORANG TUA/WALI</div>
+        <!-- I. TANGGAPAN ORANG TUA/WALI -->
+        <div class="section-title">I. TANGGAPAN ORANG TUA/WALI</div>
         <div class="note-box">
           <br><br>
         </div>

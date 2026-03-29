@@ -85,6 +85,7 @@ const InventoryDetailPage = lazy(() => import('./pages/teacher/wakasek/sarpras/I
 const BudgetApprovalPage = lazy(() => import('./pages/teacher/wakasek/sarpras/BudgetApprovalPage').then(m => ({ default: m.BudgetApprovalPage })));
 const IndustryPartnersPage = lazy(() => import("./pages/teacher/humas/IndustryPartnersPage").then(m => ({ default: m.IndustryPartnersPage })));
 const OsisElectionPage = lazy(() => import("./pages/teacher/osis/OsisElectionPage").then(m => ({ default: m.OsisElectionPage })));
+const OsisManagementPage = lazy(() => import("./pages/teacher/osis/OsisManagementPage").then(m => ({ default: m.OsisManagementPage })));
 const OsisElectionMonitoringPage = lazy(() => import("./pages/common/OsisElectionMonitoringPage").then(m => ({ default: m.OsisElectionMonitoringPage })));
 const StudentOsisElectionPage = lazy(() => import("./pages/student/StudentOsisElectionPage").then(m => ({ default: m.StudentOsisElectionPage })));
 const LearningResourceProgramPage = lazy(() => import("./pages/teacher/learning-resources/LearningResourceProgramPage"));
@@ -361,6 +362,7 @@ function App() {
             <Route path="members" element={<TutorMembersPage />} />
             <Route path="work-programs" element={<WorkProgramPage />} />
             <Route path="inventory" element={<TutorInventoryPage />} />
+            <Route path="osis/members" element={<OsisManagementPage />} />
             <Route path="osis/election" element={<OsisElectionPage />} />
             <Route path="osis/vote" element={<StudentOsisElectionPage />} />
             <Route path="assigned-inventory" element={<InventoryHubPage />} />
@@ -431,6 +433,7 @@ function App() {
             <Route path="report-subjects" element={<TeacherSubjectReportPage />} />
             <Route path="materials" element={<MaterialsAndAssignmentsPage />} />
             <Route path="assignments/:id/submissions" element={<AssignmentSubmissionsPage />} />
+            <Route path="osis/management" element={<OsisManagementPage />} />
             <Route path="osis/election" element={<OsisElectionPage />} />
             <Route path="osis/vote" element={<StudentOsisElectionPage />} />
             <Route path="learning-resources" element={<TeacherPlaceholderPage />} />

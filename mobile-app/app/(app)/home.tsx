@@ -55,7 +55,12 @@ import {
   resolveStaffDivision,
 } from '../../src/features/staff/staffRole';
 import { tutorApi } from '../../src/features/tutor/tutorApi';
-import { canAccessTutorWorkspace, hasTutorAssignments } from '../../src/features/tutor/tutorAccess';
+import {
+  canAccessTutorWorkspace,
+  getExtracurricularTutorAssignments,
+  getOsisTutorAssignments,
+} from '../../src/features/tutor/tutorAccess';
+import { osisApi } from '../../src/features/osis/osisApi';
 
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
 type DashboardStatItem = { label: string; value: string; color: string; icon?: FeatherIconName; menuKey?: string };
@@ -778,8 +783,27 @@ export default function HomeScreen() {
     queryFn: () => tutorApi.listAssignments(activeAcademicYearQuery.data?.id),
   });
 
+  const activeOsisElectionQuery = useQuery({
+    queryKey: ['mobile-home-active-osis-election', profile.role],
+    enabled:
+      isAuthenticated &&
+      ['TEACHER', 'STUDENT', 'STAFF', 'EXTRACURRICULAR_TUTOR'].includes(profile.role),
+    staleTime: 5 * 60 * 1000,
+    queryFn: () => osisApi.getActiveElection(),
+  });
+
   const hasPendingDefense = profile.role === 'TEACHER' && (teacherDefenseQuery.data?.length || 0) > 0;
-  const hasExtracurricularAdvisorAssignments = hasTutorAssignments(tutorAssignmentsQuery.data);
+  const extracurricularTutorAssignments = useMemo(
+    () => getExtracurricularTutorAssignments(tutorAssignmentsQuery.data),
+    [tutorAssignmentsQuery.data],
+  );
+  const osisTutorAssignments = useMemo(
+    () => getOsisTutorAssignments(tutorAssignmentsQuery.data),
+    [tutorAssignmentsQuery.data],
+  );
+  const hasExtracurricularAdvisorAssignments = extracurricularTutorAssignments.length > 0;
+  const hasOsisTutorAssignments = osisTutorAssignments.length > 0;
+  const hasActiveOsisElection = Boolean(activeOsisElectionQuery.data?.id);
   const pklEligibleGrades = useMemo(() => {
     const raw = String(activeAcademicYearQuery.data?.pklEligibleGrades || '').trim();
     if (!raw) return undefined;
@@ -800,6 +824,9 @@ export default function HomeScreen() {
             ? Boolean(studentInternshipOverviewQuery.data?.isEligible)
             : undefined,
         hasExtracurricularAdvisorAssignments,
+        hasExtracurricularTutorAssignments: extracurricularTutorAssignments.length > 0,
+        hasOsisTutorAssignments,
+        hasActiveOsisElection,
       })
         .map((group) => ({
           ...group,
@@ -833,6 +860,9 @@ export default function HomeScreen() {
       hasPendingDefense,
       pklEligibleGrades,
       hasExtracurricularAdvisorAssignments,
+      extracurricularTutorAssignments.length,
+      hasOsisTutorAssignments,
+      hasActiveOsisElection,
       studentInternshipOverviewQuery.data?.isEligible,
       examProgramsQuery.data?.programs,
       examProgramsQuery.isSuccess,

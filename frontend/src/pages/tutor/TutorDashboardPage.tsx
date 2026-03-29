@@ -3,7 +3,7 @@ import { tutorService, type TutorAssignmentSummary } from '../../services/tutor.
 import { academicYearService } from '../../services/academicYear.service';
 import { authService } from '../../services/auth.service';
 import { useMemo } from 'react';
-import { BookOpen, Boxes, ClipboardList, Database, Trophy, Vote } from 'lucide-react';
+import { BookOpen, Boxes, ClipboardList, Database, Trophy, Users, Vote } from 'lucide-react';
 import { Link, useOutletContext } from 'react-router-dom';
 import type { User as AuthUser } from '../../types/auth';
 import { osisService } from '../../services/osis.service';
@@ -260,6 +260,12 @@ export const TutorDashboardPage = () => {
                 <span className="flex items-center gap-2"><Boxes size={16} /> Inventaris Ekskul</span>
                 <span>&rsaquo;</span>
               </Link>
+              {isOsisTutor ? (
+                <Link to="/tutor/osis/members" className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-gray-50">
+                  <span className="flex items-center gap-2"><Users size={16} /> Struktur & Nilai OSIS</span>
+                  <span>&rsaquo;</span>
+                </Link>
+              ) : null}
               {isOsisTutor ? (
                 <Link to="/tutor/osis/election" className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-gray-50">
                   <span className="flex items-center gap-2"><Vote size={16} /> Pemilihan OSIS</span>

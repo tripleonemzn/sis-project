@@ -70,7 +70,6 @@ import {
   canAccessTutorWorkspace,
   getExtracurricularTutorAssignments,
   getActiveTutorAssignments,
-  getOsisTutorAssignments,
   hasOsisTutorAssignments,
   hasTutorAssignments,
 } from '../../features/tutor/tutorAccess';
@@ -540,6 +539,7 @@ export const getMenuItems = (
         label = 'PEMBINA OSIS';
         children = [
           ...createGenericItems(duty),
+          { label: 'Struktur & Nilai OSIS', path: '/teacher/osis/management', icon: Users },
           { label: 'Pemilihan OSIS', path: '/teacher/osis/election', icon: Trophy },
           ...(hasActiveOsisElection ? [{ label: 'Pemungutan Suara', path: '/teacher/osis/vote', icon: Vote }] : []),
         ];
@@ -665,7 +665,6 @@ export const getMenuItems = (
   if (role === 'EXTRACURRICULAR_TUTOR') {
     const activeTutorAssignments = getActiveTutorAssignments(tutorAssignments);
     const extracurricularTutorAssignments = getExtracurricularTutorAssignments(activeTutorAssignments);
-    const osisTutorAssignments = getOsisTutorAssignments(activeTutorAssignments);
     const osisAssignedRoom = (assignedInventoryRooms || []).find(
       (room) => isOsisLabel(room.name),
     );
@@ -704,11 +703,8 @@ export const getMenuItems = (
             icon: Trophy,
             children: [
               {
-                label: 'Anggota & Nilai',
-                path:
-                  osisTutorAssignments[0]
-                    ? `${buildTutorMembersHref(osisTutorAssignments[0])}&scope=osis`
-                    : '/tutor/members?scope=osis',
+                label: 'Struktur & Nilai',
+                path: '/tutor/osis/members',
                 icon: Users,
               },
               { label: 'Program Kerja', path: '/tutor/work-programs?duty=PEMBINA_OSIS', icon: ClipboardList },

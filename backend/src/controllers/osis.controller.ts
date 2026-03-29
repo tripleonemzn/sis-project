@@ -1,8 +1,16 @@
 import { Request, Response } from 'express';
-import { AdditionalDuty, ExtracurricularCategory, OsisElectionStatus, Prisma } from '@prisma/client';
+import {
+  AdditionalDuty,
+  ExtracurricularCategory,
+  OsisElectionStatus,
+  OsisManagementStatus,
+  Prisma,
+  Semester,
+} from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import { osisManagementService } from '../services/osisManagement.service';
 
 const listPeriodsSchema = z.object({
   academicYearId: z.coerce.number().int().optional(),
@@ -36,11 +44,115 @@ const voteSchema = z.object({
   candidateId: z.number().int(),
 });
 
+const createManagementPeriodSchema = z.object({
+  academicYearId: z.number().int(),
+  title: z.string().min(1, 'Judul periode wajib diisi'),
+  description: z.string().optional().nullable(),
+  startAt: z.string().min(1),
+  endAt: z.string().min(1),
+  status: z.nativeEnum(OsisManagementStatus).default('DRAFT'),
+});
+
+const updateManagementPeriodSchema = createManagementPeriodSchema.partial();
+
+const createDivisionSchema = z.object({
+  periodId: z.number().int(),
+  name: z.string().min(1, 'Nama divisi wajib diisi'),
+  code: z.string().trim().optional().nullable(),
+  description: z.string().optional().nullable(),
+  displayOrder: z.number().int().optional(),
+});
+
+const updateDivisionSchema = createDivisionSchema.omit({ periodId: true }).partial();
+
+const createPositionSchema = z.object({
+  periodId: z.number().int(),
+  divisionId: z.number().int().optional().nullable(),
+  name: z.string().min(1, 'Nama jabatan wajib diisi'),
+  code: z.string().trim().optional().nullable(),
+  description: z.string().optional().nullable(),
+  displayOrder: z.number().int().optional(),
+});
+
+const updatePositionSchema = createPositionSchema.omit({ periodId: true }).partial();
+
+const createMembershipSchema = z.object({
+  periodId: z.number().int(),
+  studentId: z.number().int(),
+  positionId: z.number().int(),
+  divisionId: z.number().int().optional().nullable(),
+  joinedAt: z.string().optional().nullable(),
+  endedAt: z.string().optional().nullable(),
+  isActive: z.boolean().optional(),
+});
+
+const updateMembershipSchema = createMembershipSchema.omit({ periodId: true }).partial();
+
+const membershipQuerySchema = z.object({
+  periodId: z.coerce.number().int(),
+  semester: z.nativeEnum(Semester).optional(),
+  reportType: z.string().optional(),
+  programCode: z.string().optional(),
+});
+
+const osisGradeTemplateQuerySchema = z.object({
+  academicYearId: z.coerce.number().int(),
+  semester: z.nativeEnum(Semester),
+  reportType: z.string().optional(),
+  programCode: z.string().optional(),
+});
+
+const saveOsisGradeTemplateSchema = osisGradeTemplateQuerySchema.extend({
+  templates: z.object({
+    SB: z
+      .object({
+        label: z.string().optional().default(''),
+        description: z.string().optional().default(''),
+      })
+      .optional()
+      .default({ label: '', description: '' }),
+    B: z
+      .object({
+        label: z.string().optional().default(''),
+        description: z.string().optional().default(''),
+      })
+      .optional()
+      .default({ label: '', description: '' }),
+    C: z
+      .object({
+        label: z.string().optional().default(''),
+        description: z.string().optional().default(''),
+      })
+      .optional()
+      .default({ label: '', description: '' }),
+    K: z
+      .object({
+        label: z.string().optional().default(''),
+        description: z.string().optional().default(''),
+      })
+      .optional()
+      .default({ label: '', description: '' }),
+  }),
+});
+
+const upsertAssessmentSchema = z.object({
+  membershipId: z.coerce.number().int(),
+  grade: z.string(),
+  description: z.string(),
+  semester: z.nativeEnum(Semester),
+  reportType: z.string().optional(),
+  programCode: z.string().optional(),
+});
+
 const periodIdSchema = z.object({
   id: z.coerce.number().int(),
 });
 
 const candidateIdSchema = z.object({
+  id: z.coerce.number().int(),
+});
+
+const recordIdSchema = z.object({
   id: z.coerce.number().int(),
 });
 
@@ -269,6 +381,219 @@ const buildQuickCount = async (period: {
     tiedCandidateIds: tiedTopCandidates.map((candidate) => candidate.id),
   };
 };
+
+export const getOsisManagementPeriods = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanMonitorOsisElection(req);
+  const { academicYearId } = listPeriodsSchema.parse(req.query);
+  const periods = await osisManagementService.listManagementPeriods(academicYearId);
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, periods, 'Data periode kepengurusan OSIS berhasil diambil'));
+});
+
+export const createOsisManagementPeriod = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanManageOsisElection(req);
+  const authUser = getAuthUser(req);
+  const body = createManagementPeriodSchema.parse(req.body);
+  const period = await osisManagementService.createManagementPeriod(authUser.id, {
+    academicYearId: body.academicYearId,
+    title: body.title,
+    description: body.description,
+    startAt: toDate(body.startAt),
+    endAt: toDate(body.endAt),
+    status: body.status,
+  });
+
+  res
+    .status(201)
+    .json(new ApiResponse(201, period, 'Periode kepengurusan OSIS berhasil dibuat'));
+});
+
+export const updateOsisManagementPeriod = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanManageOsisElection(req);
+  const { id } = periodIdSchema.parse(req.params);
+  const body = updateManagementPeriodSchema.parse(req.body);
+
+  const period = await osisManagementService.updateManagementPeriod(id, {
+    academicYearId: body.academicYearId,
+    title: body.title,
+    description: body.description,
+    startAt: body.startAt ? toDate(body.startAt) : undefined,
+    endAt: body.endAt ? toDate(body.endAt) : undefined,
+    status: body.status,
+  });
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, period, 'Periode kepengurusan OSIS berhasil diperbarui'));
+});
+
+export const getOsisDivisions = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanMonitorOsisElection(req);
+  const { periodId } = membershipQuerySchema.pick({ periodId: true }).parse(req.query);
+  const divisions = await osisManagementService.listDivisions(periodId);
+
+  res.status(200).json(new ApiResponse(200, divisions, 'Data divisi OSIS berhasil diambil'));
+});
+
+export const createOsisDivision = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanManageOsisElection(req);
+  const body = createDivisionSchema.parse(req.body);
+  const division = await osisManagementService.createDivision({
+    periodId: body.periodId,
+    name: body.name,
+    code: body.code || undefined,
+    description: body.description,
+    displayOrder: body.displayOrder,
+  });
+
+  res.status(201).json(new ApiResponse(201, division, 'Divisi OSIS berhasil dibuat'));
+});
+
+export const updateOsisDivision = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanManageOsisElection(req);
+  const { id } = recordIdSchema.parse(req.params);
+  const body = updateDivisionSchema.parse(req.body);
+  const division = await osisManagementService.updateDivision(id, {
+    ...body,
+    code: body.code ?? undefined,
+  });
+
+  res.status(200).json(new ApiResponse(200, division, 'Divisi OSIS berhasil diperbarui'));
+});
+
+export const deleteOsisDivision = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanManageOsisElection(req);
+  const { id } = recordIdSchema.parse(req.params);
+  const division = await osisManagementService.deleteDivision(id);
+
+  res.status(200).json(new ApiResponse(200, division, 'Divisi OSIS berhasil dihapus'));
+});
+
+export const getOsisPositions = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanMonitorOsisElection(req);
+  const { periodId } = membershipQuerySchema.pick({ periodId: true }).parse(req.query);
+  const positions = await osisManagementService.listPositions(periodId);
+
+  res.status(200).json(new ApiResponse(200, positions, 'Data jabatan OSIS berhasil diambil'));
+});
+
+export const createOsisPosition = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanManageOsisElection(req);
+  const body = createPositionSchema.parse(req.body);
+  const position = await osisManagementService.createPosition({
+    periodId: body.periodId,
+    divisionId: body.divisionId,
+    name: body.name,
+    code: body.code || undefined,
+    description: body.description,
+    displayOrder: body.displayOrder,
+  });
+
+  res.status(201).json(new ApiResponse(201, position, 'Jabatan OSIS berhasil dibuat'));
+});
+
+export const updateOsisPosition = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanManageOsisElection(req);
+  const { id } = recordIdSchema.parse(req.params);
+  const body = updatePositionSchema.parse(req.body);
+  const position = await osisManagementService.updatePosition(id, {
+    ...body,
+    code: body.code ?? undefined,
+  });
+
+  res.status(200).json(new ApiResponse(200, position, 'Jabatan OSIS berhasil diperbarui'));
+});
+
+export const deleteOsisPosition = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanManageOsisElection(req);
+  const { id } = recordIdSchema.parse(req.params);
+  const position = await osisManagementService.deletePosition(id);
+
+  res.status(200).json(new ApiResponse(200, position, 'Jabatan OSIS berhasil dihapus'));
+});
+
+export const getOsisMemberships = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanMonitorOsisElection(req);
+  const query = membershipQuerySchema.parse(req.query);
+  const memberships = await osisManagementService.listMemberships(query);
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, memberships, 'Data keanggotaan OSIS berhasil diambil'));
+});
+
+export const createOsisMembership = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanManageOsisElection(req);
+  const body = createMembershipSchema.parse(req.body);
+  const membership = await osisManagementService.createMembership({
+    periodId: body.periodId,
+    studentId: body.studentId,
+    positionId: body.positionId,
+    divisionId: body.divisionId,
+    joinedAt: body.joinedAt ? toDate(body.joinedAt) : undefined,
+    endedAt: body.endedAt ? toDate(body.endedAt) : undefined,
+    isActive: body.isActive,
+  });
+
+  res.status(201).json(new ApiResponse(201, membership, 'Anggota OSIS berhasil ditambahkan'));
+});
+
+export const updateOsisMembership = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanManageOsisElection(req);
+  const { id } = recordIdSchema.parse(req.params);
+  const body = updateMembershipSchema.parse(req.body);
+  const membership = await osisManagementService.updateMembership(id, {
+    studentId: body.studentId,
+    positionId: body.positionId,
+    divisionId: body.divisionId,
+    joinedAt: body.joinedAt ? toDate(body.joinedAt) : body.joinedAt === null ? null : undefined,
+    endedAt: body.endedAt ? toDate(body.endedAt) : body.endedAt === null ? null : undefined,
+    isActive: body.isActive,
+  });
+
+  res.status(200).json(new ApiResponse(200, membership, 'Anggota OSIS berhasil diperbarui'));
+});
+
+export const deleteOsisMembership = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanManageOsisElection(req);
+  const { id } = recordIdSchema.parse(req.params);
+  const membership = await osisManagementService.deactivateMembership(id);
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, membership, 'Keanggotaan OSIS berhasil dinonaktifkan'));
+});
+
+export const getOsisGradeTemplates = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanManageOsisElection(req);
+  const query = osisGradeTemplateQuerySchema.parse(req.query);
+  const templates = await osisManagementService.getGradeTemplates(query);
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, templates, 'Template nilai OSIS berhasil diambil'));
+});
+
+export const saveOsisGradeTemplates = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanManageOsisElection(req);
+  const body = saveOsisGradeTemplateSchema.parse(req.body);
+  const templates = await osisManagementService.saveGradeTemplates(body);
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, templates, 'Template nilai OSIS berhasil disimpan'));
+});
+
+export const upsertOsisAssessment = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanManageOsisElection(req);
+  const authUser = getAuthUser(req);
+  const body = upsertAssessmentSchema.parse(req.body);
+  const assessment = await osisManagementService.upsertAssessment(authUser.id, body);
+
+  res.status(200).json(new ApiResponse(200, assessment, 'Nilai OSIS berhasil disimpan'));
+});
 
 export const getOsisElectionPeriods = asyncHandler(async (req: Request, res: Response) => {
   const authUser = await assertCanMonitorOsisElection(req);

@@ -194,6 +194,15 @@ type ExtracurricularReportContext = {
   fixedSemester?: Semester | null;
 };
 
+type OrganizationReportRow = {
+  sourceType: 'OSIS';
+  name: string;
+  positionName: string | null;
+  divisionName: string | null;
+  grade: string;
+  description: string;
+};
+
 type ResolvedReportProgramContext = {
   reportSlotCode: string;
   programComponentType: string;
@@ -468,6 +477,25 @@ const buildExtracurricularUpdateData = (
     };
   }
   return { grade, description };
+};
+
+const resolveNonAcademicReportSlot = (
+  semester: Semester,
+  context: ExtracurricularReportContext,
+): string => {
+  const normalizedSlot = canonicalizeReportSlotAlias(
+    context.reportSlotCode,
+    context.fixedSemester || semester,
+  );
+  if (normalizedSlot) return normalizedSlot;
+
+  const inferredSlot = inferReportSlotFromProgramContext({
+    programComponentType: context.programComponentType,
+    fixedSemester: context.fixedSemester || semester,
+    baseTypeCode: context.reportSlotCode,
+  });
+
+  return canonicalizeReportSlotAlias(inferredSlot, context.fixedSemester || semester) || '';
 };
 
 interface ReportSignature {
@@ -797,16 +825,65 @@ export class ReportService {
           ).trim()
         : 'Capaian Kompetensi';
 
-    // Fetch Extracurriculars
-    const enrollments = await prisma.ekstrakurikulerEnrollment.findMany({
-      where: {
-        studentId,
-        academicYearId
-      },
-      include: {
-        ekskul: true
-      }
+    // Fetch non-academic activities
+    const nonAcademicReportSlot = resolveNonAcademicReportSlot(semester, {
+      reportSlotCode: resolvedReportSlotCode,
+      programComponentType: activeProgramComponentType,
+      fixedSemester: activeProgram?.fixedSemester || reportProgramContext.fixedSemester,
     });
+
+    const [enrollments, osisMemberships] = await Promise.all([
+      prisma.ekstrakurikulerEnrollment.findMany({
+        where: {
+          studentId,
+          academicYearId,
+        },
+        include: {
+          ekskul: true,
+        },
+      }),
+      prisma.osisMembership.findMany({
+        where: {
+          studentId,
+          period: {
+            academicYearId,
+          },
+        },
+        include: {
+          division: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          position: {
+            select: {
+              id: true,
+              name: true,
+              division: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+          assessments: {
+            where: nonAcademicReportSlot
+              ? {
+                  academicYearId,
+                  semester,
+                  reportSlot: nonAcademicReportSlot,
+                }
+              : {
+                  id: -1,
+                },
+            orderBy: [{ gradedAt: 'desc' }, { id: 'desc' }],
+            take: 1,
+          },
+        },
+      }),
+    ]);
 
     const extracurriculars = enrollments
       .map((e) => {
@@ -826,6 +903,23 @@ export class ReportService {
         };
       })
       .filter((e) => e.grade !== '-' || e.description !== '-');
+
+    const organizations: OrganizationReportRow[] = osisMemberships
+      .map((membership) => {
+        const assessment = membership.assessments?.[0] || null;
+        const divisionName =
+          membership.division?.name || membership.position?.division?.name || null;
+
+        return {
+          sourceType: 'OSIS' as const,
+          name: 'OSIS',
+          positionName: membership.position?.name || null,
+          divisionName,
+          grade: assessment?.grade || '-',
+          description: assessment?.description || '-',
+        };
+      })
+      .filter((row) => row.grade !== '-' || row.description !== '-');
 
     // 4. Map Data
     const groups: Record<string, any[]> = {
@@ -1085,6 +1179,7 @@ export class ReportService {
       body: { 
         groups, 
         extracurriculars,
+        organizations,
         achievements,
         attendance: { sick: attSick, permission: attPerm, absent: attAbsent },
         homeroomNote: homeroomNote?.note || '',
@@ -1488,22 +1583,71 @@ export class ReportService {
       }
     });
 
-    // 4. Fetch Extracurricular Enrollments
-    const enrollments = await prisma.ekstrakurikulerEnrollment.findMany({
-      where: {
-        studentId: { in: studentIds },
-        academicYearId
-      },
-      include: {
-        ekskul: {
-          select: {
-            id: true,
-            name: true,
-            description: true
-          }
-        }
-      }
+    // 4. Fetch non-academic activities
+    const nonAcademicReportSlot = resolveNonAcademicReportSlot(semester, {
+      reportSlotCode: resolvedReportSlotCode,
+      programComponentType: reportProgramContext.programComponentType,
+      fixedSemester: reportProgramContext.fixedSemester,
     });
+
+    const [enrollments, osisMemberships] = await Promise.all([
+      prisma.ekstrakurikulerEnrollment.findMany({
+        where: {
+          studentId: { in: studentIds },
+          academicYearId,
+        },
+        include: {
+          ekskul: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+            },
+          },
+        },
+      }),
+      prisma.osisMembership.findMany({
+        where: {
+          studentId: { in: studentIds },
+          period: {
+            academicYearId,
+          },
+        },
+        include: {
+          division: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          position: {
+            select: {
+              id: true,
+              name: true,
+              division: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+          assessments: {
+            where: nonAcademicReportSlot
+              ? {
+                  academicYearId,
+                  semester,
+                  reportSlot: nonAcademicReportSlot,
+                }
+              : {
+                  id: -1,
+                },
+            orderBy: [{ gradedAt: 'desc' }, { id: 'desc' }],
+            take: 1,
+          },
+        },
+      }),
+    ]);
 
     // 5. Fetch Achievements
     const achievements = await prisma.studentAchievement.findMany({
@@ -1546,6 +1690,21 @@ export class ReportService {
           };
         });
 
+      const studentOrganizations: OrganizationReportRow[] = osisMemberships
+        .filter((membership) => membership.studentId === student.id)
+        .map((membership) => {
+          const assessment = membership.assessments?.[0] || null;
+          return {
+            sourceType: 'OSIS' as const,
+            name: 'OSIS',
+            positionName: membership.position?.name || null,
+            divisionName:
+              membership.division?.name || membership.position?.division?.name || null,
+            grade: assessment?.grade || '',
+            description: assessment?.description || '',
+          };
+        });
+
       // Achievements
       const studentAchievements = achievements
         .filter(a => a.studentId === student.id)
@@ -1564,6 +1723,7 @@ export class ReportService {
         attendance: { s, i, a },
         catatan,
         extracurriculars: studentEnrollments,
+        organizations: studentOrganizations,
         achievements: studentAchievements
       };
     });

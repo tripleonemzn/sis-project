@@ -55,6 +55,15 @@ export type HomeroomExtracurricularGrade = {
   description: string;
 };
 
+export type HomeroomOrganizationGrade = {
+  sourceType: 'OSIS';
+  name: string;
+  positionName?: string | null;
+  divisionName?: string | null;
+  grade: string;
+  description: string;
+};
+
 export type HomeroomAchievement = {
   id: number;
   name: string;
@@ -70,6 +79,7 @@ export type HomeroomExtracurricularStudent = HomeroomStudentSummary & {
   };
   catatan: string;
   extracurriculars: HomeroomExtracurricularGrade[];
+  organizations: HomeroomOrganizationGrade[];
   achievements: HomeroomAchievement[];
 };
 
@@ -146,6 +156,14 @@ export type HomeroomStudentReportData = {
     };
     extracurriculars?: Array<{
       name: string;
+      grade: string;
+      description: string;
+    }>;
+    organizations?: Array<{
+      sourceType: 'OSIS';
+      name: string;
+      positionName?: string | null;
+      divisionName?: string | null;
       grade: string;
       description: string;
     }>;

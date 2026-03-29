@@ -27,6 +27,15 @@ interface StudentExtracurricularEnrollment {
   description: string;
 }
 
+interface StudentOrganizationEnrollment {
+  sourceType: 'OSIS';
+  name: string;
+  positionName?: string | null;
+  divisionName?: string | null;
+  grade: string;
+  description: string;
+}
+
 interface StudentExtracurricular {
   id: number;
   name: string;
@@ -38,6 +47,7 @@ interface StudentExtracurricular {
     a: number;
   };
   extracurriculars: StudentExtracurricularEnrollment[];
+  organizations: StudentOrganizationEnrollment[];
   achievements: StudentAchievement[];
   catatan: string;
 }
@@ -51,6 +61,33 @@ const ExtracurricularRow = ({
     <div className="flex gap-2 mb-2 items-start last:mb-0">
       <div className="w-1/3 text-sm py-2 px-2 bg-gray-50 rounded border border-gray-100">
         {enrollment.ekskulName}
+      </div>
+      <div className="w-1/6">
+        <div className="w-full text-sm border border-gray-200 bg-gray-50 rounded-md py-1.5 px-2 text-center font-medium text-gray-700 min-h-[38px] flex items-center justify-center">
+          {enrollment.grade || '-'}
+        </div>
+      </div>
+      <div className="w-1/2">
+        <div className="w-full text-sm border border-gray-200 bg-gray-50 rounded-md min-h-[38px] py-1.5 px-2 text-gray-700">
+          {enrollment.description || '-'}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const OrganizationRow = ({
+  enrollment,
+}: {
+  enrollment: StudentOrganizationEnrollment;
+}) => {
+  const roleLabel = [enrollment.positionName, enrollment.divisionName].filter(Boolean).join(' • ');
+
+  return (
+    <div className="flex gap-2 mb-2 items-start last:mb-0">
+      <div className="w-1/3 text-sm py-2 px-2 bg-violet-50 rounded border border-violet-100">
+        <div className="font-medium text-violet-900">{enrollment.name}</div>
+        <div className="text-xs text-violet-700">{roleLabel || 'Pengurus OSIS'}</div>
       </div>
       <div className="w-1/6">
         <div className="w-full text-sm border border-gray-200 bg-gray-50 rounded-md py-1.5 px-2 text-center font-medium text-gray-700 min-h-[38px] flex items-center justify-center">
@@ -109,24 +146,40 @@ const StudentRow = ({
         {student.attendance.a}
       </td>
       
-      {/* Ekstrakurikuler */}
+      {/* Aktivitas Non Akademik */}
       <td className="px-4 py-2 border-r border-gray-200 min-w-[300px]">
-        {student.extracurriculars && student.extracurriculars.length > 0 ? (
+        {student.extracurriculars.length > 0 || student.organizations.length > 0 ? (
           <div className="space-y-1">
             <div className="flex gap-2 text-xs font-semibold text-gray-500 mb-0.5">
               <div className="w-1/3">Nama</div>
               <div className="w-1/6 text-center">Nilai</div>
               <div className="w-1/2">Deskripsi</div>
             </div>
-            {student.extracurriculars.map((enrollment) => (
-              <ExtracurricularRow
-                key={enrollment.id}
-                enrollment={enrollment}
-              />
-            ))}
+            {student.extracurriculars.length > 0 ? (
+              <>
+                <div className="pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-500">Ekstrakurikuler</div>
+                {student.extracurriculars.map((enrollment) => (
+                  <ExtracurricularRow
+                    key={enrollment.id}
+                    enrollment={enrollment}
+                  />
+                ))}
+              </>
+            ) : null}
+            {student.organizations.length > 0 ? (
+              <>
+                <div className="pt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-500">OSIS</div>
+                {student.organizations.map((organization, idx) => (
+                  <OrganizationRow
+                    key={`${organization.sourceType}-${organization.positionName || 'member'}-${idx}`}
+                    enrollment={organization}
+                  />
+                ))}
+              </>
+            ) : null}
           </div>
         ) : (
-          <div className="text-gray-400 text-sm italic text-center py-2">Tidak ada data ekstrakurikuler</div>
+          <div className="text-gray-400 text-sm italic text-center py-2">Tidak ada aktivitas non-akademik</div>
         )}
       </td>
 
@@ -299,7 +352,7 @@ export const HomeroomExtracurricularsPage = ({
   if (!semester) {
     return (
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-8 text-center">
-        <p className="text-blue-700 font-medium">Silakan pilih semester terlebih dahulu untuk menampilkan data ekstrakurikuler.</p>
+        <p className="text-blue-700 font-medium">Silakan pilih semester terlebih dahulu untuk menampilkan data non-akademik.</p>
       </div>
     );
   }
@@ -323,7 +376,7 @@ export const HomeroomExtracurricularsPage = ({
   return (
     <div className="space-y-4">
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
-        Nilai dan deskripsi ekstrakurikuler diinput oleh pembina ekstrakurikuler, lalu otomatis
+        Nilai dan deskripsi ekskul maupun OSIS diinput oleh pembina masing-masing, lalu otomatis
         tampil di tab wali kelas ini. Wali kelas hanya menambahkan prestasi dan catatan bila
         diperlukan.
       </div>
@@ -345,7 +398,7 @@ export const HomeroomExtracurricularsPage = ({
                   KEHADIRAN
                 </th>
                 <th className="px-4 py-3 border-r border-gray-200 min-w-[300px] text-center" rowSpan={2}>
-                  EKSTRAKURIKULER
+                  AKTIVITAS NON AKADEMIK
                 </th>
                 <th className="px-4 py-3 border-r border-gray-200 min-w-[200px] text-center" rowSpan={2}>
                   PRESTASI

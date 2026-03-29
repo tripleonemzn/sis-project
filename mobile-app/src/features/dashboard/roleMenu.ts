@@ -27,6 +27,9 @@ export type RoleMenuBuildOptions = {
   pklEligibleGrades?: string[];
   pklVisibilityOverride?: boolean;
   hasExtracurricularAdvisorAssignments?: boolean;
+  hasExtracurricularTutorAssignments?: boolean;
+  hasOsisTutorAssignments?: boolean;
+  hasActiveOsisElection?: boolean;
 };
 
 const STRICT_WEB_PARITY_KEYS = new Set<string>([
@@ -129,6 +132,14 @@ function materializeMenuTargets(items: RoleMenuItem[]): RoleMenuItem[] {
     }
     return item;
   });
+}
+
+function createWebModuleRoute(key: string, webPath: string, label?: string) {
+  const params = [`path=${encodeURIComponent(webPath)}`];
+  if (label) {
+    params.push(`label=${encodeURIComponent(label)}`);
+  }
+  return `/web-module/${key}?${params.join('&')}`;
 }
 
 const BASE_MENU: RoleMenuItem[] = [{ key: 'profile', label: 'Profil', route: '/profile' }];
@@ -329,6 +340,24 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       key: 'teacher-extracurricular-inventory',
       label: 'Inventaris Ekskul',
       route: '/tutor/inventory',
+    },
+    {
+      key: 'teacher-osis-management',
+      label: 'Struktur & Nilai OSIS',
+      route: createWebModuleRoute('teacher-osis-management', '/teacher/osis/management', 'Struktur & Nilai OSIS'),
+      webPath: '/teacher/osis/management',
+    },
+    {
+      key: 'teacher-osis-election',
+      label: 'Pemilihan OSIS',
+      route: createWebModuleRoute('teacher-osis-election', '/teacher/osis/election', 'Pemilihan OSIS'),
+      webPath: '/teacher/osis/election',
+    },
+    {
+      key: 'teacher-osis-vote',
+      label: 'Pemungutan Suara',
+      route: createWebModuleRoute('teacher-osis-vote', '/teacher/osis/vote', 'Pemungutan Suara OSIS'),
+      webPath: '/teacher/osis/vote',
     },
     {
       key: 'teacher-bk-dashboard',
@@ -650,6 +679,40 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     { key: 'tutor-members', label: 'Anggota & Nilai', route: '/tutor/members' },
     { key: 'tutor-work-program', label: 'Program Kerja', route: '/tutor/work-program' },
     { key: 'tutor-inventory', label: 'Inventaris Ekskul', route: '/tutor/inventory' },
+    {
+      key: 'tutor-osis-management',
+      label: 'Struktur & Nilai',
+      route: createWebModuleRoute('tutor-osis-management', '/tutor/osis/members', 'Struktur & Nilai OSIS'),
+      webPath: '/tutor/osis/members',
+    },
+    {
+      key: 'tutor-osis-work-program',
+      label: 'Program Kerja',
+      route: createWebModuleRoute(
+        'tutor-osis-work-program',
+        '/tutor/work-programs?duty=PEMBINA_OSIS',
+        'Program Kerja OSIS',
+      ),
+      webPath: '/tutor/work-programs?duty=PEMBINA_OSIS',
+    },
+    {
+      key: 'tutor-osis-election',
+      label: 'Pemilihan OSIS',
+      route: createWebModuleRoute('tutor-osis-election', '/tutor/osis/election', 'Pemilihan OSIS'),
+      webPath: '/tutor/osis/election',
+    },
+    {
+      key: 'tutor-osis-vote',
+      label: 'Pemungutan Suara',
+      route: createWebModuleRoute('tutor-osis-vote', '/tutor/osis/vote', 'Pemungutan Suara OSIS'),
+      webPath: '/tutor/osis/vote',
+    },
+    {
+      key: 'tutor-osis-inventory',
+      label: 'Kelola Inventaris',
+      route: createWebModuleRoute('tutor-osis-inventory', '/tutor/inventory?scope=osis', 'Inventaris OSIS'),
+      webPath: '/tutor/inventory?scope=osis',
+    },
     { key: 'tutor-profile', label: 'Profil', route: '/profile' },
   ],
 };
@@ -765,6 +828,14 @@ function shouldShowMenuItem(user: AuthUser, item: RoleMenuItem, options?: RoleMe
       return Boolean(options?.hasExtracurricularAdvisorAssignments);
     }
 
+    if (item.key === 'teacher-osis-vote') {
+      return hasDuty(user, ['PEMBINA_OSIS']) && Boolean(options?.hasActiveOsisElection);
+    }
+
+    if (item.key.startsWith('teacher-osis-')) {
+      return hasDuty(user, ['PEMBINA_OSIS']);
+    }
+
     if (item.key.startsWith('teacher-kakom-')) {
       return hasDuty(user, ['KAPROG', 'KEPALA_KOMPETENSI']);
     }
@@ -799,6 +870,20 @@ function shouldShowMenuItem(user: AuthUser, item: RoleMenuItem, options?: RoleMe
 
     if (item.key.startsWith('teacher-bk-')) {
       return hasDuty(user, ['BP_BK']);
+    }
+  }
+
+  if (user.role === 'EXTRACURRICULAR_TUTOR') {
+    if (item.key === 'tutor-members' || item.key === 'tutor-work-program' || item.key === 'tutor-inventory') {
+      return Boolean(options?.hasExtracurricularTutorAssignments);
+    }
+
+    if (item.key === 'tutor-osis-vote') {
+      return Boolean(options?.hasActiveOsisElection);
+    }
+
+    if (item.key.startsWith('tutor-osis-')) {
+      return Boolean(options?.hasOsisTutorAssignments);
     }
   }
 
@@ -1512,6 +1597,14 @@ function buildTeacherGroups(
       label = 'BP/BK';
       addGenericWorkProgram();
       items.push(...pickMenus(byKey, ['teacher-bk-dashboard', 'teacher-bk-behaviors', 'teacher-bk-permissions', 'teacher-bk-counselings']));
+    } else if (duty === 'PEMBINA_OSIS') {
+      label = 'PEMBINA OSIS';
+      addGenericWorkProgram();
+      items.push(...pickMenus(byKey, ['teacher-osis-management', 'teacher-osis-election']));
+      if (options?.hasActiveOsisElection) {
+        const voteMenu = pickMenu(byKey, 'teacher-osis-vote');
+        if (voteMenu) items.push(voteMenu);
+      }
     } else {
       addGenericWorkProgram();
     }
@@ -1545,6 +1638,40 @@ function buildTeacherGroups(
   }
 
   pushGroup('settings', 'PENGATURAN', pickMenus(byKey, ['teacher-profile']));
+
+  return groups;
+}
+
+function buildTutorGroups(menus: RoleMenuItem[], options?: RoleMenuBuildOptions): RoleMenuGroup[] {
+  const byKey = mapMenuByKey(menus);
+  const groups: RoleMenuGroup[] = [];
+
+  const pushGroup = (key: string, label: string, items: RoleMenuItem[]) => {
+    if (items.length === 0) return;
+    groups.push({ key, label, items });
+  };
+
+  pushGroup('dashboard', 'Dashboard', pickMenus(byKey, ['tutor-dashboard', 'tutor-email']));
+
+  if (options?.hasExtracurricularTutorAssignments) {
+    pushGroup(
+      'extracurricular-advisor',
+      'PEMBINA EKSKUL',
+      pickMenus(byKey, ['tutor-members', 'tutor-work-program', 'tutor-inventory']),
+    );
+  }
+
+  if (options?.hasOsisTutorAssignments) {
+    const osisKeys = ['tutor-osis-management', 'tutor-osis-work-program', 'tutor-osis-election', 'tutor-osis-inventory'];
+    if (options?.hasActiveOsisElection) {
+      osisKeys.splice(3, 0, 'tutor-osis-vote');
+    }
+    pushGroup('osis-advisor', 'PEMBINA OSIS', pickMenus(byKey, osisKeys));
+  } else if (options?.hasActiveOsisElection) {
+    pushGroup('osis-election', 'PEMILIHAN OSIS', pickMenus(byKey, ['tutor-osis-vote']));
+  }
+
+  pushGroup('settings', 'PENGATURAN', pickMenus(byKey, ['tutor-profile']));
 
   return groups;
 }
@@ -1609,6 +1736,10 @@ export function getGroupedRoleMenu(user?: AuthUser | null, options?: RoleMenuBui
 
   if (user.role === 'TEACHER') {
     return buildTeacherGroups(user, menus, options);
+  }
+
+  if (user.role === 'EXTRACURRICULAR_TUTOR') {
+    return buildTutorGroups(menus, options);
   }
 
   if (user.role === 'STAFF') {

@@ -174,6 +174,9 @@ model User {
   createdOsisElectionPeriods                         OsisElectionPeriod[]                @relation("OsisElectionCreator")
   osisElectionCandidacies                            OsisElectionCandidate[]             @relation("OsisElectionCandidateStudent")
   osisElectionVotes                                  OsisElectionVote[]                  @relation("OsisElectionVoter")
+  createdOsisManagementPeriods                       OsisManagementPeriod[]              @relation("OsisManagementPeriodCreator")
+  osisMemberships                                    OsisMembership[]                    @relation("OsisMembershipStudent")
+  gradedOsisAssessments                              OsisAssessment[]                    @relation("OsisAssessmentGradedBy")
   // Internship Relations
   internships                                        Internship[]                        @relation("StudentInternship")
   guidedInternships                                  Internship[]                        @relation("TeacherInternship")
@@ -310,6 +313,9 @@ model AcademicYear {
   examGradeComponents            ExamGradeComponent[]
   examProgramSessions            ExamProgramSession[]
   osisElectionPeriods            OsisElectionPeriod[]
+  osisManagementPeriods          OsisManagementPeriod[]
+  osisGradeTemplates             OsisGradeTemplate[]
+  osisAssessments                OsisAssessment[]
   teachingResourceProgramConfigs TeachingResourceProgramConfig[]
   teachingResourceEntries        TeachingResourceEntry[]
   bpbkCounselings                BpBkCounseling[]
@@ -1077,7 +1083,7 @@ model Ekstrakurikuler {
   id               Int                              @id @default(autoincrement())
   name             String
   description      String?
-  category         ExtracurricularCategory         @default(EXTRACURRICULAR)
+  category         ExtracurricularCategory          @default(EXTRACURRICULAR)
   enrollments      EkstrakurikulerEnrollment[]
   tutorAssignments EkstrakurikulerTutorAssignment[]
   gradeTemplates   EkstrakurikulerGradeTemplate[]
@@ -2347,6 +2353,127 @@ model OsisElectionVote {
   @@map("osis_election_votes")
 }
 
+model OsisManagementPeriod {
+  id             Int                  @id @default(autoincrement())
+  academicYearId Int
+  title          String
+  description    String?
+  startAt        DateTime
+  endAt          DateTime
+  status         OsisManagementStatus @default(DRAFT)
+  createdById    Int
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  academicYear   AcademicYear         @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  createdBy      User                 @relation("OsisManagementPeriodCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  divisions      OsisDivision[]
+  positions      OsisPosition[]
+  memberships    OsisMembership[]
+
+  @@index([academicYearId, status])
+  @@map("osis_management_periods")
+}
+
+model OsisDivision {
+  id           Int                  @id @default(autoincrement())
+  periodId     Int
+  name         String
+  code         String
+  description  String?
+  displayOrder Int                  @default(0)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  period       OsisManagementPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  positions    OsisPosition[]
+  memberships  OsisMembership[]
+
+  @@unique([periodId, code], map: "osis_divisions_period_code_key")
+  @@index([periodId, displayOrder], map: "osis_divisions_period_order_idx")
+  @@map("osis_divisions")
+}
+
+model OsisPosition {
+  id           Int                  @id @default(autoincrement())
+  periodId     Int
+  divisionId   Int?
+  name         String
+  code         String
+  description  String?
+  displayOrder Int                  @default(0)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  period       OsisManagementPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  division     OsisDivision?        @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+  memberships  OsisMembership[]
+
+  @@unique([periodId, code], map: "osis_positions_period_code_key")
+  @@index([periodId, displayOrder], map: "osis_positions_period_order_idx")
+  @@index([divisionId], map: "osis_positions_division_idx")
+  @@map("osis_positions")
+}
+
+model OsisMembership {
+  id          Int                  @id @default(autoincrement())
+  periodId    Int
+  studentId   Int
+  divisionId  Int?
+  positionId  Int
+  joinedAt    DateTime             @default(now())
+  endedAt     DateTime?
+  isActive    Boolean              @default(true)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  period      OsisManagementPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  student     User                 @relation("OsisMembershipStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  division    OsisDivision?        @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+  position    OsisPosition         @relation(fields: [positionId], references: [id])
+  assessments OsisAssessment[]
+
+  @@unique([periodId, studentId], map: "osis_memberships_period_student_key")
+  @@index([periodId, isActive], map: "osis_memberships_period_active_idx")
+  @@index([studentId], map: "osis_memberships_student_idx")
+  @@index([positionId], map: "osis_memberships_position_idx")
+  @@map("osis_memberships")
+}
+
+model OsisGradeTemplate {
+  id             Int          @id @default(autoincrement())
+  academicYearId Int
+  semester       Semester
+  reportSlot     String
+  predicate      String
+  description    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  @@unique([academicYearId, semester, reportSlot, predicate], map: "osis_grade_templates_unique_scope")
+  @@index([academicYearId, semester, reportSlot], map: "osis_grade_templates_scope_idx")
+  @@map("osis_grade_templates")
+}
+
+model OsisAssessment {
+  id             Int            @id @default(autoincrement())
+  membershipId   Int
+  academicYearId Int
+  semester       Semester
+  reportSlot     String
+  grade          String
+  description    String?
+  gradedById     Int
+  gradedAt       DateTime       @default(now())
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  membership     OsisMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear   @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  gradedBy       User           @relation("OsisAssessmentGradedBy", fields: [gradedById], references: [id], onDelete: Cascade)
+
+  @@unique([membershipId, academicYearId, semester, reportSlot], map: "osis_assessments_unique_scope")
+  @@index([academicYearId, semester, reportSlot], map: "osis_assessments_scope_idx")
+  @@index([gradedById], map: "osis_assessments_graded_by_idx")
+  @@map("osis_assessments")
+}
+
 model MobilePushDevice {
   id            Int            @id @default(autoincrement())
   userId        Int
@@ -2374,6 +2501,12 @@ enum MobilePlatform {
 enum OsisElectionStatus {
   DRAFT
   PUBLISHED
+  CLOSED
+}
+
+enum OsisManagementStatus {
+  DRAFT
+  ACTIVE
   CLOSED
 }
 

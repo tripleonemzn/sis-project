@@ -23,6 +23,8 @@ type StudentListItem = {
 type ReportRow = {
   no?: string | number;
   name?: string;
+  positionName?: string | null;
+  divisionName?: string | null;
   teacherName?: string;
   isHeader?: boolean;
   rowCount?: number;
@@ -52,6 +54,7 @@ type StudentReportPayload = {
       C: ReportRow[];
     };
     extracurriculars: ReportRow[];
+    organizations?: ReportRow[];
   };
   footer: {
     signatures: {
@@ -201,6 +204,41 @@ export const HomeroomReportSasPage = ({
       `;
     };
 
+    const renderOrganizations = (items: ReportRow[]) => {
+      if (!items || items.length === 0) return '';
+
+      const rows = items.map((item, index) => {
+        const roleLabel = [item.positionName, item.divisionName].filter(Boolean).join(' • ');
+        return `
+        <tr>
+          <td class="center align-middle">${index + 1}</td>
+          <td class="align-middle">${roleLabel || item.name || 'OSIS'}</td>
+          <td class="center align-middle">${item.grade}</td>
+          <td class="align-middle">${item.description}</td>
+        </tr>
+      `;
+      }).join('');
+
+      return `
+        <div style="margin-top: 15px;">
+          <div style="font-weight: bold; margin-bottom: 5px;">E. ORGANISASI SISWA (OSIS)</div>
+          <table class="content-table">
+            <thead>
+              <tr>
+                <th width="5%">No</th>
+                <th width="30%">Jabatan / Posisi</th>
+                <th width="10%">Predikat</th>
+                <th>Keterangan</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        </div>
+      `;
+    };
+
     const html = `
       <!DOCTYPE html>
       <html>
@@ -268,6 +306,7 @@ export const HomeroomReportSasPage = ({
         </table>
 
         ${renderExtracurriculars(data.body.extracurriculars)}
+        ${renderOrganizations(data.body.organizations || [])}
 
       </body>
       </html>

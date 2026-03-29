@@ -982,6 +982,11 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
         return breadcrumbs;
       }
 
+      if (fullKey === 'osis/members') {
+        breadcrumbs.push({ label: 'Struktur & Nilai', path: null });
+        return breadcrumbs;
+      }
+
       if (fullKey === 'osis/vote') {
         breadcrumbs.push({ label: 'Pemungutan Suara', path: null });
         return breadcrumbs;

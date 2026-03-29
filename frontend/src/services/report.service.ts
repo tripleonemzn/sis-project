@@ -82,6 +82,14 @@ export interface SbtsReportData {
       description: string;
     }[]>;
     extracurriculars?: { name: string; grade: string; description: string }[];
+    organizations?: {
+      sourceType: 'OSIS';
+      name: string;
+      positionName?: string | null;
+      divisionName?: string | null;
+      grade: string;
+      description: string;
+    }[];
     achievements?: { name: string; description: string }[];
     attendance?: { sick: number; permission: number; absent: number };
     homeroomNote?: string;

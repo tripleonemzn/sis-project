@@ -986,6 +986,31 @@ export function HomeroomReportModuleScreen({
               </View>
             ) : null}
 
+            {studentReportQuery.data.body?.organizations?.length ? (
+              <View
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 10,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>OSIS</Text>
+                {studentReportQuery.data.body.organizations.slice(0, 5).map((item, idx) => (
+                  <View key={`${item.name}-${item.positionName || 'osis'}-${idx}`} style={{ marginBottom: idx === 4 ? 0 : 8 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13 }}>
+                      {safeText(item.positionName || item.name)}
+                    </Text>
+                    <Text style={{ color: '#64748b', fontSize: 12 }}>
+                      {safeText(item.divisionName || 'Organisasi Siswa')} • Predikat: {safeText(item.grade)} • {safeText(item.description)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
             {studentReportQuery.data.body?.homeroomNote ? (
               <View
                 style={{
@@ -1177,6 +1202,7 @@ export function HomeroomReportModuleScreen({
     }
 
     const totalEkskul = rows.reduce((acc, item) => acc + item.extracurriculars.length, 0);
+    const totalOrganizations = rows.reduce((acc, item) => acc + item.organizations.length, 0);
     const totalAchievements = rows.reduce((acc, item) => acc + item.achievements.length, 0);
 
     return (
@@ -1187,9 +1213,9 @@ export function HomeroomReportModuleScreen({
           </View>
           <View style={{ flex: 1, paddingHorizontal: 4 }}>
             <SummaryCard
-              title="Item Ekskul"
-              value={formatNumber(totalEkskul)}
-              subtitle={`Prestasi ${formatNumber(totalAchievements)}`}
+              title="Non Akademik"
+              value={formatNumber(totalEkskul + totalOrganizations)}
+              subtitle={`Ekskul ${formatNumber(totalEkskul)} • OSIS ${formatNumber(totalOrganizations)} • Prestasi ${formatNumber(totalAchievements)}`}
             />
           </View>
         </View>
@@ -1236,6 +1262,24 @@ export function HomeroomReportModuleScreen({
                 ))
               ) : (
                 <Text style={{ color: '#64748b' }}>Belum ada data ekstrakurikuler.</Text>
+              )}
+            </View>
+
+            <View style={{ marginTop: 10 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>OSIS</Text>
+              {item.organizations.length > 0 ? (
+                item.organizations.map((organization, idx) => (
+                  <View key={`${organization.sourceType}-${organization.positionName || 'osis'}-${idx}`} style={{ marginBottom: 6 }}>
+                    <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13 }}>
+                      {safeText(organization.positionName || organization.name)}
+                    </Text>
+                    <Text style={{ color: '#64748b', fontSize: 12 }}>
+                      {safeText(organization.divisionName || 'Organisasi Siswa')} • Predikat: {safeText(organization.grade)} • {safeText(organization.description)}
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={{ color: '#64748b' }}>Belum ada data OSIS.</Text>
               )}
             </View>
 
