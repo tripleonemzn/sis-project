@@ -722,9 +722,6 @@ export const getMenuItems = (
           } satisfies MenuItem]
         : []
       ),
-      ...(!hasTutorOsisMenu && hasActiveOsisElection
-        ? [{ label: 'Pemungutan Suara OSIS', path: '/tutor/osis/vote', icon: Vote } satisfies MenuItem]
-        : []),
       ...(tutorAssignedInventoryChildren.length > 0
         ? [{
             label: 'INVENTARIS TUGAS',

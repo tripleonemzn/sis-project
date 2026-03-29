@@ -305,12 +305,25 @@ const getEligibleOsisVoterWhere = (academicYearId: number): Prisma.UserWhereInpu
     },
     { role: 'TEACHER' },
     { role: 'STAFF' },
-    { role: 'EXTRACURRICULAR_TUTOR' },
+    {
+      role: 'EXTRACURRICULAR_TUTOR',
+      ekskulTutorAssignments: {
+        some: {
+          isActive: true,
+          ekskul: {
+            category: ExtracurricularCategory.OSIS,
+          },
+        },
+      },
+    },
   ],
 });
 
-const isAllowedOsisVoterRole = (role: string) =>
-  ['STUDENT', 'TEACHER', 'STAFF', 'EXTRACURRICULAR_TUTOR'].includes(String(role || '').toUpperCase());
+const canVoteInOsisElection = (actor: { role: string; isOsisTutor?: boolean }) =>
+  actor.role === 'STUDENT' ||
+  actor.role === 'TEACHER' ||
+  actor.role === 'STAFF' ||
+  (actor.role === 'EXTRACURRICULAR_TUTOR' && actor.isOsisTutor === true);
 
 const buildQuickCount = async (period: {
   academicYearId: number;
@@ -974,8 +987,8 @@ export const getOsisElectionQuickCount = asyncHandler(async (req: Request, res: 
 });
 
 export const getActiveStudentOsisElection = asyncHandler(async (req: Request, res: Response) => {
-  const authUser = getAuthUser(req);
-  if (!isAllowedOsisVoterRole(authUser.role)) {
+  const actor = await getActorAccess(req);
+  if (!canVoteInOsisElection(actor)) {
     return res.status(200).json(new ApiResponse(200, null, 'Role ini tidak memiliki akses pemungutan suara OSIS'));
   }
   const now = new Date();
@@ -1007,7 +1020,7 @@ export const getActiveStudentOsisElection = asyncHandler(async (req: Request, re
         },
       },
       votes: {
-        where: { voterId: authUser.id },
+        where: { voterId: actor.id },
         select: { id: true, candidateId: true, createdAt: true },
         take: 1,
       },
@@ -1037,8 +1050,8 @@ export const getActiveStudentOsisElection = asyncHandler(async (req: Request, re
 export const getActiveOsisElection = getActiveStudentOsisElection;
 
 export const getLatestStudentOsisElection = asyncHandler(async (req: Request, res: Response) => {
-  const authUser = getAuthUser(req);
-  if (!isAllowedOsisVoterRole(authUser.role)) {
+  const actor = await getActorAccess(req);
+  if (!canVoteInOsisElection(actor)) {
     return res.status(200).json(new ApiResponse(200, null, 'Role ini tidak memiliki akses riwayat pemungutan suara OSIS'));
   }
   const election = await prisma.osisElectionPeriod.findFirst({
@@ -1066,7 +1079,7 @@ export const getLatestStudentOsisElection = asyncHandler(async (req: Request, re
         },
       },
       votes: {
-        where: { voterId: authUser.id },
+        where: { voterId: actor.id },
         select: { id: true, candidateId: true, createdAt: true },
         take: 1,
       },
@@ -1096,8 +1109,8 @@ export const getLatestStudentOsisElection = asyncHandler(async (req: Request, re
 export const getLatestOsisElection = getLatestStudentOsisElection;
 
 export const submitOsisElectionVote = asyncHandler(async (req: Request, res: Response) => {
-  const authUser = getAuthUser(req);
-  if (!isAllowedOsisVoterRole(authUser.role)) {
+  const actor = await getActorAccess(req);
+  if (!canVoteInOsisElection(actor)) {
     throw new ApiError(403, 'Role ini tidak memiliki hak memilih pada pemilihan OSIS');
   }
   const body = voteSchema.parse(req.body);
@@ -1126,7 +1139,7 @@ export const submitOsisElectionVote = asyncHandler(async (req: Request, res: Res
     where: {
       electionId_voterId: {
         electionId: body.electionId,
-        voterId: authUser.id,
+        voterId: actor.id,
       },
     },
   });
@@ -1136,7 +1149,7 @@ export const submitOsisElectionVote = asyncHandler(async (req: Request, res: Res
     data: {
       electionId: body.electionId,
       candidateId: body.candidateId,
-      voterId: authUser.id,
+      voterId: actor.id,
     },
   });
 

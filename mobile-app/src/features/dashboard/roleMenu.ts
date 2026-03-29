@@ -884,7 +884,7 @@ function shouldShowMenuItem(user: AuthUser, item: RoleMenuItem, options?: RoleMe
     }
 
     if (item.key === 'tutor-osis-vote') {
-      return Boolean(options?.hasActiveOsisElection);
+      return Boolean(options?.hasOsisTutorAssignments) && Boolean(options?.hasActiveOsisElection);
     }
 
     if (item.key.startsWith('tutor-osis-')) {
@@ -1677,8 +1677,6 @@ function buildTutorGroups(menus: RoleMenuItem[], options?: RoleMenuBuildOptions)
       osisKeys.splice(3, 0, 'tutor-osis-vote');
     }
     pushGroup('osis-advisor', 'PEMBINA OSIS', pickMenus(byKey, osisKeys));
-  } else if (options?.hasActiveOsisElection) {
-    pushGroup('osis-election', 'PEMILIHAN OSIS', pickMenus(byKey, ['tutor-osis-vote']));
   }
 
   pushGroup('settings', 'PENGATURAN', pickMenus(byKey, ['tutor-profile']));
