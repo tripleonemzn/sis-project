@@ -547,6 +547,7 @@ export const getMenuItems = (
         children = [
           ...createGenericItems(duty),
           { label: 'Struktur & Nilai OSIS', path: '/teacher/osis/management', icon: Users },
+          { label: 'Inventaris OSIS', path: '/teacher/osis/inventory', icon: Database },
           { label: 'Pemilihan OSIS', path: '/teacher/osis/election', icon: Trophy },
           ...(hasActiveOsisElection ? [{ label: 'Pemungutan Suara', path: '/teacher/osis/vote', icon: Vote }] : []),
         ];

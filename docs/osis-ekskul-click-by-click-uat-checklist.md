@@ -99,6 +99,8 @@ Siapkan minimal:
 - Input nilai OSIS untuk minimal 1 pengurus.
 - Refresh halaman.
 - Pastikan struktur dan nilai tetap terbaca.
+- Buka `Inventaris OSIS`.
+- Pastikan data inventaris OSIS bisa diakses dari jalur guru.
 
 ## 6. Guru Mobile: Struktur dan Nilai OSIS
 
@@ -107,6 +109,8 @@ Siapkan minimal:
 - Buka `Struktur & Nilai OSIS`.
 - Pastikan entry point sama dengan web.
 - Jika halaman memakai web fallback, judul dan tujuan modul tetap benar.
+- Buka `Inventaris OSIS`.
+- Pastikan menu dan tujuan modul sama dengan web.
 
 ## 7. Pemilihan OSIS
 

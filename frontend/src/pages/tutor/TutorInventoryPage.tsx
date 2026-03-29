@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Loader2, Plus, Search, Warehouse, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { academicYearService } from '../../services/academicYear.service';
 import { tutorService } from '../../services/tutor.service';
 import { isOsisExtracurricularCategory, type ExtracurricularCategory } from '../../features/extracurricular/category';
@@ -40,9 +40,25 @@ interface InventoryOverviewRow {
   items: InventoryItem[];
 }
 
+function resolveInventoryScope(pathname: string, rawScope: string | null): 'osis' | 'extracurricular' {
+  const normalizedScope = String(rawScope || '').trim().toLowerCase();
+  if (normalizedScope === 'osis') return 'osis';
+  if (normalizedScope === 'extracurricular') return 'extracurricular';
+  return pathname
+    .split('/')
+    .map((segment) => segment.trim().toLowerCase())
+    .includes('osis')
+    ? 'osis'
+    : 'extracurricular';
+}
+
 export const TutorInventoryPage = () => {
+  const location = useLocation();
   const [searchParams] = useSearchParams();
-  const selectedScope = searchParams.get('scope') === 'osis' ? 'osis' : 'extracurricular';
+  const selectedScope = resolveInventoryScope(location.pathname, searchParams.get('scope'));
+  const scopeLabel = selectedScope === 'osis' ? 'OSIS' : 'Ekskul';
+  const scopeLabelLower = selectedScope === 'osis' ? 'OSIS' : 'ekskul';
+  const scopeTitle = selectedScope === 'osis' ? 'Inventaris OSIS' : 'Inventaris Ekskul';
   const [search, setSearch] = useState('');
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<number | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -137,7 +153,9 @@ export const TutorInventoryPage = () => {
       resetCreateForm();
     },
     onError: (error: unknown) => {
-      let message = 'Gagal menambahkan item inventaris ekskul';
+      let message = selectedScope === 'osis'
+        ? 'Gagal menambahkan item inventaris OSIS'
+        : 'Gagal menambahkan item inventaris ekskul';
       if (typeof error === 'object' && error !== null) {
         const maybeResponse = (error as { response?: { data?: { message?: unknown } } }).response;
         if (typeof maybeResponse?.data?.message === 'string' && maybeResponse.data.message.trim()) {
@@ -152,9 +170,7 @@ export const TutorInventoryPage = () => {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {selectedScope === 'osis' ? 'Inventaris OSIS' : 'Inventaris Ekskul'}
-          </h1>
+          <h1 className="text-2xl font-bold text-gray-900">{scopeTitle}</h1>
           <p className="text-sm text-gray-500">
             Data inventaris ini terhubung dari modul Sarpras.
           </p>
@@ -163,7 +179,11 @@ export const TutorInventoryPage = () => {
           type="button"
           onClick={() => {
             if (!rowsWithRoom.length) {
-              toast.error('Ruang inventaris ekskul belum ditautkan oleh Sarpras.');
+              toast.error(
+                selectedScope === 'osis'
+                  ? 'Ruang inventaris OSIS belum ditautkan oleh Sarpras.'
+                  : 'Ruang inventaris ekskul belum ditautkan oleh Sarpras.',
+              );
               return;
             }
             setIsCreateModalOpen(true);
@@ -197,7 +217,7 @@ export const TutorInventoryPage = () => {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cari ekskul / ruang inventaris..."
+            placeholder={selectedScope === 'osis' ? 'Cari OSIS / ruang inventaris...' : 'Cari ekskul / ruang inventaris...'}
             className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
           />
         </div>
@@ -215,11 +235,11 @@ export const TutorInventoryPage = () => {
         {isLoading ? (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 text-center text-gray-500">
             <Loader2 className="inline w-5 h-5 mr-2 animate-spin" />
-            Memuat inventaris {selectedScope === 'osis' ? 'OSIS' : 'ekskul'}...
+            Memuat inventaris {scopeLabelLower}...
           </div>
         ) : filteredRows.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 text-center text-gray-500">
-            Belum ada data inventaris {selectedScope === 'osis' ? 'OSIS' : 'ekskul'} untuk tahun ajaran ini.
+            Belum ada data inventaris {scopeLabelLower} untuk tahun ajaran ini.
           </div>
         ) : (
           filteredRows.map((row) => {
@@ -240,7 +260,7 @@ export const TutorInventoryPage = () => {
                   ) : (
                     <div className="inline-flex items-center text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
                       <Warehouse className="w-3.5 h-3.5 mr-1" />
-                      Ruang inventaris ekskul belum ditautkan oleh Sarpras
+                      Ruang inventaris {scopeLabelLower} belum ditautkan oleh Sarpras
                     </div>
                   )}
                 </div>
@@ -266,7 +286,7 @@ export const TutorInventoryPage = () => {
                       {row.items.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="px-5 py-4 text-center text-sm text-gray-500">
-                            Belum ada item inventaris untuk ekskul ini.
+                            Belum ada item inventaris untuk {scopeLabelLower} ini.
                           </td>
                         </tr>
                       ) : (
@@ -305,7 +325,7 @@ export const TutorInventoryPage = () => {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/60">
-              <h3 className="font-semibold text-gray-900">Tambah Item Inventaris Ekskul</h3>
+              <h3 className="font-semibold text-gray-900">Tambah Item {scopeTitle}</h3>
               <button
                 type="button"
                 onClick={() => setIsCreateModalOpen(false)}
@@ -320,7 +340,7 @@ export const TutorInventoryPage = () => {
               onSubmit={(event) => {
                 event.preventDefault();
                 if (!effectiveTargetAssignmentId) {
-                  toast.error('Pilih ekskul tujuan terlebih dahulu.');
+                  toast.error(`Pilih ${scopeLabel} tujuan terlebih dahulu.`);
                   return;
                 }
                 if (!itemName.trim()) {
@@ -344,7 +364,7 @@ export const TutorInventoryPage = () => {
               }}
             >
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ekskul Tujuan</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{scopeLabel} Tujuan</label>
                 <select
                   value={effectiveTargetAssignmentId || ''}
                   onChange={(event) => setTargetAssignmentId(Number(event.target.value))}

@@ -349,6 +349,12 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       webPath: '/teacher/osis/management',
     },
     {
+      key: 'teacher-osis-inventory',
+      label: 'Inventaris OSIS',
+      route: createWebModuleRoute('teacher-osis-inventory', '/teacher/osis/inventory', 'Inventaris OSIS'),
+      webPath: '/teacher/osis/inventory',
+    },
+    {
       key: 'teacher-osis-election',
       label: 'Pemilihan OSIS',
       route: createWebModuleRoute('teacher-osis-election', '/teacher/osis/election', 'Pemilihan OSIS'),
@@ -1610,7 +1616,7 @@ function buildTeacherGroups(
     } else if (duty === 'PEMBINA_OSIS') {
       label = 'PEMBINA OSIS';
       addGenericWorkProgram();
-      items.push(...pickMenus(byKey, ['teacher-osis-management', 'teacher-osis-election']));
+      items.push(...pickMenus(byKey, ['teacher-osis-management', 'teacher-osis-inventory', 'teacher-osis-election']));
       if (options?.hasActiveOsisElection) {
         const voteMenu = pickMenu(byKey, 'teacher-osis-vote');
         if (voteMenu) items.push(voteMenu);

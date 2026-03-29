@@ -434,6 +434,7 @@ function App() {
             <Route path="materials" element={<MaterialsAndAssignmentsPage />} />
             <Route path="assignments/:id/submissions" element={<AssignmentSubmissionsPage />} />
             <Route path="osis/management" element={<OsisManagementPage />} />
+            <Route path="osis/inventory" element={<TutorInventoryPage />} />
             <Route path="osis/election" element={<OsisElectionPage />} />
             <Route path="osis/vote" element={<StudentOsisElectionPage />} />
             <Route path="learning-resources" element={<TeacherPlaceholderPage />} />
