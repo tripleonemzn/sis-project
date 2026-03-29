@@ -62,9 +62,16 @@ import {
   type TeachingResourceProgram,
 } from '../../services/teachingResourceProgram.service';
 import { inventoryService, type Room } from '../../services/inventory.service';
-import { tutorService } from '../../services/tutor.service';
+import { tutorService, type TutorAssignmentSummary } from '../../services/tutor.service';
 import { osisService } from '../../services/osis.service';
 import { resolveStaffDivision } from '../../utils/staffRole';
+import {
+  buildTutorMembersHref,
+  canAccessTutorWorkspace,
+  getActiveTutorAssignments,
+  hasOsisTutorAssignments,
+  hasTutorAssignments,
+} from '../../features/tutor/tutorAccess';
 
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
 
@@ -175,7 +182,7 @@ export const getMenuItems = (
   examPrograms?: ExamProgram[],
   teachingResourcePrograms?: TeachingResourceProgram[],
   assignedInventoryRooms?: Room[],
-  _hasOsisTutorAssignment: boolean = false,
+  tutorAssignments: TutorAssignmentSummary[] = [],
   hasActiveOsisElection: boolean = false,
 ): MenuItem[] => {
   const role = user.role;
@@ -207,7 +214,7 @@ export const getMenuItems = (
           { label: 'Kelola Kepsek', path: '/admin/principal-users', icon: Users },
           { label: 'Kelola Staff', path: '/admin/staff-users', icon: Users },
           { label: 'Kelola Penguji', path: '/admin/examiner-users', icon: Users },
-          { label: 'Kelola Pembina Ekskul', path: '/admin/tutor-users', icon: Users },
+          { label: 'Kelola Tutor Eksternal', path: '/admin/tutor-users', icon: Users },
           { label: 'Kelola Orang Tua', path: '/admin/parent-users', icon: Users },
           { label: 'Kelola Guru', path: '/admin/teachers', icon: UserCog },
           { label: 'Kelola Siswa', path: '/admin/students', icon: GraduationCap },
@@ -267,6 +274,7 @@ export const getMenuItems = (
 
 
   if (role === 'TEACHER') {
+    const activeTutorAssignments = getActiveTutorAssignments(tutorAssignments);
     const isWaliKelas = (user.teacherClasses?.length || 0) > 0;
     const hasTrainingClass = (user.trainingClassesTeaching?.length || 0) > 0;
     const duties = user.additionalDuties || [];
@@ -386,6 +394,21 @@ export const getMenuItems = (
           { label: 'Materi & Tugas', path: '/teacher/training/materials', icon: ClipboardList },
           { label: 'Laporan Training', path: '/teacher/training/reports', icon: FileBarChart },
         ]
+      });
+    }
+
+    if (hasTutorAssignments(activeTutorAssignments)) {
+      const firstTutorAssignment = activeTutorAssignments[0] || null;
+      items.push({
+        label: 'PEMBINA EKSKUL',
+        path: '/tutor/dashboard',
+        icon: Trophy,
+        children: [
+          { label: 'Dashboard Pembina', path: '/tutor/dashboard', icon: LayoutDashboard },
+          { label: 'Anggota & Nilai', path: buildTutorMembersHref(firstTutorAssignment), icon: Users },
+          { label: 'Program Kerja', path: '/tutor/work-programs?duty=PEMBINA_EKSKUL', icon: ClipboardList },
+          { label: 'Inventaris Ekskul', path: '/tutor/inventory', icon: Database },
+        ],
       });
     }
 
@@ -637,6 +660,7 @@ export const getMenuItems = (
   }
 
   if (role === 'EXTRACURRICULAR_TUTOR') {
+    const activeTutorAssignments = getActiveTutorAssignments(tutorAssignments);
     const osisAssignedRoom = (assignedInventoryRooms || []).find(
       (room) => isOsisLabel(room.name),
     );
@@ -649,7 +673,8 @@ export const getMenuItems = (
         path: `/tutor/assigned-inventory/${room.id}`,
         icon: Database,
       })) || [];
-    const hasTutorOsisMenu = _hasOsisTutorAssignment || Boolean(osisAssignedRoom);
+    const firstTutorAssignment = activeTutorAssignments[0] || null;
+    const hasTutorOsisMenu = hasOsisTutorAssignments(activeTutorAssignments) || Boolean(osisAssignedRoom);
 
     return [
       { label: 'Dashboard', path: '/tutor', icon: LayoutDashboard },
@@ -668,7 +693,7 @@ export const getMenuItems = (
             ],
           } satisfies MenuItem]
         : [
-            { label: 'Anggota & Nilai', path: '/tutor/members', icon: Users } satisfies MenuItem,
+            { label: 'Anggota & Nilai', path: buildTutorMembersHref(firstTutorAssignment), icon: Users } satisfies MenuItem,
             { label: 'Program Kerja', path: '/tutor/work-programs', icon: ClipboardList } satisfies MenuItem,
             { label: 'Inventaris Ekskul', path: '/tutor/inventory', icon: Database } satisfies MenuItem,
           ]
@@ -1081,7 +1106,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
   const shouldLoadAssignedInventoryRooms = ['TEACHER', 'STAFF', 'PRINCIPAL', 'EXTRACURRICULAR_TUTOR'].includes(
     String(user.role || '').toUpperCase(),
   );
-  const shouldLoadTutorAssignments = String(user.role || '').toUpperCase() === 'EXTRACURRICULAR_TUTOR';
+  const shouldLoadTutorAssignments = canAccessTutorWorkspace(user.role);
   const { data: assignedInventoryRoomsData } = useQuery({
     queryKey: ['sidebar-assigned-inventory-rooms', user.id],
     enabled: shouldLoadAssignedInventoryRooms,
@@ -1090,13 +1115,13 @@ export const Sidebar = ({ user }: SidebarProps) => {
     refetchOnWindowFocus: true,
     queryFn: () => inventoryService.getAssignedRooms(),
   });
-  const { data: tutorOsisAssignmentData } = useQuery({
-    queryKey: ['sidebar-tutor-osis-assignment', user.id, activeAcademicYearData?.id],
+  const { data: tutorAssignmentsData } = useQuery({
+    queryKey: ['sidebar-tutor-assignments', user.id, activeAcademicYearData?.id],
     enabled: shouldLoadTutorAssignments,
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
-    queryFn: () => tutorService.hasOsisAssignment(activeAcademicYearData?.id),
+    queryFn: () => tutorService.getAssignments(activeAcademicYearData?.id),
   });
   const shouldLoadActiveOsisElection = ['TEACHER', 'STUDENT', 'STAFF', 'EXTRACURRICULAR_TUTOR'].includes(
     String(user.role || '').toUpperCase(),
@@ -1131,10 +1156,13 @@ export const Sidebar = ({ user }: SidebarProps) => {
     return fromProfile;
   }, [assignedInventoryRoomsData?.data, user.id, user.managedInventoryRooms]);
 
-  const hasTutorOsisAssignment = useMemo(() => {
-    if (tutorOsisAssignmentData === true) return true;
-    return assignedInventoryRooms.some((room) => isOsisLabel(room.name));
-  }, [assignedInventoryRooms, tutorOsisAssignmentData]);
+  const tutorAssignments = useMemo<TutorAssignmentSummary[]>(
+    () =>
+      Array.isArray(tutorAssignmentsData?.data)
+        ? (tutorAssignmentsData.data as TutorAssignmentSummary[])
+        : [],
+    [tutorAssignmentsData],
+  );
   const hasActiveOsisElection = Boolean(activeOsisElectionData?.data);
 
   const items = useMemo(
@@ -1146,7 +1174,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
         examPrograms,
         teachingResourcePrograms,
         assignedInventoryRooms,
-        hasTutorOsisAssignment,
+        tutorAssignments,
         hasActiveOsisElection,
       ),
     [
@@ -1156,7 +1184,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
       examPrograms,
       teachingResourcePrograms,
       assignedInventoryRooms,
-      hasTutorOsisAssignment,
+      tutorAssignments,
       hasActiveOsisElection,
     ],
   );
@@ -1221,6 +1249,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
   const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   // Defensive reset: avoid stale/legacy sidebar group state blocking interactions after login.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setOpenGroup(null);
   }, [user.id, user.role]);
@@ -1235,6 +1264,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
       return activeParentPath;
     });
   }, [activeParentPath, items]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   /* 
   const updatePreferencesMutation = useMutation({
     mutationFn: (newPreferences: any) => {

@@ -185,7 +185,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       'principal-users': { label: 'Kelola Kepsek', group: 'USER MANAGEMENT' },
       'staff-users': { label: 'Kelola Staff', group: 'USER MANAGEMENT' },
       'examiner-users': { label: 'Kelola Penguji', group: 'USER MANAGEMENT' },
-      'tutor-users': { label: 'Kelola Pembina Ekskul', group: 'USER MANAGEMENT' },
+      'tutor-users': { label: 'Kelola Tutor Eksternal', group: 'USER MANAGEMENT' },
       'parent-users': { label: 'Kelola Orang Tua', group: 'USER MANAGEMENT' },
       teachers: { label: 'Kelola Guru', group: 'USER MANAGEMENT' },
       students: { label: 'Kelola Siswa', group: 'USER MANAGEMENT' },
@@ -615,7 +615,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
         ekskul: 'Ekstrakurikuler',
         siswa: 'Kelola Siswa',
         ortu: 'Kelola Orang Tua',
-        pembina: 'Kelola Pembina Ekskul',
+        pembina: 'Kelola Tutor Eksternal',
         absensi: 'Rekap Absensi',
       };
       const sectionLabel = sectionLabelMap[section];
@@ -1269,9 +1269,11 @@ export const DashboardLayout = () => {
     };
   }, []);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [location.pathname]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     const handleResize = () => {

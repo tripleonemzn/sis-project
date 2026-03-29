@@ -33,6 +33,10 @@ type AttendanceClassRow = {
   totalAbsent: number;
 };
 
+type AdvisorUser = AdminUser & {
+  advisorSourceLabel: string;
+};
+
 function hasStudentAffairsDuty(userDuties?: string[]) {
   const duties = (userDuties || []).map((item) => item.trim().toUpperCase());
   return duties.includes('WAKASEK_KESISWAAN') || duties.includes('SEKRETARIS_KESISWAAN');
@@ -147,7 +151,7 @@ function StatusBadge({ status }: { status: string | null | undefined }) {
 function getSearchPlaceholder(section: StudentSection) {
   if (section === 'SISWA') return 'Cari siswa (nama/username/kelas)';
   if (section === 'ORTU') return 'Cari orang tua (nama/username)';
-  if (section === 'PEMBINA') return 'Cari pembina ekskul';
+  if (section === 'PEMBINA') return 'Cari pembina ekskul atau guru aktif';
   if (section === 'EKSKUL') return 'Cari ekstrakurikuler';
   if (section === 'ABSENSI') return 'Cari nama kelas';
   return 'Cari data kesiswaan';
@@ -160,8 +164,12 @@ export default function TeacherWakasisStudentsScreen() {
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [section, setSection] = useState<StudentSection>('RINGKASAN');
   const [search, setSearch] = useState('');
-  const openStudentCrud = (target: 'STUDENT' | 'PARENT' | 'EXTRACURRICULAR_TUTOR' | 'EXTRACURRICULARS' | 'ATTENDANCE') => {
+  const openStudentCrud = (target: 'STUDENT' | 'PARENT' | 'ADVISORS' | 'EXTRACURRICULARS' | 'ATTENDANCE') => {
     if (target === 'EXTRACURRICULARS') {
+      router.push('/admin/master-data?section=extracurriculars' as never);
+      return;
+    }
+    if (target === 'ADVISORS') {
       router.push('/admin/master-data?section=extracurriculars' as never);
       return;
     }
@@ -191,9 +199,10 @@ export default function TeacherWakasisStudentsScreen() {
     enabled: isAuthenticated && !!isAllowed && !!activeYearQuery.data?.id,
     queryFn: async () => {
       const academicYearId = Number(activeYearQuery.data?.id);
-      const [students, parents, tutors, extracurricularResult, assignments, classesResult] = await Promise.all([
+      const [students, parents, teachers, externalTutors, extracurricularResult, assignments, classesResult] = await Promise.all([
         adminApi.listUsers({ role: 'STUDENT' }),
         adminApi.listUsers({ role: 'PARENT' }),
+        adminApi.listUsers({ role: 'TEACHER' }),
         adminApi.listUsers({ role: 'EXTRACURRICULAR_TUTOR' }),
         kesiswaanApi.listExtracurriculars({ page: 1, limit: 300 }),
         kesiswaanApi.listTutorAssignments({ academicYearId }),
@@ -207,7 +216,15 @@ export default function TeacherWakasisStudentsScreen() {
       return {
         students,
         parents,
-        tutors,
+        advisors: [...teachers, ...externalTutors]
+          .map((advisor) => ({
+            ...advisor,
+            advisorSourceLabel:
+              String(advisor.role || '').toUpperCase() === 'TEACHER'
+                ? 'Guru Aktif'
+                : 'Tutor Eksternal',
+          }))
+          .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
         extracurriculars: extracurricularResult.extracurriculars,
         assignments,
         classes: classesResult.items,
@@ -217,7 +234,7 @@ export default function TeacherWakasisStudentsScreen() {
 
   const students = useMemo(() => baseDataQuery.data?.students || [], [baseDataQuery.data?.students]);
   const parents = useMemo(() => baseDataQuery.data?.parents || [], [baseDataQuery.data?.parents]);
-  const tutors = useMemo(() => baseDataQuery.data?.tutors || [], [baseDataQuery.data?.tutors]);
+  const tutors = useMemo<AdvisorUser[]>(() => baseDataQuery.data?.advisors || [], [baseDataQuery.data?.advisors]);
   const extracurriculars = useMemo(
     () => baseDataQuery.data?.extracurriculars || [],
     [baseDataQuery.data?.extracurriculars],
@@ -313,7 +330,7 @@ export default function TeacherWakasisStudentsScreen() {
     return tutors.filter((item) => {
       const assignmentsOfTutor = assignmentsByTutor.get(item.id) || [];
       const ekskulNames = assignmentsOfTutor.map((row) => row.ekskul?.name || '').join(' ');
-      const haystacks = [item.name || '', item.username || '', ekskulNames];
+      const haystacks = [item.name || '', item.username || '', item.advisorSourceLabel || '', ekskulNames];
       return haystacks.some((value) => value.toLowerCase().includes(normalizedSearch));
     });
   }, [tutors, normalizedSearch, assignmentsByTutor]);
@@ -494,7 +511,7 @@ export default function TeacherWakasisStudentsScreen() {
       </View>
 
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10 }}>
-        Kelola data siswa, orang tua, pembina ekstrakurikuler, dan ringkasan absensi per kelas.
+        Kelola data siswa, orang tua, pembina ekskul dari guru aktif atau tutor eksternal, dan ringkasan absensi per kelas.
       </Text>
 
       {activeYearQuery.isLoading ? <QueryStateView type="loading" message="Memuat tahun ajaran aktif..." /> : null}
@@ -574,7 +591,7 @@ export default function TeacherWakasisStudentsScreen() {
 
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                 <SummaryCard
-                  title="Pembina Ekskul"
+                  title="Pembina Aktif"
                   value={formatNumber(summary.tutorsTotal)}
                   subtitle={`${formatNumber(summary.tutorsAssigned)} sudah ditugaskan`}
                 />
@@ -628,7 +645,7 @@ export default function TeacherWakasisStudentsScreen() {
                   {[
                     { label: 'Kelola Siswa', action: () => openStudentCrud('STUDENT') },
                     { label: 'Kelola Orang Tua', action: () => openStudentCrud('PARENT') },
-                    { label: 'Kelola Pembina', action: () => openStudentCrud('EXTRACURRICULAR_TUTOR') },
+                    { label: 'Kelola Ekskul & Pembina', action: () => openStudentCrud('ADVISORS') },
                     { label: 'Kelola Ekstrakurikuler', action: () => openStudentCrud('EXTRACURRICULARS') },
                     { label: 'Rekap Absensi', action: () => openStudentCrud('ATTENDANCE') },
                   ].map((item) => (
@@ -762,7 +779,7 @@ export default function TeacherWakasisStudentsScreen() {
           {section === 'PEMBINA' ? (
             <View style={{ gap: 10 }}>
               <Pressable
-                onPress={() => openStudentCrud('EXTRACURRICULAR_TUTOR')}
+                onPress={() => openStudentCrud('ADVISORS')}
                 style={{
                   borderWidth: 1,
                   borderColor: '#93c5fd',
@@ -772,10 +789,10 @@ export default function TeacherWakasisStudentsScreen() {
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Buka Kelola Pembina</Text>
+                <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Buka Kelola Ekskul & Pembina</Text>
               </Pressable>
               {filteredTutors.length === 0 ? (
-                <QueryStateView type="error" message="Data pembina tidak ditemukan untuk filter saat ini." />
+                <QueryStateView type="error" message="Data pembina aktif tidak ditemukan untuk filter saat ini." />
               ) : (
                 filteredTutors.slice(0, 150).map((tutor) => {
                   const rows = assignmentsByTutor.get(tutor.id) || [];
@@ -797,6 +814,9 @@ export default function TeacherWakasisStudentsScreen() {
                     >
                       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{tutor.name}</Text>
                       <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>{tutor.username}</Text>
+                      <Text style={{ color: '#1d4ed8', marginTop: 4, fontSize: 12, fontWeight: '700' }}>
+                        {tutor.advisorSourceLabel}
+                      </Text>
                       <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
                         Tugas aktif: {formatNumber(rows.length)} ekstrakurikuler
                       </Text>

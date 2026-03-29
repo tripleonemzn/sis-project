@@ -6,6 +6,23 @@ export type ExtracurricularGradeTemplate = Record<
   { label: string; description: string }
 >;
 export type ExtracurricularAttendanceStatus = 'PRESENT' | 'PERMIT' | 'SICK' | 'ABSENT';
+export type TutorAssignmentSummary = {
+  id: number;
+  tutorId: number;
+  ekskulId: number;
+  academicYearId: number;
+  isActive: boolean;
+  ekskul?: {
+    id: number;
+    name: string;
+    description?: string | null;
+  } | null;
+  academicYear?: {
+    id: number;
+    name: string;
+    isActive?: boolean;
+  } | null;
+};
 
 export const tutorService = {
   getAssignments: async (academicYearId?: number) => {
@@ -115,8 +132,10 @@ export const tutorService = {
     const response = await api.get('/tutor/assignments', {
       params: academicYearId ? { academicYearId } : {},
     });
-    const assignments = Array.isArray(response.data?.data) ? response.data.data : [];
-    return assignments.some((assignment: any) =>
+    const assignments = Array.isArray(response.data?.data)
+      ? (response.data.data as TutorAssignmentSummary[])
+      : [];
+    return assignments.some((assignment) =>
       String(assignment?.ekskul?.name || '')
         .trim()
         .toUpperCase()

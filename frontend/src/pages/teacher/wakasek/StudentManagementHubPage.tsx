@@ -20,7 +20,7 @@ export default function StudentManagementHubPage() {
     { id: 'ekskul', label: 'Ekstrakurikuler', icon: Trophy },
     { id: 'siswa', label: 'Kelola Siswa', icon: GraduationCap },
     { id: 'ortu', label: 'Kelola Orang Tua', icon: Users },
-    { id: 'pembina', label: 'Kelola Pembina Ekskul', icon: Users },
+    { id: 'pembina', label: 'Kelola Tutor Eksternal', icon: Users },
     { id: 'absensi', label: 'Rekap Absensi', icon: BarChart3 },
   ]), []);
 
@@ -68,8 +68,8 @@ export default function StudentManagementHubPage() {
             ) : active === 'pembina' ? (
               <UserList 
                 fixedRole="EXTRACURRICULAR_TUTOR" 
-                title="Kelola Pembina Ekskul" 
-                description="Kelola akun pembina ekstrakurikuler" 
+                title="Kelola Tutor Eksternal" 
+                description="Kelola akun tutor eksternal atau pembina non-guru" 
               />
             ) : (
               <AttendanceRecapPage />

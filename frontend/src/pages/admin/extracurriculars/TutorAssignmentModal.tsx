@@ -19,7 +19,12 @@ type ExtracurricularAssignment = {
   tutor?: {
     name?: string;
     username?: string;
+    role?: string;
   } | null;
+};
+
+type AdvisorCandidate = User & {
+  advisorSourceLabel: string;
 };
 
 const getErrorMessage = (error: unknown, fallback: string) => {
@@ -73,12 +78,32 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
   const assignments: ExtracurricularAssignment[] = assignmentsData?.data || [];
 
   // 3. Fetch Potential Tutors
-  const { data: tutorsData, isLoading: isLoadingTutors } = useQuery({
-    queryKey: ['users', 'tutors'],
-    queryFn: () => userService.getAll({ role: 'EXTRACURRICULAR_TUTOR', limit: 100 }),
+  const { data: advisorsData, isLoading: isLoadingTutors } = useQuery({
+    queryKey: ['extracurricular-advisor-candidates'],
+    queryFn: async () => {
+      const [teachersResponse, tutorsResponse] = await Promise.all([
+        userService.getAll({ role: 'TEACHER', limit: 200 }),
+        userService.getAll({ role: 'EXTRACURRICULAR_TUTOR', limit: 200 }),
+      ]);
+
+      const merged = [...(teachersResponse?.data || []), ...(tutorsResponse?.data || [])];
+      const deduped = new Map<number, AdvisorCandidate>();
+
+      merged.forEach((user) => {
+        deduped.set(user.id, {
+          ...user,
+          advisorSourceLabel:
+            String(user.role || '').toUpperCase() === 'TEACHER' ? 'Guru Aktif' : 'Tutor Eksternal',
+        });
+      });
+
+      return Array.from(deduped.values()).sort((a, b) =>
+        String(a.name || '').localeCompare(String(b.name || '')),
+      );
+    },
   });
 
-  const tutors: User[] = tutorsData?.data || [];
+  const advisors: AdvisorCandidate[] = advisorsData || [];
 
   // Mutations
   const assignMutation = useMutation({
@@ -162,10 +187,10 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
                   onChange={(e) => setSelectedTutorId(e.target.value ? Number(e.target.value) : '')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 >
-                  <option value="">Pilih User (Role: Tutor)</option>
-                  {tutors.map((tutor) => (
-                    <option key={tutor.id} value={tutor.id}>
-                      {tutor.name} ({tutor.username})
+                  <option value="">Pilih guru aktif / tutor eksternal</option>
+                  {advisors.map((advisor) => (
+                    <option key={advisor.id} value={advisor.id}>
+                      {advisor.name} ({advisor.username}) - {advisor.advisorSourceLabel}
                     </option>
                   ))}
                 </select>

@@ -81,6 +81,22 @@ const assignTutorSchema = z.object({
 
 export const assignTutor = asyncHandler(async (req: Request, res: Response) => {
   const body = assignTutorSchema.parse(req.body);
+
+  const assignee = await prisma.user.findUnique({
+    where: { id: body.tutorId },
+    select: {
+      id: true,
+      role: true,
+    },
+  });
+
+  if (!assignee) {
+    throw new ApiError(404, 'User pembina tidak ditemukan');
+  }
+
+  if (!['TEACHER', 'EXTRACURRICULAR_TUTOR'].includes(String(assignee.role || '').toUpperCase())) {
+    throw new ApiError(400, 'Pembina ekskul hanya dapat ditugaskan ke guru aktif atau tutor eksternal');
+  }
   
   // Check if already exists
   const existing = await (prisma as any).ekstrakurikulerTutorAssignment.findUnique({

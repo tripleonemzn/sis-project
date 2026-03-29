@@ -9,6 +9,7 @@ import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
 import { examApi, ExamProgramItem } from '../../../src/features/exams/examApi';
 import { tutorApi } from '../../../src/features/tutor/tutorApi';
+import { canAccessTutorWorkspace } from '../../../src/features/tutor/tutorAccess';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
@@ -84,6 +85,7 @@ export default function TutorMembersScreen() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const hasTutorWorkspaceAccess = canAccessTutorWorkspace(user);
 
   const [search, setSearch] = useState('');
   const [selectedAssignmentIdState, setSelectedAssignmentIdState] = useState<number | null>(null);
@@ -94,13 +96,13 @@ export default function TutorMembersScreen() {
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-tutor-members-active-year'],
-    enabled: isAuthenticated && user?.role === 'EXTRACURRICULAR_TUTOR',
+    enabled: isAuthenticated && hasTutorWorkspaceAccess,
     queryFn: () => adminApi.getActiveAcademicYear(),
   });
 
   const assignmentsQuery = useQuery({
     queryKey: ['mobile-tutor-members-assignments', user?.id, activeYearQuery.data?.id],
-    enabled: isAuthenticated && user?.role === 'EXTRACURRICULAR_TUTOR',
+    enabled: isAuthenticated && hasTutorWorkspaceAccess,
     queryFn: () => tutorApi.listAssignments(activeYearQuery.data?.id),
   });
 
@@ -248,11 +250,11 @@ export default function TutorMembersScreen() {
   if (isLoading) return <AppLoadingScreen message="Memuat anggota ekskul..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
-  if (user?.role !== 'EXTRACURRICULAR_TUTOR') {
+  if (!hasTutorWorkspaceAccess) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
         <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Anggota & Nilai</Text>
-        <QueryStateView type="error" message="Halaman ini khusus untuk role pembina ekstrakurikuler." />
+        <QueryStateView type="error" message="Halaman ini tersedia untuk pembina ekstrakurikuler aktif." />
       </ScrollView>
     );
   }

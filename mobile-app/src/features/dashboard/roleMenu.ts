@@ -26,6 +26,7 @@ export type RoleMenuBuildOptions = {
   hasPendingDefense?: boolean;
   pklEligibleGrades?: string[];
   pklVisibilityOverride?: boolean;
+  hasExtracurricularAdvisorAssignments?: boolean;
 };
 
 const STRICT_WEB_PARITY_KEYS = new Set<string>([
@@ -310,6 +311,26 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       route: '/teacher/work-program',
     },
     {
+      key: 'teacher-extracurricular-dashboard',
+      label: 'Dashboard Pembina',
+      route: '/tutor/dashboard',
+    },
+    {
+      key: 'teacher-extracurricular-members',
+      label: 'Anggota & Nilai Ekskul',
+      route: '/tutor/members',
+    },
+    {
+      key: 'teacher-extracurricular-work-program',
+      label: 'Program Kerja Ekskul',
+      route: '/tutor/work-program',
+    },
+    {
+      key: 'teacher-extracurricular-inventory',
+      label: 'Inventaris Ekskul',
+      route: '/tutor/inventory',
+    },
+    {
       key: 'teacher-bk-dashboard',
       label: 'Dashboard BP/BK',
       route: '/web-module/teacher-bk-dashboard',
@@ -505,7 +526,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     },
     {
       key: 'admin-user-tutor',
-      label: 'Kelola Pembina Ekskul',
+      label: 'Kelola Tutor Eksternal',
       route: '/admin/user-management?role=EXTRACURRICULAR_TUTOR',
     },
     {
@@ -738,6 +759,10 @@ function shouldShowMenuItem(user: AuthUser, item: RoleMenuItem, options?: RoleMe
 
     if (item.key === 'teacher-work-program') {
       return hasAnyPrimaryDuty(user);
+    }
+
+    if (item.key.startsWith('teacher-extracurricular-')) {
+      return Boolean(options?.hasExtracurricularAdvisorAssignments);
     }
 
     if (item.key.startsWith('teacher-kakom-')) {
@@ -1392,6 +1417,19 @@ function buildTeacherGroups(
         'teacher-training-grades',
         'teacher-training-materials',
         'teacher-training-reports',
+      ]),
+    );
+  }
+
+  if (options?.hasExtracurricularAdvisorAssignments) {
+    pushGroup(
+      'extracurricular-advisor',
+      'PEMBINA EKSKUL',
+      pickMenus(byKey, [
+        'teacher-extracurricular-dashboard',
+        'teacher-extracurricular-members',
+        'teacher-extracurricular-work-program',
+        'teacher-extracurricular-inventory',
       ]),
     );
   }

@@ -8,6 +8,7 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
 import { tutorApi } from '../../../src/features/tutor/tutorApi';
+import { canAccessTutorWorkspace } from '../../../src/features/tutor/tutorAccess';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 
@@ -35,16 +36,17 @@ export default function TutorDashboardScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const hasTutorWorkspaceAccess = canAccessTutorWorkspace(user);
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-tutor-active-year'],
-    enabled: isAuthenticated && user?.role === 'EXTRACURRICULAR_TUTOR',
+    enabled: isAuthenticated && hasTutorWorkspaceAccess,
     queryFn: () => adminApi.getActiveAcademicYear(),
   });
 
   const assignmentsQuery = useQuery({
     queryKey: ['mobile-tutor-assignments', user?.id, activeYearQuery.data?.id],
-    enabled: isAuthenticated && user?.role === 'EXTRACURRICULAR_TUTOR',
+    enabled: isAuthenticated && hasTutorWorkspaceAccess,
     queryFn: () => tutorApi.listAssignments(activeYearQuery.data?.id),
   });
 
@@ -58,11 +60,11 @@ export default function TutorDashboardScreen() {
   if (isLoading) return <AppLoadingScreen message="Memuat dashboard pembina..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
-  if (user?.role !== 'EXTRACURRICULAR_TUTOR') {
+  if (!hasTutorWorkspaceAccess) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
         <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Dashboard Ekskul</Text>
-        <QueryStateView type="error" message="Halaman ini khusus untuk role pembina ekstrakurikuler." />
+        <QueryStateView type="error" message="Halaman ini tersedia untuk pembina ekstrakurikuler aktif." />
       </ScrollView>
     );
   }

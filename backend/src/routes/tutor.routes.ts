@@ -17,7 +17,7 @@ import {
 const router = Router();
 
 router.use(authMiddleware);
-router.use(roleMiddleware(['EXTRACURRICULAR_TUTOR']));
+router.use(roleMiddleware(['EXTRACURRICULAR_TUTOR', 'TEACHER']));
 
 router.get('/assignments', getTutorAssignments);
 router.get('/members', getExtracurricularMembers);

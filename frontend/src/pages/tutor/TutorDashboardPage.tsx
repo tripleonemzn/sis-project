@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { tutorService } from '../../services/tutor.service';
+import { tutorService, type TutorAssignmentSummary } from '../../services/tutor.service';
 import { academicYearService } from '../../services/academicYear.service';
 import { authService } from '../../services/auth.service';
 import { useMemo } from 'react';
@@ -7,20 +7,16 @@ import { BookOpen, Boxes, ClipboardList, Database, Trophy, Vote } from 'lucide-r
 import { Link, useOutletContext } from 'react-router-dom';
 import type { User as AuthUser } from '../../types/auth';
 import { osisService } from '../../services/osis.service';
+import {
+  buildTutorMembersHref,
+  getActiveTutorAssignments,
+  hasOsisTutorAssignments,
+} from '../../features/tutor/tutorAccess';
 
 interface AcademicYear {
   id: number;
   name: string;
   isActive: boolean;
-}
-
-interface TutorAssignment {
-  id: number;
-  isActive: boolean;
-  ekskul: {
-    id: number;
-    name: string;
-  };
 }
 
 interface InventoryOverviewRow {
@@ -57,10 +53,9 @@ export const TutorDashboardPage = () => {
     enabled: !!activeAcademicYearId,
   });
 
-  const assignments = (assignmentsData?.data || []) as TutorAssignment[];
-  const hasOsisAssignment = assignments.some((assignment) =>
-    String(assignment?.ekskul?.name || '').toUpperCase().includes('OSIS'),
-  );
+  const assignments = getActiveTutorAssignments((assignmentsData?.data || []) as TutorAssignmentSummary[]);
+  const hasOsisAssignment = hasOsisTutorAssignments(assignments);
+  const firstAssignment = assignments[0] || null;
 
   const { data: inventoryData } = useQuery({
     queryKey: ['tutor-dashboard-inventory', activeAcademicYearId],
@@ -111,7 +106,7 @@ export const TutorDashboardPage = () => {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Link
-          to="/tutor/members"
+          to={buildTutorMembersHref(firstAssignment)}
           className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         >
         <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-sky-100/80 p-6 shadow-sm transition-shadow hover:shadow-md">
@@ -165,7 +160,7 @@ export const TutorDashboardPage = () => {
         </Link>
 
         <Link
-          to={isOsisTutor ? '/tutor/osis/election' : '/tutor/members'}
+          to={isOsisTutor ? '/tutor/osis/election' : buildTutorMembersHref(firstAssignment)}
           className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
         >
           <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 to-fuchsia-100/80 p-6 shadow-sm transition-shadow hover:shadow-md">
@@ -214,7 +209,7 @@ export const TutorDashboardPage = () => {
                   assignments.map((assignment) => (
                     <tr key={assignment.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4">
-                        <div className="font-medium text-gray-900">{assignment.ekskul.name}</div>
+                        <div className="font-medium text-gray-900">{assignment.ekskul?.name || '-'}</div>
                       </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -225,7 +220,7 @@ export const TutorDashboardPage = () => {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <Link 
-                          to={`/tutor/members?ekskulId=${assignment.ekskul.id}`}
+                          to={buildTutorMembersHref(assignment)}
                           className="text-blue-600 hover:text-blue-900 font-medium text-sm"
                         >
                           Kelola Anggota & Nilai
@@ -251,7 +246,7 @@ export const TutorDashboardPage = () => {
               </div>
             </div>
             <div className="mt-5 grid grid-cols-1 gap-3">
-              <Link to="/tutor/members" className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-gray-50">
+              <Link to={buildTutorMembersHref(firstAssignment)} className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-gray-50">
                 <span className="flex items-center gap-2"><Trophy size={16} /> Anggota & Nilai</span>
                 <span>&rsaquo;</span>
               </Link>

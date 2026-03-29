@@ -4,11 +4,13 @@ import {
   tutorService,
   type ExtracurricularGradeTemplate,
   type ExtracurricularAttendanceStatus,
+  type TutorAssignmentSummary,
 } from '../../services/tutor.service';
 import { academicYearService } from '../../services/academicYear.service';
 import { examService, type ExamProgram } from '../../services/exam.service';
 import { Trophy, Save, Loader2, Filter, ClipboardCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useSearchParams } from 'react-router-dom';
 
 type Semester = 'ODD' | 'EVEN';
 
@@ -181,10 +183,13 @@ function formatProgramSemesterLabel(fixedSemester: Semester | null): string {
 }
 
 export const TutorMembersPage = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<PageTab>('GRADE');
   const [semester, setSemester] = useState<Semester>('ODD');
   const [reportType, setReportType] = useState('');
   const [attendanceWeekKey, setAttendanceWeekKey] = useState(getCurrentWeekKey());
+  const [selectedAcademicYearIdState, setSelectedAcademicYearIdState] = useState<number | null>(null);
+  const [selectedAssignmentIdState, setSelectedAssignmentIdState] = useState<number | null>(null);
   const [attendanceSessionsPerWeekDraft, setAttendanceSessionsPerWeekDraft] = useState(1);
   const [attendanceEdits, setAttendanceEdits] = useState<Record<number, Record<number, ExtracurricularAttendanceStatus | ''>>>({});
 
@@ -202,7 +207,22 @@ export const TutorMembersPage = () => {
   const activeAcademicYear = useMemo(() => {
     return academicYears.find((ay) => ay.isActive) || academicYears[0];
   }, [academicYears]);
-  const selectedAcademicYearId = activeAcademicYear?.id ?? null;
+  const requestedAcademicYearId = Number(searchParams.get('academicYearId') || 0);
+  const selectedAcademicYearId = useMemo(() => {
+    if (
+      selectedAcademicYearIdState &&
+      academicYears.some((year) => Number(year.id) === Number(selectedAcademicYearIdState))
+    ) {
+      return selectedAcademicYearIdState;
+    }
+    if (
+      requestedAcademicYearId &&
+      academicYears.some((year) => Number(year.id) === Number(requestedAcademicYearId))
+    ) {
+      return requestedAcademicYearId;
+    }
+    return activeAcademicYear?.id ?? null;
+  }, [academicYears, activeAcademicYear?.id, requestedAcademicYearId, selectedAcademicYearIdState]);
 
   // Fetch assignments for the selected academic year to populate Ekskul dropdown
   const { data: assignmentsData } = useQuery({
@@ -212,9 +232,62 @@ export const TutorMembersPage = () => {
   });
 
   // Type assertion for API response
-  const assignments: TutorAssignment[] = (assignmentsData?.data || []) as TutorAssignment[];
+  const assignments = useMemo<TutorAssignment[]>(
+    () => (assignmentsData?.data || []) as TutorAssignment[],
+    [assignmentsData],
+  );
+  const requestedAssignmentId = Number(searchParams.get('assignmentId') || 0);
+  const requestedEkskulId = Number(searchParams.get('ekskulId') || 0);
+  const selectedAssignment = useMemo<TutorAssignmentSummary | null>(() => {
+    if (!assignments.length) return null;
+    if (
+      selectedAssignmentIdState &&
+      assignments.some((assignment) => Number(assignment.id) === Number(selectedAssignmentIdState))
+    ) {
+      return assignments.find((assignment) => Number(assignment.id) === Number(selectedAssignmentIdState)) || null;
+    }
+    if (requestedAssignmentId) {
+      return assignments.find((assignment) => Number(assignment.id) === Number(requestedAssignmentId)) || null;
+    }
+    if (requestedEkskulId) {
+      return (
+        assignments.find((assignment) => Number(assignment.ekskulId) === Number(requestedEkskulId)) || null
+      );
+    }
+    return assignments[0] || null;
+  }, [assignments, requestedAssignmentId, requestedEkskulId, selectedAssignmentIdState]);
+  const selectedEkskulId = selectedAssignment?.ekskulId || 0;
 
-  const selectedEkskulId = assignments[0]?.ekskulId || 0;
+  useEffect(() => {
+    if (!selectedAcademicYearId) return;
+
+    const nextParams = new URLSearchParams(searchParams);
+    let shouldReplace = false;
+
+    if (String(selectedAcademicYearId) !== String(searchParams.get('academicYearId') || '')) {
+      nextParams.set('academicYearId', String(selectedAcademicYearId));
+      shouldReplace = true;
+    }
+
+    if (selectedAssignment) {
+      if (String(selectedAssignment.id) !== String(searchParams.get('assignmentId') || '')) {
+        nextParams.set('assignmentId', String(selectedAssignment.id));
+        shouldReplace = true;
+      }
+      if (String(selectedAssignment.ekskulId) !== String(searchParams.get('ekskulId') || '')) {
+        nextParams.set('ekskulId', String(selectedAssignment.ekskulId));
+        shouldReplace = true;
+      }
+    } else if (searchParams.has('assignmentId') || searchParams.has('ekskulId')) {
+      nextParams.delete('assignmentId');
+      nextParams.delete('ekskulId');
+      shouldReplace = true;
+    }
+
+    if (shouldReplace) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [searchParams, selectedAcademicYearId, selectedAssignment, setSearchParams]);
 
   const { data: reportProgramsData } = useQuery({
     queryKey: ['tutor-report-programs', selectedAcademicYearId],
@@ -505,6 +578,7 @@ export const TutorMembersPage = () => {
   >({});
   const localValues = localValuesByContext[localValueContextKey] || {};
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!attendanceOverview) return;
     setAttendanceSessionsPerWeekDraft(Math.max(1, Number(attendanceOverview.sessionsPerWeek || 1)));
@@ -515,6 +589,7 @@ export const TutorMembersPage = () => {
     }
     setAttendanceEdits(nextEdits);
   }, [attendanceOverview]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const getDataForContext = (en: Enrollment) => {
     if (!en) return { grade: '', description: '' };
@@ -625,7 +700,7 @@ export const TutorMembersPage = () => {
     setSemester(s);
   };
 
-  const currentEkskulName = assignments.find((a) => a.ekskulId === selectedEkskulId)?.ekskul?.name || 'Ekstrakurikuler';
+  const currentEkskulName = selectedAssignment?.ekskul?.name || 'Ekstrakurikuler';
   const attendanceSessionIndexes = useMemo(
     () =>
       Array.from(
@@ -644,6 +719,45 @@ export const TutorMembersPage = () => {
         </div>
         
         <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+            <Filter size={16} className="text-gray-500" />
+            <select
+              value={selectedAcademicYearId || ''}
+              onChange={(e) => {
+                const nextYearId = Number(e.target.value || 0) || null;
+                setSelectedAcademicYearIdState(nextYearId);
+                setSelectedAssignmentIdState(null);
+              }}
+              className="bg-transparent border-0 text-sm font-medium text-gray-700 focus:ring-0 cursor-pointer"
+            >
+              {academicYears.map((year) => (
+                <option key={year.id} value={year.id}>
+                  {year.name} {year.isActive ? '(Aktif)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+            <Filter size={16} className="text-gray-500" />
+            <select
+              value={selectedAssignment?.id || ''}
+              onChange={(e) => setSelectedAssignmentIdState(Number(e.target.value || 0) || null)}
+              disabled={assignments.length === 0}
+              className="bg-transparent border-0 text-sm font-medium text-gray-700 focus:ring-0 cursor-pointer"
+            >
+              {assignments.length === 0 ? (
+                <option value="">Belum ada assignment pembina</option>
+              ) : (
+                assignments.map((assignment) => (
+                  <option key={assignment.id} value={assignment.id}>
+                    {assignment.ekskul.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+
           <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
             <Filter size={16} className="text-gray-500" />
             <select 
@@ -690,7 +804,7 @@ export const TutorMembersPage = () => {
                 {selectedReportProgram?.label || selectedReportBaseType || '-'}
               </p>
               <p className="text-xs text-gray-400">
-                Tahun ajaran aktif: {activeAcademicYear?.name || '-'}
+                Tahun ajaran: {academicYears.find((year) => year.id === selectedAcademicYearId)?.name || '-'}
               </p>
             </div>
           </div>
@@ -717,6 +831,12 @@ export const TutorMembersPage = () => {
             </button>
           </div>
         </div>
+
+        {assignments.length === 0 ? (
+          <div className="px-6 py-5 border-b border-gray-100 bg-amber-50/60 text-sm text-amber-800">
+            Belum ada assignment pembina untuk tahun ajaran yang dipilih.
+          </div>
+        ) : null}
 
         {activeTab === 'GRADE' ? (
           <>

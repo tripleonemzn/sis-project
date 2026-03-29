@@ -9,6 +9,7 @@ import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
 import { tutorApi } from '../../../src/features/tutor/tutorApi';
+import { canAccessTutorWorkspace } from '../../../src/features/tutor/tutorAccess';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
 
@@ -24,6 +25,7 @@ export default function TutorInventoryScreen() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
+  const hasTutorWorkspaceAccess = canAccessTutorWorkspace(user);
 
   const [search, setSearch] = useState('');
   const [selectedYearId, setSelectedYearId] = useState<number | null>(null);
@@ -38,7 +40,7 @@ export default function TutorInventoryScreen() {
 
   const yearsQuery = useQuery({
     queryKey: ['mobile-tutor-inventory-years'],
-    enabled: isAuthenticated && user?.role === 'EXTRACURRICULAR_TUTOR',
+    enabled: isAuthenticated && hasTutorWorkspaceAccess,
     staleTime: 5 * 60 * 1000,
     queryFn: () => adminApi.listAcademicYears({ page: 1, limit: 100 }),
   });
@@ -49,7 +51,7 @@ export default function TutorInventoryScreen() {
 
   const inventoryQuery = useQuery({
     queryKey: ['mobile-tutor-inventory-overview', effectiveYearId],
-    enabled: isAuthenticated && user?.role === 'EXTRACURRICULAR_TUTOR' && Boolean(effectiveYearId),
+    enabled: isAuthenticated && hasTutorWorkspaceAccess && Boolean(effectiveYearId),
     queryFn: () => tutorApi.getInventoryOverview(effectiveYearId),
   });
 
@@ -117,13 +119,13 @@ export default function TutorInventoryScreen() {
   if (isLoading) return <AppLoadingScreen message="Memuat inventaris ekskul..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
-  if (user?.role !== 'EXTRACURRICULAR_TUTOR') {
+  if (!hasTutorWorkspaceAccess) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
         <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>
           Inventaris Ekskul
         </Text>
-        <QueryStateView type="error" message="Halaman ini khusus untuk role pembina ekstrakurikuler." />
+        <QueryStateView type="error" message="Halaman ini tersedia untuk pembina ekstrakurikuler aktif." />
       </ScrollView>
     );
   }

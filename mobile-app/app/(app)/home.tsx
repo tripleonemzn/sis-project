@@ -54,6 +54,8 @@ import {
   getStaffSectionTitle,
   resolveStaffDivision,
 } from '../../src/features/staff/staffRole';
+import { tutorApi } from '../../src/features/tutor/tutorApi';
+import { canAccessTutorWorkspace, hasTutorAssignments } from '../../src/features/tutor/tutorAccess';
 
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
 type DashboardStatItem = { label: string; value: string; color: string; icon?: FeatherIconName; menuKey?: string };
@@ -383,9 +385,12 @@ const ROLE_PRIMARY_ACTION_KEYS: Record<string, string[]> = {
   UMUM: ['public-vacancies'],
 };
 
-function getRolePrimaryActionKeys(user: AuthUser) {
+function getRolePrimaryActionKeys(user: AuthUser, options?: { hasExtracurricularAdvisorAssignments?: boolean }) {
   if (user.role === 'STAFF') {
     return getStaffPreferredMenuKeys(user);
+  }
+  if (user.role === 'TEACHER' && options?.hasExtracurricularAdvisorAssignments) {
+    return ['teacher-extracurricular-members', 'teaching-schedule', 'teacher-extracurricular-work-program'];
   }
   return ROLE_PRIMARY_ACTION_KEYS[user.role] || [];
 }
@@ -764,7 +769,17 @@ export default function HomeScreen() {
       }),
   });
 
+  const tutorAssignmentsQuery = useQuery({
+    queryKey: ['mobile-home-tutor-assignments', profile.id, activeAcademicYearQuery.data?.id],
+    enabled:
+      isAuthenticated &&
+      canAccessTutorWorkspace(profile) &&
+      Boolean(activeAcademicYearQuery.data?.id),
+    queryFn: () => tutorApi.listAssignments(activeAcademicYearQuery.data?.id),
+  });
+
   const hasPendingDefense = profile.role === 'TEACHER' && (teacherDefenseQuery.data?.length || 0) > 0;
+  const hasExtracurricularAdvisorAssignments = hasTutorAssignments(tutorAssignmentsQuery.data);
   const pklEligibleGrades = useMemo(() => {
     const raw = String(activeAcademicYearQuery.data?.pklEligibleGrades || '').trim();
     if (!raw) return undefined;
@@ -784,6 +799,7 @@ export default function HomeScreen() {
           profile.role === 'STUDENT'
             ? Boolean(studentInternshipOverviewQuery.data?.isEligible)
             : undefined,
+        hasExtracurricularAdvisorAssignments,
       })
         .map((group) => ({
           ...group,
@@ -816,6 +832,7 @@ export default function HomeScreen() {
       profile,
       hasPendingDefense,
       pklEligibleGrades,
+      hasExtracurricularAdvisorAssignments,
       studentInternshipOverviewQuery.data?.isEligible,
       examProgramsQuery.data?.programs,
       examProgramsQuery.isSuccess,
@@ -950,7 +967,9 @@ export default function HomeScreen() {
   }, [allMenuItems]);
 
   const roleQuickMenus = useMemo(() => {
-    const preferredKeys = getRolePrimaryActionKeys(profile);
+    const preferredKeys = getRolePrimaryActionKeys(profile, {
+      hasExtracurricularAdvisorAssignments,
+    });
     const menuByKey = new Map(allMenuItems.map((item) => [item.key, item]));
     const result: RoleMenuItem[] = [];
     const picked = new Set<string>();
@@ -972,7 +991,7 @@ export default function HomeScreen() {
     }
 
     return result;
-  }, [allMenuItems, profile]);
+  }, [allMenuItems, hasExtracurricularAdvisorAssignments, profile]);
 
   const teacherStats = useMemo(() => {
     const assignments = teacherAssignmentsQuery.data?.assignments || [];
@@ -1344,7 +1363,9 @@ export default function HomeScreen() {
   const homeSubtitle = useMemo(() => {
     switch (profile.role) {
       case 'TEACHER':
-        return 'Ringkasan penugasan mengajar dan akses cepat modul utama.';
+        return hasExtracurricularAdvisorAssignments
+          ? 'Ringkasan penugasan mengajar, pembina ekskul, dan akses cepat modul utama.'
+          : 'Ringkasan penugasan mengajar dan akses cepat modul utama.';
       case 'ADMIN':
         return 'Pantau operasional akademik dan administrasi sekolah.';
       case 'PRINCIPAL':
@@ -1364,7 +1385,7 @@ export default function HomeScreen() {
       default:
         return 'Pilih modul yang ingin Anda akses hari ini.';
     }
-  }, [profile]);
+  }, [hasExtracurricularAdvisorAssignments, profile]);
   const todayLabel = useMemo(
     () =>
       new Date().toLocaleDateString('id-ID', {

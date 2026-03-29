@@ -318,8 +318,8 @@ function App() {
               element={
                 <UserList
                   fixedRole="EXTRACURRICULAR_TUTOR"
-                  title="Kelola Pembina Ekskul"
-                  description="Kelola akun pembina ekstrakurikuler"
+                  title="Kelola Tutor Eksternal"
+                  description="Kelola akun tutor eksternal atau pembina non-guru"
                 />
               }
             />
@@ -352,7 +352,7 @@ function App() {
             <Route path="settings/server-area" element={<ServerAreaPage />} />
             </Route>
             <Route path="tutor" element={
-              <RoleRoute allowedRoles={['EXTRACURRICULAR_TUTOR']}>
+              <RoleRoute allowedRoles={['EXTRACURRICULAR_TUTOR', 'TEACHER']}>
                 <Outlet />
               </RoleRoute>
             }>
