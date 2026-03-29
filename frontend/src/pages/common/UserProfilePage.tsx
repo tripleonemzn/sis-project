@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import Cropper, { type Point, type Area } from 'react-easy-crop';
+import { buildTeacherDutyOptions } from '../../utils/teacherDuty';
 
 // Helper function to create image from url
 const createImage = (url: string): Promise<HTMLImageElement> =>
@@ -1358,26 +1359,7 @@ export const UserProfilePage = () => {
                     <p className="block text-sm font-medium text-gray-700 mb-1">Tugas Tambahan</p>
                     <div className="space-y-2 bg-gray-50 p-3 rounded-lg border border-gray-200">
                       {(() => {
-                        const allDuties = [
-                          { value: 'WAKASEK_KURIKULUM', label: 'Wakasek Kurikulum' },
-                          { value: 'SEKRETARIS_KURIKULUM', label: 'Sekretaris Kurikulum' },
-                          { value: 'WAKASEK_KESISWAAN', label: 'Wakasek Kesiswaan' },
-                          { value: 'SEKRETARIS_KESISWAAN', label: 'Sekretaris Kesiswaan' },
-                          { value: 'WAKASEK_SARPRAS', label: 'Wakasek Sarpras' },
-                          { value: 'SEKRETARIS_SARPRAS', label: 'Sekretaris Sarpras' },
-                          { value: 'WAKASEK_HUMAS', label: 'Wakasek Humas' },
-                          { value: 'SEKRETARIS_HUMAS', label: 'Sekretaris Humas' },
-                          { value: 'PEMBINA_OSIS', label: 'Pembina OSIS' },
-                          { value: 'KEPALA_LAB', label: 'Kepala Lab' },
-                          { value: 'KEPALA_PERPUSTAKAAN', label: 'Kepala Perpustakaan' },
-                          { value: 'BP_BK', label: 'BP/BK' },
-                          { value: 'IT_CENTER', label: 'IT-Center' },
-                          // Dynamic KAPROG options
-                          ...majors.map((major: Major) => ({
-                            value: `KAPROG:${major.id}`,
-                            label: `Kepala Kompetensi ${major.name}`
-                          }))
-                        ];
+                        const allDuties = buildTeacherDutyOptions(majors);
 
                         const currentDuties = watch('additionalDuties') || [];
                         const dutiesToDisplay = fixedRole === 'TEACHER'

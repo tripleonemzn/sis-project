@@ -2,13 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userService } from '../../../services/user.service';
 import { uploadService } from '../../../services/upload.service';
-import { majorService, type Major } from '../../../services/major.service';
+import { majorService } from '../../../services/major.service';
 import type { User } from '../../../types/auth';
 import { Search, Loader2, ChevronLeft, ChevronRight, Plus, Edit, Trash2, X, FileText } from 'lucide-react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
+import { buildTeacherDutyOptions, formatTeacherDutyLabel } from '../../../utils/teacherDuty';
 
 const teacherSchema = z.object({
   username: z.string().min(3, 'Username minimal 3 karakter'),
@@ -117,6 +118,7 @@ export const TeacherManagementPage = () => {
   });
 
   const majors = majorsData?.data?.majors || [];
+  const dutyOptions = buildTeacherDutyOptions(majors);
 
   const {
     register,
@@ -744,26 +746,7 @@ export const TeacherManagementPage = () => {
                     <div className="md:col-span-2">
                       <p className="block text-sm font-medium text-gray-700 mb-1">Tugas Tambahan</p>
                       <div className="space-y-2 bg-gray-50 p-3 rounded-lg border border-gray-200">
-                        {[
-                          { value: 'WAKASEK_KURIKULUM', label: 'Wakasek Kurikulum' },
-                          { value: 'SEKRETARIS_KURIKULUM', label: 'Sekretaris Kurikulum' },
-                          { value: 'WAKASEK_KESISWAAN', label: 'Wakasek Kesiswaan' },
-                          { value: 'SEKRETARIS_KESISWAAN', label: 'Sekretaris Kesiswaan' },
-                          { value: 'WAKASEK_SARPRAS', label: 'Wakasek Sarpras' },
-                          { value: 'SEKRETARIS_SARPRAS', label: 'Sekretaris Sarpras' },
-                          { value: 'WAKASEK_HUMAS', label: 'Wakasek Humas' },
-                          { value: 'SEKRETARIS_HUMAS', label: 'Sekretaris Humas' },
-                          { value: 'PEMBINA_OSIS', label: 'Pembina OSIS' },
-                          { value: 'KEPALA_LAB', label: 'Kepala Lab' },
-                          { value: 'KEPALA_PERPUSTAKAAN', label: 'Kepala Perpustakaan' },
-                          { value: 'BP_BK', label: 'BP/BK' },
-                          { value: 'IT_CENTER', label: 'IT-Center' },
-                          // Dynamic KAPROG options
-                          ...majors.map((major: Major) => ({
-                            value: `KAPROG:${major.id}`,
-                            label: `Kepala Kompetensi ${major.name}`
-                          }))
-                        ].map((duty) => {
+                        {dutyOptions.map((duty) => {
                           const id = `duty-${duty.value}`;
                           return (
                             <label key={duty.value} htmlFor={id} className="flex items-center gap-2 cursor-pointer">
@@ -951,21 +934,14 @@ export const TeacherManagementPage = () => {
                               {(teacher.additionalDuties && teacher.additionalDuties.length > 0) || (teacher.teacherClasses && teacher.teacherClasses.length > 0) ? (
                                 <div className="flex flex-wrap gap-1">
                                   {teacher.additionalDuties?.map((duty) => {
-                                     // Skip WALI_KELAS as it is shown via teacherClasses
                                      if (duty === 'WALI_KELAS') return null;
-                                     
-                                     let label = duty.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
-                                    // Custom formatting for specific acronyms
-                                    if (duty === 'PEMBINA_OSIS') label = 'Pembina OSIS';
-                                    if (duty === 'BP_BK') label = 'BP/BK';
-                                    if (duty === 'KAPROG' && teacher.managedMajor) {
-                                      label = `Kepala Kompetensi ${teacher.managedMajor.name}`;
-                                    } else if (duty === 'KAPROG') {
-                                      label = 'Kepala Kompetensi';
-                                    } else if (duty.startsWith('WAKASEK')) {
-                                      label = label.replace('Wakasek ', 'Wakasek '); // Ensure Title Case
-                                    }
-                                    
+
+                                    const majorName =
+                                      teacher.managedMajor?.name ||
+                                      teacher.managedMajors?.map((major) => major.name).filter(Boolean).join(', ') ||
+                                      null;
+                                    const label = formatTeacherDutyLabel(duty, { majorName });
+
                                     return (
                                       <span
                                         key={duty}

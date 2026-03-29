@@ -170,7 +170,7 @@ export default function TeacherWakasisStudentsScreen() {
       return;
     }
     if (target === 'ADVISORS') {
-      router.push('/admin/master-data?section=extracurriculars' as never);
+      router.push('/admin/user-management?role=EXTRACURRICULAR_TUTOR' as never);
       return;
     }
     if (target === 'ATTENDANCE') {
@@ -645,7 +645,7 @@ export default function TeacherWakasisStudentsScreen() {
                   {[
                     { label: 'Kelola Siswa', action: () => openStudentCrud('STUDENT') },
                     { label: 'Kelola Orang Tua', action: () => openStudentCrud('PARENT') },
-                    { label: 'Kelola Ekskul & Pembina', action: () => openStudentCrud('ADVISORS') },
+                    { label: 'Kelola Tutor Eksternal', action: () => openStudentCrud('ADVISORS') },
                     { label: 'Kelola Ekstrakurikuler', action: () => openStudentCrud('EXTRACURRICULARS') },
                     { label: 'Rekap Absensi', action: () => openStudentCrud('ATTENDANCE') },
                   ].map((item) => (
@@ -789,8 +789,11 @@ export default function TeacherWakasisStudentsScreen() {
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Buka Kelola Ekskul & Pembina</Text>
+                <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Buka Kelola Tutor Eksternal</Text>
               </Pressable>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                Guru aktif sebagai pembina dikelola dari menu Kelola Ekstrakurikuler.
+              </Text>
               {filteredTutors.length === 0 ? (
                 <QueryStateView type="error" message="Data pembina aktif tidak ditemukan untuk filter saat ini." />
               ) : (

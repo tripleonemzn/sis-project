@@ -28,7 +28,10 @@ export default function StudentManagementHubPage() {
     <div className="space-y-6 w-full pb-20">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Kelola Kesiswaan</h1>
-        <p className="text-gray-500">Akses Ekstrakurikuler, Data Siswa, Orang Tua, Pembina, Verifikasi Akun, dan Rekap Absensi.</p>
+        <p className="text-gray-500">
+          Akses ekstrakurikuler, data siswa, orang tua, tutor eksternal, dan rekap absensi.
+          Penugasan guru aktif sebagai pembina dikelola dari menu Ekstrakurikuler.
+        </p>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -69,7 +72,7 @@ export default function StudentManagementHubPage() {
               <UserList 
                 fixedRole="EXTRACURRICULAR_TUTOR" 
                 title="Kelola Tutor Eksternal" 
-                description="Kelola akun tutor eksternal atau pembina non-guru" 
+                description="Kelola akun tutor eksternal atau pembina non-guru. Guru aktif sebagai pembina dikelola dari menu Ekstrakurikuler."
               />
             ) : (
               <AttendanceRecapPage />

@@ -320,7 +320,7 @@ function App() {
                 <UserList
                   fixedRole="EXTRACURRICULAR_TUTOR"
                   title="Kelola Tutor Eksternal"
-                  description="Kelola akun tutor eksternal atau pembina non-guru"
+                  description="Kelola akun tutor eksternal atau pembina non-guru. Guru aktif sebagai pembina dikelola dari menu Ekstrakurikuler."
                 />
               }
             />
