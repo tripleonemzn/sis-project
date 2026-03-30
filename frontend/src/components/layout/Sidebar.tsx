@@ -42,7 +42,6 @@ import {
   Activity,
   ShieldAlert,
   Vote,
-  MoveHorizontal,
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
@@ -1565,28 +1564,22 @@ export const Sidebar = ({ user }: SidebarProps) => {
         type="button"
         aria-label="Ubah lebar sidebar"
         title="Tarik untuk mengubah lebar sidebar"
-        onMouseDown={() => setIsResizingSidebar(true)}
+        onMouseDown={(event) => {
+          event.preventDefault();
+          setIsResizingSidebar(true);
+        }}
         className={clsx(
-          'absolute inset-y-0 right-0 hidden w-5 translate-x-1/2 cursor-ew-resize md:block',
+          'group absolute inset-y-0 right-0 hidden w-5 translate-x-1/2 md:block',
           isResizingSidebar ? 'bg-blue-100/70' : 'bg-transparent'
         )}
+        style={{ cursor: 'ew-resize' }}
       >
         <span
           className={clsx(
-            'absolute inset-y-4 left-1/2 w-px -translate-x-1/2 rounded-full transition-colors',
-            isResizingSidebar ? 'bg-blue-500' : 'bg-gray-200'
+            'pointer-events-none absolute inset-y-4 left-1/2 w-px -translate-x-1/2 rounded-full transition-colors',
+            isResizingSidebar ? 'bg-blue-500' : 'bg-gray-200 group-hover:bg-blue-300'
           )}
         />
-        <span
-          className={clsx(
-            'absolute left-1/2 top-1/2 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border shadow-sm transition-colors',
-            isResizingSidebar
-              ? 'border-blue-200 bg-blue-50 text-blue-600'
-              : 'border-gray-200 bg-white text-gray-400'
-          )}
-        >
-          <MoveHorizontal size={14} />
-        </span>
       </button>
 
       <div className="m-4 rounded-2xl bg-gray-50 p-5">
