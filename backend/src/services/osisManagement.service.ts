@@ -1171,7 +1171,24 @@ export class OsisManagementService {
 
     await this.ensureStudentActiveInAcademicYear(studentId, targetAcademicYearId);
 
-    const [existingMembership, existingPendingRequest] = await Promise.all([
+    const [existingRegularEnrollment, existingMembership, existingPendingRequest] = await Promise.all([
+      prisma.ekstrakurikulerEnrollment.findFirst({
+        where: {
+          studentId,
+          academicYearId: targetAcademicYearId,
+          ekskul: {
+            category: 'EXTRACURRICULAR',
+          },
+        },
+        select: {
+          id: true,
+          ekskul: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      }),
       prisma.osisMembership.findFirst({
         where: {
           studentId,
@@ -1198,6 +1215,13 @@ export class OsisManagementService {
         },
       }),
     ]);
+
+    if (existingRegularEnrollment) {
+      throw new ApiError(
+        400,
+        `Anda sudah memilih ekskul reguler${existingRegularEnrollment.ekskul?.name ? ` (${existingRegularEnrollment.ekskul.name})` : ''} untuk tahun ajaran ini.`,
+      );
+    }
 
     if (existingMembership) {
       throw new ApiError(400, 'Anda sudah tercatat sebagai anggota OSIS pada tahun ajaran ini.');

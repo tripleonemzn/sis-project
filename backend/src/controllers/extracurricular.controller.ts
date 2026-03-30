@@ -4,6 +4,7 @@ import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth';
+import { osisManagementService } from '../services/osisManagement.service';
 
 const extracurricularCategorySchema = z.preprocess((value) => {
   if (typeof value === 'string') return value.trim().toUpperCase();
@@ -19,6 +20,29 @@ const createEkskulSchema = z.object({
 const updateEkskulSchema = createEkskulSchema.partial();
 
 const STUDENT_EXTRACURRICULAR_CATEGORY = ExtracurricularCategory.EXTRACURRICULAR;
+const EXTRACURRICULAR_ATTENDANCE_STATUSES = ['PRESENT', 'PERMIT', 'SICK', 'ABSENT'] as const;
+
+function buildAttendanceSummary(
+  rows: Array<{ status?: string | null; note?: string | null; sessionIndex: number; week?: { weekKey?: string | null } | null }>,
+) {
+  const summary = {
+    totalSessions: rows.length,
+    presentCount: 0,
+    permitCount: 0,
+    sickCount: 0,
+    absentCount: 0,
+  };
+
+  for (const row of rows) {
+    const normalizedStatus = String(row.status || '').trim().toUpperCase() as (typeof EXTRACURRICULAR_ATTENDANCE_STATUSES)[number];
+    if (normalizedStatus === 'PRESENT') summary.presentCount += 1;
+    if (normalizedStatus === 'PERMIT') summary.permitCount += 1;
+    if (normalizedStatus === 'SICK') summary.sickCount += 1;
+    if (normalizedStatus === 'ABSENT') summary.absentCount += 1;
+  }
+
+  return summary;
+}
 
 export const getExtracurriculars = asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 10, search, category } = req.query;
@@ -317,6 +341,167 @@ export const getMyExtracurricularEnrollment = asyncHandler(async (req: AuthReque
   });
 
   res.status(200).json(new ApiResponse(200, enrollment, 'Data pilihan ekstrakurikuler siswa'));
+});
+
+export const getStudentExtracurricularSummary = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const studentId = req.user!.id;
+
+  const activeYear = await prisma.academicYear.findFirst({
+    where: { isActive: true },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  if (!activeYear) {
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          academicYear: null,
+          regularEnrollment: null,
+          osisStatus: {
+            academicYearId: null,
+            membership: null,
+            request: null,
+          },
+          actions: {
+            canChooseRegular: false,
+            canRequestOsis: false,
+          },
+        },
+        'Ringkasan ekstrakurikuler siswa berhasil diambil',
+      ),
+    );
+    return;
+  }
+
+  const [regularEnrollment, osisStatus] = await Promise.all([
+    prisma.ekstrakurikulerEnrollment.findFirst({
+      where: {
+        studentId,
+        academicYearId: activeYear.id,
+        ekskul: {
+          category: STUDENT_EXTRACURRICULAR_CATEGORY,
+        },
+      },
+      include: {
+        ekskul: {
+          include: {
+            tutorAssignments: {
+              where: {
+                academicYearId: activeYear.id,
+                isActive: true,
+              },
+              include: {
+                tutor: {
+                  select: {
+                    id: true,
+                    name: true,
+                    username: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+    osisManagementService.getStudentJoinStatus(studentId, activeYear.id),
+  ]);
+
+  let regularEnrollmentSummary: any = null;
+
+  if (regularEnrollment) {
+    const attendanceRows = await (prisma as any).ekstrakurikulerAttendanceEntry.findMany({
+      where: {
+        enrollmentId: regularEnrollment.id,
+      },
+      orderBy: [
+        {
+          week: {
+            weekKey: 'desc',
+          },
+        },
+        {
+          sessionIndex: 'desc',
+        },
+      ],
+      include: {
+        week: {
+          select: {
+            weekKey: true,
+          },
+        },
+      },
+    });
+
+    regularEnrollmentSummary = {
+      id: regularEnrollment.id,
+      academicYearId: regularEnrollment.academicYearId,
+      grade: regularEnrollment.grade,
+      description: regularEnrollment.description,
+      semesterGrades: {
+        sbtsOdd: {
+          grade: regularEnrollment.gradeSbtsOdd,
+          description: regularEnrollment.descSbtsOdd,
+        },
+        sas: {
+          grade: regularEnrollment.gradeSas,
+          description: regularEnrollment.descSas,
+        },
+        sbtsEven: {
+          grade: regularEnrollment.gradeSbtsEven,
+          description: regularEnrollment.descSbtsEven,
+        },
+        sat: {
+          grade: regularEnrollment.gradeSat,
+          description: regularEnrollment.descSat,
+        },
+      },
+      ekskul: {
+        id: regularEnrollment.ekskul.id,
+        name: regularEnrollment.ekskul.name,
+        description: regularEnrollment.ekskul.description,
+        tutors: (regularEnrollment.ekskul.tutorAssignments || [])
+          .map((assignment: any) => assignment.tutor)
+          .filter(Boolean),
+      },
+      attendanceSummary: {
+        ...buildAttendanceSummary(attendanceRows),
+        latestRecords: attendanceRows.slice(0, 6).map((row: any) => ({
+          weekKey: row.week?.weekKey || null,
+          sessionIndex: row.sessionIndex,
+          status: row.status,
+          note: row.note || null,
+        })),
+      },
+    };
+  }
+
+  const canChooseRegular = !regularEnrollmentSummary;
+  const canRequestOsis =
+    !regularEnrollmentSummary &&
+    !osisStatus.membership &&
+    osisStatus.request?.status !== 'PENDING' &&
+    osisStatus.request?.status !== 'APPROVED';
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        academicYear: activeYear,
+        regularEnrollment: regularEnrollmentSummary,
+        osisStatus,
+        actions: {
+          canChooseRegular,
+          canRequestOsis,
+        },
+      },
+      'Ringkasan ekstrakurikuler siswa berhasil diambil',
+    ),
+  );
 });
 
 export const enrollExtracurricular = asyncHandler(async (req: AuthRequest, res: Response) => {

@@ -26,6 +26,8 @@ export type StudentExtracurricularEnrollment = {
   studentId: number;
   ekskulId: number;
   academicYearId: number;
+  grade?: string | null;
+  description?: string | null;
   ekskul?: StudentExtracurricular | null;
 };
 
@@ -66,6 +68,57 @@ export type StudentOsisStatusPayload = {
   request: StudentOsisJoinRequestStatus | null;
 };
 
+export type StudentExtracurricularAttendanceSummary = {
+  totalSessions: number;
+  presentCount: number;
+  permitCount: number;
+  sickCount: number;
+  absentCount: number;
+  latestRecords: Array<{
+    weekKey?: string | null;
+    sessionIndex: number;
+    status: 'PRESENT' | 'PERMIT' | 'SICK' | 'ABSENT' | string;
+    note?: string | null;
+  }>;
+};
+
+export type StudentRegularExtracurricularSummary = {
+  id: number;
+  academicYearId: number;
+  grade?: string | null;
+  description?: string | null;
+  semesterGrades?: {
+    sbtsOdd?: { grade?: string | null; description?: string | null };
+    sas?: { grade?: string | null; description?: string | null };
+    sbtsEven?: { grade?: string | null; description?: string | null };
+    sat?: { grade?: string | null; description?: string | null };
+  } | null;
+  ekskul: {
+    id: number;
+    name: string;
+    description?: string | null;
+    tutors?: Array<{
+      id?: number;
+      name?: string | null;
+      username?: string | null;
+    }>;
+  };
+  attendanceSummary: StudentExtracurricularAttendanceSummary;
+};
+
+export type StudentExtracurricularSummary = {
+  academicYear: {
+    id: number;
+    name: string;
+  } | null;
+  regularEnrollment: StudentRegularExtracurricularSummary | null;
+  osisStatus: StudentOsisStatusPayload;
+  actions: {
+    canChooseRegular: boolean;
+    canRequestOsis: boolean;
+  };
+};
+
 export type StudentExtracurricularListPayload = {
   extracurriculars: StudentExtracurricular[];
   pagination: {
@@ -77,14 +130,19 @@ export type StudentExtracurricularListPayload = {
 };
 
 export const studentExtracurricularApi = {
-  async listExtracurriculars() {
+  async listExtracurriculars(category?: ExtracurricularCategory) {
     const response = await apiClient.get<ApiEnvelope<StudentExtracurricularListPayload>>('/public/extracurriculars', {
       params: {
         page: 1,
         limit: 0,
+        category,
       },
     });
     return response.data?.data?.extracurriculars || [];
+  },
+  async getSummary() {
+    const response = await apiClient.get<ApiEnvelope<StudentExtracurricularSummary>>('/student/extracurriculars/summary');
+    return response.data?.data || null;
   },
   async getMyEnrollment() {
     const response = await apiClient.get<ApiEnvelope<StudentExtracurricularEnrollment | null>>(
