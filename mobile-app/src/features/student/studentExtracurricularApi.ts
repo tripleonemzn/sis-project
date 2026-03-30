@@ -66,6 +66,29 @@ export type StudentOsisStatusPayload = {
   academicYearId: number | null;
   membership: StudentOsisMembershipStatus | null;
   request: StudentOsisJoinRequestStatus | null;
+  programs: Array<{
+    id: number;
+    title: string;
+    description?: string | null;
+    semester?: 'ODD' | 'EVEN' | null;
+    startMonth?: number | null;
+    endMonth?: number | null;
+    startWeek?: number | null;
+    endWeek?: number | null;
+    executionStatus?: string | null;
+    owner?: {
+      id: number;
+      name: string;
+      username?: string | null;
+    } | null;
+    items?: Array<{
+      id: number;
+      description: string;
+      targetDate?: string | null;
+      isCompleted?: boolean;
+      note?: string | null;
+    }>;
+  }>;
 };
 
 export type StudentExtracurricularAttendanceSummary = {

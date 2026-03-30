@@ -12,6 +12,7 @@ import { mobileLiveQueryOptions } from '../../lib/query/liveQuery';
 import { useAuth } from '../auth/AuthProvider';
 import { formatWorkProgramDutyLabel, normalizeDutyCode } from './advisorDuty';
 import { academicYearApi } from '../academicYear/academicYearApi';
+import { osisApi } from '../osis/osisApi';
 import { WorkProgramBudgetOwnerSection } from './WorkProgramBudgetOwnerSection';
 import { WorkProgramRecord } from './types';
 import { workProgramApi } from './workProgramApi';
@@ -319,6 +320,8 @@ export function TeacherWorkProgramModuleScreen({
     return Array.from(new Set(normalized));
   })();
   const ownerDutyFilter = dutyOptions.length === 1 ? dutyOptions[0] : undefined;
+  const normalizedOwnerDuty = normalizeDutyCode(ownerDutyFilter || forcedDuty);
+  const isOsisOwnerDuty = mode === 'OWNER' && normalizedOwnerDuty === 'PEMBINA_OSIS';
 
   const ownerQuery = useQuery({
     queryKey: ['mobile-work-program-owner', user?.id, activeYearQuery.data?.id, ownerDutyFilter || 'ALL'],
@@ -339,6 +342,16 @@ export function TeacherWorkProgramModuleScreen({
     queryFn: async () => workProgramApi.listPendingApprovals(),
     ...mobileLiveQueryOptions,
   });
+
+  const osisReadinessQuery = useQuery({
+    queryKey: ['mobile-osis-work-program-readiness', activeYearQuery.data?.id, normalizedOwnerDuty],
+    enabled: isAuthenticated && isAllowedRole && isOsisOwnerDuty && !!activeYearQuery.data?.id,
+    queryFn: () => osisApi.getWorkProgramReadiness(activeYearQuery.data?.id),
+    ...mobileLiveQueryOptions,
+  });
+
+  const osisReadiness = osisReadinessQuery.data || null;
+  const isOsisProgramLocked = isOsisOwnerDuty && !osisReadiness?.canCreatePrograms;
 
   const refreshOwner = async () => {
     await queryClient.invalidateQueries({ queryKey: ['mobile-work-program-owner'] });
@@ -603,6 +616,14 @@ export function TeacherWorkProgramModuleScreen({
   };
 
   const openCreateProgram = () => {
+    if (isOsisProgramLocked) {
+      Alert.alert(
+        'Program Kerja OSIS Belum Tersedia',
+        osisReadiness?.message ||
+          'Program kerja OSIS baru bisa dibuat setelah pemilihan selesai dan transisi kepengurusan dicatat.',
+      );
+      return;
+    }
     setEditingProgramId(null);
     setProgramFormVisible(true);
     setProgramForm({
@@ -688,6 +709,44 @@ export function TeacherWorkProgramModuleScreen({
       <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{title}</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{subtitle}</Text>
 
+      {isOsisOwnerDuty ? (
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: isOsisProgramLocked ? '#fcd34d' : '#86efac',
+            backgroundColor: isOsisProgramLocked ? '#fffbeb' : '#ecfdf5',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text
+            style={{
+              color: isOsisProgramLocked ? '#92400e' : '#166534',
+              fontWeight: '700',
+              fontSize: 13,
+              marginBottom: 4,
+            }}
+          >
+            Alur Program Kerja OSIS
+          </Text>
+          <Text style={{ color: isOsisProgramLocked ? '#a16207' : '#166534', fontSize: 13, lineHeight: 18 }}>
+            {osisReadiness?.message ||
+              'Program kerja OSIS mengikuti kesiapan periode kepengurusan aktif.'}
+          </Text>
+          {osisReadiness?.activeManagementPeriod ? (
+            <Text style={{ color: isOsisProgramLocked ? '#a16207' : '#166534', fontSize: 12, marginTop: 6 }}>
+              Periode aktif: {osisReadiness.activeManagementPeriod.title}
+              {osisReadiness.activeManagementPeriod.transitionLabel && osisReadiness.activeManagementPeriod.transitionAt
+                ? ` • ${osisReadiness.activeManagementPeriod.transitionLabel} pada ${formatDate(
+                    osisReadiness.activeManagementPeriod.transitionAt,
+                  )}`
+                : ''}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
       <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
           <SummaryCard title="Total Program" value={String(summary.total)} subtitle="Seluruh data aktif" />
@@ -734,11 +793,33 @@ export function TeacherWorkProgramModuleScreen({
             {editingProgramId ? 'Edit Program Kerja' : 'Program Kerja Baru'}
           </Text>
 
+          {programForm.additionalDuty === 'PEMBINA_OSIS' ? (
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: isOsisProgramLocked ? '#fcd34d' : '#86efac',
+                backgroundColor: isOsisProgramLocked ? '#fffbeb' : '#ecfdf5',
+                borderRadius: 12,
+                padding: 10,
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ color: isOsisProgramLocked ? '#92400e' : '#166534', fontSize: 12, lineHeight: 18 }}>
+                {osisReadiness?.message ||
+                  'Program kerja OSIS mengikuti kesiapan periode kepengurusan aktif.'}
+              </Text>
+            </View>
+          ) : null}
+
           <TextField
-            label="Judul Program"
+            label={programForm.additionalDuty === 'PEMBINA_OSIS' ? 'Program / Agenda OSIS' : 'Judul Program'}
             value={programForm.title}
             onChangeText={(title) => setProgramForm((prev) => ({ ...prev, title }))}
-            placeholder="Contoh: Penguatan Literasi Siswa"
+            placeholder={
+              programForm.additionalDuty === 'PEMBINA_OSIS'
+                ? 'Contoh: Rapat koordinasi bidang atau bakti sosial OSIS'
+                : 'Contoh: Penguatan Literasi Siswa'
+            }
           />
 
           <TextField

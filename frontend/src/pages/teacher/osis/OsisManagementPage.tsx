@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  AlertTriangle,
   CalendarDays,
   Layers3,
   Loader2,
@@ -17,6 +18,7 @@ import { academicYearService } from '../../../services/academicYear.service';
 import { examService, type ExamProgram } from '../../../services/exam.service';
 import {
   osisService,
+  type OsisElectionPeriod,
   type OsisDivision,
   type OsisGradeTemplatesPayload,
   type OsisJoinRequest,
@@ -43,6 +45,7 @@ interface ReportProgramOption {
 }
 
 type GradePredicate = 'SB' | 'B' | 'C' | 'K';
+type OsisManagementSection = 'PERIOD' | 'STRUCTURE' | 'MEMBERS' | 'ASSESSMENTS';
 
 const DEFAULT_GRADE_TEMPLATES: OsisGradeTemplatesPayload['templates'] = {
   SB: { label: 'Sangat Baik (SB)', description: '' },
@@ -148,8 +151,88 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function formatDateLabel(raw?: string | null): string {
+  if (!raw) return '-';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
+}
+
+function getManagementStatusMeta(status?: string | null) {
+  if (status === 'ACTIVE') {
+    return {
+      label: 'Aktif',
+      className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    };
+  }
+  if (status === 'CLOSED') {
+    return {
+      label: 'Ditutup',
+      className: 'border-slate-200 bg-slate-100 text-slate-700',
+    };
+  }
+  return {
+    label: 'Draft',
+    className: 'border-amber-200 bg-amber-50 text-amber-700',
+  };
+}
+
+function getWorkflowMeta(period?: OsisManagementPeriod | null) {
+  if (!period) {
+    return {
+      label: 'Belum dibuat',
+      description: 'Buat periode kepengurusan setelah pemilihan selesai.',
+      className: 'border-slate-200 bg-slate-50 text-slate-700',
+    };
+  }
+
+  if (!period.electionPeriodId || period.electionPeriod?.status !== 'CLOSED') {
+    return {
+      label: 'Menunggu hasil pemilihan',
+      description: 'Hubungkan periode ini ke pemilihan OSIS yang sudah ditutup.',
+      className: 'border-amber-200 bg-amber-50 text-amber-700',
+    };
+  }
+
+  if (!period.transitionLabel || !period.transitionAt) {
+    return {
+      label: 'Menunggu transisi kepengurusan',
+      description: 'Catat mubes, rapat kepengurusan, atau pelantikan sebelum program kerja dibuka.',
+      className: 'border-blue-200 bg-blue-50 text-blue-700',
+    };
+  }
+
+  if (period.status !== 'ACTIVE') {
+    return {
+      label: 'Siap diaktifkan',
+      description: 'Semua tahap awal sudah lengkap. Aktifkan periode agar program kerja OSIS terbuka.',
+      className: 'border-violet-200 bg-violet-50 text-violet-700',
+    };
+  }
+
+  return {
+    label: 'Siap untuk program kerja',
+    description: 'Periode aktif dan transisi kepengurusan sudah lengkap.',
+    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  };
+}
+
+function previewStructureCode(rawCode?: string | null, rawName?: string | null): string {
+  return String(rawCode || rawName || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 export const OsisManagementPage = () => {
   const queryClient = useQueryClient();
+  const [activeSection, setActiveSection] = useState<OsisManagementSection>('PERIOD');
   const [selectedAcademicYearIdState, setSelectedAcademicYearIdState] = useState<number | null>(null);
   const [selectedPeriodIdState, setSelectedPeriodIdState] = useState<number | null>(null);
   const [eligibleSearch, setEligibleSearch] = useState('');
@@ -159,10 +242,14 @@ export const OsisManagementPage = () => {
 
   const [periodForm, setPeriodForm] = useState({
     id: null as number | null,
+    electionPeriodId: '',
     title: '',
     description: '',
     startAt: '',
     endAt: '',
+    transitionLabel: '',
+    transitionAt: '',
+    transitionNotes: '',
     status: 'DRAFT' as 'DRAFT' | 'ACTIVE' | 'CLOSED',
   });
   const [divisionForm, setDivisionForm] = useState({
@@ -170,7 +257,7 @@ export const OsisManagementPage = () => {
     name: '',
     code: '',
     description: '',
-    displayOrder: 0,
+    displayOrder: '',
   });
   const [positionForm, setPositionForm] = useState({
     id: null as number | null,
@@ -178,7 +265,7 @@ export const OsisManagementPage = () => {
     code: '',
     description: '',
     divisionId: '',
-    displayOrder: 0,
+    displayOrder: '',
   });
   const [membershipForm, setMembershipForm] = useState({
     id: null as number | null,
@@ -225,9 +312,20 @@ export const OsisManagementPage = () => {
     enabled: !!selectedAcademicYearId,
   });
 
+  const { data: electionPeriodsResponse } = useQuery({
+    queryKey: ['osis-election-periods-for-management', selectedAcademicYearId],
+    queryFn: () => osisService.getPeriods(selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : undefined),
+    enabled: !!selectedAcademicYearId,
+  });
+
   const periods = useMemo<OsisManagementPeriod[]>(
     () => (managementPeriodsResponse?.data || []) as OsisManagementPeriod[],
     [managementPeriodsResponse],
+  );
+
+  const electionPeriods = useMemo(
+    () => ((electionPeriodsResponse?.data || []) as OsisElectionPeriod[]).filter((period) => period.status === 'CLOSED'),
+    [electionPeriodsResponse],
   );
 
   const selectedPeriod = useMemo(() => {
@@ -240,6 +338,14 @@ export const OsisManagementPage = () => {
     }
     return periods.find((period) => period.status === 'ACTIVE') || periods[0] || null;
   }, [periods, selectedPeriodIdState]);
+
+  const { data: workProgramReadinessResponse } = useQuery({
+    queryKey: ['osis-work-program-readiness', selectedAcademicYearId],
+    queryFn: () => osisService.getWorkProgramReadiness(selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : undefined),
+    enabled: !!selectedAcademicYearId,
+  });
+
+  const workProgramReadiness = workProgramReadinessResponse?.data || null;
 
   const { data: divisionsResponse } = useQuery({
     queryKey: ['osis-divisions', selectedPeriod?.id],
@@ -453,10 +559,14 @@ export const OsisManagementPage = () => {
     mutationFn: async () => {
       const payload = {
         academicYearId: selectedAcademicYearId!,
+        electionPeriodId: periodForm.electionPeriodId ? Number(periodForm.electionPeriodId) : null,
         title: periodForm.title.trim(),
         description: periodForm.description.trim() || null,
         startAt: toDateTimePayload(periodForm.startAt),
         endAt: toDateTimePayload(periodForm.endAt, true),
+        transitionLabel: periodForm.transitionLabel.trim() || null,
+        transitionAt: periodForm.transitionAt ? toDateTimePayload(periodForm.transitionAt) : null,
+        transitionNotes: periodForm.transitionNotes.trim() || null,
         status: periodForm.status,
       };
 
@@ -467,8 +577,20 @@ export const OsisManagementPage = () => {
     },
     onSuccess: async () => {
       toast.success(periodForm.id ? 'Periode OSIS diperbarui' : 'Periode OSIS dibuat');
-      setPeriodForm({ id: null, title: '', description: '', startAt: '', endAt: '', status: 'DRAFT' });
+      setPeriodForm({
+        id: null,
+        electionPeriodId: '',
+        title: '',
+        description: '',
+        startAt: '',
+        endAt: '',
+        transitionLabel: '',
+        transitionAt: '',
+        transitionNotes: '',
+        status: 'DRAFT',
+      });
       await queryClient.invalidateQueries({ queryKey: ['osis-management-periods'] });
+      await queryClient.invalidateQueries({ queryKey: ['osis-work-program-readiness'] });
     },
     onError: (error: unknown) => {
       toast.error(getErrorMessage(error, 'Gagal menyimpan periode OSIS'));
@@ -482,14 +604,14 @@ export const OsisManagementPage = () => {
         name: divisionForm.name.trim(),
         code: divisionForm.code.trim() || null,
         description: divisionForm.description.trim() || null,
-        displayOrder: Number(divisionForm.displayOrder || 0),
+        displayOrder: divisionForm.displayOrder ? Number(divisionForm.displayOrder) : undefined,
       };
       if (divisionForm.id) return osisService.updateDivision(divisionForm.id, payload);
       return osisService.createDivision(payload);
     },
     onSuccess: async () => {
       toast.success(divisionForm.id ? 'Divisi diperbarui' : 'Divisi ditambahkan');
-      setDivisionForm({ id: null, name: '', code: '', description: '', displayOrder: 0 });
+      setDivisionForm({ id: null, name: '', code: '', description: '', displayOrder: '' });
       await queryClient.invalidateQueries({ queryKey: ['osis-divisions'] });
       await queryClient.invalidateQueries({ queryKey: ['osis-memberships'] });
     },
@@ -506,14 +628,14 @@ export const OsisManagementPage = () => {
         name: positionForm.name.trim(),
         code: positionForm.code.trim() || null,
         description: positionForm.description.trim() || null,
-        displayOrder: Number(positionForm.displayOrder || 0),
+        displayOrder: positionForm.displayOrder ? Number(positionForm.displayOrder) : undefined,
       };
       if (positionForm.id) return osisService.updatePosition(positionForm.id, payload);
       return osisService.createPosition(payload);
     },
     onSuccess: async () => {
       toast.success(positionForm.id ? 'Jabatan diperbarui' : 'Jabatan ditambahkan');
-      setPositionForm({ id: null, name: '', code: '', description: '', divisionId: '', displayOrder: 0 });
+      setPositionForm({ id: null, name: '', code: '', description: '', divisionId: '', displayOrder: '' });
       await queryClient.invalidateQueries({ queryKey: ['osis-positions'] });
       await queryClient.invalidateQueries({ queryKey: ['osis-memberships'] });
     },
@@ -692,11 +814,22 @@ export const OsisManagementPage = () => {
   };
 
   const resetPeriodForm = () =>
-    setPeriodForm({ id: null, title: '', description: '', startAt: '', endAt: '', status: 'DRAFT' });
+    setPeriodForm({
+      id: null,
+      electionPeriodId: '',
+      title: '',
+      description: '',
+      startAt: '',
+      endAt: '',
+      transitionLabel: '',
+      transitionAt: '',
+      transitionNotes: '',
+      status: 'DRAFT',
+    });
   const resetDivisionForm = () =>
-    setDivisionForm({ id: null, name: '', code: '', description: '', displayOrder: 0 });
+    setDivisionForm({ id: null, name: '', code: '', description: '', displayOrder: '' });
   const resetPositionForm = () =>
-    setPositionForm({ id: null, name: '', code: '', description: '', divisionId: '', displayOrder: 0 });
+    setPositionForm({ id: null, name: '', code: '', description: '', divisionId: '', displayOrder: '' });
   const resetMembershipForm = () =>
     setMembershipForm({
       id: null,
@@ -709,21 +842,26 @@ export const OsisManagementPage = () => {
       isActive: true,
     });
 
+  const workflowReferencePeriod = selectedPeriod || workProgramReadiness?.latestManagementPeriod || null;
+  const workflowMeta = getWorkflowMeta(workflowReferencePeriod);
+  const activePeriodMeta = selectedPeriod ? getManagementStatusMeta(selectedPeriod.status) : null;
+
   if (!selectedAcademicYearId && academicYears.length > 0) {
     return <div className="rounded-2xl border border-gray-200 bg-white p-8 text-sm text-gray-500">Memuat konteks OSIS...</div>;
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Struktur & Nilai OSIS</h1>
-            <p className="text-sm text-slate-600">
-              Kelola periode kepengurusan, divisi, jabatan, anggota, dan penilaian OSIS secara terpisah dari ekskul.
+            <p className="mt-1 max-w-3xl text-sm text-slate-600">
+              Halaman ini disusun bertahap agar pembina OSIS lebih mudah mengikuti alur: pemilihan, transisi kepengurusan,
+              pembentukan struktur, penempatan pengurus, lalu penilaian.
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="grid gap-3 md:grid-cols-2 xl:min-w-[560px]">
             <select
               value={selectedAcademicYearId || ''}
               onChange={(e) => {
@@ -749,47 +887,68 @@ export const OsisManagementPage = () => {
               ) : (
                 periods.map((period) => (
                   <option key={period.id} value={period.id}>
-                    {period.title} • {period.status}
+                    {period.title} • {getManagementStatusMeta(period.status).label}
                   </option>
                 ))
               )}
             </select>
-            <select
-              value={effectiveSemester}
-              onChange={(e) => setSemester(e.target.value as Semester)}
-              disabled={Boolean(selectedReportProgram?.fixedSemester)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-            >
-              <option value="ODD">Semester Ganjil</option>
-              <option value="EVEN">Semester Genap</option>
-            </select>
-            <select
-              value={effectiveSelectedReportType}
-              onChange={(e) => setReportType(e.target.value)}
-              disabled={!reportPrograms.length}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-            >
-              {reportPrograms.length === 0 ? (
-                <option value="">Belum ada program rapor aktif</option>
-              ) : (
-                reportPrograms.map((program) => (
-                  <option key={program.code} value={program.code}>
-                    {program.label}
-                  </option>
-                ))
-              )}
-            </select>
+            {activeSection === 'ASSESSMENTS' ? (
+              <>
+                <select
+                  value={effectiveSemester}
+                  onChange={(e) => setSemester(e.target.value as Semester)}
+                  disabled={Boolean(selectedReportProgram?.fixedSemester)}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                >
+                  <option value="ODD">Semester Ganjil</option>
+                  <option value="EVEN">Semester Genap</option>
+                </select>
+                <select
+                  value={effectiveSelectedReportType}
+                  onChange={(e) => setReportType(e.target.value)}
+                  disabled={!reportPrograms.length}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                >
+                  {reportPrograms.length === 0 ? (
+                    <option value="">Belum ada program rapor aktif</option>
+                  ) : (
+                    reportPrograms.map((program) => (
+                      <option key={program.code} value={program.code}>
+                        {program.label}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </>
+            ) : (
+              <div className="md:col-span-2 flex flex-wrap gap-2">
+                {activePeriodMeta ? (
+                  <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${activePeriodMeta.className}`}>
+                    Periode terpilih: {activePeriodMeta.label}
+                  </span>
+                ) : (
+                  <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+                    Belum ada periode kepengurusan terpilih
+                  </span>
+                )}
+                {selectedPeriod?.electionPeriod ? (
+                  <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                    Acuan pemilihan: {selectedPeriod.electionPeriod.title}
+                  </span>
+                ) : null}
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="mt-5 grid gap-4 md:grid-cols-4">
           <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
             <div className="flex items-center gap-2 text-emerald-700">
               <CalendarDays className="h-4 w-4" />
               <span className="text-xs font-semibold uppercase tracking-[0.2em]">Periode</span>
             </div>
             <p className="mt-3 text-2xl font-bold text-emerald-900">{periods.length}</p>
-            <p className="text-sm text-emerald-800">Periode kepengurusan di tahun ajaran terpilih.</p>
+            <p className="text-sm text-emerald-800">Periode kepengurusan pada tahun ajaran ini.</p>
           </div>
           <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
             <div className="flex items-center gap-2 text-blue-700">
@@ -797,7 +956,7 @@ export const OsisManagementPage = () => {
               <span className="text-xs font-semibold uppercase tracking-[0.2em]">Divisi</span>
             </div>
             <p className="mt-3 text-2xl font-bold text-blue-900">{divisions.length}</p>
-            <p className="text-sm text-blue-800">Divisi aktif pada periode yang dipilih.</p>
+            <p className="text-sm text-blue-800">Bidang/divisi yang sudah tersusun di periode ini.</p>
           </div>
           <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
             <div className="flex items-center gap-2 text-violet-700">
@@ -805,7 +964,7 @@ export const OsisManagementPage = () => {
               <span className="text-xs font-semibold uppercase tracking-[0.2em]">Jabatan</span>
             </div>
             <p className="mt-3 text-2xl font-bold text-violet-900">{positions.length}</p>
-            <p className="text-sm text-violet-800">Jabatan yang dapat dipakai untuk struktur OSIS.</p>
+            <p className="text-sm text-violet-800">Jabatan pengurus yang tersedia untuk ditempatkan.</p>
           </div>
           <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
             <div className="flex items-center gap-2 text-amber-700">
@@ -813,715 +972,1087 @@ export const OsisManagementPage = () => {
               <span className="text-xs font-semibold uppercase tracking-[0.2em]">Pengurus</span>
             </div>
             <p className="mt-3 text-2xl font-bold text-amber-900">{memberships.length}</p>
-            <p className="text-sm text-amber-800">Anggota/pengurus OSIS pada periode aktif.</p>
+            <p className="text-sm text-amber-800">Siswa yang sudah ditempatkan ke struktur OSIS.</p>
           </div>
+        </div>
+
+        <div className={`mt-5 rounded-2xl border px-4 py-4 ${workflowMeta.className}`}>
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em]">
+                <AlertTriangle className="h-4 w-4" />
+                Alur OSIS Saat Ini
+              </div>
+              <p className="mt-2 text-lg font-semibold">{workflowMeta.label}</p>
+              <p className="mt-1 text-sm">{workProgramReadiness?.message || workflowMeta.description}</p>
+            </div>
+            <div className="grid gap-2 text-xs md:min-w-[280px]">
+              <div className="rounded-xl border border-white/50 bg-white/60 px-3 py-2">
+                1. Pemilihan selesai: {workProgramReadiness?.latestClosedElection ? workProgramReadiness.latestClosedElection.title : 'Belum ada'}
+              </div>
+              <div className="rounded-xl border border-white/50 bg-white/60 px-3 py-2">
+                2. Transisi kepengurusan:
+                {' '}
+                {workflowReferencePeriod?.transitionLabel && workflowReferencePeriod?.transitionAt
+                  ? `${workflowReferencePeriod.transitionLabel} (${formatDateLabel(workflowReferencePeriod.transitionAt)})`
+                  : 'Belum dicatat'}
+              </div>
+              <div className="rounded-xl border border-white/50 bg-white/60 px-3 py-2">
+                3. Program kerja:
+                {' '}
+                {workProgramReadiness?.canCreatePrograms ? 'Sudah terbuka' : 'Masih terkunci'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          {([
+            ['PERIOD', 'Alur & Periode'],
+            ['STRUCTURE', 'Divisi & Jabatan'],
+            ['MEMBERS', 'Pengurus OSIS'],
+            ['ASSESSMENTS', 'Nilai OSIS'],
+          ] as Array<[OsisManagementSection, string]>).map(([section, label]) => (
+            <button
+              key={section}
+              type="button"
+              onClick={() => setActiveSection(section)}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                activeSection === section
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.05fr_1.35fr]">
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
+      {activeSection === 'PERIOD' ? (
+        <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+          <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">Periode Kepengurusan</h2>
-              <p className="text-sm text-slate-500">Buat atau perbarui periode kepengurusan OSIS per tahun ajaran.</p>
+              <h2 className="text-lg font-semibold text-slate-900">Alur Kepengurusan OSIS</h2>
+              <p className="text-sm text-slate-500">
+                Untuk OSIS, program kerja baru dibuka setelah pemilihan selesai dan transisi kepengurusan dicatat.
+              </p>
             </div>
-            <button type="button" onClick={resetPeriodForm} className="text-sm font-medium text-blue-700 hover:text-blue-800">
-              Periode Baru
-            </button>
-          </div>
 
-          <div className="grid gap-3">
-            <input
-              type="text"
-              value={periodForm.title}
-              onChange={(e) => setPeriodForm((prev) => ({ ...prev, title: e.target.value }))}
-              placeholder="Contoh: Kepengurusan OSIS 2026/2027"
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-            />
-            <textarea
-              rows={3}
-              value={periodForm.description}
-              onChange={(e) => setPeriodForm((prev) => ({ ...prev, description: e.target.value }))}
-              placeholder="Keterangan singkat periode kepengurusan..."
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-            />
             <div className="grid gap-3 md:grid-cols-3">
-              <input
-                type="date"
-                value={periodForm.startAt}
-                onChange={(e) => setPeriodForm((prev) => ({ ...prev, startAt: e.target.value }))}
-                className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              />
-              <input
-                type="date"
-                value={periodForm.endAt}
-                onChange={(e) => setPeriodForm((prev) => ({ ...prev, endAt: e.target.value }))}
-                className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              />
-              <select
-                value={periodForm.status}
-                onChange={(e) => setPeriodForm((prev) => ({ ...prev, status: e.target.value as typeof prev.status }))}
-                className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              >
-                <option value="DRAFT">Draft</option>
-                <option value="ACTIVE">Aktif</option>
-                <option value="CLOSED">Ditutup</option>
-              </select>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Langkah 1</p>
+                <p className="mt-2 font-semibold text-slate-900">Pemilihan OSIS</p>
+                <p className="mt-1 text-sm text-slate-600">
+                  {workProgramReadiness?.latestClosedElection
+                    ? `${workProgramReadiness.latestClosedElection.title} selesai pada ${formatDateLabel(workProgramReadiness.latestClosedElection.endAt)}`
+                    : 'Belum ada periode pemilihan OSIS yang difinalisasi.'}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Langkah 2</p>
+                <p className="mt-2 font-semibold text-slate-900">Transisi Kepengurusan</p>
+                <p className="mt-1 text-sm text-slate-600">
+                  {workflowReferencePeriod?.transitionLabel && workflowReferencePeriod?.transitionAt
+                    ? `${workflowReferencePeriod.transitionLabel} • ${formatDateLabel(workflowReferencePeriod.transitionAt)}`
+                    : 'Catat dulu mubes, rapat kepengurusan baru, atau pelantikan.'}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Langkah 3</p>
+                <p className="mt-2 font-semibold text-slate-900">Program Kerja</p>
+                <p className="mt-1 text-sm text-slate-600">
+                  {workProgramReadiness?.canCreatePrograms
+                    ? 'Program kerja OSIS sudah bisa dibuat pada periode aktif.'
+                    : 'Program kerja masih menunggu langkah 1 dan 2 selesai.'}
+                </p>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => saveManagementPeriod()}
-              disabled={
-                isSavingManagementPeriod ||
-                !selectedAcademicYearId ||
-                !periodForm.title.trim() ||
-                !periodForm.startAt ||
-                !periodForm.endAt
-              }
-              className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSavingManagementPeriod ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              {periodForm.id ? 'Simpan Perubahan Periode' : 'Buat Periode'}
-            </button>
-          </div>
 
-          <div className="mt-6 space-y-3">
-            {isLoadingPeriods ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
-                Memuat periode OSIS...
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">Daftar Periode Kepengurusan</h3>
+                  <p className="text-xs text-slate-500">Pilih periode untuk mengelola struktur, anggota, dan nilai OSIS.</p>
+                </div>
+                <button type="button" onClick={resetPeriodForm} className="text-sm font-medium text-blue-700 hover:text-blue-800">
+                  Periode Baru
+                </button>
               </div>
-            ) : periods.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                Belum ada periode kepengurusan untuk tahun ajaran ini.
-              </div>
-            ) : (
-              periods.map((period) => (
-                <div
-                  key={period.id}
-                  className={`rounded-2xl border px-4 py-3 ${
-                    Number(selectedPeriod?.id) === Number(period.id)
-                      ? 'border-blue-200 bg-blue-50'
-                      : 'border-slate-200 bg-white'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-slate-900">{period.title}</p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {toDateInputValue(period.startAt)} s.d. {toDateInputValue(period.endAt)} • {period.status}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Divisi {period._count?.divisions || 0} • Jabatan {period._count?.positions || 0} • Pengurus {period._count?.memberships || 0}
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedPeriodIdState(period.id);
-                          setPeriodForm({
-                            id: period.id,
-                            title: period.title,
-                            description: period.description || '',
-                            startAt: toDateInputValue(period.startAt),
-                            endAt: toDateInputValue(period.endAt),
-                            status: period.status,
-                          });
-                        }}
-                        className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
-                        title="Edit periode"
+              <div className="space-y-3">
+                {isLoadingPeriods ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500">
+                    <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
+                    Memuat periode OSIS...
+                  </div>
+                ) : periods.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500">
+                    Belum ada periode kepengurusan untuk tahun ajaran ini.
+                  </div>
+                ) : (
+                  periods.map((period) => {
+                    const periodStatusMeta = getManagementStatusMeta(period.status);
+                    const periodWorkflowMeta = getWorkflowMeta(period);
+                    return (
+                      <div
+                        key={period.id}
+                        className={`rounded-2xl border px-4 py-4 ${
+                          Number(selectedPeriod?.id) === Number(period.id)
+                            ? 'border-blue-200 bg-blue-50'
+                            : 'border-slate-200 bg-white'
+                        }`}
                       >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-semibold text-slate-900">{period.title}</p>
+                              <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${periodStatusMeta.className}`}>
+                                {periodStatusMeta.label}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500">
+                              {formatDateLabel(period.startAt)} s.d. {formatDateLabel(period.endAt)}
+                            </p>
+                            <p className="text-xs text-slate-600">
+                              Pemilihan:{' '}
+                              <span className="font-medium text-slate-800">
+                                {period.electionPeriod?.title || 'Belum dihubungkan'}
+                              </span>
+                            </p>
+                            <p className="text-xs text-slate-600">
+                              Transisi:
+                              {' '}
+                              <span className="font-medium text-slate-800">
+                                {period.transitionLabel && period.transitionAt
+                                  ? `${period.transitionLabel} • ${formatDateLabel(period.transitionAt)}`
+                                  : 'Belum dicatat'}
+                              </span>
+                            </p>
+                            <div className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${periodWorkflowMeta.className}`}>
+                              {periodWorkflowMeta.label}
+                            </div>
+                            <p className="text-xs text-slate-500">
+                              Divisi {period._count?.divisions || 0} • Jabatan {period._count?.positions || 0} • Pengurus {period._count?.memberships || 0}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedPeriodIdState(period.id);
+                              setPeriodForm({
+                                id: period.id,
+                                electionPeriodId: period.electionPeriodId ? String(period.electionPeriodId) : '',
+                                title: period.title,
+                                description: period.description || '',
+                                startAt: toDateInputValue(period.startAt),
+                                endAt: toDateInputValue(period.endAt),
+                                transitionLabel: period.transitionLabel || '',
+                                transitionAt: toDateInputValue(period.transitionAt),
+                                transitionNotes: period.transitionNotes || '',
+                                status: period.status,
+                              });
+                            }}
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                          >
+                            <Pencil className="h-4 w-4" />
+                            Edit Periode
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </section>
 
-        <section className="space-y-6">
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="grid gap-6 lg:grid-cols-2">
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
               <div>
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold text-slate-900">Divisi OSIS</h2>
-                    <p className="text-sm text-slate-500">Atur bidang/divisi secara dinamis tanpa hardcode.</p>
-                  </div>
-                  <button type="button" onClick={resetDivisionForm} className="text-sm font-medium text-blue-700 hover:text-blue-800">
-                    Divisi Baru
-                  </button>
-                </div>
-                <div className="grid gap-3">
+                <h2 className="text-lg font-semibold text-slate-900">Form Periode & Transisi</h2>
+                <p className="text-sm text-slate-500">Hubungkan periode kepengurusan ke hasil pemilihan dan catat kegiatan transisi sebelum program kerja dibuka.</p>
+              </div>
+              <button type="button" onClick={resetPeriodForm} className="text-sm font-medium text-blue-700 hover:text-blue-800">
+                Reset Form
+              </button>
+            </div>
+
+            <div className="grid gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Nama Periode Kepengurusan</label>
+                <input
+                  type="text"
+                  value={periodForm.title}
+                  onChange={(e) => setPeriodForm((prev) => ({ ...prev, title: e.target.value }))}
+                  placeholder="Contoh: Kepengurusan OSIS 2026/2027"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Periode Pemilihan Yang Menjadi Acuan</label>
+                <select
+                  value={periodForm.electionPeriodId}
+                  onChange={(e) => setPeriodForm((prev) => ({ ...prev, electionPeriodId: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                >
+                  <option value="">Pilih hasil pemilihan OSIS yang sudah ditutup</option>
+                  {electionPeriods.map((period) => (
+                    <option key={period.id} value={period.id}>
+                      {period.title} • selesai {formatDateLabel(period.endAt)}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">
+                  Hanya pemilihan OSIS yang sudah selesai/final yang bisa dipakai sebagai dasar kepengurusan baru.
+                </p>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Deskripsi Umum Periode</label>
+                <textarea
+                  rows={3}
+                  value={periodForm.description}
+                  onChange={(e) => setPeriodForm((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Ringkasan periode, fokus kepengurusan, atau catatan umum..."
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Tanggal Mulai Periode</label>
                   <input
-                    type="text"
-                    value={divisionForm.name}
-                    onChange={(e) => setDivisionForm((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder="Nama divisi"
-                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                    type="date"
+                    value={periodForm.startAt}
+                    onChange={(e) => setPeriodForm((prev) => ({ ...prev, startAt: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                   />
-                  <div className="grid gap-3 md:grid-cols-2">
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Tanggal Selesai Periode</label>
+                  <input
+                    type="date"
+                    value={periodForm.endAt}
+                    onChange={(e) => setPeriodForm((prev) => ({ ...prev, endAt: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                <div className="mb-3">
+                  <h3 className="text-sm font-semibold text-blue-900">Tahap Transisi Kepengurusan</h3>
+                  <p className="text-xs text-blue-800">
+                    Gunakan nama kegiatan yang paling sesuai dengan proses sekolah Anda, misalnya Mubes OSIS, rapat kepengurusan baru, atau pelantikan.
+                  </p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Nama Kegiatan Transisi</label>
                     <input
                       type="text"
-                      value={divisionForm.code}
-                      onChange={(e) => setDivisionForm((prev) => ({ ...prev, code: e.target.value }))}
-                      placeholder="Kode (opsional)"
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                    />
-                    <input
-                      type="number"
-                      value={divisionForm.displayOrder}
-                      onChange={(e) => setDivisionForm((prev) => ({ ...prev, displayOrder: Number(e.target.value || 0) }))}
-                      placeholder="Urutan tampil"
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                      value={periodForm.transitionLabel}
+                      onChange={(e) => setPeriodForm((prev) => ({ ...prev, transitionLabel: e.target.value }))}
+                      placeholder="Contoh: Mubes OSIS / Rapat Kepengurusan Baru"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                     />
                   </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Tanggal Kegiatan Transisi</label>
+                    <input
+                      type="date"
+                      value={periodForm.transitionAt}
+                      onChange={(e) => setPeriodForm((prev) => ({ ...prev, transitionAt: e.target.value }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Catatan Transisi (Opsional)</label>
                   <textarea
                     rows={2}
-                    value={divisionForm.description}
-                    onChange={(e) => setDivisionForm((prev) => ({ ...prev, description: e.target.value }))}
-                    placeholder="Deskripsi singkat divisi"
-                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                    value={periodForm.transitionNotes}
+                    onChange={(e) => setPeriodForm((prev) => ({ ...prev, transitionNotes: e.target.value }))}
+                    placeholder="Contoh: hasil rapat awal, pembagian fokus bidang, atau keputusan penting..."
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                   />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Status Periode</label>
+                <select
+                  value={periodForm.status}
+                  onChange={(e) => setPeriodForm((prev) => ({ ...prev, status: e.target.value as typeof prev.status }))}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                >
+                  <option value="DRAFT">Draft</option>
+                  <option value="ACTIVE">Aktif</option>
+                  <option value="CLOSED">Ditutup</option>
+                </select>
+                <p className="mt-1 text-xs text-slate-500">
+                  Status aktif hanya dipakai jika pemilihan dan transisi kepengurusan sudah selesai dicatat.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => saveManagementPeriod()}
+                disabled={
+                  isSavingManagementPeriod ||
+                  !selectedAcademicYearId ||
+                  !periodForm.title.trim() ||
+                  !periodForm.startAt ||
+                  !periodForm.endAt
+                }
+                className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingManagementPeriod ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                {periodForm.id ? 'Simpan Perubahan Periode' : 'Buat Periode Kepengurusan'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {activeSection === 'STRUCTURE' ? (
+        <div className="grid gap-6 xl:grid-cols-2">
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Divisi OSIS</h2>
+                <p className="text-sm text-slate-500">Susun bidang/divisi terlebih dahulu agar jabatan dan anggota lebih mudah ditempatkan.</p>
+              </div>
+              <button type="button" onClick={resetDivisionForm} className="text-sm font-medium text-blue-700 hover:text-blue-800">
+                Divisi Baru
+              </button>
+            </div>
+
+            {!selectedPeriod?.id ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                Pilih periode kepengurusan terlebih dahulu sebelum mengatur divisi OSIS.
+              </div>
+            ) : (
+              <>
+                <div className="grid gap-4">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Nama Divisi</label>
+                    <input
+                      type="text"
+                      value={divisionForm.name}
+                      onChange={(e) => setDivisionForm((prev) => ({ ...prev, name: e.target.value }))}
+                      placeholder="Contoh: Divisi Kedisiplinan"
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Kode Singkat</label>
+                      <input
+                        type="text"
+                        value={divisionForm.code}
+                        onChange={(e) => setDivisionForm((prev) => ({ ...prev, code: e.target.value }))}
+                        placeholder="Otomatis jika dikosongkan"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        Sistem akan membuat kode otomatis dari nama divisi jika kolom ini dikosongkan.
+                        {previewStructureCode(divisionForm.code, divisionForm.name)
+                          ? ` Preview: ${previewStructureCode(divisionForm.code, divisionForm.name)}`
+                          : ''}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Urutan Tampil</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={divisionForm.displayOrder}
+                        onChange={(e) => setDivisionForm((prev) => ({ ...prev, displayOrder: e.target.value }))}
+                        placeholder="Kosongkan jika ingin otomatis"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                      />
+                      <p className="mt-1 text-xs text-slate-500">Kosongkan jika Anda belum perlu mengatur urutan tampil secara manual.</p>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Deskripsi Divisi</label>
+                    <textarea
+                      rows={3}
+                      value={divisionForm.description}
+                      onChange={(e) => setDivisionForm((prev) => ({ ...prev, description: e.target.value }))}
+                      placeholder="Ringkasan tugas pokok divisi ini..."
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={() => saveDivision()}
                     disabled={isSavingDivision || !selectedPeriod?.id || !divisionForm.name.trim()}
-                    className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {isSavingDivision ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
                     {divisionForm.id ? 'Simpan Divisi' : 'Tambah Divisi'}
                   </button>
                 </div>
-                <div className="mt-4 space-y-2">
-                  {divisions.map((division) => (
-                    <div key={division.id} className="flex items-start justify-between rounded-2xl border border-slate-200 px-4 py-3">
-                      <div>
-                        <p className="font-medium text-slate-900">{division.name}</p>
-                        <p className="text-xs text-slate-500">
-                          {division.code} • Urutan {division.displayOrder} • Jabatan {division._count?.positions || 0}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setDivisionForm({
-                              id: division.id,
-                              name: division.name,
-                              code: division.code,
-                              description: division.description || '',
-                              displayOrder: division.displayOrder,
-                            })
-                          }
-                          className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteDivision(division.id)}
-                          className="rounded-lg border border-rose-200 p-2 text-rose-600 hover:bg-rose-50"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
 
-              <div>
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold text-slate-900">Jabatan OSIS</h2>
-                    <p className="text-sm text-slate-500">Topang struktur ketua, wakil, sekretaris, bendahara, dan bidang.</p>
-                  </div>
-                  <button type="button" onClick={resetPositionForm} className="text-sm font-medium text-blue-700 hover:text-blue-800">
-                    Jabatan Baru
-                  </button>
+                <div className="mt-5 space-y-3">
+                  {divisions.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                      Belum ada divisi pada periode ini.
+                    </div>
+                  ) : (
+                    divisions.map((division) => (
+                      <div key={division.id} className="flex items-start justify-between gap-3 rounded-2xl border border-slate-200 px-4 py-3">
+                        <div>
+                          <p className="font-medium text-slate-900">{division.name}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {division.code} • {division.displayOrder > 0 ? `Urutan ${division.displayOrder}` : 'Urutan otomatis'} • Jabatan {division._count?.positions || 0}
+                          </p>
+                          {division.description ? <p className="mt-1 text-sm text-slate-600">{division.description}</p> : null}
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDivisionForm({
+                                id: division.id,
+                                name: division.name,
+                                code: division.code,
+                                description: division.description || '',
+                                displayOrder: division.displayOrder ? String(division.displayOrder) : '',
+                              })
+                            }
+                            className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDivision(division.id)}
+                            className="rounded-lg border border-rose-200 p-2 text-rose-600 hover:bg-rose-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
-                <div className="grid gap-3">
-                  <input
-                    type="text"
-                    value={positionForm.name}
-                    onChange={(e) => setPositionForm((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder="Nama jabatan"
-                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  />
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <select
-                      value={positionForm.divisionId}
-                      onChange={(e) => setPositionForm((prev) => ({ ...prev, divisionId: e.target.value }))}
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                    >
-                      <option value="">Tanpa divisi khusus</option>
-                      {divisions.map((division) => (
-                        <option key={division.id} value={division.id}>
-                          {division.name}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      value={positionForm.displayOrder}
-                      onChange={(e) => setPositionForm((prev) => ({ ...prev, displayOrder: Number(e.target.value || 0) }))}
-                      placeholder="Urutan tampil"
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-2">
+              </>
+            )}
+          </section>
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Jabatan OSIS</h2>
+                <p className="text-sm text-slate-500">Setelah divisi siap, tentukan jabatan yang akan dipakai untuk struktur OSIS.</p>
+              </div>
+              <button type="button" onClick={resetPositionForm} className="text-sm font-medium text-blue-700 hover:text-blue-800">
+                Jabatan Baru
+              </button>
+            </div>
+
+            {!selectedPeriod?.id ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                Pilih periode kepengurusan terlebih dahulu sebelum mengatur jabatan OSIS.
+              </div>
+            ) : (
+              <>
+                <div className="grid gap-4">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Nama Jabatan</label>
                     <input
                       type="text"
-                      value={positionForm.code}
-                      onChange={(e) => setPositionForm((prev) => ({ ...prev, code: e.target.value }))}
-                      placeholder="Kode (opsional)"
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                      value={positionForm.name}
+                      onChange={(e) => setPositionForm((prev) => ({ ...prev, name: e.target.value }))}
+                      placeholder="Contoh: Ketua Divisi Kedisiplinan"
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                     />
-                    <textarea
-                      rows={2}
-                      value={positionForm.description}
-                      onChange={(e) => setPositionForm((prev) => ({ ...prev, description: e.target.value }))}
-                      placeholder="Deskripsi jabatan"
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                    />
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Divisi Terkait</label>
+                      <select
+                        value={positionForm.divisionId}
+                        onChange={(e) => setPositionForm((prev) => ({ ...prev, divisionId: e.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                      >
+                        <option value="">Tanpa divisi khusus</option>
+                        {divisions.map((division) => (
+                          <option key={division.id} value={division.id}>
+                            {division.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Urutan Tampil</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={positionForm.displayOrder}
+                        onChange={(e) => setPositionForm((prev) => ({ ...prev, displayOrder: e.target.value }))}
+                        placeholder="Kosongkan jika ingin otomatis"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                      />
+                      <p className="mt-1 text-xs text-slate-500">Kosongkan jika urutan jabatan belum perlu diatur manual.</p>
+                    </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Kode Singkat</label>
+                      <input
+                        type="text"
+                        value={positionForm.code}
+                        onChange={(e) => setPositionForm((prev) => ({ ...prev, code: e.target.value }))}
+                        placeholder="Otomatis jika dikosongkan"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        Sistem akan membuat kode otomatis dari nama jabatan jika kolom ini dikosongkan.
+                        {previewStructureCode(positionForm.code, positionForm.name)
+                          ? ` Preview: ${previewStructureCode(positionForm.code, positionForm.name)}`
+                          : ''}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Deskripsi Jabatan</label>
+                      <textarea
+                        rows={3}
+                        value={positionForm.description}
+                        onChange={(e) => setPositionForm((prev) => ({ ...prev, description: e.target.value }))}
+                        placeholder="Tugas inti dari jabatan ini..."
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                      />
+                    </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => savePosition()}
                     disabled={isSavingPosition || !selectedPeriod?.id || !positionForm.name.trim()}
-                    className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {isSavingPosition ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
                     {positionForm.id ? 'Simpan Jabatan' : 'Tambah Jabatan'}
                   </button>
                 </div>
-                <div className="mt-4 space-y-2">
-                  {positions.map((position) => (
-                    <div key={position.id} className="flex items-start justify-between rounded-2xl border border-slate-200 px-4 py-3">
+
+                <div className="mt-5 space-y-3">
+                  {positions.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                      Belum ada jabatan pada periode ini.
+                    </div>
+                  ) : (
+                    positions.map((position) => (
+                      <div key={position.id} className="flex items-start justify-between gap-3 rounded-2xl border border-slate-200 px-4 py-3">
+                        <div>
+                          <p className="font-medium text-slate-900">{position.name}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {position.code} • {position.division?.name || 'Tanpa divisi khusus'} • {position.displayOrder > 0 ? `Urutan ${position.displayOrder}` : 'Urutan otomatis'}
+                          </p>
+                          {position.description ? <p className="mt-1 text-sm text-slate-600">{position.description}</p> : null}
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPositionForm({
+                                id: position.id,
+                                name: position.name,
+                                code: position.code,
+                                description: position.description || '',
+                                divisionId: position.divisionId ? String(position.divisionId) : '',
+                                displayOrder: position.displayOrder ? String(position.displayOrder) : '',
+                              })
+                            }
+                            className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePosition(position.id)}
+                            className="rounded-lg border border-rose-200 p-2 text-rose-600 hover:bg-rose-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+      ) : null}
+
+      {activeSection === 'MEMBERS' ? (
+        <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+          <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Pengajuan Masuk OSIS</h2>
+                <p className="text-sm text-slate-500">Siswa yang mengajukan OSIS akan diarahkan ke form anggota setelah Anda menentukan jabatannya.</p>
+              </div>
+              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                {joinRequests.length} pending
+              </span>
+            </div>
+
+            {isLoadingJoinRequests ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
+                Memuat pengajuan OSIS...
+              </div>
+            ) : joinRequests.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                Belum ada pengajuan OSIS dari siswa.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {joinRequests.map((request) => (
+                  <div key={request.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div>
-                        <p className="font-medium text-slate-900">{position.name}</p>
+                        <p className="font-semibold text-slate-900">{request.student?.name || 'Siswa'}</p>
                         <p className="text-xs text-slate-500">
-                          {position.code} • {position.division?.name || 'Lintas organisasi'} • Anggota {position._count?.memberships || 0}
+                          {request.student?.studentClass?.name || '-'} • {request.student?.nis || '-'}
+                        </p>
+                        <p className="mt-1 text-xs text-amber-700">
+                          {request.ekskul?.name || 'OSIS'} • Diajukan {formatDateLabel(request.requestedAt)}
                         </p>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
-                          onClick={() =>
-                            setPositionForm({
-                              id: position.id,
-                              name: position.name,
-                              code: position.code,
-                              description: position.description || '',
-                              divisionId: position.divisionId ? String(position.divisionId) : '',
-                              displayOrder: position.displayOrder,
-                            })
-                          }
-                          className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
+                          onClick={() => {
+                            setMembershipForm({
+                              id: null,
+                              requestId: String(request.id),
+                              studentId: String(request.studentId),
+                              positionId: '',
+                              divisionId: '',
+                              joinedAt: toDateInputValue(request.requestedAt),
+                              endedAt: '',
+                              isActive: true,
+                            });
+                            setActiveSection('MEMBERS');
+                          }}
+                          className="rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
                         >
-                          <Pencil className="h-4 w-4" />
+                          Proses ke Form Anggota
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDeletePosition(position.id)}
-                          className="rounded-lg border border-rose-200 p-2 text-rose-600 hover:bg-rose-50"
+                          onClick={async () => {
+                            const note = window.prompt('Catatan penolakan (opsional):', request.note || '');
+                            if (note === null) return;
+                            await rejectJoinRequest({ id: request.id, note });
+                          }}
+                          disabled={isRejectingJoinRequest}
+                          className="rounded-xl border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          Tolak
                         </button>
                       </div>
                     </div>
-                  ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">Form Penempatan Pengurus</h3>
+                  <p className="text-xs text-slate-500">Tempatkan siswa ke jabatan dan divisi yang sesuai.</p>
                 </div>
+                <button type="button" onClick={resetMembershipForm} className="text-sm font-medium text-blue-700 hover:text-blue-800">
+                  Reset Form
+                </button>
+              </div>
+
+              {membershipForm.requestId ? (
+                <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-xs text-blue-800">
+                  Form ini sedang memproses pengajuan siswa. Saat pengurus disimpan, status pengajuan OSIS akan otomatis disetujui.
+                </div>
+              ) : null}
+
+              <div className="grid gap-3">
+                <input
+                  type="text"
+                  value={eligibleSearch}
+                  onChange={(e) => setEligibleSearch(e.target.value)}
+                  placeholder="Cari siswa aktif..."
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                />
+                <select
+                  value={membershipForm.studentId}
+                  onChange={(e) =>
+                    setMembershipForm((prev) => ({
+                      ...prev,
+                      studentId: e.target.value,
+                      requestId:
+                        prev.requestId && String(prev.studentId) !== String(e.target.value)
+                          ? ''
+                          : prev.requestId,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                >
+                  <option value="">Pilih siswa aktif</option>
+                  {eligibleStudents.map((student) => (
+                    <option key={student.id} value={student.id}>
+                      {student.name} • {student.studentClass?.name || '-'}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={membershipForm.positionId}
+                  onChange={(e) => setMembershipForm((prev) => ({ ...prev, positionId: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                >
+                  <option value="">Pilih jabatan</option>
+                  {positions.map((position) => (
+                    <option key={position.id} value={position.id}>
+                      {position.name} {position.division?.name ? `• ${position.division.name}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={membershipForm.divisionId}
+                  onChange={(e) => setMembershipForm((prev) => ({ ...prev, divisionId: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                >
+                  <option value="">Ikuti divisi dari jabatan / kosong</option>
+                  {divisions.map((division) => (
+                    <option key={division.id} value={division.id}>
+                      {division.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <input
+                    type="date"
+                    value={membershipForm.joinedAt}
+                    onChange={(e) => setMembershipForm((prev) => ({ ...prev, joinedAt: e.target.value }))}
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="date"
+                    value={membershipForm.endedAt}
+                    onChange={(e) => setMembershipForm((prev) => ({ ...prev, endedAt: e.target.value }))}
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={membershipForm.isActive}
+                    onChange={(e) => setMembershipForm((prev) => ({ ...prev, isActive: e.target.checked }))}
+                  />
+                  Status aktif
+                </label>
+                <button
+                  type="button"
+                  onClick={() => saveMembership()}
+                  disabled={
+                    isSavingMembership ||
+                    !selectedPeriod?.id ||
+                    !membershipForm.studentId ||
+                    !membershipForm.positionId
+                  }
+                  className="inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSavingMembership ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Users className="mr-2 h-4 w-4" />}
+                  {membershipForm.id ? 'Simpan Perubahan Anggota' : 'Tambah Pengurus'}
+                </button>
               </div>
             </div>
-          </div>
+          </section>
 
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Pengurus & Nilai OSIS</h2>
-                <p className="text-sm text-slate-500">
-                  Daftarkan siswa ke struktur OSIS dan nilai mereka sesuai program rapor aktif.
-                </p>
+                <h2 className="text-lg font-semibold text-slate-900">Daftar Pengurus OSIS</h2>
+                <p className="text-sm text-slate-500">Kelola siswa yang sudah ditempatkan ke struktur OSIS.</p>
               </div>
-              <button type="button" onClick={resetMembershipForm} className="text-sm font-medium text-blue-700 hover:text-blue-800">
-                Anggota Baru
+              <input
+                type="text"
+                value={memberSearch}
+                onChange={(e) => setMemberSearch(e.target.value)}
+                placeholder="Cari pengurus..."
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm md:max-w-sm"
+              />
+            </div>
+
+            <div className="overflow-x-auto rounded-2xl border border-slate-200">
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Siswa</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Jabatan</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Divisi</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Masa Tugas</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 bg-white">
+                  {isLoadingMemberships ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">
+                        <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
+                        Memuat pengurus OSIS...
+                      </td>
+                    </tr>
+                  ) : filteredMemberships.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">
+                        Belum ada pengurus OSIS untuk periode terpilih.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredMemberships.map((membership) => (
+                      <tr key={membership.id} className={!membership.isActive ? 'bg-slate-50/70' : ''}>
+                        <td className="px-4 py-3 align-top">
+                          <div className="font-medium text-slate-900">{membership.student.name}</div>
+                          <div className="text-xs text-slate-500">
+                            {membership.student.studentClass?.name || '-'} • {membership.student.nis || '-'}
+                          </div>
+                          {!membership.isActive ? (
+                            <span className="mt-2 inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                              Nonaktif
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-3 align-top text-sm text-slate-700">{membership.position?.name || '-'}</td>
+                        <td className="px-4 py-3 align-top text-sm text-slate-700">
+                          {membership.division?.name || membership.position?.division?.name || '-'}
+                        </td>
+                        <td className="px-4 py-3 align-top text-sm text-slate-700">
+                          {formatDateLabel(membership.joinedAt)}
+                          {membership.endedAt ? ` • ${formatDateLabel(membership.endedAt)}` : ' • Aktif'}
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setMembershipForm({
+                                  id: membership.id,
+                                  requestId: '',
+                                  studentId: String(membership.studentId),
+                                  positionId: String(membership.positionId),
+                                  divisionId: membership.divisionId ? String(membership.divisionId) : '',
+                                  joinedAt: toDateInputValue(membership.joinedAt),
+                                  endedAt: toDateInputValue(membership.endedAt),
+                                  isActive: membership.isActive,
+                                })
+                              }
+                              className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
+                              title="Edit anggota"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeactivateMembership(membership.id)}
+                              className="rounded-lg border border-amber-200 p-2 text-amber-700 hover:bg-amber-50"
+                              title="Nonaktifkan anggota"
+                            >
+                              <UserMinus className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {activeSection === 'ASSESSMENTS' ? (
+        <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+          <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Template Nilai OSIS</h2>
+                <p className="text-sm text-slate-500">Sesuaikan bahasa predikat dan deskripsi agar selaras dengan rapor non-akademik sekolah.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => saveGradeTemplates()}
+                disabled={isSavingTemplates || isFetchingTemplates || !selectedAcademicYearId || !effectiveReportType}
+                className="inline-flex items-center rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingTemplates ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />}
+                Simpan Template
               </button>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[1fr_1.4fr]">
-              <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="rounded-2xl border border-slate-200 bg-white p-3">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-900">Pengajuan Masuk OSIS</h3>
-                      <p className="text-xs text-slate-500">Pengajuan siswa dari menu Ekstrakurikuler.</p>
-                    </div>
-                    <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
-                      {joinRequests.length} pending
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {isLoadingJoinRequests ? (
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">
-                        <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
-                        Memuat pengajuan OSIS...
-                      </div>
-                    ) : joinRequests.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-500">
-                        Belum ada pengajuan OSIS dari siswa.
-                      </div>
-                    ) : (
-                      joinRequests.map((request) => (
-                        <div key={request.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                            <div>
-                              <div className="font-medium text-slate-900">{request.student?.name || 'Siswa'}</div>
-                              <div className="text-xs text-slate-500">
-                                {request.student?.studentClass?.name || '-'} • {request.student?.nis || '-'}
-                              </div>
-                              <div className="mt-1 text-xs text-amber-700">
-                                {request.ekskul?.name || 'OSIS'} • Diajukan {toDateInputValue(request.requestedAt)}
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setMembershipForm({
-                                    id: null,
-                                    requestId: String(request.id),
-                                    studentId: String(request.studentId),
-                                    positionId: '',
-                                    divisionId: '',
-                                    joinedAt: toDateInputValue(request.requestedAt),
-                                    endedAt: '',
-                                    isActive: true,
-                                  })
-                                }
-                                className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-                              >
-                                Proses ke Form Anggota
-                              </button>
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  const note = window.prompt('Catatan penolakan (opsional):', request.note || '');
-                                  if (note === null) return;
-                                  await rejectJoinRequest({ id: request.id, note });
-                                }}
-                                disabled={isRejectingJoinRequest}
-                                className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                Tolak
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
+              Slot rapor aktif untuk nilai OSIS saat ini adalah
+              {' '}
+              <span className="font-semibold">{selectedReportSlot || effectiveReportType || '-'}</span>.
+              Pilihan semester dan program rapor ada di kanan atas header halaman ini.
+            </div>
 
-                <div className="space-y-3">
-                  {membershipForm.requestId ? (
-                    <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-xs text-blue-800">
-                      Form ini sedang memproses pengajuan siswa. Saat pengurus disimpan, status pengajuan OSIS akan otomatis disetujui.
-                    </div>
-                  ) : null}
+            <div className="grid gap-3">
+              {gradeOptions.map((option) => (
+                <div key={option.value} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <input
                     type="text"
-                    value={eligibleSearch}
-                    onChange={(e) => setEligibleSearch(e.target.value)}
-                    placeholder="Cari siswa..."
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  />
-                  <select
-                    value={membershipForm.studentId}
+                    value={gradeTemplates[option.value]?.label || ''}
                     onChange={(e) =>
-                      setMembershipForm((prev) => ({
+                      setTemplateEdits((prev) => ({
                         ...prev,
-                        studentId: e.target.value,
-                        requestId:
-                          prev.requestId && String(prev.studentId) !== String(e.target.value)
-                            ? ''
-                            : prev.requestId,
+                        [gradeTemplateContextKey]: {
+                          ...(prev[gradeTemplateContextKey] || DEFAULT_GRADE_TEMPLATES),
+                          [option.value]: {
+                            ...(prev[gradeTemplateContextKey]?.[option.value] || gradeTemplates[option.value]),
+                            label: e.target.value,
+                          },
+                        },
                       }))
                     }
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  >
-                    <option value="">Pilih siswa aktif</option>
-                    {eligibleStudents.map((student) => (
-                      <option key={student.id} value={student.id}>
-                        {student.name} • {student.studentClass?.name || '-'}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={membershipForm.positionId}
-                    onChange={(e) => setMembershipForm((prev) => ({ ...prev, positionId: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  >
-                    <option value="">Pilih jabatan</option>
-                    {positions.map((position) => (
-                      <option key={position.id} value={position.id}>
-                        {position.name} {position.division?.name ? `• ${position.division.name}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={membershipForm.divisionId}
-                    onChange={(e) => setMembershipForm((prev) => ({ ...prev, divisionId: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  >
-                    <option value="">Ikuti divisi dari jabatan / kosong</option>
-                    {divisions.map((division) => (
-                      <option key={division.id} value={division.id}>
-                        {division.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <input
-                      type="date"
-                      value={membershipForm.joinedAt}
-                      onChange={(e) => setMembershipForm((prev) => ({ ...prev, joinedAt: e.target.value }))}
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                    />
-                    <input
-                      type="date"
-                      value={membershipForm.endedAt}
-                      onChange={(e) => setMembershipForm((prev) => ({ ...prev, endedAt: e.target.value }))}
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <label className="flex items-center gap-2 text-sm text-slate-600">
-                    <input
-                      type="checkbox"
-                      checked={membershipForm.isActive}
-                      onChange={(e) => setMembershipForm((prev) => ({ ...prev, isActive: e.target.checked }))}
-                    />
-                    Status aktif
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => saveMembership()}
-                    disabled={
-                      isSavingMembership ||
-                      !selectedPeriod?.id ||
-                      !membershipForm.studentId ||
-                      !membershipForm.positionId
-                    }
-                    className="inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isSavingMembership ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Users className="mr-2 h-4 w-4" />}
-                    {membershipForm.id ? 'Simpan Perubahan Anggota' : 'Tambah Pengurus'}
-                  </button>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-3">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-900">Template Nilai OSIS</h3>
-                      <p className="text-xs text-slate-500">Per semester dan program rapor.</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => saveGradeTemplates()}
-                      disabled={isSavingTemplates || isFetchingTemplates || !selectedAcademicYearId || !effectiveReportType}
-                      className="inline-flex items-center rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isSavingTemplates ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />}
-                      Simpan
-                    </button>
-                  </div>
-                  <div className="grid gap-3">
-                    {gradeOptions.map((option) => (
-                      <div key={option.value} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <input
-                          type="text"
-                          value={gradeTemplates[option.value]?.label || ''}
-                          onChange={(e) =>
-                            setTemplateEdits((prev) => ({
-                              ...prev,
-                              [gradeTemplateContextKey]: {
-                                ...(prev[gradeTemplateContextKey] || DEFAULT_GRADE_TEMPLATES),
-                                [option.value]: {
-                                  ...(prev[gradeTemplateContextKey]?.[option.value] || gradeTemplates[option.value]),
-                                  label: e.target.value,
-                                },
-                              },
-                            }))
-                          }
-                          className="mb-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold"
-                        />
-                        <textarea
-                          rows={2}
-                          value={gradeTemplates[option.value]?.description || ''}
-                          onChange={(e) =>
-                            setTemplateEdits((prev) => ({
-                              ...prev,
-                              [gradeTemplateContextKey]: {
-                                ...(prev[gradeTemplateContextKey] || DEFAULT_GRADE_TEMPLATES),
-                                [option.value]: {
-                                  ...(prev[gradeTemplateContextKey]?.[option.value] || gradeTemplates[option.value]),
-                                  description: e.target.value,
-                                },
-                              },
-                            }))
-                          }
-                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
-                          placeholder={`Template deskripsi ${option.value}`}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <input
-                    type="text"
-                    value={memberSearch}
-                    onChange={(e) => setMemberSearch(e.target.value)}
-                    placeholder="Cari pengurus..."
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm md:max-w-sm"
+                    className="mb-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold"
                   />
-                  <p className="text-xs text-slate-500">
-                    Slot rapor aktif: <span className="font-semibold text-slate-700">{selectedReportSlot || effectiveReportType || '-'}</span>
-                  </p>
+                  <textarea
+                    rows={2}
+                    value={gradeTemplates[option.value]?.description || ''}
+                    onChange={(e) =>
+                      setTemplateEdits((prev) => ({
+                        ...prev,
+                        [gradeTemplateContextKey]: {
+                          ...(prev[gradeTemplateContextKey] || DEFAULT_GRADE_TEMPLATES),
+                          [option.value]: {
+                            ...(prev[gradeTemplateContextKey]?.[option.value] || gradeTemplates[option.value]),
+                            description: e.target.value,
+                          },
+                        },
+                      }))
+                    }
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
+                    placeholder={`Template deskripsi ${option.value}`}
+                  />
                 </div>
-
-                <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                  <table className="min-w-full divide-y divide-slate-200">
-                    <thead className="bg-slate-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Siswa</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Jabatan</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Divisi</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Predikat</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Deskripsi</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Aksi</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 bg-white">
-                      {isLoadingMemberships ? (
-                        <tr>
-                          <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">
-                            <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
-                            Memuat pengurus OSIS...
-                          </td>
-                        </tr>
-                      ) : filteredMemberships.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">
-                            Belum ada pengurus OSIS untuk periode terpilih.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredMemberships.map((membership) => {
-                          const currentEdit = localGradeEdits[membership.id];
-                          const gradeValue = currentEdit?.grade ?? membership.currentAssessment?.grade ?? '';
-                          const descriptionValue =
-                            currentEdit?.description ?? membership.currentAssessment?.description ?? '';
-
-                          return (
-                            <tr key={membership.id} className={!membership.isActive ? 'bg-slate-50/70' : ''}>
-                              <td className="px-4 py-3 align-top">
-                                <div className="font-medium text-slate-900">{membership.student.name}</div>
-                                <div className="text-xs text-slate-500">
-                                  {membership.student.studentClass?.name || '-'} • {membership.student.nis || '-'}
-                                </div>
-                                {!membership.isActive ? (
-                                  <span className="mt-2 inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
-                                    Nonaktif
-                                  </span>
-                                ) : null}
-                              </td>
-                              <td className="px-4 py-3 align-top text-sm text-slate-700">{membership.position?.name || '-'}</td>
-                              <td className="px-4 py-3 align-top text-sm text-slate-700">
-                                {membership.division?.name || membership.position?.division?.name || '-'}
-                              </td>
-                              <td className="px-4 py-3 align-top">
-                                <select
-                                  value={gradeValue}
-                                  onChange={(e) => handleAssessmentChange(membership.id, 'grade', e.target.value)}
-                                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                                >
-                                  <option value="">Pilih Predikat</option>
-                                  {gradeOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                      {option.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </td>
-                              <td className="px-4 py-3 align-top">
-                                <textarea
-                                  rows={2}
-                                  value={descriptionValue}
-                                  onChange={(e) => handleAssessmentChange(membership.id, 'description', e.target.value)}
-                                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                                  placeholder="Deskripsi kontribusi siswa..."
-                                />
-                              </td>
-                              <td className="px-4 py-3 align-top">
-                                <div className="flex justify-end gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                    setMembershipForm({
-                                      id: membership.id,
-                                      requestId: '',
-                                      studentId: String(membership.studentId),
-                                      positionId: String(membership.positionId),
-                                      divisionId: membership.divisionId ? String(membership.divisionId) : '',
-                                        joinedAt: toDateInputValue(membership.joinedAt),
-                                        endedAt: toDateInputValue(membership.endedAt),
-                                        isActive: membership.isActive,
-                                      })
-                                    }
-                                    className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
-                                    title="Edit anggota"
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => saveAssessment(membership.id)}
-                                    disabled={isSavingAssessment || !gradeValue}
-                                    className="rounded-lg border border-blue-200 p-2 text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                    title="Simpan nilai"
-                                  >
-                                    <Save className="h-4 w-4" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeactivateMembership(membership.id)}
-                                    className="rounded-lg border border-amber-200 p-2 text-amber-700 hover:bg-amber-50"
-                                    title="Nonaktifkan anggota"
-                                  >
-                                    <UserMinus className="h-4 w-4" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              ))}
             </div>
-          </div>
-        </section>
-      </div>
+          </section>
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Penilaian Pengurus OSIS</h2>
+                <p className="text-sm text-slate-500">Nilai siswa per periode, semester, dan slot rapor aktif.</p>
+              </div>
+              <input
+                type="text"
+                value={memberSearch}
+                onChange={(e) => setMemberSearch(e.target.value)}
+                placeholder="Cari pengurus..."
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm md:max-w-sm"
+              />
+            </div>
+
+            <div className="overflow-x-auto rounded-2xl border border-slate-200">
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Siswa</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Jabatan</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Divisi</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Predikat</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Deskripsi</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 bg-white">
+                  {isLoadingMemberships ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">
+                        <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
+                        Memuat pengurus OSIS...
+                      </td>
+                    </tr>
+                  ) : filteredMemberships.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">
+                        Belum ada pengurus OSIS untuk periode terpilih.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredMemberships.map((membership) => {
+                      const currentEdit = localGradeEdits[membership.id];
+                      const gradeValue = currentEdit?.grade ?? membership.currentAssessment?.grade ?? '';
+                      const descriptionValue =
+                        currentEdit?.description ?? membership.currentAssessment?.description ?? '';
+
+                      return (
+                        <tr key={membership.id} className={!membership.isActive ? 'bg-slate-50/70' : ''}>
+                          <td className="px-4 py-3 align-top">
+                            <div className="font-medium text-slate-900">{membership.student.name}</div>
+                            <div className="text-xs text-slate-500">
+                              {membership.student.studentClass?.name || '-'} • {membership.student.nis || '-'}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 align-top text-sm text-slate-700">{membership.position?.name || '-'}</td>
+                          <td className="px-4 py-3 align-top text-sm text-slate-700">
+                            {membership.division?.name || membership.position?.division?.name || '-'}
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <select
+                              value={gradeValue}
+                              onChange={(e) => handleAssessmentChange(membership.id, 'grade', e.target.value)}
+                              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                            >
+                              <option value="">Pilih Predikat</option>
+                              {gradeOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <textarea
+                              rows={2}
+                              value={descriptionValue}
+                              onChange={(e) => handleAssessmentChange(membership.id, 'description', e.target.value)}
+                              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                              placeholder="Deskripsi kontribusi siswa..."
+                            />
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => saveAssessment(membership.id)}
+                                disabled={isSavingAssessment || !gradeValue}
+                                className="rounded-lg border border-blue-200 p-2 text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                title="Simpan nilai"
+                              >
+                                <Save className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 };

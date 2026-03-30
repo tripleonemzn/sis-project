@@ -103,13 +103,24 @@ export interface CreateOsisElectionCandidatePayload {
 export interface OsisManagementPeriod {
   id: number;
   academicYearId: number;
+  electionPeriodId?: number | null;
   title: string;
   description?: string | null;
   startAt: string;
   endAt: string;
+  transitionLabel?: string | null;
+  transitionAt?: string | null;
+  transitionNotes?: string | null;
   status: 'DRAFT' | 'ACTIVE' | 'CLOSED';
   createdById?: number;
   academicYear?: { id: number; name: string; isActive?: boolean } | null;
+  electionPeriod?: {
+    id: number;
+    title: string;
+    status: 'DRAFT' | 'PUBLISHED' | 'CLOSED';
+    startAt: string;
+    endAt: string;
+  } | null;
   createdBy?: { id: number; name: string; username?: string | null } | null;
   _count?: {
     divisions: number;
@@ -246,6 +257,52 @@ export interface StudentOsisStatusPayload {
   academicYearId: number | null;
   membership: OsisMembership | null;
   request: OsisJoinRequest | null;
+  programs: Array<{
+    id: number;
+    title: string;
+    description?: string | null;
+    semester?: 'ODD' | 'EVEN' | null;
+    startMonth?: number | null;
+    endMonth?: number | null;
+    startWeek?: number | null;
+    endWeek?: number | null;
+    executionStatus?: string | null;
+    owner?: {
+      id: number;
+      name: string;
+      username?: string | null;
+    } | null;
+    items?: Array<{
+      id: number;
+      description: string;
+      targetDate?: string | null;
+      isCompleted?: boolean;
+      note?: string | null;
+    }>;
+  }>;
+}
+
+export interface OsisWorkProgramReadiness {
+  academicYearId: number | null;
+  latestClosedElection?: {
+    id: number;
+    title: string;
+    status: 'CLOSED';
+    startAt: string;
+    endAt: string;
+  } | null;
+  activeManagementPeriod?: OsisManagementPeriod | null;
+  latestManagementPeriod?: OsisManagementPeriod | null;
+  canCreatePrograms: boolean;
+  stage:
+    | 'NO_ACADEMIC_YEAR'
+    | 'NEEDS_ELECTION'
+    | 'NEEDS_MANAGEMENT_PERIOD'
+    | 'NEEDS_ELECTION_LINK'
+    | 'NEEDS_TRANSITION'
+    | 'NEEDS_ACTIVE_PERIOD'
+    | 'READY';
+  message: string;
 }
 
 export interface OsisMembershipListPayload {
@@ -337,10 +394,14 @@ export const osisService = {
 
   async createManagementPeriod(payload: {
     academicYearId: number;
+    electionPeriodId?: number | null;
     title: string;
     description?: string | null;
     startAt: string;
     endAt: string;
+    transitionLabel?: string | null;
+    transitionAt?: string | null;
+    transitionNotes?: string | null;
     status?: 'DRAFT' | 'ACTIVE' | 'CLOSED';
   }) {
     const response = await api.post<ApiResponse<OsisManagementPeriod>>('/osis/management-periods', payload);
@@ -351,14 +412,23 @@ export const osisService = {
     id: number,
     payload: Partial<{
       academicYearId: number;
+      electionPeriodId?: number | null;
       title: string;
       description?: string | null;
       startAt: string;
       endAt: string;
+      transitionLabel?: string | null;
+      transitionAt?: string | null;
+      transitionNotes?: string | null;
       status?: 'DRAFT' | 'ACTIVE' | 'CLOSED';
     }>,
   ) {
     const response = await api.put<ApiResponse<OsisManagementPeriod>>(`/osis/management-periods/${id}`, payload);
+    return response.data;
+  },
+
+  async getWorkProgramReadiness(params?: { academicYearId?: number }) {
+    const response = await api.get<ApiResponse<OsisWorkProgramReadiness>>('/osis/work-program-readiness', { params });
     return response.data;
   },
 

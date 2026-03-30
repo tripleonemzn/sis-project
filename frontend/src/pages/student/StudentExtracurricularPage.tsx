@@ -86,6 +86,29 @@ interface StudentExtracurricularSummary {
       requestedAt: string;
       ekskul?: { id: number; name: string } | null;
     } | null;
+    programs: Array<{
+      id: number;
+      title: string;
+      description?: string | null;
+      semester?: 'ODD' | 'EVEN' | null;
+      startMonth?: number | null;
+      endMonth?: number | null;
+      startWeek?: number | null;
+      endWeek?: number | null;
+      executionStatus?: string | null;
+      owner?: {
+        id: number;
+        name: string;
+        username?: string | null;
+      } | null;
+      items?: Array<{
+        id: number;
+        description: string;
+        targetDate?: string | null;
+        isCompleted?: boolean;
+        note?: string | null;
+      }>;
+    }>;
   };
   actions: {
     canChooseRegular: boolean;
@@ -119,6 +142,39 @@ function formatAttendanceStatus(status?: string | null) {
 
 function getOsisActionLabel(requestStatus?: string | null) {
   return requestStatus === 'REJECTED' ? 'Ajukan Ulang OSIS' : 'Ajukan OSIS';
+}
+
+function formatProgramPeriod(
+  startMonth?: number | null,
+  endMonth?: number | null,
+  startWeek?: number | null,
+  endWeek?: number | null,
+) {
+  const monthNames = [
+    '',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'Mei',
+    'Jun',
+    'Jul',
+    'Agu',
+    'Sep',
+    'Okt',
+    'Nov',
+    'Des',
+  ];
+
+  if (!startMonth || !endMonth || !startWeek || !endWeek) {
+    return 'Jadwal belum diatur';
+  }
+
+  if (startMonth === endMonth && startWeek === endWeek) {
+    return `${monthNames[startMonth] || `Bulan ${startMonth}`} • Minggu ${startWeek}`;
+  }
+
+  return `${monthNames[startMonth] || `Bulan ${startMonth}`} M${startWeek} - ${monthNames[endMonth] || `Bulan ${endMonth}`} M${endWeek}`;
 }
 
 type SelectionModalProps = {
@@ -379,6 +435,7 @@ export const StudentExtracurricularPage = () => {
   const osisStatus = summary?.osisStatus || null;
   const osisMembership = osisStatus?.membership || null;
   const osisRequest = osisStatus?.request || null;
+  const osisPrograms = osisStatus?.programs || [];
   const canChooseRegular = Boolean(summary?.actions.canChooseRegular);
   const canRequestOsis = Boolean(summary?.actions.canRequestOsis);
   const regularOptions = useMemo(
@@ -588,6 +645,71 @@ export const StudentExtracurricularPage = () => {
                     Anda belum mengajukan OSIS pada tahun ajaran {academicYearName}.
                   </div>
                 )}
+
+                {osisMembership ? (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                      <ClipboardList className="h-4 w-4 text-blue-600" />
+                      Program Kerja OSIS
+                    </div>
+
+                    {osisPrograms.length > 0 ? (
+                      <div className="space-y-3">
+                        {osisPrograms.map((program) => (
+                          <div key={program.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="text-sm font-semibold text-slate-900">{program.title}</div>
+                              <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
+                                {program.semester === 'EVEN' ? 'Semester Genap' : 'Semester Ganjil'}
+                              </span>
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {formatProgramPeriod(
+                                program.startMonth,
+                                program.endMonth,
+                                program.startWeek,
+                                program.endWeek,
+                              )}
+                              {program.owner?.name ? ` • Pembina: ${program.owner.name}` : ''}
+                            </div>
+                            {program.description ? (
+                              <p className="mt-2 text-sm text-slate-700">{program.description}</p>
+                            ) : null}
+                            <div className="mt-3 space-y-2">
+                              {(program.items || []).length > 0 ? (
+                                program.items!.slice(0, 3).map((item) => (
+                                  <div
+                                    key={item.id}
+                                    className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+                                  >
+                                    <div className="font-medium text-slate-900">{item.description}</div>
+                                    <div className="mt-1 text-xs text-slate-500">
+                                      {item.targetDate ? `Target: ${formatShortDate(item.targetDate)}` : 'Tanpa tanggal target'}
+                                      {item.note ? ` • ${item.note}` : ''}
+                                    </div>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-500">
+                                  Program kerja ini belum memiliki rincian agenda.
+                                </div>
+                              )}
+                              {(program.items || []).length > 3 ? (
+                                <div className="text-xs text-slate-500">
+                                  + {(program.items || []).length - 3} agenda OSIS lain sudah disiapkan pembina.
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500">
+                        Anda sudah masuk struktur OSIS, tetapi program kerja OSIS belum dipublikasikan pembina.
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </div>
 

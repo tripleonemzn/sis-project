@@ -41,6 +41,7 @@ backup_*.sql
 !backend/prisma/migrations/20260224093000_add_exam_program_configs/migration.sql
 !backend/prisma/migrations/20260224165000_add_exam_grade_components_master/migration.sql
 !backend/prisma/migrations/20260224214500_add_report_slot_to_exam_grade_components/migration.sql
+!backend/prisma/migrations/20260330184500_add_osis_management_workflow_context/migration.sql
 temp_repo/
 uploads/
 frontend/public/foto_kegiatan/

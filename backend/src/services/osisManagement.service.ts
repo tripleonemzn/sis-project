@@ -1,4 +1,5 @@
 import {
+  AdditionalDuty,
   ExamType,
   OsisJoinRequestStatus,
   OsisManagementStatus,
@@ -20,6 +21,15 @@ const DEFAULT_OSIS_PREDICATE_LABELS: Record<OsisPredicate, string> = {
 
 const managementPeriodInclude = Prisma.validator<Prisma.OsisManagementPeriodInclude>()({
   academicYear: { select: { id: true, name: true, isActive: true } },
+  electionPeriod: {
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      startAt: true,
+      endAt: true,
+    },
+  },
   createdBy: { select: { id: true, name: true, username: true } },
   _count: {
     select: {
@@ -637,6 +647,48 @@ export class OsisManagementService {
     }
   }
 
+  private async ensureElectionPeriodReady(
+    electionPeriodId: number,
+    academicYearId: number,
+  ) {
+    const election = await prisma.osisElectionPeriod.findUnique({
+      where: { id: electionPeriodId },
+      select: {
+        id: true,
+        academicYearId: true,
+        title: true,
+        status: true,
+        endAt: true,
+      },
+    });
+
+    if (!election) {
+      throw new ApiError(404, 'Periode pemilihan OSIS tidak ditemukan.');
+    }
+
+    if (Number(election.academicYearId) !== Number(academicYearId)) {
+      throw new ApiError(400, 'Periode pemilihan OSIS harus berada pada tahun ajaran yang sama.');
+    }
+
+    if (election.status !== 'CLOSED') {
+      throw new ApiError(
+        400,
+        `Periode pemilihan "${election.title}" belum ditutup. Selesaikan pemilihan terlebih dahulu sebelum dipakai untuk kepengurusan OSIS.`,
+      );
+    }
+
+    return election;
+  }
+
+  private assertTransitionPair(transitionLabel?: string | null, transitionAt?: Date | null) {
+    if ((transitionLabel && !transitionAt) || (!transitionLabel && transitionAt)) {
+      throw new ApiError(
+        400,
+        'Catat kegiatan transisi kepengurusan secara lengkap: nama kegiatan dan tanggal pelaksanaan wajib diisi bersamaan.',
+      );
+    }
+  }
+
   private async ensurePeriodExists(periodId: number) {
     const period = await prisma.osisManagementPeriod.findUnique({
       where: { id: periodId },
@@ -711,10 +763,14 @@ export class OsisManagementService {
     actorId: number,
     payload: {
       academicYearId: number;
+      electionPeriodId?: number | null;
       title: string;
       description?: string | null;
       startAt: Date;
       endAt: Date;
+      transitionLabel?: string | null;
+      transitionAt?: Date | null;
+      transitionNotes?: string | null;
       status?: OsisManagementStatus;
     },
   ) {
@@ -723,6 +779,31 @@ export class OsisManagementService {
     assertValidDateRange(startAt, endAt);
 
     const status = payload.status || OsisManagementStatus.DRAFT;
+    const transitionLabel = normalizeNullableText(payload.transitionLabel);
+    const transitionAt = payload.transitionAt ? new Date(payload.transitionAt) : null;
+    const transitionNotes = normalizeNullableText(payload.transitionNotes);
+    this.assertTransitionPair(transitionLabel, transitionAt);
+
+    const electionPeriodId = payload.electionPeriodId ? Number(payload.electionPeriodId) : null;
+    if (electionPeriodId) {
+      await this.ensureElectionPeriodReady(electionPeriodId, payload.academicYearId);
+    }
+
+    if (status === OsisManagementStatus.ACTIVE) {
+      if (!electionPeriodId) {
+        throw new ApiError(
+          400,
+          'Periode kepengurusan OSIS belum bisa diaktifkan. Hubungkan dulu ke hasil pemilihan OSIS yang sudah ditutup.',
+        );
+      }
+      if (!transitionLabel || !transitionAt) {
+        throw new ApiError(
+          400,
+          'Periode kepengurusan OSIS belum bisa diaktifkan. Catat dulu kegiatan transisi kepengurusan seperti Mubes, rapat kepengurusan, atau pelantikan.',
+        );
+      }
+    }
+
     await this.ensureSingleActivePeriod({
       academicYearId: payload.academicYearId,
       status,
@@ -731,10 +812,14 @@ export class OsisManagementService {
     return prisma.osisManagementPeriod.create({
       data: {
         academicYearId: payload.academicYearId,
+        electionPeriodId,
         title: String(payload.title || '').trim(),
         description: normalizeNullableText(payload.description),
         startAt,
         endAt,
+        transitionLabel,
+        transitionAt,
+        transitionNotes,
         status,
         createdById: actorId,
       },
@@ -746,10 +831,14 @@ export class OsisManagementService {
     id: number,
     payload: Partial<{
       academicYearId: number;
+      electionPeriodId: number | null;
       title: string;
       description: string | null;
       startAt: Date;
       endAt: Date;
+      transitionLabel: string | null;
+      transitionAt: Date | null;
+      transitionNotes: string | null;
       status: OsisManagementStatus;
     }>,
   ) {
@@ -760,6 +849,48 @@ export class OsisManagementService {
     assertValidDateRange(startAt, endAt);
 
     const status = payload.status ?? existing.status;
+    const electionPeriodId =
+      payload.electionPeriodId === undefined
+        ? existing.electionPeriodId ?? null
+        : payload.electionPeriodId
+          ? Number(payload.electionPeriodId)
+          : null;
+    const transitionLabel =
+      payload.transitionLabel === undefined
+        ? existing.transitionLabel
+        : normalizeNullableText(payload.transitionLabel);
+    const transitionAt =
+      payload.transitionAt === undefined
+        ? existing.transitionAt
+        : payload.transitionAt
+          ? new Date(payload.transitionAt)
+          : null;
+    const transitionNotes =
+      payload.transitionNotes === undefined
+        ? existing.transitionNotes
+        : normalizeNullableText(payload.transitionNotes);
+
+    this.assertTransitionPair(transitionLabel, transitionAt);
+
+    if (electionPeriodId) {
+      await this.ensureElectionPeriodReady(electionPeriodId, academicYearId);
+    }
+
+    if (status === OsisManagementStatus.ACTIVE) {
+      if (!electionPeriodId) {
+        throw new ApiError(
+          400,
+          'Periode kepengurusan OSIS belum bisa diaktifkan. Hubungkan dulu ke hasil pemilihan OSIS yang sudah ditutup.',
+        );
+      }
+      if (!transitionLabel || !transitionAt) {
+        throw new ApiError(
+          400,
+          'Periode kepengurusan OSIS belum bisa diaktifkan. Catat dulu kegiatan transisi kepengurusan seperti Mubes, rapat kepengurusan, atau pelantikan.',
+        );
+      }
+    }
+
     await this.ensureSingleActivePeriod({
       academicYearId,
       status,
@@ -770,6 +901,7 @@ export class OsisManagementService {
       where: { id },
       data: {
         academicYearId,
+        electionPeriodId,
         title: payload.title !== undefined ? String(payload.title || '').trim() : existing.title,
         description:
           payload.description !== undefined
@@ -777,10 +909,140 @@ export class OsisManagementService {
             : existing.description,
         startAt,
         endAt,
+        transitionLabel,
+        transitionAt,
+        transitionNotes,
         status,
       },
       include: managementPeriodInclude,
     });
+  }
+
+  async getWorkProgramReadiness(academicYearId?: number | null) {
+    const targetAcademicYearId = await this.resolveAcademicYearId(academicYearId);
+
+    if (!targetAcademicYearId) {
+      return {
+        academicYearId: null,
+        latestClosedElection: null,
+        activeManagementPeriod: null,
+        latestManagementPeriod: null,
+        canCreatePrograms: false,
+        stage: 'NO_ACADEMIC_YEAR' as const,
+        message: 'Tahun ajaran aktif belum tersedia untuk modul OSIS.',
+      };
+    }
+
+    const [latestClosedElection, managementPeriods] = await Promise.all([
+      prisma.osisElectionPeriod.findFirst({
+        where: {
+          academicYearId: targetAcademicYearId,
+          status: 'CLOSED',
+        },
+        orderBy: [{ endAt: 'desc' }, { id: 'desc' }],
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          startAt: true,
+          endAt: true,
+        },
+      }),
+      prisma.osisManagementPeriod.findMany({
+        where: {
+          academicYearId: targetAcademicYearId,
+        },
+        orderBy: [{ status: 'asc' }, { startAt: 'desc' }, { id: 'desc' }],
+        include: managementPeriodInclude,
+      }),
+    ]);
+
+    const activeManagementPeriod =
+      managementPeriods.find((period) => period.status === OsisManagementStatus.ACTIVE) || null;
+    const latestManagementPeriod = managementPeriods[0] || null;
+    const referencePeriod = activeManagementPeriod || latestManagementPeriod;
+    const linkedElectionClosed = referencePeriod?.electionPeriod?.status === 'CLOSED';
+    const transitionRecorded = Boolean(referencePeriod?.transitionLabel && referencePeriod?.transitionAt);
+    const canCreatePrograms = Boolean(
+      activeManagementPeriod &&
+        activeManagementPeriod.electionPeriodId &&
+        linkedElectionClosed &&
+        transitionRecorded,
+    );
+
+    if (!latestClosedElection) {
+      return {
+        academicYearId: targetAcademicYearId,
+        latestClosedElection: null,
+        activeManagementPeriod,
+        latestManagementPeriod,
+        canCreatePrograms: false,
+        stage: 'NEEDS_ELECTION' as const,
+        message: 'Program kerja OSIS belum bisa dibuat. Selesaikan dan tutup pemilihan OSIS terlebih dahulu.',
+      };
+    }
+
+    if (!referencePeriod) {
+      return {
+        academicYearId: targetAcademicYearId,
+        latestClosedElection,
+        activeManagementPeriod: null,
+        latestManagementPeriod: null,
+        canCreatePrograms: false,
+        stage: 'NEEDS_MANAGEMENT_PERIOD' as const,
+        message:
+          'Program kerja OSIS belum bisa dibuat. Buat dulu periode kepengurusan OSIS yang mengacu pada hasil pemilihan terakhir.',
+      };
+    }
+
+    if (!referencePeriod.electionPeriodId || !linkedElectionClosed) {
+      return {
+        academicYearId: targetAcademicYearId,
+        latestClosedElection,
+        activeManagementPeriod,
+        latestManagementPeriod,
+        canCreatePrograms: false,
+        stage: 'NEEDS_ELECTION_LINK' as const,
+        message:
+          'Program kerja OSIS belum bisa dibuat. Hubungkan periode kepengurusan ke hasil pemilihan OSIS yang sudah ditutup.',
+      };
+    }
+
+    if (!transitionRecorded) {
+      return {
+        academicYearId: targetAcademicYearId,
+        latestClosedElection,
+        activeManagementPeriod,
+        latestManagementPeriod,
+        canCreatePrograms: false,
+        stage: 'NEEDS_TRANSITION' as const,
+        message:
+          'Program kerja OSIS belum bisa dibuat. Catat dulu kegiatan transisi kepengurusan seperti Mubes, rapat kepengurusan baru, atau pelantikan.',
+      };
+    }
+
+    if (!activeManagementPeriod) {
+      return {
+        academicYearId: targetAcademicYearId,
+        latestClosedElection,
+        activeManagementPeriod: null,
+        latestManagementPeriod,
+        canCreatePrograms: false,
+        stage: 'NEEDS_ACTIVE_PERIOD' as const,
+        message:
+          'Program kerja OSIS belum bisa dibuat. Aktifkan periode kepengurusan setelah transisi kepengurusan selesai dicatat.',
+      };
+    }
+
+    return {
+      academicYearId: targetAcademicYearId,
+      latestClosedElection,
+      activeManagementPeriod,
+      latestManagementPeriod,
+      canCreatePrograms: true,
+      stage: 'READY' as const,
+      message: 'Program kerja OSIS sudah bisa dibuat untuk periode kepengurusan aktif.',
+    };
   }
 
   async listDivisions(periodId: number) {
@@ -1108,6 +1370,7 @@ export class OsisManagementService {
         academicYearId: null,
         membership: null,
         request: null,
+        programs: [],
       };
     }
 
@@ -1133,10 +1396,39 @@ export class OsisManagementService {
       }),
     ]);
 
+    const programs = membership
+      ? await prisma.workProgram.findMany({
+          where: {
+            academicYearId: targetAcademicYearId,
+            additionalDuty: AdditionalDuty.PEMBINA_OSIS,
+            approvalStatus: 'APPROVED',
+          },
+          orderBy: [
+            { semester: 'asc' },
+            { startMonth: 'asc' },
+            { startWeek: 'asc' },
+            { createdAt: 'asc' },
+          ],
+          include: {
+            owner: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+              },
+            },
+            items: {
+              orderBy: [{ targetDate: 'asc' }, { id: 'asc' }],
+            },
+          },
+        })
+      : [];
+
     return {
       academicYearId: targetAcademicYearId,
       membership,
       request,
+      programs,
     };
   }
 

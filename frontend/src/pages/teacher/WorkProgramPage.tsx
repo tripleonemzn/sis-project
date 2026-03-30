@@ -11,6 +11,7 @@ import {
   type WorkProgramExecutionStatus,
 } from '../../services/workProgram.service';
 import { teacherAssignmentService } from '../../services/teacherAssignment.service';
+import { osisService } from '../../services/osis.service';
 import {
   budgetRequestService,
   type BudgetRequest,
@@ -620,6 +621,17 @@ export const WorkProgramPage = () => {
     return academicYears[0]?.id ?? null;
   }, [academicYears]);
 
+  const { data: osisWorkProgramReadinessResponse } = useQuery({
+    queryKey: ['osis-work-program-readiness', activeYearId, selectedDuty],
+    queryFn: () => osisService.getWorkProgramReadiness(activeYearId ? { academicYearId: activeYearId } : undefined),
+    enabled: !!activeYearId && selectedDuty === 'PEMBINA_OSIS',
+    ...liveQueryOptions,
+  });
+
+  const osisWorkProgramReadiness = osisWorkProgramReadinessResponse?.data || null;
+  const isOsisWorkProgramLocked =
+    selectedDuty === 'PEMBINA_OSIS' && !osisWorkProgramReadiness?.canCreatePrograms;
+
   const startYear = useMemo(() => {
     if (!activeYearId || !academicYears.length) return new Date().getFullYear();
     const ay = academicYears.find((y) => y.id === activeYearId);
@@ -867,6 +879,17 @@ export const WorkProgramPage = () => {
       toast.error(getErrorMessage(error) || 'Gagal membuat program kerja');
     },
   });
+
+  const openCreateProgramModal = () => {
+    if (isOsisWorkProgramLocked) {
+      toast.error(
+        osisWorkProgramReadiness?.message ||
+          'Program kerja OSIS belum bisa dibuat sebelum pemilihan dan transisi kepengurusan selesai.',
+      );
+      return;
+    }
+    setIsCreateModalOpen(true);
+  };
 
   const onSubmitCreate = (values: CreateProgramFormValues) => {
     createProgramMutation.mutate(values);
@@ -1264,7 +1287,7 @@ export const WorkProgramPage = () => {
             <button
               onClick={() =>
                 activeTab === 'PROGRAM'
-                  ? setIsCreateModalOpen(true)
+                  ? openCreateProgramModal()
                   : setIsBudgetModalOpen(true)
               }
               className="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
@@ -1360,6 +1383,50 @@ export const WorkProgramPage = () => {
         )}
       </div>
 
+      {selectedDuty === 'PEMBINA_OSIS' && activeTab === 'PROGRAM' && (
+        <div
+          className={`rounded-2xl border px-4 py-4 ${
+            isOsisWorkProgramLocked
+              ? 'border-amber-200 bg-amber-50'
+              : 'border-emerald-200 bg-emerald-50'
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle
+              className={`mt-0.5 h-5 w-5 shrink-0 ${
+                isOsisWorkProgramLocked ? 'text-amber-600' : 'text-emerald-600'
+              }`}
+            />
+            <div className="text-sm leading-6">
+              <p
+                className={`font-semibold ${
+                  isOsisWorkProgramLocked ? 'text-amber-800' : 'text-emerald-800'
+                }`}
+              >
+                Alur Program Kerja OSIS
+              </p>
+              <p className={isOsisWorkProgramLocked ? 'text-amber-700' : 'text-emerald-700'}>
+                {osisWorkProgramReadiness?.message ||
+                  'Program kerja OSIS akan mengikuti kesiapan periode kepengurusan aktif.'}
+              </p>
+              {osisWorkProgramReadiness?.activeManagementPeriod ? (
+                <p className={`mt-1 ${isOsisWorkProgramLocked ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  Periode aktif:
+                  {' '}
+                  <span className="font-medium">{osisWorkProgramReadiness.activeManagementPeriod.title}</span>
+                  {osisWorkProgramReadiness.activeManagementPeriod.transitionLabel &&
+                  osisWorkProgramReadiness.activeManagementPeriod.transitionAt
+                    ? ` • ${osisWorkProgramReadiness.activeManagementPeriod.transitionLabel} pada ${new Date(
+                        osisWorkProgramReadiness.activeManagementPeriod.transitionAt,
+                      ).toLocaleDateString('id-ID')}`
+                    : ''}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'PROGRAM' && (
         programs.length === 0 && !isLoading ? (
           <div className="flex flex-col items-center justify-center py-12 bg-white rounded-xl shadow-sm border border-gray-100">
@@ -1379,7 +1446,7 @@ export const WorkProgramPage = () => {
                 Konfigurasi Kalender
               </button>
               <button
-                onClick={() => setIsCreateModalOpen(true)}
+                onClick={() => openCreateProgramModal()}
                 className="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -2678,13 +2745,17 @@ export const WorkProgramPage = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Program Kerja
+                  {selectedDuty === 'PEMBINA_OSIS' ? 'Program / Agenda OSIS' : 'Program Kerja'}
                 </label>
                 <input
                   type="text"
                   {...registerCreate('title')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-                  placeholder="Contoh: Proses Pengadaan alat praktik"
+                  placeholder={
+                    selectedDuty === 'PEMBINA_OSIS'
+                      ? 'Contoh: Rapat koordinasi bidang atau program kerja bakti OSIS'
+                      : 'Contoh: Proses Pengadaan alat praktik'
+                  }
                 />
                 {createErrors.title && (
                   <p className="text-xs text-red-500 mt-1">
@@ -2693,7 +2764,18 @@ export const WorkProgramPage = () => {
                 )}
               </div>
 
-              {allowedMajors.length > 1 && (
+              {selectedDuty === 'PEMBINA_OSIS' ? (
+                <div className={`rounded-xl border px-3 py-3 text-xs ${
+                  isOsisWorkProgramLocked
+                    ? 'border-amber-200 bg-amber-50 text-amber-800'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                }`}>
+                  {osisWorkProgramReadiness?.message ||
+                    'Program kerja OSIS mengikuti kesiapan periode kepengurusan aktif.'}
+                </div>
+              ) : null}
+
+              {selectedDuty === 'KAPROG' && allowedMajors.length > 1 && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Kompetensi

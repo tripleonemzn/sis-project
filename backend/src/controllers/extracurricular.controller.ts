@@ -365,6 +365,7 @@ export const getStudentExtracurricularSummary = asyncHandler(async (req: AuthReq
             academicYearId: null,
             membership: null,
             request: null,
+            programs: [],
           },
           actions: {
             canChooseRegular: false,

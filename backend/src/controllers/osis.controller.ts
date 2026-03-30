@@ -46,10 +46,14 @@ const voteSchema = z.object({
 
 const createManagementPeriodSchema = z.object({
   academicYearId: z.number().int(),
+  electionPeriodId: z.number().int().optional().nullable(),
   title: z.string().min(1, 'Judul periode wajib diisi'),
   description: z.string().optional().nullable(),
   startAt: z.string().min(1),
   endAt: z.string().min(1),
+  transitionLabel: z.string().optional().nullable(),
+  transitionAt: z.string().optional().nullable(),
+  transitionNotes: z.string().optional().nullable(),
   status: z.nativeEnum(OsisManagementStatus).default('DRAFT'),
 });
 
@@ -395,16 +399,30 @@ export const getOsisManagementPeriods = asyncHandler(async (req: Request, res: R
     .json(new ApiResponse(200, periods, 'Data periode kepengurusan OSIS berhasil diambil'));
 });
 
+export const getOsisWorkProgramReadiness = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanMonitorOsisElection(req);
+  const { academicYearId } = listPeriodsSchema.parse(req.query);
+  const readiness = await osisManagementService.getWorkProgramReadiness(academicYearId);
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, readiness, 'Status kesiapan program kerja OSIS berhasil diambil'));
+});
+
 export const createOsisManagementPeriod = asyncHandler(async (req: Request, res: Response) => {
   await assertCanManageOsisElection(req);
   const authUser = getAuthUser(req);
   const body = createManagementPeriodSchema.parse(req.body);
   const period = await osisManagementService.createManagementPeriod(authUser.id, {
     academicYearId: body.academicYearId,
+    electionPeriodId: body.electionPeriodId,
     title: body.title,
     description: body.description,
     startAt: toDate(body.startAt),
     endAt: toDate(body.endAt),
+    transitionLabel: body.transitionLabel,
+    transitionAt: body.transitionAt ? toDate(body.transitionAt) : null,
+    transitionNotes: body.transitionNotes,
     status: body.status,
   });
 
@@ -420,10 +438,19 @@ export const updateOsisManagementPeriod = asyncHandler(async (req: Request, res:
 
   const period = await osisManagementService.updateManagementPeriod(id, {
     academicYearId: body.academicYearId,
+    electionPeriodId: body.electionPeriodId,
     title: body.title,
     description: body.description,
     startAt: body.startAt ? toDate(body.startAt) : undefined,
     endAt: body.endAt ? toDate(body.endAt) : undefined,
+    transitionLabel: body.transitionLabel,
+    transitionAt:
+      body.transitionAt === undefined
+        ? undefined
+        : body.transitionAt
+          ? toDate(body.transitionAt)
+          : null,
+    transitionNotes: body.transitionNotes,
     status: body.status,
   });
 

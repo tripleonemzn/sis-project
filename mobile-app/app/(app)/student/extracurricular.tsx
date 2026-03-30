@@ -48,6 +48,25 @@ function getOsisActionLabel(requestStatus?: string | null) {
   return requestStatus === 'REJECTED' ? 'Ajukan Ulang OSIS' : 'Ajukan OSIS';
 }
 
+function formatProgramPeriod(
+  startMonth?: number | null,
+  endMonth?: number | null,
+  startWeek?: number | null,
+  endWeek?: number | null,
+) {
+  const monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+
+  if (!startMonth || !endMonth || !startWeek || !endWeek) {
+    return 'Jadwal belum diatur';
+  }
+
+  if (startMonth === endMonth && startWeek === endWeek) {
+    return `${monthNames[startMonth] || `Bulan ${startMonth}`} • Minggu ${startWeek}`;
+  }
+
+  return `${monthNames[startMonth] || `Bulan ${startMonth}`} M${startWeek} - ${monthNames[endMonth] || `Bulan ${endMonth}`} M${endWeek}`;
+}
+
 function EmptyState(props: { message: string }) {
   return (
     <View
@@ -446,6 +465,7 @@ export default function StudentExtracurricularScreen() {
   const regularEnrollment = summary?.regularEnrollment || null;
   const osisMembership = summary?.osisStatus?.membership || null;
   const osisRequest = summary?.osisStatus?.request || null;
+  const osisPrograms = summary?.osisStatus?.programs || [];
   const canChooseRegular = Boolean(summary?.actions.canChooseRegular);
   const canRequestOsis = Boolean(summary?.actions.canRequestOsis);
 
@@ -739,6 +759,116 @@ export default function StudentExtracurricularScreen() {
           ) : (
             <EmptyState message={`Anda belum mengajukan OSIS pada tahun ajaran ${summary.academicYear?.name || '-'}.`} />
           )}
+
+          {osisMembership ? (
+            <View
+              style={{
+                marginTop: 12,
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                borderRadius: 14,
+                backgroundColor: '#f8fafc',
+                padding: 12,
+              }}
+            >
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 15, marginBottom: 4 }}>
+                Program Kerja OSIS
+              </Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 10 }}>
+                Agenda yang sudah dipublikasikan pembina OSIS untuk pengurus aktif.
+              </Text>
+
+              {osisPrograms.length > 0 ? (
+                <View style={{ gap: 10 }}>
+                  {osisPrograms.map((program) => (
+                    <View
+                      key={program.id}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#e2e8f0',
+                        borderRadius: 12,
+                        backgroundColor: '#fff',
+                        padding: 12,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <Text style={{ flexShrink: 1, color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 14 }}>
+                          {program.title}
+                        </Text>
+                        <View
+                          style={{
+                            borderRadius: 999,
+                            backgroundColor: '#dbeafe',
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                          }}
+                        >
+                          <Text style={{ color: '#1d4ed8', fontSize: 11, fontWeight: '700' }}>
+                            {program.semester === 'EVEN' ? 'SEMESTER GENAP' : 'SEMESTER GANJIL'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
+                        {formatProgramPeriod(
+                          program.startMonth,
+                          program.endMonth,
+                          program.startWeek,
+                          program.endWeek,
+                        )}
+                        {program.owner?.name ? ` • Pembina: ${program.owner.name}` : ''}
+                      </Text>
+
+                      {program.description ? (
+                        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 13, marginTop: 8 }}>
+                          {program.description}
+                        </Text>
+                      ) : null}
+
+                      <View style={{ marginTop: 10, gap: 8 }}>
+                        {(program.items || []).length > 0 ? (
+                          program.items!.slice(0, 3).map((item) => (
+                            <View
+                              key={item.id}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#e2e8f0',
+                                borderRadius: 10,
+                                backgroundColor: '#f8fafc',
+                                padding: 10,
+                              }}
+                            >
+                              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13 }}>
+                                {item.description}
+                              </Text>
+                              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+                                {item.targetDate ? `Target: ${formatShortDate(item.targetDate)}` : 'Tanpa tanggal target'}
+                                {item.note ? ` • ${item.note}` : ''}
+                              </Text>
+                            </View>
+                          ))
+                        ) : (
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 13 }}>
+                            Program kerja ini belum memiliki rincian agenda.
+                          </Text>
+                        )}
+
+                        {(program.items || []).length > 3 ? (
+                          <Text style={{ color: '#64748b', fontSize: 12 }}>
+                            + {(program.items || []).length - 3} agenda OSIS lain sudah disiapkan pembina.
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 13 }}>
+                  Anda sudah masuk struktur OSIS, tetapi program kerja OSIS belum dipublikasikan pembina.
+                </Text>
+              )}
+            </View>
+          ) : null}
         </View>
 
         <View

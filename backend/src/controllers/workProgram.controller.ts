@@ -9,6 +9,7 @@ import {
   getAdvisorWorkProgramLabel,
   isAdvisorDuty,
 } from '../utils/advisorDuty';
+import { osisManagementService } from '../services/osisManagement.service';
 
 const listWorkProgramsSchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
@@ -248,7 +249,7 @@ export const createWorkProgram = asyncHandler(async (req: Request, res: Response
 
   await ensureUserHasDuty(authUser.id, body.additionalDuty);
 
-  let resolvedMajorId = body.majorId ?? null;
+  let resolvedMajorId = body.additionalDuty === 'KAPROG' ? body.majorId ?? null : null;
 
   if (body.additionalDuty === 'KAPROG') {
     const owner = await prisma.user.findUnique({
@@ -269,6 +270,13 @@ export const createWorkProgram = asyncHandler(async (req: Request, res: Response
 
   if (resolvedMajorId) {
     await ensureTeacherManagesMajor(authUser.id, resolvedMajorId);
+  }
+
+  if (body.additionalDuty === AdditionalDuty.PEMBINA_OSIS) {
+    const readiness = await osisManagementService.getWorkProgramReadiness(body.academicYearId);
+    if (!readiness.canCreatePrograms) {
+      throw new ApiError(400, readiness.message);
+    }
   }
 
   const executionStatus = body.executionStatus ?? 'TERLAKSANA';
@@ -359,8 +367,23 @@ export const updateWorkProgram = asyncHandler(async (req: Request, res: Response
     await ensureUserHasDuty(program.ownerId, body.additionalDuty);
   }
 
-  if (body.majorId) {
-    await ensureTeacherManagesMajor(program.ownerId, body.majorId);
+  const nextAdditionalDuty = body.additionalDuty ?? program.additionalDuty;
+  const nextMajorId =
+    nextAdditionalDuty === AdditionalDuty.KAPROG
+      ? body.majorId ?? program.majorId ?? null
+      : null;
+
+  if (nextMajorId) {
+    await ensureTeacherManagesMajor(program.ownerId, nextMajorId);
+  }
+
+  if (nextAdditionalDuty === AdditionalDuty.PEMBINA_OSIS) {
+    const readiness = await osisManagementService.getWorkProgramReadiness(
+      body.academicYearId ?? program.academicYearId,
+    );
+    if (!readiness.canCreatePrograms) {
+      throw new ApiError(400, readiness.message);
+    }
   }
 
   const nextExecutionStatus = body.executionStatus ?? program.executionStatus;
@@ -384,7 +407,8 @@ export const updateWorkProgram = asyncHandler(async (req: Request, res: Response
       title: body.title ?? program.title,
       description: body.description ?? program.description,
       academicYearId: body.academicYearId ?? program.academicYearId,
-      additionalDuty: body.additionalDuty ?? program.additionalDuty,
+      additionalDuty: nextAdditionalDuty,
+      majorId: nextMajorId,
       semester: body.semester ?? program.semester,
       month: body.month ?? program.month,
       startWeek: body.startWeek ?? program.startWeek,

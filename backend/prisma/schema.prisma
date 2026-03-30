@@ -2315,6 +2315,7 @@ model OsisElectionPeriod {
   academicYear    AcademicYear            @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
   createdBy       User                    @relation("OsisElectionCreator", fields: [createdById], references: [id], onDelete: Cascade)
   candidates      OsisElectionCandidate[]
+  managementPeriods OsisManagementPeriod[] @relation("OsisManagementPeriodElection")
   votes           OsisElectionVote[]
 
   @@index([academicYearId, status])
@@ -2358,23 +2359,29 @@ model OsisElectionVote {
 }
 
 model OsisManagementPeriod {
-  id             Int                  @id @default(autoincrement())
-  academicYearId Int
-  title          String
-  description    String?
-  startAt        DateTime
-  endAt          DateTime
-  status         OsisManagementStatus @default(DRAFT)
-  createdById    Int
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  academicYear   AcademicYear         @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  createdBy      User                 @relation("OsisManagementPeriodCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  divisions      OsisDivision[]
-  positions      OsisPosition[]
-  memberships    OsisMembership[]
+  id               Int                     @id @default(autoincrement())
+  academicYearId   Int
+  electionPeriodId Int?
+  title            String
+  description      String?
+  startAt          DateTime
+  endAt            DateTime
+  transitionLabel  String?
+  transitionAt     DateTime?
+  transitionNotes  String?
+  status           OsisManagementStatus    @default(DRAFT)
+  createdById      Int
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  academicYear     AcademicYear            @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  electionPeriod   OsisElectionPeriod?     @relation("OsisManagementPeriodElection", fields: [electionPeriodId], references: [id], onDelete: SetNull)
+  createdBy        User                    @relation("OsisManagementPeriodCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  divisions        OsisDivision[]
+  positions        OsisPosition[]
+  memberships      OsisMembership[]
 
   @@index([academicYearId, status])
+  @@index([academicYearId, electionPeriodId])
   @@map("osis_management_periods")
 }
 

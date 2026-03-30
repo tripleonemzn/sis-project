@@ -26,6 +26,7 @@ import {
   getOsisManagementPeriods,
   getOsisMemberships,
   getOsisPositions,
+  getOsisWorkProgramReadiness,
   getStudentOsisJoinStatus,
   finalizeOsisElectionPeriod,
   rejectOsisJoinRequest,
@@ -97,6 +98,11 @@ router.get(
   '/management-periods',
   roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']),
   getOsisManagementPeriods,
+);
+router.get(
+  '/work-program-readiness',
+  roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']),
+  getOsisWorkProgramReadiness,
 );
 router.post(
   '/management-periods',
