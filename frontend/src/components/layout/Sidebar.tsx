@@ -70,7 +70,6 @@ import {
   canAccessTutorWorkspace,
   getExtracurricularTutorAssignments,
   getActiveTutorAssignments,
-  hasOsisTutorAssignments,
   hasTutorAssignments,
 } from '../../features/tutor/tutorAccess';
 
@@ -673,11 +672,8 @@ export const getMenuItems = (
   if (role === 'EXTRACURRICULAR_TUTOR') {
     const activeTutorAssignments = getActiveTutorAssignments(tutorAssignments);
     const extracurricularTutorAssignments = getExtracurricularTutorAssignments(activeTutorAssignments);
-    const osisAssignedRoom = (assignedInventoryRooms || []).find(
-      (room) => isOsisLabel(room.name),
-    );
     const nonOsisAssignedInventoryRooms = (assignedInventoryRooms || []).filter(
-      (room) => !isOsisLabel(room.name) && room.id !== osisAssignedRoom?.id,
+      (room) => !isOsisLabel(room.name),
     );
     const tutorAssignedInventoryChildren: MenuItem[] =
       nonOsisAssignedInventoryRooms.map((room) => ({
@@ -686,7 +682,6 @@ export const getMenuItems = (
         icon: Database,
       })) || [];
     const firstTutorAssignment = extracurricularTutorAssignments[0] || null;
-    const hasTutorOsisMenu = hasOsisTutorAssignments(activeTutorAssignments) || Boolean(osisAssignedRoom);
 
     return [
       { label: 'Dashboard', path: '/tutor', icon: LayoutDashboard },
@@ -704,25 +699,6 @@ export const getMenuItems = (
             ],
           } satisfies MenuItem]
         : []),
-      ...(hasTutorOsisMenu
-        ? [{
-            label: 'PEMBINA OSIS',
-            path: '/tutor/osis/election',
-            icon: Trophy,
-            children: [
-              {
-                label: 'Struktur & Nilai',
-                path: '/tutor/osis/members',
-                icon: Users,
-              },
-              { label: 'Program Kerja', path: '/tutor/work-programs?duty=PEMBINA_OSIS', icon: ClipboardList },
-              { label: 'Pemilihan OSIS', path: '/tutor/osis/election', icon: Trophy },
-              ...(hasActiveOsisElection ? [{ label: 'Pemungutan Suara', path: '/tutor/osis/vote', icon: Vote }] : []),
-              { label: 'Kelola Inventaris', path: '/tutor/inventory?scope=osis', icon: Database },
-            ],
-          } satisfies MenuItem]
-        : []
-      ),
       ...(tutorAssignedInventoryChildren.length > 0
         ? [{
             label: 'INVENTARIS TUGAS',
@@ -1145,7 +1121,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
     refetchOnWindowFocus: true,
     queryFn: () => tutorService.getAssignments(activeAcademicYearData?.id),
   });
-  const shouldLoadActiveOsisElection = ['TEACHER', 'STUDENT', 'STAFF', 'EXTRACURRICULAR_TUTOR'].includes(
+  const shouldLoadActiveOsisElection = ['TEACHER', 'STUDENT', 'STAFF'].includes(
     String(user.role || '').toUpperCase(),
   );
   const { data: activeOsisElectionData } = useQuery({

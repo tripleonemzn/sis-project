@@ -971,65 +971,20 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
     const sidebarMatchKey = [fullKey, first].find((key) => key && sidebarLookup[key]) || null;
     const sidebarConfig = sidebarMatchKey ? sidebarLookup[sidebarMatchKey] : null;
     const queryParams = new URLSearchParams(location.search);
-    const scope = String(queryParams.get('scope') || '').toLowerCase();
     const dutyQuery = String(queryParams.get('duty') || '').toUpperCase();
-    const isPembinaOsisRoute =
-      fullKey.startsWith('osis/') ||
-      scope === 'osis' ||
-      dutyQuery === 'PEMBINA_OSIS' ||
-      (sidebarConfig?.group === 'PEMBINA OSIS' &&
-        ['members', 'work-programs', 'inventory'].includes(first));
-
-    if (isPembinaOsisRoute) {
-      breadcrumbs.push({ label: 'PEMBINA OSIS', path: '/tutor/osis/election' });
-
-      if (fullKey === 'osis/election') {
-        breadcrumbs.push({ label: 'Pemilihan OSIS', path: null });
-        return breadcrumbs;
-      }
-
-      if (fullKey === 'osis/members') {
-        breadcrumbs.push({ label: 'Struktur & Nilai', path: null });
-        return breadcrumbs;
-      }
-
-      if (fullKey === 'osis/vote') {
-        breadcrumbs.push({ label: 'Pemungutan Suara', path: null });
-        return breadcrumbs;
-      }
-
-      if (first === 'members') {
-        breadcrumbs.push({ label: 'Anggota & Nilai', path: null });
-        return breadcrumbs;
-      }
-
-      if (first === 'inventory') {
-        breadcrumbs.push({ label: 'Kelola Inventaris', path: null });
-        return breadcrumbs;
-      }
-
-      if (first === 'work-programs') {
-        breadcrumbs.push({ label: 'Program Kerja', path: null });
-        return breadcrumbs;
-      }
-    }
 
     if (first === 'work-programs') {
       const baseLabel = sidebarConfig?.label || 'Program Kerja';
-      const resolvedDuty =
-        dutyQuery ||
-        (sidebarConfig?.group === 'PEMBINA OSIS' ? 'PEMBINA_OSIS' : null);
+      const resolvedDuty = dutyQuery || (sidebarConfig?.group === 'PEMBINA EKSKUL' ? 'PEMBINA_EKSKUL' : null);
       const workProgramPath = resolvedDuty
         ? `/${role}/work-programs?duty=${encodeURIComponent(resolvedDuty)}`
         : `/${role}/work-programs`;
       const budgetSectionLabel =
-        resolvedDuty === 'PEMBINA_OSIS'
-          ? 'Pengajuan Alat OSIS'
-          : resolvedDuty === 'PEMBINA_EKSKUL'
-            ? 'Pengajuan Alat Ekskul'
-            : 'Pengajuan Anggaran';
+        resolvedDuty === 'PEMBINA_EKSKUL'
+          ? 'Pengajuan Alat Ekskul'
+          : 'Pengajuan Anggaran';
 
-      if (sidebarConfig?.group && sidebarConfig.group !== 'PEMBINA OSIS') {
+      if (sidebarConfig?.group) {
         breadcrumbs.push({ label: sidebarConfig.group, path: null });
       }
 

@@ -29,7 +29,6 @@ Siapkan minimal:
 - `1 guru aktif` dengan assignment ke `2 ekskul non-OSIS`
 - `1 guru aktif` dengan duty `PEMBINA_OSIS`
 - `1 tutor eksternal` untuk ekskul biasa
-- `1 tutor eksternal` dengan assignment `OSIS`
 - `1 ekskul non-OSIS A`
 - `1 ekskul non-OSIS B`
 - `1 item kategori OSIS`
@@ -84,7 +83,8 @@ Siapkan minimal:
 - Pastikan OSIS berkategori `OSIS`.
 - Pastikan ekskul biasa berkategori `EXTRACURRICULAR`.
 - Assign guru pembina OSIS ke item `OSIS`.
-- Jika ada tutor eksternal OSIS, assign juga ke item `OSIS`.
+- Coba assign tutor eksternal ke item `OSIS`.
+- Pastikan sistem menolak dan meminta guru dengan duty `PEMBINA_OSIS`.
 
 ## 5. Guru Web: Struktur dan Nilai OSIS
 
@@ -120,12 +120,6 @@ Siapkan minimal:
 - Buka `Pemilihan OSIS`.
 - Jika periode aktif ada, pastikan `Pemungutan Suara` muncul.
 
-### Tutor Eksternal OSIS
-
-- Login sebagai tutor eksternal dengan assignment `OSIS`.
-- Pastikan menu `PEMBINA OSIS` muncul.
-- Jika ada periode aktif, pastikan `Pemungutan Suara` muncul.
-
 ### Tutor Eksternal Non-OSIS
 
 - Login sebagai tutor eksternal yang hanya membina ekskul biasa.
@@ -148,6 +142,7 @@ Tandai `GO` hanya jika semua ini benar:
 
 - guru aktif bisa membina lebih dari 1 ekskul tanpa role tutor internal
 - tutor eksternal tetap bisa dipakai untuk kasus non-guru
+- tutor eksternal tidak bisa ditugaskan atau masuk ke domain OSIS
 - OSIS tampil sebagai domain terpisah dari ekskul
 - nilai OSIS tersimpan dan terbaca di rapor non-akademik
 - tutor non-OSIS tidak bisa vote OSIS
@@ -157,6 +152,7 @@ Tandai `NO-GO` jika salah satu ini masih terjadi:
 
 - guru aktif harus diubah role untuk bisa membina ekskul
 - OSIS masih muncul sebagai ekskul biasa
+- tutor eksternal masih bisa ditugaskan ke OSIS
 - nilai OSIS tidak muncul di rapor
 - tutor non-OSIS masih bisa vote OSIS
 - web dan mobile menunjukkan menu yang berbeda untuk role yang sama

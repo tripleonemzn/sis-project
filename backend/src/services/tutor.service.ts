@@ -1,6 +1,6 @@
 import prisma from '../utils/prisma';
 import { ApiError } from '../utils/api';
-import { Semester, Prisma, ExamType } from '@prisma/client';
+import { Semester, Prisma, ExamType, ExtracurricularCategory } from '@prisma/client';
 
 type ExtracurricularFieldPair = {
   gradeField: 'gradeSbtsOdd' | 'gradeSas' | 'gradeSat' | 'gradeSbtsEven';
@@ -416,6 +416,14 @@ async function resolveReportSlotCode(params: {
 }
 
 export class TutorService {
+  private async getTutorActorRole(tutorId: number) {
+    const actor = await prisma.user.findUnique({
+      where: { id: tutorId },
+      select: { role: true },
+    });
+    return String(actor?.role || '').trim().toUpperCase();
+  }
+
   /**
    * Get extracurricular assignments for a tutor
    */
@@ -435,6 +443,8 @@ export class TutorService {
       return [];
     }
 
+    const actorRole = await this.getTutorActorRole(tutorId);
+
     // Cast prisma to any because Typescript definitions might be out of sync
     // verified runtime existence via check_prisma_keys.ts
     const assignments = await (prisma as any).ekstrakurikulerTutorAssignment.findMany({
@@ -442,6 +452,15 @@ export class TutorService {
         tutorId,
         academicYearId: targetAcademicYearId,
         isActive: true,
+        ...(actorRole === 'EXTRACURRICULAR_TUTOR'
+          ? {
+              ekskul: {
+                category: {
+                  not: ExtracurricularCategory.OSIS,
+                },
+              },
+            }
+          : {}),
       },
       include: {
         ekskul: true,
@@ -470,6 +489,7 @@ export class TutorService {
           select: {
             id: true,
             name: true,
+            category: true,
           },
         },
       },
@@ -477,6 +497,14 @@ export class TutorService {
 
     if (!assignment || !assignment.isActive) {
       throw new ApiError(403, 'Anda tidak memiliki akses ke ekstrakurikuler ini');
+    }
+
+    const actorRole = await this.getTutorActorRole(tutorId);
+    if (
+      actorRole === 'EXTRACURRICULAR_TUTOR' &&
+      assignment.ekskul?.category === ExtracurricularCategory.OSIS
+    ) {
+      throw new ApiError(403, 'Akses OSIS hanya tersedia untuk guru dengan duty Pembina OSIS.');
     }
 
     return assignment;

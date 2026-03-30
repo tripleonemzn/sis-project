@@ -159,7 +159,15 @@ export const listBudgetRequests = asyncHandler(async (req: Request, res: Respons
   }
 
   if (additionalDuty) {
+    if (
+      authUser.role === 'EXTRACURRICULAR_TUTOR' &&
+      String(additionalDuty).trim().toUpperCase() === AdditionalDuty.PEMBINA_OSIS
+    ) {
+      throw new ApiError(403, 'Akses OSIS hanya tersedia untuk guru dengan duty Pembina OSIS.');
+    }
     where.additionalDuty = additionalDuty;
+  } else if (authUser.role === 'EXTRACURRICULAR_TUTOR') {
+    where.additionalDuty = AdditionalDuty.PEMBINA_EKSKUL;
   }
 
   const budgets = await prisma.budgetRequest.findMany({

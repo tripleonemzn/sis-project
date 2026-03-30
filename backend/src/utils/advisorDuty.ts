@@ -82,7 +82,7 @@ export async function getTutorAdvisorDutySet(userId: number): Promise<Set<Adviso
   const duties = new Set<AdvisorDuty>();
   for (const assignment of assignments) {
     const resolvedDuty = getAdvisorDutyFromCategory(assignment.ekskul?.category);
-    if (resolvedDuty) {
+    if (resolvedDuty === AdditionalDuty.PEMBINA_EKSKUL) {
       duties.add(resolvedDuty);
     }
   }
@@ -93,6 +93,10 @@ export async function getTutorAdvisorDutySet(userId: number): Promise<Set<Adviso
 export async function assertTutorOwnsAdvisorDuty(userId: number, duty: unknown) {
   if (!isAdvisorDuty(duty)) {
     throw new ApiError(403, 'Tugas pembina tidak valid untuk akun tutor.');
+  }
+
+  if (String(duty || '').trim().toUpperCase() === AdditionalDuty.PEMBINA_OSIS) {
+    throw new ApiError(403, 'Akses OSIS hanya tersedia untuk guru dengan duty Pembina OSIS.');
   }
 
   const duties = await getTutorAdvisorDutySet(userId);

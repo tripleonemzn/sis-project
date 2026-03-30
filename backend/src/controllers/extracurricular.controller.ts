@@ -109,6 +109,15 @@ export const assignTutor = asyncHandler(async (req: Request, res: Response) => {
     select: {
       id: true,
       role: true,
+      additionalDuties: true,
+    },
+  });
+
+  const ekskul = await prisma.ekstrakurikuler.findUnique({
+    where: { id: body.ekskulId },
+    select: {
+      id: true,
+      category: true,
     },
   });
 
@@ -116,7 +125,21 @@ export const assignTutor = asyncHandler(async (req: Request, res: Response) => {
     throw new ApiError(404, 'User pembina tidak ditemukan');
   }
 
-  if (!['TEACHER', 'EXTRACURRICULAR_TUTOR'].includes(String(assignee.role || '').toUpperCase())) {
+  if (!ekskul) {
+    throw new ApiError(404, 'Ekstrakurikuler tidak ditemukan');
+  }
+
+  const assigneeRole = String(assignee.role || '').toUpperCase();
+  const assigneeDuties = (assignee.additionalDuties || []).map((item) => String(item || '').trim().toUpperCase());
+
+  if (ekskul.category === ExtracurricularCategory.OSIS) {
+    if (assigneeRole !== 'TEACHER') {
+      throw new ApiError(400, 'Pembina OSIS hanya dapat ditugaskan ke guru aktif.');
+    }
+    if (!assigneeDuties.includes('PEMBINA_OSIS')) {
+      throw new ApiError(400, 'Guru harus memiliki duty Pembina OSIS sebelum ditugaskan ke OSIS.');
+    }
+  } else if (!['TEACHER', 'EXTRACURRICULAR_TUTOR'].includes(assigneeRole)) {
     throw new ApiError(400, 'Pembina ekskul hanya dapat ditugaskan ke guru aktif atau tutor eksternal');
   }
   

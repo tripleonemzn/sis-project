@@ -140,11 +140,18 @@ export const getWorkPrograms = asyncHandler(async (req: Request, res: Response) 
     where.ownerId = authUser.id;
   }
 
+  if (authUser.role === 'EXTRACURRICULAR_TUTOR') {
+    if (additionalDuty === AdditionalDuty.PEMBINA_OSIS) {
+      throw new ApiError(403, 'Akses OSIS hanya tersedia untuk guru dengan duty Pembina OSIS.');
+    }
+    where.additionalDuty = additionalDuty || AdditionalDuty.PEMBINA_EKSKUL;
+  }
+
   if (academicYearId) {
     where.academicYearId = academicYearId;
   }
 
-  if (additionalDuty) {
+  if (additionalDuty && authUser.role !== 'EXTRACURRICULAR_TUTOR') {
     where.additionalDuty = additionalDuty;
   }
 

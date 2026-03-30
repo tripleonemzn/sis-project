@@ -40,6 +40,7 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
   const queryClient = useQueryClient();
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<number | null>(null);
   const [selectedTutorId, setSelectedTutorId] = useState<number | ''>('');
+  const isOsisUnit = String(ekskul.category || '').trim().toUpperCase() === 'OSIS';
 
   // 1. Fetch Academic Years
   const { data: academicYearData, isLoading: isLoadingYears } = useQuery({
@@ -104,7 +105,19 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
     },
   });
 
-  const advisors: AdvisorCandidate[] = advisorsData || [];
+  const advisors = useMemo<AdvisorCandidate[]>(() => advisorsData || [], [advisorsData]);
+  const filteredAdvisors = useMemo(() => {
+    if (!isOsisUnit) return advisors;
+    return advisors.filter((advisor) => {
+      const role = String(advisor.role || '').trim().toUpperCase();
+      const duties = (advisor.additionalDuties || []).map((item) => String(item || '').trim().toUpperCase());
+      return role === 'TEACHER' && duties.includes('PEMBINA_OSIS');
+    });
+  }, [advisors, isOsisUnit]);
+  const effectiveSelectedTutorId =
+    selectedTutorId && filteredAdvisors.some((advisor) => Number(advisor.id) === Number(selectedTutorId))
+      ? selectedTutorId
+      : '';
 
   // Mutations
   const assignMutation = useMutation({
@@ -135,9 +148,9 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
   });
 
   const handleAssign = () => {
-    if (!selectedTutorId || !selectedAcademicYearId) return;
+    if (!effectiveSelectedTutorId || !selectedAcademicYearId) return;
     assignMutation.mutate({
-      tutorId: Number(selectedTutorId),
+      tutorId: Number(effectiveSelectedTutorId),
       ekskulId: ekskul.id,
       academicYearId: selectedAcademicYearId,
     });
@@ -156,6 +169,11 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
               <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
                 {getExtracurricularCategoryLabel(ekskul.category)}
               </span>
+            </p>
+            <p className="text-xs text-slate-500 mt-2">
+              {isOsisUnit
+                ? 'OSIS hanya dapat ditugaskan ke guru aktif yang sudah memiliki duty Pembina OSIS.'
+                : 'Ekskul biasa dapat ditugaskan ke guru aktif atau tutor eksternal.'}
             </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
@@ -189,12 +207,14 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
             <div className="flex gap-3">
               <div className="flex-1">
                 <select
-                  value={selectedTutorId}
+                  value={effectiveSelectedTutorId}
                   onChange={(e) => setSelectedTutorId(e.target.value ? Number(e.target.value) : '')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 >
-                  <option value="">Pilih guru aktif / tutor eksternal</option>
-                  {advisors.map((advisor) => (
+                  <option value="">
+                    {isOsisUnit ? 'Pilih guru dengan duty Pembina OSIS' : 'Pilih guru aktif / tutor eksternal'}
+                  </option>
+                  {filteredAdvisors.map((advisor) => (
                     <option key={advisor.id} value={advisor.id}>
                       {advisor.name} ({advisor.username}) - {advisor.advisorSourceLabel}
                     </option>
@@ -203,7 +223,7 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
               </div>
               <button
                 onClick={handleAssign}
-                disabled={!selectedTutorId || assignMutation.isPending}
+                disabled={!effectiveSelectedTutorId || assignMutation.isPending}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium flex items-center gap-2"
               >
                 {assignMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}

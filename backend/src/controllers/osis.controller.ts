@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import {
   AdditionalDuty,
-  ExtracurricularCategory,
   OsisElectionStatus,
   OsisManagementStatus,
   Prisma,
@@ -181,7 +180,6 @@ const getActorAccess = async (req: Request) => {
     return {
       ...authUser,
       duties: [] as AdditionalDuty[],
-      isOsisTutor: false,
     };
   }
 
@@ -189,41 +187,20 @@ const getActorAccess = async (req: Request) => {
     where: { id: authUser.id },
     select: {
       additionalDuties: true,
-      ekskulTutorAssignments: authUser.role === 'EXTRACURRICULAR_TUTOR'
-        ? {
-            where: { isActive: true },
-            select: {
-              ekskul: {
-                select: { category: true },
-              },
-            },
-          }
-        : false,
     },
   });
-
-  const isOsisTutor =
-    authUser.role === 'EXTRACURRICULAR_TUTOR' &&
-    Boolean(
-      (actor?.ekskulTutorAssignments as Array<{ ekskul?: { category?: ExtracurricularCategory | null } | null }> | undefined)?.some(
-        (assignment) =>
-          assignment?.ekskul?.category === ExtracurricularCategory.OSIS,
-      ),
-    );
 
   return {
     ...authUser,
     duties: actor?.additionalDuties || [],
-    isOsisTutor,
   };
 };
 
-const canManageOsisElection = (actor: { role: string; duties: AdditionalDuty[]; isOsisTutor?: boolean }) =>
+const canManageOsisElection = (actor: { role: string; duties: AdditionalDuty[] }) =>
   actor.role === 'ADMIN' ||
-  (actor.role === 'TEACHER' && actor.duties.includes('PEMBINA_OSIS')) ||
-  (actor.role === 'EXTRACURRICULAR_TUTOR' && actor.isOsisTutor === true);
+  (actor.role === 'TEACHER' && actor.duties.includes('PEMBINA_OSIS'));
 
-const canMonitorOsisElection = (actor: { role: string; duties: AdditionalDuty[]; isOsisTutor?: boolean }) =>
+const canMonitorOsisElection = (actor: { role: string; duties: AdditionalDuty[] }) =>
   canManageOsisElection(actor) ||
   actor.role === 'PRINCIPAL' ||
   (actor.role === 'TEACHER' &&
@@ -305,25 +282,13 @@ const getEligibleOsisVoterWhere = (academicYearId: number): Prisma.UserWhereInpu
     },
     { role: 'TEACHER' },
     { role: 'STAFF' },
-    {
-      role: 'EXTRACURRICULAR_TUTOR',
-      ekskulTutorAssignments: {
-        some: {
-          isActive: true,
-          ekskul: {
-            category: ExtracurricularCategory.OSIS,
-          },
-        },
-      },
-    },
   ],
 });
 
-const canVoteInOsisElection = (actor: { role: string; isOsisTutor?: boolean }) =>
+const canVoteInOsisElection = (actor: { role: string }) =>
   actor.role === 'STUDENT' ||
   actor.role === 'TEACHER' ||
-  actor.role === 'STAFF' ||
-  (actor.role === 'EXTRACURRICULAR_TUTOR' && actor.isOsisTutor === true);
+  actor.role === 'STAFF';
 
 const buildQuickCount = async (period: {
   academicYearId: number;

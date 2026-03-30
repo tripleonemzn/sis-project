@@ -357,14 +357,11 @@ function App() {
                 <Outlet />
               </RoleRoute>
             }>
-              <Route index element={<TutorDashboardPage />} />
-              <Route path="dashboard" element={<TutorDashboardPage />} />
+            <Route index element={<TutorDashboardPage />} />
+            <Route path="dashboard" element={<TutorDashboardPage />} />
             <Route path="members" element={<TutorMembersPage />} />
             <Route path="work-programs" element={<WorkProgramPage />} />
             <Route path="inventory" element={<TutorInventoryPage />} />
-            <Route path="osis/members" element={<OsisManagementPage />} />
-            <Route path="osis/election" element={<OsisElectionPage />} />
-            <Route path="osis/vote" element={<StudentOsisElectionPage />} />
             <Route path="assigned-inventory" element={<InventoryHubPage />} />
             <Route path="assigned-inventory/:roomId" element={<InventoryDetailPage />} />
             <Route path="profile" element={<UserProfilePage />} />

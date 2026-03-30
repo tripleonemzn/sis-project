@@ -58,7 +58,6 @@ import { tutorApi } from '../../src/features/tutor/tutorApi';
 import {
   canAccessTutorWorkspace,
   getExtracurricularTutorAssignments,
-  getOsisTutorAssignments,
 } from '../../src/features/tutor/tutorAccess';
 import { osisApi } from '../../src/features/osis/osisApi';
 
@@ -394,7 +393,6 @@ function getRolePrimaryActionKeys(
   user: AuthUser,
   options?: {
     hasExtracurricularAdvisorAssignments?: boolean;
-    hasOsisTutorAssignments?: boolean;
     hasActiveOsisElection?: boolean;
   },
 ) {
@@ -405,16 +403,6 @@ function getRolePrimaryActionKeys(
     return ['teacher-extracurricular-members', 'teaching-schedule', 'teacher-extracurricular-work-program'];
   }
   if (user.role === 'EXTRACURRICULAR_TUTOR') {
-    if (options?.hasExtracurricularAdvisorAssignments && options?.hasOsisTutorAssignments) {
-      return options.hasActiveOsisElection
-        ? ['tutor-members', 'tutor-osis-management', 'tutor-osis-vote']
-        : ['tutor-members', 'tutor-osis-management', 'tutor-work-program'];
-    }
-    if (options?.hasOsisTutorAssignments) {
-      return options.hasActiveOsisElection
-        ? ['tutor-osis-management', 'tutor-osis-vote', 'tutor-osis-work-program']
-        : ['tutor-osis-management', 'tutor-osis-election', 'tutor-osis-work-program'];
-    }
     if (options?.hasExtracurricularAdvisorAssignments) {
       return ['tutor-members', 'tutor-work-program', 'tutor-inventory'];
     }
@@ -809,7 +797,7 @@ export default function HomeScreen() {
     queryKey: ['mobile-home-active-osis-election', profile.role],
     enabled:
       isAuthenticated &&
-      ['TEACHER', 'STUDENT', 'STAFF', 'EXTRACURRICULAR_TUTOR'].includes(profile.role),
+      ['TEACHER', 'STUDENT', 'STAFF'].includes(profile.role),
     staleTime: 5 * 60 * 1000,
     queryFn: () => osisApi.getActiveElection(),
   });
@@ -819,12 +807,7 @@ export default function HomeScreen() {
     () => getExtracurricularTutorAssignments(tutorAssignmentsQuery.data),
     [tutorAssignmentsQuery.data],
   );
-  const osisTutorAssignments = useMemo(
-    () => getOsisTutorAssignments(tutorAssignmentsQuery.data),
-    [tutorAssignmentsQuery.data],
-  );
   const hasExtracurricularAdvisorAssignments = extracurricularTutorAssignments.length > 0;
-  const hasOsisTutorAssignments = osisTutorAssignments.length > 0;
   const hasActiveOsisElection = Boolean(activeOsisElectionQuery.data?.id);
   const pklEligibleGrades = useMemo(() => {
     const raw = String(activeAcademicYearQuery.data?.pklEligibleGrades || '').trim();
@@ -847,7 +830,6 @@ export default function HomeScreen() {
             : undefined,
         hasExtracurricularAdvisorAssignments,
         hasExtracurricularTutorAssignments: extracurricularTutorAssignments.length > 0,
-        hasOsisTutorAssignments,
         hasActiveOsisElection,
       })
         .map((group) => ({
@@ -883,7 +865,6 @@ export default function HomeScreen() {
       pklEligibleGrades,
       hasExtracurricularAdvisorAssignments,
       extracurricularTutorAssignments.length,
-      hasOsisTutorAssignments,
       hasActiveOsisElection,
       studentInternshipOverviewQuery.data?.isEligible,
       examProgramsQuery.data?.programs,
@@ -1021,7 +1002,6 @@ export default function HomeScreen() {
   const roleQuickMenus = useMemo(() => {
     const preferredKeys = getRolePrimaryActionKeys(profile, {
       hasExtracurricularAdvisorAssignments,
-      hasOsisTutorAssignments,
       hasActiveOsisElection,
     });
     const menuByKey = new Map(allMenuItems.map((item) => [item.key, item]));
@@ -1045,7 +1025,7 @@ export default function HomeScreen() {
     }
 
     return result;
-  }, [allMenuItems, hasActiveOsisElection, hasExtracurricularAdvisorAssignments, hasOsisTutorAssignments, profile]);
+  }, [allMenuItems, hasActiveOsisElection, hasExtracurricularAdvisorAssignments, profile]);
 
   const teacherStats = useMemo(() => {
     const assignments = teacherAssignmentsQuery.data?.assignments || [];
@@ -1433,19 +1413,13 @@ export default function HomeScreen() {
       case 'EXAMINER':
         return 'Kelola skema UKK dan penilaian uji kompetensi.';
       case 'EXTRACURRICULAR_TUTOR':
-        if (hasExtracurricularAdvisorAssignments && hasOsisTutorAssignments) {
-          return 'Pantau pembinaan ekstrakurikuler, kepengurusan OSIS, dan anggota aktif.';
-        }
-        if (hasOsisTutorAssignments) {
-          return 'Pantau struktur, penilaian, dan pemilihan OSIS pada periode aktif.';
-        }
         return 'Pantau ekstrakurikuler binaan dan anggota aktif.';
       case 'CALON_SISWA':
         return 'Akses informasi dan proses pendaftaran siswa baru.';
       default:
         return 'Pilih modul yang ingin Anda akses hari ini.';
     }
-  }, [hasExtracurricularAdvisorAssignments, hasOsisTutorAssignments, profile]);
+  }, [hasExtracurricularAdvisorAssignments, profile]);
   const todayLabel = useMemo(
     () =>
       new Date().toLocaleDateString('id-ID', {
