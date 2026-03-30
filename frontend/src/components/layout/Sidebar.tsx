@@ -88,6 +88,7 @@ interface SidebarProps {
     additionalDuties?: string[] | null;
     managedMajor?: { id: number; name: string; code: string } | null;
     managedMajors?: { id: number; name: string; code: string }[] | null;
+    ekskulTutorAssignments?: TutorAssignmentSummary[] | null;
     managedInventoryRooms?: {
       id: number;
       name: string;
@@ -226,6 +227,25 @@ function linkAssignedInventoryRooms(
     osisRooms,
     detachedRooms,
   };
+}
+
+function mergeTutorAssignments(
+  primaryAssignments?: TutorAssignmentSummary[] | null,
+  fallbackAssignments?: TutorAssignmentSummary[] | null,
+): TutorAssignmentSummary[] {
+  const merged = new Map<number, TutorAssignmentSummary>();
+
+  (Array.isArray(fallbackAssignments) ? fallbackAssignments : []).forEach((assignment) => {
+    if (!assignment || typeof assignment.id !== 'number') return;
+    merged.set(assignment.id, assignment);
+  });
+
+  (Array.isArray(primaryAssignments) ? primaryAssignments : []).forEach((assignment) => {
+    if (!assignment || typeof assignment.id !== 'number') return;
+    merged.set(assignment.id, assignment);
+  });
+
+  return Array.from(merged.values());
 }
 
 function isMidtermComponent(code: string): boolean {
@@ -1258,11 +1278,17 @@ export const Sidebar = ({ user }: SidebarProps) => {
   }, [assignedInventoryRoomsData?.data, user.id, user.managedInventoryRooms]);
 
   const tutorAssignments = useMemo<TutorAssignmentSummary[]>(
-    () =>
-      Array.isArray(tutorAssignmentsData?.data)
+    () => {
+      const fromQuery = Array.isArray(tutorAssignmentsData?.data)
         ? (tutorAssignmentsData.data as TutorAssignmentSummary[])
-        : [],
-    [tutorAssignmentsData],
+        : [];
+      const fromProfile = Array.isArray(user.ekskulTutorAssignments)
+        ? (user.ekskulTutorAssignments as TutorAssignmentSummary[])
+        : [];
+
+      return mergeTutorAssignments(fromQuery, fromProfile);
+    },
+    [tutorAssignmentsData, user.ekskulTutorAssignments],
   );
   const hasActiveOsisElection = Boolean(activeOsisElectionData?.data);
 

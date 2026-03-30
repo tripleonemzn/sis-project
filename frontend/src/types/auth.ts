@@ -122,6 +122,24 @@ export interface User {
     id: number;
     name: string;
   }[];
+  ekskulTutorAssignments?: {
+    id: number;
+    tutorId: number;
+    ekskulId: number;
+    academicYearId: number;
+    isActive: boolean;
+    ekskul?: {
+      id: number;
+      name: string;
+      description?: string | null;
+      category?: 'EXTRACURRICULAR' | 'OSIS';
+    } | null;
+    academicYear?: {
+      id: number;
+      name: string;
+      isActive?: boolean;
+    } | null;
+  }[];
   managedInventoryRooms?: {
     id: number;
     name: string;

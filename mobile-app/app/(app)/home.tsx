@@ -55,6 +55,7 @@ import {
   resolveStaffDivision,
 } from '../../src/features/staff/staffRole';
 import { tutorApi } from '../../src/features/tutor/tutorApi';
+import type { TutorAssignment } from '../../src/features/tutor/tutorApi';
 import {
   canAccessTutorWorkspace,
   getExtracurricularTutorAssignments,
@@ -793,6 +794,28 @@ export default function HomeScreen() {
     queryFn: () => tutorApi.listAssignments(activeAcademicYearQuery.data?.id),
   });
 
+  const mergedTutorAssignments = useMemo<TutorAssignment[]>(
+    () => {
+      const merged = new Map<number, TutorAssignment>();
+      const fromProfile = Array.isArray(profile.ekskulTutorAssignments)
+        ? (profile.ekskulTutorAssignments as TutorAssignment[])
+        : [];
+      const fromQuery = Array.isArray(tutorAssignmentsQuery.data) ? tutorAssignmentsQuery.data : [];
+
+      fromProfile.forEach((assignment) => {
+        if (!assignment || typeof assignment.id !== 'number') return;
+        merged.set(assignment.id, assignment);
+      });
+      fromQuery.forEach((assignment) => {
+        if (!assignment || typeof assignment.id !== 'number') return;
+        merged.set(assignment.id, assignment);
+      });
+
+      return Array.from(merged.values());
+    },
+    [profile.ekskulTutorAssignments, tutorAssignmentsQuery.data],
+  );
+
   const activeOsisElectionQuery = useQuery({
     queryKey: ['mobile-home-active-osis-election', profile.role],
     enabled:
@@ -804,8 +827,8 @@ export default function HomeScreen() {
 
   const hasPendingDefense = profile.role === 'TEACHER' && (teacherDefenseQuery.data?.length || 0) > 0;
   const extracurricularTutorAssignments = useMemo(
-    () => getExtracurricularTutorAssignments(tutorAssignmentsQuery.data),
-    [tutorAssignmentsQuery.data],
+    () => getExtracurricularTutorAssignments(mergedTutorAssignments),
+    [mergedTutorAssignments],
   );
   const hasExtracurricularAdvisorAssignments = extracurricularTutorAssignments.length > 0;
   const hasActiveOsisElection = Boolean(activeOsisElectionQuery.data?.id);
@@ -831,7 +854,7 @@ export default function HomeScreen() {
         hasExtracurricularAdvisorAssignments,
         hasExtracurricularTutorAssignments: extracurricularTutorAssignments.length > 0,
         hasActiveOsisElection,
-        tutorAssignments: tutorAssignmentsQuery.data || [],
+        tutorAssignments: mergedTutorAssignments,
         managedInventoryRooms: profile.managedInventoryRooms || [],
       })
         .map((group) => ({
@@ -868,7 +891,7 @@ export default function HomeScreen() {
       hasExtracurricularAdvisorAssignments,
       extracurricularTutorAssignments.length,
       hasActiveOsisElection,
-      tutorAssignmentsQuery.data,
+      mergedTutorAssignments,
       studentInternshipOverviewQuery.data?.isEligible,
       examProgramsQuery.data?.programs,
       examProgramsQuery.isSuccess,

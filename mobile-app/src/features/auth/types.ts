@@ -95,6 +95,24 @@ export type AuthUser = {
   managedMajor?: { id: number; name: string; code?: string | null } | null;
   managedMajors?: Array<{ id: number; name: string; code?: string | null }>;
   examinerMajor?: { id: number; name: string; code?: string | null } | null;
+  ekskulTutorAssignments?: Array<{
+    id: number;
+    tutorId: number;
+    ekskulId: number;
+    academicYearId: number;
+    isActive: boolean;
+    ekskul?: {
+      id: number;
+      name: string;
+      description?: string | null;
+      category?: 'EXTRACURRICULAR' | 'OSIS';
+    } | null;
+    academicYear?: {
+      id: number;
+      name: string;
+      isActive?: boolean;
+    } | null;
+  }>;
   managedInventoryRooms?: Array<{
     id: number;
     name: string;

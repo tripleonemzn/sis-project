@@ -153,6 +153,39 @@ function setMeCache(key: string, payload: unknown) {
   });
 }
 
+const activeTutorAssignmentsInclude = {
+  ekskulTutorAssignments: {
+    where: {
+      isActive: true,
+      academicYear: {
+        isActive: true,
+      },
+    },
+    select: {
+      id: true,
+      tutorId: true,
+      ekskulId: true,
+      academicYearId: true,
+      isActive: true,
+      ekskul: {
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          category: true,
+        },
+      },
+      academicYear: {
+        select: {
+          id: true,
+          name: true,
+          isActive: true,
+        },
+      },
+    },
+  },
+};
+
 export const register = asyncHandler(async (req: Request, res: Response) => {
   const body = registerSchema.parse(req.body);
 
@@ -204,6 +237,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
       },
       children: { select: { id: true, name: true, username: true, nisn: true } },
       documents: true,
+      ...activeTutorAssignmentsInclude,
     },
   });
 
@@ -284,6 +318,7 @@ export const getMe = asyncHandler(async (req: any, res: Response) => {
         },
       },
       documents: true,
+      ...activeTutorAssignmentsInclude,
     },
   });
 
