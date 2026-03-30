@@ -81,7 +81,7 @@ export const studentExtracurricularApi = {
     const response = await apiClient.get<ApiEnvelope<StudentExtracurricularListPayload>>('/public/extracurriculars', {
       params: {
         page: 1,
-        limit: 100,
+        limit: 0,
       },
     });
     return response.data?.data?.extracurriculars || [];

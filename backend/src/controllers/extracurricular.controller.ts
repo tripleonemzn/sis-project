@@ -22,9 +22,10 @@ const STUDENT_EXTRACURRICULAR_CATEGORY = ExtracurricularCategory.EXTRACURRICULAR
 
 export const getExtracurriculars = asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 10, search, category } = req.query;
-  const pageNum = Number(page);
+  const pageNum = Math.max(1, Number(page) || 1);
   const limitNum = Number(limit);
-  const skip = (pageNum - 1) * limitNum;
+  const usePagination = Number.isFinite(limitNum) ? limitNum > 0 : true;
+  const skip = usePagination ? (pageNum - 1) * limitNum : undefined;
 
   const where: any = {};
   if (search) {
@@ -40,8 +41,7 @@ export const getExtracurriculars = asyncHandler(async (req: Request, res: Respon
     prisma.ekstrakurikuler.count({ where }),
     (prisma as any).ekstrakurikuler.findMany({
       where,
-      skip,
-      take: limitNum,
+      ...(usePagination ? { skip, take: limitNum } : {}),
       orderBy: { name: 'asc' },
       include: {
         tutorAssignments: {
@@ -63,7 +63,12 @@ export const getExtracurriculars = asyncHandler(async (req: Request, res: Respon
 
   res.status(200).json(new ApiResponse(200, {
     extracurriculars,
-    pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
+    pagination: {
+      page: pageNum,
+      limit: usePagination ? limitNum : total,
+      total,
+      totalPages: usePagination ? Math.max(1, Math.ceil(total / limitNum)) : 1,
+    },
   }, 'Data ekstrakurikuler berhasil diambil'));
 });
 

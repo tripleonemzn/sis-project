@@ -93,10 +93,24 @@ export default function StudentExtracurricularScreen() {
   });
 
   const list = useMemo(() => listQuery.data || [], [listQuery.data]);
+  const myEnrollment = enrollmentQuery.data;
+  const myOsisStatus = osisStatusQuery.data;
+  const osisMembership = myOsisStatus?.membership || null;
+  const osisRequest = myOsisStatus?.request || null;
+  const hasPendingOsisRequest = osisRequest?.status === 'PENDING';
+  const canChooseRegularExtracurricular = !myEnrollment;
+  const canRequestOsis = !osisMembership && !hasPendingOsisRequest;
+  const availableItems = useMemo(
+    () =>
+      list.filter((item) =>
+        item.category === 'OSIS' ? canRequestOsis : canChooseRegularExtracurricular,
+      ),
+    [canChooseRegularExtracurricular, canRequestOsis, list],
+  );
   const filteredList = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(
+    if (!q) return availableItems;
+    return availableItems.filter(
       (item) =>
         item.name.toLowerCase().includes(q) ||
         (item.description || '').toLowerCase().includes(q) ||
@@ -106,14 +120,9 @@ export default function StudentExtracurricularScreen() {
             .includes(q),
         ),
     );
-  }, [list, search]);
-
-  const myEnrollment = enrollmentQuery.data;
-  const myOsisStatus = osisStatusQuery.data;
-  const osisMembership = myOsisStatus?.membership || null;
-  const osisRequest = myOsisStatus?.request || null;
-  const hasPendingOsisRequest = osisRequest?.status === 'PENDING';
-  const selectedItem = filteredList.find((item) => item.id === selectedItemId) || list.find((item) => item.id === selectedItemId) || null;
+  }, [availableItems, search]);
+  const hasSearchTerm = search.trim().length > 0;
+  const selectedItem = filteredList.find((item) => item.id === selectedItemId) || null;
   const selectedIsOsis = selectedItem?.category === 'OSIS';
 
   const canSubmit =
@@ -142,7 +151,7 @@ export default function StudentExtracurricularScreen() {
   if (user?.role !== 'STUDENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Ekstrakurikuler & OSIS</Text>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Ekstrakurikuler</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role siswa." />
       </ScrollView>
     );
@@ -168,10 +177,10 @@ export default function StudentExtracurricularScreen() {
       }
     >
       <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
-        Ekstrakurikuler & OSIS
+        Ekstrakurikuler
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Pilih 1 ekskul reguler dan ajukan OSIS secara terpisah pada tahun ajaran berjalan.
+        Pilih 1 ekskul reguler dan, jika tersedia, ajukan OSIS secara terpisah pada tahun ajaran berjalan.
       </Text>
 
       <View
@@ -292,22 +301,24 @@ export default function StudentExtracurricularScreen() {
           marginBottom: 12,
         }}
       >
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Cari ekstrakurikuler atau OSIS..."
-          placeholderTextColor="#94a3b8"
-          style={{
-            borderWidth: 1,
-            borderColor: '#d6e2f7',
-            borderRadius: 999,
-            backgroundColor: '#f8fbff',
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            color: BRAND_COLORS.textDark,
-            marginBottom: 10,
-          }}
-        />
+        {availableItems.length > 0 ? (
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Cari ekstrakurikuler atau OSIS..."
+            placeholderTextColor="#94a3b8"
+            style={{
+              borderWidth: 1,
+              borderColor: '#d6e2f7',
+              borderRadius: 999,
+              backgroundColor: '#f8fbff',
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              color: BRAND_COLORS.textDark,
+              marginBottom: 10,
+            }}
+          />
+        ) : null}
 
         {listQuery.isLoading ? <QueryStateView type="loading" message="Mengambil daftar ekstrakurikuler..." /> : null}
         {listQuery.isError ? (
@@ -319,11 +330,11 @@ export default function StudentExtracurricularScreen() {
         ) : null}
 
         {!listQuery.isLoading && !listQuery.isError ? (
-          filteredList.length > 0 ? (
-            filteredList.map((item: StudentExtracurricular) => {
+          availableItems.length > 0 ? (
+            filteredList.length > 0 ? (
+              filteredList.map((item: StudentExtracurricular) => {
               const isSelected = selectedItemId === item.id;
               const isOsis = item.category === 'OSIS';
-              const isLocked = isOsis ? Boolean(osisMembership || hasPendingOsisRequest) : Boolean(myEnrollment);
               return (
                 <Pressable
                   key={item.id}
@@ -373,18 +384,27 @@ export default function StudentExtracurricularScreen() {
                       Pembina OSIS akan menempatkan Anda ke divisi dan jabatan yang sesuai.
                     </Text>
                   ) : null}
-                  {isLocked ? (
-                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
-                      {isOsis
-                        ? osisMembership
-                          ? 'Status OSIS Anda sudah aktif.'
-                          : 'Pengajuan OSIS Anda masih menunggu proses.'
-                        : 'Anda sudah memilih ekskul reguler.'}
-                    </Text>
-                  ) : null}
                 </Pressable>
               );
-            })
+              })
+            ) : (
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderStyle: 'dashed',
+                  borderRadius: 10,
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>
+                  Data tidak ditemukan
+                </Text>
+                <Text style={{ color: BRAND_COLORS.textMuted }}>
+                  Tidak ada ekstrakurikuler atau OSIS sesuai pencarian.
+                </Text>
+              </View>
+            )
           ) : (
             <View
               style={{
@@ -396,43 +416,51 @@ export default function StudentExtracurricularScreen() {
               }}
             >
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>
-                Data tidak ditemukan
+                {hasSearchTerm ? 'Data tidak ditemukan' : 'Pilihan Sudah Terkunci'}
               </Text>
               <Text style={{ color: BRAND_COLORS.textMuted }}>
-                Tidak ada ekstrakurikuler atau OSIS sesuai pencarian.
+                {hasSearchTerm
+                  ? 'Tidak ada ekstrakurikuler atau OSIS sesuai pencarian.'
+                  : myEnrollment && !canRequestOsis
+                  ? 'Ekskul reguler Anda sudah terkunci dan status OSIS Anda juga sudah diproses.'
+                  : myEnrollment
+                    ? 'Ekskul reguler Anda sudah terkunci. Jika sekolah menyediakan OSIS, pengajuannya diproses terpisah.'
+                    : 'Tidak ada pilihan tambahan yang tersedia saat ini.'}
               </Text>
             </View>
           )
         ) : null}
       </View>
 
-      <Pressable
-        onPress={() => {
-          if (!selectedItem) return;
-          if (selectedItem.category === 'OSIS') {
-            osisJoinMutation.mutate();
-            return;
-          }
-          enrollMutation.mutate();
-        }}
-        disabled={
-          !canSubmit || enrollMutation.isPending || osisJoinMutation.isPending
-        }
-        style={{
-          backgroundColor:
+      {availableItems.length > 0 ? (
+        <Pressable
+          onPress={() => {
+            if (!selectedItem) return;
+            if (selectedItem.category === 'OSIS') {
+              osisJoinMutation.mutate();
+              return;
+            }
+            enrollMutation.mutate();
+          }}
+          disabled={
             !canSubmit || enrollMutation.isPending || osisJoinMutation.isPending
-              ? '#93c5fd'
-              : selectedIsOsis
-                ? '#f59e0b'
-                : BRAND_COLORS.blue,
-          borderRadius: 10,
-          alignItems: 'center',
-          paddingVertical: 12,
-          marginBottom: 10,
-        }}
-      >
-        <Text style={{ color: '#fff', fontWeight: '700' }}>{submitLabel}</Text>
-      </Pressable>
+          }
+          style={{
+            backgroundColor:
+              !canSubmit || enrollMutation.isPending || osisJoinMutation.isPending
+                ? '#93c5fd'
+                : selectedIsOsis
+                  ? '#f59e0b'
+                  : BRAND_COLORS.blue,
+            borderRadius: 10,
+            alignItems: 'center',
+            paddingVertical: 12,
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700' }}>{submitLabel}</Text>
+        </Pressable>
+      ) : null}
     </ScrollView>
   );
 }

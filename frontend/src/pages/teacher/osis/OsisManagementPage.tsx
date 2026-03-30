@@ -1159,7 +1159,7 @@ export const OsisManagementPage = () => {
                   <div className="mb-3 flex items-center justify-between">
                     <div>
                       <h3 className="text-sm font-semibold text-slate-900">Pengajuan Masuk OSIS</h3>
-                      <p className="text-xs text-slate-500">Pengajuan siswa dari menu Ekstrakurikuler & OSIS.</p>
+                      <p className="text-xs text-slate-500">Pengajuan siswa dari menu Ekstrakurikuler.</p>
                     </div>
                     <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
                       {joinRequests.length} pending
