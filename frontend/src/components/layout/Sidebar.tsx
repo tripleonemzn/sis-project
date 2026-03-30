@@ -108,6 +108,10 @@ export type MenuItem = {
 };
 
 const ROOT_MENU_PATHS = ['/admin', '/teacher', '/student', '/principal', '/staff', '/parent', '/candidate', '/public', '/tutor', '/examiner'] as const;
+const SIDEBAR_WIDTH_STORAGE_KEY = 'dashboard-sidebar-width';
+const DEFAULT_SIDEBAR_WIDTH = 256;
+const MIN_SIDEBAR_WIDTH = 232;
+const MAX_SIDEBAR_WIDTH = 420;
 
 function sortExamPrograms(programs: ExamProgram[]): ExamProgram[] {
   return [...programs]
@@ -522,10 +526,6 @@ export const getMenuItems = (
       });
     }
 
-    if (extracurricularAdvisorMenus.length > 0) {
-      items.push(...extracurricularAdvisorMenus);
-    }
-
     // Menu Khusus Tugas Tambahan (Dynamic per Duty)
     const normalizedDuties = duties.map(normalizeDutyCode).filter(Boolean);
     const kakomDuties = normalizedDuties.filter((duty) => duty.includes('KAPROG') || duty.includes('KEPALA_KOMPETENSI'));
@@ -747,7 +747,11 @@ export const getMenuItems = (
         label: 'Pemungutan Suara OSIS',
         path: '/teacher/osis/vote',
         icon: Vote,
-      });
+        });
+      }
+
+    if (extracurricularAdvisorMenus.length > 0) {
+      items.push(...extracurricularAdvisorMenus);
     }
 
     items.push({
@@ -1158,6 +1162,13 @@ export const getMenuItems = (
 
 export const Sidebar = ({ user }: SidebarProps) => {
   const location = useLocation();
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_SIDEBAR_WIDTH;
+    const savedWidth = Number(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY) || '');
+    if (!Number.isFinite(savedWidth)) return DEFAULT_SIDEBAR_WIDTH;
+    return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, savedWidth));
+  });
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
 
   const { data: examinerInternshipsData } = useQuery({
     queryKey: ['examiner-internships'],
@@ -1343,6 +1354,39 @@ export const Sidebar = ({ user }: SidebarProps) => {
     return -1;
   }, [location.pathname, location.search]);
 
+  useEffect(() => {
+    if (!isResizingSidebar || typeof window === 'undefined') return;
+
+    const previousUserSelect = document.body.style.userSelect;
+    const previousCursor = document.body.style.cursor;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const nextWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, event.clientX));
+      setSidebarWidth(nextWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingSidebar(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.body.style.userSelect = previousUserSelect;
+      document.body.style.cursor = previousCursor;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizingSidebar]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth));
+  }, [sidebarWidth]);
+
   const isPathActive = useCallback((itemPath: string) => getMenuPathMatchScore(itemPath) >= 0, [getMenuPathMatchScore]);
 
   const getMostSpecificChildPath = useCallback((children?: MenuItem[]) => {
@@ -1417,7 +1461,10 @@ export const Sidebar = ({ user }: SidebarProps) => {
   };
 
   return (
-    <aside className="relative z-[80] w-64 shrink-0 bg-white hidden md:flex flex-col h-full shadow-xl pointer-events-auto">
+    <aside
+      className="relative z-[80] hidden h-full shrink-0 bg-white shadow-xl pointer-events-auto md:flex md:flex-col"
+      style={{ width: `${sidebarWidth}px` }}
+    >
       <div className="p-6 flex items-center gap-3 border-b border-gray-100">
         <img src="/logo_sis_kgb2.png" alt="Logo" className="w-9 h-9 object-contain" />
         <div className="min-w-0">
@@ -1447,13 +1494,13 @@ export const Sidebar = ({ user }: SidebarProps) => {
                     type="button"
                     onClick={() => toggleGroup(item.path)}
                     className={clsx(
-                      'w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-all duration-200 group',
+                      'w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group text-left',
                       isOpen ? 'text-blue-600 bg-blue-50/50' : 'text-gray-600 hover:bg-gray-50'
                     )}
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 flex-1 items-start gap-3 text-left">
                       <Icon size={18} className={clsx(isOpen ? 'text-blue-600' : 'text-gray-400 group-hover:text-blue-600')} />
-                      <span className="text-sm font-medium">{item.label}</span>
+                      <span className="block min-w-0 flex-1 break-words text-left text-sm font-medium leading-5">{item.label}</span>
                     </div>
                     {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   </button>
@@ -1472,14 +1519,14 @@ export const Sidebar = ({ user }: SidebarProps) => {
                             <Link
                               to={child.path}
                               className={clsx(
-                                'flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm',
+                                'flex items-start gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm text-left',
                                 isChildItemActive 
                                   ? 'text-blue-600 font-medium bg-blue-50' 
                                   : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
                               )}
                             >
                               <ChildIcon size={16} className={clsx(isChildItemActive ? 'text-blue-600' : 'text-gray-400')} />
-                              <span>{child.label}</span>
+                              <span className="block min-w-0 flex-1 break-words text-left leading-5">{child.label}</span>
                             </Link>
                           </li>
                         );
@@ -1495,7 +1542,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
                 <Link
                   to={item.path}
                   className={clsx(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group',
+                    'flex items-start gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group text-left',
                     isActive 
                       ? 'bg-blue-50 text-blue-600 font-medium' 
                       : 'text-gray-500 hover:bg-gray-50 hover:text-blue-600'
@@ -1503,13 +1550,31 @@ export const Sidebar = ({ user }: SidebarProps) => {
                   onClick={() => setOpenGroup(null)} // Close accordion when clicking single item
                 >
                   <Icon size={18} className={clsx(isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-blue-600')} />
-                  <span className="text-sm">{item.label}</span>
+                  <span className="block min-w-0 flex-1 break-words text-left text-sm leading-5">{item.label}</span>
                 </Link>
               </li>
             );
           })}
         </ul>
       </nav>
+
+      <button
+        type="button"
+        aria-label="Ubah lebar sidebar"
+        title="Tarik untuk mengubah lebar sidebar"
+        onMouseDown={() => setIsResizingSidebar(true)}
+        className={clsx(
+          'absolute inset-y-0 right-0 hidden w-3 translate-x-1/2 cursor-col-resize md:block',
+          isResizingSidebar ? 'bg-blue-100/70' : 'bg-transparent'
+        )}
+      >
+        <span
+          className={clsx(
+            'absolute inset-y-4 left-1/2 w-px -translate-x-1/2 rounded-full transition-colors',
+            isResizingSidebar ? 'bg-blue-500' : 'bg-gray-200'
+          )}
+        />
+      </button>
 
       <div className="p-5 m-4 bg-gray-50 rounded-2xl">
         <div className="flex items-center gap-3 mb-4">

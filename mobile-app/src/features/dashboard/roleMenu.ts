@@ -1566,44 +1566,6 @@ function buildTeacherGroups(
     );
   }
 
-  extracurricularAssignments.forEach((assignment) => {
-    const linkedRoom = linkedAdvisorInventory.roomByAssignmentId.get(assignment.id) || null;
-    const inventoryItem: RoleMenuItem = linkedRoom
-      ? {
-          key: `teacher-extracurricular-inventory-room-${linkedRoom.id}`,
-          label: 'Kelola Inventaris',
-          route: createWebModuleRoute(
-            `teacher-extracurricular-inventory-room-${linkedRoom.id}`,
-            `/teacher/assigned-inventory/${linkedRoom.id}`,
-            'Kelola Inventaris',
-          ),
-          webPath: `/teacher/assigned-inventory/${linkedRoom.id}`,
-        }
-      : {
-          key: `teacher-extracurricular-inventory-${assignment.id}`,
-          label: 'Kelola Inventaris',
-          route: '/tutor/inventory',
-        };
-
-    pushGroup(
-      `extracurricular-advisor-${assignment.id}`,
-      buildAdvisorGroupLabel(assignment?.ekskul?.name),
-      [
-        {
-          key: `teacher-extracurricular-members-${assignment.id}`,
-          label: 'Anggota & Nilai',
-          route: `/tutor/members?assignmentId=${assignment.id}&ekskulId=${assignment.ekskulId}&academicYearId=${assignment.academicYearId}`,
-        },
-        {
-          key: `teacher-extracurricular-work-program-${assignment.id}`,
-          label: 'Program Kerja',
-          route: `/tutor/work-program?duty=PEMBINA_EKSKUL&assignmentId=${assignment.id}&ekskulId=${assignment.ekskulId}&academicYearId=${assignment.academicYearId}`,
-        },
-        inventoryItem,
-      ],
-    );
-  });
-
   const duties = (user.additionalDuties || [])
     .map((item) => normalizeDuty(item))
     .filter((item) => item.length > 0);
@@ -1740,6 +1702,44 @@ function buildTeacherGroups(
     items.push(...pickMenus(byKey, ['teacher-kakom-classes', 'teacher-kakom-pkl', 'teacher-kakom-partners']));
     pushGroup(`kakom-${slugify(label)}`, label, items);
   }
+
+  extracurricularAssignments.forEach((assignment) => {
+    const linkedRoom = linkedAdvisorInventory.roomByAssignmentId.get(assignment.id) || null;
+    const inventoryItem: RoleMenuItem = linkedRoom
+      ? {
+          key: `teacher-extracurricular-inventory-room-${linkedRoom.id}`,
+          label: 'Kelola Inventaris',
+          route: createWebModuleRoute(
+            `teacher-extracurricular-inventory-room-${linkedRoom.id}`,
+            `/teacher/assigned-inventory/${linkedRoom.id}`,
+            'Kelola Inventaris',
+          ),
+          webPath: `/teacher/assigned-inventory/${linkedRoom.id}`,
+        }
+      : {
+          key: `teacher-extracurricular-inventory-${assignment.id}`,
+          label: 'Kelola Inventaris',
+          route: '/tutor/inventory',
+        };
+
+    pushGroup(
+      `extracurricular-advisor-${assignment.id}`,
+      buildAdvisorGroupLabel(assignment?.ekskul?.name),
+      [
+        {
+          key: `teacher-extracurricular-members-${assignment.id}`,
+          label: 'Anggota & Nilai',
+          route: `/tutor/members?assignmentId=${assignment.id}&ekskulId=${assignment.ekskulId}&academicYearId=${assignment.academicYearId}`,
+        },
+        {
+          key: `teacher-extracurricular-work-program-${assignment.id}`,
+          label: 'Program Kerja',
+          route: `/tutor/work-program?duty=PEMBINA_EKSKUL&assignmentId=${assignment.id}&ekskulId=${assignment.ekskulId}&academicYearId=${assignment.academicYearId}`,
+        },
+        inventoryItem,
+      ],
+    );
+  });
 
   if (options?.hasPendingDefense) {
     pushGroup('internship-defense', 'SIDANG PKL', [
