@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Redirect } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Alert,
   Modal,
   Pressable,
   RefreshControl,
@@ -77,7 +78,7 @@ type SelectionModalProps = {
   submitLabel: string;
   submitting: boolean;
   emptyMessage: string;
-  onSelect: (id: number) => void;
+  onSelect: (option: StudentExtracurricular) => void;
 };
 
 function SelectionModal(props: SelectionModalProps) {
@@ -209,7 +210,7 @@ function SelectionModal(props: SelectionModalProps) {
                   ) : null}
 
                   <Pressable
-                    onPress={() => props.onSelect(option.id)}
+                    onPress={() => props.onSelect(option)}
                     disabled={props.submitting}
                     style={{
                       marginTop: 4,
@@ -341,6 +342,23 @@ export default function StudentExtracurricularScreen() {
   const osisRequest = summary?.osisStatus?.request || null;
   const canChooseRegular = Boolean(summary?.actions.canChooseRegular);
   const canRequestOsis = Boolean(summary?.actions.canRequestOsis);
+
+  const handleRegularSelect = (option: StudentExtracurricular) => {
+    Alert.alert(
+      'Konfirmasi Pilihan Ekskul',
+      `Ekskul reguler hanya bisa dipilih 1 kali pada tahun ajaran aktif.\n\nPastikan Anda benar-benar ingin memilih ${option.name}. Setelah disimpan, pilihan ini tidak bisa diganti langsung dari menu ini.`,
+      [
+        { text: 'Periksa Lagi', style: 'cancel' },
+        {
+          text: `Ya, Pilih ${option.name}`,
+          onPress: () => {
+            enrollMutation.mutate(option.id);
+          },
+        },
+      ],
+      { cancelable: true },
+    );
+  };
 
   const attendanceCards = [
     { label: 'Hadir', value: regularEnrollment?.attendanceSummary.presentCount || 0, color: '#047857', bg: '#ecfdf5' },
@@ -719,7 +737,7 @@ export default function StudentExtracurricularScreen() {
         submitLabel="Pilih"
         submitting={enrollMutation.isPending}
         emptyMessage="Tidak ada ekskul reguler yang tersedia."
-        onSelect={(id) => enrollMutation.mutate(id)}
+        onSelect={handleRegularSelect}
       />
 
       <SelectionModal
@@ -737,7 +755,7 @@ export default function StudentExtracurricularScreen() {
         submitLabel={getOsisActionLabel(osisRequest?.status)}
         submitting={osisJoinMutation.isPending}
         emptyMessage="Tidak ada item OSIS yang tersedia."
-        onSelect={(id) => osisJoinMutation.mutate(id)}
+        onSelect={(option) => osisJoinMutation.mutate(option.id)}
       />
     </>
   );

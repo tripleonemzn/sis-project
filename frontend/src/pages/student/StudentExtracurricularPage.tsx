@@ -133,7 +133,7 @@ type SelectionModalProps = {
   submitLabel: string;
   submitting: boolean;
   emptyMessage: string;
-  onSelect: (id: number) => void;
+  onSelect: (option: ExtracurricularOption) => void;
 };
 
 function SelectionModal(props: SelectionModalProps) {
@@ -213,7 +213,7 @@ function SelectionModal(props: SelectionModalProps) {
 
                     <button
                       type="button"
-                      onClick={() => props.onSelect(option.id)}
+                      onClick={() => props.onSelect(option)}
                       disabled={props.submitting}
                       className={`inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
                         props.submitting ? 'bg-slate-300' : option.category === 'OSIS' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-600 hover:bg-blue-700'
@@ -232,12 +232,65 @@ function SelectionModal(props: SelectionModalProps) {
   );
 }
 
+type RegularConfirmationModalProps = {
+  open: boolean;
+  option: ExtracurricularOption | null;
+  submitting: boolean;
+  onCancel: () => void;
+  onConfirm: (option: ExtracurricularOption) => void;
+};
+
+function RegularConfirmationModal(props: RegularConfirmationModalProps) {
+  if (!props.open || !props.option) return null;
+  const option = props.option;
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/55 px-4 py-6">
+      <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-6 w-6 shrink-0 text-amber-500" />
+          <div>
+            <h3 className="text-xl font-bold text-slate-900">Konfirmasi Pilihan Ekskul</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Ekskul reguler hanya bisa dipilih <span className="font-semibold">1 kali</span> pada tahun ajaran aktif.
+              Pastikan Anda benar-benar ingin memilih <span className="font-semibold">{option.name}</span>.
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Setelah disimpan, Anda tidak bisa mengganti pilihan langsung dari menu ini.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={props.onCancel}
+            disabled={props.submitting}
+            className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Periksa Lagi
+          </button>
+          <button
+            type="button"
+            onClick={() => props.onConfirm(option)}
+            disabled={props.submitting}
+            className="inline-flex items-center justify-center rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {props.submitting ? 'Menyimpan...' : `Ya, Pilih ${option.name}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export const StudentExtracurricularPage = () => {
   const queryClient = useQueryClient();
   const [regularModalOpen, setRegularModalOpen] = useState(false);
   const [osisModalOpen, setOsisModalOpen] = useState(false);
   const [regularSearch, setRegularSearch] = useState('');
   const [osisSearch, setOsisSearch] = useState('');
+  const [regularConfirmationOption, setRegularConfirmationOption] = useState<ExtracurricularOption | null>(null);
 
   const summaryQuery = useQuery<StudentExtracurricularSummary>({
     queryKey: ['student-extracurricular-summary'],
@@ -287,6 +340,7 @@ export const StudentExtracurricularPage = () => {
     },
     onSuccess: async () => {
       toast.success('Pendaftaran ekskul reguler berhasil');
+      setRegularConfirmationOption(null);
       setRegularModalOpen(false);
       setRegularSearch('');
       await queryClient.invalidateQueries({ queryKey: ['student-extracurricular-summary'] });
@@ -596,6 +650,7 @@ export const StudentExtracurricularPage = () => {
         search={regularSearch}
         onSearchChange={setRegularSearch}
         onClose={() => {
+          setRegularConfirmationOption(null);
           setRegularModalOpen(false);
           setRegularSearch('');
         }}
@@ -604,7 +659,7 @@ export const StudentExtracurricularPage = () => {
         submitLabel="Pilih"
         submitting={enrollMutation.isPending}
         emptyMessage="Tidak ada ekskul reguler yang tersedia."
-        onSelect={(id) => enrollMutation.mutate(id)}
+        onSelect={(option) => setRegularConfirmationOption(option)}
       />
 
       <SelectionModal
@@ -622,7 +677,15 @@ export const StudentExtracurricularPage = () => {
         submitLabel={getOsisActionLabel(osisRequest?.status)}
         submitting={osisJoinMutation.isPending}
         emptyMessage="Tidak ada item OSIS yang tersedia."
-        onSelect={(id) => osisJoinMutation.mutate(id)}
+        onSelect={(option) => osisJoinMutation.mutate(option.id)}
+      />
+
+      <RegularConfirmationModal
+        open={Boolean(regularConfirmationOption)}
+        option={regularConfirmationOption}
+        submitting={enrollMutation.isPending}
+        onCancel={() => setRegularConfirmationOption(null)}
+        onConfirm={(option) => enrollMutation.mutate(option.id)}
       />
     </>
   );
