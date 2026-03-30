@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { Redirect } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Alert,
   Modal,
   Pressable,
   RefreshControl,
@@ -11,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../../src/components/QueryStateView';
@@ -79,6 +79,14 @@ type SelectionModalProps = {
   submitting: boolean;
   emptyMessage: string;
   onSelect: (option: StudentExtracurricular) => void;
+};
+
+type RegularConfirmationModalProps = {
+  visible: boolean;
+  option: StudentExtracurricular | null;
+  submitting: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
 };
 
 function SelectionModal(props: SelectionModalProps) {
@@ -238,6 +246,102 @@ function SelectionModal(props: SelectionModalProps) {
   );
 }
 
+function RegularConfirmationModal(props: RegularConfirmationModalProps) {
+  const selectedName = props.option?.name || 'ekskul ini';
+
+  return (
+    <Modal visible={props.visible} transparent animationType="fade" onRequestClose={props.onClose}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(15, 23, 42, 0.5)',
+          justifyContent: 'center',
+          paddingHorizontal: 22,
+        }}
+      >
+        <View
+          style={{
+            backgroundColor: BRAND_COLORS.white,
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: '#c7d7f7',
+            paddingHorizontal: 16,
+            paddingVertical: 16,
+            shadowColor: '#0f172a',
+            shadowOffset: { width: 0, height: 10 },
+            shadowOpacity: 0.24,
+            shadowRadius: 18,
+            elevation: 14,
+          }}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 999,
+              backgroundColor: '#eff6ff',
+              borderWidth: 1,
+              borderColor: '#bfdbfe',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 10,
+            }}
+          >
+            <Feather name="award" size={18} color={BRAND_COLORS.blue} />
+          </View>
+          <Text style={{ color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700', marginBottom: 6 }}>
+            Konfirmasi Pilihan Ekskul
+          </Text>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 14, lineHeight: 20, marginBottom: 14 }}>
+            Ekskul reguler hanya bisa dipilih 1 kali pada tahun ajaran aktif. Pastikan Anda benar-benar yakin memilih{' '}
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{selectedName}</Text>.
+          </Text>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 14, lineHeight: 20, marginBottom: 14 }}>
+            Setelah disimpan, pilihan ini tidak bisa diganti langsung dari menu ini.
+          </Text>
+
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <Pressable
+              disabled={props.submitting}
+              onPress={props.onClose}
+              style={{
+                flex: 1,
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                borderRadius: 12,
+                paddingVertical: 11,
+                alignItems: 'center',
+                backgroundColor: BRAND_COLORS.white,
+                opacity: props.submitting ? 0.6 : 1,
+              }}
+            >
+              <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700' }}>Periksa Lagi</Text>
+            </Pressable>
+            <Pressable
+              disabled={props.submitting}
+              onPress={props.onConfirm}
+              style={{
+                flex: 1,
+                borderWidth: 1,
+                borderColor: BRAND_COLORS.blue,
+                borderRadius: 12,
+                paddingVertical: 11,
+                alignItems: 'center',
+                backgroundColor: BRAND_COLORS.blue,
+                opacity: props.submitting ? 0.6 : 1,
+              }}
+            >
+              <Text style={{ color: BRAND_COLORS.white, fontWeight: '700' }}>
+                {props.submitting ? 'Memproses...' : `Ya, Pilih ${selectedName}`}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function StudentExtracurricularScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -247,6 +351,7 @@ export default function StudentExtracurricularScreen() {
   const [osisModalOpen, setOsisModalOpen] = useState(false);
   const [regularSearch, setRegularSearch] = useState('');
   const [osisSearch, setOsisSearch] = useState('');
+  const [regularConfirmationOption, setRegularConfirmationOption] = useState<StudentExtracurricular | null>(null);
 
   const summaryQuery = useQuery({
     queryKey: ['mobile-student-extracurricular-summary', user?.id],
@@ -280,6 +385,7 @@ export default function StudentExtracurricularScreen() {
     },
     onSuccess: async () => {
       notifySuccess('Pendaftaran ekskul reguler berhasil.');
+      setRegularConfirmationOption(null);
       setRegularModalOpen(false);
       setRegularSearch('');
       await queryClient.invalidateQueries({
@@ -344,20 +450,12 @@ export default function StudentExtracurricularScreen() {
   const canRequestOsis = Boolean(summary?.actions.canRequestOsis);
 
   const handleRegularSelect = (option: StudentExtracurricular) => {
-    Alert.alert(
-      'Konfirmasi Pilihan Ekskul',
-      `Ekskul reguler hanya bisa dipilih 1 kali pada tahun ajaran aktif.\n\nPastikan Anda benar-benar ingin memilih ${option.name}. Setelah disimpan, pilihan ini tidak bisa diganti langsung dari menu ini.`,
-      [
-        { text: 'Periksa Lagi', style: 'cancel' },
-        {
-          text: `Ya, Pilih ${option.name}`,
-          onPress: () => {
-            enrollMutation.mutate(option.id);
-          },
-        },
-      ],
-      { cancelable: true },
-    );
+    setRegularConfirmationOption(option);
+  };
+
+  const confirmRegularSelection = () => {
+    if (!regularConfirmationOption || enrollMutation.isPending) return;
+    enrollMutation.mutate(regularConfirmationOption.id);
   };
 
   const attendanceCards = [
@@ -731,6 +829,7 @@ export default function StudentExtracurricularScreen() {
         onClose={() => {
           setRegularModalOpen(false);
           setRegularSearch('');
+          setRegularConfirmationOption(null);
         }}
         options={regularOptions}
         loading={regularOptionsQuery.isLoading}
@@ -756,6 +855,17 @@ export default function StudentExtracurricularScreen() {
         submitting={osisJoinMutation.isPending}
         emptyMessage="Tidak ada item OSIS yang tersedia."
         onSelect={(option) => osisJoinMutation.mutate(option.id)}
+      />
+
+      <RegularConfirmationModal
+        visible={Boolean(regularConfirmationOption)}
+        option={regularConfirmationOption}
+        submitting={enrollMutation.isPending}
+        onClose={() => {
+          if (enrollMutation.isPending) return;
+          setRegularConfirmationOption(null);
+        }}
+        onConfirm={confirmRegularSelection}
       />
     </>
   );
