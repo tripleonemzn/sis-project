@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "275317110478",
+    "project_id": "sis-kgb2-android-push",
+    "storage_bucket": "sis-kgb2-android-push.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:275317110478:android:f166340c45f5a14cbe029f",
+        "android_client_info": {
+          "package_name": "id.siskgb2.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC3QEc9x8oNzXjcCzCT1b9Mo4G0zHznGUQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

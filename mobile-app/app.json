@@ -12,6 +12,7 @@
     ],
     "android": {
       "package": "id.siskgb2.mobile",
+      "googleServicesFile": "./google-services.json",
       "versionCode": 3,
       "permissions": [
         "POST_NOTIFICATIONS"
