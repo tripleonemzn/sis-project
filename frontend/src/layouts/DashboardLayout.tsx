@@ -853,7 +853,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
       grades: { label: 'Riwayat Nilai', group: isAlumni ? 'AKADEMIK' : 'NILAI SAYA' },
 
       // EKSTRAKURIKULER
-      extracurricular: { label: 'Ekstrakurikuler' },
+      extracurricular: { label: 'Ekstrakurikuler & OSIS' },
 
       // PKL (PRAKERIN)
       internship: { label: 'PKL (PRAKERIN)', group: 'PKL (PRAKERIN)' },

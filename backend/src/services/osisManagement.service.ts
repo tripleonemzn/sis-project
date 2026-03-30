@@ -1,4 +1,10 @@
-import { ExamType, OsisManagementStatus, Prisma, Semester } from '@prisma/client';
+import {
+  ExamType,
+  OsisJoinRequestStatus,
+  OsisManagementStatus,
+  Prisma,
+  Semester,
+} from '@prisma/client';
 import prisma from '../utils/prisma';
 import { ApiError } from '../utils/api';
 
@@ -80,6 +86,47 @@ const membershipInclude = Prisma.validator<Prisma.OsisMembershipInclude>()({
     include: {
       gradedBy: { select: { id: true, name: true, username: true } },
     },
+  },
+});
+
+const osisJoinRequestInclude = Prisma.validator<Prisma.OsisJoinRequestInclude>()({
+  academicYear: {
+    select: {
+      id: true,
+      name: true,
+      isActive: true,
+    },
+  },
+  ekskul: {
+    select: {
+      id: true,
+      name: true,
+      category: true,
+    },
+  },
+  student: {
+    select: {
+      id: true,
+      name: true,
+      nis: true,
+      nisn: true,
+      studentClass: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  },
+  processedBy: {
+    select: {
+      id: true,
+      name: true,
+      username: true,
+    },
+  },
+  membership: {
+    include: membershipInclude,
   },
 });
 
@@ -533,6 +580,39 @@ async function notifyHomeroomOsisGradeUpdated(params: {
 }
 
 export class OsisManagementService {
+  private async resolveAcademicYearId(academicYearId?: number | null) {
+    if (academicYearId) return Number(academicYearId);
+
+    const activeYear = await prisma.academicYear.findFirst({
+      where: { isActive: true },
+      select: { id: true },
+    });
+
+    return activeYear?.id || null;
+  }
+
+  private async ensureStudentActiveInAcademicYear(studentId: number, academicYearId: number) {
+    const student = await prisma.user.findFirst({
+      where: {
+        id: studentId,
+        role: 'STUDENT',
+        studentStatus: 'ACTIVE',
+        studentClass: {
+          academicYearId,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!student) {
+      throw new ApiError(400, 'Siswa harus aktif pada tahun ajaran yang sama.');
+    }
+
+    return student;
+  }
+
   private async ensureSingleActivePeriod(params: {
     academicYearId: number;
     status: OsisManagementStatus;
@@ -1020,7 +1100,176 @@ export class OsisManagementService {
     };
   }
 
-  async createMembership(payload: {
+  async getStudentJoinStatus(studentId: number, academicYearId?: number | null) {
+    const targetAcademicYearId = await this.resolveAcademicYearId(academicYearId);
+
+    if (!targetAcademicYearId) {
+      return {
+        academicYearId: null,
+        membership: null,
+        request: null,
+      };
+    }
+
+    const [membership, request] = await Promise.all([
+      prisma.osisMembership.findFirst({
+        where: {
+          studentId,
+          isActive: true,
+          period: {
+            academicYearId: targetAcademicYearId,
+          },
+        },
+        orderBy: [{ joinedAt: 'desc' }, { id: 'desc' }],
+        include: membershipInclude,
+      }),
+      prisma.osisJoinRequest.findFirst({
+        where: {
+          studentId,
+          academicYearId: targetAcademicYearId,
+        },
+        orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
+        include: osisJoinRequestInclude,
+      }),
+    ]);
+
+    return {
+      academicYearId: targetAcademicYearId,
+      membership,
+      request,
+    };
+  }
+
+  async createJoinRequest(
+    studentId: number,
+    payload: {
+      ekskulId: number;
+      academicYearId?: number | null;
+    },
+  ) {
+    const targetAcademicYearId = await this.resolveAcademicYearId(payload.academicYearId);
+    if (!targetAcademicYearId) {
+      throw new ApiError(400, 'Tahun ajaran aktif tidak tersedia.');
+    }
+
+    const ekskul = await prisma.ekstrakurikuler.findUnique({
+      where: { id: payload.ekskulId },
+      select: {
+        id: true,
+        name: true,
+        category: true,
+      },
+    });
+
+    if (!ekskul) {
+      throw new ApiError(404, 'OSIS tidak ditemukan.');
+    }
+
+    if (ekskul.category !== 'OSIS') {
+      throw new ApiError(400, 'Permintaan OSIS hanya dapat dibuat untuk item kategori OSIS.');
+    }
+
+    await this.ensureStudentActiveInAcademicYear(studentId, targetAcademicYearId);
+
+    const [existingMembership, existingPendingRequest] = await Promise.all([
+      prisma.osisMembership.findFirst({
+        where: {
+          studentId,
+          isActive: true,
+          period: {
+            academicYearId: targetAcademicYearId,
+          },
+        },
+        select: { id: true },
+      }),
+      prisma.osisJoinRequest.findFirst({
+        where: {
+          studentId,
+          academicYearId: targetAcademicYearId,
+          status: OsisJoinRequestStatus.PENDING,
+        },
+        select: {
+          id: true,
+          ekskul: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    if (existingMembership) {
+      throw new ApiError(400, 'Anda sudah tercatat sebagai anggota OSIS pada tahun ajaran ini.');
+    }
+
+    if (existingPendingRequest) {
+      throw new ApiError(
+        400,
+        `Pengajuan OSIS Anda masih menunggu proses pembina${existingPendingRequest.ekskul?.name ? ` (${existingPendingRequest.ekskul.name})` : ''}.`,
+      );
+    }
+
+    return prisma.osisJoinRequest.create({
+      data: {
+        academicYearId: targetAcademicYearId,
+        ekskulId: ekskul.id,
+        studentId,
+        status: OsisJoinRequestStatus.PENDING,
+      },
+      include: osisJoinRequestInclude,
+    });
+  }
+
+  async listJoinRequests(params: {
+    academicYearId?: number | null;
+    status?: OsisJoinRequestStatus;
+  }) {
+    const targetAcademicYearId = await this.resolveAcademicYearId(params.academicYearId);
+
+    return prisma.osisJoinRequest.findMany({
+      where: {
+        ...(targetAcademicYearId ? { academicYearId: targetAcademicYearId } : {}),
+        ...(params.status ? { status: params.status } : {}),
+      },
+      orderBy: [{ requestedAt: 'asc' }, { id: 'asc' }],
+      include: osisJoinRequestInclude,
+    });
+  }
+
+  async rejectJoinRequest(
+    actorId: number,
+    id: number,
+    note?: string | null,
+  ) {
+    const existing = await prisma.osisJoinRequest.findUnique({
+      where: { id },
+      include: osisJoinRequestInclude,
+    });
+
+    if (!existing) {
+      throw new ApiError(404, 'Permintaan OSIS tidak ditemukan.');
+    }
+
+    if (existing.status !== OsisJoinRequestStatus.PENDING) {
+      throw new ApiError(400, 'Permintaan OSIS ini sudah diproses sebelumnya.');
+    }
+
+    return prisma.osisJoinRequest.update({
+      where: { id },
+      data: {
+        status: OsisJoinRequestStatus.REJECTED,
+        note: normalizeNullableText(note),
+        processedAt: new Date(),
+        processedById: actorId,
+      },
+      include: osisJoinRequestInclude,
+    });
+  }
+
+  async createMembership(
+    actorId: number,
+    payload: {
     periodId: number;
     studentId: number;
     positionId: number;
@@ -1028,7 +1277,9 @@ export class OsisManagementService {
     joinedAt?: Date | null;
     endedAt?: Date | null;
     isActive?: boolean;
-  }) {
+    requestId?: number | null;
+  },
+  ) {
     const period = await this.ensurePeriodExists(payload.periodId);
     const position = await this.ensurePositionBelongsToPeriod(payload.positionId, payload.periodId);
     const resolvedDivisionId = payload.divisionId ?? position.divisionId ?? null;
@@ -1041,21 +1292,7 @@ export class OsisManagementService {
       throw new ApiError(400, 'Divisi anggota harus sesuai dengan divisi jabatan yang dipilih.');
     }
 
-    const student = await prisma.user.findFirst({
-      where: {
-        id: payload.studentId,
-        role: 'STUDENT',
-        studentStatus: 'ACTIVE',
-        studentClass: {
-          academicYearId: period.academicYearId,
-        },
-      },
-      select: { id: true },
-    });
-
-    if (!student) {
-      throw new ApiError(400, 'Anggota OSIS harus siswa aktif pada tahun ajaran yang sama.');
-    }
+    await this.ensureStudentActiveInAcademicYear(payload.studentId, period.academicYearId);
 
     const joinedAt = payload.joinedAt ? new Date(payload.joinedAt) : new Date();
     const endedAt = payload.endedAt ? new Date(payload.endedAt) : null;
@@ -1063,17 +1300,69 @@ export class OsisManagementService {
       throw new ApiError(400, 'Tanggal selesai jabatan harus setelah tanggal mulai.');
     }
 
-    return prisma.osisMembership.create({
-      data: {
-        periodId: payload.periodId,
-        studentId: payload.studentId,
-        positionId: payload.positionId,
-        divisionId: resolvedDivisionId,
-        joinedAt,
-        endedAt,
-        isActive: payload.isActive ?? true,
-      },
-      include: membershipInclude,
+    return prisma.$transaction(async (tx) => {
+      const membership = await tx.osisMembership.create({
+        data: {
+          periodId: payload.periodId,
+          studentId: payload.studentId,
+          positionId: payload.positionId,
+          divisionId: resolvedDivisionId,
+          joinedAt,
+          endedAt,
+          isActive: payload.isActive ?? true,
+        },
+        include: membershipInclude,
+      });
+
+      const pendingRequest = payload.requestId
+        ? await tx.osisJoinRequest.findUnique({
+            where: { id: payload.requestId },
+            select: {
+              id: true,
+              studentId: true,
+              academicYearId: true,
+              status: true,
+            },
+          })
+        : await tx.osisJoinRequest.findFirst({
+            where: {
+              studentId: payload.studentId,
+              academicYearId: period.academicYearId,
+              status: OsisJoinRequestStatus.PENDING,
+            },
+            orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
+            select: {
+              id: true,
+              studentId: true,
+              academicYearId: true,
+              status: true,
+            },
+          });
+
+      if (pendingRequest) {
+        if (pendingRequest.status !== OsisJoinRequestStatus.PENDING) {
+          throw new ApiError(400, 'Permintaan OSIS ini sudah diproses.');
+        }
+
+        if (
+          Number(pendingRequest.studentId) !== Number(payload.studentId) ||
+          Number(pendingRequest.academicYearId) !== Number(period.academicYearId)
+        ) {
+          throw new ApiError(400, 'Permintaan OSIS tidak cocok dengan siswa atau tahun ajaran yang dipilih.');
+        }
+
+        await tx.osisJoinRequest.update({
+          where: { id: pendingRequest.id },
+          data: {
+            status: OsisJoinRequestStatus.APPROVED,
+            processedAt: new Date(),
+            processedById: actorId,
+            membershipId: membership.id,
+          },
+        });
+      }
+
+      return membership;
     });
   }
 

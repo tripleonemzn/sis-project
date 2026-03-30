@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import {
   AdditionalDuty,
   OsisElectionStatus,
+  OsisJoinRequestStatus,
   OsisManagementStatus,
   Prisma,
   Semester,
@@ -83,6 +84,7 @@ const createMembershipSchema = z.object({
   joinedAt: z.string().optional().nullable(),
   endedAt: z.string().optional().nullable(),
   isActive: z.boolean().optional(),
+  requestId: z.number().int().optional().nullable(),
 });
 
 const updateMembershipSchema = createMembershipSchema.omit({ periodId: true }).partial();
@@ -153,6 +155,29 @@ const candidateIdSchema = z.object({
 
 const recordIdSchema = z.object({
   id: z.coerce.number().int(),
+});
+
+const osisJoinRequestStatusSchema = z.preprocess((value) => {
+  if (typeof value === 'string') return value.trim().toUpperCase();
+  return value;
+}, z.nativeEnum(OsisJoinRequestStatus));
+
+const studentJoinStatusSchema = z.object({
+  academicYearId: z.coerce.number().int().optional(),
+});
+
+const createStudentJoinRequestSchema = z.object({
+  ekskulId: z.number().int(),
+  academicYearId: z.number().int().optional(),
+});
+
+const joinRequestQuerySchema = z.object({
+  academicYearId: z.coerce.number().int().optional(),
+  status: osisJoinRequestStatusSchema.optional(),
+});
+
+const updateJoinRequestStatusSchema = z.object({
+  note: z.string().optional().nullable(),
 });
 
 const toDate = (value?: string | null) => {
@@ -502,10 +527,48 @@ export const getOsisMemberships = asyncHandler(async (req: Request, res: Respons
     .json(new ApiResponse(200, memberships, 'Data keanggotaan OSIS berhasil diambil'));
 });
 
+export const getStudentOsisJoinStatus = asyncHandler(async (req: Request, res: Response) => {
+  const authUser = getAuthUser(req);
+  const query = studentJoinStatusSchema.parse(req.query);
+  const status = await osisManagementService.getStudentJoinStatus(authUser.id, query.academicYearId);
+
+  res.status(200).json(new ApiResponse(200, status, 'Status OSIS siswa berhasil diambil'));
+});
+
+export const createStudentOsisJoinRequest = asyncHandler(async (req: Request, res: Response) => {
+  const authUser = getAuthUser(req);
+  const body = createStudentJoinRequestSchema.parse(req.body);
+  const request = await osisManagementService.createJoinRequest(authUser.id, {
+    ekskulId: body.ekskulId,
+    academicYearId: body.academicYearId,
+  });
+
+  res.status(201).json(new ApiResponse(201, request, 'Pengajuan OSIS berhasil dikirim'));
+});
+
+export const getOsisJoinRequests = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanMonitorOsisElection(req);
+  const query = joinRequestQuerySchema.parse(req.query);
+  const requests = await osisManagementService.listJoinRequests(query);
+
+  res.status(200).json(new ApiResponse(200, requests, 'Daftar pengajuan OSIS berhasil diambil'));
+});
+
+export const rejectOsisJoinRequest = asyncHandler(async (req: Request, res: Response) => {
+  await assertCanManageOsisElection(req);
+  const authUser = getAuthUser(req);
+  const { id } = recordIdSchema.parse(req.params);
+  const body = updateJoinRequestStatusSchema.parse(req.body);
+  const request = await osisManagementService.rejectJoinRequest(authUser.id, id, body.note);
+
+  res.status(200).json(new ApiResponse(200, request, 'Pengajuan OSIS berhasil ditolak'));
+});
+
 export const createOsisMembership = asyncHandler(async (req: Request, res: Response) => {
   await assertCanManageOsisElection(req);
+  const authUser = getAuthUser(req);
   const body = createMembershipSchema.parse(req.body);
-  const membership = await osisManagementService.createMembership({
+  const membership = await osisManagementService.createMembership(authUser.id, {
     periodId: body.periodId,
     studentId: body.studentId,
     positionId: body.positionId,
@@ -513,6 +576,7 @@ export const createOsisMembership = asyncHandler(async (req: Request, res: Respo
     joinedAt: body.joinedAt ? toDate(body.joinedAt) : undefined,
     endedAt: body.endedAt ? toDate(body.endedAt) : undefined,
     isActive: body.isActive,
+    requestId: body.requestId,
   });
 
   res.status(201).json(new ApiResponse(201, membership, 'Anggota OSIS berhasil ditambahkan'));

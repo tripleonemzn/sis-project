@@ -7,6 +7,7 @@ import {
   createOsisElectionCandidate,
   createOsisElectionPeriod,
   createOsisManagementPeriod,
+  createStudentOsisJoinRequest,
   createOsisMembership,
   createOsisPosition,
   deleteOsisElectionCandidate,
@@ -21,10 +22,13 @@ import {
   getOsisElectionPeriods,
   getOsisElectionQuickCount,
   getOsisGradeTemplates,
+  getOsisJoinRequests,
   getOsisManagementPeriods,
   getOsisMemberships,
   getOsisPositions,
+  getStudentOsisJoinStatus,
   finalizeOsisElectionPeriod,
+  rejectOsisJoinRequest,
   saveOsisGradeTemplates,
   submitOsisElectionVote,
   updateOsisDivision,
@@ -65,6 +69,16 @@ router.get(
   '/student/latest',
   roleMiddleware(['STUDENT']),
   getLatestStudentOsisElection,
+);
+router.get(
+  '/student/status',
+  roleMiddleware(['STUDENT']),
+  getStudentOsisJoinStatus,
+);
+router.post(
+  '/student/requests',
+  roleMiddleware(['STUDENT']),
+  createStudentOsisJoinRequest,
 );
 router.post(
   '/student/vote',
@@ -115,9 +129,15 @@ router.get(
   roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']),
   getOsisMemberships,
 );
+router.get(
+  '/join-requests',
+  roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']),
+  getOsisJoinRequests,
+);
 router.post('/memberships', roleMiddleware(['TEACHER', 'ADMIN']), createOsisMembership);
 router.put('/memberships/:id', roleMiddleware(['TEACHER', 'ADMIN']), updateOsisMembership);
 router.delete('/memberships/:id', roleMiddleware(['TEACHER', 'ADMIN']), deleteOsisMembership);
+router.put('/join-requests/:id/reject', roleMiddleware(['TEACHER', 'ADMIN']), rejectOsisJoinRequest);
 router.get(
   '/grade-templates',
   roleMiddleware(['TEACHER', 'ADMIN']),

@@ -7,10 +7,24 @@ import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { adminApi } from '../../../src/features/admin/adminApi';
-import { studentExtracurricularApi } from '../../../src/features/student/studentExtracurricularApi';
+import {
+  studentExtracurricularApi,
+  type StudentExtracurricular,
+} from '../../../src/features/student/studentExtracurricularApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+
+function formatShortDate(raw?: string | null) {
+  if (!raw) return '-';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
+}
 
 export default function StudentExtracurricularScreen() {
   const insets = useSafeAreaInsets();
@@ -18,7 +32,7 @@ export default function StudentExtracurricularScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [search, setSearch] = useState('');
-  const [selectedEkskulId, setSelectedEkskulId] = useState<number | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-student-active-year'],
@@ -32,6 +46,12 @@ export default function StudentExtracurricularScreen() {
     enabled: isAuthenticated && user?.role === 'STUDENT',
   });
 
+  const osisStatusQuery = useQuery({
+    queryKey: ['mobile-student-osis-status', user?.id],
+    queryFn: () => studentExtracurricularApi.getMyOsisStatus(),
+    enabled: isAuthenticated && user?.role === 'STUDENT',
+  });
+
   const listQuery = useQuery({
     queryKey: ['mobile-student-extracurricular-list'],
     queryFn: () => studentExtracurricularApi.listExtracurriculars(),
@@ -40,15 +60,35 @@ export default function StudentExtracurricularScreen() {
 
   const enrollMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedEkskulId) throw new Error('Pilih ekstrakurikuler terlebih dahulu.');
-      return studentExtracurricularApi.enroll(selectedEkskulId, activeYearQuery.data?.id);
+      if (!selectedItemId) throw new Error('Pilih ekstrakurikuler terlebih dahulu.');
+      return studentExtracurricularApi.enroll(selectedItemId, activeYearQuery.data?.id);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['mobile-student-extracurricular-enrollment', user?.id] });
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-student-extracurricular-enrollment', user?.id],
+      });
       notifySuccess('Pendaftaran ekstrakurikuler berhasil.');
+      setSelectedItemId(null);
     },
     onError: (error: unknown) => {
       notifyApiError(error, 'Gagal mendaftar ekstrakurikuler.');
+    },
+  });
+
+  const osisJoinMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedItemId) throw new Error('Pilih OSIS terlebih dahulu.');
+      return studentExtracurricularApi.requestOsisJoin(selectedItemId, activeYearQuery.data?.id);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-student-osis-status', user?.id],
+      });
+      notifySuccess('Pengajuan OSIS berhasil dikirim.');
+      setSelectedItemId(null);
+    },
+    onError: (error: unknown) => {
+      notifyApiError(error, 'Gagal mengirim pengajuan OSIS.');
     },
   });
 
@@ -69,6 +109,32 @@ export default function StudentExtracurricularScreen() {
   }, [list, search]);
 
   const myEnrollment = enrollmentQuery.data;
+  const myOsisStatus = osisStatusQuery.data;
+  const osisMembership = myOsisStatus?.membership || null;
+  const osisRequest = myOsisStatus?.request || null;
+  const hasPendingOsisRequest = osisRequest?.status === 'PENDING';
+  const selectedItem = filteredList.find((item) => item.id === selectedItemId) || list.find((item) => item.id === selectedItemId) || null;
+  const selectedIsOsis = selectedItem?.category === 'OSIS';
+
+  const canSubmit =
+    Boolean(selectedItem && selectedItemId) &&
+    (selectedIsOsis ? !osisMembership && !hasPendingOsisRequest : !myEnrollment);
+
+  const submitLabel = !selectedItem
+    ? 'Pilih data terlebih dahulu'
+    : selectedIsOsis
+      ? osisMembership
+        ? 'Sudah Menjadi Anggota OSIS'
+        : hasPendingOsisRequest
+          ? 'Pengajuan OSIS Sedang Diproses'
+          : osisJoinMutation.isPending
+            ? 'Mengirim Pengajuan OSIS...'
+            : 'Ajukan OSIS'
+      : myEnrollment
+        ? 'Ekskul Reguler Sudah Dipilih'
+        : enrollMutation.isPending
+          ? 'Memproses...'
+          : 'Pilih Ekstrakurikuler';
 
   if (isLoading) return <AppLoadingScreen message="Memuat ekstrakurikuler..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -76,7 +142,7 @@ export default function StudentExtracurricularScreen() {
   if (user?.role !== 'STUDENT') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Ekstrakurikuler</Text>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Ekstrakurikuler & OSIS</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role siswa." />
       </ScrollView>
     );
@@ -90,21 +156,40 @@ export default function StudentExtracurricularScreen() {
         <RefreshControl
           refreshing={
             (listQuery.isFetching && !listQuery.isLoading) ||
-            (enrollmentQuery.isFetching && !enrollmentQuery.isLoading)
+            (enrollmentQuery.isFetching && !enrollmentQuery.isLoading) ||
+            (osisStatusQuery.isFetching && !osisStatusQuery.isLoading)
           }
           onRefresh={() => {
             void listQuery.refetch();
             void enrollmentQuery.refetch();
+            void osisStatusQuery.refetch();
           }}
         />
       }
     >
       <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
-        Ekstrakurikuler
+        Ekstrakurikuler & OSIS
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Pilih ekstrakurikuler aktif untuk tahun ajaran berjalan.
+        Pilih 1 ekskul reguler dan ajukan OSIS secara terpisah pada tahun ajaran berjalan.
       </Text>
+
+      <View
+        style={{
+          backgroundColor: '#fef3c7',
+          borderWidth: 1,
+          borderColor: '#fcd34d',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Aturan Pilihan Siswa</Text>
+        <Text style={{ color: '#92400e', fontSize: 12, lineHeight: 18 }}>
+          Ekskul reguler hanya boleh dipilih satu kali. OSIS diproses terpisah oleh pembina OSIS sehingga tidak
+          memakan slot ekskul reguler.
+        </Text>
+      </View>
 
       <View
         style={{
@@ -116,7 +201,7 @@ export default function StudentExtracurricularScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>Status Ekstrakurikuler</Text>
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>Status Ekskul Reguler</Text>
         {myEnrollment?.ekskul ? (
           <View
             style={{
@@ -131,12 +216,68 @@ export default function StudentExtracurricularScreen() {
             <Text style={{ color: '#1d4ed8', fontWeight: '700', marginBottom: 3 }}>Pilihan Saya</Text>
             <Text style={{ color: '#0f172a', fontWeight: '700' }}>{myEnrollment.ekskul.name}</Text>
             <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
-              {myEnrollment.ekskul.description || 'Tanpa deskripsi.'}
+              Terkunci untuk Tahun Ajaran {activeYearQuery.data?.name || '-'}
             </Text>
           </View>
         ) : (
           <Text style={{ color: '#b45309', marginTop: 8, fontSize: 12 }}>
-            Anda belum memilih ekstrakurikuler.
+            Anda belum memilih ekskul reguler.
+          </Text>
+        )}
+      </View>
+
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#d6e2f7',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>Status OSIS</Text>
+        {osisMembership ? (
+          <View
+            style={{
+              marginTop: 10,
+              borderWidth: 1,
+              borderColor: '#a7f3d0',
+              backgroundColor: '#ecfdf5',
+              borderRadius: 10,
+              padding: 10,
+            }}
+          >
+            <Text style={{ color: '#047857', fontWeight: '700', marginBottom: 3 }}>Anggota OSIS Aktif</Text>
+            <Text style={{ color: '#0f172a', fontWeight: '700' }}>{osisMembership.position?.name || 'Pengurus OSIS'}</Text>
+            <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+              Divisi: {osisMembership.division?.name || osisMembership.position?.division?.name || '-'}
+            </Text>
+          </View>
+        ) : osisRequest ? (
+          <View
+            style={{
+              marginTop: 10,
+              borderWidth: 1,
+              borderColor: osisRequest.status === 'PENDING' ? '#fcd34d' : '#fecaca',
+              backgroundColor: osisRequest.status === 'PENDING' ? '#fffbeb' : '#fef2f2',
+              borderRadius: 10,
+              padding: 10,
+            }}
+          >
+            <Text style={{ color: '#0f172a', fontWeight: '700' }}>
+              {osisRequest.status === 'PENDING' ? 'Pengajuan OSIS Menunggu Proses' : 'Riwayat Pengajuan OSIS'}
+            </Text>
+            <Text style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+              {osisRequest.ekskul?.name || 'OSIS'} • {formatShortDate(osisRequest.requestedAt)}
+            </Text>
+            {osisRequest.note ? (
+              <Text style={{ color: '#475569', fontSize: 12, marginTop: 6 }}>Catatan: {osisRequest.note}</Text>
+            ) : null}
+          </View>
+        ) : (
+          <Text style={{ color: '#b45309', marginTop: 8, fontSize: 12 }}>
+            Anda belum mengajukan OSIS.
           </Text>
         )}
       </View>
@@ -154,7 +295,7 @@ export default function StudentExtracurricularScreen() {
         <TextInput
           value={search}
           onChangeText={setSearch}
-          placeholder="Cari ekstrakurikuler..."
+          placeholder="Cari ekstrakurikuler atau OSIS..."
           placeholderTextColor="#94a3b8"
           style={{
             borderWidth: 1,
@@ -170,27 +311,53 @@ export default function StudentExtracurricularScreen() {
 
         {listQuery.isLoading ? <QueryStateView type="loading" message="Mengambil daftar ekstrakurikuler..." /> : null}
         {listQuery.isError ? (
-          <QueryStateView type="error" message="Gagal memuat daftar ekstrakurikuler." onRetry={() => listQuery.refetch()} />
+          <QueryStateView
+            type="error"
+            message="Gagal memuat daftar ekstrakurikuler."
+            onRetry={() => listQuery.refetch()}
+          />
         ) : null}
 
         {!listQuery.isLoading && !listQuery.isError ? (
           filteredList.length > 0 ? (
-            filteredList.map((item) => {
-              const selected = selectedEkskulId === item.id;
+            filteredList.map((item: StudentExtracurricular) => {
+              const isSelected = selectedItemId === item.id;
+              const isOsis = item.category === 'OSIS';
+              const isLocked = isOsis ? Boolean(osisMembership || hasPendingOsisRequest) : Boolean(myEnrollment);
               return (
                 <Pressable
                   key={item.id}
-                  onPress={() => setSelectedEkskulId(item.id)}
+                  onPress={() => setSelectedItemId(item.id)}
                   style={{
                     borderWidth: 1,
-                    borderColor: selected ? BRAND_COLORS.blue : '#d6e2f7',
-                    backgroundColor: selected ? '#eff6ff' : '#fff',
+                    borderColor: isSelected ? BRAND_COLORS.blue : '#d6e2f7',
+                    backgroundColor: isSelected ? '#eff6ff' : '#fff',
                     borderRadius: 10,
                     padding: 10,
                     marginBottom: 8,
                   }}
                 >
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.name}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', flex: 1 }}>{item.name}</Text>
+                    <View
+                      style={{
+                        borderRadius: 999,
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        backgroundColor: isOsis ? '#fef3c7' : '#dbeafe',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: '700',
+                          color: isOsis ? '#b45309' : '#1d4ed8',
+                        }}
+                      >
+                        {isOsis ? 'OSIS' : 'EKSKUL'}
+                      </Text>
+                    </View>
+                  </View>
                   <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
                     {item.description || 'Tanpa deskripsi.'}
                   </Text>
@@ -201,6 +368,20 @@ export default function StudentExtracurricularScreen() {
                       .filter(Boolean)
                       .join(', ') || '-'}
                   </Text>
+                  {isOsis ? (
+                    <Text style={{ color: '#b45309', fontSize: 12, marginTop: 6 }}>
+                      Pembina OSIS akan menempatkan Anda ke divisi dan jabatan yang sesuai.
+                    </Text>
+                  ) : null}
+                  {isLocked ? (
+                    <Text style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
+                      {isOsis
+                        ? osisMembership
+                          ? 'Status OSIS Anda sudah aktif.'
+                          : 'Pengajuan OSIS Anda masih menunggu proses.'
+                        : 'Anda sudah memilih ekskul reguler.'}
+                    </Text>
+                  ) : null}
                 </Pressable>
               );
             })
@@ -214,30 +395,44 @@ export default function StudentExtracurricularScreen() {
                 padding: 12,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>Data tidak ditemukan</Text>
-              <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada ekstrakurikuler sesuai pencarian.</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>
+                Data tidak ditemukan
+              </Text>
+              <Text style={{ color: BRAND_COLORS.textMuted }}>
+                Tidak ada ekstrakurikuler atau OSIS sesuai pencarian.
+              </Text>
             </View>
           )
         ) : null}
       </View>
 
-      {!myEnrollment ? (
-        <Pressable
-          onPress={() => enrollMutation.mutate()}
-          disabled={enrollMutation.isPending || !selectedEkskulId}
-          style={{
-            backgroundColor: enrollMutation.isPending || !selectedEkskulId ? '#93c5fd' : BRAND_COLORS.blue,
-            borderRadius: 10,
-            alignItems: 'center',
-            paddingVertical: 12,
-            marginBottom: 10,
-          }}
-        >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>
-            {enrollMutation.isPending ? 'Memproses...' : 'Daftar Ekstrakurikuler'}
-          </Text>
-        </Pressable>
-      ) : null}
+      <Pressable
+        onPress={() => {
+          if (!selectedItem) return;
+          if (selectedItem.category === 'OSIS') {
+            osisJoinMutation.mutate();
+            return;
+          }
+          enrollMutation.mutate();
+        }}
+        disabled={
+          !canSubmit || enrollMutation.isPending || osisJoinMutation.isPending
+        }
+        style={{
+          backgroundColor:
+            !canSubmit || enrollMutation.isPending || osisJoinMutation.isPending
+              ? '#93c5fd'
+              : selectedIsOsis
+                ? '#f59e0b'
+                : BRAND_COLORS.blue,
+          borderRadius: 10,
+          alignItems: 'center',
+          paddingVertical: 12,
+          marginBottom: 10,
+        }}
+      >
+        <Text style={{ color: '#fff', fontWeight: '700' }}>{submitLabel}</Text>
+      </Pressable>
     </ScrollView>
   );
 }

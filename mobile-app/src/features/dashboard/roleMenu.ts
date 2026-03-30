@@ -233,7 +233,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     { key: 'student-dashboard', label: 'Dashboard', route: '/home' },
     {
       key: 'student-extracurricular',
-      label: 'Ekstrakurikuler',
+      label: 'Ekstrakurikuler & OSIS',
       route: '/student/extracurricular',
     },
     { key: 'student-schedule', label: 'Jadwal Pelajaran', route: '/schedule' },
@@ -985,7 +985,7 @@ type GroupDefinition = {
 const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
   STUDENT: [
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['student-dashboard'] },
-    { key: 'extracurricular', label: 'Ekstrakurikuler', menuKeys: ['student-extracurricular'] },
+    { key: 'extracurricular', label: 'Ekstrakurikuler & OSIS', menuKeys: ['student-extracurricular'] },
     {
       key: 'academic',
       label: 'AKADEMIK',

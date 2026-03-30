@@ -19,6 +19,7 @@ import {
   osisService,
   type OsisDivision,
   type OsisGradeTemplatesPayload,
+  type OsisJoinRequest,
   type OsisManagementPeriod,
   type OsisMembership,
   type OsisPosition,
@@ -181,6 +182,7 @@ export const OsisManagementPage = () => {
   });
   const [membershipForm, setMembershipForm] = useState({
     id: null as number | null,
+    requestId: '' as string,
     studentId: '',
     positionId: '',
     divisionId: '',
@@ -359,6 +361,21 @@ export const OsisManagementPage = () => {
     [membershipsResponse],
   );
 
+  const { data: joinRequestsResponse, isLoading: isLoadingJoinRequests } = useQuery({
+    queryKey: ['osis-join-requests', selectedAcademicYearId],
+    queryFn: () =>
+      osisService.getJoinRequests({
+        academicYearId: selectedAcademicYearId || undefined,
+        status: 'PENDING',
+      }),
+    enabled: !!selectedAcademicYearId,
+  });
+
+  const joinRequests = useMemo<OsisJoinRequest[]>(
+    () => ((joinRequestsResponse?.data || []) as OsisJoinRequest[]),
+    [joinRequestsResponse],
+  );
+
   const { data: eligibleStudentsResponse } = useQuery({
     queryKey: ['osis-eligible-students', selectedAcademicYearId, eligibleSearch],
     queryFn: () =>
@@ -521,6 +538,7 @@ export const OsisManagementPage = () => {
         joinedAt: membershipForm.joinedAt ? toDateTimePayload(membershipForm.joinedAt) : null,
         endedAt: membershipForm.endedAt ? toDateTimePayload(membershipForm.endedAt, true) : null,
         isActive: membershipForm.isActive,
+        requestId: membershipForm.requestId ? Number(membershipForm.requestId) : null,
       };
 
       if (membershipForm.id) {
@@ -532,6 +550,7 @@ export const OsisManagementPage = () => {
       toast.success(membershipForm.id ? 'Anggota OSIS diperbarui' : 'Anggota OSIS ditambahkan');
       setMembershipForm({
         id: null,
+        requestId: '',
         studentId: '',
         positionId: '',
         divisionId: '',
@@ -540,6 +559,7 @@ export const OsisManagementPage = () => {
         isActive: true,
       });
       await queryClient.invalidateQueries({ queryKey: ['osis-memberships'] });
+      await queryClient.invalidateQueries({ queryKey: ['osis-join-requests'] });
       await queryClient.invalidateQueries({ queryKey: ['osis-management-periods'] });
     },
     onError: (error: unknown) => {
@@ -586,6 +606,18 @@ export const OsisManagementPage = () => {
     },
     onError: (error: unknown) => {
       toast.error(getErrorMessage(error, 'Gagal menyimpan nilai OSIS'));
+    },
+  });
+
+  const { mutateAsync: rejectJoinRequest, isPending: isRejectingJoinRequest } = useMutation({
+    mutationFn: async ({ id, note }: { id: number; note?: string | null }) =>
+      osisService.rejectJoinRequest(id, { note }),
+    onSuccess: async () => {
+      toast.success('Pengajuan OSIS ditolak');
+      await queryClient.invalidateQueries({ queryKey: ['osis-join-requests'] });
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menolak pengajuan OSIS'));
     },
   });
 
@@ -668,6 +700,7 @@ export const OsisManagementPage = () => {
   const resetMembershipForm = () =>
     setMembershipForm({
       id: null,
+      requestId: '',
       studentId: '',
       positionId: '',
       divisionId: '',
@@ -1122,7 +1155,84 @@ export const OsisManagementPage = () => {
 
             <div className="grid gap-4 xl:grid-cols-[1fr_1.4fr]">
               <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-900">Pengajuan Masuk OSIS</h3>
+                      <p className="text-xs text-slate-500">Pengajuan siswa dari menu Ekstrakurikuler & OSIS.</p>
+                    </div>
+                    <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
+                      {joinRequests.length} pending
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {isLoadingJoinRequests ? (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">
+                        <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
+                        Memuat pengajuan OSIS...
+                      </div>
+                    ) : joinRequests.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-500">
+                        Belum ada pengajuan OSIS dari siswa.
+                      </div>
+                    ) : (
+                      joinRequests.map((request) => (
+                        <div key={request.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div>
+                              <div className="font-medium text-slate-900">{request.student?.name || 'Siswa'}</div>
+                              <div className="text-xs text-slate-500">
+                                {request.student?.studentClass?.name || '-'} • {request.student?.nis || '-'}
+                              </div>
+                              <div className="mt-1 text-xs text-amber-700">
+                                {request.ekskul?.name || 'OSIS'} • Diajukan {toDateInputValue(request.requestedAt)}
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setMembershipForm({
+                                    id: null,
+                                    requestId: String(request.id),
+                                    studentId: String(request.studentId),
+                                    positionId: '',
+                                    divisionId: '',
+                                    joinedAt: toDateInputValue(request.requestedAt),
+                                    endedAt: '',
+                                    isActive: true,
+                                  })
+                                }
+                                className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+                              >
+                                Proses ke Form Anggota
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const note = window.prompt('Catatan penolakan (opsional):', request.note || '');
+                                  if (note === null) return;
+                                  await rejectJoinRequest({ id: request.id, note });
+                                }}
+                                disabled={isRejectingJoinRequest}
+                                className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Tolak
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
                 <div className="space-y-3">
+                  {membershipForm.requestId ? (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-xs text-blue-800">
+                      Form ini sedang memproses pengajuan siswa. Saat pengurus disimpan, status pengajuan OSIS akan otomatis disetujui.
+                    </div>
+                  ) : null}
                   <input
                     type="text"
                     value={eligibleSearch}
@@ -1132,7 +1242,16 @@ export const OsisManagementPage = () => {
                   />
                   <select
                     value={membershipForm.studentId}
-                    onChange={(e) => setMembershipForm((prev) => ({ ...prev, studentId: e.target.value }))}
+                    onChange={(e) =>
+                      setMembershipForm((prev) => ({
+                        ...prev,
+                        studentId: e.target.value,
+                        requestId:
+                          prev.requestId && String(prev.studentId) !== String(e.target.value)
+                            ? ''
+                            : prev.requestId,
+                      }))
+                    }
                     className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                   >
                     <option value="">Pilih siswa aktif</option>
@@ -1356,11 +1475,12 @@ export const OsisManagementPage = () => {
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      setMembershipForm({
-                                        id: membership.id,
-                                        studentId: String(membership.studentId),
-                                        positionId: String(membership.positionId),
-                                        divisionId: membership.divisionId ? String(membership.divisionId) : '',
+                                    setMembershipForm({
+                                      id: membership.id,
+                                      requestId: '',
+                                      studentId: String(membership.studentId),
+                                      positionId: String(membership.positionId),
+                                      divisionId: membership.divisionId ? String(membership.divisionId) : '',
                                         joinedAt: toDateInputValue(membership.joinedAt),
                                         endedAt: toDateInputValue(membership.endedAt),
                                         isActive: membership.isActive,

@@ -888,7 +888,7 @@ export const getMenuItems = (
 
     return [
       { label: 'Dashboard', path: '/student', icon: LayoutDashboard },
-      { label: 'Ekstrakurikuler', path: '/student/extracurricular', icon: Trophy },
+      { label: 'Ekstrakurikuler & OSIS', path: '/student/extracurricular', icon: Trophy },
       ...(hasActiveOsisElection ? [{ label: 'Pemilihan OSIS', path: '/student/osis', icon: Trophy }] : []),
       {
         label: 'AKADEMIK',

@@ -176,6 +176,8 @@ model User {
   osisElectionVotes                                  OsisElectionVote[]                  @relation("OsisElectionVoter")
   createdOsisManagementPeriods                       OsisManagementPeriod[]              @relation("OsisManagementPeriodCreator")
   osisMemberships                                    OsisMembership[]                    @relation("OsisMembershipStudent")
+  osisJoinRequests                                   OsisJoinRequest[]                   @relation("OsisJoinRequestStudent")
+  processedOsisJoinRequests                          OsisJoinRequest[]                   @relation("OsisJoinRequestProcessedBy")
   gradedOsisAssessments                              OsisAssessment[]                    @relation("OsisAssessmentGradedBy")
   // Internship Relations
   internships                                        Internship[]                        @relation("StudentInternship")
@@ -316,6 +318,7 @@ model AcademicYear {
   osisManagementPeriods          OsisManagementPeriod[]
   osisGradeTemplates             OsisGradeTemplate[]
   osisAssessments                OsisAssessment[]
+  osisJoinRequests               OsisJoinRequest[]
   teachingResourceProgramConfigs TeachingResourceProgramConfig[]
   teachingResourceEntries        TeachingResourceEntry[]
   bpbkCounselings                BpBkCounseling[]
@@ -1087,6 +1090,7 @@ model Ekstrakurikuler {
   enrollments      EkstrakurikulerEnrollment[]
   tutorAssignments EkstrakurikulerTutorAssignment[]
   gradeTemplates   EkstrakurikulerGradeTemplate[]
+  osisJoinRequests OsisJoinRequest[]
 
   @@map("ekstrakurikulers")
 }
@@ -2428,12 +2432,36 @@ model OsisMembership {
   division    OsisDivision?        @relation(fields: [divisionId], references: [id], onDelete: SetNull)
   position    OsisPosition         @relation(fields: [positionId], references: [id])
   assessments OsisAssessment[]
+  joinRequest OsisJoinRequest?
 
   @@unique([periodId, studentId], map: "osis_memberships_period_student_key")
   @@index([periodId, isActive], map: "osis_memberships_period_active_idx")
   @@index([studentId], map: "osis_memberships_student_idx")
   @@index([positionId], map: "osis_memberships_position_idx")
   @@map("osis_memberships")
+}
+
+model OsisJoinRequest {
+  id             Int                   @id @default(autoincrement())
+  academicYearId Int
+  ekskulId       Int
+  studentId      Int
+  status         OsisJoinRequestStatus @default(PENDING)
+  note           String?
+  requestedAt    DateTime              @default(now())
+  processedAt    DateTime?
+  processedById  Int?
+  membershipId   Int?                  @unique
+  academicYear   AcademicYear          @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  ekskul         Ekstrakurikuler       @relation(fields: [ekskulId], references: [id], onDelete: Cascade)
+  student        User                  @relation("OsisJoinRequestStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  processedBy    User?                 @relation("OsisJoinRequestProcessedBy", fields: [processedById], references: [id], onDelete: SetNull)
+  membership     OsisMembership?       @relation(fields: [membershipId], references: [id], onDelete: SetNull)
+
+  @@index([academicYearId, status], map: "osis_join_requests_year_status_idx")
+  @@index([studentId, academicYearId], map: "osis_join_requests_student_year_idx")
+  @@index([ekskulId, academicYearId], map: "osis_join_requests_ekskul_year_idx")
+  @@map("osis_join_requests")
 }
 
 model OsisGradeTemplate {
@@ -2508,6 +2536,13 @@ enum OsisManagementStatus {
   DRAFT
   ACTIVE
   CLOSED
+}
+
+enum OsisJoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELED
 }
 
 model AuditLog {

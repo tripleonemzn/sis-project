@@ -29,6 +29,43 @@ export type StudentExtracurricularEnrollment = {
   ekskul?: StudentExtracurricular | null;
 };
 
+export type StudentOsisMembershipStatus = {
+  id: number;
+  studentId: number;
+  divisionId?: number | null;
+  positionId: number;
+  division?: {
+    id: number;
+    name: string;
+  } | null;
+  position?: {
+    id: number;
+    name: string;
+    division?: {
+      id: number;
+      name: string;
+    } | null;
+  } | null;
+};
+
+export type StudentOsisJoinRequestStatus = {
+  id: number;
+  academicYearId: number;
+  ekskulId: number;
+  studentId: number;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELED';
+  note?: string | null;
+  requestedAt: string;
+  processedAt?: string | null;
+  ekskul?: StudentExtracurricular | null;
+};
+
+export type StudentOsisStatusPayload = {
+  academicYearId: number | null;
+  membership: StudentOsisMembershipStatus | null;
+  request: StudentOsisJoinRequestStatus | null;
+};
+
 export type StudentExtracurricularListPayload = {
   extracurriculars: StudentExtracurricular[];
   pagination: {
@@ -45,7 +82,6 @@ export const studentExtracurricularApi = {
       params: {
         page: 1,
         limit: 100,
-        category: 'EXTRACURRICULAR',
       },
     });
     return response.data?.data?.extracurriculars || [];
@@ -64,6 +100,17 @@ export const studentExtracurricularApi = {
         academicYearId,
       },
     );
+    return response.data?.data;
+  },
+  async getMyOsisStatus() {
+    const response = await apiClient.get<ApiEnvelope<StudentOsisStatusPayload>>('/osis/student/status');
+    return response.data?.data || null;
+  },
+  async requestOsisJoin(ekskulId: number, academicYearId?: number) {
+    const response = await apiClient.post<ApiEnvelope<StudentOsisJoinRequestStatus>>('/osis/student/requests', {
+      ekskulId,
+      academicYearId,
+    });
     return response.data?.data;
   },
 };

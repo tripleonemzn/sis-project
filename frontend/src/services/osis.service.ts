@@ -209,6 +209,45 @@ export interface OsisMembership {
   currentAssessment?: OsisMembershipAssessment | null;
 }
 
+export interface OsisJoinRequest {
+  id: number;
+  academicYearId: number;
+  ekskulId: number;
+  studentId: number;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELED';
+  note?: string | null;
+  requestedAt: string;
+  processedAt?: string | null;
+  academicYear?: { id: number; name: string; isActive?: boolean } | null;
+  ekskul?: {
+    id: number;
+    name: string;
+    category?: 'EXTRACURRICULAR' | 'OSIS';
+  } | null;
+  student?: {
+    id: number;
+    name: string;
+    nis?: string | null;
+    nisn?: string | null;
+    studentClass?: {
+      id?: number;
+      name: string;
+    } | null;
+  } | null;
+  processedBy?: {
+    id: number;
+    name: string;
+    username?: string | null;
+  } | null;
+  membership?: OsisMembership | null;
+}
+
+export interface StudentOsisStatusPayload {
+  academicYearId: number | null;
+  membership: OsisMembership | null;
+  request: OsisJoinRequest | null;
+}
+
 export interface OsisMembershipListPayload {
   period: OsisManagementPeriod;
   reportSlot?: string | null;
@@ -403,6 +442,14 @@ export const osisService = {
     return response.data;
   },
 
+  async getJoinRequests(params?: {
+    academicYearId?: number;
+    status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELED';
+  }) {
+    const response = await api.get<ApiResponse<OsisJoinRequest[]>>('/osis/join-requests', { params });
+    return response.data;
+  },
+
   async createMembership(payload: {
     periodId: number;
     studentId: number;
@@ -411,6 +458,7 @@ export const osisService = {
     joinedAt?: string | null;
     endedAt?: string | null;
     isActive?: boolean;
+    requestId?: number | null;
   }) {
     const response = await api.post<ApiResponse<OsisMembership>>('/osis/memberships', payload);
     return response.data;
@@ -433,6 +481,21 @@ export const osisService = {
 
   async deleteMembership(id: number) {
     const response = await api.delete<ApiResponse<OsisMembership>>(`/osis/memberships/${id}`);
+    return response.data;
+  },
+
+  async rejectJoinRequest(id: number, payload?: { note?: string | null }) {
+    const response = await api.put<ApiResponse<OsisJoinRequest>>(`/osis/join-requests/${id}/reject`, payload);
+    return response.data;
+  },
+
+  async getStudentStatus(params?: { academicYearId?: number }) {
+    const response = await api.get<ApiResponse<StudentOsisStatusPayload>>('/osis/student/status', { params });
+    return response.data;
+  },
+
+  async createStudentJoinRequest(payload: { ekskulId: number; academicYearId?: number }) {
+    const response = await api.post<ApiResponse<OsisJoinRequest>>('/osis/student/requests', payload);
     return response.data;
   },
 
