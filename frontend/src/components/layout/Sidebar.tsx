@@ -42,6 +42,7 @@ import {
   Activity,
   ShieldAlert,
   Vote,
+  MoveHorizontal,
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
@@ -1360,7 +1361,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
     const previousUserSelect = document.body.style.userSelect;
     const previousCursor = document.body.style.cursor;
     document.body.style.userSelect = 'none';
-    document.body.style.cursor = 'col-resize';
+    document.body.style.cursor = 'ew-resize';
 
     const handleMouseMove = (event: MouseEvent) => {
       const nextWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, event.clientX));
@@ -1465,15 +1466,17 @@ export const Sidebar = ({ user }: SidebarProps) => {
       className="relative z-[80] hidden h-full shrink-0 bg-white shadow-xl pointer-events-auto md:flex md:flex-col"
       style={{ width: `${sidebarWidth}px` }}
     >
-      <div className="p-6 flex items-center gap-3 border-b border-gray-100">
-        <img src="/logo_sis_kgb2.png" alt="Logo" className="w-9 h-9 object-contain" />
-        <div className="min-w-0">
-          <h1 className="text-sm font-semibold text-blue-700 leading-tight whitespace-nowrap truncate">
-            Sistem Integrasi Sekolah
-          </h1>
-          <p className="text-[11px] text-gray-500 font-medium mt-0.5 whitespace-nowrap truncate">
-            SMKS Karya Guna Bhakti 2
-          </p>
+      <div className="border-b border-gray-100 px-6 py-6">
+        <div className="mx-auto flex w-fit max-w-full items-center justify-center gap-3">
+          <img src="/logo_sis_kgb2.png" alt="Logo" className="w-9 h-9 shrink-0 object-contain" />
+          <div className="min-w-0 text-left">
+            <h1 className="text-sm font-semibold text-blue-700 leading-tight whitespace-nowrap truncate">
+              Sistem Integrasi Sekolah
+            </h1>
+            <p className="mt-0.5 text-[11px] font-medium text-gray-500 whitespace-nowrap truncate">
+              SMKS Karya Guna Bhakti 2
+            </p>
+          </div>
         </div>
       </div>
       
@@ -1564,7 +1567,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
         title="Tarik untuk mengubah lebar sidebar"
         onMouseDown={() => setIsResizingSidebar(true)}
         className={clsx(
-          'absolute inset-y-0 right-0 hidden w-3 translate-x-1/2 cursor-col-resize md:block',
+          'absolute inset-y-0 right-0 hidden w-5 translate-x-1/2 cursor-ew-resize md:block',
           isResizingSidebar ? 'bg-blue-100/70' : 'bg-transparent'
         )}
       >
@@ -1574,10 +1577,20 @@ export const Sidebar = ({ user }: SidebarProps) => {
             isResizingSidebar ? 'bg-blue-500' : 'bg-gray-200'
           )}
         />
+        <span
+          className={clsx(
+            'absolute left-1/2 top-1/2 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border shadow-sm transition-colors',
+            isResizingSidebar
+              ? 'border-blue-200 bg-blue-50 text-blue-600'
+              : 'border-gray-200 bg-white text-gray-400'
+          )}
+        >
+          <MoveHorizontal size={14} />
+        </span>
       </button>
 
-      <div className="p-5 m-4 bg-gray-50 rounded-2xl">
-        <div className="flex items-center gap-3 mb-4">
+      <div className="m-4 rounded-2xl bg-gray-50 p-5">
+        <div className="mx-auto mb-4 flex w-fit max-w-full items-center justify-center gap-3">
           <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-blue-600 font-bold border border-gray-100 overflow-hidden">
             {user.photo ? (
               <img 
@@ -1589,7 +1602,7 @@ export const Sidebar = ({ user }: SidebarProps) => {
               user.name.charAt(0).toUpperCase()
             )}
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="min-w-0 text-left">
             <p className="text-sm font-bold text-gray-900 truncate">{user.name}</p>
             <p className="text-xs text-gray-500 truncate">@{user.role.toLowerCase()}</p>
           </div>
