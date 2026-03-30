@@ -1061,6 +1061,24 @@ export default function ProfileScreen() {
               {saveMutation.isPending ? 'Menyimpan...' : 'Simpan Perubahan'}
             </Text>
           </Pressable>
+
+          <Pressable
+            onPress={() => router.push('/diagnostics')}
+            style={{
+              marginBottom: 12,
+              borderWidth: 1,
+              borderColor: '#1d4ed8',
+              backgroundColor: '#eff6ff',
+              borderRadius: 10,
+              paddingVertical: 12,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Buka Diagnostics</Text>
+            <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+              Untuk cek sinkronisasi push, update, dan status perangkat.
+            </Text>
+          </Pressable>
         </>
       ) : null}
 
