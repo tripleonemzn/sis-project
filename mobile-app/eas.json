@@ -25,6 +25,12 @@
         "buildType": "apk"
       }
     },
+    "play-internal": {
+      "channel": "pilot-live",
+      "android": {
+        "buildType": "app-bundle"
+      }
+    },
     "production": {
       "channel": "production",
       "android": {

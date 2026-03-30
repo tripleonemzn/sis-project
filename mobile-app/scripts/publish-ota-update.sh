@@ -27,6 +27,9 @@ NOTIFY_URL="${OTA_PUSH_NOTIFY_URL:-http://127.0.0.1:3000/api/mobile-updates/broa
 NOTIFY_SECRET="${OTA_PUSH_NOTIFY_SECRET:-${MOBILE_UPDATE_PUSH_SECRET:-}}"
 NOTIFY_TITLE="${OTA_PUSH_NOTIFY_TITLE:-SIS KGB2 : Update Tersedia}"
 NOTIFY_BODY="${OTA_PUSH_NOTIFY_BODY:-Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.}"
+OTA_REQUIRE_NOTIFY_SUCCESS="${OTA_REQUIRE_NOTIFY_SUCCESS:-0}"
+OTA_REQUIRE_NOTIFY_RECIPIENTS_MIN="${OTA_REQUIRE_NOTIFY_RECIPIENTS_MIN:-0}"
+OTA_REQUIRE_NOTIFY_SENT_MIN="${OTA_REQUIRE_NOTIFY_SENT_MIN:-0}"
 
 echo "Publishing OTA update..."
 echo "Channel : ${CHANNEL}"
@@ -43,7 +46,11 @@ notify_broadcast() {
   local payload
   local curl_status
   local response
-  local summary
+  local metrics
+  local recipients
+  local sent
+  local failed
+  local stale
 
   notify_platform="$(printf '%s' "${PLATFORM}" | tr '[:lower:]' '[:upper:]')"
   safe_title="$(printf '%s' "${NOTIFY_TITLE}" | sed 's/\\/\\\\/g; s/"/\\"/g')"
@@ -57,6 +64,28 @@ notify_broadcast() {
     return 0
   fi
 
+  parse_metrics() {
+    printf '%s' "${1:-}" | node -e "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{try{const json=JSON.parse(raw);const data=json?.data||{};process.stdout.write([String(data.recipients??0),String(data.sent??0),String(data.failed??0),String(data.staleTokensDisabled??0)].join('|'));}catch{process.exit(2);}});" 2>/dev/null
+  }
+
+  validate_metrics() {
+    metrics="$(parse_metrics "${1:-}")" || return 30
+    IFS='|' read -r recipients sent failed stale <<< "${metrics}"
+    echo "Push notify summary: recipients=${recipients}, sent=${sent}, failed=${failed}, stale=${stale}"
+
+    if [ "${OTA_REQUIRE_NOTIFY_RECIPIENTS_MIN}" -gt 0 ] && [ "${recipients}" -lt "${OTA_REQUIRE_NOTIFY_RECIPIENTS_MIN}" ]; then
+      echo "Peringatan: recipients push ${recipients} di bawah minimum ${OTA_REQUIRE_NOTIFY_RECIPIENTS_MIN}."
+      return 31
+    fi
+
+    if [ "${OTA_REQUIRE_NOTIFY_SENT_MIN}" -gt 0 ] && [ "${sent}" -lt "${OTA_REQUIRE_NOTIFY_SENT_MIN}" ]; then
+      echo "Peringatan: push sent ${sent} di bawah minimum ${OTA_REQUIRE_NOTIFY_SENT_MIN}."
+      return 32
+    fi
+
+    return 0
+  }
+
   echo "Trigger push notify ke ${NOTIFY_URL}..."
   if [ -n "${NOTIFY_SECRET}" ]; then
     if response="$(curl -fsS -X POST "${NOTIFY_URL}" \
@@ -64,14 +93,18 @@ notify_broadcast() {
       -H "x-mobile-update-secret: ${NOTIFY_SECRET}" \
       --data "${payload}")"; then
       echo "Push notify update berhasil dikirim."
-      summary="$(printf '%s' "${response}" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);const d=j?.data||{};process.stdout.write('recipients='+String(d.recipients??0)+', sent='+String(d.sent??0)+', failed='+String(d.failed??0)+', stale='+String(d.staleTokensDisabled??0));}catch{}});" 2>/dev/null || true)"
-      if [ -n "${summary}" ]; then
-        echo "Push notify summary: ${summary}"
+      if ! validate_metrics "${response}"; then
+        if [ "${OTA_REQUIRE_NOTIFY_SUCCESS}" = "1" ] || [ "${OTA_REQUIRE_NOTIFY_RECIPIENTS_MIN}" -gt 0 ] || [ "${OTA_REQUIRE_NOTIFY_SENT_MIN}" -gt 0 ]; then
+          return 1
+        fi
       fi
       return 0
     fi
     curl_status=$?
     echo "Peringatan: gagal kirim push notify (exit ${curl_status}). OTA tetap sukses."
+    if [ "${OTA_REQUIRE_NOTIFY_SUCCESS}" = "1" ]; then
+      return "${curl_status}"
+    fi
     return 0
   fi
 
@@ -79,14 +112,18 @@ notify_broadcast() {
     -H "Content-Type: application/json" \
     --data "${payload}")"; then
     echo "Push notify update berhasil dikirim (tanpa secret)."
-    summary="$(printf '%s' "${response}" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);const d=j?.data||{};process.stdout.write('recipients='+String(d.recipients??0)+', sent='+String(d.sent??0)+', failed='+String(d.failed??0)+', stale='+String(d.staleTokensDisabled??0));}catch{}});" 2>/dev/null || true)"
-    if [ -n "${summary}" ]; then
-      echo "Push notify summary: ${summary}"
+    if ! validate_metrics "${response}"; then
+      if [ "${OTA_REQUIRE_NOTIFY_SUCCESS}" = "1" ] || [ "${OTA_REQUIRE_NOTIFY_RECIPIENTS_MIN}" -gt 0 ] || [ "${OTA_REQUIRE_NOTIFY_SENT_MIN}" -gt 0 ]; then
+        return 1
+      fi
     fi
     return 0
   fi
   curl_status=$?
   echo "Peringatan: gagal kirim push notify (exit ${curl_status}). OTA tetap sukses."
+  if [ "${OTA_REQUIRE_NOTIFY_SUCCESS}" = "1" ]; then
+    return "${curl_status}"
+  fi
   return 0
 }
 

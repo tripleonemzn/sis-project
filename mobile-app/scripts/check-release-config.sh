@@ -50,3 +50,5 @@ if (errors.length) {
 
 console.log("[OK] Release config valid");
 NODE
+
+bash ./scripts/check-android-push-config.sh

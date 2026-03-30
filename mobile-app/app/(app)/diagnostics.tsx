@@ -14,7 +14,14 @@ import { ENV } from '../../src/config/env';
 import { offlineCache } from '../../src/lib/storage/offlineCache';
 import { CACHE_MAX_SNAPSHOTS_PER_FEATURE, CACHE_TTL_MS } from '../../src/config/cache';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
-import { syncPushDeviceRegistration } from '../../src/features/pushNotifications/pushNotificationService';
+import {
+  fetchMyPushDevicesStatus,
+  getLocalPushDebugSnapshot,
+  sendSelfTestPushNotification,
+  syncPushDeviceRegistration,
+  type LocalPushDebugSnapshot,
+  type MobilePushDevicesStatus,
+} from '../../src/features/pushNotifications/pushNotificationService';
 
 type ApiCheckResult = {
   ok: boolean;
@@ -49,6 +56,11 @@ export default function DiagnosticsScreen() {
   const [isSyncStatusLoading, setIsSyncStatusLoading] = useState(false);
   const [isSyncingPushToken, setIsSyncingPushToken] = useState(false);
   const [pushSyncMessage, setPushSyncMessage] = useState<string | null>(null);
+  const [pushStatusMessage, setPushStatusMessage] = useState<string | null>(null);
+  const [localPushDebug, setLocalPushDebug] = useState<LocalPushDebugSnapshot | null>(null);
+  const [serverPushStatus, setServerPushStatus] = useState<MobilePushDevicesStatus | null>(null);
+  const [isPushStatusLoading, setIsPushStatusLoading] = useState(false);
+  const [isSendingPushTest, setIsSendingPushTest] = useState(false);
 
   const appVersion = Constants.expoConfig?.version || Constants.nativeApplicationVersion || '-';
   const androidVersionCode =
@@ -97,9 +109,32 @@ export default function DiagnosticsScreen() {
     }
   }, [loadSyncStatus]);
 
+  const refreshPushStatus = useCallback(async () => {
+    setIsPushStatusLoading(true);
+    try {
+      const localSnapshot = await getLocalPushDebugSnapshot();
+      setLocalPushDebug(localSnapshot);
+
+      try {
+        const nextServerStatus = await fetchMyPushDevicesStatus();
+        setServerPushStatus(nextServerStatus);
+        setPushStatusMessage(null);
+      } catch (error) {
+        setServerPushStatus(null);
+        setPushStatusMessage(getApiErrorMessage(error, 'Gagal membaca status push di server.'));
+      }
+    } finally {
+      setIsPushStatusLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void refreshSyncStatus();
   }, [refreshSyncStatus]);
+
+  useEffect(() => {
+    void refreshPushStatus();
+  }, [refreshPushStatus]);
 
   const clearLocalCache = async () => {
     setIsClearingCache(true);
@@ -127,24 +162,52 @@ export default function DiagnosticsScreen() {
         const message = `Registrasi token push berhasil (${maskedToken}).`;
         setPushSyncMessage(message);
         await authEventLogger.log('API_CHECK_OK', `[Push] ${message}`);
+        await refreshPushStatus();
         return;
       }
 
-      let reasonText = 'gagal sinkron.';
-      if (result.reason === 'permission_or_token_unavailable') {
-        reasonText = 'izin notifikasi belum aktif atau token Expo belum tersedia.';
-      } else if (result.reason === 'registration_failed') {
-        reasonText = 'request registrasi ke server gagal.';
-      }
-      const message = `Registrasi token push belum berhasil: ${reasonText}`;
+      const message = `Registrasi token push belum berhasil: ${
+        result.errorMessage || 'izin notifikasi belum aktif atau request ke server gagal.'
+      }`;
       setPushSyncMessage(message);
       await authEventLogger.log('API_CHECK_FAILED', `[Push] ${message}`);
+      await refreshPushStatus();
     } catch (error) {
       const message = getApiErrorMessage(error, 'Gagal sinkron token push.');
       setPushSyncMessage(message);
       await authEventLogger.log('API_CHECK_FAILED', `[Push] ${message}`);
     } finally {
       setIsSyncingPushToken(false);
+    }
+  };
+
+  const sendPushTestNow = async () => {
+    const currentToken = localPushDebug?.storedToken || null;
+    if (!currentToken) {
+      const message = 'Token lokal belum ada. Sinkronkan token push dulu sebelum tes notifikasi.';
+      setPushSyncMessage(message);
+      return;
+    }
+
+    setIsSendingPushTest(true);
+    try {
+      const result = await sendSelfTestPushNotification(currentToken);
+      const message =
+        result.sent > 0
+          ? `Tes notifikasi terkirim ke ${result.sent}/${result.recipients} perangkat. Cek panel notifikasi HP sekarang.`
+          : `Tes notifikasi belum terkirim. Recipient ${result.recipients}, gagal ${result.failed}.`;
+      setPushSyncMessage(message);
+      await authEventLogger.log(
+        result.sent > 0 ? 'API_CHECK_OK' : 'API_CHECK_FAILED',
+        `[PushTest] ${message}`,
+      );
+      await refreshPushStatus();
+    } catch (error) {
+      const message = getApiErrorMessage(error, 'Gagal mengirim tes notifikasi ke perangkat ini.');
+      setPushSyncMessage(message);
+      await authEventLogger.log('API_CHECK_FAILED', `[PushTest] ${message}`);
+    } finally {
+      setIsSendingPushTest(false);
     }
   };
 
@@ -159,6 +222,11 @@ export default function DiagnosticsScreen() {
     MAJOR: 'Fitur inti terganggu, masih ada workaround terbatas.',
     MINOR: 'Gangguan ringan UI/UX, fitur utama tetap berjalan.',
   };
+
+  const currentServerDevice =
+    localPushDebug?.tokenFingerprint && serverPushStatus
+      ? serverPushStatus.devices.find((device) => device.tokenFingerprint === localPushDebug.tokenFingerprint) || null
+      : null;
 
   const exportDiagnosticsReport = async () => {
     setIsExportingReport(true);
@@ -187,6 +255,36 @@ export default function DiagnosticsScreen() {
         `- Latency: ${apiCheck?.latencyMs ?? '-'} ms`,
         `- Checked At: ${apiCheck?.checkedAt || '-'}`,
       ];
+      const pushInfo = [
+        'Push Status',
+        `- Permission: ${
+          localPushDebug
+            ? `${localPushDebug.permission.status} | granted=${localPushDebug.permission.granted ? 'yes' : 'no'} | canAskAgain=${localPushDebug.permission.canAskAgain ? 'yes' : 'no'}`
+            : '-'
+        }`,
+        `- Android Native Push Config: ${
+          localPushDebug
+            ? `${localPushDebug.androidPushNativeConfigStatus}${localPushDebug.androidGoogleServicesFile ? ` (${localPushDebug.androidGoogleServicesFile})` : ''}`
+            : '-'
+        }`,
+        `- Local Token: ${localPushDebug?.tokenPreview || '-'}`,
+        `- Project ID: ${localPushDebug?.projectId || '-'}`,
+        `- Device Name: ${localPushDebug?.deviceName || '-'}`,
+        `- Last Sync: ${localPushDebug?.lastSync?.syncedAt || '-'}`,
+        `- Last Sync Result: ${
+          localPushDebug?.lastSync
+            ? localPushDebug.lastSync.registered
+              ? 'REGISTERED'
+              : `FAILED (${localPushDebug.lastSync.errorMessage || localPushDebug.lastSync.reason || 'unknown'})`
+            : '-'
+        }`,
+        `- Server Devices: ${serverPushStatus ? `${serverPushStatus.enabledDevices}/${serverPushStatus.totalDevices} enabled` : '-'}`,
+        `- Current Device In Server: ${
+          currentServerDevice
+            ? `${currentServerDevice.platform} ${currentServerDevice.deviceName || '-'} lastSeen=${currentServerDevice.lastSeenAt}`
+            : 'Tidak ditemukan'
+        }`,
+      ];
       const syncInfo = [
         'Sync Status',
         `- Profil: ${formatSyncTime(sync?.profile.latestUpdatedAt || null)} (${sync?.profile.count || 0} key)`,
@@ -208,7 +306,21 @@ export default function DiagnosticsScreen() {
         .map((ev, idx) => `${idx + 1}. [${ev.ts}] ${ev.type} - ${ev.message || '-'}`);
       const eventInfo = ['Recent Events (max 20)', ...(eventLines.length > 0 ? eventLines : ['- Tidak ada event'])];
 
-      const report = [...header, '', ...buildInfo, '', ...apiInfo, '', ...syncInfo, '', ...issueInfo, '', ...eventInfo].join('\n');
+      const report = [
+        ...header,
+        '',
+        ...buildInfo,
+        '',
+        ...apiInfo,
+        '',
+        ...pushInfo,
+        '',
+        ...syncInfo,
+        '',
+        ...issueInfo,
+        '',
+        ...eventInfo,
+      ].join('\n');
       await Share.share({ message: report });
       await authEventLogger.log('REPORT_EXPORTED', `Diagnostics report diekspor (${events.length} event).`);
     } catch (error) {
@@ -258,25 +370,110 @@ export default function DiagnosticsScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ fontWeight: '700', color: '#0f172a', marginBottom: 8 }}>Push Token</Text>
-        <Pressable
-          onPress={() => {
-            void syncPushTokenNow();
-          }}
-          disabled={isSyncingPushToken}
-          style={{
-            backgroundColor: isSyncingPushToken ? '#93c5fd' : '#2563eb',
-            borderRadius: 8,
-            paddingVertical: 10,
-            alignItems: 'center',
-          }}
-        >
-          <Text style={{ color: '#fff', fontWeight: '600' }}>
-            {isSyncingPushToken ? 'Sinkronisasi Token...' : 'Sinkronkan Token Push Sekarang'}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, alignItems: 'center' }}>
+          <Text style={{ fontWeight: '700', color: '#0f172a' }}>Push & Update Status</Text>
+          <Pressable onPress={refreshPushStatus}>
+            <Text style={{ color: '#1d4ed8', fontWeight: '600', fontSize: 12 }}>
+              {isPushStatusLoading ? 'Memuat...' : 'Refresh'}
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={{ gap: 6 }}>
+          <Text style={{ color: '#475569', fontSize: 12 }}>
+            Permission: {localPushDebug ? localPushDebug.permission.status : '-'} | granted:{' '}
+            {localPushDebug?.permission.granted ? 'ya' : 'tidak'} | canAskAgain:{' '}
+            {localPushDebug?.permission.canAskAgain ? 'ya' : 'tidak'}
           </Text>
-        </Pressable>
+          <Text style={{ color: '#475569', fontSize: 12 }}>
+            Android Native Push:{' '}
+            {localPushDebug
+              ? `${localPushDebug.androidPushNativeConfigStatus}${
+                  localPushDebug.androidGoogleServicesFile ? ` (${localPushDebug.androidGoogleServicesFile})` : ''
+                }`
+              : '-'}
+          </Text>
+          <Text style={{ color: '#475569', fontSize: 12 }}>
+            Token Lokal: {localPushDebug?.tokenPreview || 'Belum tersedia'}
+          </Text>
+          <Text style={{ color: '#475569', fontSize: 12 }}>
+            Project ID: {localPushDebug?.projectId || '-'}
+          </Text>
+          <Text style={{ color: '#475569', fontSize: 12 }}>
+            Device Name: {localPushDebug?.deviceName || '-'}
+          </Text>
+          <Text style={{ color: '#475569', fontSize: 12 }}>
+            Last Sync: {formatSyncTime(localPushDebug?.lastSync?.syncedAt || null)}
+          </Text>
+          <Text style={{ color: '#475569', fontSize: 12 }}>
+            Last Sync Result:{' '}
+            {localPushDebug?.lastSync
+              ? localPushDebug.lastSync.registered
+                ? 'REGISTERED'
+                : `FAILED (${localPushDebug.lastSync.errorMessage || localPushDebug.lastSync.reason || 'unknown'})`
+              : 'Belum pernah'}
+          </Text>
+          <Text style={{ color: '#475569', fontSize: 12 }}>
+            Device Server Aktif: {serverPushStatus ? `${serverPushStatus.enabledDevices}/${serverPushStatus.totalDevices}` : '-'}
+          </Text>
+          <Text style={{ color: currentServerDevice ? '#166534' : '#b45309', fontSize: 12 }}>
+            {currentServerDevice
+              ? `Device ini sudah terdaftar di server (${currentServerDevice.platform}, lastSeen ${formatSyncTime(
+                  currentServerDevice.lastSeenAt,
+                )}).`
+              : 'Device ini belum terdeteksi di server.'}
+          </Text>
+          {localPushDebug?.androidPushNativeConfigStatus === 'missing' ? (
+            <Text style={{ color: '#b91c1c', fontSize: 12 }}>
+              Build Android ini belum membawa konfigurasi `google-services.json`. Notifikasi update saat aplikasi tertutup
+              belum bisa dianggap siap sebelum build native berikutnya menyertakan file tersebut.
+            </Text>
+          ) : null}
+          {pushStatusMessage ? (
+            <Text style={{ color: '#b45309', fontSize: 12 }}>{pushStatusMessage}</Text>
+          ) : null}
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+          <Pressable
+            onPress={() => {
+              void syncPushTokenNow();
+            }}
+            disabled={isSyncingPushToken}
+            style={{
+              flex: 1,
+              backgroundColor: isSyncingPushToken ? '#93c5fd' : '#2563eb',
+              borderRadius: 8,
+              paddingVertical: 10,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '600', fontSize: 12 }}>
+              {isSyncingPushToken ? 'Sinkronisasi...' : 'Sinkronkan Token Push'}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              void sendPushTestNow();
+            }}
+            disabled={isSendingPushTest}
+            style={{
+              flex: 1,
+              backgroundColor: isSendingPushTest ? '#86efac' : '#15803d',
+              borderRadius: 8,
+              paddingVertical: 10,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '600', fontSize: 12 }}>
+              {isSendingPushTest ? 'Mengirim Tes...' : 'Kirim Tes Notifikasi'}
+            </Text>
+          </Pressable>
+        </View>
+
         <Text style={{ color: '#475569', fontSize: 12, marginTop: 8 }}>
-          {pushSyncMessage || 'Belum ada pengecekan token push manual.'}
+          {pushSyncMessage ||
+            'Gunakan sinkronisasi token lalu kirim tes notifikasi untuk memastikan update otomatis sudah siap di perangkat ini. Untuk Android, pastikan build native sudah menyertakan google-services.json.'}
         </Text>
       </View>
 

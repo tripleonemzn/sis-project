@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { apiClient } from '../../lib/api/client';
 
 const PUSH_TOKEN_STORAGE_KEY = 'mobile_device_expo_push_token';
+const PUSH_SYNC_STATUS_STORAGE_KEY = 'mobile_push_sync_status_v1';
 const APP_UPDATE_PUSH_TYPE = 'APP_UPDATE';
 const NOTIFICATION_PERMISSION_REQUESTED_KEY = 'mobile_notification_permission_requested_v1';
 const NOTIFICATION_SETTINGS_PROMPT_AT_KEY = 'mobile_notification_settings_prompt_at_v1';
@@ -15,9 +16,69 @@ const FALLBACK_EAS_PROJECT_ID = 'cc9265c5-45b0-4964-8ed2-3e7a996b8c5a';
 
 let notificationHandlerConfigured = false;
 
+export type PushPermissionSnapshot = {
+  status: string;
+  granted: boolean;
+  canAskAgain: boolean;
+};
+
+export type PushSyncResult = {
+  registered: boolean;
+  reason?: 'permission_or_token_unavailable' | 'registration_failed';
+  token?: string;
+  errorMessage?: string;
+  permission: PushPermissionSnapshot;
+  projectId: string | null;
+  deviceName: string | null;
+  appVersion: string | null;
+  syncedAt: string;
+};
+
+export type LocalPushDebugSnapshot = {
+  permission: PushPermissionSnapshot;
+  storedToken: string | null;
+  tokenPreview: string | null;
+  tokenFingerprint: string | null;
+  projectId: string | null;
+  deviceName: string | null;
+  appVersion: string | null;
+  androidPushNativeConfigStatus: 'configured' | 'missing' | 'not_applicable';
+  androidGoogleServicesFile: string | null;
+  lastSync: PushSyncResult | null;
+};
+
+export type MobilePushDeviceSummary = {
+  id: number;
+  platform: 'ANDROID' | 'IOS' | 'UNKNOWN';
+  deviceName: string | null;
+  appVersion: string | null;
+  isEnabled: boolean;
+  lastSeenAt: string;
+  updatedAt: string;
+  createdAt: string;
+  tokenPreview: string;
+  tokenFingerprint: string;
+};
+
+export type MobilePushDevicesStatus = {
+  totalDevices: number;
+  enabledDevices: number;
+  devices: MobilePushDeviceSummary[];
+};
+
+export type PushSelfTestResult = {
+  recipients: number;
+  sent: number;
+  failed: number;
+  staleTokensDisabled: number;
+};
+
 type ExpoConstantsSnapshot = {
   expoConfig?: {
     version?: string;
+    android?: {
+      googleServicesFile?: string;
+    };
     extra?: {
       eas?: {
         projectId?: string;
@@ -32,6 +93,44 @@ type ExpoConstantsSnapshot = {
 
 function getExpoConstantsSnapshot(): ExpoConstantsSnapshot {
   return (Constants as unknown as ExpoConstantsSnapshot) || {};
+}
+
+function toPermissionSnapshot(permission: {
+  status?: string;
+  granted?: boolean;
+  canAskAgain?: boolean;
+}): PushPermissionSnapshot {
+  return {
+    status: String(permission.status || 'undetermined'),
+    granted: Boolean(permission.granted),
+    canAskAgain: Boolean(permission.canAskAgain),
+  };
+}
+
+function maskExpoPushToken(token: string | null) {
+  if (!token) return null;
+  if (token.length <= 20) return token;
+  return `${token.slice(0, 18)}...${token.slice(-6)}`;
+}
+
+function getExpoPushTokenFingerprint(token: string | null) {
+  if (!token) return null;
+  return token.slice(-10);
+}
+
+function resolvePushSyncErrorMessage(error: unknown, fallback: string) {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    typeof (error as { response?: { data?: { message?: string } } }).response?.data?.message === 'string'
+  ) {
+    return (error as { response?: { data?: { message?: string } } }).response?.data?.message || fallback;
+  }
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+  return fallback;
 }
 
 async function ensureAndroidNotificationChannels() {
@@ -62,6 +161,19 @@ function resolveExpoProjectId() {
     return easProjectId.trim();
   }
   return FALLBACK_EAS_PROJECT_ID;
+}
+
+function resolveAndroidGoogleServicesFile() {
+  const constants = getExpoConstantsSnapshot();
+  const googleServicesFile = constants.expoConfig?.android?.googleServicesFile || null;
+  return typeof googleServicesFile === 'string' && googleServicesFile.trim().length > 0
+    ? googleServicesFile.trim()
+    : null;
+}
+
+function resolveAndroidPushNativeConfigStatus() {
+  if (Platform.OS !== 'android') return 'not_applicable' as const;
+  return resolveAndroidGoogleServicesFile() ? ('configured' as const) : ('missing' as const);
 }
 
 function resolvePlatform() {
@@ -102,11 +214,7 @@ export function ensureNotificationHandler() {
 
 async function getCurrentNotificationPermissionState() {
   const permission = await Notifications.getPermissionsAsync();
-  return {
-    status: permission.status,
-    granted: permission.granted,
-    canAskAgain: permission.canAskAgain,
-  };
+  return toPermissionSnapshot(permission);
 }
 
 export async function ensureNotificationPermissionOnStartup() {
@@ -158,27 +266,100 @@ async function requestExpoPushToken() {
   await ensureAndroidNotificationChannels();
 
   const permission = await Notifications.getPermissionsAsync();
-  let finalStatus = permission.status;
+  let permissionSnapshot = toPermissionSnapshot(permission);
 
-  if (finalStatus !== 'granted') {
+  if (!permissionSnapshot.granted) {
     const requestPermission = await Notifications.requestPermissionsAsync();
-    finalStatus = requestPermission.status;
+    permissionSnapshot = toPermissionSnapshot(requestPermission);
   }
 
-  if (finalStatus !== 'granted') return null;
-
   const projectId = resolveExpoProjectId();
-  if (!projectId) return null;
 
-  const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-  if (!token || !isValidExpoPushToken(token)) return null;
-  return token;
+  if (!permissionSnapshot.granted) {
+    return {
+      token: null,
+      permission: permissionSnapshot,
+      projectId,
+      errorMessage: 'Izin notifikasi belum aktif di perangkat.',
+    };
+  }
+
+  if (!projectId) {
+    return {
+      token: null,
+      permission: permissionSnapshot,
+      projectId: null,
+      errorMessage: 'Project ID Expo tidak ditemukan.',
+    };
+  }
+
+  try {
+    const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+    if (!token || !isValidExpoPushToken(token)) {
+      return {
+        token: null,
+        permission: permissionSnapshot,
+        projectId,
+        errorMessage: 'Token Expo belum tersedia atau format token tidak valid.',
+      };
+    }
+
+    return {
+      token,
+      permission: permissionSnapshot,
+      projectId,
+      errorMessage: null,
+    };
+  } catch (error: unknown) {
+    const baseErrorMessage = resolvePushSyncErrorMessage(error, 'Gagal mengambil Expo push token.');
+    const errorMessage =
+      Platform.OS === 'android' && resolveAndroidPushNativeConfigStatus() === 'missing'
+        ? `${baseErrorMessage} Build Android ini belum mendeklarasikan google-services.json sehingga push Android saat app tertutup bisa gagal.`
+        : baseErrorMessage;
+    return {
+      token: null,
+      permission: permissionSnapshot,
+      projectId,
+      errorMessage,
+    };
+  }
+}
+
+async function persistPushSyncResult(result: PushSyncResult) {
+  await AsyncStorage.setItem(PUSH_SYNC_STATUS_STORAGE_KEY, JSON.stringify(result));
+}
+
+async function readLastPushSyncResult() {
+  const raw = await AsyncStorage.getItem(PUSH_SYNC_STATUS_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as PushSyncResult;
+  } catch {
+    return null;
+  }
 }
 
 export async function syncPushDeviceRegistration() {
+  const syncedAt = new Date().toISOString();
+  const deviceName = resolveDeviceName();
+  const appVersion = resolveAppVersion();
   try {
-    const nextToken = await requestExpoPushToken();
-    if (!nextToken) return { registered: false as const, reason: 'permission_or_token_unavailable' };
+    const tokenRequest = await requestExpoPushToken();
+    const nextToken = tokenRequest.token;
+    if (!nextToken) {
+      const result: PushSyncResult = {
+        registered: false,
+        reason: 'permission_or_token_unavailable',
+        errorMessage: tokenRequest.errorMessage || 'Izin notifikasi belum aktif atau token Expo belum tersedia.',
+        permission: tokenRequest.permission,
+        projectId: tokenRequest.projectId,
+        deviceName,
+        appVersion,
+        syncedAt,
+      };
+      await persistPushSyncResult(result);
+      return result;
+    }
 
     const previousToken = await AsyncStorage.getItem(PUSH_TOKEN_STORAGE_KEY);
 
@@ -195,14 +376,40 @@ export async function syncPushDeviceRegistration() {
     await apiClient.post('/mobile-updates/devices/register', {
       expoPushToken: nextToken,
       platform: resolvePlatform(),
-      appVersion: resolveAppVersion(),
-      deviceName: resolveDeviceName(),
+      appVersion,
+      deviceName,
     });
 
     await AsyncStorage.setItem(PUSH_TOKEN_STORAGE_KEY, nextToken);
-    return { registered: true as const, token: nextToken };
-  } catch {
-    return { registered: false as const, reason: 'registration_failed' };
+    const result: PushSyncResult = {
+      registered: true,
+      token: nextToken,
+      permission: tokenRequest.permission,
+      projectId: tokenRequest.projectId,
+      deviceName,
+      appVersion,
+      syncedAt,
+    };
+    await persistPushSyncResult(result);
+    return result;
+  } catch (error: unknown) {
+    const permission = await getCurrentNotificationPermissionState().catch(() => ({
+      status: 'unknown',
+      granted: false,
+      canAskAgain: false,
+    }));
+    const result: PushSyncResult = {
+      registered: false,
+      reason: 'registration_failed',
+      errorMessage: resolvePushSyncErrorMessage(error, 'Request registrasi token push ke server gagal.'),
+      permission,
+      projectId: resolveExpoProjectId(),
+      deviceName,
+      appVersion,
+      syncedAt,
+    };
+    await persistPushSyncResult(result);
+    return result;
   }
 }
 
@@ -224,4 +431,43 @@ export function isAppUpdatePushNotificationData(rawData: unknown) {
   const data = rawData as Record<string, unknown>;
   const type = typeof data.type === 'string' ? data.type : '';
   return type.toUpperCase() === APP_UPDATE_PUSH_TYPE;
+}
+
+export async function getLocalPushDebugSnapshot(): Promise<LocalPushDebugSnapshot> {
+  const permission = await getCurrentNotificationPermissionState().catch(() => ({
+    status: 'unknown',
+    granted: false,
+    canAskAgain: false,
+  }));
+  const storedToken = await AsyncStorage.getItem(PUSH_TOKEN_STORAGE_KEY);
+  const lastSync = await readLastPushSyncResult();
+
+  return {
+    permission,
+    storedToken,
+    tokenPreview: maskExpoPushToken(storedToken),
+    tokenFingerprint: getExpoPushTokenFingerprint(storedToken),
+    projectId: resolveExpoProjectId(),
+    deviceName: resolveDeviceName(),
+    appVersion: resolveAppVersion(),
+    androidPushNativeConfigStatus: resolveAndroidPushNativeConfigStatus(),
+    androidGoogleServicesFile: resolveAndroidGoogleServicesFile(),
+    lastSync,
+  };
+}
+
+export async function fetchMyPushDevicesStatus(): Promise<MobilePushDevicesStatus> {
+  const response = await apiClient.get<{
+    data: MobilePushDevicesStatus;
+  }>('/mobile-updates/devices/me');
+  return response.data.data;
+}
+
+export async function sendSelfTestPushNotification(expoPushToken?: string | null): Promise<PushSelfTestResult> {
+  const response = await apiClient.post<{
+    data: PushSelfTestResult;
+  }>('/mobile-updates/devices/test-self', {
+    ...(expoPushToken ? { expoPushToken } : {}),
+  });
+  return response.data.data;
 }

@@ -33,6 +33,7 @@ Aplikasi mobile terpisah untuk Android/iOS, dibuat tanpa mengganggu `frontend/` 
 - `npm run typecheck`
 - `npm run readiness`
 - `npm run release:check`
+- `npm run check:push:android`
 - `npm run check:all`
 - `npm run check:release`
 
@@ -53,9 +54,14 @@ Aplikasi mobile terpisah untuk Android/iOS, dibuat tanpa mengganggu `frontend/` 
    - `npm run build:android:internal`
    - `npm run build:android:internal:live` (khusus tester channel `pilot-live`)
    - `npm run build:android:tester` (alias untuk tester `pilot-live`)
-4. Siapkan release note + checksum:
+   - `npm run build:android:play:internal` (untuk distribusi lewat Google Play internal testing)
+4. Sebelum build Android yang membutuhkan push notification real-time:
+   - pastikan `app.json` sudah mengarah ke `expo.android.googleServicesFile`
+   - pastikan file `google-services.json` benar-benar tersedia di path tersebut
+   - verifikasi dengan `npm run check:push:android`
+5. Siapkan release note + checksum:
    - `npm run release:prepare -- /path/to/app.apk https://expo.dev/artifacts/...`
-5. Install cepat ke device QA via ADB:
+6. Install cepat ke device QA via ADB:
    - `npm run qa:install:adb -- /path/to/app.apk`
 
 ## OTA Update (Tanpa Install Ulang)
@@ -64,6 +70,7 @@ Aplikasi mobile terpisah untuk Android/iOS, dibuat tanpa mengganggu `frontend/` 
   - `internal-live` -> `pilot-live` (real-time testing)
 - Publish update code JS/UI/logic ke tester real-time (`pilot-live`):
   - `npm run update:pilot-live -- "Pesan update cepat"`
+  - `npm run update:pilot-live:verified -- "Pesan update cepat"` (gagal jika push update tidak benar-benar punya recipient/sent)
   - `npm run update:pilot-live:auto` (pesan otomatis timestamp + git ref)
 - Publish update tester dengan channel yang benar secara otomatis:
   - `npm run check:ota:testers`
@@ -81,6 +88,7 @@ Aplikasi mobile terpisah untuk Android/iOS, dibuat tanpa mengganggu `frontend/` 
   - Perubahan native dependency tetap butuh build APK/AAB baru.
   - Perangkat akan menerima update dari channel sesuai APK yang terpasang.
   - App akan cek update saat startup, saat app kembali aktif, dan periodik di background.
+  - Notifikasi update saat app tertutup membutuhkan push Android native yang lengkap (`google-services.json`).
   - Untuk ujicoba fitur harian, standarkan tester ke APK `internal-live` -> channel `pilot-live`.
   - Jika `appVersion` berubah, tester perlu install APK tester terbaru sekali agar runtime baru bisa menerima OTA lagi.
   - Jika sebuah channel tidak punya binary dengan runtime yang cocok, helper `update:testers` akan melewatinya dan menampilkan warning yang jelas.
@@ -88,6 +96,7 @@ Aplikasi mobile terpisah untuk Android/iOS, dibuat tanpa mengganggu `frontend/` 
 ## Pilot Docs
 - `docs/DAY10_QA_CHECKLIST.md`
 - `docs/ANDROID_INTERNAL_RELEASE.md`
+- `docs/ANDROID_PLAY_INTERNAL_TESTING.md`
 - `docs/PHASE2_APK_PILOT_PLAN.md`
 - `docs/PILOT_TESTER_ONBOARDING.md`
 - `docs/PARITY_MATRIX_TEMPLATE.md`

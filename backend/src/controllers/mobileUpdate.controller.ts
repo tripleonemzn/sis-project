@@ -30,6 +30,12 @@ const broadcastUpdateSchema = z.object({
   platform: mobilePlatformSchema.optional(),
 });
 
+const testDevicePushSchema = z.object({
+  title: z.string().trim().max(120).optional(),
+  message: z.string().trim().max(500).optional(),
+  expoPushToken: z.string().trim().min(10).optional(),
+});
+
 function normalizeRemoteAddress(raw: string | undefined | null) {
   if (!raw) return '';
   const cleaned = raw.replace('::ffff:', '');
@@ -78,6 +84,102 @@ function chunkArray<T>(rows: T[], size: number) {
     chunks.push(rows.slice(index, index + size));
   }
   return chunks;
+}
+
+function maskExpoPushToken(token: string) {
+  if (token.length <= 20) return token;
+  return `${token.slice(0, 18)}...${token.slice(-6)}`;
+}
+
+function getExpoPushTokenFingerprint(token: string) {
+  return token.slice(-10);
+}
+
+function dedupeRecipients<T extends { expoPushToken: string }>(devices: T[]) {
+  const uniqueByToken = new Map<string, T>();
+  for (const device of devices) {
+    if (!uniqueByToken.has(device.expoPushToken)) {
+      uniqueByToken.set(device.expoPushToken, device);
+    }
+  }
+  return Array.from(uniqueByToken.values());
+}
+
+async function dispatchExpoPushMessages(
+  pushMessages: Array<{
+    to: string;
+    title: string;
+    body: string;
+    sound: string;
+    channelId: string;
+    priority: 'high';
+    data: Record<string, unknown>;
+  }>,
+) {
+  let sent = 0;
+  let failed = 0;
+  const staleTokens = new Set<string>();
+  const chunks = chunkArray(pushMessages, 100);
+
+  for (const chunk of chunks) {
+    try {
+      const response = await axios.post(
+        EXPO_PUSH_API_URL,
+        chunk,
+        {
+          headers: {
+            Accept: 'application/json',
+            'Accept-encoding': 'gzip, deflate',
+            'Content-Type': 'application/json',
+          },
+          timeout: 15000,
+        },
+      );
+
+      const tickets = Array.isArray(response.data?.data) ? response.data.data : [];
+      if (tickets.length === 0) {
+        failed += chunk.length;
+        continue;
+      }
+
+      tickets.forEach((ticket: any, index: number) => {
+        if (ticket?.status === 'ok') {
+          sent += 1;
+          return;
+        }
+        failed += 1;
+        const token = chunk[index]?.to;
+        const errorCode = String(ticket?.details?.error || '');
+        if (token && errorCode === 'DeviceNotRegistered') {
+          staleTokens.add(token);
+        }
+      });
+    } catch {
+      failed += chunk.length;
+    }
+  }
+
+  return {
+    sent,
+    failed,
+    staleTokens,
+  };
+}
+
+async function disableStaleTokens(staleTokens: Set<string>) {
+  if (staleTokens.size === 0) return 0;
+
+  const result = await prisma.mobilePushDevice.updateMany({
+    where: {
+      expoPushToken: { in: Array.from(staleTokens) },
+    },
+    data: {
+      isEnabled: false,
+      lastSeenAt: new Date(),
+    },
+  });
+
+  return result.count;
 }
 
 export const registerMobilePushDevice = asyncHandler(async (req: Request, res: Response) => {
@@ -148,6 +250,118 @@ export const unregisterMobilePushDevice = asyncHandler(async (req: Request, res:
     .json(new ApiResponse(200, { updated: result.count }, 'Token push perangkat berhasil dinonaktifkan'));
 });
 
+export const getMyMobilePushDevices = asyncHandler(async (req: Request, res: Response) => {
+  const userId = getAuthUserId(req);
+
+  const devices = await prisma.mobilePushDevice.findMany({
+    where: { userId },
+    orderBy: [
+      { isEnabled: 'desc' },
+      { lastSeenAt: 'desc' },
+      { updatedAt: 'desc' },
+    ],
+    select: {
+      id: true,
+      platform: true,
+      deviceName: true,
+      appVersion: true,
+      isEnabled: true,
+      lastSeenAt: true,
+      updatedAt: true,
+      createdAt: true,
+      expoPushToken: true,
+    },
+  });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        totalDevices: devices.length,
+        enabledDevices: devices.filter((device) => device.isEnabled).length,
+        devices: devices.map((device) => ({
+          id: device.id,
+          platform: device.platform,
+          deviceName: device.deviceName,
+          appVersion: device.appVersion,
+          isEnabled: device.isEnabled,
+          lastSeenAt: device.lastSeenAt,
+          updatedAt: device.updatedAt,
+          createdAt: device.createdAt,
+          tokenPreview: maskExpoPushToken(device.expoPushToken),
+          tokenFingerprint: getExpoPushTokenFingerprint(device.expoPushToken),
+        })),
+      },
+      'Status perangkat mobile berhasil diambil',
+    ),
+  );
+});
+
+export const testMyMobilePushDevice = asyncHandler(async (req: Request, res: Response) => {
+  const userId = getAuthUserId(req);
+  const payload = testDevicePushSchema.parse(req.body || {});
+
+  if (payload.expoPushToken && !isValidExpoPushToken(payload.expoPushToken)) {
+    throw new ApiError(400, 'Format Expo push token tidak valid');
+  }
+
+  const title = payload.title || 'Tes Notifikasi SIS KGB2';
+  const message =
+    payload.message || 'Tes notifikasi berhasil dikirim ke perangkat ini. Jika notifikasi muncul, push sudah siap dipakai.';
+
+  const devices = await prisma.mobilePushDevice.findMany({
+    where: {
+      userId,
+      isEnabled: true,
+      ...(payload.expoPushToken ? { expoPushToken: payload.expoPushToken } : {}),
+    },
+    select: {
+      id: true,
+      expoPushToken: true,
+      deviceName: true,
+      platform: true,
+    },
+  });
+
+  if (devices.length === 0) {
+    throw new ApiError(
+      404,
+      'Perangkat push aktif tidak ditemukan. Sinkronkan token push dari aplikasi lalu coba lagi.',
+    );
+  }
+
+  const recipients = dedupeRecipients(devices);
+  const dispatchResult = await dispatchExpoPushMessages(
+    recipients.map((device) => ({
+      to: device.expoPushToken,
+      title,
+      body: message,
+      sound: 'default',
+      channelId: 'updates',
+      priority: 'high' as const,
+      data: {
+        type: 'APP_UPDATE_TEST',
+        source: 'mobile-diagnostics',
+      },
+    })),
+  );
+
+  const staleTokensDisabled = await disableStaleTokens(dispatchResult.staleTokens);
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        recipients: recipients.length,
+        sent: dispatchResult.sent,
+        failed: dispatchResult.failed,
+        staleTokensDisabled,
+      },
+      'Tes notifikasi perangkat selesai',
+    ),
+  );
+});
+
 export const broadcastMobileUpdateNotification = asyncHandler(async (req: Request, res: Response) => {
   assertBroadcastAuthorized(req);
   const payload = broadcastUpdateSchema.parse(req.body || {});
@@ -188,15 +402,9 @@ export const broadcastMobileUpdateNotification = asyncHandler(async (req: Reques
     return;
   }
 
-  const uniqueByToken = new Map<string, { userId: number; expoPushToken: string }>();
-  for (const device of devices) {
-    if (!uniqueByToken.has(device.expoPushToken)) {
-      uniqueByToken.set(device.expoPushToken, { userId: device.userId, expoPushToken: device.expoPushToken });
-    }
-  }
-  const recipients = Array.from(uniqueByToken.values());
+  const recipients = dedupeRecipients(devices);
 
-  const pushMessages = recipients.map((device) => ({
+  const dispatchResult = await dispatchExpoPushMessages(recipients.map((device) => ({
     to: device.expoPushToken,
     title,
     body: message,
@@ -207,62 +415,9 @@ export const broadcastMobileUpdateNotification = asyncHandler(async (req: Reques
       type: 'APP_UPDATE',
       channel,
     },
-  }));
+  })));
 
-  let sent = 0;
-  let failed = 0;
-  const staleTokens = new Set<string>();
-  const chunks = chunkArray(pushMessages, 100);
-
-  for (const chunk of chunks) {
-    try {
-      const response = await axios.post(
-        EXPO_PUSH_API_URL,
-        chunk,
-        {
-          headers: {
-            Accept: 'application/json',
-            'Accept-encoding': 'gzip, deflate',
-            'Content-Type': 'application/json',
-          },
-          timeout: 15000,
-        },
-      );
-
-      const tickets = Array.isArray(response.data?.data) ? response.data.data : [];
-      if (tickets.length === 0) {
-        failed += chunk.length;
-        continue;
-      }
-
-      tickets.forEach((ticket: any, index: number) => {
-        if (ticket?.status === 'ok') {
-          sent += 1;
-          return;
-        }
-        failed += 1;
-        const token = chunk[index]?.to;
-        const errorCode = String(ticket?.details?.error || '');
-        if (token && errorCode === 'DeviceNotRegistered') {
-          staleTokens.add(token);
-        }
-      });
-    } catch {
-      failed += chunk.length;
-    }
-  }
-
-  if (staleTokens.size > 0) {
-    await prisma.mobilePushDevice.updateMany({
-      where: {
-        expoPushToken: { in: Array.from(staleTokens) },
-      },
-      data: {
-        isEnabled: false,
-        lastSeenAt: new Date(),
-      },
-    });
-  }
+  const staleTokensDisabled = await disableStaleTokens(dispatchResult.staleTokens);
 
   const uniqueUserIds = Array.from(new Set(recipients.map((item) => item.userId)));
   if (uniqueUserIds.length > 0) {
@@ -279,10 +434,10 @@ export const broadcastMobileUpdateNotification = asyncHandler(async (req: Reques
 
   res.status(200).json(
     new ApiResponse(200, {
-      sent,
-      failed,
+      sent: dispatchResult.sent,
+      failed: dispatchResult.failed,
       recipients: recipients.length,
-      staleTokensDisabled: staleTokens.size,
+      staleTokensDisabled,
       channel,
     }, 'Broadcast notifikasi update selesai'),
   );
