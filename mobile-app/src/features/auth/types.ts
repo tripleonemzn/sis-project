@@ -95,6 +95,11 @@ export type AuthUser = {
   managedMajor?: { id: number; name: string; code?: string | null } | null;
   managedMajors?: Array<{ id: number; name: string; code?: string | null }>;
   examinerMajor?: { id: number; name: string; code?: string | null } | null;
+  managedInventoryRooms?: Array<{
+    id: number;
+    name: string;
+    managerUserId?: number | null;
+  }>;
   children?: Array<{ id: number; name: string; username?: string; nisn?: string | null }>;
   studentClass?: {
     id: number;

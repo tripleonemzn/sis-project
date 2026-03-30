@@ -831,6 +831,8 @@ export default function HomeScreen() {
         hasExtracurricularAdvisorAssignments,
         hasExtracurricularTutorAssignments: extracurricularTutorAssignments.length > 0,
         hasActiveOsisElection,
+        tutorAssignments: tutorAssignmentsQuery.data || [],
+        managedInventoryRooms: profile.managedInventoryRooms || [],
       })
         .map((group) => ({
           ...group,
@@ -866,6 +868,7 @@ export default function HomeScreen() {
       hasExtracurricularAdvisorAssignments,
       extracurricularTutorAssignments.length,
       hasActiveOsisElection,
+      tutorAssignmentsQuery.data,
       studentInternshipOverviewQuery.data?.isEligible,
       examProgramsQuery.data?.programs,
       examProgramsQuery.isSuccess,

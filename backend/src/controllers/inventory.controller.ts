@@ -99,6 +99,131 @@ const hasPrivilegedInventoryAccess = (user: InventoryAuthUser | null) => {
   );
 };
 
+const normalizeComparableText = (value?: string | null) =>
+  String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+const syncAdvisorInventoryRoomManagers = async (userId: number) => {
+  if (!Number.isFinite(userId) || userId <= 0) return;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      role: true,
+      additionalDuties: true,
+    },
+  });
+
+  if (!user || user.role !== 'TEACHER') return;
+
+  const activeAcademicYear = await prisma.academicYear.findFirst({
+    where: { isActive: true },
+    select: { id: true },
+  });
+
+  const duties = (user.additionalDuties || []).map((item) => String(item || '').trim().toUpperCase());
+  const teacherAssignments = activeAcademicYear?.id
+    ? await prisma.ekstrakurikulerTutorAssignment.findMany({
+        where: {
+          tutorId: user.id,
+          academicYearId: activeAcademicYear.id,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          ekskul: {
+            select: {
+              id: true,
+              name: true,
+              category: true,
+            },
+          },
+        },
+      })
+    : [];
+
+  const roomIdsToAssign = new Set<number>();
+
+  for (const assignment of teacherAssignments) {
+    const ekskulName = normalizeComparableText(assignment.ekskul?.name);
+    if (!ekskulName || String(assignment.ekskul?.category || '').toUpperCase() === 'OSIS') continue;
+
+    const room = await prisma.room.findFirst({
+      where: {
+        name: {
+          equals: assignment.ekskul?.name || '',
+          mode: 'insensitive',
+        },
+      },
+      orderBy: { id: 'asc' },
+      select: {
+        id: true,
+        managerUserId: true,
+        managerUser: {
+          select: {
+            role: true,
+          },
+        },
+      },
+    });
+
+    const managerRole = String(room?.managerUser?.role || '').trim().toUpperCase();
+    if (
+      room?.id &&
+      room.managerUserId !== user.id &&
+      (!room.managerUserId || managerRole === 'EXTRACURRICULAR_TUTOR')
+    ) {
+      roomIdsToAssign.add(room.id);
+    }
+  }
+
+  if (duties.includes('PEMBINA_OSIS')) {
+    const osisRoom = await prisma.room.findFirst({
+      where: {
+        name: {
+          contains: 'OSIS',
+          mode: 'insensitive',
+        },
+      },
+      orderBy: { id: 'asc' },
+      select: {
+        id: true,
+        managerUserId: true,
+        managerUser: {
+          select: {
+            role: true,
+          },
+        },
+      },
+    });
+
+    const managerRole = String(osisRoom?.managerUser?.role || '').trim().toUpperCase();
+    if (
+      osisRoom?.id &&
+      osisRoom.managerUserId !== user.id &&
+      (!osisRoom.managerUserId || ['EXTRACURRICULAR_TUTOR', 'ADMIN'].includes(managerRole))
+    ) {
+      roomIdsToAssign.add(osisRoom.id);
+    }
+  }
+
+  if (!roomIdsToAssign.size) return;
+
+  await prisma.room.updateMany({
+    where: {
+      id: {
+        in: Array.from(roomIdsToAssign),
+      },
+    },
+    data: {
+      managerUserId: user.id,
+    },
+  });
+};
+
 const assertAssignableManager = async (managerUserId?: number | null) => {
   if (!managerUserId) return null;
   const manager = await prisma.user.findUnique({
@@ -188,6 +313,7 @@ export const getAssignedInventoryRooms = asyncHandler(async (req: Request, res: 
   if (!authUser) throw new ApiError(401, 'Pengguna tidak ditemukan');
 
   await syncDefaultInventoryRoomManagers();
+  await syncAdvisorInventoryRoomManagers(authUser.id);
 
   const rooms = await prisma.room.findMany({
     where: {
@@ -902,6 +1028,7 @@ export const getRooms = asyncHandler(async (req: Request, res: Response) => {
   }
   if (String(assignedOnly || '').toLowerCase() === 'true') {
     if (!authUser) throw new ApiError(401, 'Pengguna tidak ditemukan');
+    await syncAdvisorInventoryRoomManagers(authUser.id);
     where.managerUserId = authUser.id;
   }
 

@@ -977,9 +977,10 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
 
 export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const userId = Number(id);
 
   const user = await prisma.user.findUnique({
-    where: { id: Number(id) },
+    where: { id: userId },
   });
 
   if (!user) {
@@ -992,8 +993,64 @@ export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
      throw new ApiError(400, 'Tidak dapat menghapus akun sendiri');
   }
 
+  const [activeTutorAssignments, managedInventoryRooms, relatedWorkPrograms, relatedBudgetRequests] = await Promise.all([
+    prisma.ekstrakurikulerTutorAssignment.count({
+      where: {
+        tutorId: userId,
+        isActive: true,
+      },
+    }),
+    prisma.room.count({
+      where: {
+        managerUserId: userId,
+      },
+    }),
+    prisma.workProgram.count({
+      where: {
+        OR: [
+          { ownerId: userId },
+          { approvedById: userId },
+          { assignedApproverId: userId },
+        ],
+      },
+    }),
+    prisma.budgetRequest.count({
+      where: {
+        OR: [
+          { requesterId: userId },
+          { approvedById: userId },
+          { approverId: userId },
+          { realizationConfirmedById: userId },
+        ],
+      },
+    }),
+  ]);
+
+  const blockingReferences: string[] = [];
+  if (activeTutorAssignments > 0) {
+    blockingReferences.push(`${activeTutorAssignments} penugasan pembina aktif`);
+  }
+  if (managedInventoryRooms > 0) {
+    blockingReferences.push(`${managedInventoryRooms} ruangan inventaris yang masih ditangani`);
+  }
+  if (relatedWorkPrograms > 0) {
+    blockingReferences.push(`${relatedWorkPrograms} program kerja terkait`);
+  }
+  if (relatedBudgetRequests > 0) {
+    blockingReferences.push(`${relatedBudgetRequests} pengajuan anggaran terkait`);
+  }
+
+  if (blockingReferences.length > 0) {
+    throw new ApiError(
+      400,
+      `Pengguna belum dapat dihapus karena masih memiliki referensi aktif: ${blockingReferences.join(
+        ', ',
+      )}. Lepaskan atau migrasikan referensinya terlebih dahulu.`,
+    );
+  }
+
   await prisma.user.delete({
-    where: { id: Number(id) },
+    where: { id: userId },
   });
 
   res.status(200).json(new ApiResponse(200, null, 'Pengguna berhasil dihapus'));

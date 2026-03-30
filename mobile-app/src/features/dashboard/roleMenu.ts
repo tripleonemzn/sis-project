@@ -1,5 +1,7 @@
 import { AuthUser } from '../auth/types';
 import { resolveStaffDivision } from '../staff/staffRole';
+import type { TutorAssignment } from '../tutor/tutorApi';
+import { getExtracurricularTutorAssignments } from '../tutor/tutorAccess';
 
 type MenuTarget =
   | {
@@ -22,6 +24,12 @@ export type RoleMenuGroup = {
   items: RoleMenuItem[];
 };
 
+type ManagedInventoryRoom = {
+  id: number;
+  name: string;
+  managerUserId?: number | null;
+};
+
 export type RoleMenuBuildOptions = {
   hasPendingDefense?: boolean;
   pklEligibleGrades?: string[];
@@ -30,6 +38,8 @@ export type RoleMenuBuildOptions = {
   hasExtracurricularTutorAssignments?: boolean;
   hasOsisTutorAssignments?: boolean;
   hasActiveOsisElection?: boolean;
+  tutorAssignments?: TutorAssignment[];
+  managedInventoryRooms?: ManagedInventoryRoom[];
 };
 
 const STRICT_WEB_PARITY_KEYS = new Set<string>([
@@ -141,6 +151,79 @@ function createWebModuleRoute(key: string, webPath: string, label?: string) {
     params.push(`label=${encodeURIComponent(label)}`);
   }
   return `/web-module/${key}?${params.join('&')}`;
+}
+
+function normalizeComparableName(raw: unknown): string {
+  return String(raw || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
+}
+
+function isOsisName(raw: unknown): boolean {
+  return normalizeComparableName(raw).includes('OSIS');
+}
+
+function getRoomMatchScore(expected: unknown, actual: unknown): number {
+  const expectedName = normalizeComparableName(expected);
+  const actualName = normalizeComparableName(actual);
+
+  if (!expectedName || !actualName) return 0;
+  if (expectedName === actualName) return 100;
+  if (actualName.includes(expectedName) || expectedName.includes(actualName)) return 70;
+
+  const expectedTokens = expectedName.split(' ').filter(Boolean);
+  const actualTokens = new Set(actualName.split(' ').filter(Boolean));
+  if (!expectedTokens.length || !actualTokens.size) return 0;
+
+  let score = 0;
+  expectedTokens.forEach((token) => {
+    if (actualTokens.has(token)) {
+      score += token.length >= 4 ? 20 : 10;
+    }
+  });
+
+  return score;
+}
+
+function buildAdvisorGroupLabel(name: unknown): string {
+  const normalized = normalizeComparableName(name);
+  return normalized ? `PEMBINA ${normalized}` : 'PEMBINA EKSKUL';
+}
+
+function resolveLinkedAdvisorInventory(options?: RoleMenuBuildOptions) {
+  const rooms: ManagedInventoryRoom[] = Array.isArray(options?.managedInventoryRooms)
+    ? [...(options?.managedInventoryRooms || [])]
+    : [];
+  const roomByAssignmentId = new Map<number, ManagedInventoryRoom>();
+  const usedRoomIds = new Set<number>();
+  const extracurricularAssignments = getExtracurricularTutorAssignments(options?.tutorAssignments || []);
+
+  extracurricularAssignments.forEach((assignment) => {
+    let selectedRoom: ManagedInventoryRoom | null = null;
+    let selectedScore = 0;
+
+    rooms.forEach((room) => {
+      if (usedRoomIds.has(room.id) || isOsisName(room.name)) return;
+      const score = getRoomMatchScore(assignment?.ekskul?.name, room.name);
+      if (score <= 0) return;
+      if (!selectedRoom || score > selectedScore) {
+        selectedRoom = room;
+        selectedScore = score;
+      }
+    });
+
+    if (selectedRoom) {
+      roomByAssignmentId.set(assignment.id, selectedRoom as ManagedInventoryRoom);
+      usedRoomIds.add((selectedRoom as ManagedInventoryRoom).id);
+    }
+  });
+
+  return {
+    roomByAssignmentId,
+    osisRooms: rooms.filter((room) => !usedRoomIds.has(room.id) && isOsisName(room.name)),
+    detachedRooms: rooms.filter((room) => !usedRoomIds.has(room.id) && !isOsisName(room.name)),
+  };
 }
 
 const BASE_MENU: RoleMenuItem[] = [{ key: 'profile', label: 'Profil', route: '/profile' }];
@@ -1399,6 +1482,8 @@ function buildTeacherGroups(
 ): RoleMenuGroup[] {
   const byKey = mapMenuByKey(menus);
   const groups: RoleMenuGroup[] = [];
+  const linkedAdvisorInventory = resolveLinkedAdvisorInventory(options);
+  const extracurricularAssignments = getExtracurricularTutorAssignments(options?.tutorAssignments || []);
 
   const pushGroup = (key: string, label: string, items: RoleMenuItem[]) => {
     if (items.length === 0) return;
@@ -1481,18 +1566,43 @@ function buildTeacherGroups(
     );
   }
 
-  if (options?.hasExtracurricularAdvisorAssignments) {
+  extracurricularAssignments.forEach((assignment) => {
+    const linkedRoom = linkedAdvisorInventory.roomByAssignmentId.get(assignment.id) || null;
+    const inventoryItem: RoleMenuItem = linkedRoom
+      ? {
+          key: `teacher-extracurricular-inventory-room-${linkedRoom.id}`,
+          label: 'Kelola Inventaris',
+          route: createWebModuleRoute(
+            `teacher-extracurricular-inventory-room-${linkedRoom.id}`,
+            `/teacher/assigned-inventory/${linkedRoom.id}`,
+            'Kelola Inventaris',
+          ),
+          webPath: `/teacher/assigned-inventory/${linkedRoom.id}`,
+        }
+      : {
+          key: `teacher-extracurricular-inventory-${assignment.id}`,
+          label: 'Kelola Inventaris',
+          route: '/tutor/inventory',
+        };
+
     pushGroup(
-      'extracurricular-advisor',
-      'PEMBINA EKSKUL',
-      pickMenus(byKey, [
-        'teacher-extracurricular-dashboard',
-        'teacher-extracurricular-members',
-        'teacher-extracurricular-work-program',
-        'teacher-extracurricular-inventory',
-      ]),
+      `extracurricular-advisor-${assignment.id}`,
+      buildAdvisorGroupLabel(assignment?.ekskul?.name),
+      [
+        {
+          key: `teacher-extracurricular-members-${assignment.id}`,
+          label: 'Anggota & Nilai',
+          route: `/tutor/members?assignmentId=${assignment.id}&ekskulId=${assignment.ekskulId}&academicYearId=${assignment.academicYearId}`,
+        },
+        {
+          key: `teacher-extracurricular-work-program-${assignment.id}`,
+          label: 'Program Kerja',
+          route: `/tutor/work-program?duty=PEMBINA_EKSKUL&assignmentId=${assignment.id}&ekskulId=${assignment.ekskulId}&academicYearId=${assignment.academicYearId}`,
+        },
+        inventoryItem,
+      ],
     );
-  }
+  });
 
   const duties = (user.additionalDuties || [])
     .map((item) => normalizeDuty(item))
@@ -1579,7 +1689,28 @@ function buildTeacherGroups(
     } else if (duty === 'PEMBINA_OSIS') {
       label = 'PEMBINA OSIS';
       addGenericWorkProgram();
-      items.push(...pickMenus(byKey, ['teacher-osis-management', 'teacher-osis-inventory', 'teacher-osis-election']));
+      const linkedOsisRoom = linkedAdvisorInventory.osisRooms[0] || null;
+      const osisInventoryBase = pickMenu(byKey, 'teacher-osis-inventory');
+      items.push(...pickMenus(byKey, ['teacher-osis-management']));
+      if (linkedOsisRoom) {
+        items.push({
+          key: `teacher-osis-inventory-room-${linkedOsisRoom.id}`,
+          label: 'Kelola Inventaris',
+          route: createWebModuleRoute(
+            `teacher-osis-inventory-room-${linkedOsisRoom.id}`,
+            `/teacher/assigned-inventory/${linkedOsisRoom.id}`,
+            'Kelola Inventaris',
+          ),
+          webPath: `/teacher/assigned-inventory/${linkedOsisRoom.id}`,
+        });
+      } else if (osisInventoryBase) {
+        items.push({
+          ...osisInventoryBase,
+          key: 'teacher-osis-inventory-linked',
+          label: 'Kelola Inventaris',
+        });
+      }
+      items.push(...pickMenus(byKey, ['teacher-osis-election']));
       if (options?.hasActiveOsisElection) {
         const voteMenu = pickMenu(byKey, 'teacher-osis-vote');
         if (voteMenu) items.push(voteMenu);
@@ -1624,6 +1755,8 @@ function buildTeacherGroups(
 function buildTutorGroups(menus: RoleMenuItem[], options?: RoleMenuBuildOptions): RoleMenuGroup[] {
   const byKey = mapMenuByKey(menus);
   const groups: RoleMenuGroup[] = [];
+  const linkedAdvisorInventory = resolveLinkedAdvisorInventory(options);
+  const extracurricularAssignments = getExtracurricularTutorAssignments(options?.tutorAssignments || []);
 
   const pushGroup = (key: string, label: string, items: RoleMenuItem[]) => {
     if (items.length === 0) return;
@@ -1632,13 +1765,43 @@ function buildTutorGroups(menus: RoleMenuItem[], options?: RoleMenuBuildOptions)
 
   pushGroup('dashboard', 'Dashboard', pickMenus(byKey, ['tutor-dashboard', 'tutor-email']));
 
-  if (options?.hasExtracurricularTutorAssignments) {
+  extracurricularAssignments.forEach((assignment) => {
+    const linkedRoom = linkedAdvisorInventory.roomByAssignmentId.get(assignment.id) || null;
+    const inventoryItem: RoleMenuItem = linkedRoom
+      ? {
+          key: `tutor-inventory-room-${linkedRoom.id}`,
+          label: 'Kelola Inventaris',
+          route: createWebModuleRoute(
+            `tutor-inventory-room-${linkedRoom.id}`,
+            `/tutor/assigned-inventory/${linkedRoom.id}`,
+            'Kelola Inventaris',
+          ),
+          webPath: `/tutor/assigned-inventory/${linkedRoom.id}`,
+        }
+      : {
+          key: `tutor-inventory-${assignment.id}`,
+          label: 'Kelola Inventaris',
+          route: '/tutor/inventory',
+        };
+
     pushGroup(
-      'extracurricular-advisor',
-      'PEMBINA EKSKUL',
-      pickMenus(byKey, ['tutor-members', 'tutor-work-program', 'tutor-inventory']),
+      `extracurricular-advisor-${assignment.id}`,
+      buildAdvisorGroupLabel(assignment?.ekskul?.name),
+      [
+        {
+          key: `tutor-members-${assignment.id}`,
+          label: 'Anggota & Nilai',
+          route: `/tutor/members?assignmentId=${assignment.id}&ekskulId=${assignment.ekskulId}&academicYearId=${assignment.academicYearId}`,
+        },
+        {
+          key: `tutor-work-program-${assignment.id}`,
+          label: 'Program Kerja',
+          route: `/tutor/work-program?duty=PEMBINA_EKSKUL&assignmentId=${assignment.id}&ekskulId=${assignment.ekskulId}&academicYearId=${assignment.academicYearId}`,
+        },
+        inventoryItem,
+      ],
     );
-  }
+  });
 
   pushGroup('settings', 'PENGATURAN', pickMenus(byKey, ['tutor-profile']));
 

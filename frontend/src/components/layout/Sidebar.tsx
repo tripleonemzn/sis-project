@@ -70,7 +70,6 @@ import {
   canAccessTutorWorkspace,
   getExtracurricularTutorAssignments,
   getActiveTutorAssignments,
-  hasTutorAssignments,
 } from '../../features/tutor/tutorAccess';
 
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
@@ -150,6 +149,83 @@ function isOsisLabel(raw: unknown): boolean {
     .trim()
     .toUpperCase()
     .includes('OSIS');
+}
+
+function normalizeComparableName(raw: unknown): string {
+  return String(raw || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
+}
+
+function getRoomMatchScore(expected: unknown, actual: unknown): number {
+  const expectedName = normalizeComparableName(expected);
+  const actualName = normalizeComparableName(actual);
+
+  if (!expectedName || !actualName) return 0;
+  if (expectedName === actualName) return 100;
+  if (actualName.includes(expectedName) || expectedName.includes(actualName)) return 70;
+
+  const expectedTokens = expectedName.split(' ').filter(Boolean);
+  const actualTokens = new Set(actualName.split(' ').filter(Boolean));
+  if (!expectedTokens.length || !actualTokens.size) return 0;
+
+  let score = 0;
+  expectedTokens.forEach((token) => {
+    if (actualTokens.has(token)) {
+      score += token.length >= 4 ? 20 : 10;
+    }
+  });
+
+  return score;
+}
+
+function buildAdvisorSidebarLabel(name: unknown): string {
+  const normalized = normalizeComparableName(name);
+  return normalized ? `PEMBINA ${normalized}` : 'PEMBINA EKSKUL';
+}
+
+function linkAssignedInventoryRooms(
+  assignedInventoryRooms: Room[] | undefined,
+  tutorAssignments: TutorAssignmentSummary[],
+): {
+  roomByAssignmentId: Map<number, Room>;
+  osisRooms: Room[];
+  detachedRooms: Room[];
+} {
+  const rooms: Room[] = Array.isArray(assignedInventoryRooms) ? [...assignedInventoryRooms] : [];
+  const roomByAssignmentId = new Map<number, Room>();
+  const usedRoomIds = new Set<number>();
+  const extracurricularAssignments = getExtracurricularTutorAssignments(tutorAssignments);
+
+  extracurricularAssignments.forEach((assignment) => {
+    let selectedRoom: Room | null = null;
+    let selectedScore = 0;
+
+    rooms.forEach((room) => {
+      if (usedRoomIds.has(room.id) || isOsisLabel(room.name)) return;
+      const score = getRoomMatchScore(assignment?.ekskul?.name, room.name);
+      if (score <= 0) return;
+      if (!selectedRoom || score > selectedScore) {
+        selectedRoom = room;
+        selectedScore = score;
+      }
+    });
+
+    if (selectedRoom) {
+      roomByAssignmentId.set(assignment.id, selectedRoom as Room);
+      usedRoomIds.add((selectedRoom as Room).id);
+    }
+  });
+
+  const osisRooms = rooms.filter((room) => !usedRoomIds.has(room.id) && isOsisLabel(room.name));
+  const detachedRooms = rooms.filter((room) => !usedRoomIds.has(room.id) && !isOsisLabel(room.name));
+
+  return {
+    roomByAssignmentId,
+    osisRooms,
+    detachedRooms,
+  };
 }
 
 function isMidtermComponent(code: string): boolean {
@@ -276,6 +352,7 @@ export const getMenuItems = (
   if (role === 'TEACHER') {
     const activeTutorAssignments = getActiveTutorAssignments(tutorAssignments);
     const extracurricularTutorAssignments = getExtracurricularTutorAssignments(activeTutorAssignments);
+    const linkedAssignedInventory = linkAssignedInventoryRooms(assignedInventoryRooms, activeTutorAssignments);
     const isWaliKelas = (user.teacherClasses?.length || 0) > 0;
     const hasTrainingClass = (user.trainingClassesTeaching?.length || 0) > 0;
     const duties = user.additionalDuties || [];
@@ -291,13 +368,13 @@ export const getMenuItems = (
       icon: getTeachingResourceProgramIcon(program.code),
     }));
     const teacherAssignedInventoryChildren: MenuItem[] =
-      assignedInventoryRooms?.map((room) => ({
+      linkedAssignedInventory.detachedRooms.map((room) => ({
         label: room.name,
         path: `/teacher/assigned-inventory/${room.id}`,
         icon: Database,
       })) || [];
     const assignedInventoryMenu: MenuItem | null =
-      (assignedInventoryRooms?.length || 0) > 0
+      teacherAssignedInventoryChildren.length > 0
         ? {
             label: 'INVENTARIS TUGAS',
             path: '/teacher/assigned-inventory',
@@ -305,6 +382,33 @@ export const getMenuItems = (
             children: teacherAssignedInventoryChildren,
           }
         : null;
+    const teacherOsisInventoryPath = linkedAssignedInventory.osisRooms[0]
+      ? `/teacher/assigned-inventory/${linkedAssignedInventory.osisRooms[0].id}`
+      : '/teacher/osis/inventory';
+    const extracurricularAdvisorMenus: MenuItem[] = extracurricularTutorAssignments.map((assignment) => {
+      const linkedRoom = linkedAssignedInventory.roomByAssignmentId.get(assignment.id) || null;
+      const workProgramParams = new URLSearchParams({
+        duty: 'PEMBINA_EKSKUL',
+        assignmentId: String(assignment.id),
+        ekskulId: String(assignment.ekskulId),
+        academicYearId: String(assignment.academicYearId),
+      });
+
+      return {
+        label: buildAdvisorSidebarLabel(assignment?.ekskul?.name),
+        path: buildTutorMembersHref(assignment),
+        icon: Trophy,
+        children: [
+          { label: 'Anggota & Nilai', path: buildTutorMembersHref(assignment), icon: Users },
+          { label: 'Program Kerja', path: `/tutor/work-programs?${workProgramParams.toString()}`, icon: ClipboardList },
+          {
+            label: 'Kelola Inventaris',
+            path: linkedRoom ? `/teacher/assigned-inventory/${linkedRoom.id}` : '/tutor/inventory',
+            icon: Database,
+          },
+        ],
+      };
+    });
 
     const items: MenuItem[] = [
       { label: 'Dashboard', path: '/teacher', icon: LayoutDashboard },
@@ -398,19 +502,8 @@ export const getMenuItems = (
       });
     }
 
-    if (hasTutorAssignments(activeTutorAssignments)) {
-      const firstTutorAssignment = extracurricularTutorAssignments[0] || null;
-      items.push({
-        label: 'PEMBINA EKSKUL',
-        path: '/tutor/dashboard',
-        icon: Trophy,
-        children: [
-          { label: 'Dashboard Pembina', path: '/tutor/dashboard', icon: LayoutDashboard },
-          { label: 'Anggota & Nilai', path: buildTutorMembersHref(firstTutorAssignment), icon: Users },
-          { label: 'Program Kerja', path: '/tutor/work-programs?duty=PEMBINA_EKSKUL', icon: ClipboardList },
-          { label: 'Inventaris Ekskul', path: '/tutor/inventory', icon: Database },
-        ],
-      });
+    if (extracurricularAdvisorMenus.length > 0) {
+      items.push(...extracurricularAdvisorMenus);
     }
 
     // Menu Khusus Tugas Tambahan (Dynamic per Duty)
@@ -546,7 +639,7 @@ export const getMenuItems = (
         children = [
           ...createGenericItems(duty),
           { label: 'Struktur & Nilai OSIS', path: '/teacher/osis/management', icon: Users },
-          { label: 'Inventaris OSIS', path: '/teacher/osis/inventory', icon: Database },
+          { label: 'Kelola Inventaris', path: teacherOsisInventoryPath, icon: Database },
           { label: 'Pemilihan OSIS', path: '/teacher/osis/election', icon: Trophy },
           ...(hasActiveOsisElection ? [{ label: 'Pemungutan Suara', path: '/teacher/osis/vote', icon: Vote }] : []),
         ];
@@ -672,33 +765,43 @@ export const getMenuItems = (
   if (role === 'EXTRACURRICULAR_TUTOR') {
     const activeTutorAssignments = getActiveTutorAssignments(tutorAssignments);
     const extracurricularTutorAssignments = getExtracurricularTutorAssignments(activeTutorAssignments);
-    const nonOsisAssignedInventoryRooms = (assignedInventoryRooms || []).filter(
-      (room) => !isOsisLabel(room.name),
-    );
+    const linkedAssignedInventory = linkAssignedInventoryRooms(assignedInventoryRooms, activeTutorAssignments);
+    const nonOsisAssignedInventoryRooms = linkedAssignedInventory.detachedRooms;
     const tutorAssignedInventoryChildren: MenuItem[] =
       nonOsisAssignedInventoryRooms.map((room) => ({
         label: room.name,
         path: `/tutor/assigned-inventory/${room.id}`,
         icon: Database,
       })) || [];
-    const firstTutorAssignment = extracurricularTutorAssignments[0] || null;
+    const tutorAdvisorMenus: MenuItem[] = extracurricularTutorAssignments.map((assignment) => {
+      const linkedRoom = linkedAssignedInventory.roomByAssignmentId.get(assignment.id) || null;
+      const workProgramParams = new URLSearchParams({
+        duty: 'PEMBINA_EKSKUL',
+        assignmentId: String(assignment.id),
+        ekskulId: String(assignment.ekskulId),
+        academicYearId: String(assignment.academicYearId),
+      });
+
+      return {
+        label: buildAdvisorSidebarLabel(assignment?.ekskul?.name),
+        path: buildTutorMembersHref(assignment),
+        icon: Trophy,
+        children: [
+          { label: 'Anggota & Nilai', path: buildTutorMembersHref(assignment), icon: Users },
+          { label: 'Program Kerja', path: `/tutor/work-programs?${workProgramParams.toString()}`, icon: ClipboardList },
+          {
+            label: 'Kelola Inventaris',
+            path: linkedRoom ? `/tutor/assigned-inventory/${linkedRoom.id}` : '/tutor/inventory',
+            icon: Database,
+          },
+        ],
+      };
+    });
 
     return [
       { label: 'Dashboard', path: '/tutor', icon: LayoutDashboard },
       { label: 'Email', path: '/email', icon: Mail },
-      ...(extracurricularTutorAssignments.length > 0
-        ? [{
-            label: 'PEMBINA EKSKUL',
-            path: '/tutor/dashboard',
-            icon: Trophy,
-            children: [
-              { label: 'Dashboard Pembina', path: '/tutor/dashboard', icon: LayoutDashboard },
-              { label: 'Anggota & Nilai', path: buildTutorMembersHref(firstTutorAssignment), icon: Users },
-              { label: 'Program Kerja', path: '/tutor/work-programs?duty=PEMBINA_EKSKUL', icon: ClipboardList },
-              { label: 'Inventaris Ekskul', path: '/tutor/inventory', icon: Database },
-            ],
-          } satisfies MenuItem]
-        : []),
+      ...tutorAdvisorMenus,
       ...(tutorAssignedInventoryChildren.length > 0
         ? [{
             label: 'INVENTARIS TUGAS',
