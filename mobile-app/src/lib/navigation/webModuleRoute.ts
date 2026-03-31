@@ -20,13 +20,13 @@ export function openWebModuleRoute(router: RouterLike, params: OpenWebModuleRout
   const webPath = isAbsoluteUrl ? rawPath : normalizeWebPath(rawPath);
   if (!webPath) return;
 
-  const moduleKey = String(params.moduleKey || '').trim() || 'web-fallback';
+  const viewerKey = String(params.moduleKey || '').trim() || 'internal-viewer';
   const label = String(params.label || '').trim();
 
   router.push({
-    pathname: '/web-module/[moduleKey]',
+    pathname: '/viewer/[viewerKey]',
     params: {
-      moduleKey,
+      viewerKey,
       ...(isAbsoluteUrl ? { url: webPath } : { path: webPath }),
       ...(label ? { label } : {}),
     },
