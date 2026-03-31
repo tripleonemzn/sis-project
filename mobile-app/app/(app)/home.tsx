@@ -28,7 +28,7 @@ import { scheduleApi } from '../../src/features/schedule/scheduleApi';
 import type { DayOfWeek, ScheduleEntry } from '../../src/features/schedule/types';
 import { internshipDutyApi } from '../../src/features/internshipDuty/internshipDutyApi';
 import { academicYearApi } from '../../src/features/academicYear/academicYearApi';
-import { adminApi } from '../../src/features/admin/adminApi';
+import { adminApi, type AdminScheduleTimeConfigPayload } from '../../src/features/admin/adminApi';
 import { principalApi } from '../../src/features/principal/principalApi';
 import { staffApi } from '../../src/features/staff/staffApi';
 import { staffAdministrationApi } from '../../src/features/staff/staffAdministrationApi';
@@ -128,13 +128,83 @@ function formatCompactCurrency(value: number) {
 const getTeachingHourValue = (entry: ScheduleEntry) =>
   typeof entry.teachingHour === 'number' ? entry.teachingHour : entry.period;
 
+const isNonTeachingSchedulePeriod = (
+  config: AdminScheduleTimeConfigPayload | null | undefined,
+  day: DayOfWeek,
+  period: number,
+) => {
+  const typeRaw = config?.periodTypes?.[day]?.[period];
+  if (typeRaw) {
+    const normalized = String(typeRaw).toUpperCase();
+    if (normalized === 'TEACHING') return false;
+    if (normalized === 'UPACARA' || normalized === 'ISTIRAHAT' || normalized === 'TADARUS' || normalized === 'OTHER') {
+      return true;
+    }
+  }
+
+  const noteRaw = config?.periodNotes?.[day]?.[period] ?? config?.periodNotes?.DEFAULT?.[period];
+  if (!noteRaw) return false;
+  const normalizedNote = String(noteRaw).toUpperCase();
+  return normalizedNote.includes('UPACARA') || normalizedNote.includes('ISTIRAHAT') || normalizedNote.includes('TADARUS');
+};
+
+const getEffectiveTeachingHourValue = (
+  entry: ScheduleEntry,
+  config: AdminScheduleTimeConfigPayload | null | undefined,
+) => {
+  if (typeof entry.teachingHour === 'number') return entry.teachingHour;
+  if (isNonTeachingSchedulePeriod(config, entry.dayOfWeek, entry.period)) return null;
+
+  let teachingCounter = 0;
+  for (let period = 1; period <= entry.period; period += 1) {
+    if (!isNonTeachingSchedulePeriod(config, entry.dayOfWeek, period)) {
+      teachingCounter += 1;
+    }
+  }
+
+  return teachingCounter > 0 ? teachingCounter : null;
+};
+
+const getPeriodTimeValue = (
+  config: AdminScheduleTimeConfigPayload | null | undefined,
+  day: DayOfWeek,
+  period: number,
+) => config?.periodTimes?.[day]?.[period] ?? config?.periodTimes?.DEFAULT?.[period] ?? null;
+
+const extractPeriodTimeBoundary = (rawValue?: string | null, side: 'start' | 'end' = 'start') => {
+  if (!rawValue) return null;
+  const parts = String(rawValue)
+    .split('-')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (!parts.length) return rawValue.trim() || null;
+  return side === 'start' ? parts[0] : parts[parts.length - 1];
+};
+
+const buildScheduleTimeRange = (
+  config: AdminScheduleTimeConfigPayload | null | undefined,
+  entries: ScheduleEntry[],
+) => {
+  const first = entries[0];
+  const last = entries[entries.length - 1];
+  if (!first || !last) return null;
+
+  const start = extractPeriodTimeBoundary(getPeriodTimeValue(config, first.dayOfWeek, first.period), 'start');
+  const end = extractPeriodTimeBoundary(getPeriodTimeValue(config, last.dayOfWeek, last.period), 'end');
+
+  if (start && end) return `${start} - ${end}`;
+  return start || end || null;
+};
+
 type TeacherScheduleGroup = {
   key: string;
   periodStart: number;
   periodEnd: number;
   subjectName: string;
+  subjectCode: string;
   className: string;
   roomLabel: string;
+  timeRange: string | null;
   entries: ScheduleEntry[];
 };
 
@@ -746,6 +816,12 @@ export default function HomeScreen() {
         teacherId: profile.id,
       }),
   });
+  const teacherScheduleTimeConfigQuery = useQuery({
+    queryKey: ['mobile-home-teacher-schedule-time-config', teacherAssignmentsQuery.data?.activeYear?.id],
+    enabled: profile.role === 'TEACHER' && !!teacherAssignmentsQuery.data?.activeYear?.id,
+    staleTime: 1000 * 60 * 5,
+    queryFn: () => adminApi.getScheduleTimeConfig(teacherAssignmentsQuery.data!.activeYear.id),
+  });
   const teacherDefenseQuery = useQuery({
     queryKey: ['mobile-home-teacher-defense', profile.id],
     enabled: profile.role === 'TEACHER',
@@ -1091,53 +1167,45 @@ export default function HomeScreen() {
     return result;
   }, [allMenuItems, hasActiveOsisElection, hasExtracurricularAdvisorAssignments, profile]);
 
+  const teacherScheduleConfig = teacherScheduleTimeConfigQuery.data?.config ?? null;
+  const teacherTeachingEntries = useMemo(
+    () =>
+      (teacherScheduleQuery.data || []).flatMap((entry) => {
+        const teachingHour = getEffectiveTeachingHourValue(entry, teacherScheduleConfig);
+        return typeof teachingHour === 'number' ? [{ entry, teachingHour }] : [];
+      }),
+    [teacherScheduleConfig, teacherScheduleQuery.data],
+  );
   const teacherStats = useMemo(() => {
-    const assignments = teacherAssignmentsQuery.data?.assignments || [];
-    const uniqueClasses = new Set(assignments.map((item) => item.class.id)).size;
-    const uniqueSubjects = new Set(assignments.map((item) => item.subject.id)).size;
-
-    const now = new Date();
-    const jsDay = now.getDay();
-    const currentDay: DayOfWeek | null = jsDay >= 1 && jsDay <= 6 ? JS_DAY_TO_SCHEDULE_DAY[jsDay - 1] : null;
-    const scheduleEntries = teacherScheduleQuery.data || [];
-    const todaySessions = currentDay
-      ? scheduleEntries.filter((entry) => entry.dayOfWeek === currentDay && entry.teachingHour !== null).length
-      : 0;
+    const uniqueClasses = new Set(teacherTeachingEntries.map(({ entry }) => entry.teacherAssignment.class.id)).size;
+    const uniqueSubjects = new Set(teacherTeachingEntries.map(({ entry }) => entry.teacherAssignment.subject.id)).size;
 
     return {
-      assignments: assignments.length,
       uniqueClasses,
       uniqueSubjects,
-      todaySessions,
+      totalHours: teacherTeachingEntries.length,
     };
-  }, [teacherAssignmentsQuery.data?.assignments, teacherScheduleQuery.data]);
+  }, [teacherTeachingEntries]);
 
   const teacherIconStats: DashboardIconStatItem[] = useMemo(
     () => [
       {
-        label: 'Assignment',
-        value: String(teacherStats.assignments),
+        label: 'Mata Pelajaran',
+        value: String(teacherStats.uniqueSubjects),
         color: BRAND_COLORS.navy,
-        icon: 'clipboard',
+        icon: 'book-open',
         menuKey: 'teacher-classes',
       },
       {
-        label: 'Kelas',
+        label: 'Kelas Ajar',
         value: String(teacherStats.uniqueClasses),
-        color: BRAND_COLORS.blue,
+        color: BRAND_COLORS.teal,
         icon: 'users',
         menuKey: 'teacher-classes',
       },
       {
-        label: 'Mapel',
-        value: String(teacherStats.uniqueSubjects),
-        color: BRAND_COLORS.teal,
-        icon: 'book-open',
-        menuKey: 'grade-input',
-      },
-      {
-        label: 'Jadwal Hari Ini',
-        value: String(teacherStats.todaySessions),
+        label: 'Total Jam',
+        value: String(teacherStats.totalHours),
         color: BRAND_COLORS.gold,
         icon: 'calendar',
         menuKey: 'teaching-schedule',
@@ -1592,30 +1660,30 @@ export default function HomeScreen() {
     const currentDay: DayOfWeek | null = jsDay >= 1 && jsDay <= 6 ? JS_DAY_TO_SCHEDULE_DAY[jsDay - 1] : null;
     if (!currentDay) return [];
 
-    return [...(teacherScheduleQuery.data || [])]
-      .filter((entry) => entry.dayOfWeek === currentDay && entry.teachingHour !== null)
-      .sort((a, b) => getTeachingHourValue(a) - getTeachingHourValue(b));
-  }, [profile.role, teacherScheduleQuery.data]);
+    return [...teacherTeachingEntries]
+      .filter(({ entry }) => entry.dayOfWeek === currentDay)
+      .sort((a, b) => a.teachingHour - b.teachingHour);
+  }, [profile.role, teacherTeachingEntries]);
   const todayTeacherScheduleGroups = useMemo(() => {
     if (!todayTeacherSchedules.length) return [] as TeacherScheduleGroup[];
 
     const groups: TeacherScheduleGroup[] = [];
-    let currentGroupEntries: ScheduleEntry[] = [todayTeacherSchedules[0]];
-    let currentStart = getTeachingHourValue(todayTeacherSchedules[0]);
-    let currentEnd = getTeachingHourValue(todayTeacherSchedules[0]);
+    let currentGroupEntries: ScheduleEntry[] = [todayTeacherSchedules[0].entry];
+    let currentStart = todayTeacherSchedules[0].teachingHour;
+    let currentEnd = todayTeacherSchedules[0].teachingHour;
 
     for (let index = 1; index < todayTeacherSchedules.length; index += 1) {
       const entry = todayTeacherSchedules[index];
       const prev = currentGroupEntries[currentGroupEntries.length - 1];
-      const entryTeachingHour = getTeachingHourValue(entry);
+      const entryTeachingHour = entry.teachingHour;
 
-      const isSameSubject = entry.teacherAssignment.subject.id === prev.teacherAssignment.subject.id;
-      const isSameClass = entry.teacherAssignment.class.id === prev.teacherAssignment.class.id;
-      const isSameRoom = (entry.room || '') === (prev.room || '');
+      const isSameSubject = entry.entry.teacherAssignment.subject.id === prev.teacherAssignment.subject.id;
+      const isSameClass = entry.entry.teacherAssignment.class.id === prev.teacherAssignment.class.id;
+      const isSameRoom = (entry.entry.room || '') === (prev.room || '');
       const isConsecutivePeriod = entryTeachingHour === currentEnd + 1;
 
       if (isSameSubject && isSameClass && isSameRoom && isConsecutivePeriod) {
-        currentGroupEntries.push(entry);
+        currentGroupEntries.push(entry.entry);
         currentEnd = entryTeachingHour;
         continue;
       }
@@ -1626,12 +1694,14 @@ export default function HomeScreen() {
         periodStart: currentStart,
         periodEnd: currentEnd,
         subjectName: first.teacherAssignment.subject.name,
+        subjectCode: first.teacherAssignment.subject.code,
         className: first.teacherAssignment.class.name,
         roomLabel: first.room || '-',
+        timeRange: buildScheduleTimeRange(teacherScheduleConfig, currentGroupEntries),
         entries: currentGroupEntries,
       });
 
-      currentGroupEntries = [entry];
+      currentGroupEntries = [entry.entry];
       currentStart = entryTeachingHour;
       currentEnd = entryTeachingHour;
     }
@@ -1642,13 +1712,15 @@ export default function HomeScreen() {
       periodStart: currentStart,
       periodEnd: currentEnd,
       subjectName: first.teacherAssignment.subject.name,
+      subjectCode: first.teacherAssignment.subject.code,
       className: first.teacherAssignment.class.name,
       roomLabel: first.room || '-',
+      timeRange: buildScheduleTimeRange(teacherScheduleConfig, currentGroupEntries),
       entries: currentGroupEntries,
     });
 
     return groups;
-  }, [todayTeacherSchedules]);
+  }, [teacherScheduleConfig, todayTeacherSchedules]);
   const query = menuSearch.trim().toLowerCase();
   const filteredGroups = useMemo(() => {
     if (!query) return menuGroups;
@@ -1747,6 +1819,7 @@ export default function HomeScreen() {
       if (profile.role === 'TEACHER') {
         refetches.push(teacherAssignmentsQuery.refetch());
         refetches.push(teacherScheduleQuery.refetch());
+        refetches.push(teacherScheduleTimeConfigQuery.refetch());
         refetches.push(teacherDefenseQuery.refetch());
         refetches.push(teachingResourceProgramsQuery.refetch());
       }
@@ -1866,7 +1939,10 @@ export default function HomeScreen() {
         const linkedMenu = item.menuKey ? menuItemByKey.get(item.menuKey) : undefined;
         const isOpeningThisMenu = linkedMenu ? openingMenuKey === linkedMenu.key : false;
         return (
-          <View key={item.label} style={{ width: '25%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <View
+            key={item.label}
+            style={{ width: items.length <= 3 ? `${100 / items.length}%` : '25%', paddingHorizontal: 4, marginBottom: 8 }}
+          >
             <Pressable
               disabled={!linkedMenu || isMenuTransitioning}
               onPress={() => {
@@ -2403,9 +2479,10 @@ export default function HomeScreen() {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
-              Jadwal Mengajar Hari Ini
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Jadwal Hari Ini</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11 }}>{todayLabel}</Text>
+            </View>
             {teacherScheduleQuery.isLoading ? (
               <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Memuat jadwal mengajar hari ini...</Text>
             ) : null}
@@ -2425,10 +2502,10 @@ export default function HomeScreen() {
                         style={{
                           borderRadius: 10,
                           borderWidth: 1,
-                          borderColor: '#d6e2f7',
-                          backgroundColor: '#f8fbff',
-                          paddingHorizontal: 10,
-                          paddingVertical: 9,
+                          borderColor: '#dbe5f3',
+                          backgroundColor: '#fbfdff',
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
                           marginBottom: 8,
                           flexDirection: 'row',
                           alignItems: 'center',
@@ -2436,31 +2513,53 @@ export default function HomeScreen() {
                       >
                         <View
                           style={{
-                            minWidth: 90,
-                            paddingHorizontal: 8,
-                            height: 32,
-                            borderRadius: 8,
-                            backgroundColor: BRAND_COLORS.blue,
+                            width: 64,
+                            height: 64,
+                            borderRadius: 12,
+                            backgroundColor: '#eff6ff',
                             alignItems: 'center',
                             justifyContent: 'center',
                             marginRight: 10,
                           }}
                         >
-                          <Text style={{ color: BRAND_COLORS.white, fontWeight: '700', fontSize: 12 }}>
+                          <Text style={{ color: '#2563eb', fontWeight: '600', fontSize: 10 }}>Jam ke</Text>
+                          <Text style={{ color: '#1d4ed8', fontWeight: '800', fontSize: 18, marginTop: 2 }}>
                             {group.periodStart === group.periodEnd
-                              ? `Jam ke ${group.periodStart}`
-                              : `Jam ke ${group.periodStart}-${group.periodEnd}`}
+                              ? `${group.periodStart}`
+                              : `${group.periodStart}-${group.periodEnd}`}
                           </Text>
+                          {group.entries.length > 1 ? (
+                            <Text style={{ color: '#3b82f6', fontWeight: '700', fontSize: 10, marginTop: 1 }}>
+                              {group.entries.length} JP
+                            </Text>
+                          ) : null}
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
-                            {group.subjectName}
+                            {group.subjectCode ? `${group.subjectCode} • ${group.subjectName}` : group.subjectName}
                           </Text>
                           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
-                            {group.className}
-                            {group.roomLabel !== '-' ? ` • ${group.roomLabel}` : ''}
+                            Kelas {group.className}
+                            {group.roomLabel !== '-' ? ` • Ruang ${group.roomLabel}` : ''}
                           </Text>
                         </View>
+                        {group.timeRange ? (
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 4,
+                              borderRadius: 999,
+                              backgroundColor: '#dbeafe',
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                              marginLeft: 8,
+                            }}
+                          >
+                            <Feather name="clock" size={12} color="#1d4ed8" />
+                            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 11 }}>{group.timeRange}</Text>
+                          </View>
+                        ) : null}
                       </View>
                     ))}
                   </View>
