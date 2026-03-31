@@ -1,10 +1,11 @@
+import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { isAxiosError } from 'axios';
 import { useForm } from 'react-hook-form';
 import { useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Eye, EyeOff, Lock, User } from 'lucide-react';
+import { Apple, Eye, EyeOff, Lock, User } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { authService } from '../../services/auth.service';
@@ -21,6 +22,31 @@ type SisWindowWithSlideshow = Window & {
     slideIntervalMs?: number;
   };
 };
+
+type MobileDownloadItem = {
+  key: 'android' | 'ios';
+  label: string;
+  href: string;
+  disabled: boolean;
+  icon: ReactNode;
+};
+
+const AndroidIcon = ({ className = 'h-5 w-5' }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+    <path
+      d="M7.4 9.25A1.4 1.4 0 0 0 6 10.65v5.7a1.4 1.4 0 0 0 2.8 0v-5.7a1.4 1.4 0 0 0-1.4-1.4Zm9.2 0a1.4 1.4 0 0 0-1.4 1.4v5.7a1.4 1.4 0 1 0 2.8 0v-5.7a1.4 1.4 0 0 0-1.4-1.4ZM9.08 9.25h5.84c1.08 0 1.95.87 1.95 1.95v5.44A1.86 1.86 0 0 1 15 18.5v1.7a1.25 1.25 0 0 1-2.5 0v-1.56h-1v1.56a1.25 1.25 0 0 1-2.5 0v-1.7a1.86 1.86 0 0 1-1.87-1.86V11.2c0-1.08.87-1.95 1.95-1.95Z"
+      fill="currentColor"
+    />
+    <path
+      d="M9.44 6.63 8.3 4.72m6.26 1.91 1.14-1.91M8.6 7.88a5 5 0 0 1 6.8 0"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+    />
+    <circle cx="10.2" cy="7.65" r=".5" fill="currentColor" />
+    <circle cx="13.8" cy="7.65" r=".5" fill="currentColor" />
+  </svg>
+);
 
 const formatPhotoDescription = (raw?: string) => {
   if (!raw) return '';
@@ -109,6 +135,27 @@ export const LoginPage = () => {
     ],
     [],
   );
+  const mobileDownloadItems = useMemo<MobileDownloadItem[]>(
+    () => [
+      {
+        key: 'android',
+        label: 'Download Android App',
+        href:
+          import.meta.env.VITE_ANDROID_APP_DOWNLOAD_URL?.trim() ||
+          'https://expo.dev/artifacts/eas/kfjvxLowu5X6ejdFmN8Ypd.apk',
+        disabled: false,
+        icon: <AndroidIcon className="h-[1.15rem] w-[1.15rem]" />,
+      },
+      {
+        key: 'ios',
+        label: 'Download iOS App',
+        href: import.meta.env.VITE_IOS_APP_DOWNLOAD_URL?.trim() || '',
+        disabled: !import.meta.env.VITE_IOS_APP_DOWNLOAD_URL?.trim(),
+        icon: <Apple className="h-[1.15rem] w-[1.15rem]" strokeWidth={2.1} />,
+      },
+    ],
+    [],
+  );
 
   // Fallback visual saat semua sumber gambar gagal
   const slides = useMemo(
@@ -148,11 +195,6 @@ export const LoginPage = () => {
     return () => clearInterval(intervalId);
   }, [slideCount]);
 
-  useEffect(() => {
-    if (activeDisplaySources.length === 0) return;
-    setActiveIndex((prev) => (prev < activeDisplaySources.length ? prev : 0));
-  }, [activeDisplaySources.length]);
-  
   // Preload images agar tidak delay saat transisi
   useEffect(() => {
     if (activeDisplaySources.length > 0) {
@@ -280,8 +322,8 @@ export const LoginPage = () => {
       <div className="absolute inset-0 bg-[#102451]/20" />
 
       <div className="relative flex min-h-screen flex-col lg:h-screen">
-        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 py-4 sm:px-6 lg:px-8 lg:py-4">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(360px,0.98fr)_minmax(0,1.14fr)] lg:items-stretch xl:gap-6">
+        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 py-3 sm:px-6 lg:px-8 lg:py-3">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(360px,0.98fr)_minmax(0,1.14fr)] lg:items-stretch xl:gap-5">
             <div className="order-2 lg:order-1">
               <div className="auth-panel-soft auth-reveal-up flex h-full min-h-[320px] flex-col justify-between rounded-[28px] p-4 sm:p-6 lg:min-h-[560px] lg:p-6 xl:min-h-[620px] xl:p-7">
                 <div>
@@ -516,7 +558,7 @@ export const LoginPage = () => {
             </div>
           </div>
 
-          <div className="mt-4 hidden w-full xl:block">
+          <div className="mt-3 hidden w-full xl:block">
             <p className="auth-font-display mx-auto max-w-4xl text-center text-sm font-medium italic leading-relaxed text-white/90 drop-shadow-md xl:text-base">
               “Menjadi SMK yang Unggul dalam Membentuk Lulusan Berakhlak Mulia, 
               Kreatif, Kompeten, dan Berkarakter.”
@@ -524,10 +566,45 @@ export const LoginPage = () => {
           </div>
         </div>
 
-        <div className="mx-auto w-full max-w-7xl px-4 pb-2 sm:px-6 lg:px-8 lg:pb-3">
-          <p className="text-center text-sm font-medium text-white drop-shadow-md">
-            © 2025 Sistem Integrasi Sekolah <span className="mx-2">|</span> SMKS Karya Guna Bhakti 2
-          </p>
+        <div className="mx-auto w-full max-w-7xl px-4 pb-2 sm:px-6 lg:px-8 lg:pb-2">
+          <div className="flex flex-col items-center gap-3">
+            <div className="flex items-center justify-center gap-3 rounded-full border border-white/16 bg-white/10 px-4 py-2 backdrop-blur-md">
+              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70 sm:inline">
+                Download Mobile Apps
+              </span>
+              <div className="flex items-center gap-2">
+                {mobileDownloadItems.map((item) =>
+                  item.disabled ? (
+                    <span
+                      key={item.key}
+                      title={`${item.label} belum tersedia`}
+                      aria-label={`${item.label} belum tersedia`}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-white/8 text-white/45"
+                    >
+                      {item.icon}
+                    </span>
+                  ) : (
+                    <a
+                      key={item.key}
+                      href={item.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={item.label}
+                      aria-label={item.label}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/16 bg-white/12 text-white shadow-[0_10px_24px_rgba(5,15,40,0.18)] transition hover:-translate-y-0.5 hover:bg-white/18 hover:text-white"
+                    >
+                      {item.icon}
+                    </a>
+                  ),
+                )}
+              </div>
+            </div>
+
+            <p className="text-center text-xs font-medium leading-6 text-white/92 drop-shadow-md sm:text-sm">
+              <span className="block">© 2025 JHA Teknologi Solusi. All rights reserved.</span>
+              <span className="block">Licensed to SMKS Karya Guna Bhakti 2 for use only.</span>
+            </p>
+          </div>
         </div>
       </div>
     </div>
