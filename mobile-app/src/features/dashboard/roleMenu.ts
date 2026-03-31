@@ -145,13 +145,9 @@ function materializeMenuTargets(items: RoleMenuItem[]): RoleMenuItem[] {
   });
 }
 
-function isWebModuleRoute(route?: string | null) {
-  return String(route || '').trim().startsWith('/web-module/');
-}
-
 function hasNativeRoute(item?: RoleMenuItem | null): item is RoleMenuItem {
   const route = String(item?.route || '').trim();
-  return route.length > 0 && route.startsWith('/') && !isWebModuleRoute(route);
+  return route.length > 0 && route.startsWith('/');
 }
 
 function keepNativeMenuItems(items: RoleMenuItem[]) {
