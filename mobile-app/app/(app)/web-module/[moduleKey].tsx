@@ -1,5 +1,5 @@
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, UIManager, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
@@ -10,6 +10,7 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { ENV } from '../../../src/config/env';
+import { tokenStorage } from '../../../src/lib/storage/tokenStorage';
 
 function resolveWebUrl(path: string) {
   const webBaseUrl = ENV.API_BASE_URL.replace(/\/api\/?$/, '');
@@ -41,6 +42,7 @@ export default function GenericWebModuleScreen() {
   const hasNativeWebView = useMemo(() => Boolean(UIManager.getViewManagerConfig?.('RNCWebView')), []);
   const [webviewKey, setWebviewKey] = useState(0);
   const [panelError, setPanelError] = useState<string | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null | undefined>(undefined);
 
   const moduleKey = typeof params.moduleKey === 'string' ? params.moduleKey : '';
   const pathOverride = typeof params.path === 'string' ? params.path.trim() : '';
@@ -54,6 +56,40 @@ export default function GenericWebModuleScreen() {
     [effectiveWebPath, urlOverride],
   );
   const embeddedUrl = useMemo(() => (moduleUrl ? buildEmbeddedUrl(moduleUrl) : null), [moduleUrl]);
+  const injectedBeforeLoad = useMemo(() => {
+    const serializedToken = JSON.stringify(accessToken || '');
+    return `
+      (function() {
+        try {
+          var token = ${serializedToken};
+          if (token) {
+            window.localStorage.setItem('token', token);
+            window.sessionStorage.setItem('mobileEmbeddedTokenReady', '1');
+          }
+        } catch (error) {}
+        true;
+      })();
+    `;
+  }, [accessToken]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    tokenStorage
+      .getAccessToken()
+      .then((token) => {
+        if (cancelled) return;
+        setAccessToken(token || '');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAccessToken('');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (isLoading) return <AppLoadingScreen message="Memuat modul..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -108,6 +144,10 @@ export default function GenericWebModuleScreen() {
     );
   }
 
+  if (accessToken === undefined) {
+    return <AppLoadingScreen message="Menyiapkan akses modul..." />;
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: '#f8fafc', ...pagePadding }}>
       <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
@@ -142,12 +182,16 @@ export default function GenericWebModuleScreen() {
         ) : embeddedUrl ? (
           <WebView
             key={`mobile-web-module-${moduleKey || 'generic'}-${webviewKey}`}
-            source={{ uri: embeddedUrl }}
+            source={{
+              uri: embeddedUrl,
+              headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+            }}
             startInLoadingState
             javaScriptEnabled
             domStorageEnabled
             sharedCookiesEnabled
             thirdPartyCookiesEnabled
+            injectedJavaScriptBeforeContentLoaded={injectedBeforeLoad}
             renderLoading={() => (
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                 <ActivityIndicator size="small" color={BRAND_COLORS.blue} />

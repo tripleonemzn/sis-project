@@ -756,25 +756,40 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     {
       key: 'principal-dashboard',
       label: 'Dashboard',
-      route: '/principal/overview',
+      route: '/principal',
     },
     { key: 'principal-email', label: 'Email', route: '/email' },
     {
+      key: 'principal-monitoring',
+      label: 'Monitoring',
+      route: '/principal/monitoring/operations',
+    },
+    {
       key: 'principal-reports',
       label: 'Rapor & Ranking',
-      route: '/principal/overview',
+      route: '/principal/academic/reports',
     },
     {
       key: 'principal-attendance',
       label: 'Rekap Absensi',
-      route: '/principal/attendance',
+      route: '/principal/academic/attendance',
+    },
+    {
+      key: 'principal-exam-reports',
+      label: 'Berita Acara Ujian',
+      route: '/principal/exams/reports',
     },
     {
       key: 'principal-finance-requests',
       label: 'Pengajuan Anggaran',
-      route: '/principal/approvals',
+      route: '/principal/finance/requests',
     },
     { key: 'principal-students', label: 'Data Siswa', route: '/principal/students' },
+    {
+      key: 'principal-osis-monitoring',
+      label: 'Pemilihan OSIS',
+      route: '/principal/monitoring/osis',
+    },
     { key: 'principal-teachers', label: 'Data Guru', route: '/principal/teachers' },
   ],
   STAFF: [
@@ -1484,6 +1499,61 @@ function buildStaffGroups(user: AuthUser, menus: RoleMenuItem[]) {
   return groups;
 }
 
+function buildPrincipalRoleMenu(options?: RoleMenuBuildOptions) {
+  const items = ROLE_MENUS.PRINCIPAL.map((item) => ({ ...item }));
+  const rooms: ManagedInventoryRoom[] = Array.isArray(options?.managedInventoryRooms)
+    ? [...(options?.managedInventoryRooms || [])]
+    : [];
+
+  if (rooms.length > 0) {
+    items.push({
+      key: 'principal-assigned-inventory-hub',
+      label: 'Inventaris Tugas',
+      route: '/principal/assigned-inventory',
+    });
+
+    rooms.forEach((room) => {
+      items.push({
+        key: `principal-assigned-inventory-room-${room.id}`,
+        label: room.name,
+        route: `/principal/assigned-inventory/${room.id}`,
+      });
+    });
+  }
+
+  return items;
+}
+
+function buildPrincipalGroups(menus: RoleMenuItem[]) {
+  const byKey = mapMenuByKey(menus);
+  const groups: RoleMenuGroup[] = [];
+  const pushGroup = (key: string, label: string, keys: string[]) => {
+    const items = pickMenus(byKey, keys);
+    if (items.length > 0) {
+      groups.push({ key, label, items });
+    }
+  };
+
+  pushGroup('dashboard', 'Dashboard', ['principal-dashboard', 'principal-email']);
+  pushGroup('monitoring', 'MONITORING', ['principal-monitoring']);
+  pushGroup('academic', 'AKADEMIK', ['principal-reports', 'principal-attendance']);
+  pushGroup('exams', 'UJIAN', ['principal-exam-reports']);
+  pushGroup('finance', 'KEUANGAN', ['principal-finance-requests']);
+  pushGroup('students', 'KESISWAAN', ['principal-students', 'principal-osis-monitoring']);
+  pushGroup('teachers', 'SDM GURU', ['principal-teachers']);
+
+  const inventoryItems = menus.filter((item) => item.key.startsWith('principal-assigned-inventory'));
+  if (inventoryItems.length > 0) {
+    groups.push({
+      key: 'inventory',
+      label: 'INVENTARIS TUGAS',
+      items: inventoryItems,
+    });
+  }
+
+  return groups;
+}
+
 function pickMenu(byKey: Map<string, RoleMenuItem>, key: string) {
   return cloneMenu(byKey.get(key));
 }
@@ -1901,7 +1971,12 @@ export function getRoleMenu(user?: AuthUser | null, options?: RoleMenuBuildOptio
   if (!user) return keepNativeMenuItems(materializeMenuTargets(BASE_MENU));
   if (user.isDemo) return getDemoRoleMenu();
 
-  const roleItems = user.role === 'STAFF' ? buildStaffRoleMenu(user) : ROLE_MENUS[user.role] || BASE_MENU;
+  const roleItems =
+    user.role === 'STAFF'
+      ? buildStaffRoleMenu(user)
+      : user.role === 'PRINCIPAL'
+        ? buildPrincipalRoleMenu(options)
+        : ROLE_MENUS[user.role] || BASE_MENU;
   const filteredItems = roleItems.filter((item) => shouldShowMenuItem(user, item, options));
   return keepNativeMenuItems(materializeMenuTargets(dedupeMenuByKey(filteredItems)));
 }
@@ -1936,6 +2011,10 @@ export function getGroupedRoleMenu(user?: AuthUser | null, options?: RoleMenuBui
 
   if (user.role === 'STAFF') {
     return keepNativeMenuGroups(buildStaffGroups(user, menus));
+  }
+
+  if (user.role === 'PRINCIPAL') {
+    return keepNativeMenuGroups(buildPrincipalGroups(menus));
   }
 
   const grouped = buildGroupedMenu(user.role, menus);
