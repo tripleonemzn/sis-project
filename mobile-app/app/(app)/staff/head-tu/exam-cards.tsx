@@ -1,16 +1,5 @@
-import { Redirect } from 'expo-router';
+import { StaffHeadTuExamCardsScreen } from '../../../../src/features/staff/StaffHeadTuExamCardsScreen';
 
 export default function StaffHeadTuExamCardsRoute() {
-  return (
-    <Redirect
-      href={{
-        pathname: '/web-module/[moduleKey]',
-        params: {
-          moduleKey: 'staff-head-tu-exam-cards',
-          path: '/staff/head-tu/exam-cards',
-          label: 'Kartu Ujian',
-        },
-      }}
-    />
-  );
+  return <StaffHeadTuExamCardsScreen />;
 }

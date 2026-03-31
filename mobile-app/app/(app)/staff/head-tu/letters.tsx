@@ -1,16 +1,5 @@
-import { Redirect } from 'expo-router';
+import { StaffHeadTuLettersScreen } from '../../../../src/features/staff/StaffHeadTuLettersScreen';
 
 export default function StaffHeadTuLettersRoute() {
-  return (
-    <Redirect
-      href={{
-        pathname: '/web-module/[moduleKey]',
-        params: {
-          moduleKey: 'staff-head-tu-letters',
-          path: '/staff/head-tu/letters',
-          label: 'Surat-Menyurat',
-        },
-      }}
-    />
-  );
+  return <StaffHeadTuLettersScreen />;
 }

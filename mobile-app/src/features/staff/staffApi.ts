@@ -53,4 +53,12 @@ export const staffApi = {
     });
     return response.data.data || [];
   },
+  async listPrincipals() {
+    const response = await apiClient.get<ApiListResponse<StaffPersonnel>>('/users', {
+      params: {
+        role: 'PRINCIPAL',
+      },
+    });
+    return response.data.data || [];
+  },
 };

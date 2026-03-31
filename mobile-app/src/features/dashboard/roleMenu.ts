@@ -1320,13 +1320,11 @@ const STAFF_EXTRA_MENU_ITEMS: Record<string, RoleMenuItem> = {
     key: 'staff-head-tu-letters',
     label: 'Surat-Menyurat',
     route: '/staff/head-tu/letters',
-    webPath: '/staff/head-tu/letters',
   },
   'staff-head-tu-exam-cards': {
     key: 'staff-head-tu-exam-cards',
     label: 'Kartu Ujian',
     route: '/staff/head-tu/exam-cards',
-    webPath: '/staff/head-tu/exam-cards',
   },
 };
 
