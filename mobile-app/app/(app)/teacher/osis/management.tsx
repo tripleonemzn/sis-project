@@ -1,16 +1,5 @@
-import { Redirect } from 'expo-router';
+import { TeacherOsisManagementModuleScreen } from '../../../../src/features/osis/TeacherOsisManagementModuleScreen';
 
-export default function TeacherOsisManagementRoute() {
-  return (
-    <Redirect
-      href={{
-        pathname: '/web-module/[moduleKey]',
-        params: {
-          moduleKey: 'teacher-osis-management',
-          path: '/teacher/osis/management',
-          label: 'Struktur & Nilai OSIS',
-        },
-      }}
-    />
-  );
+export default function TeacherOsisManagementScreen() {
+  return <TeacherOsisManagementModuleScreen />;
 }

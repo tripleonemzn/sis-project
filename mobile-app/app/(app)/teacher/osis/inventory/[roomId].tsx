@@ -11,11 +11,12 @@ export default function TeacherOsisInventoryRoomRoute() {
   return (
     <Redirect
       href={{
-        pathname: '/web-module/[moduleKey]',
+        pathname: '/teacher/sarpras-inventory',
         params: {
-          moduleKey: `teacher-osis-inventory-room-${roomId}`,
-          path: `/teacher/assigned-inventory/${roomId}`,
-          label: 'Kelola Inventaris',
+          managedOnly: '1',
+          roomId,
+          title: 'Kelola Inventaris OSIS',
+          subtitle: 'Kelola inventaris ruangan OSIS yang ditugaskan kepada Anda.',
         },
       }}
     />

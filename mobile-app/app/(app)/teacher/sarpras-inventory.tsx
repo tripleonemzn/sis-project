@@ -630,7 +630,7 @@ export default function TeacherSarprasInventoryScreen() {
         : [],
     [managedInventoryRooms],
   );
-  const isPrincipalManagedContext = managedOnly && user?.role === 'PRINCIPAL';
+  const isManagedRoomContext = managedOnly && (user?.role === 'PRINCIPAL' || user?.role === 'TEACHER');
 
   useEffect(() => {
     if (inventoryScope !== 'LIBRARY' && section === 'PEMINJAMAN') {
@@ -649,14 +649,14 @@ export default function TeacherSarprasInventoryScreen() {
 
   const isAllowed =
     (user?.role === 'TEACHER' && hasSarprasDuty(user?.additionalDuties, inventoryScope))
-    || (isPrincipalManagedContext && managedInventoryRoomIds.length > 0);
+    || (isManagedRoomContext && managedInventoryRoomIds.length > 0);
   const canManageStructure =
-    !isPrincipalManagedContext
+    !isManagedRoomContext
     && (user?.role === 'ADMIN'
       || normalizedDuties.includes('WAKASEK_SARPRAS')
       || normalizedDuties.includes('SEKRETARIS_SARPRAS'));
   const canManageItems =
-    (isPrincipalManagedContext && !!selectedRoomId && managedInventoryRoomIds.includes(selectedRoomId))
+    (isManagedRoomContext && !!selectedRoomId && managedInventoryRoomIds.includes(selectedRoomId))
     || canManageStructure
     || (inventoryScope === 'LAB' && normalizedDuties.includes('KEPALA_LAB'))
     || (inventoryScope === 'LIBRARY' && normalizedDuties.includes('KEPALA_PERPUSTAKAAN'));
@@ -669,19 +669,19 @@ export default function TeacherSarprasInventoryScreen() {
   });
   const managedRoomsQuery = useQuery({
     queryKey: ['mobile-sarpras-managed-rooms', managedInventoryRoomIds.join(',')],
-    enabled: isAuthenticated && !!isAllowed && isPrincipalManagedContext,
+    enabled: isAuthenticated && !!isAllowed && isManagedRoomContext,
     queryFn: () => sarprasApi.listRooms(),
   });
 
   const categories = useMemo(() => categoriesQuery.data || [], [categoriesQuery.data]);
   const managedRooms = useMemo(() => {
     const items = managedRoomsQuery.data || [];
-    if (!isPrincipalManagedContext) return [];
+    if (!isManagedRoomContext) return [];
     return items.filter((room) => managedInventoryRoomIds.includes(room.id));
-  }, [isPrincipalManagedContext, managedInventoryRoomIds, managedRoomsQuery.data]);
+  }, [isManagedRoomContext, managedInventoryRoomIds, managedRoomsQuery.data]);
   const scopedCategories = useMemo(() => {
     const categoryPool = categories.filter((category) => {
-      if (!isPrincipalManagedContext) return true;
+      if (!isManagedRoomContext) return true;
       return managedRooms.some((room) => room.categoryId === category.id);
     });
     if (inventoryScope === 'ALL') return categoryPool;
@@ -690,9 +690,9 @@ export default function TeacherSarprasInventoryScreen() {
       if (inventoryScope === 'LAB') {
         return haystack.includes('LAB');
       }
-      return haystack.includes('PERPUST') || haystack.includes('LIBRARY') || haystack.includes('PUSTAKA');
+        return haystack.includes('PERPUST') || haystack.includes('LIBRARY') || haystack.includes('PUSTAKA');
     });
-  }, [categories, inventoryScope, isPrincipalManagedContext, managedRooms]);
+  }, [categories, inventoryScope, isManagedRoomContext, managedRooms]);
   const requestedRoomCategoryId = useMemo(() => {
     if (!requestedRoomId) return null;
     return managedRooms.find((room) => room.id === requestedRoomId)?.categoryId || null;
@@ -715,16 +715,16 @@ export default function TeacherSarprasInventoryScreen() {
 
   const roomsQuery = useQuery({
     queryKey: ['mobile-sarpras-rooms', selectedCategoryId],
-    enabled: isAuthenticated && !!isAllowed && !!selectedCategoryId && !isPrincipalManagedContext,
+    enabled: isAuthenticated && !!isAllowed && !!selectedCategoryId && !isManagedRoomContext,
     queryFn: () => sarprasApi.listRooms({ categoryId: Number(selectedCategoryId) }),
   });
 
   const rooms = useMemo(() => {
-    if (isPrincipalManagedContext) {
+    if (isManagedRoomContext) {
       return managedRooms.filter((room) => (!selectedCategoryId ? true : room.categoryId === selectedCategoryId));
     }
     return roomsQuery.data || [];
-  }, [isPrincipalManagedContext, managedRooms, roomsQuery.data, selectedCategoryId]);
+  }, [isManagedRoomContext, managedRooms, roomsQuery.data, selectedCategoryId]);
 
   useEffect(() => {
     if (!rooms.length) {
@@ -1416,7 +1416,7 @@ export default function TeacherSarprasInventoryScreen() {
   if (isLoading) return <AppLoadingScreen message="Memuat modul aset sekolah..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
-  if (!(user?.role === 'TEACHER' || isPrincipalManagedContext)) {
+  if (!(user?.role === 'TEACHER' || isManagedRoomContext)) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
         <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Aset Sekolah</Text>
@@ -1442,7 +1442,7 @@ export default function TeacherSarprasInventoryScreen() {
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
         <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{pageTitle}</Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-          {isPrincipalManagedContext
+          {isManagedRoomContext
             ? 'Modul ini hanya muncul jika Anda memiliki ruangan inventaris yang ditugaskan.'
             : 'Modul ini tersedia sesuai tugas tambahan Sarpras/Kepala Lab/Kepala Perpustakaan.'}
         </Text>
@@ -2604,21 +2604,21 @@ export default function TeacherSarprasInventoryScreen() {
 
       {section === 'RUANGAN' ? (
         <>
-          {(isPrincipalManagedContext ? managedRoomsQuery.isLoading : roomsQuery.isLoading) ? (
+          {(isManagedRoomContext ? managedRoomsQuery.isLoading : roomsQuery.isLoading) ? (
             <QueryStateView type="loading" message="Memuat daftar ruangan..." />
           ) : null}
-          {(isPrincipalManagedContext ? managedRoomsQuery.isError : roomsQuery.isError) ? (
+          {(isManagedRoomContext ? managedRoomsQuery.isError : roomsQuery.isError) ? (
             <QueryStateView
               type="error"
               message="Gagal memuat daftar ruangan."
               onRetry={() =>
-                isPrincipalManagedContext ? managedRoomsQuery.refetch() : roomsQuery.refetch()
+                isManagedRoomContext ? managedRoomsQuery.refetch() : roomsQuery.refetch()
               }
             />
           ) : null}
 
-          {!(isPrincipalManagedContext ? managedRoomsQuery.isLoading : roomsQuery.isLoading)
-          && !(isPrincipalManagedContext ? managedRoomsQuery.isError : roomsQuery.isError) ? (
+          {!(isManagedRoomContext ? managedRoomsQuery.isLoading : roomsQuery.isLoading)
+          && !(isManagedRoomContext ? managedRoomsQuery.isError : roomsQuery.isError) ? (
             filteredRooms.length > 0 ? (
               filteredRooms.map((room) => (
                 <RoomCard

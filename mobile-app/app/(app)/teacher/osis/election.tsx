@@ -1,16 +1,5 @@
-import { Redirect } from 'expo-router';
+import { TeacherOsisElectionModuleScreen } from '../../../../src/features/osis/TeacherOsisElectionModuleScreen';
 
-export default function TeacherOsisElectionRoute() {
-  return (
-    <Redirect
-      href={{
-        pathname: '/web-module/[moduleKey]',
-        params: {
-          moduleKey: 'teacher-osis-election',
-          path: '/teacher/osis/election',
-          label: 'Pemilihan OSIS',
-        },
-      }}
-    />
-  );
+export default function TeacherOsisElectionScreen() {
+  return <TeacherOsisElectionModuleScreen />;
 }

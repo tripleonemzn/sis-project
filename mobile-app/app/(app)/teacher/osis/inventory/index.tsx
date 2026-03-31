@@ -4,11 +4,11 @@ export default function TeacherOsisInventoryRoute() {
   return (
     <Redirect
       href={{
-        pathname: '/web-module/[moduleKey]',
+        pathname: '/teacher/sarpras-inventory',
         params: {
-          moduleKey: 'teacher-osis-inventory',
-          path: '/teacher/osis/inventory',
-          label: 'Inventaris OSIS',
+          managedOnly: '1',
+          title: 'Inventaris OSIS',
+          subtitle: 'Kelola inventaris ruangan OSIS yang ditugaskan kepada Anda.',
         },
       }}
     />
