@@ -45,7 +45,7 @@ import { applyAppUpdate, checkAppUpdate } from '../../src/features/appUpdate/upd
 import { BRAND_COLORS } from '../../src/config/brand';
 import { ENV } from '../../src/config/env';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
-import { notifyApiError, notifyInfo, notifySuccess } from '../../src/lib/ui/feedback';
+import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
 import type { AuthUser } from '../../src/features/auth/types';
 import { useUnreadNotificationsQuery } from '../../src/features/notifications/useUnreadNotificationsQuery';
 import {
@@ -1020,7 +1020,6 @@ export default function HomeScreen() {
   });
 
   const allMenuItems = useMemo(() => menuGroups.flatMap((group) => group.items), [menuGroups]);
-  const hasAnyWebFallbackMenu = useMemo(() => allMenuItems.some((item) => !!item.webPath), [allMenuItems]);
   const menuItemByKey = useMemo(() => {
     return new Map(allMenuItems.map((item) => [item.key, item] as const));
   }, [allMenuItems]);
@@ -1149,28 +1148,28 @@ export default function HomeScreen() {
           value: String(stats.teachers),
           color: BRAND_COLORS.navy,
           icon: 'user-check',
-          menuKey: 'staff-administration-teachers',
+          menuKey: 'staff-admin',
         },
         {
           label: 'Izin Pending',
           value: String(stats.pendingPermissions),
           color: BRAND_COLORS.gold,
           icon: 'clock',
-          menuKey: 'staff-administration-permissions',
+          menuKey: 'staff-admin',
         },
         {
           label: 'Izin Disetujui',
           value: String(stats.approvedPermissions),
           color: BRAND_COLORS.teal,
           icon: 'check-circle',
-          menuKey: 'staff-administration-permissions',
+          menuKey: 'staff-admin',
         },
         {
           label: 'Izin Ditolak',
           value: String(stats.rejectedPermissions),
           color: BRAND_COLORS.pink,
           icon: 'x-circle',
-          menuKey: 'staff-administration-permissions',
+          menuKey: 'staff-admin',
         },
       ];
     }
@@ -1182,42 +1181,42 @@ export default function HomeScreen() {
           value: String(stats.students),
           color: BRAND_COLORS.blue,
           icon: 'users',
-          menuKey: 'staff-head-tu-students',
+          menuKey: 'staff-students',
         },
         {
           label: 'Guru',
           value: String(stats.teachers),
           color: BRAND_COLORS.navy,
           icon: 'user-check',
-          menuKey: 'staff-head-tu-teachers',
+          menuKey: 'staff-admin',
         },
         {
           label: 'Staff TU',
           value: String(stats.staffs),
           color: BRAND_COLORS.sky,
           icon: 'briefcase',
-          menuKey: 'staff-head-tu-teachers',
+          menuKey: 'staff-admin',
         },
         {
           label: 'Izin Pending',
           value: String(stats.pendingPermissions),
           color: BRAND_COLORS.gold,
           icon: 'clock',
-          menuKey: 'staff-head-tu-permissions',
+          menuKey: 'staff-admin',
         },
         {
           label: 'Pengajuan',
           value: String(stats.pendingBudgets),
           color: BRAND_COLORS.teal,
           icon: 'file-text',
-          menuKey: 'staff-head-tu-finance',
+          menuKey: 'staff-admin',
         },
         {
           label: 'Admin/Keu',
           value: `${stats.administrationStaff}/${stats.financeStaff}`,
           color: BRAND_COLORS.pink,
           icon: 'layers',
-          menuKey: 'staff-head-tu-dashboard',
+          menuKey: 'staff-admin',
         },
       ];
     }
@@ -1609,24 +1608,6 @@ export default function HomeScreen() {
     Alert.alert('Segera Hadir', `Menu "${menu.label}" akan diimplementasikan pada tahap berikutnya.`);
   };
 
-  const handleMenuWebPress = async (menu?: RoleMenuItem) => {
-    if (!menu?.webPath) {
-      notifyInfo('Menu ini belum punya fallback versi web.');
-      return;
-    }
-    if (isMenuTransitioning && openingMenuKey !== menu.key) return;
-
-    setOpeningMenuKey(menu.key);
-
-    try {
-      router.push(`/web-module/${menu.key}` as never);
-      scheduleOpeningMenuReset();
-    } catch {
-      clearOpeningMenuState();
-      Alert.alert('Gagal Membuka Modul', `Tidak bisa membuka versi web untuk menu "${menu.label}".`);
-    }
-  };
-
   const handleRefresh = async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
@@ -1710,11 +1691,6 @@ export default function HomeScreen() {
                   if (!linkedMenu) return;
                   void handleMenuPress(linkedMenu);
                 }}
-                onLongPress={() => {
-                  if (!linkedMenu?.webPath) return;
-                  void handleMenuWebPress(linkedMenu);
-                }}
-                delayLongPress={220}
                 style={({ pressed }) => ({
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -1767,11 +1743,6 @@ export default function HomeScreen() {
                 if (!linkedMenu) return;
                 void handleMenuPress(linkedMenu);
               }}
-              onLongPress={() => {
-                if (!linkedMenu?.webPath) return;
-                void handleMenuWebPress(linkedMenu);
-              }}
-              delayLongPress={220}
               style={({ pressed }) => ({
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -2380,11 +2351,6 @@ export default function HomeScreen() {
                     onPress={() => {
                       void handleMenuPress(teachingScheduleMenu);
                     }}
-                    onLongPress={() => {
-                      if (!teachingScheduleMenu.webPath) return;
-                      void handleMenuWebPress(teachingScheduleMenu);
-                    }}
-                    delayLongPress={220}
                     style={({ pressed }) => ({
                       marginTop: 8,
                       borderRadius: 10,
@@ -2428,11 +2394,6 @@ export default function HomeScreen() {
                       onPress={() => {
                         void handleMenuPress(menu);
                       }}
-                      onLongPress={() => {
-                        if (!menu.webPath) return;
-                        void handleMenuWebPress(menu);
-                      }}
-                      delayLongPress={220}
                       style={({ pressed }) => ({
                         paddingHorizontal: 6,
                         paddingVertical: 6,
@@ -2540,24 +2501,6 @@ export default function HomeScreen() {
             </Pressable>
           </View>
         ) : null}
-        {hasAnyWebFallbackMenu ? (
-          <View
-            style={{
-              marginBottom: 10,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: '#d6e0f2',
-              backgroundColor: '#f8fbff',
-              paddingVertical: 8,
-              paddingHorizontal: 10,
-            }}
-          >
-            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
-              Tekan lama menu untuk membuka versi web lengkap jika fitur native belum sepenuhnya tersedia.
-            </Text>
-          </View>
-        ) : null}
-
         {filteredGroups.length === 0 ? (
           <View
             style={{
@@ -2649,11 +2592,6 @@ export default function HomeScreen() {
                             onPress={() => {
                               void handleMenuPress(menu);
                             }}
-                            onLongPress={() => {
-                              if (!menu.webPath) return;
-                              void handleMenuWebPress(menu);
-                            }}
-                            delayLongPress={220}
                             style={({ pressed }) => ({
                               alignItems: 'center',
                               justifyContent: 'center',

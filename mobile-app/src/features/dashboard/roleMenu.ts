@@ -145,6 +145,28 @@ function materializeMenuTargets(items: RoleMenuItem[]): RoleMenuItem[] {
   });
 }
 
+function isWebModuleRoute(route?: string | null) {
+  return String(route || '').trim().startsWith('/web-module/');
+}
+
+function hasNativeRoute(item?: RoleMenuItem | null): item is RoleMenuItem {
+  const route = String(item?.route || '').trim();
+  return route.length > 0 && route.startsWith('/') && !isWebModuleRoute(route);
+}
+
+function keepNativeMenuItems(items: RoleMenuItem[]) {
+  return items.filter((item) => hasNativeRoute(item));
+}
+
+function keepNativeMenuGroups(groups: RoleMenuGroup[]) {
+  return groups
+    .map((group) => ({
+      ...group,
+      items: keepNativeMenuItems(group.items),
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
 function createWebModuleRoute(key: string, webPath: string, label?: string) {
   const params = [`path=${encodeURIComponent(webPath)}`];
   if (label) {
@@ -973,7 +995,7 @@ const DEMO_ROLE_KEYS: Array<keyof typeof ROLE_MENUS> = [
 
 function getDemoRoleMenu() {
   const allMenus = DEMO_ROLE_KEYS.flatMap((role) => ROLE_MENUS[role] || []);
-  return materializeMenuTargets(dedupeMenuByKey(allMenus));
+  return keepNativeMenuItems(materializeMenuTargets(dedupeMenuByKey(allMenus)));
 }
 
 type GroupDefinition = {
@@ -1356,23 +1378,9 @@ function buildStaffRoleMenu(user: AuthUser) {
   const baseKeys = ['staff-dashboard', 'staff-email'];
   const roleKeys =
     division === 'HEAD_TU'
-      ? [
-          'staff-head-tu-dashboard',
-          'staff-head-tu-administration',
-          'staff-head-tu-finance',
-          'staff-head-tu-students',
-          'staff-head-tu-teachers',
-          'staff-head-tu-permissions',
-          'staff-head-tu-letters',
-          'staff-head-tu-exam-cards',
-        ]
+      ? ['staff-admin', 'staff-students']
       : division === 'ADMINISTRATION'
-        ? [
-            'staff-students',
-            'staff-administration-dashboard',
-            'staff-administration-teachers',
-            'staff-administration-permissions',
-          ]
+        ? ['staff-students', 'staff-admin']
         : ['staff-payments', 'staff-students', 'staff-admin'];
 
   return [...baseKeys, ...roleKeys]
@@ -1395,28 +1403,14 @@ function buildStaffGroups(user: AuthUser, menus: RoleMenuItem[]) {
   pushGroup(groups, 'dashboard', 'Dashboard', ['staff-dashboard', 'staff-email']);
 
   if (division === 'HEAD_TU') {
-    pushGroup(groups, 'monitoring-tu', 'MONITORING TU', [
-      'staff-head-tu-dashboard',
-      'staff-head-tu-administration',
-      'staff-head-tu-finance',
-    ]);
-    pushGroup(groups, 'layanan-tu', 'LAYANAN TU', [
-      'staff-head-tu-students',
-      'staff-head-tu-teachers',
-      'staff-head-tu-permissions',
-      'staff-head-tu-letters',
-      'staff-head-tu-exam-cards',
-    ]);
+    pushGroup(groups, 'monitoring-tu', 'MONITORING TU', ['staff-admin']);
+    pushGroup(groups, 'layanan-tu', 'LAYANAN TU', ['staff-students']);
     return groups;
   }
 
   if (division === 'ADMINISTRATION') {
     pushGroup(groups, 'students', 'DATA SISWA', ['staff-students']);
-    pushGroup(groups, 'administration', 'ADMINISTRASI', [
-      'staff-administration-dashboard',
-      'staff-administration-teachers',
-      'staff-administration-permissions',
-    ]);
+    pushGroup(groups, 'administration', 'ADMINISTRASI', ['staff-admin']);
     return groups;
   }
 
@@ -1838,46 +1832,46 @@ if (__DEV__) {
 }
 
 export function getRoleMenu(user?: AuthUser | null, options?: RoleMenuBuildOptions): RoleMenuItem[] {
-  if (!user) return materializeMenuTargets(BASE_MENU);
+  if (!user) return keepNativeMenuItems(materializeMenuTargets(BASE_MENU));
   if (user.isDemo) return getDemoRoleMenu();
 
   const roleItems = user.role === 'STAFF' ? buildStaffRoleMenu(user) : ROLE_MENUS[user.role] || BASE_MENU;
   const filteredItems = roleItems.filter((item) => shouldShowMenuItem(user, item, options));
-  return materializeMenuTargets(dedupeMenuByKey(filteredItems));
+  return keepNativeMenuItems(materializeMenuTargets(dedupeMenuByKey(filteredItems)));
 }
 
 export function getGroupedRoleMenu(user?: AuthUser | null, options?: RoleMenuBuildOptions): RoleMenuGroup[] {
   const menus = getRoleMenu(user, options);
   if (!user) {
-    return [
+    return keepNativeMenuGroups([
       {
         key: 'base',
         label: 'Umum',
         items: menus,
       },
-    ];
+    ]);
   }
 
   if (user.isDemo) {
-    return buildGroupedMenu('DEMO', menus);
+    return keepNativeMenuGroups(buildGroupedMenu('DEMO', menus));
   }
 
   if (user.role === 'STUDENT' && isStudentAlumni(user)) {
-    return buildStudentAlumniGroups(menus);
+    return keepNativeMenuGroups(buildStudentAlumniGroups(menus));
   }
 
   if (user.role === 'TEACHER') {
-    return buildTeacherGroups(user, menus, options);
+    return keepNativeMenuGroups(buildTeacherGroups(user, menus, options));
   }
 
   if (user.role === 'EXTRACURRICULAR_TUTOR') {
-    return buildTutorGroups(menus, options);
+    return keepNativeMenuGroups(buildTutorGroups(menus, options));
   }
 
   if (user.role === 'STAFF') {
-    return buildStaffGroups(user, menus);
+    return keepNativeMenuGroups(buildStaffGroups(user, menus));
   }
 
   const grouped = buildGroupedMenu(user.role, menus);
-  return grouped;
+  return keepNativeMenuGroups(grouped);
 }

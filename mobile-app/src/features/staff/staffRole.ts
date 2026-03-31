@@ -1,5 +1,3 @@
-import type { AuthUser } from '../auth/types';
-
 type StaffProfile = {
   role?: string | null;
   ptkType?: string | null;
@@ -62,10 +60,10 @@ export function getStaffSectionTitle(user?: StaffProfile | null) {
 export function getStaffPreferredMenuKeys(user?: StaffProfile | null) {
   const division = resolveStaffDivision(user);
   if (division === 'HEAD_TU') {
-    return ['staff-head-tu-dashboard', 'staff-head-tu-finance', 'staff-head-tu-letters'];
+    return ['staff-admin', 'staff-students'];
   }
   if (division === 'ADMINISTRATION') {
-    return ['staff-administration-dashboard', 'staff-students', 'staff-administration-permissions'];
+    return ['staff-admin', 'staff-students'];
   }
   return ['staff-payments', 'staff-students', 'staff-admin'];
 }
@@ -94,7 +92,7 @@ export function getStaffPaymentsBlockedMessage(user?: StaffProfile | null) {
 
 export function getStaffFinanceNotificationTarget(user?: StaffProfile | null) {
   const division = resolveStaffDivision(user);
-  if (division === 'HEAD_TU') return '/web-module/staff-head-tu-finance';
-  if (division === 'ADMINISTRATION') return '/web-module/staff-administration-dashboard';
+  if (division === 'HEAD_TU') return '/staff/admin';
+  if (division === 'ADMINISTRATION') return '/staff/admin';
   return '/staff/payments';
 }

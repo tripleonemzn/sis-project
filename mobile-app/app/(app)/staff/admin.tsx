@@ -77,8 +77,21 @@ type StaffAdminOverviewData =
       budgets: StaffBudgetRequest[];
     };
 
-function openWebModule(router: ReturnType<typeof useRouter>, moduleKey: string) {
-  router.push(`/web-module/${moduleKey}` as never);
+function NativeMigrationNotice({ message }: { message: string }) {
+  return (
+    <View
+      style={{
+        backgroundColor: '#f8fbff',
+        borderWidth: 1,
+        borderColor: '#d6e0f2',
+        borderRadius: 12,
+        padding: 12,
+        marginBottom: 10,
+      }}
+    >
+      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, lineHeight: 18 }}>{message}</Text>
+    </View>
+  );
 }
 
 function formatDate(value?: string | null) {
@@ -2010,22 +2023,9 @@ export default function StaffAdminScreen() {
             )}
           </View>
 
-          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
-            <View style={{ width: '50%', paddingHorizontal: 4 }}>
-              <Pressable
-                onPress={() => openWebModule(router, 'staff-administration-dashboard')}
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#c7d6f5',
-                  borderRadius: 10,
-                  paddingVertical: 12,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Workspace Admin</Text>
-              </Pressable>
-            </View>
+          <NativeMigrationNotice message="Pintasan guru dan perizinan yang sebelumnya membuka modul web sementara saya sembunyikan dari UI mobile. Tahap berikutnya akan saya pecah ke screen native khusus agar tetap 1:1 tanpa keluar dari aplikasi." />
+
+          <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
             <View style={{ width: '50%', paddingHorizontal: 4 }}>
               <Pressable
                 onPress={() => router.push('/staff/students' as never)}
@@ -2041,12 +2041,9 @@ export default function StaffAdminScreen() {
                 <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Data Siswa</Text>
               </Pressable>
             </View>
-          </View>
-
-          <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
             <View style={{ width: '50%', paddingHorizontal: 4 }}>
               <Pressable
-                onPress={() => openWebModule(router, 'staff-administration-teachers')}
+                onPress={handleRefresh}
                 style={{
                   backgroundColor: '#fff',
                   borderWidth: 1,
@@ -2056,22 +2053,7 @@ export default function StaffAdminScreen() {
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Data Guru</Text>
-              </Pressable>
-            </View>
-            <View style={{ width: '50%', paddingHorizontal: 4 }}>
-              <Pressable
-                onPress={() => openWebModule(router, 'staff-administration-permissions')}
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#c7d6f5',
-                  borderRadius: 10,
-                  paddingVertical: 12,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Perizinan</Text>
+                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Segarkan Ringkasan</Text>
               </Pressable>
             </View>
           </View>
@@ -2439,43 +2421,12 @@ export default function StaffAdminScreen() {
             )}
           </View>
 
-          <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 8 }}>
-            <View style={{ width: '50%', paddingHorizontal: 4 }}>
-              <Pressable
-                onPress={() => openWebModule(router, 'staff-head-tu-dashboard')}
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#c7d6f5',
-                  borderRadius: 10,
-                  paddingVertical: 12,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Dashboard TU</Text>
-              </Pressable>
-            </View>
-            <View style={{ width: '50%', paddingHorizontal: 4 }}>
-              <Pressable
-                onPress={() => openWebModule(router, 'staff-head-tu-finance')}
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#c7d6f5',
-                  borderRadius: 10,
-                  paddingVertical: 12,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Monitoring Keuangan</Text>
-              </Pressable>
-            </View>
-          </View>
+          <NativeMigrationNotice message="Pintasan monitoring keuangan, surat-menyurat, dan kartu ujian yang masih bergantung ke modul web saya keluarkan dulu dari tampilan mobile. Ringkasan TU tetap bisa dipakai native sambil saya pecah detail modulnya pada tahap berikutnya." />
 
           <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
             <View style={{ width: '50%', paddingHorizontal: 4 }}>
               <Pressable
-                onPress={() => openWebModule(router, 'staff-head-tu-letters')}
+                onPress={() => router.push('/staff/students' as never)}
                 style={{
                   backgroundColor: '#fff',
                   borderWidth: 1,
@@ -2485,12 +2436,12 @@ export default function StaffAdminScreen() {
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Surat-Menyurat</Text>
+                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Data Siswa</Text>
               </Pressable>
             </View>
             <View style={{ width: '50%', paddingHorizontal: 4 }}>
               <Pressable
-                onPress={() => openWebModule(router, 'staff-head-tu-exam-cards')}
+                onPress={handleRefresh}
                 style={{
                   backgroundColor: '#fff',
                   borderWidth: 1,
@@ -2500,7 +2451,7 @@ export default function StaffAdminScreen() {
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Kartu Ujian</Text>
+                <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Segarkan Ringkasan</Text>
               </Pressable>
             </View>
           </View>
