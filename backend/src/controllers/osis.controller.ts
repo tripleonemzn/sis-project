@@ -11,6 +11,7 @@ import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { osisManagementService } from '../services/osisManagement.service';
+import { createManyInAppNotifications } from '../services/mobilePushNotification.service';
 
 const listPeriodsSchema = z.object({
   academicYearId: z.coerce.number().int().optional(),
@@ -283,7 +284,7 @@ const notifyElectionStatusChange = async (
 ) => {
   const receivers = await getStakeholderNotificationReceivers();
   if (!receivers.length) return;
-  await prisma.notification.createMany({
+  await createManyInAppNotifications({
     data: receivers.map((receiver) => ({
       userId: receiver.id,
       title,

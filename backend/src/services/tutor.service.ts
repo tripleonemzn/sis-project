@@ -1,6 +1,7 @@
 import prisma from '../utils/prisma';
 import { ApiError } from '../utils/api';
 import { Semester, Prisma, ExamType, ExtracurricularCategory } from '@prisma/client';
+import { createInAppNotification } from './mobilePushNotification.service';
 
 type ExtracurricularFieldPair = {
   gradeField: 'gradeSbtsOdd' | 'gradeSas' | 'gradeSat' | 'gradeSbtsEven';
@@ -220,7 +221,7 @@ async function notifyHomeroomExtracurricularGradeUpdated(params: {
 
   if (existingToday) return;
 
-  await prisma.notification.create({
+  await createInAppNotification({
     data: {
       userId: enrollment.student.studentClass.teacherId,
       title,

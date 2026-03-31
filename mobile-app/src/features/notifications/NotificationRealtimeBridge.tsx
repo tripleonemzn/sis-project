@@ -4,8 +4,16 @@ import * as Notifications from 'expo-notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../auth/AuthProvider';
 import { MOBILE_NOTIFICATIONS_QUERY_KEY } from './notificationApi';
+import { isAppUpdatePushNotificationData } from '../pushNotifications/pushNotificationService';
 
 const INVALIDATE_DEBOUNCE_MS = 120;
+
+function resolveNotificationTarget(rawData: unknown) {
+  if (!rawData || typeof rawData !== 'object') return '/notifications';
+  const data = rawData as Record<string, unknown>;
+  const route = typeof data.route === 'string' ? data.route.trim() : '';
+  return route.startsWith('/') ? route : '/notifications';
+}
 
 export function NotificationRealtimeBridge() {
   const { isAuthenticated } = useAuth();
@@ -31,9 +39,11 @@ export function NotificationRealtimeBridge() {
       invalidateNotifications();
     });
 
-    const responseSubscription = Notifications.addNotificationResponseReceivedListener(() => {
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
       invalidateNotifications();
-      router.push('/notifications');
+      const rawData = response.notification.request.content.data;
+      if (isAppUpdatePushNotificationData(rawData)) return;
+      router.push(resolveNotificationTarget(rawData) as never);
     });
 
     return () => {

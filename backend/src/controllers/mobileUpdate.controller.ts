@@ -3,6 +3,7 @@ import axios from 'axios';
 import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import { createManyInAppNotifications } from '../services/mobilePushNotification.service';
 
 const EXPO_PUSH_API_URL = 'https://exp.host/--/api/v2/push/send';
 const LOCALHOST_IPS = new Set(['127.0.0.1', '::1']);
@@ -421,7 +422,7 @@ export const broadcastMobileUpdateNotification = asyncHandler(async (req: Reques
 
   const uniqueUserIds = Array.from(new Set(recipients.map((item) => item.userId)));
   if (uniqueUserIds.length > 0) {
-    await prisma.notification.createMany({
+    await createManyInAppNotifications({
       data: uniqueUserIds.map((userId) => ({
         userId,
         title,
@@ -429,7 +430,7 @@ export const broadcastMobileUpdateNotification = asyncHandler(async (req: Reques
         type: 'APP_UPDATE',
         data: { channel },
       })),
-    });
+    }, { skipPush: true });
   }
 
   res.status(200).json(

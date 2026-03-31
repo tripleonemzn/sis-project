@@ -5,6 +5,7 @@ import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth';
 import { osisManagementService } from '../services/osisManagement.service';
+import { createInAppNotification } from '../services/mobilePushNotification.service';
 
 const extracurricularCategorySchema = z.preprocess((value) => {
   if (typeof value === 'string') return value.trim().toUpperCase();
@@ -298,7 +299,7 @@ async function notifyHomeroomExtracurricularSelection(params: {
 
   if (existingToday) return;
 
-  await prisma.notification.create({
+  await createInAppNotification({
     data: {
       userId: student.studentClass.teacherId,
       title,

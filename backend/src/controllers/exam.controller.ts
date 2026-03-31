@@ -20,6 +20,7 @@ import {
     getHistoricalStudentSnapshotForAcademicYear,
     listHistoricalStudentsForAcademicYear,
 } from '../utils/studentAcademicHistory';
+import { createInAppNotification } from '../services/mobilePushNotification.service';
 
 function normalizeAliasCode(raw: unknown): string {
     return String(raw || '')
@@ -865,7 +866,7 @@ async function createHomeroomAutomaticRestrictionNotification(params: {
     });
     if (existingNotification) return;
 
-    await prisma.notification.create({
+    await createInAppNotification({
         data: {
             userId: homeroomClass.teacherId,
             title,

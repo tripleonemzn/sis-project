@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { ApiError } from '../utils/api';
+import { createInAppNotification } from './mobilePushNotification.service';
 
 const OSIS_PREDICATES = ['SB', 'B', 'C', 'K'] as const;
 type OsisPredicate = (typeof OSIS_PREDICATES)[number];
@@ -563,7 +564,7 @@ async function notifyHomeroomOsisGradeUpdated(params: {
 
   if (existingToday) return;
 
-  await prisma.notification.create({
+  await createInAppNotification({
     data: {
       userId: membership.student.studentClass.teacherId,
       title,

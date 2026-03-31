@@ -1,10 +1,10 @@
 import { Request, Response } from 'express';
-import axios from 'axios';
 import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth';
+import { createInAppNotification } from '../services/mobilePushNotification.service';
 // import { RoomType } from '@prisma/client'; // Deprecated
 // Verified: Prisma Client updated.
 
@@ -481,13 +481,8 @@ const parseOptionalDate = (value: string | null | undefined, label: string) => {
   return parsed;
 };
 
-const EXPO_PUSH_API_URL = 'https://exp.host/--/api/v2/push/send';
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_LIBRARY_FINE_PER_DAY = 1000;
-
-function isValidExpoPushToken(token: string) {
-  return /^(Exponent|Expo)PushToken\[[A-Za-z0-9_-]+\]$/.test(token);
-}
 
 function normalizeName(value?: string | null) {
   return String(value || '')
@@ -774,81 +769,6 @@ async function resolveBorrowerUserId(args: {
   return bestScore > 0 ? selectedId : null;
 }
 
-function chunkArray<T>(rows: T[], size: number) {
-  const chunks: T[][] = [];
-  for (let index = 0; index < rows.length; index += size) {
-    chunks.push(rows.slice(index, index + size));
-  }
-  return chunks;
-}
-
-async function sendPushNotificationToUser(userId: number, payload: { title: string; message: string; data?: Record<string, unknown> }) {
-  const devices = await prisma.mobilePushDevice.findMany({
-    where: {
-      userId,
-      isEnabled: true,
-    },
-    select: {
-      expoPushToken: true,
-    },
-  });
-  if (!devices.length) return;
-
-  const uniqueTokens = Array.from(
-    new Set(devices.map((device) => device.expoPushToken).filter((token) => isValidExpoPushToken(token))),
-  );
-  if (!uniqueTokens.length) return;
-
-  const staleTokens = new Set<string>();
-  const chunks = chunkArray(
-    uniqueTokens.map((token) => ({
-      to: token,
-      title: payload.title,
-      body: payload.message,
-      sound: 'default',
-      priority: 'high',
-      data: payload.data || {},
-    })),
-    100,
-  );
-
-  for (const chunk of chunks) {
-    try {
-      const response = await axios.post(EXPO_PUSH_API_URL, chunk, {
-        headers: {
-          Accept: 'application/json',
-          'Accept-encoding': 'gzip, deflate',
-          'Content-Type': 'application/json',
-        },
-        timeout: 12000,
-      });
-      const tickets = Array.isArray(response.data?.data) ? response.data.data : [];
-      tickets.forEach((ticket: any, index: number) => {
-        if (ticket?.status === 'ok') return;
-        const token = chunk[index]?.to;
-        const errorCode = String(ticket?.details?.error || '');
-        if (token && errorCode === 'DeviceNotRegistered') {
-          staleTokens.add(token);
-        }
-      });
-    } catch {
-      continue;
-    }
-  }
-
-  if (staleTokens.size > 0) {
-    await prisma.mobilePushDevice.updateMany({
-      where: {
-        expoPushToken: { in: Array.from(staleTokens) },
-      },
-      data: {
-        isEnabled: false,
-        lastSeenAt: new Date(),
-      },
-    });
-  }
-}
-
 type LibraryLoanReminderRow = {
   id: number;
   borrowerUserId: number | null;
@@ -905,7 +825,7 @@ export async function dispatchLibraryOverdueReminders(rowsInput?: LibraryLoanRem
       status.fineAmount,
     )} (Rp${formatCurrencyIdr(status.finePerDay)}/hari). Mohon segera dikembalikan.`;
 
-    await prisma.notification.create({
+    await createInAppNotification({
       data: {
         userId: loan.borrowerUserId!,
         title,
@@ -919,16 +839,6 @@ export async function dispatchLibraryOverdueReminders(rowsInput?: LibraryLoanRem
           returnDate: loan.returnDate,
           bookTitle: loan.bookTitle,
         },
-      },
-    });
-    await sendPushNotificationToUser(loan.borrowerUserId!, {
-      title,
-      message,
-      data: {
-        type: 'LIBRARY_OVERDUE',
-        loanId: loan.id,
-        finePerDay: status.finePerDay,
-        fineAmount: status.fineAmount,
       },
     });
 

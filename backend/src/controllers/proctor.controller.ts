@@ -6,6 +6,7 @@ import {
     listHistoricalStudentsByIdsForAcademicYear,
     listHistoricalStudentsForClass,
 } from '../utils/studentAcademicHistory';
+import { createManyInAppNotifications } from '../services/mobilePushNotification.service';
 
 function countAnsweredEntries(rawAnswers: unknown): number {
     if (!rawAnswers || typeof rawAnswers !== 'object' || Array.isArray(rawAnswers)) return 0;
@@ -1238,7 +1239,7 @@ export const submitBeritaAcara = asyncHandler(async (req: Request, res: Response
         select: { id: true },
     });
     if (curriculumReceivers.length > 0) {
-        await prisma.notification.createMany({
+        await createManyInAppNotifications({
             data: curriculumReceivers.map((receiver) => ({
                 userId: receiver.id,
                 title: 'Berita Acara Pengawas Baru',

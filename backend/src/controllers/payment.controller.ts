@@ -29,6 +29,7 @@ import { resolveAcademicYearIdFromDate } from '../utils/academicYearDateResoluti
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { writeAuditLog } from '../utils/auditLog';
 import { listHistoricalStudentsByIds, resolveHistoricalStudentScope } from '../utils/studentAcademicHistory';
+import { createManyInAppNotifications } from '../services/mobilePushNotification.service';
 
 const listParentPaymentsQuerySchema = z.object({
   studentId: z.coerce.number().int().positive().optional(),
@@ -1903,7 +1904,7 @@ async function createFinanceNotifications(params: {
     },
   })) as Prisma.NotificationCreateManyInput[];
 
-  await prisma.notification.createMany({ data: rows });
+  await createManyInAppNotifications({ data: rows });
 }
 
 const DEFAULT_FINANCE_REMINDER_POLICY = {
@@ -2435,7 +2436,7 @@ async function createFinanceInternalNotifications(params: {
     },
   })) as Prisma.NotificationCreateManyInput[];
 
-  await prisma.notification.createMany({ data: rows });
+  await createManyInAppNotifications({ data: rows });
 }
 
 export async function dispatchFinanceDueReminders(options: DispatchFinanceDueReminderOptions = {}) {
@@ -2786,7 +2787,7 @@ export async function dispatchFinanceDueReminders(options: DispatchFinanceDueRem
   }
 
   if (!preview && rows.length > 0) {
-    await prisma.notification.createMany({ data: rows });
+    await createManyInAppNotifications({ data: rows });
   }
 
   return {
@@ -12123,7 +12124,7 @@ export const generateFinanceInvoices = asyncHandler(async (req: Request, res: Re
   }
 
   if (queuedNotifications.length > 0) {
-    await prisma.notification.createMany({ data: queuedNotifications });
+    await createManyInAppNotifications({ data: queuedNotifications });
   }
 
   res.status(200).json(
