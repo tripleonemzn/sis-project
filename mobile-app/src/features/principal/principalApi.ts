@@ -1,5 +1,9 @@
 import { apiClient } from '../../lib/api/client';
-import { PrincipalAcademicOverview, PrincipalBudgetRequest } from './types';
+import {
+  PrincipalAcademicOverview,
+  PrincipalBudgetRequest,
+  PrincipalDashboardSummary,
+} from './types';
 
 type ApiResponse<T> = {
   statusCode: number;
@@ -16,6 +20,18 @@ export const principalApi = {
         semester: params?.semester,
       },
     });
+    return response.data.data;
+  },
+  async getDashboardSummary(params?: { academicYearId?: number; semester?: 'ODD' | 'EVEN' }) {
+    const response = await apiClient.get<ApiResponse<PrincipalDashboardSummary>>(
+      '/reports/principal-dashboard-summary',
+      {
+        params: {
+          academicYearId: params?.academicYearId,
+          semester: params?.semester,
+        },
+      },
+    );
     return response.data.data;
   },
   async listBudgetApprovals(params?: { academicYearId?: number }) {

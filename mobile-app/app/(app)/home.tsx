@@ -931,23 +931,30 @@ export default function HomeScreen() {
   });
 
   const principalStatsQuery = useQuery({
-    queryKey: ['mobile-home-principal-stats', profile.id, defaultSemesterByDate()],
+    queryKey: ['mobile-home-principal-stats', profile.id],
     enabled: profile.role === 'PRINCIPAL',
     queryFn: async () => {
-      const overview = await principalApi.getAcademicOverview({ semester: defaultSemesterByDate() });
-      const majors = overview.majors || [];
-      const totalStudents = majors.reduce((sum, item) => sum + Number(item.totalStudents || 0), 0);
-      const weightedScore = majors.reduce(
-        (sum, item) => sum + Number(item.averageScore || 0) * Number(item.totalStudents || 0),
+      const summary = await principalApi.getDashboardSummary();
+      const totalClasses = (summary.studentByMajor || []).reduce(
+        (sum, item) => sum + Number(item.totalClasses || 0),
         0,
       );
-
+      const attendanceTotal =
+        Number(summary.totals.totalPresentToday || 0) + Number(summary.totals.totalAbsentToday || 0);
       return {
-        semester: overview.semester || defaultSemesterByDate(),
-        schoolAverage: totalStudents > 0 ? weightedScore / totalStudents : 0,
-        totalStudents,
-        totalMajors: majors.length,
-        topStudents: overview.topStudents?.length || 0,
+        activeAcademicYearName: summary.activeAcademicYear?.name || null,
+        totalStudents: Number(summary.totals.students || 0),
+        totalTeachers: Number(summary.totals.teachers || 0),
+        pendingBudgetRequests: Number(summary.totals.pendingBudgetRequests || 0),
+        totalPendingBudgetAmount: Number(summary.totals.totalPendingBudgetAmount || 0),
+        totalMajors: (summary.studentByMajor || []).length,
+        totalClasses,
+        attendancePercentage:
+          attendanceTotal > 0
+            ? Math.round((Number(summary.totals.totalPresentToday || 0) / attendanceTotal) * 100)
+            : 0,
+        presentToday: Number(summary.totals.totalPresentToday || 0),
+        absentToday: Number(summary.totals.totalAbsentToday || 0),
       };
     },
   });
@@ -1125,15 +1132,54 @@ export default function HomeScreen() {
     if (!stats) return [];
     return [
       {
-        label: 'Rata-rata Sekolah',
-        value: stats.schoolAverage.toFixed(2),
-        color: BRAND_COLORS.navy,
-        icon: 'bar-chart-2',
-        menuKey: 'principal-reports',
+        label: 'Tahun Ajaran Aktif',
+        value: stats.activeAcademicYearName || '-',
+        color: BRAND_COLORS.teal,
+        icon: 'calendar',
+        menuKey: 'principal-dashboard',
       },
-      { label: 'Total Siswa', value: String(stats.totalStudents), color: BRAND_COLORS.blue, icon: 'users', menuKey: 'principal-students' },
-      { label: 'Total Jurusan', value: String(stats.totalMajors), color: BRAND_COLORS.teal, icon: 'grid', menuKey: 'principal-reports' },
-      { label: 'Top Siswa', value: String(stats.topStudents), color: BRAND_COLORS.gold, icon: 'award', menuKey: 'principal-reports' },
+      {
+        label: 'Siswa Aktif',
+        value: String(stats.totalStudents),
+        color: BRAND_COLORS.gold,
+        icon: 'users',
+        menuKey: 'principal-students',
+      },
+      {
+        label: 'Guru & Staff',
+        value: String(stats.totalTeachers),
+        color: BRAND_COLORS.pink,
+        icon: 'user-check',
+        menuKey: 'principal-teachers',
+      },
+      {
+        label: 'Pengajuan Pending',
+        value: String(stats.pendingBudgetRequests),
+        color: BRAND_COLORS.blue,
+        icon: 'file-text',
+        menuKey: 'principal-finance-requests',
+      },
+      {
+        label: 'Kompetensi Keahlian',
+        value: String(stats.totalMajors),
+        color: BRAND_COLORS.teal,
+        icon: 'grid',
+        menuKey: 'principal-students',
+      },
+      {
+        label: 'Kelas Aktif',
+        value: String(stats.totalClasses),
+        color: BRAND_COLORS.sky,
+        icon: 'layers',
+        menuKey: 'principal-students',
+      },
+      {
+        label: 'Kehadiran Hari Ini',
+        value: `${stats.attendancePercentage}%`,
+        color: BRAND_COLORS.navy,
+        icon: 'check-circle',
+        menuKey: 'principal-attendance',
+      },
     ];
   }, [principalStatsQuery.data]);
 
@@ -1398,9 +1444,15 @@ export default function HomeScreen() {
       activeAcademicYearQuery.data?.name ||
       teacherAssignmentsQuery.data?.activeYear?.name ||
       adminStatsQuery.data?.activeYearName ||
+      principalStatsQuery.data?.activeAcademicYearName ||
       '-'
     );
-  }, [activeAcademicYearQuery.data?.name, teacherAssignmentsQuery.data?.activeYear?.name, adminStatsQuery.data?.activeYearName]);
+  }, [
+    activeAcademicYearQuery.data?.name,
+    teacherAssignmentsQuery.data?.activeYear?.name,
+    adminStatsQuery.data?.activeYearName,
+    principalStatsQuery.data?.activeAcademicYearName,
+  ]);
   const activeAcademicSemesterLabel = useMemo(() => {
     const semesterFromActiveYear = toSemesterLabel(readSemesterValue(activeAcademicYearQuery.data));
     if (semesterFromActiveYear) return semesterFromActiveYear;
@@ -1410,14 +1462,10 @@ export default function HomeScreen() {
     );
     if (semesterFromTeacherAssignments) return semesterFromTeacherAssignments;
 
-    const semesterFromPrincipalOverview = toSemesterLabel(principalStatsQuery.data?.semester);
-    if (semesterFromPrincipalOverview) return semesterFromPrincipalOverview;
-
     return defaultSemesterByDate() === 'EVEN' ? 'Genap' : 'Ganjil';
   }, [
     activeAcademicYearQuery.data,
     teacherAssignmentsQuery.data?.activeYear,
-    principalStatsQuery.data?.semester,
   ]);
   const homeSubtitle = useMemo(() => {
     switch (profile.role) {
@@ -1995,7 +2043,7 @@ export default function HomeScreen() {
             {!principalStatsQuery.isLoading && !principalStatsQuery.isError ? (
               <>
                 <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
-                  Semester: {principalStatsQuery.data?.semester === 'EVEN' ? 'Genap' : 'Ganjil'}
+                  Tahun Ajaran Aktif: {principalStatsQuery.data?.activeAcademicYearName || '-'}
                 </Text>
                 {renderStatGrid(principalStatCards)}
               </>

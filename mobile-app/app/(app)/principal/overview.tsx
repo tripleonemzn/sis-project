@@ -23,11 +23,13 @@ export default function PrincipalOverviewScreen() {
   const overviewQuery = usePrincipalOverviewQuery({ enabled: isAuthenticated, user, semester });
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
 
+  const dashboard = overviewQuery.data?.summary;
   const overview = overviewQuery.data?.overview;
   const topStudents = overview?.topStudents || [];
   const majors = useMemo(() => overview?.majors || [], [overview?.majors]);
+  const studentByMajor = useMemo(() => dashboard?.studentByMajor || [], [dashboard?.studentByMajor]);
 
-  const summary = useMemo(() => {
+  const academicSummary = useMemo(() => {
     const totalStudents = majors.reduce((sum, item) => sum + Number(item.totalStudents || 0), 0);
     const weightedScore = majors.reduce(
       (sum, item) => sum + Number(item.averageScore || 0) * Number(item.totalStudents || 0),
@@ -40,13 +42,28 @@ export default function PrincipalOverviewScreen() {
     };
   }, [majors]);
 
-  if (isLoading) return <AppLoadingScreen message="Memuat ringkasan akademik..." />;
+  const totalClasses = useMemo(
+    () => studentByMajor.reduce((sum, item) => sum + Number(item.totalClasses || 0), 0),
+    [studentByMajor],
+  );
+  const attendanceSummary = useMemo(() => {
+    const present = Number(dashboard?.totals.totalPresentToday || 0);
+    const absent = Number(dashboard?.totals.totalAbsentToday || 0);
+    const total = present + absent;
+    return {
+      present,
+      absent,
+      percentage: total > 0 ? Math.round((present / total) * 100) : 0,
+    };
+  }, [dashboard?.totals.totalAbsentToday, dashboard?.totals.totalPresentToday]);
+
+  if (isLoading) return <AppLoadingScreen message="Memuat dashboard kepala sekolah..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
   if (user?.role !== 'PRINCIPAL') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Ringkasan Akademik</Text>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Dashboard Kepala Sekolah</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role kepala sekolah." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -75,12 +92,131 @@ export default function PrincipalOverviewScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Ringkasan Akademik</Text>
+      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Dashboard Kepala Sekolah</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        {overview?.academicYear?.name
-          ? `Tahun ajaran ${overview.academicYear.name} • Semester ${semester === 'ODD' ? 'Ganjil' : 'Genap'}`
-          : 'Ringkasan akademik lintas jurusan'}
+        {dashboard?.activeAcademicYear?.name
+          ? `Ringkasan akademik, keuangan, dan SDM untuk tahun ajaran ${dashboard.activeAcademicYear.name}.`
+          : 'Ringkasan akademik, keuangan, dan SDM kepala sekolah.'}
       </Text>
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 10,
+              padding: 10,
+            }}
+          >
+            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Tahun Ajaran Aktif</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+              {dashboard?.activeAcademicYear?.name || '-'}
+            </Text>
+          </View>
+        </View>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 10,
+              padding: 10,
+            }}
+          >
+            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Siswa Aktif</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+              {dashboard?.totals.students || 0}
+            </Text>
+          </View>
+        </View>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 10,
+              padding: 10,
+            }}
+          >
+            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Guru & Staff</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+              {dashboard?.totals.teachers || 0}
+            </Text>
+          </View>
+        </View>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 10,
+              padding: 10,
+            }}
+          >
+            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Pengajuan Pending</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+              {dashboard?.totals.pendingBudgetRequests || 0}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 3 }}>
+              Rp {Math.round(Number(dashboard?.totals.totalPendingBudgetAmount || 0)).toLocaleString('id-ID')}
+            </Text>
+          </View>
+        </View>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 10,
+              padding: 10,
+            }}
+          >
+            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Kompetensi Keahlian</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+              {studentByMajor.length}
+            </Text>
+          </View>
+        </View>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 10,
+              padding: 10,
+            }}
+          >
+            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Kelas Aktif</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>{totalClasses}</Text>
+          </View>
+        </View>
+        <View style={{ width: '100%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 10,
+              padding: 10,
+            }}
+          >
+            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Kehadiran Hari Ini</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+              {attendanceSummary.percentage}%
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 3 }}>
+              Hadir {attendanceSummary.present} • Tidak hadir {attendanceSummary.absent}
+            </Text>
+          </View>
+        </View>
+      </View>
 
       <View
         style={{
@@ -92,7 +228,10 @@ export default function PrincipalOverviewScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Semester</Text>
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>Filter Ringkasan Akademik</Text>
+        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+          Semester ini memengaruhi top siswa dan rata-rata nilai per jurusan.
+        </Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Pressable
             onPress={() => setSemester('ODD')}
@@ -129,53 +268,6 @@ export default function PrincipalOverviewScreen() {
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
-        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <View
-            style={{
-              backgroundColor: '#fff',
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              borderRadius: 10,
-              padding: 10,
-            }}
-          >
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Rata-rata Sekolah</Text>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
-              {summary.schoolAverage.toFixed(2)}
-            </Text>
-          </View>
-        </View>
-        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <View
-            style={{
-              backgroundColor: '#fff',
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              borderRadius: 10,
-              padding: 10,
-            }}
-          >
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Total Jurusan</Text>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>{summary.totalMajors}</Text>
-          </View>
-        </View>
-        <View style={{ width: '100%', paddingHorizontal: 4, marginBottom: 8 }}>
-          <View
-            style={{
-              backgroundColor: '#fff',
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              borderRadius: 10,
-              padding: 10,
-            }}
-          >
-            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Total Siswa Terhitung</Text>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>{summary.totalStudents}</Text>
-          </View>
-        </View>
-      </View>
-
       {overviewQuery.isLoading ? <QueryStateView type="loading" message="Mengambil ringkasan akademik..." /> : null}
       {overviewQuery.isError ? (
         <QueryStateView type="error" message="Gagal memuat ringkasan akademik." onRetry={() => overviewQuery.refetch()} />
@@ -184,6 +276,98 @@ export default function PrincipalOverviewScreen() {
 
       {!overviewQuery.isLoading && !overviewQuery.isError ? (
         <>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+              Statistik Siswa per Kompetensi Keahlian
+            </Text>
+            {studentByMajor.length > 0 ? (
+              studentByMajor.map((major) => (
+                <View
+                  key={major.majorId}
+                  style={{
+                    backgroundColor: '#fff',
+                    borderWidth: 1,
+                    borderColor: '#dbe7fb',
+                    borderRadius: 10,
+                    padding: 10,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                    {major.name} {major.code ? `(${major.code})` : ''}
+                  </Text>
+                  <Text style={{ color: '#64748b', marginTop: 2 }}>
+                    Siswa: {major.totalStudents} • Kelas: {major.totalClasses}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderStyle: 'dashed',
+                  borderRadius: 10,
+                  padding: 14,
+                  backgroundColor: '#fff',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data distribusi siswa per jurusan.</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
+            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+              <View
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 10,
+                  padding: 10,
+                }}
+              >
+                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Rata-rata Sekolah</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+                  {academicSummary.schoolAverage.toFixed(2)}
+                </Text>
+              </View>
+            </View>
+            <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+              <View
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 10,
+                  padding: 10,
+                }}
+              >
+                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Jurusan dengan Nilai</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+                  {academicSummary.totalMajors}
+                </Text>
+              </View>
+            </View>
+            <View style={{ width: '100%', paddingHorizontal: 4, marginBottom: 8 }}>
+              <View
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 10,
+                  padding: 10,
+                }}
+              >
+                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Siswa dengan Data Nilai</Text>
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
+                  {academicSummary.totalStudents}
+                </Text>
+              </View>
+            </View>
+          </View>
+
           <View style={{ marginBottom: 12 }}>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Top 3 Siswa</Text>
             {topStudents.length > 0 ? (

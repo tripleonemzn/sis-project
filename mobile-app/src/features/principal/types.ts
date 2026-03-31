@@ -34,6 +34,37 @@ export type PrincipalAcademicOverview = {
   majors: PrincipalMajorSummary[];
 };
 
+export type PrincipalStudentByMajorStat = {
+  majorId: number;
+  name: string;
+  code: string;
+  totalStudents: number;
+  totalClasses: number;
+};
+
+export type PrincipalTeacherAssignmentSummary = {
+  totalAssignments: number;
+  totalTeachersWithAssignments: number;
+};
+
+export type PrincipalDashboardSummary = {
+  activeAcademicYear: {
+    id: number;
+    name: string;
+  };
+  totals: {
+    students: number;
+    teachers: number;
+    pendingBudgetRequests: number;
+    totalPendingBudgetAmount: number;
+    totalPresentToday: number;
+    totalAbsentToday: number;
+  };
+  studentByMajor: PrincipalStudentByMajorStat[];
+  teacherAssignmentSummary: PrincipalTeacherAssignmentSummary | null;
+  academicOverview: PrincipalAcademicOverview;
+};
+
 export type PrincipalBudgetRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export type PrincipalBudgetRequest = {

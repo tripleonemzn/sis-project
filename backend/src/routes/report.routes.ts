@@ -12,6 +12,7 @@ import {
   deleteAchievement,
   getClassRankings,
   getPrincipalAcademicOverview,
+  getPrincipalDashboardSummary,
   getFinalLedgerPreview,
   exportFinalLedgerPreview,
 } from '../controllers/report.controller';
@@ -26,6 +27,11 @@ router.get(
   '/principal-overview',
   roleMiddleware(['PRINCIPAL']),
   getPrincipalAcademicOverview,
+);
+router.get(
+  '/principal-dashboard-summary',
+  roleMiddleware(['PRINCIPAL']),
+  getPrincipalDashboardSummary,
 );
 router.post(
   '/final-ledger/preview',

@@ -1,18 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { AuthUser } from '../auth/types';
-import { academicYearApi } from '../academicYear/academicYearApi';
 import { offlineCache } from '../../lib/storage/offlineCache';
 import { CACHE_MAX_SNAPSHOTS_PER_FEATURE, CACHE_TTL_MS } from '../../config/cache';
 import { principalApi } from './principalApi';
-import { PrincipalAcademicOverview } from './types';
+import { PrincipalDashboardSummary } from './types';
 
 type PrincipalOverviewQueryData = {
-  activeYear: {
-    id: number;
-    name: string;
-    isActive: boolean;
-  } | null;
-  overview: PrincipalAcademicOverview;
+  summary: PrincipalDashboardSummary;
+  overview: PrincipalDashboardSummary['academicOverview'];
   fromCache: boolean;
   cachedAt: string | null;
 };
@@ -32,19 +27,11 @@ export function usePrincipalOverviewQuery({ enabled, user, semester }: Params) {
     queryFn: async (): Promise<PrincipalOverviewQueryData> => {
       const cacheKey = `mobile_cache_principal_overview_${user!.id}_${semester}`;
       try {
-        let activeYear: { id: number; name: string; isActive: boolean } | null = null;
-        try {
-          activeYear = await academicYearApi.getActive();
-        } catch {
-          activeYear = null;
-        }
-
-        const overview = await principalApi.getAcademicOverview({
-          academicYearId: activeYear?.id,
+        const summary = await principalApi.getDashboardSummary({
           semester,
         });
 
-        const payload = { activeYear, overview };
+        const payload = { summary, overview: summary.academicOverview };
         const cache = await offlineCache.set(cacheKey, payload);
         await offlineCache.prunePrefix(
           `mobile_cache_principal_overview_${user!.id}_`,
@@ -52,7 +39,7 @@ export function usePrincipalOverviewQuery({ enabled, user, semester }: Params) {
         );
         return { ...payload, fromCache: false, cachedAt: cache.updatedAt };
       } catch (error) {
-        const cache = await offlineCache.get<{ activeYear: { id: number; name: string; isActive: boolean } | null; overview: PrincipalAcademicOverview }>(
+        const cache = await offlineCache.get<{ summary: PrincipalDashboardSummary; overview: PrincipalDashboardSummary['academicOverview'] }>(
           cacheKey,
           { maxAgeMs: CACHE_TTL_MS },
         );

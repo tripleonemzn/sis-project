@@ -434,6 +434,64 @@ const principalAcademicOverviewQuerySchema = z.object({
   semester: z.nativeEnum(Semester).optional(),
 });
 
+type PrincipalResolvedAcademicYear = {
+  id: number;
+  name: string;
+};
+
+type PrincipalAcademicOverviewPayload = {
+  academicYear: PrincipalResolvedAcademicYear;
+  semester?: Semester | null;
+  topStudents: Array<{
+    studentId: number;
+    name: string;
+    nis?: string | null;
+    nisn?: string | null;
+    averageScore: number;
+    class?: {
+      id: number;
+      name: string;
+      level?: string | null;
+    } | null;
+    major?: {
+      id: number;
+      name: string;
+      code?: string | null;
+    } | null;
+  }>;
+  majors: Array<{
+    majorId: number;
+    name: string;
+    code?: string | null;
+    totalStudents: number;
+    averageScore: number;
+  }>;
+};
+
+type PrincipalDashboardSummaryPayload = {
+  activeAcademicYear: PrincipalResolvedAcademicYear;
+  totals: {
+    students: number;
+    teachers: number;
+    pendingBudgetRequests: number;
+    totalPendingBudgetAmount: number;
+    totalPresentToday: number;
+    totalAbsentToday: number;
+  };
+  studentByMajor: Array<{
+    majorId: number;
+    name: string;
+    code: string;
+    totalStudents: number;
+    totalClasses: number;
+  }>;
+  teacherAssignmentSummary: {
+    totalAssignments: number;
+    totalTeachersWithAssignments: number;
+  } | null;
+  academicOverview: PrincipalAcademicOverviewPayload;
+};
+
 const finalLedgerPreviewSchema = z.object({
   academicYearIds: z.array(z.coerce.number().int().positive()).optional(),
   semesters: z.array(z.nativeEnum(Semester)).optional(),
@@ -1198,224 +1256,357 @@ export const buildFinalLedgerPreviewData = async (
   };
 };
 
+const resolvePrincipalAcademicYear = async (
+  academicYearId?: number,
+): Promise<PrincipalResolvedAcademicYear> => {
+  const academicYear = academicYearId
+    ? await prisma.academicYear.findUnique({
+        where: { id: academicYearId },
+        select: { id: true, name: true },
+      })
+    : await prisma.academicYear.findFirst({
+        where: { isActive: true },
+        select: { id: true, name: true },
+      });
+
+  if (!academicYear) {
+    throw new ApiError(404, 'Tahun ajaran aktif tidak ditemukan');
+  }
+
+  return academicYear;
+};
+
+const buildEmptyPrincipalAcademicOverviewPayload = (
+  academicYear: PrincipalResolvedAcademicYear,
+  semester?: Semester,
+): PrincipalAcademicOverviewPayload => ({
+  academicYear: {
+    id: academicYear.id,
+    name: academicYear.name,
+  },
+  semester: semester ?? null,
+  topStudents: [],
+  majors: [],
+});
+
+const buildPrincipalAcademicOverviewPayload = async (params: {
+  academicYear: PrincipalResolvedAcademicYear;
+  semester?: Semester;
+}): Promise<PrincipalAcademicOverviewPayload> => {
+  const where: Record<string, unknown> = {
+    academicYearId: params.academicYear.id,
+  };
+
+  if (params.semester) {
+    where.semester = params.semester;
+  }
+
+  const reportGrades = await prisma.reportGrade.findMany({
+    where,
+    select: {
+      studentId: true,
+      finalScore: true,
+      usScore: true,
+      slotScores: true,
+    },
+  });
+
+  if (!reportGrades.length) {
+    return buildEmptyPrincipalAcademicOverviewPayload(params.academicYear, params.semester);
+  }
+
+  const aggregateByStudent = new Map<number, { total: number; count: number }>();
+  reportGrades.forEach((grade) => {
+    const effectiveScore = resolveEffectiveReportFinalScore(grade);
+    if (effectiveScore === null) return;
+    const current = aggregateByStudent.get(grade.studentId) || { total: 0, count: 0 };
+    current.total += effectiveScore;
+    current.count += 1;
+    aggregateByStudent.set(grade.studentId, current);
+  });
+
+  if (!aggregateByStudent.size) {
+    return buildEmptyPrincipalAcademicOverviewPayload(params.academicYear, params.semester);
+  }
+
+  const students = await listHistoricalStudentsByIds(
+    Array.from(aggregateByStudent.keys()),
+    params.academicYear.id,
+  );
+  const studentMap = new Map<number, (typeof students)[number]>();
+  students.forEach((student) => {
+    studentMap.set(student.id, student);
+  });
+
+  const enriched: Array<{
+    studentId: number;
+    averageScore: number;
+    student: (typeof students)[number];
+  }> = [];
+
+  aggregateByStudent.forEach((aggregate, studentId) => {
+    const student = studentMap.get(studentId);
+    if (!student || !student.studentClass || !student.studentClass.major || aggregate.count <= 0) {
+      return;
+    }
+
+    const roundedAverage = Math.round((aggregate.total / aggregate.count) * 10) / 10;
+    enriched.push({
+      studentId,
+      averageScore: roundedAverage,
+      student,
+    });
+  });
+
+  if (!enriched.length) {
+    return buildEmptyPrincipalAcademicOverviewPayload(params.academicYear, params.semester);
+  }
+
+  const majorMap = new Map<
+    number,
+    {
+      majorId: number;
+      name: string;
+      code: string;
+      totalStudents: number;
+      totalScore: number;
+    }
+  >();
+
+  enriched.forEach((item) => {
+    const major = item.student.studentClass!.major!;
+    const current = majorMap.get(major.id) || {
+      majorId: major.id,
+      name: major.name,
+      code: major.code,
+      totalStudents: 0,
+      totalScore: 0,
+    };
+
+    current.totalStudents += 1;
+    current.totalScore += item.averageScore;
+    majorMap.set(major.id, current);
+  });
+
+  const majors = Array.from(majorMap.values())
+    .map((item) => ({
+      majorId: item.majorId,
+      name: item.name,
+      code: item.code,
+      totalStudents: item.totalStudents,
+      averageScore:
+        item.totalStudents > 0 ? Math.round((item.totalScore / item.totalStudents) * 10) / 10 : 0,
+    }))
+    .sort((a, b) => b.averageScore - a.averageScore);
+
+  const topStudents = [...enriched]
+    .sort((a, b) => b.averageScore - a.averageScore)
+    .slice(0, 3)
+    .map((item) => ({
+      studentId: item.studentId,
+      name: item.student.name,
+      nis: item.student.nis,
+      nisn: item.student.nisn,
+      averageScore: item.averageScore,
+      class: item.student.studentClass
+        ? {
+            id: item.student.studentClass.id,
+            name: item.student.studentClass.name,
+            level: item.student.studentClass.level,
+          }
+        : null,
+      major: item.student.studentClass?.major
+        ? {
+            id: item.student.studentClass.major.id,
+            name: item.student.studentClass.major.name,
+            code: item.student.studentClass.major.code,
+          }
+        : null,
+    }));
+
+  return {
+    academicYear: {
+      id: params.academicYear.id,
+      name: params.academicYear.name,
+    },
+    semester: params.semester ?? null,
+    topStudents,
+    majors,
+  };
+};
+
+const buildPrincipalDashboardSummaryPayload = async (params: {
+  principalUserId: number;
+  academicYear: PrincipalResolvedAcademicYear;
+  semester?: Semester;
+}): Promise<PrincipalDashboardSummaryPayload> => {
+  const [students, teachers, pendingBudgetAggregate, assignments, academicOverview] = await Promise.all([
+    prisma.user.findMany({
+      where: {
+        role: 'STUDENT',
+      },
+      select: {
+        id: true,
+        studentClass: {
+          select: {
+            id: true,
+            name: true,
+            major: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.user.count({
+      where: {
+        role: 'TEACHER',
+      },
+    }),
+    prisma.budgetRequest.aggregate({
+      where: {
+        approverId: params.principalUserId,
+        academicYearId: params.academicYear.id,
+        approvalStatus: 'PENDING',
+      },
+      _count: {
+        id: true,
+      },
+      _sum: {
+        totalAmount: true,
+      },
+    }),
+    prisma.teacherAssignment.findMany({
+      where: {
+        academicYearId: params.academicYear.id,
+      },
+      select: {
+        teacherId: true,
+      },
+    }),
+    buildPrincipalAcademicOverviewPayload({
+      academicYear: params.academicYear,
+      semester: params.semester,
+    }),
+  ]);
+
+  const studentByMajorMap = new Map<
+    number,
+    {
+      majorId: number;
+      name: string;
+      code: string;
+      totalStudents: number;
+      classIds: Set<number>;
+    }
+  >();
+
+  students.forEach((student) => {
+    const studentClass = student.studentClass;
+    const major = studentClass?.major;
+    if (!studentClass || !major) return;
+
+    const current = studentByMajorMap.get(major.id) || {
+      majorId: major.id,
+      name: major.name,
+      code: major.code,
+      totalStudents: 0,
+      classIds: new Set<number>(),
+    };
+
+    current.totalStudents += 1;
+    current.classIds.add(studentClass.id);
+    studentByMajorMap.set(major.id, current);
+  });
+
+  const studentByMajor = Array.from(studentByMajorMap.values())
+    .map((item) => ({
+      majorId: item.majorId,
+      name: item.name,
+      code: item.code,
+      totalStudents: item.totalStudents,
+      totalClasses: item.classIds.size,
+    }))
+    .sort((a, b) => b.totalStudents - a.totalStudents);
+
+  const uniqueTeacherIds = new Set<number>();
+  assignments.forEach((assignment) => {
+    if (assignment.teacherId) {
+      uniqueTeacherIds.add(assignment.teacherId);
+    }
+  });
+
+  return {
+    activeAcademicYear: {
+      id: params.academicYear.id,
+      name: params.academicYear.name,
+    },
+    totals: {
+      students: students.length,
+      teachers,
+      pendingBudgetRequests: pendingBudgetAggregate._count.id,
+      totalPendingBudgetAmount: Number(pendingBudgetAggregate._sum.totalAmount || 0),
+      totalPresentToday: 0,
+      totalAbsentToday: 0,
+    },
+    studentByMajor,
+    teacherAssignmentSummary: {
+      totalAssignments: assignments.length,
+      totalTeachersWithAssignments: uniqueTeacherIds.size,
+    },
+    academicOverview,
+  };
+};
+
 export const getPrincipalAcademicOverview = asyncHandler(
   async (req: Request, res: Response) => {
     const { academicYearId, semester } = principalAcademicOverviewQuerySchema.parse(
       req.query,
     );
-
-    let academicYear = null as any;
-
-    if (academicYearId) {
-      academicYear = await prisma.academicYear.findUnique({
-        where: { id: academicYearId },
-      });
-    } else {
-      academicYear = await prisma.academicYear.findFirst({
-        where: { isActive: true },
-      });
-    }
-
-    if (!academicYear) {
-      throw new ApiError(404, 'Tahun ajaran aktif tidak ditemukan');
-    }
-
-    const where: any = {
-      academicYearId: academicYear.id,
-    };
-
-    if (semester) {
-      where.semester = semester;
-    }
-
-    const reportGrades = await prisma.reportGrade.findMany({
-      where,
-      select: {
-        studentId: true,
-        finalScore: true,
-        usScore: true,
-        slotScores: true,
-      },
+    const academicYear = await resolvePrincipalAcademicYear(academicYearId);
+    const overview = await buildPrincipalAcademicOverviewPayload({
+      academicYear,
+      semester,
     });
-
-    if (!reportGrades.length) {
-      res.status(200).json(
-        new ApiResponse(
-          200,
-          {
-            academicYear: {
-              id: academicYear.id,
-              name: academicYear.name,
-            },
-            semester: semester ?? null,
-            topStudents: [],
-            majors: [],
-          },
-          'Belum ada data nilai untuk filter ini',
-        ),
-      );
-      return;
-    }
-
-    const aggregateByStudent = new Map<number, { total: number; count: number }>();
-    reportGrades.forEach((grade) => {
-      const effectiveScore = resolveEffectiveReportFinalScore(grade);
-      if (effectiveScore === null) return;
-      const current = aggregateByStudent.get(grade.studentId) || { total: 0, count: 0 };
-      current.total += effectiveScore;
-      current.count += 1;
-      aggregateByStudent.set(grade.studentId, current);
-    });
-
-    if (!aggregateByStudent.size) {
-      res.status(200).json(
-        new ApiResponse(
-          200,
-          {
-            academicYear: {
-              id: academicYear.id,
-              name: academicYear.name,
-            },
-            semester: semester ?? null,
-            topStudents: [],
-            majors: [],
-          },
-          'Belum ada data nilai untuk filter ini',
-        ),
-      );
-      return;
-    }
-
-    const studentIds = Array.from(aggregateByStudent.keys());
-
-    const students = await listHistoricalStudentsByIds(studentIds, academicYear.id);
-
-    const studentMap = new Map<number, any>();
-    students.forEach((s) => {
-      studentMap.set(s.id, s);
-    });
-
-    const enriched: {
-      studentId: number;
-      averageScore: number;
-      student: any;
-    }[] = [];
-
-    aggregateByStudent.forEach((aggregate, studentId) => {
-      const s = studentMap.get(studentId);
-      if (!s || !s.studentClass || !s.studentClass.major || aggregate.count <= 0) {
-        return;
-      }
-
-      const roundedAvg = Math.round((aggregate.total / aggregate.count) * 10) / 10;
-
-      enriched.push({
-        studentId,
-        averageScore: roundedAvg,
-        student: s,
-      });
-    });
-
-    if (!enriched.length) {
-      res.status(200).json(
-        new ApiResponse(
-          200,
-          {
-            academicYear: {
-              id: academicYear.id,
-              name: academicYear.name,
-            },
-            semester: semester ?? null,
-            topStudents: [],
-            majors: [],
-          },
-          'Belum ada data nilai untuk filter ini',
-        ),
-      );
-      return;
-    }
-
-    const majorMap = new Map<
-      number,
-      {
-        majorId: number;
-        name: string;
-        code: string;
-        totalStudents: number;
-        totalScore: number;
-      }
-    >();
-
-    enriched.forEach((item) => {
-      const major = item.student.studentClass.major;
-      const existing =
-        majorMap.get(major.id) ||
-        ({
-          majorId: major.id,
-          name: major.name,
-          code: major.code,
-          totalStudents: 0,
-          totalScore: 0,
-        } as any);
-
-      existing.totalStudents += 1;
-      existing.totalScore += item.averageScore;
-
-      majorMap.set(major.id, existing);
-    });
-
-    const majors = Array.from(majorMap.values())
-      .map((m) => {
-        const averageScore =
-          m.totalStudents > 0 ? Math.round((m.totalScore / m.totalStudents) * 10) / 10 : 0;
-        return {
-          majorId: m.majorId,
-          name: m.name,
-          code: m.code,
-          totalStudents: m.totalStudents,
-          averageScore,
-        };
-      })
-      .sort((a, b) => b.averageScore - a.averageScore);
-
-    const topStudents = [...enriched]
-      .sort((a, b) => b.averageScore - a.averageScore)
-      .slice(0, 3)
-      .map((item) => ({
-        studentId: item.studentId,
-        name: item.student.name,
-        nis: item.student.nis,
-        nisn: item.student.nisn,
-        averageScore: item.averageScore,
-        class: item.student.studentClass
-          ? {
-              id: item.student.studentClass.id,
-              name: item.student.studentClass.name,
-              level: item.student.studentClass.level,
-            }
-          : null,
-        major: item.student.studentClass?.major
-          ? {
-              id: item.student.studentClass.major.id,
-              name: item.student.studentClass.major.name,
-              code: item.student.studentClass.major.code,
-            }
-          : null,
-      }));
 
     res.status(200).json(
       new ApiResponse(
         200,
-        {
-          academicYear: {
-            id: academicYear.id,
-            name: academicYear.name,
-          },
-          semester: semester ?? null,
-          topStudents,
-          majors,
-        },
+        overview,
         'Ringkasan akademik berhasil diambil',
+      ),
+    );
+  },
+);
+
+export const getPrincipalDashboardSummary = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { academicYearId, semester } = principalAcademicOverviewQuerySchema.parse(
+      req.query,
+    );
+    const user = (req as any).user as { id?: number | string };
+    const principalUserId = Number(user?.id || 0);
+
+    if (!principalUserId) {
+      throw new ApiError(401, 'Tidak memiliki otorisasi');
+    }
+
+    const academicYear = await resolvePrincipalAcademicYear(academicYearId);
+    const summary = await buildPrincipalDashboardSummaryPayload({
+      principalUserId,
+      academicYear,
+      semester,
+    });
+
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        summary,
+        'Ringkasan dashboard kepala sekolah berhasil diambil',
       ),
     );
   },
