@@ -353,6 +353,9 @@ export default function DiagnosticsScreen() {
         <Text style={{ color: '#475569', fontSize: 12, marginBottom: 2 }}>
           Android Version Code: {androidVersionCode}
         </Text>
+        <Text style={{ color: '#475569', fontSize: 12, marginBottom: 2 }}>
+          OTA Marker: pilot-live-2026-03-31-01
+        </Text>
         <Text style={{ color: '#475569', fontSize: 12, marginBottom: 2 }}>Cache TTL: {cacheTtlHours} jam</Text>
         <Text style={{ color: '#475569', fontSize: 12, marginBottom: 2 }}>
           Max Snapshot/Fitur: {CACHE_MAX_SNAPSHOTS_PER_FEATURE}
