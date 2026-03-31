@@ -1,4 +1,5 @@
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
+import { randomUUID } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import { promisify, TextDecoder } from 'util';
@@ -45,6 +46,18 @@ export type WebmailMessageListResult = {
   };
 };
 
+export type SendWebmailMessageInput = {
+  mailboxIdentity: string;
+  fromName?: string | null;
+  to: string[];
+  cc?: string[];
+  subject: string;
+  plainText: string;
+  html?: string | null;
+  inReplyToMessageId?: string | null;
+  references?: string[] | null;
+};
+
 export class MailboxUnavailableError extends Error {}
 export class MailboxMessageNotFoundError extends Error {}
 
@@ -59,6 +72,11 @@ type ParsedMimeEntity = {
 
 function normalizeMailboxIdentity(value: string) {
   return String(value || '').trim().toLowerCase();
+}
+
+function toMaybeString(value: unknown) {
+  const normalized = String(value ?? '').trim();
+  return normalized.length > 0 ? normalized : '';
 }
 
 function parsePositiveInt(rawValue: unknown, fallbackValue: number, minValue: number, maxValue: number) {
@@ -195,12 +213,42 @@ function decodeHtmlEntities(value: string) {
     .replace(/&amp;/gi, '&');
 }
 
+function escapeHtml(value: string) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function stripHtml(value: string) {
   return decodeHtmlEntities(String(value || '').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
 }
 
 function normalizeSnippet(value: string) {
   return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function encodeHeaderIfNeeded(value: string) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '';
+  if (/^[\x20-\x7E]*$/.test(normalized)) return normalized;
+  return `=?UTF-8?B?${Buffer.from(normalized, 'utf8').toString('base64')}?=`;
+}
+
+function ensureValidEmailAddress(value: string) {
+  const normalized = String(value || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    throw new Error(`Alamat email tidak valid: ${normalized || '-'}`);
+  }
+  return normalized;
+}
+
+function buildHtmlFromPlainText(value: string) {
+  const escaped = escapeHtml(String(value || '').trim());
+  if (!escaped) return '<div></div>';
+  return `<div>${escaped.replace(/\r?\n/g, '<br/>')}</div>`;
 }
 
 function extractMultipartBoundary(contentTypeHeader: string) {
@@ -408,6 +456,94 @@ async function runDoveadmFlagsAddSeen(mailboxIdentity: string, guid: string) {
   }
 }
 
+async function runDockerExecWithInput(containerName: string, command: string, input: string) {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn('docker', ['exec', '-i', containerName, 'sh', '-lc', command], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (chunk) => {
+      stdout += String(chunk || '');
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += String(chunk || '');
+    });
+
+    child.on('error', (error) => {
+      reject(error);
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`${stderr || stdout || `Command exited with code ${code}`}`.trim()));
+    });
+
+    child.stdin.write(input);
+    child.stdin.end();
+  });
+}
+
+function buildMimeMessage(input: SendWebmailMessageInput) {
+  const fromMailbox = normalizeMailboxIdentity(input.mailboxIdentity);
+  const displayName = toMaybeString(input.fromName);
+  const fromHeader = displayName
+    ? `${encodeHeaderIfNeeded(displayName)} <${fromMailbox}>`
+    : fromMailbox;
+  const toList = input.to.map((item) => ensureValidEmailAddress(item));
+  const ccList = (input.cc || []).map((item) => ensureValidEmailAddress(item));
+  const subject = toMaybeString(input.subject) || '(Tanpa subjek)';
+  const plainText = String(input.plainText || '').trim();
+  const html = toMaybeString(input.html) || buildHtmlFromPlainText(plainText);
+  const boundary = `----=_SISMobile_${randomUUID()}`;
+  const messageId = `<sis-mobile-${randomUUID()}@${fromMailbox.split('@')[1] || 'siskgb2.id'}>`;
+  const now = new Date().toUTCString();
+  const referenceHeader = (input.references || [])
+    .map((item) => toMaybeString(item))
+    .filter((item) => item.length > 0)
+    .join(' ');
+
+  const lines = [
+    `From: ${fromHeader}`,
+    `To: ${toList.join(', ')}`,
+    ...(ccList.length > 0 ? [`Cc: ${ccList.join(', ')}`] : []),
+    `Subject: ${encodeHeaderIfNeeded(subject)}`,
+    `Message-ID: ${messageId}`,
+    `Date: ${now}`,
+    'MIME-Version: 1.0',
+    ...(input.inReplyToMessageId ? [`In-Reply-To: ${toMaybeString(input.inReplyToMessageId)}`] : []),
+    ...(referenceHeader ? [`References: ${referenceHeader}`] : []),
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    plainText,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset=UTF-8',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    html,
+    '',
+    `--${boundary}--`,
+    '',
+  ];
+
+  return {
+    messageId,
+    envelopeRecipients: [...toList, ...ccList],
+    rawMessage: lines.join('\n'),
+  };
+}
+
 function mapSummaryRecord(record: DoveadmRecord): WebmailMessageSummary {
   const flags = String(record['flags'] || '')
     .split(/\s+/)
@@ -550,4 +686,35 @@ export async function markWebmailMessageAsRead(options: {
       isRead: true,
     },
   });
+}
+
+export async function sendWebmailMessage(input: SendWebmailMessageInput) {
+  const mailboxIdentity = normalizeMailboxIdentity(input.mailboxIdentity);
+  await ensureMailboxAvailable(mailboxIdentity);
+
+  const { messageId, envelopeRecipients, rawMessage } = buildMimeMessage(input);
+  if (envelopeRecipients.length === 0) {
+    throw new Error('Penerima email wajib diisi');
+  }
+
+  const escapedSender = mailboxIdentity.replace(/'/g, `'\\''`);
+  const escapedRecipients = envelopeRecipients.map((recipient) => `'${recipient.replace(/'/g, `'\\''`)}'`).join(' ');
+
+  await runDockerExecWithInput(
+    'mailcowdockerized-postfix-mailcow-1',
+    `/usr/sbin/sendmail -i -f '${escapedSender}' -- ${escapedRecipients}`,
+    rawMessage,
+  );
+
+  await runDockerExecWithInput(
+    getDovecotContainerName(),
+    `tmp_file="/tmp/sis-mobile-sent-${randomUUID()}.eml"; cat > "$tmp_file" && doveadm save -u '${escapedSender}' -m Sent "$tmp_file" && rm -f "$tmp_file"`,
+    rawMessage,
+  );
+
+  return {
+    messageId,
+    sentAt: new Date().toISOString(),
+    to: envelopeRecipients,
+  };
 }

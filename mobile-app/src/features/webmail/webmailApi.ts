@@ -76,6 +76,23 @@ export type MobileWebmailMessageList = {
   };
 };
 
+export type MobileWebmailSendPayload = {
+  to: string[] | string;
+  cc?: string[] | string;
+  subject?: string;
+  plainText: string;
+  html?: string | null;
+  inReplyToMessageId?: string | null;
+  references?: string[];
+};
+
+export type MobileWebmailSendResult = {
+  mailboxIdentity: string;
+  messageId: string;
+  sentAt: string;
+  to: string[];
+};
+
 export const webmailApi = {
   async getConfig() {
     const response = await apiClient.get<ApiEnvelope<MobileWebmailConfig>>('/webmail/config');
@@ -108,6 +125,11 @@ export const webmailApi = {
     const response = await apiClient.patch<ApiEnvelope<{ guid: string; mailboxIdentity: string; markedAt: string }>>(
       `/webmail/messages/${encodeURIComponent(guid)}/read`,
     );
+    return response.data.data;
+  },
+
+  async sendMessage(payload: MobileWebmailSendPayload) {
+    const response = await apiClient.post<ApiEnvelope<MobileWebmailSendResult>>('/webmail/messages/send', payload);
     return response.data.data;
   },
 };

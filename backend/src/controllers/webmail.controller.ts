@@ -12,6 +12,7 @@ import {
   markWebmailMessageAsRead,
   MailboxMessageNotFoundError,
   MailboxUnavailableError,
+  sendWebmailMessage,
 } from '../services/webmailMailbox.service';
 
 type WebmailMode = 'BRIDGE' | 'SSO';
@@ -55,6 +56,16 @@ type RegisterMailboxBody = {
   confirmPassword?: unknown;
 };
 
+type SendWebmailBody = {
+  to?: unknown;
+  cc?: unknown;
+  subject?: unknown;
+  plainText?: unknown;
+  html?: unknown;
+  inReplyToMessageId?: unknown;
+  references?: unknown;
+};
+
 const WEBMAIL_ALLOWED_ROLES: Role[] = [
   'ADMIN',
   'TEACHER',
@@ -72,6 +83,21 @@ const WEBMAIL_SELF_REGISTER_ROLES: Role[] = [
 
 const isValidEmail = (value: string): boolean => {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+};
+
+const toStringList = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => toMaybeString(item))
+      .filter((item) => item.length > 0);
+  }
+
+  const single = toMaybeString(value);
+  if (!single) return [];
+  return single
+    .split(/[,\n;]/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
 };
 
 const toMaybeString = (value: unknown): string => String(value ?? '').trim();
@@ -458,6 +484,59 @@ export const markWebmailInboxMessageRead = asyncHandler(async (req: AuthRequest,
     }
     throw error;
   }
+});
+
+export const sendWebmailInboxMessage = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const user = await ensureWebmailAccess(req);
+  const mailboxIdentity = resolveMailboxIdentity(user);
+  if (!mailboxIdentity) {
+    throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox (email) yang valid');
+  }
+
+  const body = (req.body || {}) as SendWebmailBody;
+  const toList = toStringList(body.to);
+  const ccList = toStringList(body.cc);
+  const subject = toMaybeString(body.subject);
+  const plainText = String(body.plainText ?? '').trim();
+  const html = toMaybeString(body.html) || null;
+  const inReplyToMessageId = toMaybeString(body.inReplyToMessageId) || null;
+  const references = toStringList(body.references);
+
+  if (toList.length === 0) {
+    throw new ApiError(400, 'Penerima email wajib diisi');
+  }
+  if (toList.some((item) => !isValidEmail(item))) {
+    throw new ApiError(400, 'Daftar penerima email tidak valid');
+  }
+  if (ccList.some((item) => !isValidEmail(item))) {
+    throw new ApiError(400, 'Daftar CC email tidak valid');
+  }
+  if (!plainText) {
+    throw new ApiError(400, 'Isi email wajib diisi');
+  }
+
+  const result = await sendWebmailMessage({
+    mailboxIdentity,
+    fromName: user.name,
+    to: toList,
+    cc: ccList,
+    subject,
+    plainText,
+    html,
+    inReplyToMessageId,
+    references,
+  });
+
+  res.status(201).json(
+    new ApiResponse(
+      201,
+      {
+        mailboxIdentity,
+        ...result,
+      },
+      'Email berhasil dikirim',
+    ),
+  );
 });
 
 export const startWebmailSso = asyncHandler(async (req: AuthRequest, res: Response) => {

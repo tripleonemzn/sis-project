@@ -13,7 +13,7 @@ import { useAuth } from '../../src/features/auth/AuthProvider';
 import { MOBILE_NOTIFICATIONS_QUERY_KEY } from '../../src/features/notifications/notificationApi';
 import { MobileWebmailMessageSummary, webmailApi } from '../../src/features/webmail/webmailApi';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
-import { notifyApiError } from '../../src/lib/ui/feedback';
+import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
 
 const ALLOWED_WEBMAIL_ROLES = new Set(['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXTRACURRICULAR_TUTOR']);
 const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
@@ -94,6 +94,13 @@ function extractSenderLabel(item: { fromLabel?: string | null; from?: string | n
 
 function extractSubjectLabel(item: { subject?: string | null }) {
   return String(item.subject || '').trim() || '(Tanpa subjek)';
+}
+
+function normalizeReplySubject(subject?: string | null) {
+  const normalized = String(subject || '').trim();
+  if (!normalized) return 'Re: (Tanpa subjek)';
+  if (/^re:/i.test(normalized)) return normalized;
+  return `Re: ${normalized}`;
 }
 
 function SectionCard({
@@ -220,6 +227,12 @@ export default function MobileEmailScreen() {
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [bridgeCredentials, setBridgeCredentials] = useState<BridgeCredentials | null>(null);
   const [selectedEmailGuid, setSelectedEmailGuid] = useState<string | null>(null);
+  const [isComposeMode, setIsComposeMode] = useState(false);
+  const [composeModeKind, setComposeModeKind] = useState<'new' | 'reply'>('new');
+  const [composeTo, setComposeTo] = useState('');
+  const [composeCc, setComposeCc] = useState('');
+  const [composeSubject, setComposeSubject] = useState('');
+  const [composeBody, setComposeBody] = useState('');
 
   const isAllowedRole = useMemo(() => {
     const role = String(user?.role || '').toUpperCase();
@@ -340,6 +353,45 @@ export default function MobileEmailScreen() {
     },
   });
 
+  const sendMessageMutation = useMutation({
+    mutationFn: () =>
+      webmailApi.sendMessage({
+        to: composeTo
+          .split(/[,\n;]/)
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0),
+        cc: composeCc
+          .split(/[,\n;]/)
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0),
+        subject: composeSubject,
+        plainText: composeBody,
+        inReplyToMessageId:
+          composeModeKind === 'reply' ? selectedEmailDetailQuery.data?.messageId || null : null,
+        references:
+          composeModeKind === 'reply' && selectedEmailDetailQuery.data?.messageId
+            ? [selectedEmailDetailQuery.data.messageId]
+            : [],
+      }),
+    onSuccess: async () => {
+      notifySuccess('Email berhasil dikirim.', {
+        title: 'Email',
+      });
+      setComposeTo('');
+      setComposeCc('');
+      setComposeSubject('');
+      setComposeBody('');
+      setIsComposeMode(false);
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-email-inbox-feed'],
+        refetchType: 'active',
+      });
+    },
+    onError: (error: unknown) => {
+      notifyApiError(error, 'Gagal mengirim email.');
+    },
+  });
+
   const openBridgePanel = async (email: string, password: string) => {
     setPanelError(null);
     setBridgeCredentials({ email, password });
@@ -354,6 +406,25 @@ export default function MobileEmailScreen() {
     setPanelError(null);
     setWebmailUrl(null);
     setWebviewKey((value) => value + 1);
+  };
+
+  const openNewCompose = () => {
+    setIsComposeMode(true);
+    setComposeModeKind('new');
+    setComposeTo('');
+    setComposeCc('');
+    setComposeSubject('');
+    setComposeBody('');
+  };
+
+  const openReplyCompose = () => {
+    const replyTarget = String(selectedEmailDetailQuery.data?.from || selectedEmail?.from || '').trim();
+    setIsComposeMode(true);
+    setComposeModeKind('reply');
+    setComposeTo(replyTarget);
+    setComposeCc('');
+    setComposeSubject(normalizeReplySubject(selectedEmail?.subject));
+    setComposeBody('');
   };
 
   const handleLogin = async () => {
@@ -421,6 +492,18 @@ export default function MobileEmailScreen() {
     } catch {
       // Error is surfaced by mutation handler.
     }
+  };
+
+  const handleSendCompose = async () => {
+    if (!composeTo.trim()) {
+      notifyApiError(new Error('Penerima email wajib diisi.'), 'Penerima email wajib diisi.');
+      return;
+    }
+    if (!composeBody.trim()) {
+      notifyApiError(new Error('Isi email wajib diisi.'), 'Isi email wajib diisi.');
+      return;
+    }
+    await sendMessageMutation.mutateAsync();
   };
 
   if (isLoading) return <AppLoadingScreen message="Memuat Email..." />;
@@ -523,6 +606,50 @@ export default function MobileEmailScreen() {
               <Text style={{ color: '#64748b', fontSize: 12 }}>
                 Email terbaru: {latestEmailAt} • Kuota: {quotaLabel}
               </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={openNewCompose}
+                style={{
+                  flex: 1,
+                  borderRadius: 12,
+                  backgroundColor: '#0f172a',
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  gap: 6,
+                }}
+              >
+                <Feather name="edit-3" size={14} color="#ffffff" />
+                <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>Tulis Email Baru</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  if (selectedEmail) {
+                    openReplyCompose();
+                  }
+                }}
+                disabled={!selectedEmail}
+                style={{
+                  flex: 1,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  backgroundColor: selectedEmail ? '#ffffff' : '#f8fafc',
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  gap: 6,
+                  opacity: selectedEmail ? 1 : 0.6,
+                }}
+              >
+                <Feather name="corner-up-left" size={14} color="#1e293b" />
+                <Text style={{ color: '#1e293b', fontSize: 12, fontWeight: '700' }}>Balas Email</Text>
+              </Pressable>
             </View>
           </SectionCard>
 
@@ -728,6 +855,122 @@ export default function MobileEmailScreen() {
               </View>
             ) : null}
           </SectionCard>
+
+          {isComposeMode ? (
+            <SectionCard
+              title={composeModeKind === 'reply' ? 'Balas Email' : 'Tulis Email Baru'}
+              subtitle={
+                composeModeKind === 'reply'
+                  ? 'Balasan akan dikirim dari mailbox sekolah Anda dan salinannya otomatis disimpan ke folder Sent.'
+                  : 'Email akan dikirim dari mailbox sekolah Anda dan salinannya otomatis disimpan ke folder Sent.'
+              }
+            >
+              <TextInput
+                value={composeTo}
+                onChangeText={setComposeTo}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                placeholder="To: email@tujuan.com"
+                placeholderTextColor="#94a3b8"
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 11,
+                  color: BRAND_COLORS.textDark,
+                }}
+              />
+
+              <TextInput
+                value={composeCc}
+                onChangeText={setComposeCc}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                placeholder="CC (opsional)"
+                placeholderTextColor="#94a3b8"
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 11,
+                  color: BRAND_COLORS.textDark,
+                }}
+              />
+
+              <TextInput
+                value={composeSubject}
+                onChangeText={setComposeSubject}
+                placeholder="Subjek email"
+                placeholderTextColor="#94a3b8"
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 11,
+                  color: BRAND_COLORS.textDark,
+                }}
+              />
+
+              <TextInput
+                value={composeBody}
+                onChangeText={setComposeBody}
+                multiline
+                textAlignVertical="top"
+                placeholder="Tulis isi email di sini..."
+                placeholderTextColor="#94a3b8"
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 12,
+                  minHeight: 160,
+                  color: BRAND_COLORS.textDark,
+                }}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pressable
+                  onPress={() => {
+                    void handleSendCompose();
+                  }}
+                  disabled={sendMessageMutation.isPending}
+                  style={{
+                    flex: 1,
+                    borderRadius: 12,
+                    backgroundColor: '#3250b9',
+                    paddingVertical: 11,
+                    alignItems: 'center',
+                    opacity: sendMessageMutation.isPending ? 0.7 : 1,
+                  }}
+                >
+                  <Text style={{ color: '#ffffff', fontWeight: '700' }}>
+                    {sendMessageMutation.isPending ? 'Mengirim...' : 'Kirim Email'}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => {
+                    setIsComposeMode(false);
+                  }}
+                  style={{
+                    flex: 1,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#cbd5e1',
+                    backgroundColor: '#ffffff',
+                    paddingVertical: 11,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#1e293b', fontWeight: '700' }}>Tutup</Text>
+                </Pressable>
+              </View>
+            </SectionCard>
+          ) : null}
 
           {!isWebmailMode ? (
             <SectionCard
