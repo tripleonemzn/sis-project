@@ -319,6 +319,7 @@ const getGroupIcon = (group: RoleMenuGroup): FeatherIconName => {
   if (key.includes('dashboard')) return 'home';
   if (key.includes('academic')) return 'book-open';
   if (key.includes('exams') || key.includes('cbt')) return 'file-text';
+  if (key.includes('ppdb') || key.includes('bkk')) return 'briefcase';
   if (key.includes('finance') || key.includes('administration') || key.includes('payments')) return 'credit-card';
   if (key.includes('settings')) return 'settings';
   if (key.includes('users') || key.includes('students') || key.includes('teachers') || key.includes('children')) return 'users';
@@ -400,7 +401,7 @@ function AvatarCircle({
 const ROLE_PRIMARY_ACTION_KEYS: Record<string, string[]> = {
   STUDENT: ['student-schedule', 'student-learning', 'student-grade-history'],
   TEACHER: ['teaching-schedule'],
-  ADMIN: ['admin-user-student', 'admin-schedule', 'admin-teacher-assignment'],
+  ADMIN: ['admin-user-student', 'admin-bkk-applications', 'admin-teacher-assignment'],
   PRINCIPAL: ['principal-attendance', 'principal-finance-requests', 'principal-reports'],
   PARENT: ['child-progress', 'parent-finance', 'child-attendance'],
   EXAMINER: ['assessment', 'examiner-schemes'],
@@ -923,28 +924,32 @@ export default function HomeScreen() {
     enabled: profile.role === 'ADMIN',
     queryFn: async () => {
       const activeYear = await adminApi.getActiveAcademicYear().catch(() => null);
-      const [majorsResult, classesResult, subjectsResult, studentsResult, teachersResult, assignmentsResult] =
-        await Promise.all([
-          adminApi.listMajors({ page: 1, limit: 1 }),
-          adminApi.listClasses({
-            page: 1,
-            limit: 1,
-            academicYearId: activeYear?.id,
-          }),
-          adminApi.listSubjects({ page: 1, limit: 1 }),
-          adminApi.listUsers({ role: 'STUDENT' }),
-          adminApi.listUsers({ role: 'TEACHER' }),
-          activeYear?.id ? adminApi.listTeacherAssignments({ academicYearId: activeYear.id, page: 1, limit: 1 }) : null,
-        ]);
+      const [usersResult, studentsResult, teachersResult, applicantUsersResult, bkkApplicationsResult] = await Promise.all([
+        adminApi.listUsers(),
+        adminApi.listUsers({ role: 'STUDENT' }),
+        adminApi.listUsers({ role: 'TEACHER' }),
+        adminApi.listUsers({ role: 'UMUM' }),
+        adminApi.listBkkApplications({ page: 1, limit: 1 }),
+      ]);
+
+      const acceptedApplications =
+        Number(bkkApplicationsResult.summary.hired || 0) +
+        Math.max(
+          Number(bkkApplicationsResult.summary.accepted || 0) - Number(bkkApplicationsResult.summary.hired || 0),
+          0,
+        );
 
       return {
         activeYearName: activeYear?.name || null,
-        majors: majorsResult.pagination.total,
-        classes: classesResult.pagination.total,
-        subjects: subjectsResult.pagination.total,
+        totalUsers: usersResult.length,
         students: studentsResult.length,
         teachers: teachersResult.length,
-        assignments: assignmentsResult?.pagination.total ?? 0,
+        totalApplicants: applicantUsersResult.length,
+        verifiedApplicants: applicantUsersResult.filter((item) => item.verificationStatus === 'VERIFIED').length,
+        pendingApplicants: applicantUsersResult.filter((item) => item.verificationStatus === 'PENDING').length,
+        totalApplications: Number(bkkApplicationsResult.total || 0),
+        shortlistedApplications: Number(bkkApplicationsResult.summary.shortlisted || 0),
+        acceptedApplications,
       };
     },
   });
@@ -1152,12 +1157,48 @@ export default function HomeScreen() {
     const stats = adminStatsQuery.data;
     if (!stats) return [];
     return [
-      { label: 'Siswa', value: String(stats.students), color: BRAND_COLORS.blue, icon: 'users', menuKey: 'admin-user-student' },
-      { label: 'Guru', value: String(stats.teachers), color: BRAND_COLORS.navy, icon: 'user-check', menuKey: 'admin-user-teacher' },
-      { label: 'Kelas', value: String(stats.classes), color: BRAND_COLORS.teal, icon: 'layers', menuKey: 'admin-classes' },
-      { label: 'Mapel', value: String(stats.subjects), color: BRAND_COLORS.gold, icon: 'book-open', menuKey: 'admin-subjects' },
-      { label: 'Jurusan', value: String(stats.majors), color: BRAND_COLORS.pink, icon: 'grid', menuKey: 'admin-majors' },
-      { label: 'Assignment', value: String(stats.assignments), color: BRAND_COLORS.sky, icon: 'clipboard', menuKey: 'admin-teacher-assignment' },
+      {
+        label: 'Tahun Ajaran Aktif',
+        value: stats.activeYearName || '-',
+        color: BRAND_COLORS.teal,
+        icon: 'calendar',
+        menuKey: 'admin-academic-years',
+      },
+      {
+        label: 'Total Pengguna',
+        value: String(stats.totalUsers),
+        color: BRAND_COLORS.blue,
+        icon: 'users',
+        menuKey: 'admin-user-verify',
+      },
+      {
+        label: 'Siswa Aktif',
+        value: String(stats.students),
+        color: BRAND_COLORS.gold,
+        icon: 'users',
+        menuKey: 'admin-user-student',
+      },
+      {
+        label: 'Guru & Staff',
+        value: String(stats.teachers),
+        color: BRAND_COLORS.pink,
+        icon: 'user-check',
+        menuKey: 'admin-user-teacher',
+      },
+      {
+        label: 'Pelamar BKK',
+        value: String(stats.totalApplicants),
+        color: BRAND_COLORS.teal,
+        icon: 'briefcase',
+        menuKey: 'admin-bkk-users',
+      },
+      {
+        label: 'Lamaran BKK',
+        value: String(stats.totalApplications),
+        color: BRAND_COLORS.sky,
+        icon: 'clipboard',
+        menuKey: 'admin-bkk-applications',
+      },
     ];
   }, [adminStatsQuery.data]);
 

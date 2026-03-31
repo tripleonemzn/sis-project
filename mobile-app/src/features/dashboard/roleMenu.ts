@@ -688,6 +688,16 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       route: '/admin/user-management?verification=PENDING',
     },
     {
+      key: 'admin-bkk-users',
+      label: 'Kelola Pelamar BKK',
+      route: '/admin/user-management?role=UMUM',
+    },
+    {
+      key: 'admin-bkk-applications',
+      label: 'Lamaran BKK',
+      route: '/admin/bkk-applications',
+    },
+    {
       key: 'admin-teacher-assignment',
       label: 'Assignment Guru',
       route: '/admin/academic?section=teacher-assignments',
@@ -1188,6 +1198,11 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
         'admin-teacher-assignment',
         'admin-import-export',
       ],
+    },
+    {
+      key: 'ppdb-bkk',
+      label: 'PPDB & BKK',
+      menuKeys: ['admin-bkk-users', 'admin-bkk-applications'],
     },
     {
       key: 'academic',

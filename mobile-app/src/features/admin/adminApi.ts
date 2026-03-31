@@ -849,6 +849,88 @@ export type AdminTeacherAssignmentPayload = {
   classIds: number[];
 };
 
+export type AdminBkkApplicationStatus =
+  | 'SUBMITTED'
+  | 'REVIEWING'
+  | 'SHORTLISTED'
+  | 'PARTNER_INTERVIEW'
+  | 'HIRED'
+  | 'INTERVIEW'
+  | 'ACCEPTED'
+  | 'REJECTED'
+  | 'WITHDRAWN';
+
+export type AdminBkkApplicationSummary = {
+  total: number;
+  submitted: number;
+  reviewing: number;
+  shortlisted: number;
+  partnerInterview: number;
+  interview: number;
+  hired: number;
+  accepted: number;
+  rejected: number;
+  withdrawn: number;
+};
+
+export type AdminBkkApplication = {
+  id: number;
+  status: AdminBkkApplicationStatus;
+  reviewerNotes?: string | null;
+  partnerReferenceCode?: string | null;
+  partnerHandoffNotes?: string | null;
+  partnerDecisionNotes?: string | null;
+  appliedAt: string;
+  reviewedAt?: string | null;
+  shortlistedAt?: string | null;
+  partnerInterviewAt?: string | null;
+  finalizedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  applicant: {
+    id: number;
+    name: string;
+    username: string;
+    phone?: string | null;
+    email?: string | null;
+    verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
+  };
+  profile?: {
+    id: number;
+    educationLevel?: string | null;
+    graduationYear?: number | null;
+    schoolName?: string | null;
+    major?: string | null;
+    skills?: string | null;
+    experienceSummary?: string | null;
+    cvUrl?: string | null;
+    portfolioUrl?: string | null;
+    linkedinUrl?: string | null;
+    updatedAt?: string | null;
+  } | null;
+  vacancy: {
+    id: number;
+    title: string;
+    companyName?: string | null;
+    deadline?: string | null;
+    isOpen: boolean;
+    industryPartner?: {
+      id: number;
+      name: string;
+      city?: string | null;
+      sector?: string | null;
+    } | null;
+  };
+};
+
+export type AdminBkkApplicationsResult = {
+  applications: AdminBkkApplication[];
+  total: number;
+  page: number;
+  totalPages: number;
+  summary: AdminBkkApplicationSummary;
+};
+
 export type AdminExtracurricular = {
   id: number;
   name: string;
@@ -1595,6 +1677,43 @@ export const adminApi = {
       response.data?.data?.pagination,
       params.limit ?? 100,
     );
+  },
+
+  async listBkkApplications(params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: AdminBkkApplicationStatus | 'ALL';
+    vacancyId?: number;
+  }) {
+    const response = await apiClient.get<ApiEnvelope<AdminBkkApplicationsResult>>('/humas/applications', {
+      params: {
+        page: params?.page ?? 1,
+        limit: params?.limit ?? 25,
+        search: params?.search,
+        status: params?.status,
+        vacancyId: params?.vacancyId,
+      },
+    });
+    const payload = response.data?.data;
+    return {
+      applications: Array.isArray(payload?.applications) ? payload.applications : [],
+      total: Number(payload?.total || 0),
+      page: Number(payload?.page || params?.page || 1),
+      totalPages: Number(payload?.totalPages || 1),
+      summary: {
+        total: Number(payload?.summary?.total || 0),
+        submitted: Number(payload?.summary?.submitted || 0),
+        reviewing: Number(payload?.summary?.reviewing || 0),
+        shortlisted: Number(payload?.summary?.shortlisted || 0),
+        partnerInterview: Number(payload?.summary?.partnerInterview || 0),
+        interview: Number(payload?.summary?.interview || 0),
+        hired: Number(payload?.summary?.hired || 0),
+        accepted: Number(payload?.summary?.accepted || 0),
+        rejected: Number(payload?.summary?.rejected || 0),
+        withdrawn: Number(payload?.summary?.withdrawn || 0),
+      },
+    } satisfies AdminBkkApplicationsResult;
   },
 
   async upsertTeacherAssignments(payload: AdminTeacherAssignmentPayload) {
