@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
-import { Linking, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../../src/components/QueryStateView';
@@ -10,6 +10,7 @@ import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { publicBkkApi } from '../../../src/features/publicBkk/bkkApi';
 import type { PublicBkkVacancy } from '../../../src/features/publicBkk/types';
+import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
 
@@ -391,7 +392,11 @@ export default function PublicBkkVacanciesScreen() {
               {vacancy.registrationLink ? (
                 <Pressable
                   onPress={() => {
-                    void Linking.openURL(vacancy.registrationLink!);
+                    openWebModuleRoute(router, {
+                      moduleKey: `public-vacancy-${vacancy.id}`,
+                      webPath: vacancy.registrationLink!,
+                      label: vacancy.companyName ? `Pendaftaran ${vacancy.companyName}` : 'Tautan Pendaftaran',
+                    });
                   }}
                   style={{
                     borderWidth: 1,

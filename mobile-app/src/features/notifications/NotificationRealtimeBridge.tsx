@@ -12,6 +12,7 @@ function resolveNotificationTarget(rawData: unknown) {
   if (!rawData || typeof rawData !== 'object') return '/notifications';
   const data = rawData as Record<string, unknown>;
   const route = typeof data.route === 'string' ? data.route.trim() : '';
+  if (route.startsWith('/web-module/')) return '/notifications';
   return route.startsWith('/') ? route : '/notifications';
 }
 

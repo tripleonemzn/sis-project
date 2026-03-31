@@ -1,7 +1,8 @@
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, Text, UIManager, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { getRoleMenu } from '../../../src/features/dashboard/roleMenu';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
@@ -16,14 +17,30 @@ function resolveWebUrl(path: string) {
   return `${webBaseUrl}${normalizedPath}`;
 }
 
+function isPdfUrl(rawUrl: string) {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.pathname.toLowerCase().endsWith('.pdf');
+  } catch {
+    return rawUrl.toLowerCase().includes('.pdf');
+  }
+}
+
+function buildEmbeddedUrl(rawUrl: string) {
+  return isPdfUrl(rawUrl)
+    ? `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(rawUrl)}`
+    : rawUrl;
+}
+
 export default function GenericWebModuleScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ moduleKey?: string; path?: string; url?: string; label?: string }>();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
-  const [isOpening, setIsOpening] = useState(false);
-  const [hasAutoOpened, setHasAutoOpened] = useState(false);
+  const hasNativeWebView = useMemo(() => Boolean(UIManager.getViewManagerConfig?.('RNCWebView')), []);
+  const [webviewKey, setWebviewKey] = useState(0);
+  const [panelError, setPanelError] = useState<string | null>(null);
 
   const moduleKey = typeof params.moduleKey === 'string' ? params.moduleKey : '';
   const pathOverride = typeof params.path === 'string' ? params.path.trim() : '';
@@ -36,24 +53,7 @@ export default function GenericWebModuleScreen() {
     () => (urlOverride || (effectiveWebPath ? resolveWebUrl(effectiveWebPath) : null)),
     [effectiveWebPath, urlOverride],
   );
-  const openModuleUrl = useCallback(async () => {
-    if (!moduleUrl || isOpening) return;
-
-    setIsOpening(true);
-    try {
-      await Linking.openURL(moduleUrl);
-    } catch {
-      Alert.alert('Gagal Membuka Modul', 'Tidak bisa membuka modul web di browser perangkat.');
-    } finally {
-      setIsOpening(false);
-    }
-  }, [isOpening, moduleUrl]);
-
-  useEffect(() => {
-    if (!moduleUrl || hasAutoOpened) return;
-    setHasAutoOpened(true);
-    void openModuleUrl();
-  }, [hasAutoOpened, moduleUrl, openModuleUrl]);
+  const embeddedUrl = useMemo(() => (moduleUrl ? buildEmbeddedUrl(moduleUrl) : null), [moduleUrl]);
 
   if (isLoading) return <AppLoadingScreen message="Memuat modul..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -82,50 +82,110 @@ export default function GenericWebModuleScreen() {
     );
   }
 
+  if (!hasNativeWebView) {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
+          {effectiveLabel}
+        </Text>
+        <QueryStateView
+          type="error"
+          message="Viewer internal belum tersedia di build ini. Silakan update aplikasi tester terbaru."
+        />
+        <Pressable
+          onPress={() => router.replace('/home')}
+          style={{
+            marginTop: 16,
+            backgroundColor: BRAND_COLORS.blue,
+            borderRadius: 10,
+            paddingVertical: 12,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
+        </Pressable>
+      </ScrollView>
+    );
+  }
+
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
+    <View style={{ flex: 1, backgroundColor: '#f8fafc', ...pagePadding }}>
       <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
         {effectiveLabel}
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Modul ini belum tersedia penuh secara native. Versi web akan dibuka di browser perangkat.
+        Konten ini ditampilkan di dalam aplikasi agar alur mobile tetap konsisten sambil versi native penuh disiapkan.
       </Text>
-
       <View
         style={{
-          borderRadius: 12,
+          flex: 1,
+          minHeight: 420,
+          borderRadius: 14,
           borderWidth: 1,
           borderColor: '#dbe7fb',
           backgroundColor: '#fff',
-          padding: 14,
           marginBottom: 12,
+          overflow: 'hidden',
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Status Modul</Text>
-        <Text style={{ color: BRAND_COLORS.textMuted }}>
-          Akses web eksternal aktif. Gunakan tombol di bawah jika browser tidak terbuka otomatis.
-        </Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
-          Modul web: {effectiveWebPath || '-'}
-        </Text>
-        <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
-          URL referensi: {moduleUrl || '-'}
-        </Text>
+        {panelError ? (
+          <View style={{ padding: 16 }}>
+            <QueryStateView
+              type="error"
+              message={panelError}
+              onRetry={() => {
+                setPanelError(null);
+                setWebviewKey((value) => value + 1);
+              }}
+            />
+          </View>
+        ) : embeddedUrl ? (
+          <WebView
+            key={`mobile-web-module-${moduleKey || 'generic'}-${webviewKey}`}
+            source={{ uri: embeddedUrl }}
+            startInLoadingState
+            javaScriptEnabled
+            domStorageEnabled
+            sharedCookiesEnabled
+            thirdPartyCookiesEnabled
+            renderLoading={() => (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <ActivityIndicator size="small" color={BRAND_COLORS.blue} />
+                <Text style={{ color: BRAND_COLORS.textMuted }}>Memuat konten...</Text>
+              </View>
+            )}
+            onHttpError={() => {
+              setPanelError('Konten gagal dimuat. Coba muat ulang dari tombol di bawah.');
+            }}
+            onError={() => {
+              setPanelError('Koneksi ke konten gagal. Periksa jaringan Anda lalu coba lagi.');
+            }}
+          />
+        ) : (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 }}>
+            <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center' }}>
+              URL konten belum tersedia untuk modul ini.
+            </Text>
+          </View>
+        )}
       </View>
 
       <Pressable
-        onPress={() => void openModuleUrl()}
-        disabled={isOpening}
+        onPress={() => {
+          setPanelError(null);
+          setWebviewKey((value) => value + 1);
+        }}
         style={{
           marginTop: 6,
-          backgroundColor: BRAND_COLORS.blue,
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#c7d6f5',
           borderRadius: 10,
           paddingVertical: 12,
           alignItems: 'center',
-          opacity: isOpening ? 0.7 : 1,
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: '700' }}>{isOpening ? 'Membuka...' : 'Buka Modul Web'}</Text>
+        <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Muat Ulang Konten</Text>
       </Pressable>
 
       <Pressable
@@ -142,6 +202,6 @@ export default function GenericWebModuleScreen() {
       >
         <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>Kembali ke Home</Text>
       </Pressable>
-    </ScrollView>
+    </View>
   );
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
-import { Linking, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../../src/components/QueryStateView';
@@ -445,7 +445,11 @@ export default function CandidateApplicationScreen() {
                     onPress={() => {
                       const url = resolvePublicUrl(admissionQuery.data?.decisionLetter?.officialFileUrl);
                       if (url) {
-                        void Linking.openURL(url);
+                        openWebModuleRoute(router, {
+                          moduleKey: 'candidate-decision-letter-official',
+                          webPath: url,
+                          label: 'Surat Hasil Seleksi Resmi',
+                        });
                       }
                     }}
                     style={{

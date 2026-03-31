@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as DocumentPicker from 'expo-document-picker';
-import * as Linking from 'expo-linking';
 import { Redirect, useRouter } from 'expo-router';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
@@ -18,6 +17,7 @@ import {
 } from '../../../src/features/student/studentFinanceApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
+import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
 
 const PAYMENT_STATUS_LABELS: Record<StudentPaymentStatus, string> = {
   PENDING: 'Belum Bayar',
@@ -934,7 +934,11 @@ export default function StudentFinanceScreen() {
                       onPress={() => {
                         const url = resolveAssetUrl(payment.proofFile?.url);
                         if (url) {
-                          void Linking.openURL(url);
+                          openWebModuleRoute(router, {
+                            moduleKey: 'student-finance-proof',
+                            webPath: url,
+                            label: payment.proofFile?.name || 'Bukti Pembayaran',
+                          });
                         }
                       }}
                       style={{ marginTop: 6 }}

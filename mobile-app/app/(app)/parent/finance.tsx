@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as DocumentPicker from 'expo-document-picker';
-import * as Linking from 'expo-linking';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
@@ -17,6 +16,7 @@ import { academicYearApi } from '../../../src/features/academicYear/academicYear
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { ENV } from '../../../src/config/env';
+import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
 
 const PAYMENT_STATUS_LABELS: Record<'PENDING' | 'PAID' | 'PARTIAL' | 'CANCELLED', string> = {
   PENDING: 'Belum Bayar',
@@ -1026,7 +1026,11 @@ export default function ParentFinanceScreen() {
                             onPress={() => {
                               const url = resolveAssetUrl(payment.proofFile?.url);
                               if (url) {
-                                void Linking.openURL(url);
+                                openWebModuleRoute(router, {
+                                  moduleKey: 'parent-finance-proof',
+                                  webPath: url,
+                                  label: payment.proofFile?.name || 'Bukti Pembayaran',
+                                });
                               }
                             }}
                             style={{ marginTop: 6 }}

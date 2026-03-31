@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import * as Linking from 'expo-linking';
 import { Redirect, useRouter } from 'expo-router';
 import {
   Modal,
@@ -16,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
+import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
 import {
   type FinanceAdjustmentKind,
   type FinanceBankStatementDirection,
@@ -3399,7 +3399,11 @@ export default function StaffPaymentsScreen() {
                         onPress={() => {
                           const url = resolveAssetUrl(payment.proofFile?.url);
                           if (url) {
-                            void Linking.openURL(url);
+                            openWebModuleRoute(router, {
+                              moduleKey: 'staff-payment-proof',
+                              webPath: url,
+                              label: payment.proofFile?.name || 'Bukti Pembayaran',
+                            });
                           }
                         }}
                         style={{ marginTop: 4 }}
