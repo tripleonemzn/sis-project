@@ -446,26 +446,22 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     {
       key: 'teacher-osis-management',
       label: 'Struktur & Nilai OSIS',
-      route: createWebModuleRoute('teacher-osis-management', '/teacher/osis/management', 'Struktur & Nilai OSIS'),
-      webPath: '/teacher/osis/management',
+      route: '/teacher/osis/management',
     },
     {
       key: 'teacher-osis-inventory',
       label: 'Inventaris OSIS',
-      route: createWebModuleRoute('teacher-osis-inventory', '/teacher/osis/inventory', 'Inventaris OSIS'),
-      webPath: '/teacher/osis/inventory',
+      route: '/teacher/osis/inventory',
     },
     {
       key: 'teacher-osis-election',
       label: 'Pemilihan OSIS',
-      route: createWebModuleRoute('teacher-osis-election', '/teacher/osis/election', 'Pemilihan OSIS'),
-      webPath: '/teacher/osis/election',
+      route: '/teacher/osis/election',
     },
     {
       key: 'teacher-osis-vote',
       label: 'Pemungutan Suara',
-      route: createWebModuleRoute('teacher-osis-vote', '/teacher/osis/vote', 'Pemungutan Suara OSIS'),
-      webPath: '/teacher/osis/vote',
+      route: '/teacher/osis/vote',
     },
     {
       key: 'teacher-bk-dashboard',
@@ -1780,12 +1776,7 @@ function buildTeacherGroups(
         items.push({
           key: `teacher-osis-inventory-room-${linkedOsisRoom.id}`,
           label: 'Kelola Inventaris',
-          route: createWebModuleRoute(
-            `teacher-osis-inventory-room-${linkedOsisRoom.id}`,
-            `/teacher/assigned-inventory/${linkedOsisRoom.id}`,
-            'Kelola Inventaris',
-          ),
-          webPath: `/teacher/assigned-inventory/${linkedOsisRoom.id}`,
+          route: `/teacher/osis/inventory/${linkedOsisRoom.id}`,
         });
       } else if (osisInventoryBase) {
         items.push({
