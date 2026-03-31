@@ -248,7 +248,8 @@ export default function CandidateDashboardScreen() {
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               <QuickAction label="Formulir PPDB" primary onPress={() => router.push('/candidate/application' as never)} />
               <QuickAction label="Informasi PPDB" onPress={() => router.push('/candidate/information' as never)} />
-              <QuickAction label="Tes Seleksi" onPress={() => router.push('/exams' as never)} />
+              <QuickAction label="Tes Seleksi" onPress={() => router.push('/candidate/exams' as never)} />
+              <QuickAction label="Profil" onPress={() => router.push('/candidate/profile' as never)} />
             </View>
           </InfoCard>
         </>

@@ -365,7 +365,7 @@ export default function PublicBkkApplicationsScreen() {
                     <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700' }}>Lihat Lowongan</Text>
                   </Pressable>
                   <Pressable
-                    onPress={() => router.push((applicantVerified ? '/exams' : '/public/profile') as never)}
+                    onPress={() => router.push((applicantVerified ? '/public/exams' : '/public/profile') as never)}
                     style={{
                       borderWidth: 1,
                       borderColor: applicantVerified ? '#bfdbfe' : '#fde68a',

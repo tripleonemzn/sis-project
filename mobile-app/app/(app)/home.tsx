@@ -406,8 +406,8 @@ const ROLE_PRIMARY_ACTION_KEYS: Record<string, string[]> = {
   PARENT: ['child-progress', 'parent-finance', 'child-attendance'],
   EXAMINER: ['assessment', 'examiner-schemes'],
   EXTRACURRICULAR_TUTOR: ['tutor-members'],
-  CALON_SISWA: ['candidate-application'],
-  UMUM: ['public-vacancies'],
+  CALON_SISWA: ['candidate-dashboard', 'candidate-application', 'candidate-exams'],
+  UMUM: ['public-vacancies', 'public-applications', 'public-exams'],
 };
 
 function getRolePrimaryActionKeys(

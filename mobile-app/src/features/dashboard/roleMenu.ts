@@ -788,16 +788,17 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
   ],
   CALON_SISWA: [
     { key: 'candidate-dashboard', label: 'Dashboard', route: '/candidate' },
-    { key: 'candidate-application', label: 'Status Pendaftaran', route: '/candidate/application' },
+    { key: 'candidate-application', label: 'Formulir PPDB', route: '/candidate/application' },
     { key: 'candidate-information', label: 'Informasi PPDB', route: '/candidate/information' },
-    { key: 'candidate-exams', label: 'Tes Seleksi', route: '/exams' },
+    { key: 'candidate-exams', label: 'Tes Seleksi', route: '/candidate/exams' },
+    { key: 'candidate-profile', label: 'Profil', route: '/candidate/profile' },
   ],
   UMUM: [
     { key: 'public-dashboard', label: 'Dashboard BKK', route: '/public' },
     { key: 'public-information', label: 'Informasi Sekolah', route: '/public/information' },
     { key: 'public-vacancies', label: 'Lowongan BKK', route: '/public/vacancies' },
     { key: 'public-applications', label: 'Lamaran Saya', route: '/public/applications' },
-    { key: 'public-exams', label: 'Tes BKK', route: '/exams' },
+    { key: 'public-exams', label: 'Tes BKK', route: '/public/exams' },
     { key: 'public-profile', label: 'Profil Pelamar', route: '/public/profile' },
   ],
   EXTRACURRICULAR_TUTOR: [
@@ -1260,14 +1261,18 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     { key: 'settings', label: 'PENGATURAN', menuKeys: ['tutor-profile'] },
   ],
   CALON_SISWA: [
-    { key: 'information', label: 'Informasi', menuKeys: ['candidate-information'] },
+    { key: 'dashboard', label: 'Dashboard', menuKeys: ['candidate-dashboard'] },
     { key: 'registration', label: 'Pendaftaran', menuKeys: ['candidate-application'] },
-    { key: 'exam', label: 'Tes', menuKeys: ['candidate-exams'] },
+    { key: 'information', label: 'Informasi PPDB', menuKeys: ['candidate-information'] },
+    { key: 'exam', label: 'Tes Seleksi', menuKeys: ['candidate-exams'] },
+    { key: 'settings', label: 'PENGATURAN', menuKeys: ['candidate-profile'] },
   ],
   UMUM: [
-    { key: 'information', label: 'Informasi', menuKeys: ['public-information'] },
-    { key: 'career', label: 'Karier', menuKeys: ['public-vacancies', 'public-applications'] },
-    { key: 'profile', label: 'Profil', menuKeys: ['public-profile'] },
+    { key: 'dashboard', label: 'Dashboard', menuKeys: ['public-dashboard'] },
+    { key: 'vacancies', label: 'Lowongan BKK', menuKeys: ['public-vacancies'] },
+    { key: 'applications', label: 'Lamaran Saya', menuKeys: ['public-applications'] },
+    { key: 'exam', label: 'Tes BKK', menuKeys: ['public-exams'] },
+    { key: 'profile', label: 'Profil Pelamar', menuKeys: ['public-profile'] },
   ],
 };
 

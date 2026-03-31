@@ -209,7 +209,7 @@ export default function PublicBkkDashboardScreen() {
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           <QuickAction label="Lowongan BKK" primary onPress={() => router.push('/public/vacancies' as never)} />
           <QuickAction label="Lamaran Saya" onPress={() => router.push('/public/applications' as never)} />
-          <QuickAction label="Tes BKK" onPress={() => router.push('/exams' as never)} />
+          <QuickAction label="Tes BKK" onPress={() => router.push('/public/exams' as never)} />
           <QuickAction label="Profil Pelamar" onPress={() => router.push('/public/profile' as never)} />
         </View>
       </InfoCard>
