@@ -688,6 +688,11 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       route: '/admin/user-management?verification=PENDING',
     },
     {
+      key: 'admin-candidate-admissions',
+      label: 'PPDB Calon Siswa',
+      route: '/admin/candidate-admissions',
+    },
+    {
       key: 'admin-bkk-users',
       label: 'Kelola Pelamar BKK',
       route: '/admin/user-management?role=UMUM',
@@ -1203,7 +1208,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     {
       key: 'ppdb-bkk',
       label: 'PPDB & BKK',
-      menuKeys: ['admin-bkk-users', 'admin-bkk-applications'],
+      menuKeys: ['admin-candidate-admissions', 'admin-bkk-users', 'admin-bkk-applications'],
     },
     {
       key: 'academic',

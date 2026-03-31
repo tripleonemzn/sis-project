@@ -1,4 +1,8 @@
 import { apiClient } from '../../lib/api/client';
+import type {
+  MobileCandidateAdmissionDetail,
+  MobileCandidateAdmissionStatus,
+} from '../candidateAdmission/types';
 import type { ExtracurricularCategory } from '../extracurricular/category';
 
 type Pagination = {
@@ -931,6 +935,27 @@ export type AdminBkkApplicationsResult = {
   summary: AdminBkkApplicationSummary;
 };
 
+export type AdminCandidateAdmissionSummary = {
+  total: number;
+  draft: number;
+  submitted: number;
+  underReview: number;
+  needsRevision: number;
+  testScheduled: number;
+  passedTest: number;
+  failedTest: number;
+  accepted: number;
+  rejected: number;
+};
+
+export type AdminCandidateAdmissionsResult = {
+  applications: MobileCandidateAdmissionDetail[];
+  total: number;
+  page: number;
+  totalPages: number;
+  summary: AdminCandidateAdmissionSummary;
+};
+
 export type AdminExtracurricular = {
   id: number;
   name: string;
@@ -1714,6 +1739,96 @@ export const adminApi = {
         withdrawn: Number(payload?.summary?.withdrawn || 0),
       },
     } satisfies AdminBkkApplicationsResult;
+  },
+
+  async listCandidateAdmissions(params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: MobileCandidateAdmissionStatus | 'ALL';
+    desiredMajorId?: number | 'ALL';
+    publishedOnly?: boolean;
+  }) {
+    const response = await apiClient.get<ApiEnvelope<AdminCandidateAdmissionsResult>>('/candidate-admissions', {
+      params: {
+        page: params?.page ?? 1,
+        limit: params?.limit ?? 12,
+        search: params?.search,
+        status: params?.status,
+        desiredMajorId: params?.desiredMajorId,
+        publishedOnly: params?.publishedOnly,
+      },
+    });
+    const payload = response.data?.data;
+    return {
+      applications: Array.isArray(payload?.applications) ? payload.applications : [],
+      total: Number(payload?.total || 0),
+      page: Number(payload?.page || params?.page || 1),
+      totalPages: Number(payload?.totalPages || 1),
+      summary: {
+        total: Number(payload?.summary?.total || 0),
+        draft: Number(payload?.summary?.draft || 0),
+        submitted: Number(payload?.summary?.submitted || 0),
+        underReview: Number(payload?.summary?.underReview || 0),
+        needsRevision: Number(payload?.summary?.needsRevision || 0),
+        testScheduled: Number(payload?.summary?.testScheduled || 0),
+        passedTest: Number(payload?.summary?.passedTest || 0),
+        failedTest: Number(payload?.summary?.failedTest || 0),
+        accepted: Number(payload?.summary?.accepted || 0),
+        rejected: Number(payload?.summary?.rejected || 0),
+      },
+    } satisfies AdminCandidateAdmissionsResult;
+  },
+
+  async getCandidateAdmissionById(id: number) {
+    const response = await apiClient.get<ApiEnvelope<MobileCandidateAdmissionDetail>>(`/candidate-admissions/${id}`);
+    return response.data?.data;
+  },
+
+  async reviewCandidateAdmission(
+    id: number,
+    payload: {
+      status: MobileCandidateAdmissionStatus;
+      reviewNotes?: string;
+      decisionTitle?: string;
+      decisionSummary?: string;
+      decisionNextSteps?: string;
+      publishDecision?: boolean;
+    },
+  ) {
+    const response = await apiClient.patch<ApiEnvelope<MobileCandidateAdmissionDetail>>(
+      `/candidate-admissions/${id}/review`,
+      payload,
+    );
+    return response.data?.data;
+  },
+
+  async saveCandidateAdmissionAssessmentBoard(
+    id: number,
+    payload: {
+      items: Array<{
+        componentCode: 'LITERACY_COLOR' | 'INTERVIEW' | 'PHYSICAL';
+        score?: number | null;
+        maxScore?: number | null;
+        weight?: number | null;
+        passingScore?: number | null;
+        notes?: string | null;
+        assessedAt?: string | null;
+      }>;
+    },
+  ) {
+    const response = await apiClient.patch<ApiEnvelope<MobileCandidateAdmissionDetail>>(
+      `/candidate-admissions/${id}/assessment-board`,
+      payload,
+    );
+    return response.data?.data;
+  },
+
+  async acceptCandidateAdmissionAsStudent(id: number) {
+    const response = await apiClient.post<ApiEnvelope<MobileCandidateAdmissionDetail>>(
+      `/candidate-admissions/${id}/accept-student`,
+    );
+    return response.data?.data;
   },
 
   async upsertTeacherAssignments(payload: AdminTeacherAssignmentPayload) {

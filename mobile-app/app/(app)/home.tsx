@@ -401,7 +401,7 @@ function AvatarCircle({
 const ROLE_PRIMARY_ACTION_KEYS: Record<string, string[]> = {
   STUDENT: ['student-schedule', 'student-learning', 'student-grade-history'],
   TEACHER: ['teaching-schedule'],
-  ADMIN: ['admin-user-student', 'admin-bkk-applications', 'admin-teacher-assignment'],
+  ADMIN: ['admin-user-student', 'admin-candidate-admissions', 'admin-bkk-applications'],
   PRINCIPAL: ['principal-attendance', 'principal-finance-requests', 'principal-reports'],
   PARENT: ['child-progress', 'parent-finance', 'child-attendance'],
   EXAMINER: ['assessment', 'examiner-schemes'],
