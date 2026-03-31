@@ -1,7 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Redirect } from 'expo-router';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, UIManager, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,8 +10,14 @@ import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../src/config/brand';
 import { useAuth } from '../../src/features/auth/AuthProvider';
+import {
+  MOBILE_NOTIFICATIONS_QUERY_KEY,
+  MobileNotificationItem,
+  notificationApi,
+} from '../../src/features/notifications/notificationApi';
 import { webmailApi } from '../../src/features/webmail/webmailApi';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
+import { notifyApiError } from '../../src/lib/ui/feedback';
 
 const ALLOWED_WEBMAIL_ROLES = new Set(['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXTRACURRICULAR_TUTOR']);
 const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
@@ -19,6 +25,16 @@ const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
 type BridgeCredentials = {
   email: string;
   password: string;
+};
+
+type EmailNotificationMeta = {
+  route: string | null;
+  mailboxIdentity: string | null;
+  emailGuid: string | null;
+  emailMessageId: string | null;
+  emailFrom: string | null;
+  emailSubject: string | null;
+  emailDate: string | null;
 };
 
 function resolveErrorMessage(error: unknown, fallback: string) {
@@ -33,11 +49,6 @@ function resolveErrorMessage(error: unknown, fallback: string) {
     return error.message.trim();
   }
   return fallback;
-}
-
-function buildStorageKey(userId?: number | null) {
-  if (!userId) return '';
-  return `sis-mobile-webmail-mode:${userId}`;
 }
 
 function getBridgeLoginUrl(rawUrl: string) {
@@ -79,8 +90,163 @@ function encodeFormBody(payload: Record<string, string>) {
     .join('&');
 }
 
+function formatDateTime(value?: string | null) {
+  const date = new Date(String(value || ''));
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function normalizeText(value: unknown) {
+  const normalized = String(value || '').trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function extractEmailMeta(item: MobileNotificationItem): EmailNotificationMeta {
+  const payload =
+    item.data && typeof item.data === 'object' ? (item.data as Record<string, unknown>) : null;
+  const route = normalizeText(payload?.route);
+  const mailboxIdentity = normalizeText(payload?.mailboxIdentity)?.toLowerCase() || null;
+
+  return {
+    route: route?.startsWith('/') ? route : null,
+    mailboxIdentity,
+    emailGuid: normalizeText(payload?.emailGuid),
+    emailMessageId: normalizeText(payload?.emailMessageId),
+    emailFrom: normalizeText(payload?.emailFrom),
+    emailSubject: normalizeText(payload?.emailSubject),
+    emailDate: normalizeText(payload?.emailDate),
+  };
+}
+
+function extractSenderLabel(item: MobileNotificationItem, meta: EmailNotificationMeta) {
+  if (meta.emailFrom) return meta.emailFrom;
+  const normalizedTitle = String(item.title || '').trim();
+  const prefix = 'Email baru dari ';
+  if (normalizedTitle.startsWith(prefix)) {
+    return normalizedTitle.slice(prefix.length).trim() || 'pengirim tidak dikenal';
+  }
+  return normalizedTitle || 'pengirim tidak dikenal';
+}
+
+function extractSubjectLabel(item: MobileNotificationItem, meta: EmailNotificationMeta) {
+  return meta.emailSubject || String(item.message || '').trim() || '(Tanpa subjek)';
+}
+
+function SectionCard({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string | null;
+  children: ReactNode;
+}) {
+  return (
+    <View
+      style={{
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#dbe4f4',
+        backgroundColor: '#ffffff',
+        paddingHorizontal: 14,
+        paddingVertical: 14,
+        gap: 12,
+      }}
+    >
+      <View style={{ gap: 4 }}>
+        <Text style={{ fontSize: 18, fontWeight: '800', color: '#0f172a' }}>{title}</Text>
+        {subtitle ? <Text style={{ fontSize: 12, color: '#64748b', lineHeight: 18 }}>{subtitle}</Text> : null}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function EmailInboxItem({
+  item,
+  selected,
+  onPress,
+}: {
+  item: MobileNotificationItem;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const meta = extractEmailMeta(item);
+  const senderLabel = extractSenderLabel(item, meta);
+  const subjectLabel = extractSubjectLabel(item, meta);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: selected ? '#93c5fd' : item.isRead ? '#e2e8f0' : '#bfdbfe',
+        backgroundColor: selected ? '#eff6ff' : item.isRead ? '#ffffff' : '#f8fbff',
+        paddingHorizontal: 12,
+        paddingVertical: 11,
+        gap: 8,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+        <View
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: item.isRead ? '#dbe4f4' : '#bfdbfe',
+            backgroundColor: item.isRead ? '#f8fafc' : '#eff6ff',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Feather name="mail" size={16} color={item.isRead ? '#64748b' : '#2563eb'} />
+        </View>
+
+        <View style={{ flex: 1, gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ flex: 1, color: '#0f172a', fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
+              {senderLabel}
+            </Text>
+            {!item.isRead ? (
+              <View
+                style={{
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: '#bfdbfe',
+                  backgroundColor: '#dbeafe',
+                  paddingHorizontal: 7,
+                  paddingVertical: 2,
+                }}
+              >
+                <Text style={{ fontSize: 10, color: '#1d4ed8', fontWeight: '800' }}>BARU</Text>
+              </View>
+            ) : null}
+          </View>
+
+          <Text style={{ color: '#334155', fontWeight: item.isRead ? '600' : '700', fontSize: 13 }} numberOfLines={2}>
+            {subjectLabel}
+          </Text>
+
+          <Text style={{ color: '#64748b', fontSize: 11 }}>
+            {formatDateTime(meta.emailDate || item.createdAt)}
+          </Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
 export default function MobileEmailScreen() {
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 16 });
   const webviewRef = useRef<WebView | null>(null);
@@ -91,12 +257,14 @@ export default function MobileEmailScreen() {
   const [isWebmailMode, setIsWebmailMode] = useState(false);
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [loginUser, setLoginUser] = useState('');
+  const [hasEditedLoginUser, setHasEditedLoginUser] = useState(false);
   const [loginPass, setLoginPass] = useState('');
   const [registerUser, setRegisterUser] = useState('');
   const [registerPass, setRegisterPass] = useState('');
   const [registerPassConfirm, setRegisterPassConfirm] = useState('');
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [bridgeCredentials, setBridgeCredentials] = useState<BridgeCredentials | null>(null);
+  const [selectedEmailId, setSelectedEmailId] = useState<number | null>(null);
 
   const isAllowedRole = useMemo(() => {
     const role = String(user?.role || '').toUpperCase();
@@ -110,8 +278,29 @@ export default function MobileEmailScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const emailFeedQuery = useQuery({
+    queryKey: ['mobile-email-inbox-feed', configQuery.data?.mailboxIdentity || 'all'],
+    queryFn: () => notificationApi.getNotifications({ page: 1, limit: 100 }),
+    enabled: isAuthenticated && isAllowedRole,
+    staleTime: 15_000,
+    refetchInterval: isAuthenticated && isAllowedRole ? 20_000 : false,
+    refetchOnReconnect: true,
+  });
+
+  const markAsReadMutation = useMutation({
+    mutationFn: (notificationId: number) => notificationApi.markAsRead(notificationId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: MOBILE_NOTIFICATIONS_QUERY_KEY,
+        refetchType: 'active',
+      });
+    },
+    onError: (error: unknown) => {
+      notifyApiError(error, 'Gagal menandai email sebagai dibaca.');
+    },
+  });
+
   const config = configQuery.data;
-  const userStorageKey = useMemo(() => buildStorageKey(user?.id), [user?.id]);
   const webmailBaseUrl = String(config?.webmailUrl || '').trim();
   const bridgeLoginUrl = useMemo(() => getBridgeLoginUrl(webmailBaseUrl), [webmailBaseUrl]);
   const inboxUrl = useMemo(() => getInboxUrl(bridgeLoginUrl), [bridgeLoginUrl]);
@@ -119,17 +308,43 @@ export default function MobileEmailScreen() {
   const mailboxDomain = String(config?.defaultDomain || 'siskgb2.id').trim().toLowerCase() || 'siskgb2.id';
   const selfRegistrationEnabled = !isSsoMode && Boolean(config?.selfRegistrationEnabled);
   const quotaLabel = asQuotaLabel(config?.mailboxQuotaMb);
+  const mailboxIdentity = String(config?.mailboxIdentity || '').trim().toLowerCase();
+  const loginIdentityValue = hasEditedLoginUser ? loginUser : mailboxIdentity;
+
+  const emailNotifications = useMemo(() => {
+    const items = emailFeedQuery.data?.notifications ?? [];
+    return items.filter((item) => {
+      if (item.type !== 'EMAIL_RECEIVED') return false;
+      if (!mailboxIdentity) return true;
+      const meta = extractEmailMeta(item);
+      return !meta.mailboxIdentity || meta.mailboxIdentity === mailboxIdentity;
+    });
+  }, [emailFeedQuery.data?.notifications, mailboxIdentity]);
+
+  const unreadEmailCount = useMemo(
+    () => emailNotifications.filter((item) => !item.isRead).length,
+    [emailNotifications],
+  );
+
+  const effectiveSelectedEmailId = useMemo(() => {
+    if (selectedEmailId && emailNotifications.some((item) => item.id === selectedEmailId)) {
+      return selectedEmailId;
+    }
+    return emailNotifications.find((item) => !item.isRead)?.id ?? emailNotifications[0]?.id ?? null;
+  }, [emailNotifications, selectedEmailId]);
+
+  const selectedEmail = useMemo(
+    () => emailNotifications.find((item) => item.id === effectiveSelectedEmailId) ?? null,
+    [effectiveSelectedEmailId, emailNotifications],
+  );
 
   const startSsoMutation = useMutation({
     mutationFn: () => webmailApi.startSso(),
-    onSuccess: async (data) => {
+    onSuccess: (data) => {
       setPanelError(null);
       setWebmailUrl(data.launchUrl);
       setIsWebmailMode(true);
       setWebviewKey((value) => value + 1);
-      if (userStorageKey) {
-        await AsyncStorage.setItem(userStorageKey, '1');
-      }
     },
     onError: (error) => {
       setPanelError(resolveErrorMessage(error, 'Gagal menyiapkan sesi SSO webmail.'));
@@ -138,60 +353,30 @@ export default function MobileEmailScreen() {
 
   const registerMutation = useMutation({
     mutationFn: webmailApi.register,
-    onSuccess: async (result, variables) => {
-      const mailboxIdentity = String(result.mailboxIdentity || '').trim().toLowerCase();
-      if (!mailboxIdentity) {
+    onSuccess: (result, variables) => {
+      const createdMailboxIdentity = String(result.mailboxIdentity || '').trim().toLowerCase();
+      if (!createdMailboxIdentity) {
         setRegisterError('Mailbox berhasil dibuat, tetapi identitas mailbox tidak ditemukan.');
         return;
       }
+
       setRegisterError(null);
       setIsRegisterMode(false);
       setRegisterUser('');
       setRegisterPass('');
       setRegisterPassConfirm('');
-      setLoginUser(mailboxIdentity);
+      setLoginUser(createdMailboxIdentity);
+      setHasEditedLoginUser(true);
       setLoginPass(variables.password);
-      setBridgeCredentials({ email: mailboxIdentity, password: variables.password });
+      setBridgeCredentials({ email: createdMailboxIdentity, password: variables.password });
       setWebmailUrl(bridgeLoginUrl);
       setIsWebmailMode(true);
       setWebviewKey((value) => value + 1);
-      if (userStorageKey) {
-        await AsyncStorage.setItem(userStorageKey, '1');
-      }
     },
     onError: (error) => {
       setRegisterError(resolveErrorMessage(error, 'Gagal membuat akun webmail.'));
     },
   });
-
-  useEffect(() => {
-    if (!config || !userStorageKey) return;
-    let cancelled = false;
-
-    const restoreMode = async () => {
-      try {
-        const stored = await AsyncStorage.getItem(userStorageKey);
-        if (cancelled || stored !== '1') return;
-
-        if (isSsoMode) {
-          startSsoMutation.mutate();
-          return;
-        }
-
-        setPanelError(null);
-        setWebmailUrl(inboxUrl);
-        setIsWebmailMode(true);
-        setWebviewKey((value) => value + 1);
-      } catch {
-        // Ignore storage read errors.
-      }
-    };
-
-    void restoreMode();
-    return () => {
-      cancelled = true;
-    };
-  }, [config, inboxUrl, isSsoMode, startSsoMutation, userStorageKey]);
 
   const openBridgePanel = async (email: string, password: string) => {
     setPanelError(null);
@@ -199,20 +384,14 @@ export default function MobileEmailScreen() {
     setWebmailUrl(bridgeLoginUrl);
     setIsWebmailMode(true);
     setWebviewKey((value) => value + 1);
-    if (userStorageKey) {
-      await AsyncStorage.setItem(userStorageKey, '1');
-    }
   };
 
-  const leavePanelMode = async () => {
+  const leavePanelMode = () => {
     setIsWebmailMode(false);
     setBridgeCredentials(null);
     setPanelError(null);
     setWebmailUrl(null);
     setWebviewKey((value) => value + 1);
-    if (userStorageKey) {
-      await AsyncStorage.removeItem(userStorageKey);
-    }
   };
 
   const handleLogin = async () => {
@@ -222,7 +401,7 @@ export default function MobileEmailScreen() {
       return;
     }
 
-    const normalizedEmail = loginUser.trim().toLowerCase();
+    const normalizedEmail = loginIdentityValue.trim().toLowerCase();
     if (!normalizedEmail || !loginPass.trim()) {
       setPanelError('Email dan password webmail wajib diisi.');
       return;
@@ -272,6 +451,16 @@ export default function MobileEmailScreen() {
     webviewRef.current?.reload();
   };
 
+  const handleSelectEmail = async (item: MobileNotificationItem) => {
+    setSelectedEmailId(item.id);
+    if (item.isRead) return;
+    try {
+      await markAsReadMutation.mutateAsync(item.id);
+    } catch {
+      // Error is surfaced by mutation handler.
+    }
+  };
+
   if (isLoading) return <AppLoadingScreen message="Memuat Email..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
@@ -287,7 +476,7 @@ export default function MobileEmailScreen() {
   }
 
   if (configQuery.isLoading && !config) {
-    return <AppLoadingScreen message="Memuat konfigurasi webmail..." />;
+    return <AppLoadingScreen message="Memuat konfigurasi email..." />;
   }
 
   if (configQuery.isError || !config) {
@@ -297,7 +486,7 @@ export default function MobileEmailScreen() {
           <Text style={{ fontSize: 22, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Email</Text>
           <QueryStateView
             type="error"
-            message={resolveErrorMessage(configQuery.error, 'Gagal memuat konfigurasi webmail.')}
+            message={resolveErrorMessage(configQuery.error, 'Gagal memuat konfigurasi email.')}
             onRetry={() => configQuery.refetch()}
           />
         </View>
@@ -306,7 +495,13 @@ export default function MobileEmailScreen() {
   }
 
   const modeLabel = isSsoMode ? 'SSO Aktif' : 'Bridge Login';
-  const mailboxIdentity = config.mailboxIdentity || '-';
+  const selectedEmailMeta = selectedEmail ? extractEmailMeta(selectedEmail) : null;
+  const selectedSenderLabel = selectedEmail && selectedEmailMeta ? extractSenderLabel(selectedEmail, selectedEmailMeta) : '-';
+  const selectedSubjectLabel =
+    selectedEmail && selectedEmailMeta ? extractSubjectLabel(selectedEmail, selectedEmailMeta) : '-';
+  const latestEmailAt = emailNotifications[0]
+    ? formatDateTime(extractEmailMeta(emailNotifications[0]).emailDate || emailNotifications[0].createdAt)
+    : '-';
   const webSource = bridgeCredentials
     ? {
         uri: bridgeLoginUrl,
@@ -325,52 +520,208 @@ export default function MobileEmailScreen() {
     <View style={{ flex: 1, backgroundColor: '#e9eefb' }}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: Math.max(insets.top, 10), paddingBottom: 10 }}>
         <View style={{ paddingHorizontal: 12, gap: 10 }}>
-          <View
-            style={{
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: '#dbe4f4',
-              backgroundColor: '#ffffff',
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              gap: 8,
-            }}
+          <SectionCard
+            title="Email"
+            subtitle="Kotak masuk utama sekarang ditampilkan langsung di mobile. Panel webmail lengkap tetap tersedia untuk pencarian lanjutan, arsip, dan compose."
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 18, fontWeight: '700', color: BRAND_COLORS.textDark }}>Portal Webmail</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               <View
                 style={{
                   borderRadius: 999,
                   borderWidth: 1,
-                  borderColor: '#c7d2fe',
-                  backgroundColor: '#eef2ff',
-                  paddingHorizontal: 8,
-                  paddingVertical: 3,
+                  borderColor: '#bfdbfe',
+                  backgroundColor: '#eff6ff',
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
                 }}
               >
-                <Text style={{ fontSize: 11, color: '#1d4ed8', fontWeight: '700' }}>{modeLabel}</Text>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#1d4ed8' }}>{modeLabel}</Text>
+              </View>
+              <View
+                style={{
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: unreadEmailCount > 0 ? '#fecaca' : '#dbeafe',
+                  backgroundColor: unreadEmailCount > 0 ? '#fef2f2' : '#f8fafc',
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '800', color: unreadEmailCount > 0 ? '#b91c1c' : '#334155' }}>
+                  {unreadEmailCount} belum dibaca
+                </Text>
               </View>
             </View>
 
-            <Text style={{ fontSize: 12, color: '#64748b' }}>Mailbox terdeteksi: {mailboxIdentity}</Text>
-          </View>
+            <View style={{ gap: 6 }}>
+              <Text style={{ color: '#0f172a', fontSize: 13, fontWeight: '700' }}>
+                Mailbox: {mailboxIdentity || 'Belum terhubung'}
+              </Text>
+              <Text style={{ color: '#64748b', fontSize: 12 }}>
+                Email terbaru: {latestEmailAt} • Kuota: {quotaLabel}
+              </Text>
+            </View>
+          </SectionCard>
+
+          <SectionCard
+            title="Kotak Masuk"
+            subtitle="Daftar ini tersinkron dari notifikasi email sekolah, jadi user bisa langsung melihat email masuk tanpa perlu membuka panel webmail dulu."
+          >
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => emailFeedQuery.refetch()}
+                style={{
+                  flex: 1,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  gap: 6,
+                  backgroundColor: '#ffffff',
+                }}
+              >
+                {emailFeedQuery.isFetching && !emailFeedQuery.isLoading ? (
+                  <ActivityIndicator size="small" color="#2563eb" />
+                ) : (
+                  <Feather name="refresh-cw" size={14} color="#1e293b" />
+                )}
+                <Text style={{ color: '#1e293b', fontSize: 12, fontWeight: '700' }}>Sinkronkan Inbox</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  setPanelError(null);
+                  setIsRegisterMode(false);
+                  setIsWebmailMode(false);
+                  if (isSsoMode) {
+                    startSsoMutation.mutate();
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  borderRadius: 12,
+                  backgroundColor: '#3250b9',
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  gap: 6,
+                }}
+              >
+                <Feather name="inbox" size={14} color="#ffffff" />
+                <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>
+                  {isSsoMode ? 'Buka Panel Lengkap' : 'Akses Panel Lengkap'}
+                </Text>
+              </Pressable>
+            </View>
+
+            {emailFeedQuery.isLoading ? (
+              <View style={{ paddingVertical: 12, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <ActivityIndicator size="small" color="#2563eb" />
+                <Text style={{ color: '#64748b', fontSize: 12 }}>Memuat kotak masuk...</Text>
+              </View>
+            ) : emailFeedQuery.isError ? (
+              <QueryStateView
+                type="error"
+                message={resolveErrorMessage(emailFeedQuery.error, 'Gagal memuat kotak masuk email.')}
+                onRetry={() => emailFeedQuery.refetch()}
+              />
+            ) : emailNotifications.length === 0 ? (
+              <View
+                style={{
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  backgroundColor: '#f8fafc',
+                  paddingHorizontal: 12,
+                  paddingVertical: 14,
+                  gap: 6,
+                }}
+              >
+                <Text style={{ color: '#0f172a', fontWeight: '700' }}>Belum ada email masuk yang terdeteksi</Text>
+                <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                  Begitu email baru masuk ke mailbox sekolah, ringkasan email akan muncul di sini dan notifikasinya juga tetap masuk ke HP.
+                </Text>
+              </View>
+            ) : (
+              <View style={{ gap: 8 }}>
+                {emailNotifications.slice(0, 12).map((item) => (
+                  <EmailInboxItem
+                    key={item.id}
+                    item={item}
+                    selected={item.id === effectiveSelectedEmailId}
+                    onPress={() => {
+                      void handleSelectEmail(item);
+                    }}
+                  />
+                ))}
+              </View>
+            )}
+
+            {selectedEmail && selectedEmailMeta ? (
+              <View
+                style={{
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: '#dbeafe',
+                  backgroundColor: '#f8fbff',
+                  paddingHorizontal: 12,
+                  paddingVertical: 12,
+                  gap: 8,
+                }}
+              >
+                <Text style={{ color: '#0f172a', fontWeight: '800', fontSize: 14 }}>Detail Email Terpilih</Text>
+                <Text style={{ color: '#334155', fontSize: 12 }}>
+                  Dari: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedSenderLabel}</Text>
+                </Text>
+                <Text style={{ color: '#334155', fontSize: 12 }}>
+                  Subjek: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedSubjectLabel}</Text>
+                </Text>
+                <Text style={{ color: '#334155', fontSize: 12 }}>
+                  Waktu: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{formatDateTime(selectedEmailMeta.emailDate || selectedEmail.createdAt)}</Text>
+                </Text>
+                <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                  Ringkasan isi email sekarang sudah terlihat native di mobile. Untuk membaca isi lengkap, pencarian, balas email, atau arsip folder lain, lanjutkan ke panel lengkap.
+                </Text>
+
+                <Pressable
+                  onPress={() => {
+                    setPanelError(null);
+                    if (isSsoMode) {
+                      startSsoMutation.mutate();
+                      return;
+                    }
+                    setIsWebmailMode(false);
+                  }}
+                  style={{
+                    borderRadius: 10,
+                    backgroundColor: '#0f172a',
+                    paddingVertical: 11,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#ffffff', fontWeight: '700' }}>
+                    {isSsoMode ? 'Buka Inbox Lengkap' : 'Lanjut ke Panel Lengkap'}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </SectionCard>
 
           {!isWebmailMode ? (
-            <View
-              style={{
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: '#dbe4f4',
-                backgroundColor: '#fff',
-                paddingHorizontal: 12,
-                paddingVertical: 12,
-                gap: 8,
-              }}
+            <SectionCard
+              title={isRegisterMode ? 'Daftar Mailbox' : 'Panel Lengkap Webmail'}
+              subtitle={
+                isRegisterMode
+                  ? `Buat mailbox sekolah baru dengan domain @${mailboxDomain}.`
+                  : 'Bagian ini dipakai hanya saat Anda perlu akses penuh seperti balas email, pencarian lanjut, atau pengelolaan folder.'
+              }
             >
               {!isRegisterMode ? (
                 <>
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>Login ke akun webmail</Text>
-
                   {isSsoMode ? (
                     <View
                       style={{
@@ -382,15 +733,18 @@ export default function MobileEmailScreen() {
                         paddingVertical: 10,
                       }}
                     >
-                      <Text style={{ color: '#1e3a8a', fontSize: 12 }}>
-                        Mode keamanan SSO aktif. Tekan tombol di bawah untuk masuk ke panel email.
+                      <Text style={{ color: '#1e3a8a', fontSize: 12, lineHeight: 18 }}>
+                        Mode keamanan SSO aktif. Tekan tombol di bawah untuk masuk ke panel email lengkap.
                       </Text>
                     </View>
                   ) : (
                     <>
                       <TextInput
-                        value={loginUser}
-                        onChangeText={setLoginUser}
+                        value={loginIdentityValue}
+                        onChangeText={(value) => {
+                          setHasEditedLoginUser(true);
+                          setLoginUser(value);
+                        }}
                         autoCapitalize="none"
                         keyboardType="email-address"
                         placeholder={`username@${mailboxDomain}`}
@@ -398,9 +752,9 @@ export default function MobileEmailScreen() {
                         style={{
                           borderWidth: 1,
                           borderColor: '#cbd5e1',
-                          borderRadius: 10,
-                          paddingHorizontal: 10,
-                          paddingVertical: 10,
+                          borderRadius: 12,
+                          paddingHorizontal: 12,
+                          paddingVertical: 11,
                           color: BRAND_COLORS.textDark,
                         }}
                       />
@@ -413,9 +767,9 @@ export default function MobileEmailScreen() {
                         style={{
                           borderWidth: 1,
                           borderColor: '#cbd5e1',
-                          borderRadius: 10,
-                          paddingHorizontal: 10,
-                          paddingVertical: 10,
+                          borderRadius: 12,
+                          paddingHorizontal: 12,
+                          paddingVertical: 11,
                           color: BRAND_COLORS.textDark,
                         }}
                       />
@@ -430,7 +784,7 @@ export default function MobileEmailScreen() {
                     }}
                     disabled={startSsoMutation.isPending}
                     style={{
-                      borderRadius: 10,
+                      borderRadius: 12,
                       backgroundColor: '#f59e0b',
                       paddingVertical: 11,
                       alignItems: 'center',
@@ -438,7 +792,7 @@ export default function MobileEmailScreen() {
                     }}
                   >
                     <Text style={{ color: '#111827', fontWeight: '700' }}>
-                      {startSsoMutation.isPending ? 'Menyiapkan...' : 'Masuk Webmail'}
+                      {startSsoMutation.isPending ? 'Menyiapkan...' : isSsoMode ? 'Masuk Panel Lengkap' : 'Login ke Panel Lengkap'}
                     </Text>
                   </Pressable>
 
@@ -449,7 +803,7 @@ export default function MobileEmailScreen() {
                         setIsRegisterMode(true);
                       }}
                       style={{
-                        borderRadius: 10,
+                        borderRadius: 12,
                         backgroundColor: '#3250b9',
                         paddingVertical: 11,
                         alignItems: 'center',
@@ -461,15 +815,13 @@ export default function MobileEmailScreen() {
                 </>
               ) : (
                 <>
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>Daftar akun webmail</Text>
-
                   <View
                     style={{
                       borderWidth: 1,
                       borderColor: '#cbd5e1',
-                      borderRadius: 10,
-                      paddingHorizontal: 10,
-                      paddingVertical: 10,
+                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 11,
                       flexDirection: 'row',
                       alignItems: 'center',
                       gap: 4,
@@ -495,9 +847,9 @@ export default function MobileEmailScreen() {
                     style={{
                       borderWidth: 1,
                       borderColor: '#cbd5e1',
-                      borderRadius: 10,
-                      paddingHorizontal: 10,
-                      paddingVertical: 10,
+                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 11,
                       color: BRAND_COLORS.textDark,
                     }}
                   />
@@ -511,9 +863,9 @@ export default function MobileEmailScreen() {
                     style={{
                       borderWidth: 1,
                       borderColor: '#cbd5e1',
-                      borderRadius: 10,
-                      paddingHorizontal: 10,
-                      paddingVertical: 10,
+                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 11,
                       color: BRAND_COLORS.textDark,
                     }}
                   />
@@ -525,7 +877,7 @@ export default function MobileEmailScreen() {
                     onPress={() => handleRegister()}
                     disabled={registerMutation.isPending}
                     style={{
-                      borderRadius: 10,
+                      borderRadius: 12,
                       backgroundColor: '#3250b9',
                       paddingVertical: 11,
                       alignItems: 'center',
@@ -533,76 +885,69 @@ export default function MobileEmailScreen() {
                     }}
                   >
                     <Text style={{ color: '#fff', fontWeight: '700' }}>
-                      {registerMutation.isPending ? 'Memproses...' : 'Daftar'}
+                      {registerMutation.isPending ? 'Memproses...' : 'Daftar Mailbox'}
                     </Text>
                   </Pressable>
 
                   <Pressable
                     onPress={() => setIsRegisterMode(false)}
                     style={{
-                      borderRadius: 10,
+                      borderRadius: 12,
                       backgroundColor: '#f59e0b',
                       paddingVertical: 11,
                       alignItems: 'center',
                     }}
                   >
-                    <Text style={{ color: '#111827', fontWeight: '700' }}>Kembali ke Login</Text>
+                    <Text style={{ color: '#111827', fontWeight: '700' }}>Kembali ke Panel</Text>
                   </Pressable>
                 </>
               )}
-            </View>
+            </SectionCard>
           ) : (
-            <View
-              style={{
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: '#dbe4f4',
-                backgroundColor: '#fff',
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                flexDirection: 'row',
-                gap: 8,
-              }}
+            <SectionCard
+              title="Panel Lengkap Aktif"
+              subtitle="Panel ini dipertahankan untuk aksi lanjutan seperti baca isi lengkap, pencarian mailbox, compose, dan pengelolaan folder."
             >
-              <Pressable
-                onPress={handleReload}
-                style={{
-                  flex: 1,
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  borderRadius: 9,
-                  paddingVertical: 9,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexDirection: 'row',
-                  gap: 6,
-                }}
-              >
-                <Feather name="refresh-cw" size={14} color="#1e293b" />
-                <Text style={{ color: '#1e293b', fontSize: 12, fontWeight: '700' }}>Muat Ulang</Text>
-              </Pressable>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pressable
+                  onPress={handleReload}
+                  style={{
+                    flex: 1,
+                    borderWidth: 1,
+                    borderColor: '#cbd5e1',
+                    borderRadius: 12,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                    gap: 6,
+                    backgroundColor: '#ffffff',
+                  }}
+                >
+                  <Feather name="refresh-cw" size={14} color="#1e293b" />
+                  <Text style={{ color: '#1e293b', fontSize: 12, fontWeight: '700' }}>Muat Ulang</Text>
+                </Pressable>
 
-              <Pressable
-                onPress={() => {
-                  void leavePanelMode();
-                }}
-                style={{
-                  flex: 1,
-                  borderWidth: 1,
-                  borderColor: '#fed7aa',
-                  backgroundColor: '#fff7ed',
-                  borderRadius: 9,
-                  paddingVertical: 9,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexDirection: 'row',
-                  gap: 6,
-                }}
-              >
-                <Feather name="log-out" size={14} color="#c2410c" />
-                <Text style={{ color: '#c2410c', fontSize: 12, fontWeight: '700' }}>Kembali ke Form</Text>
-              </Pressable>
-            </View>
+                <Pressable
+                  onPress={leavePanelMode}
+                  style={{
+                    flex: 1,
+                    borderWidth: 1,
+                    borderColor: '#fed7aa',
+                    backgroundColor: '#fff7ed',
+                    borderRadius: 12,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                    gap: 6,
+                  }}
+                >
+                  <Feather name="arrow-left" size={14} color="#c2410c" />
+                  <Text style={{ color: '#c2410c', fontSize: 12, fontWeight: '700' }}>Kembali ke Inbox Native</Text>
+                </Pressable>
+              </View>
+            </SectionCard>
           )}
         </View>
 
@@ -611,7 +956,7 @@ export default function MobileEmailScreen() {
             <View
               style={{
                 flex: 1,
-                borderRadius: 14,
+                borderRadius: 16,
                 borderWidth: 1,
                 borderColor: '#dbe4f4',
                 overflow: 'hidden',
