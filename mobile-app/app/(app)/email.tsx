@@ -10,12 +10,8 @@ import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../src/config/brand';
 import { useAuth } from '../../src/features/auth/AuthProvider';
-import {
-  MOBILE_NOTIFICATIONS_QUERY_KEY,
-  MobileNotificationItem,
-  notificationApi,
-} from '../../src/features/notifications/notificationApi';
-import { webmailApi } from '../../src/features/webmail/webmailApi';
+import { MOBILE_NOTIFICATIONS_QUERY_KEY } from '../../src/features/notifications/notificationApi';
+import { MobileWebmailMessageSummary, webmailApi } from '../../src/features/webmail/webmailApi';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError } from '../../src/lib/ui/feedback';
 
@@ -25,16 +21,6 @@ const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
 type BridgeCredentials = {
   email: string;
   password: string;
-};
-
-type EmailNotificationMeta = {
-  route: string | null;
-  mailboxIdentity: string | null;
-  emailGuid: string | null;
-  emailMessageId: string | null;
-  emailFrom: string | null;
-  emailSubject: string | null;
-  emailDate: string | null;
 };
 
 function resolveErrorMessage(error: unknown, fallback: string) {
@@ -102,40 +88,12 @@ function formatDateTime(value?: string | null) {
   });
 }
 
-function normalizeText(value: unknown) {
-  const normalized = String(value || '').trim();
-  return normalized.length > 0 ? normalized : null;
+function extractSenderLabel(item: { fromLabel?: string | null; from?: string | null }) {
+  return String(item.fromLabel || item.from || 'pengirim tidak dikenal').trim() || 'pengirim tidak dikenal';
 }
 
-function extractEmailMeta(item: MobileNotificationItem): EmailNotificationMeta {
-  const payload =
-    item.data && typeof item.data === 'object' ? (item.data as Record<string, unknown>) : null;
-  const route = normalizeText(payload?.route);
-  const mailboxIdentity = normalizeText(payload?.mailboxIdentity)?.toLowerCase() || null;
-
-  return {
-    route: route?.startsWith('/') ? route : null,
-    mailboxIdentity,
-    emailGuid: normalizeText(payload?.emailGuid),
-    emailMessageId: normalizeText(payload?.emailMessageId),
-    emailFrom: normalizeText(payload?.emailFrom),
-    emailSubject: normalizeText(payload?.emailSubject),
-    emailDate: normalizeText(payload?.emailDate),
-  };
-}
-
-function extractSenderLabel(item: MobileNotificationItem, meta: EmailNotificationMeta) {
-  if (meta.emailFrom) return meta.emailFrom;
-  const normalizedTitle = String(item.title || '').trim();
-  const prefix = 'Email baru dari ';
-  if (normalizedTitle.startsWith(prefix)) {
-    return normalizedTitle.slice(prefix.length).trim() || 'pengirim tidak dikenal';
-  }
-  return normalizedTitle || 'pengirim tidak dikenal';
-}
-
-function extractSubjectLabel(item: MobileNotificationItem, meta: EmailNotificationMeta) {
-  return meta.emailSubject || String(item.message || '').trim() || '(Tanpa subjek)';
+function extractSubjectLabel(item: { subject?: string | null }) {
+  return String(item.subject || '').trim() || '(Tanpa subjek)';
 }
 
 function SectionCard({
@@ -173,13 +131,12 @@ function EmailInboxItem({
   selected,
   onPress,
 }: {
-  item: MobileNotificationItem;
+  item: MobileWebmailMessageSummary;
   selected: boolean;
   onPress: () => void;
 }) {
-  const meta = extractEmailMeta(item);
-  const senderLabel = extractSenderLabel(item, meta);
-  const subjectLabel = extractSubjectLabel(item, meta);
+  const senderLabel = extractSenderLabel(item);
+  const subjectLabel = extractSubjectLabel(item);
 
   return (
     <Pressable
@@ -235,9 +192,7 @@ function EmailInboxItem({
             {subjectLabel}
           </Text>
 
-          <Text style={{ color: '#64748b', fontSize: 11 }}>
-            {formatDateTime(meta.emailDate || item.createdAt)}
-          </Text>
+          <Text style={{ color: '#64748b', fontSize: 11 }}>{formatDateTime(item.date)}</Text>
         </View>
       </View>
     </Pressable>
@@ -264,7 +219,7 @@ export default function MobileEmailScreen() {
   const [registerPassConfirm, setRegisterPassConfirm] = useState('');
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [bridgeCredentials, setBridgeCredentials] = useState<BridgeCredentials | null>(null);
-  const [selectedEmailId, setSelectedEmailId] = useState<number | null>(null);
+  const [selectedEmailGuid, setSelectedEmailGuid] = useState<string | null>(null);
 
   const isAllowedRole = useMemo(() => {
     const role = String(user?.role || '').toUpperCase();
@@ -280,24 +235,11 @@ export default function MobileEmailScreen() {
 
   const emailFeedQuery = useQuery({
     queryKey: ['mobile-email-inbox-feed', configQuery.data?.mailboxIdentity || 'all'],
-    queryFn: () => notificationApi.getNotifications({ page: 1, limit: 100 }),
+    queryFn: () => webmailApi.getMessages({ page: 1, limit: 20 }),
     enabled: isAuthenticated && isAllowedRole,
     staleTime: 15_000,
     refetchInterval: isAuthenticated && isAllowedRole ? 20_000 : false,
     refetchOnReconnect: true,
-  });
-
-  const markAsReadMutation = useMutation({
-    mutationFn: (notificationId: number) => notificationApi.markAsRead(notificationId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: MOBILE_NOTIFICATIONS_QUERY_KEY,
-        refetchType: 'active',
-      });
-    },
-    onError: (error: unknown) => {
-      notifyApiError(error, 'Gagal menandai email sebagai dibaca.');
-    },
   });
 
   const config = configQuery.data;
@@ -311,32 +253,52 @@ export default function MobileEmailScreen() {
   const mailboxIdentity = String(config?.mailboxIdentity || '').trim().toLowerCase();
   const loginIdentityValue = hasEditedLoginUser ? loginUser : mailboxIdentity;
 
-  const emailNotifications = useMemo(() => {
-    const items = emailFeedQuery.data?.notifications ?? [];
-    return items.filter((item) => {
-      if (item.type !== 'EMAIL_RECEIVED') return false;
-      if (!mailboxIdentity) return true;
-      const meta = extractEmailMeta(item);
-      return !meta.mailboxIdentity || meta.mailboxIdentity === mailboxIdentity;
-    });
-  }, [emailFeedQuery.data?.notifications, mailboxIdentity]);
+  const mailboxMessages = useMemo(() => emailFeedQuery.data?.messages ?? [], [emailFeedQuery.data?.messages]);
+
+  const markAsReadMutation = useMutation({
+    mutationFn: (guid: string) => webmailApi.markMessageRead(guid),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-email-inbox-feed'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-email-message-detail'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: MOBILE_NOTIFICATIONS_QUERY_KEY,
+        refetchType: 'active',
+      });
+    },
+    onError: (error: unknown) => {
+      notifyApiError(error, 'Gagal menandai email sebagai dibaca.');
+    },
+  });
 
   const unreadEmailCount = useMemo(
-    () => emailNotifications.filter((item) => !item.isRead).length,
-    [emailNotifications],
+    () => mailboxMessages.filter((item) => !item.isRead).length,
+    [mailboxMessages],
   );
 
-  const effectiveSelectedEmailId = useMemo(() => {
-    if (selectedEmailId && emailNotifications.some((item) => item.id === selectedEmailId)) {
-      return selectedEmailId;
+  const effectiveSelectedEmailGuid = useMemo(() => {
+    if (selectedEmailGuid && mailboxMessages.some((item) => item.guid === selectedEmailGuid)) {
+      return selectedEmailGuid;
     }
-    return emailNotifications.find((item) => !item.isRead)?.id ?? emailNotifications[0]?.id ?? null;
-  }, [emailNotifications, selectedEmailId]);
+    return mailboxMessages.find((item) => !item.isRead)?.guid ?? mailboxMessages[0]?.guid ?? null;
+  }, [mailboxMessages, selectedEmailGuid]);
 
   const selectedEmail = useMemo(
-    () => emailNotifications.find((item) => item.id === effectiveSelectedEmailId) ?? null,
-    [effectiveSelectedEmailId, emailNotifications],
+    () => mailboxMessages.find((item) => item.guid === effectiveSelectedEmailGuid) ?? null,
+    [effectiveSelectedEmailGuid, mailboxMessages],
   );
+
+  const selectedEmailDetailQuery = useQuery({
+    queryKey: ['mobile-email-message-detail', effectiveSelectedEmailGuid || 'empty'],
+    queryFn: () => webmailApi.getMessageDetail(String(effectiveSelectedEmailGuid)),
+    enabled: Boolean(effectiveSelectedEmailGuid) && isAuthenticated && isAllowedRole && emailFeedQuery.data?.mailboxAvailable !== false,
+    staleTime: 15_000,
+  });
 
   const startSsoMutation = useMutation({
     mutationFn: () => webmailApi.startSso(),
@@ -451,11 +413,11 @@ export default function MobileEmailScreen() {
     webviewRef.current?.reload();
   };
 
-  const handleSelectEmail = async (item: MobileNotificationItem) => {
-    setSelectedEmailId(item.id);
+  const handleSelectEmail = async (item: MobileWebmailMessageSummary) => {
+    setSelectedEmailGuid(item.guid);
     if (item.isRead) return;
     try {
-      await markAsReadMutation.mutateAsync(item.id);
+      await markAsReadMutation.mutateAsync(item.guid);
     } catch {
       // Error is surfaced by mutation handler.
     }
@@ -495,13 +457,14 @@ export default function MobileEmailScreen() {
   }
 
   const modeLabel = isSsoMode ? 'SSO Aktif' : 'Bridge Login';
-  const selectedEmailMeta = selectedEmail ? extractEmailMeta(selectedEmail) : null;
-  const selectedSenderLabel = selectedEmail && selectedEmailMeta ? extractSenderLabel(selectedEmail, selectedEmailMeta) : '-';
-  const selectedSubjectLabel =
-    selectedEmail && selectedEmailMeta ? extractSubjectLabel(selectedEmail, selectedEmailMeta) : '-';
-  const latestEmailAt = emailNotifications[0]
-    ? formatDateTime(extractEmailMeta(emailNotifications[0]).emailDate || emailNotifications[0].createdAt)
-    : '-';
+  const selectedSenderLabel = selectedEmail ? extractSenderLabel(selectedEmail) : '-';
+  const selectedSubjectLabel = selectedEmail ? extractSubjectLabel(selectedEmail) : '-';
+  const latestEmailAt = mailboxMessages[0] ? formatDateTime(mailboxMessages[0].date) : '-';
+  const selectedBodyText =
+    selectedEmailDetailQuery.data?.plainText ||
+    selectedEmailDetailQuery.data?.previewText ||
+    selectedEmail?.snippet ||
+    '';
   const webSource = bridgeCredentials
     ? {
         uri: bridgeLoginUrl,
@@ -565,7 +528,7 @@ export default function MobileEmailScreen() {
 
           <SectionCard
             title="Kotak Masuk"
-            subtitle="Daftar ini tersinkron dari notifikasi email sekolah, jadi user bisa langsung melihat email masuk tanpa perlu membuka panel webmail dulu."
+            subtitle="Daftar ini sekarang membaca mailbox sungguhan dari server, jadi isi inbox mobile dan panel email bisa tetap searah."
           >
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Pressable
@@ -629,7 +592,24 @@ export default function MobileEmailScreen() {
                 message={resolveErrorMessage(emailFeedQuery.error, 'Gagal memuat kotak masuk email.')}
                 onRetry={() => emailFeedQuery.refetch()}
               />
-            ) : emailNotifications.length === 0 ? (
+            ) : emailFeedQuery.data?.mailboxAvailable === false ? (
+              <View
+                style={{
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: '#fde68a',
+                  backgroundColor: '#fffbeb',
+                  paddingHorizontal: 12,
+                  paddingVertical: 14,
+                  gap: 6,
+                }}
+              >
+                <Text style={{ color: '#92400e', fontWeight: '700' }}>Mailbox belum tersedia</Text>
+                <Text style={{ color: '#78350f', fontSize: 12, lineHeight: 18 }}>
+                  Akun ini sudah dikenali, tetapi mailbox di server mail belum aktif. Jika role Anda mendukung pendaftaran mandiri, buat mailbox dulu di bagian panel bawah.
+                </Text>
+              </View>
+            ) : mailboxMessages.length === 0 ? (
               <View
                 style={{
                   borderRadius: 14,
@@ -641,18 +621,18 @@ export default function MobileEmailScreen() {
                   gap: 6,
                 }}
               >
-                <Text style={{ color: '#0f172a', fontWeight: '700' }}>Belum ada email masuk yang terdeteksi</Text>
+                <Text style={{ color: '#0f172a', fontWeight: '700' }}>Inbox masih kosong</Text>
                 <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                  Begitu email baru masuk ke mailbox sekolah, ringkasan email akan muncul di sini dan notifikasinya juga tetap masuk ke HP.
+                  Begitu email baru masuk ke mailbox sekolah, daftar inbox di sini akan langsung ikut terisi dan notifikasinya juga tetap masuk ke HP.
                 </Text>
               </View>
             ) : (
               <View style={{ gap: 8 }}>
-                {emailNotifications.slice(0, 12).map((item) => (
+                {mailboxMessages.map((item) => (
                   <EmailInboxItem
-                    key={item.id}
+                    key={item.guid}
                     item={item}
-                    selected={item.id === effectiveSelectedEmailId}
+                    selected={item.guid === effectiveSelectedEmailGuid}
                     onPress={() => {
                       void handleSelectEmail(item);
                     }}
@@ -661,7 +641,7 @@ export default function MobileEmailScreen() {
               </View>
             )}
 
-            {selectedEmail && selectedEmailMeta ? (
+            {selectedEmail ? (
               <View
                 style={{
                   borderRadius: 14,
@@ -681,11 +661,49 @@ export default function MobileEmailScreen() {
                   Subjek: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedSubjectLabel}</Text>
                 </Text>
                 <Text style={{ color: '#334155', fontSize: 12 }}>
-                  Waktu: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{formatDateTime(selectedEmailMeta.emailDate || selectedEmail.createdAt)}</Text>
+                  Waktu: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{formatDateTime(selectedEmail.date)}</Text>
                 </Text>
-                <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
-                  Ringkasan isi email sekarang sudah terlihat native di mobile. Untuk membaca isi lengkap, pencarian, balas email, atau arsip folder lain, lanjutkan ke panel lengkap.
-                </Text>
+                {selectedEmailDetailQuery.isLoading ? (
+                  <View style={{ paddingVertical: 8, alignItems: 'center', gap: 8 }}>
+                    <ActivityIndicator size="small" color="#2563eb" />
+                    <Text style={{ color: '#64748b', fontSize: 12 }}>Memuat isi email...</Text>
+                  </View>
+                ) : selectedEmailDetailQuery.isError ? (
+                  <QueryStateView
+                    type="error"
+                    message={resolveErrorMessage(selectedEmailDetailQuery.error, 'Gagal memuat isi email.')}
+                    onRetry={() => selectedEmailDetailQuery.refetch()}
+                  />
+                ) : (
+                  <View
+                    style={{
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#dbe4f4',
+                      backgroundColor: '#ffffff',
+                      paddingHorizontal: 12,
+                      paddingVertical: 12,
+                      gap: 8,
+                    }}
+                  >
+                    {selectedEmailDetailQuery.data?.to ? (
+                      <Text style={{ color: '#334155', fontSize: 12 }}>
+                        Ke: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedEmailDetailQuery.data.to}</Text>
+                      </Text>
+                    ) : null}
+                    {selectedEmailDetailQuery.data?.cc ? (
+                      <Text style={{ color: '#334155', fontSize: 12 }}>
+                        CC: <Text style={{ color: '#0f172a', fontWeight: '700' }}>{selectedEmailDetailQuery.data.cc}</Text>
+                      </Text>
+                    ) : null}
+                    <Text style={{ color: '#334155', fontSize: 12, lineHeight: 20 }}>
+                      {selectedBodyText || 'Isi email tidak tersedia.'}
+                    </Text>
+                    <Text style={{ color: '#64748b', fontSize: 12, lineHeight: 18 }}>
+                      Isi email utama sekarang sudah bisa dibaca langsung dari mobile. Panel lengkap tetap dipakai untuk compose, balas email, pencarian lanjutan, atau folder arsip lain.
+                    </Text>
+                  </View>
+                )}
 
                 <Pressable
                   onPress={() => {

@@ -6,6 +6,13 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import {
+  getWebmailMessageDetail,
+  listWebmailMessages,
+  markWebmailMessageAsRead,
+  MailboxMessageNotFoundError,
+  MailboxUnavailableError,
+} from '../services/webmailMailbox.service';
 
 type WebmailMode = 'BRIDGE' | 'SSO';
 
@@ -356,6 +363,101 @@ export const registerWebmailMailbox = asyncHandler(async (req: AuthRequest, res:
       'Mailbox webmail berhasil dibuat',
     ),
   );
+});
+
+export const listWebmailInboxMessages = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const user = await ensureWebmailAccess(req);
+  const mailboxIdentity = resolveMailboxIdentity(user);
+  if (!mailboxIdentity) {
+    throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox (email) yang valid');
+  }
+
+  const page = clamp(parsePositiveInt(req.query?.page as string | undefined, 1), 1, 9999);
+  const limit = clamp(parsePositiveInt(req.query?.limit as string | undefined, 20), 1, 50);
+  const inbox = await listWebmailMessages({
+    mailboxIdentity,
+    page,
+    limit,
+  });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      inbox,
+      inbox.mailboxAvailable ? 'Kotak masuk email berhasil diambil' : 'Mailbox belum tersedia di server',
+    ),
+  );
+});
+
+export const getWebmailInboxMessageDetail = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const user = await ensureWebmailAccess(req);
+  const mailboxIdentity = resolveMailboxIdentity(user);
+  if (!mailboxIdentity) {
+    throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox (email) yang valid');
+  }
+
+  const guid = toMaybeString(req.params?.guid);
+  if (!guid) {
+    throw new ApiError(400, 'Guid email wajib diisi');
+  }
+
+  try {
+    const detail = await getWebmailMessageDetail({
+      mailboxIdentity,
+      guid,
+    });
+
+    res.status(200).json(new ApiResponse(200, detail, 'Detail email berhasil diambil'));
+  } catch (error: unknown) {
+    if (error instanceof MailboxUnavailableError) {
+      throw new ApiError(404, 'Mailbox belum tersedia di server');
+    }
+    if (error instanceof MailboxMessageNotFoundError) {
+      throw new ApiError(404, error.message || 'Email tidak ditemukan');
+    }
+    throw error;
+  }
+});
+
+export const markWebmailInboxMessageRead = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const user = await ensureWebmailAccess(req);
+  const mailboxIdentity = resolveMailboxIdentity(user);
+  if (!mailboxIdentity) {
+    throw new ApiError(400, 'Akun Anda belum memiliki identitas mailbox (email) yang valid');
+  }
+
+  const guid = toMaybeString(req.params?.guid);
+  if (!guid) {
+    throw new ApiError(400, 'Guid email wajib diisi');
+  }
+
+  try {
+    await markWebmailMessageAsRead({
+      userId: user.id,
+      mailboxIdentity,
+      guid,
+    });
+
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          guid,
+          mailboxIdentity,
+          markedAt: new Date().toISOString(),
+        },
+        'Email berhasil ditandai sebagai dibaca',
+      ),
+    );
+  } catch (error: unknown) {
+    if (error instanceof MailboxUnavailableError) {
+      throw new ApiError(404, 'Mailbox belum tersedia di server');
+    }
+    if (error instanceof MailboxMessageNotFoundError) {
+      throw new ApiError(404, error.message || 'Email tidak ditemukan');
+    }
+    throw error;
+  }
 });
 
 export const startWebmailSso = asyncHandler(async (req: AuthRequest, res: Response) => {
