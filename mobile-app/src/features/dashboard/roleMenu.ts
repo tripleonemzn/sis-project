@@ -470,26 +470,22 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     {
       key: 'teacher-bk-dashboard',
       label: 'Dashboard BP/BK',
-      route: '/web-module/teacher-bk-dashboard',
-      webPath: '/teacher/bk',
+      route: '/teacher/bk',
     },
     {
       key: 'teacher-bk-behaviors',
       label: 'Kasus Perilaku',
-      route: '/web-module/teacher-bk-behaviors',
-      webPath: '/teacher/bk/behaviors',
+      route: '/teacher/bk/behaviors',
     },
     {
       key: 'teacher-bk-permissions',
       label: 'Perizinan Siswa',
-      route: '/web-module/teacher-bk-permissions',
-      webPath: '/teacher/bk/permissions',
+      route: '/teacher/bk/permissions',
     },
     {
       key: 'teacher-bk-counselings',
       label: 'Konseling & Tindak Lanjut',
-      route: '/web-module/teacher-bk-counselings',
-      webPath: '/teacher/bk/counselings',
+      route: '/teacher/bk/counselings',
     },
     {
       key: 'teacher-kakom-classes',
