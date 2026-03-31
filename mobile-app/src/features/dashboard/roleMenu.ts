@@ -1274,56 +1274,58 @@ const STAFF_EXTRA_MENU_ITEMS: Record<string, RoleMenuItem> = {
   'staff-administration-dashboard': {
     key: 'staff-administration-dashboard',
     label: 'Dashboard Administrasi',
-    webPath: '/staff/administration',
+    route: '/staff/admin?focus=administration-dashboard',
   },
   'staff-administration-teachers': {
     key: 'staff-administration-teachers',
     label: 'Administrasi Guru',
-    webPath: '/staff/administration/teachers',
+    route: '/staff/admin?focus=teachers',
   },
   'staff-administration-permissions': {
     key: 'staff-administration-permissions',
     label: 'Perizinan Siswa',
-    webPath: '/staff/administration/permissions',
+    route: '/staff/admin?focus=permissions',
   },
   'staff-head-tu-dashboard': {
     key: 'staff-head-tu-dashboard',
     label: 'Dashboard Kepala TU',
-    webPath: '/staff/head-tu',
+    route: '/staff/admin?focus=head-tu-dashboard',
   },
   'staff-head-tu-administration': {
     key: 'staff-head-tu-administration',
     label: 'Operasional TU',
-    webPath: '/staff/head-tu/administration',
+    route: '/staff/admin?focus=administration',
   },
   'staff-head-tu-finance': {
     key: 'staff-head-tu-finance',
     label: 'Monitoring Keuangan',
-    webPath: '/staff/head-tu/finance',
+    route: '/staff/admin?focus=finance',
   },
   'staff-head-tu-students': {
     key: 'staff-head-tu-students',
     label: 'Data Siswa',
-    webPath: '/staff/head-tu/students',
+    route: '/staff/students',
   },
   'staff-head-tu-teachers': {
     key: 'staff-head-tu-teachers',
     label: 'Data Guru & Staff',
-    webPath: '/staff/head-tu/teachers',
+    route: '/staff/admin?focus=teachers',
   },
   'staff-head-tu-permissions': {
     key: 'staff-head-tu-permissions',
     label: 'Perizinan Siswa',
-    webPath: '/staff/head-tu/permissions',
+    route: '/staff/admin?focus=permissions',
   },
   'staff-head-tu-letters': {
     key: 'staff-head-tu-letters',
     label: 'Surat-Menyurat',
+    route: '/staff/head-tu/letters',
     webPath: '/staff/head-tu/letters',
   },
   'staff-head-tu-exam-cards': {
     key: 'staff-head-tu-exam-cards',
     label: 'Kartu Ujian',
+    route: '/staff/head-tu/exam-cards',
     webPath: '/staff/head-tu/exam-cards',
   },
 };
@@ -1392,9 +1394,17 @@ function buildStaffRoleMenu(user: AuthUser) {
   const baseKeys = ['staff-dashboard', 'staff-email'];
   const roleKeys =
     division === 'HEAD_TU'
-      ? ['staff-admin', 'staff-students']
+      ? [
+          'staff-head-tu-administration',
+          'staff-head-tu-finance',
+          'staff-head-tu-students',
+          'staff-head-tu-teachers',
+          'staff-head-tu-permissions',
+          'staff-head-tu-letters',
+          'staff-head-tu-exam-cards',
+        ]
       : division === 'ADMINISTRATION'
-        ? ['staff-students', 'staff-admin']
+        ? ['staff-students', 'staff-administration-teachers', 'staff-administration-permissions']
         : ['staff-payments', 'staff-students', 'staff-admin'];
 
   return [...baseKeys, ...roleKeys]
@@ -1458,14 +1468,24 @@ function buildStaffGroups(user: AuthUser, menus: RoleMenuItem[]) {
   pushGroup(groups, 'dashboard', 'Dashboard', ['staff-dashboard', 'staff-email']);
 
   if (division === 'HEAD_TU') {
-    pushGroup(groups, 'monitoring-tu', 'MONITORING TU', ['staff-admin']);
-    pushGroup(groups, 'layanan-tu', 'LAYANAN TU', ['staff-students']);
+    pushGroup(groups, 'monitoring-tu', 'MONITORING TU', [
+      'staff-head-tu-administration',
+      'staff-head-tu-finance',
+      'staff-head-tu-letters',
+      'staff-head-tu-exam-cards',
+    ]);
+    pushGroup(groups, 'layanan-tu', 'LAYANAN TU', [
+      'staff-head-tu-students',
+      'staff-head-tu-teachers',
+      'staff-head-tu-permissions',
+    ]);
     return groups;
   }
 
   if (division === 'ADMINISTRATION') {
     pushGroup(groups, 'students', 'DATA SISWA', ['staff-students']);
-    pushGroup(groups, 'administration', 'ADMINISTRASI', ['staff-admin']);
+    pushGroup(groups, 'teachers', 'ADMINISTRASI GURU', ['staff-administration-teachers']);
+    pushGroup(groups, 'permissions', 'PERIZINAN SISWA', ['staff-administration-permissions']);
     return groups;
   }
 

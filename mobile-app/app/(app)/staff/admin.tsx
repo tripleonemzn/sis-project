@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Redirect, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -189,11 +189,13 @@ function getIntegritySeverityStyle(level: StaffFinanceIntegritySummary['issues']
 
 export default function StaffAdminScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ focus?: string | string[] }>();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const staffDivision = resolveStaffDivision(user);
+  const focus = Array.isArray(params.focus) ? params.focus[0] : params.focus;
   const activeYearQuery = useQuery({
     queryKey: ['mobile-staff-admin-active-year', user?.id],
     enabled: isAuthenticated && user?.role === 'STAFF',
@@ -650,15 +652,39 @@ export default function StaffAdminScreen() {
 
   const title =
     staffDivision === 'HEAD_TU'
-      ? 'Workspace Kepala TU'
+      ? focus === 'finance'
+        ? 'Monitoring Keuangan TU'
+        : focus === 'teachers'
+          ? 'Data Guru & Staff'
+          : focus === 'permissions'
+            ? 'Perizinan Siswa'
+            : focus === 'administration'
+              ? 'Operasional TU'
+              : 'Workspace Kepala TU'
       : staffDivision === 'ADMINISTRATION'
-        ? 'Administrasi Staff'
+        ? focus === 'teachers'
+          ? 'Administrasi Guru'
+          : focus === 'permissions'
+            ? 'Perizinan Siswa'
+            : 'Administrasi Staff'
         : 'Operasional Keuangan';
   const subtitle =
     staffDivision === 'HEAD_TU'
-      ? 'Ringkasan monitoring TU, layanan administrasi, dan koordinasi staff.'
+      ? focus === 'finance'
+        ? 'Fokus pada governance finance, approval, settlement, dan closing period untuk Head TU.'
+        : focus === 'teachers'
+          ? 'Rekap guru dan staff untuk kontrol layanan TU dan kelengkapan data.'
+          : focus === 'permissions'
+            ? 'Antrian perizinan siswa, aging approval, dan tindak lanjut layanan TU.'
+            : focus === 'administration'
+              ? 'Ringkasan operasional TU, layanan administrasi, dan koordinasi prioritas harian.'
+              : 'Ringkasan monitoring TU, layanan administrasi, dan koordinasi staff.'
       : staffDivision === 'ADMINISTRATION'
-        ? 'Ringkasan administrasi siswa, guru, dan antrian perizinan.'
+        ? focus === 'teachers'
+          ? 'Verifikasi kelengkapan data guru dan staff administrasi sekolah.'
+          : focus === 'permissions'
+            ? 'Kelola antrian perizinan siswa dan aging approval secara terpusat.'
+            : 'Ringkasan administrasi siswa, guru, dan antrian perizinan.'
         : 'Ringkasan proses keuangan: pengajuan anggaran dan data siswa.';
 
   return (
