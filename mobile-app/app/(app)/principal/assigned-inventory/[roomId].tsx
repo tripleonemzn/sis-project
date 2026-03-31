@@ -11,11 +11,12 @@ export default function PrincipalAssignedInventoryRoomRoute() {
   return (
     <Redirect
       href={{
-        pathname: '/web-module/[moduleKey]',
+        pathname: '/teacher/sarpras-inventory',
         params: {
-          moduleKey: `principal-assigned-inventory-room-${roomId}`,
-          path: `/principal/assigned-inventory/${roomId}`,
-          label: 'Inventaris Tugas',
+          managedOnly: '1',
+          roomId,
+          title: 'Kelola Inventaris',
+          subtitle: 'Kelola inventaris ruangan yang ditugaskan kepada Anda.',
         },
       }}
     />

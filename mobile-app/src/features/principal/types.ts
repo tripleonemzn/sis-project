@@ -84,3 +84,109 @@ export type PrincipalBudgetRequest = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type PrincipalProctorReportRow = {
+  room: string | null;
+  startTime: string;
+  endTime: string;
+  sessionLabel: string | null;
+  examType: string | null;
+  classNames: string[];
+  expectedParticipants: number;
+  presentParticipants: number;
+  absentParticipants: number;
+  totalParticipants: number;
+  absentStudents?: Array<{
+    id: number;
+    name: string;
+    nis?: string | null;
+    className?: string | null;
+    absentReason?: string | null;
+    permissionStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | null;
+  }>;
+  report: {
+    id: number;
+    signedAt: string;
+    notes: string | null;
+    incident: string | null;
+    proctor: {
+      id: number;
+      name: string;
+    } | null;
+  } | null;
+};
+
+export type PrincipalProctorReportSummary = {
+  totalRooms: number;
+  totalExpected: number;
+  totalPresent: number;
+  totalAbsent: number;
+  reportedRooms: number;
+};
+
+export type PrincipalProctorReportsResponse = {
+  rows: PrincipalProctorReportRow[];
+  summary: PrincipalProctorReportSummary;
+};
+
+export type PrincipalBpBkSummaryResponse = {
+  academicYear: {
+    id: number;
+    name: string;
+  } | null;
+  summary: {
+    totalCases: number;
+    negativeCases: number;
+    highRiskStudents: number;
+    openCounselings: number;
+    inProgressCounselings: number;
+    closedCounselings: number;
+    summonPendingCounselings: number;
+    overdueCounselings: number;
+  };
+  highRiskStudents: Array<{
+    studentId: number;
+    studentName: string;
+    nis: string | null;
+    nisn: string | null;
+    className: string | null;
+    negativeCaseCount: number;
+    totalNegativePoint: number;
+  }>;
+  overdueCounselings: Array<{
+    id: number;
+    sessionDate: string;
+    status: 'OPEN' | 'IN_PROGRESS' | 'CLOSED';
+    issueSummary: string;
+    summonParent: boolean;
+    summonDate: string | null;
+    student: {
+      id: number;
+      name: string;
+      nis: string | null;
+      nisn: string | null;
+      className: string | null;
+    };
+    counselor?: {
+      id: number;
+      name: string;
+      username: string;
+    } | null;
+  }>;
+};
+
+export type PrincipalOfficeSummary = {
+  totalLetters: number;
+  monthlyLetters: number;
+  byType: Array<{ type: string; _count: { _all: number } }>;
+  latest: Array<{
+    id: number;
+    type: string;
+    letterNumber: string;
+    title?: string | null;
+    recipientName: string;
+    purpose?: string | null;
+    printedAt?: string | null;
+    createdAt: string;
+  }>;
+};

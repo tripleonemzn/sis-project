@@ -4,11 +4,11 @@ export default function PrincipalAssignedInventoryHubRoute() {
   return (
     <Redirect
       href={{
-        pathname: '/web-module/[moduleKey]',
+        pathname: '/teacher/sarpras-inventory',
         params: {
-          moduleKey: 'principal-assigned-inventory-hub',
-          path: '/principal/assigned-inventory',
-          label: 'Inventaris Tugas',
+          managedOnly: '1',
+          title: 'Inventaris Tugas',
+          subtitle: 'Kelola inventaris ruangan yang ditugaskan kepada Anda.',
         },
       }}
     />
