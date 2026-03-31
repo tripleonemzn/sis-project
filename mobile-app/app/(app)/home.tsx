@@ -451,41 +451,34 @@ const TEACHER_LEARNING_RESOURCE_MENU_KEYS = new Set([
 ]);
 
 const TEACHING_RESOURCE_NATIVE_ROUTES: Record<string, { key: string; route: string; webPath?: string }> = {
-  CP: { key: 'teacher-cp', route: '/teacher/learning-cp', webPath: '/teacher/learning-resources/cp' },
+  CP: { key: 'teacher-cp', route: '/teacher/learning-cp' },
   ATP: {
     key: 'teacher-atp',
     route: '/teacher/learning-atp',
-    webPath: '/teacher/learning-resources/atp',
   },
   PROTA: {
     key: 'teacher-prota',
     route: '/teacher/learning-prota',
-    webPath: '/teacher/learning-resources/prota',
   },
   PROMES: {
     key: 'teacher-promes',
     route: '/teacher/learning-promes',
-    webPath: '/teacher/learning-resources/promes',
   },
   MODUL_AJAR: {
     key: 'teacher-modules',
     route: '/teacher/learning-modules',
-    webPath: '/teacher/learning-resources/modul-ajar',
   },
   MODULES: {
     key: 'teacher-modules',
     route: '/teacher/learning-modules',
-    webPath: '/teacher/learning-resources/modul-ajar',
   },
   KKTP: {
     key: 'teacher-kktp',
     route: '/teacher/learning-kktp',
-    webPath: '/teacher/learning-resources/kktp',
   },
   MATRIKS_SEBARAN: {
     key: 'teacher-matriks-sebaran',
     route: '/teacher/learning-matriks-sebaran',
-    webPath: '/teacher/learning-resources/matriks-sebaran',
   },
 };
 

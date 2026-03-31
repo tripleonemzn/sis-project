@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Redirect, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,11 +22,17 @@ function parseNonNegativeInt(raw: string, fallback = 0) {
 
 export default function TutorInventoryScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ assignmentId?: string | string[] }>();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const hasTutorWorkspaceAccess = canAccessTutorWorkspace(user);
+  const focusedAssignmentId = useMemo(() => {
+    const raw = Array.isArray(params.assignmentId) ? params.assignmentId[0] : params.assignmentId;
+    const parsed = Number.parseInt(String(raw || '').trim(), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [params.assignmentId]);
 
   const [search, setSearch] = useState('');
   const [selectedYearId, setSelectedYearId] = useState<number | null>(null);
@@ -61,9 +67,14 @@ export default function TutorInventoryScreen() {
     () => rows.filter((row) => !isOsisExtracurricularCategory(row.ekskulCategory)),
     [rows],
   );
+  const scopedRows = useMemo(() => {
+    if (!focusedAssignmentId) return extracurricularRows;
+    const matched = extracurricularRows.filter((row) => Number(row.assignmentId) === Number(focusedAssignmentId));
+    return matched.length > 0 ? matched : extracurricularRows;
+  }, [extracurricularRows, focusedAssignmentId]);
   const rowsWithRoom = useMemo(
-    () => extracurricularRows.filter((row) => Boolean(row.room?.id)),
-    [extracurricularRows],
+    () => scopedRows.filter((row) => Boolean(row.room?.id)),
+    [scopedRows],
   );
 
   const effectiveTargetAssignmentId = useMemo(() => {
@@ -76,8 +87,8 @@ export default function TutorInventoryScreen() {
 
   const filteredRows = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return extracurricularRows;
-    return extracurricularRows.filter((row) => {
+    if (!keyword) return scopedRows;
+    return scopedRows.filter((row) => {
       const haystacks = [
         row.ekskulName,
         row.room?.name || '',
@@ -86,7 +97,7 @@ export default function TutorInventoryScreen() {
       ];
       return haystacks.some((value) => String(value || '').toLowerCase().includes(keyword));
     });
-  }, [extracurricularRows, search]);
+  }, [scopedRows, search]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -153,10 +164,12 @@ export default function TutorInventoryScreen() {
       }
     >
       <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
-        Inventaris Ekskul
+        {focusedAssignmentId ? 'Kelola Inventaris' : 'Inventaris Ekskul'}
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Data inventaris ini terhubung dari modul Sarpras (Fasilitas Ekskul).
+        {focusedAssignmentId
+          ? 'Inventaris ini difokuskan ke ekskul yang sedang Anda kelola.'
+          : 'Data inventaris ini terhubung dari modul Sarpras (Fasilitas Ekskul).'}
       </Text>
 
       <View

@@ -163,14 +163,6 @@ function keepNativeMenuGroups(groups: RoleMenuGroup[]) {
     .filter((group) => group.items.length > 0);
 }
 
-function createWebModuleRoute(key: string, webPath: string, label?: string) {
-  const params = [`path=${encodeURIComponent(webPath)}`];
-  if (label) {
-    params.push(`label=${encodeURIComponent(label)}`);
-  }
-  return `/web-module/${key}?${params.join('&')}`;
-}
-
 function normalizeComparableName(raw: unknown): string {
   return String(raw || '')
     .toUpperCase()
@@ -326,37 +318,31 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       key: 'teacher-atp',
       label: 'Alur Tujuan Pembelajaran (ATP)',
       route: '/teacher/learning-atp',
-      webPath: '/teacher/learning-resources/atp',
     },
     {
       key: 'teacher-prota',
       label: 'Program Tahunan',
       route: '/teacher/learning-prota',
-      webPath: '/teacher/learning-resources/prota',
     },
     {
       key: 'teacher-promes',
       label: 'Program Semester',
       route: '/teacher/learning-promes',
-      webPath: '/teacher/learning-resources/promes',
     },
     {
       key: 'teacher-modules',
       label: 'Modul Ajar',
       route: '/teacher/learning-modules',
-      webPath: '/teacher/learning-resources/modul-ajar',
     },
     {
       key: 'teacher-kktp',
       label: 'Kriteria Ketercapaian Tujuan Pembelajaran (KKTP)',
       route: '/teacher/learning-kktp',
-      webPath: '/teacher/learning-resources/kktp',
     },
     {
       key: 'teacher-matriks-sebaran',
       label: 'Matriks Sebaran',
       route: '/teacher/learning-matriks-sebaran',
-      webPath: '/teacher/learning-resources/matriks-sebaran',
     },
     {
       key: 'teacher-proctoring',
@@ -1822,12 +1808,7 @@ function buildTeacherGroups(
       ? {
           key: `teacher-extracurricular-inventory-room-${linkedRoom.id}`,
           label: 'Kelola Inventaris',
-          route: createWebModuleRoute(
-            `teacher-extracurricular-inventory-room-${linkedRoom.id}`,
-            `/teacher/assigned-inventory/${linkedRoom.id}`,
-            'Kelola Inventaris',
-          ),
-          webPath: `/teacher/assigned-inventory/${linkedRoom.id}`,
+          route: `/tutor/inventory?assignmentId=${assignment.id}`,
         }
       : {
           key: `teacher-extracurricular-inventory-${assignment.id}`,
@@ -1884,12 +1865,7 @@ function buildTutorGroups(menus: RoleMenuItem[], options?: RoleMenuBuildOptions)
       ? {
           key: `tutor-inventory-room-${linkedRoom.id}`,
           label: 'Kelola Inventaris',
-          route: createWebModuleRoute(
-            `tutor-inventory-room-${linkedRoom.id}`,
-            `/tutor/assigned-inventory/${linkedRoom.id}`,
-            'Kelola Inventaris',
-          ),
-          webPath: `/tutor/assigned-inventory/${linkedRoom.id}`,
+          route: `/tutor/inventory?assignmentId=${assignment.id}`,
         }
       : {
           key: `tutor-inventory-${assignment.id}`,
