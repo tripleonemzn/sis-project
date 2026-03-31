@@ -567,9 +567,9 @@ export const LoginPage = () => {
         </div>
 
         <div className="mx-auto w-full max-w-7xl px-4 pb-2 sm:px-6 lg:px-8 lg:pb-2">
-          <div className="flex flex-col items-center gap-3">
-            <div className="flex items-center justify-center gap-3 rounded-full border border-white/16 bg-white/10 px-4 py-2 backdrop-blur-md">
-              <span className="hidden text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70 sm:inline">
+          <div className="flex flex-col items-center gap-4">
+            <div className="flex items-center justify-center gap-2.5 rounded-full border border-white/16 bg-white/10 px-3 py-1.5 backdrop-blur-md">
+              <span className="hidden text-[10px] font-semibold uppercase tracking-[0.2em] text-white/70 sm:inline">
                 Download Mobile Apps
               </span>
               <div className="flex items-center gap-2">
@@ -579,7 +579,7 @@ export const LoginPage = () => {
                       key={item.key}
                       title={`${item.label} belum tersedia`}
                       aria-label={`${item.label} belum tersedia`}
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-white/8 text-white/45"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/12 bg-white/8 text-white/45"
                     >
                       {item.icon}
                     </span>
@@ -591,7 +591,7 @@ export const LoginPage = () => {
                       rel="noreferrer"
                       title={item.label}
                       aria-label={item.label}
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/16 bg-white/12 text-white shadow-[0_10px_24px_rgba(5,15,40,0.18)] transition hover:-translate-y-0.5 hover:bg-white/18 hover:text-white"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/16 bg-white/12 text-white shadow-[0_10px_20px_rgba(5,15,40,0.16)] transition hover:-translate-y-0.5 hover:bg-white/18 hover:text-white"
                     >
                       {item.icon}
                     </a>
