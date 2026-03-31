@@ -10,6 +10,7 @@ import { ZodError } from 'zod';
 import { resolveGalleryDir } from './utils/galleryPath';
 import { dispatchLibraryOverdueReminders } from './controllers/inventory.controller';
 import { dispatchFinanceDueReminders } from './controllers/payment.controller';
+import { startMailboxNotificationWorker } from './services/mailboxNotification.service';
 import { broadcastMutationEvent, initializeRealtimeGateway } from './realtime/realtimeGateway';
 import { verifyToken } from './middleware/auth';
 
@@ -264,5 +265,11 @@ server.listen(Number(PORT), HOST || undefined, () => {
     );
   } else if (!shouldRunReminderWorker) {
     console.log(`[FINANCE_DUE_REMINDER] Worker nonaktif pada instance ${appInstance}`);
+  }
+
+  if (shouldRunReminderWorker) {
+    startMailboxNotificationWorker();
+  } else {
+    console.log(`[MAILBOX_NOTIFICATION] Worker nonaktif pada instance ${appInstance}`);
   }
 });

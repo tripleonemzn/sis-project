@@ -53,3 +53,4 @@ frontend/public/foto_kegiatan/
 scripts/backup/
 ops/snapshots/
 ops/scope-reports/
+backend/.runtime/
