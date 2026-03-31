@@ -1385,6 +1385,47 @@ function buildStaffRoleMenu(user: AuthUser) {
 
   return [...baseKeys, ...roleKeys]
     .map((key) => getStaffMenuItemByKey(key))
+    .map((item) => {
+      if (!item) return null;
+      if (item.key === 'staff-dashboard') {
+        return {
+          ...item,
+          label:
+            division === 'HEAD_TU'
+              ? 'Dashboard Kepala TU'
+              : division === 'ADMINISTRATION'
+                ? 'Dashboard Administrasi'
+                : division === 'FINANCE'
+                  ? 'Dashboard Keuangan'
+                  : 'Dashboard Staff',
+          route: '/staff/admin',
+        };
+      }
+      if (item.key === 'staff-admin') {
+        return {
+          ...item,
+          label:
+            division === 'HEAD_TU'
+              ? 'Monitoring TU'
+              : division === 'ADMINISTRATION'
+                ? 'Administrasi'
+                : 'Operasional Staff',
+        };
+      }
+      if (item.key === 'staff-payments') {
+        return {
+          ...item,
+          label: 'Keuangan & Tagihan',
+        };
+      }
+      if (item.key === 'staff-students' && division === 'HEAD_TU') {
+        return {
+          ...item,
+          label: 'Layanan Siswa',
+        };
+      }
+      return item;
+    })
     .filter((item): item is RoleMenuItem => Boolean(item));
 }
 

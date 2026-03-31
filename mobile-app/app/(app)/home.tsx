@@ -31,6 +31,8 @@ import { academicYearApi } from '../../src/features/academicYear/academicYearApi
 import { adminApi } from '../../src/features/admin/adminApi';
 import { principalApi } from '../../src/features/principal/principalApi';
 import { staffApi } from '../../src/features/staff/staffApi';
+import { staffAdministrationApi } from '../../src/features/staff/staffAdministrationApi';
+import { staffFinanceApi } from '../../src/features/staff/staffFinanceApi';
 import { permissionApi } from '../../src/features/permissions/permissionApi';
 import { examApi, ExamProgramItem } from '../../src/features/exams/examApi';
 import { useStudentExamsQuery } from '../../src/features/exams/useStudentExamsQuery';
@@ -80,31 +82,48 @@ type StudentExamStatus = 'OPEN' | 'UPCOMING' | 'MISSED' | 'COMPLETED';
 type StaffHomeStats =
   | {
       kind: 'FINANCE';
+      activeAcademicYearName: string | null;
       students: number;
-      budgets: number;
-      pending: number;
-      approved: number;
-      rejected: number;
-      totalAmount: number;
+      totalInvoices: number;
+      totalOutstanding: number;
+      totalPaid: number;
+      followUpStudents: number;
+      criticalCases: number;
+      dueSoonCount: number;
     }
   | {
       kind: 'ADMINISTRATION';
+      activeAcademicYearName: string | null;
       students: number;
       teachers: number;
       pendingPermissions: number;
-      approvedPermissions: number;
-      rejectedPermissions: number;
+      pendingStudentVerification: number;
+      pendingTeacherVerification: number;
+      studentCompletenessRate: number;
+      teacherCompletenessRate: number;
     }
   | {
       kind: 'HEAD_TU';
+      activeAcademicYearName: string | null;
       students: number;
       teachers: number;
       staffs: number;
       pendingPermissions: number;
       pendingBudgets: number;
-      administrationStaff: number;
-      financeStaff: number;
+      outstandingStudents: number;
+      criticalCases: number;
     };
+
+function formatCompactCurrency(value: number) {
+  const rounded = Math.round(Number(value || 0));
+  if (Math.abs(rounded) >= 1_000_000_000) {
+    return `Rp ${(rounded / 1_000_000_000).toFixed(1).replace(/\.0$/, '')} M`;
+  }
+  if (Math.abs(rounded) >= 1_000_000) {
+    return `Rp ${(rounded / 1_000_000).toFixed(1).replace(/\.0$/, '')} Jt`;
+  }
+  return `Rp ${rounded.toLocaleString('id-ID')}`;
+}
 
 const getTeachingHourValue = (entry: ScheduleEntry) =>
   typeof entry.teachingHour === 'number' ? entry.teachingHour : entry.period;
@@ -960,61 +979,76 @@ export default function HomeScreen() {
   });
 
   const staffStatsQuery = useQuery({
-    queryKey: ['mobile-home-staff-stats', profile.id, staffDivision],
+    queryKey: ['mobile-home-staff-stats', profile.id, staffDivision, activeAcademicYearQuery.data?.id || 'none'],
     enabled: profile.role === 'STAFF',
     queryFn: async (): Promise<StaffHomeStats> => {
+      const activeAcademicYearId = activeAcademicYearQuery.data?.id;
+      const activeAcademicYearName = activeAcademicYearQuery.data?.name || null;
+
       if (staffDivision === 'ADMINISTRATION') {
-        const [students, teachers, permissions] = await Promise.all([
-          staffApi.listStudents(),
-          staffApi.listTeachers(),
-          permissionApi.list({ limit: 200 }),
-        ]);
+        const summary = await staffAdministrationApi.getSummary(
+          activeAcademicYearId ? { academicYearId: activeAcademicYearId } : undefined,
+        );
 
         return {
           kind: 'ADMINISTRATION',
-          students: students.length,
-          teachers: teachers.length,
-          pendingPermissions: permissions.filter((item) => item.status === 'PENDING').length,
-          approvedPermissions: permissions.filter((item) => item.status === 'APPROVED').length,
-          rejectedPermissions: permissions.filter((item) => item.status === 'REJECTED').length,
+          activeAcademicYearName,
+          students: Number(summary.overview.totalStudents || 0),
+          teachers: Number(summary.overview.totalTeachers || 0),
+          pendingPermissions: Number(summary.overview.pendingPermissions || 0),
+          pendingStudentVerification: Number(summary.overview.pendingStudentVerification || 0),
+          pendingTeacherVerification: Number(summary.overview.pendingTeacherVerification || 0),
+          studentCompletenessRate: Math.round(Number(summary.overview.studentCompletenessRate || 0)),
+          teacherCompletenessRate: Math.round(Number(summary.overview.teacherCompletenessRate || 0)),
         };
       }
 
       if (staffDivision === 'HEAD_TU') {
-        const [students, teachers, staffs, permissions, budgets] = await Promise.all([
+        const [students, teachers, staffs, permissions, budgets, financeSnapshot] = await Promise.all([
           staffApi.listStudents(),
           staffApi.listTeachers(),
           staffApi.listStaffs(),
           permissionApi.list({ limit: 200 }),
-          staffApi.listBudgetRequests(),
+          staffApi.listBudgetRequests(activeAcademicYearId ? { academicYearId: activeAcademicYearId } : undefined),
+          activeAcademicYearId
+            ? staffFinanceApi.listReports({
+                academicYearId: activeAcademicYearId,
+              })
+            : Promise.resolve(null),
         ]);
 
         return {
           kind: 'HEAD_TU',
+          activeAcademicYearName,
           students: students.length,
           teachers: teachers.length,
           staffs: staffs.length,
           pendingPermissions: permissions.filter((item) => item.status === 'PENDING').length,
           pendingBudgets: budgets.filter((item) => item.status === 'PENDING').length,
-          administrationStaff: staffs.filter((item) => resolveStaffDivision(item) === 'ADMINISTRATION').length,
-          financeStaff: staffs.filter((item) => resolveStaffDivision(item) === 'FINANCE').length,
+          outstandingStudents: Number(financeSnapshot?.collectionOverview.studentsWithOutstanding || 0),
+          criticalCases: Number(financeSnapshot?.collectionOverview.criticalCount || 0),
         };
       }
 
-      const [students, budgets] = await Promise.all([staffApi.listStudents(), staffApi.listBudgetRequests()]);
-      const pending = budgets.filter((item) => item.status === 'PENDING').length;
-      const approved = budgets.filter((item) => item.status === 'APPROVED').length;
-      const rejected = budgets.filter((item) => item.status === 'REJECTED').length;
-      const totalAmount = budgets.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
+      const [students, financeSnapshot] = await Promise.all([
+        staffApi.listStudents(),
+        activeAcademicYearId
+          ? staffFinanceApi.listReports({
+              academicYearId: activeAcademicYearId,
+            })
+          : Promise.resolve(null),
+      ]);
 
       return {
         kind: 'FINANCE',
+        activeAcademicYearName,
         students: students.length,
-        budgets: budgets.length,
-        pending,
-        approved,
-        rejected,
-        totalAmount,
+        totalInvoices: Number(financeSnapshot?.summary.totalInvoices || 0),
+        totalOutstanding: Number(financeSnapshot?.summary.totalOutstanding || 0),
+        totalPaid: Number(financeSnapshot?.summary.totalPaid || 0),
+        followUpStudents: Number(financeSnapshot?.collectionOverview.studentsWithOutstanding || 0),
+        criticalCases: Number(financeSnapshot?.collectionOverview.criticalCount || 0),
+        dueSoonCount: Number(financeSnapshot?.collectionOverview.dueSoonCount || 0),
       };
     },
   });
@@ -1204,17 +1238,24 @@ export default function HomeScreen() {
           menuKey: 'staff-admin',
         },
         {
-          label: 'Izin Disetujui',
-          value: String(stats.approvedPermissions),
+          label: 'Verifikasi Siswa',
+          value: String(stats.pendingStudentVerification),
           color: BRAND_COLORS.teal,
-          icon: 'check-circle',
+          icon: 'shield',
           menuKey: 'staff-admin',
         },
         {
-          label: 'Izin Ditolak',
-          value: String(stats.rejectedPermissions),
+          label: 'Verifikasi Guru',
+          value: String(stats.pendingTeacherVerification),
           color: BRAND_COLORS.pink,
-          icon: 'x-circle',
+          icon: 'user-check',
+          menuKey: 'staff-admin',
+        },
+        {
+          label: 'Kelengkapan',
+          value: `${stats.studentCompletenessRate}%`,
+          color: BRAND_COLORS.sky,
+          icon: 'clipboard',
           menuKey: 'staff-admin',
         },
       ];
@@ -1258,24 +1299,31 @@ export default function HomeScreen() {
           menuKey: 'staff-admin',
         },
         {
-          label: 'Admin/Keu',
-          value: `${stats.administrationStaff}/${stats.financeStaff}`,
+          label: 'Kasus Kritis',
+          value: String(stats.criticalCases),
           color: BRAND_COLORS.pink,
-          icon: 'layers',
+          icon: 'alert-triangle',
+          menuKey: 'staff-admin',
+        },
+        {
+          label: 'Siswa Follow Up',
+          value: String(stats.outstandingStudents),
+          color: BRAND_COLORS.sky,
+          icon: 'clipboard',
           menuKey: 'staff-admin',
         },
       ];
     }
 
     return [
-      { label: 'Total Siswa', value: String(stats.students), color: BRAND_COLORS.blue, icon: 'users', menuKey: 'staff-students' },
-      { label: 'Pengajuan', value: String(stats.budgets), color: BRAND_COLORS.navy, icon: 'file-text', menuKey: 'staff-payments' },
-      { label: 'Menunggu', value: String(stats.pending), color: BRAND_COLORS.gold, icon: 'clock', menuKey: 'staff-payments' },
-      { label: 'Disetujui', value: String(stats.approved), color: BRAND_COLORS.teal, icon: 'check-circle', menuKey: 'staff-payments' },
-      { label: 'Ditolak', value: String(stats.rejected), color: BRAND_COLORS.pink, icon: 'x-circle', menuKey: 'staff-payments' },
+      { label: 'Data Siswa', value: String(stats.students), color: BRAND_COLORS.blue, icon: 'users', menuKey: 'staff-students' },
+      { label: 'Total Tagihan', value: String(stats.totalInvoices), color: BRAND_COLORS.navy, icon: 'file-text', menuKey: 'staff-payments' },
+      { label: 'Outstanding', value: formatCompactCurrency(stats.totalOutstanding), color: BRAND_COLORS.gold, icon: 'alert-circle', menuKey: 'staff-payments' },
+      { label: 'Terbayar', value: formatCompactCurrency(stats.totalPaid), color: BRAND_COLORS.teal, icon: 'check-circle', menuKey: 'staff-payments' },
+      { label: 'Follow Up', value: String(stats.followUpStudents), color: BRAND_COLORS.pink, icon: 'users', menuKey: 'staff-payments' },
       {
-        label: 'Nominal',
-        value: `Rp ${Math.round(stats.totalAmount).toLocaleString('id-ID')}`,
+        label: 'Jatuh Tempo',
+        value: String(stats.dueSoonCount),
         color: BRAND_COLORS.sky,
         icon: 'credit-card',
         menuKey: 'staff-payments',
@@ -2065,6 +2113,11 @@ export default function HomeScreen() {
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
               {getStaffSectionTitle(profile)}
             </Text>
+            {staffStatsQuery.data?.activeAcademicYearName ? (
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
+                Tahun ajaran aktif: {staffStatsQuery.data.activeAcademicYearName}
+              </Text>
+            ) : null}
             {staffStatsQuery.isLoading ? (
               <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Memuat statistik staff...</Text>
             ) : null}

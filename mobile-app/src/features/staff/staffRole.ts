@@ -46,7 +46,10 @@ export function getStaffHomeSubtitle(user?: StaffProfile | null) {
   if (division === 'ADMINISTRATION') {
     return 'Kelola administrasi siswa, guru, dan perizinan secara terpusat.';
   }
-  return 'Kelola layanan administrasi, pembayaran, dan data siswa.';
+  if (division === 'FINANCE') {
+    return 'Pantau tagihan siswa, kolektibilitas pembayaran, dan prioritas operasional keuangan.';
+  }
+  return 'Pantau layanan siswa, pembayaran, dan operasional staff secara terpusat.';
 }
 
 export function getStaffSectionTitle(user?: StaffProfile | null) {
