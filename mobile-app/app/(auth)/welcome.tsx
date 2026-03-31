@@ -367,10 +367,14 @@ export default function WelcomeScreen() {
                 color: '#cbd5e1',
                 marginTop: 16,
                 textAlign: 'center',
-                fontSize: 11,
+                fontSize: 10.5,
+                lineHeight: 16,
+                fontWeight: '400',
+                paddingHorizontal: 6,
               }}
             >
-              © 2025 Sistem Integrasi Sekolah | SMKS Karya Guna Bhakti 2
+              © 2025 JHA Teknologi Solusi. All rights reserved.{'\n'}Licensed to SMKS Karya Guna Bhakti 2 for
+              {' '}use only.
             </Text>
           </View>
         </View>

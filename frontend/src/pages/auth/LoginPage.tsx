@@ -600,9 +600,9 @@ export const LoginPage = () => {
               </div>
             </div>
 
-            <p className="text-center text-xs font-medium leading-6 text-white/92 drop-shadow-md sm:text-sm">
-              <span className="block">© 2025 JHA Teknologi Solusi. All rights reserved.</span>
-              <span className="block">Licensed to SMKS Karya Guna Bhakti 2 for use only.</span>
+            <p className="text-center text-[11px] font-normal leading-6 text-white/92 drop-shadow-md sm:text-sm">
+              © 2025 JHA Teknologi Solusi. All rights reserved. <span className="mx-2 text-white/70">|</span>{' '}
+              Licensed to SMKS Karya Guna Bhakti 2 for use only.
             </p>
           </div>
         </div>
