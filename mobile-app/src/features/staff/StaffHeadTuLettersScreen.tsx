@@ -6,7 +6,6 @@ import { Redirect, useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { WebView } from 'react-native-webview';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
@@ -14,6 +13,7 @@ import { ENV } from '../../config/env';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../lib/ui/feedback';
 import { openWebModuleRoute } from '../../lib/navigation/webModuleRoute';
+import { createHtmlPreviewEntry } from '../../lib/viewer/htmlPreviewStore';
 import { academicYearApi } from '../academicYear/academicYearApi';
 import { adminApi } from '../admin/adminApi';
 import { useAuth } from '../auth/AuthProvider';
@@ -470,7 +470,6 @@ export function StaffHeadTuLettersScreen() {
   const [candidateFormDraftTargetId, setCandidateFormDraftTargetId] = useState<number | null>(null);
   const [candidateOfficialFile, setCandidateOfficialFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [candidateOfficialFileTargetId, setCandidateOfficialFileTargetId] = useState<number | null>(null);
-  const [preview, setPreview] = useState<{ title: string; html: string } | null>(null);
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-head-tu-letters-active-year', user?.id],
@@ -602,6 +601,11 @@ export function StaffHeadTuLettersScreen() {
     setCandidateFormDraft(updater(nextBase));
   };
 
+  const openHtmlPreview = (title: string, html: string, helper = 'Pratinjau dokumen langsung di dalam aplikasi.') => {
+    const previewId = createHtmlPreviewEntry({ title, html, helper });
+    router.push(`/viewer/html/${previewId}` as never);
+  };
+
   const createLetterMutation = useMutation({
     mutationFn: async () => {
       if (!selectedRecipient) throw new Error('Penerima surat belum dipilih.');
@@ -628,9 +632,9 @@ export function StaffHeadTuLettersScreen() {
         queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-office-summary'] }),
         queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-office-letters'] }),
       ]);
-      setPreview({
-        title: `${letter.title} - ${letter.recipientName}`,
-        html: buildLetterHtml({
+      openHtmlPreview(
+        `${letter.title} - ${letter.recipientName}`,
+        buildLetterHtml({
           activeYearName: activeYearQuery.data?.name || '-',
           principalName,
           headTuName: user?.name || '-',
@@ -647,7 +651,7 @@ export function StaffHeadTuLettersScreen() {
           notes: letter.notes || null,
           issueDate: letter.printedAt || letter.createdAt,
         }),
-      });
+      );
     },
     onError: notifyApiError,
   });
@@ -728,9 +732,9 @@ export function StaffHeadTuLettersScreen() {
 
   const previewStoredLetter = (letter: OfficeLetter) => {
     const payload = (letter.payload || {}) as Record<string, unknown>;
-    setPreview({
-      title: `${letter.title} - ${letter.recipientName}`,
-      html: buildLetterHtml({
+    openHtmlPreview(
+      `${letter.title} - ${letter.recipientName}`,
+      buildLetterHtml({
         activeYearName: letter.academicYear?.name || activeYearQuery.data?.name || '-',
         principalName,
         headTuName: user?.name || '-',
@@ -747,7 +751,7 @@ export function StaffHeadTuLettersScreen() {
         notes: letter.notes || null,
         issueDate: letter.printedAt || letter.createdAt,
       }),
-    });
+    );
   };
 
   const handleOpenCandidateDraft = (id: number) => {
@@ -1211,26 +1215,6 @@ export function StaffHeadTuLettersScreen() {
           )}
         </View>
       </SectionCard>
-
-      {preview ? (
-        <SectionCard title={preview.title} helper="Pratinjau dokumen langsung di dalam aplikasi.">
-          <View
-            style={{
-              height: 560,
-              borderRadius: 16,
-              overflow: 'hidden',
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              backgroundColor: '#fff',
-            }}
-          >
-            <WebView originWhitelist={['*']} source={{ html: preview.html }} />
-          </View>
-          <View style={{ marginTop: 12 }}>
-            <OutlineButton icon="x" label="Tutup Pratinjau" onPress={() => setPreview(null)} tone="slate" />
-          </View>
-        </SectionCard>
-      ) : null}
     </ScrollView>
   );
 }

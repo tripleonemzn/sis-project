@@ -2,14 +2,14 @@ import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
-import { Redirect } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { WebView } from 'react-native-webview';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
+import { createHtmlPreviewEntry } from '../../lib/viewer/htmlPreviewStore';
 import { academicYearApi } from '../academicYear/academicYearApi';
 import { useAuth } from '../auth/AuthProvider';
 import { examApi } from '../exams/examApi';
@@ -355,13 +355,13 @@ function EmptyState({ message }: { message: string }) {
 
 export function StaffHeadTuExamCardsScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const division = resolveStaffDivision(user);
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState('ALL');
   const [examTypeFilter, setExamTypeFilter] = useState('ALL');
-  const [preview, setPreview] = useState<{ title: string; html: string } | null>(null);
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-head-tu-exam-cards-active-year', user?.id],
@@ -438,8 +438,9 @@ export function StaffHeadTuExamCardsScreen() {
   };
 
   const openPreview = (rows: ExamCardRow[], title: string) => {
-    setPreview({
+    const previewId = createHtmlPreviewEntry({
       title,
+      helper: 'Pratinjau kartu ujian tetap di dalam aplikasi.',
       html: buildExamCardsHtml({
         activeYearName: activeYearQuery.data?.name || '-',
         principalName,
@@ -447,6 +448,7 @@ export function StaffHeadTuExamCardsScreen() {
         rows,
       }),
     });
+    router.push(`/viewer/html/${previewId}` as never);
   };
 
   if (isLoading) return <AppLoadingScreen message="Memuat kartu ujian..." />;
@@ -627,26 +629,6 @@ export function StaffHeadTuExamCardsScreen() {
           </View>
         )}
       </SectionCard>
-
-      {preview ? (
-        <SectionCard title={preview.title} helper="Pratinjau kartu ujian tetap di dalam aplikasi.">
-          <View
-            style={{
-              height: 560,
-              borderRadius: 16,
-              overflow: 'hidden',
-              borderWidth: 1,
-              borderColor: '#dbe7fb',
-              backgroundColor: '#fff',
-            }}
-          >
-            <WebView originWhitelist={['*']} source={{ html: preview.html }} />
-          </View>
-          <View style={{ marginTop: 12 }}>
-            <OutlineButton icon="x" label="Tutup Pratinjau" onPress={() => setPreview(null)} />
-          </View>
-        </SectionCard>
-      ) : null}
     </ScrollView>
   );
 }

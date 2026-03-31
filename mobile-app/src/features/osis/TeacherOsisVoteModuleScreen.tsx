@@ -1,15 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
 import {
+  Image,
   Pressable,
   RefreshControl,
   ScrollView,
   Text,
   View,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
 import { QueryStateView } from '../../components/QueryStateView';
@@ -17,6 +17,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { BRAND_COLORS } from '../../config/brand';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../lib/ui/feedback';
+import { openWebModuleRoute } from '../../lib/navigation/webModuleRoute';
 import { osisApi } from './osisApi';
 
 function normalizeDuty(value?: string) {
@@ -40,23 +41,33 @@ function formatDateTime(value?: string | null) {
   });
 }
 
-function toEmbedUrl(raw?: string | null) {
+function extractYoutubeVideoId(raw?: string | null) {
   const value = String(raw || '').trim();
   if (!value) return null;
   try {
     const url = new URL(value);
     if (url.hostname.includes('youtu.be')) {
       const id = url.pathname.replace('/', '').trim();
-      return id ? `https://www.youtube.com/embed/${id}` : null;
+      return id || null;
     }
     if (url.hostname.includes('youtube.com')) {
       const id = url.searchParams.get('v');
-      return id ? `https://www.youtube.com/embed/${id}` : null;
+      return id || null;
     }
   } catch {
     return null;
   }
   return null;
+}
+
+function toEmbedUrl(raw?: string | null) {
+  const videoId = extractYoutubeVideoId(raw);
+  return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+}
+
+function toYoutubeThumbnailUrl(raw?: string | null) {
+  const videoId = extractYoutubeVideoId(raw);
+  return videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null;
 }
 
 function SummaryCard({
@@ -124,7 +135,6 @@ export function TeacherOsisVoteModuleScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
-  const [previewCandidateId, setPreviewCandidateId] = useState<number | null>(null);
 
   const electionQuery = useQuery({
     queryKey: ['mobile-teacher-osis-active-election'],
@@ -274,7 +284,8 @@ export function TeacherOsisVoteModuleScreen() {
               {election.candidates.map((candidate) => {
                 const quickCountRow = quickCount?.candidates.find((row) => row.id === candidate.id) || null;
                 const isSelected = myVoteCandidateId === candidate.id;
-                const embedUrl = previewCandidateId === candidate.id ? toEmbedUrl(candidate.youtubeUrl) : null;
+                const embedUrl = toEmbedUrl(candidate.youtubeUrl);
+                const thumbnailUrl = toYoutubeThumbnailUrl(candidate.youtubeUrl);
                 return (
                   <View
                     key={candidate.id}
@@ -334,8 +345,27 @@ export function TeacherOsisVoteModuleScreen() {
 
                     {candidate.youtubeUrl ? (
                       <View style={{ gap: 8 }}>
+                        {thumbnailUrl ? (
+                          <View
+                            style={{
+                              borderWidth: 1,
+                              borderColor: '#dbe7fb',
+                              borderRadius: 14,
+                              backgroundColor: '#fff',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <Image source={{ uri: thumbnailUrl }} style={{ width: '100%', height: 180 }} resizeMode="cover" />
+                          </View>
+                        ) : null}
                         <Pressable
-                          onPress={() => setPreviewCandidateId((current) => (current === candidate.id ? null : candidate.id))}
+                          onPress={() => {
+                            openWebModuleRoute(router, {
+                              moduleKey: `teacher-osis-video-${candidate.id}`,
+                              webPath: embedUrl || String(candidate.youtubeUrl || ''),
+                              label: `Video Orasi ${candidate.student.name}`,
+                            });
+                          }}
                           style={{
                             borderWidth: 1,
                             borderColor: '#d6e2f7',
@@ -346,18 +376,9 @@ export function TeacherOsisVoteModuleScreen() {
                           }}
                         >
                           <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700' }}>
-                            {previewCandidateId === candidate.id ? 'Tutup Preview Video' : 'Preview Video Orasi'}
+                            {thumbnailUrl ? 'Buka Video Orasi' : 'Buka Tautan Video'}
                           </Text>
                         </Pressable>
-                        {embedUrl ? (
-                          <View style={{ height: 220, overflow: 'hidden', borderRadius: 12, borderWidth: 1, borderColor: '#dbe7fb' }}>
-                            <WebView source={{ uri: embedUrl }} />
-                          </View>
-                        ) : previewCandidateId === candidate.id ? (
-                          <Text style={{ color: BRAND_COLORS.textMuted }}>
-                            Format tautan video belum bisa dipreview otomatis. URL: {candidate.youtubeUrl}
-                          </Text>
-                        ) : null}
                       </View>
                     ) : null}
 
