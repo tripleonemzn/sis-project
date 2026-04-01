@@ -16,7 +16,7 @@ const ADVISOR_DUTY_META: Record<
     label: 'Pembina Ekstrakurikuler',
     equipmentLabel: 'alat ekskul',
     equipmentTitle: 'Alat Ekskul',
-    workProgramTitle: 'Program Kerja Ekskul',
+    workProgramTitle: 'Program Kerja',
     workProgramSubtitle:
       'Kelola program kerja, pengajuan alat, dan LPJ program kerja ekstrakurikuler.',
   },

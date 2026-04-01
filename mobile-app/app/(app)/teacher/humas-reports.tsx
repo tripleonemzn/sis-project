@@ -4,7 +4,7 @@ export default function TeacherHumasReportsScreen() {
   return (
     <TeacherHumasModuleScreen
       mode="REPORTS"
-      title="Laporan Humas"
+      title="Laporan"
       subtitle="Ringkasan performa PKL, komponen penilaian, dan kemitraan dalam satu layar."
     />
   );

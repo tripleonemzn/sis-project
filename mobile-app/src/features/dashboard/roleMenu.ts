@@ -411,7 +411,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     },
     {
       key: 'teacher-extracurricular-dashboard',
-      label: 'Dashboard Ekskul',
+      label: 'Dashboard',
       route: '/tutor/dashboard',
     },
     {
@@ -421,12 +421,12 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     },
     {
       key: 'teacher-extracurricular-work-program',
-      label: 'Program Kerja Ekskul',
+      label: 'Program Kerja',
       route: '/tutor/work-program?duty=PEMBINA_EKSKUL',
     },
     {
       key: 'teacher-extracurricular-inventory',
-      label: 'Inventaris Ekskul',
+      label: 'Kelola Inventaris',
       route: '/tutor/inventory',
     },
     {

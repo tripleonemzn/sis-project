@@ -348,13 +348,13 @@ export default function TeacherHomeroomBehaviorScreen() {
   const isSaving = createMutation.isPending || updateMutation.isPending;
   const isMutating = isSaving || deleteMutation.isPending;
 
-  if (isLoading) return <AppLoadingScreen message="Memuat perilaku wali kelas..." />;
+  if (isLoading) return <AppLoadingScreen message="Memuat catatan perilaku..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Wali Kelas Perilaku</Text>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Catatan Perilaku</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -376,7 +376,7 @@ export default function TeacherHomeroomBehaviorScreen() {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
         <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
-          Wali Kelas Perilaku
+          Catatan Perilaku
         </Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
           Modul ini tersedia untuk wali kelas yang memiliki kelas aktif.
@@ -420,7 +420,7 @@ export default function TeacherHomeroomBehaviorScreen() {
       }
     >
       <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
-        Wali Kelas Perilaku
+        Catatan Perilaku
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Kelola catatan perilaku positif dan negatif siswa kelas wali.

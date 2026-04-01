@@ -310,13 +310,13 @@ export default function TeacherHomeroomAttendanceScreen() {
     });
   };
 
-  if (isLoading) return <AppLoadingScreen message="Memuat presensi wali kelas..." />;
+  if (isLoading) return <AppLoadingScreen message="Memuat rekap presensi..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Wali Kelas Presensi</Text>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Rekap Presensi</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -360,7 +360,7 @@ export default function TeacherHomeroomAttendanceScreen() {
       }
     >
       <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
-        Wali Kelas Presensi
+        Rekap Presensi
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Kelola presensi harian, rekap semester, dan statistik keterlambatan siswa.

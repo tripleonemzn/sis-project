@@ -283,13 +283,13 @@ export default function TeacherHomeroomPermissionsScreen() {
     ]);
   };
 
-  if (isLoading) return <AppLoadingScreen message="Memuat izin wali kelas..." />;
+  if (isLoading) return <AppLoadingScreen message="Memuat persetujuan izin..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Wali Kelas Izin</Text>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Persetujuan Izin</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -311,7 +311,7 @@ export default function TeacherHomeroomPermissionsScreen() {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
         <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
-          Wali Kelas Izin
+          Persetujuan Izin
         </Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
           Modul ini tersedia untuk wali kelas yang memiliki kelas aktif.
@@ -348,7 +348,7 @@ export default function TeacherHomeroomPermissionsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Wali Kelas Izin</Text>
+      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Persetujuan Izin</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Verifikasi pengajuan izin siswa pada kelas wali.
       </Text>

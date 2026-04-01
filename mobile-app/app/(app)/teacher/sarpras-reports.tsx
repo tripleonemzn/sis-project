@@ -320,7 +320,7 @@ export default function TeacherSarprasReportsScreen() {
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Laporan Sarpras</Text>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Laporan</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -342,7 +342,7 @@ export default function TeacherSarprasReportsScreen() {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
         <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>
-          Laporan Sarpras
+          Laporan
         </Text>
         <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
           Modul ini tersedia untuk tugas tambahan Wakasek Sarpras / Sekretaris Sarpras.
@@ -378,7 +378,7 @@ export default function TeacherSarprasReportsScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Laporan Sarpras</Text>
+      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>Laporan</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Ringkasan aset sekolah dan pengajuan anggaran sarpras
         {activeYearQuery.data?.name ? ` • ${activeYearQuery.data.name}` : ''}.

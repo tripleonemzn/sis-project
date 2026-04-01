@@ -64,13 +64,13 @@ export default function TutorDashboardScreen() {
     return new Set(extracurricularAssignments.map((item) => item.ekskulId)).size;
   }, [extracurricularAssignments]);
 
-  if (isLoading) return <AppLoadingScreen message="Memuat dashboard pembina..." />;
+  if (isLoading) return <AppLoadingScreen message="Memuat dashboard..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
   if (!hasTutorWorkspaceAccess) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Dashboard Ekskul</Text>
+        <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>Dashboard</Text>
         <QueryStateView type="error" message="Halaman ini tersedia untuk pembina ekstrakurikuler aktif." />
       </ScrollView>
     );
@@ -90,7 +90,7 @@ export default function TutorDashboardScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Dashboard Ekskul</Text>
+      <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Dashboard</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Pantau assignment pembina ekstrakurikuler pada periode berjalan.
       </Text>

@@ -176,12 +176,13 @@ function buildModuleConfig(params: {
     activeProgramComponentMode,
   } =
     params;
-  const title = `Wali Kelas Rapor ${activeProgramLabel}`;
+  const title = 'Rapor Wali Kelas';
+  const subtitlePrefix = activeProgramLabel ? `${activeProgramLabel} • ` : '';
 
   if (isMidtermAliasCode(activeProgramComponentMode)) {
     return {
       title,
-      subtitle: 'Monitoring rapor tengah semester, leger, ekstrakurikuler, dan peringkat kelas.',
+      subtitle: `${subtitlePrefix}Monitoring rapor tengah semester, leger, ekstrakurikuler, dan peringkat kelas.`,
       defaultSemester: 'ODD',
       allowSemesterSwitch: true,
     };
@@ -191,7 +192,7 @@ function buildModuleConfig(params: {
     if (fixedSemesterFromProgram === 'EVEN') {
       return {
         title,
-        subtitle: 'Monitoring rapor semester genap, leger, ekstrakurikuler, dan peringkat kelas.',
+        subtitle: `${subtitlePrefix}Monitoring rapor semester genap, leger, ekstrakurikuler, dan peringkat kelas.`,
         defaultSemester: 'EVEN',
         allowSemesterSwitch: false,
       };
@@ -199,14 +200,14 @@ function buildModuleConfig(params: {
     if (fixedSemesterFromProgram === 'ODD') {
       return {
         title,
-        subtitle: 'Monitoring rapor semester ganjil, leger, ekstrakurikuler, dan peringkat kelas.',
+        subtitle: `${subtitlePrefix}Monitoring rapor semester ganjil, leger, ekstrakurikuler, dan peringkat kelas.`,
         defaultSemester: 'ODD',
         allowSemesterSwitch: false,
       };
     }
     return {
       title,
-      subtitle: 'Monitoring rapor akhir semester sesuai semester aktif kelas.',
+      subtitle: `${subtitlePrefix}Monitoring rapor akhir semester sesuai semester aktif kelas.`,
       defaultSemester: requestedProgramHint === 'FINAL_EVEN' ? 'EVEN' : 'ODD',
       allowSemesterSwitch: true,
     };
@@ -214,7 +215,7 @@ function buildModuleConfig(params: {
 
   return {
     title,
-    subtitle: `Monitoring rapor ${resolvedMode}, leger, ekstrakurikuler, dan peringkat kelas.`,
+    subtitle: `${subtitlePrefix}Monitoring rapor ${resolvedMode}, leger, ekstrakurikuler, dan peringkat kelas.`,
     defaultSemester: 'ODD',
     allowSemesterSwitch: true,
   };
