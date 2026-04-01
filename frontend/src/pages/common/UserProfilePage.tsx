@@ -270,6 +270,15 @@ const MARITAL_STATUS_OPTIONS = [
   'Cerai Mati',
 ] as const;
 
+const RELIGION_OPTIONS = [
+  { value: 'ISLAM', label: 'Islam' },
+  { value: 'KRISTEN', label: 'Kristen' },
+  { value: 'KATOLIK', label: 'Katolik' },
+  { value: 'HINDU', label: 'Hindu' },
+  { value: 'BUDDHA', label: 'Buddha' },
+  { value: 'KONGHUCU', label: 'Konghucu' },
+] as const;
+
 const EMPLOYEE_ACTIVE_STATUS_OPTIONS = [
   'Aktif',
   'Cuti',
@@ -628,11 +637,13 @@ export const UserProfilePage = () => {
       fieldsToCheck = [
         { label: 'Nama lengkap', value: watchedName },
         { label: 'NIK', value: watchedNik },
+        { label: 'Nomor KK', value: watchedFamilyCardNumber },
         { label: 'Jenis kelamin', value: watchedGender },
         { label: 'Kewarganegaraan', value: watchedCitizenship },
         { label: 'Status perkawinan', value: watchedMaritalStatus },
         { label: 'Tempat lahir', value: watchedBirthPlace },
         { label: 'Tanggal lahir', value: watchedBirthDate },
+        { label: 'Agama', value: watchedReligion },
         { label: 'Nama ibu kandung', value: watchedMotherName },
         { label: 'NIK ibu kandung', value: watchedMotherNik },
         { label: 'Pendidikan terakhir', value: watchedHighestEducation },
@@ -1855,7 +1866,7 @@ export const UserProfilePage = () => {
                           />
                         </div>
                       )}
-                      {isStudentProfile && (
+                      {(isEmployeeProfile || isStudentProfile) && (
                         <div>
                           <label htmlFor="familyCardNumber" className="block text-sm font-medium text-gray-700 mb-1">
                             Nomor KK
@@ -1941,7 +1952,7 @@ export const UserProfilePage = () => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
-                  {(isStudentProfile || isCandidateProfile) && (
+                  {(isEmployeeProfile || isStudentProfile || isCandidateProfile) && (
                     <>
                       <div>
                         <label htmlFor="religion" className="block text-sm font-medium text-gray-700 mb-1">Agama</label>
@@ -1951,12 +1962,11 @@ export const UserProfilePage = () => {
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         >
                           <option value="">Pilih Agama</option>
-                          <option value="ISLAM">Islam</option>
-                          <option value="KRISTEN">Kristen</option>
-                          <option value="KATOLIK">Katolik</option>
-                          <option value="HINDU">Hindu</option>
-                          <option value="BUDDHA">Buddha</option>
-                          <option value="KONGHUCU">Konghucu</option>
+                          {RELIGION_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
                         </select>
                       </div>
                       {isStudentProfile && (
