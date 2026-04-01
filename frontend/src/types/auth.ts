@@ -221,6 +221,26 @@ export interface RegisterBkkPayload {
   confirmPassword: string;
 }
 
+export interface ForgotPasswordVerifyPayload {
+  username: string;
+  name: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface ForgotPasswordVerifyResult {
+  resetToken: string;
+  expiresAt: string;
+  contactHint?: string | null;
+  channel?: 'EMAIL' | 'PHONE' | 'CONTACT';
+}
+
+export interface ForgotPasswordResetPayload {
+  token: string;
+  password: string;
+  confirmPassword: string;
+}
+
 export interface ParentChildLinkPayload {
   nisn: string;
   birthDate: string;

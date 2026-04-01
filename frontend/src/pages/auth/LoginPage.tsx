@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Apple, Eye, EyeOff, Lock, User } from 'lucide-react';
+import { Apple, Eye, EyeOff, KeyRound, Loader2, Lock, Mail, Phone, ShieldCheck, User, X } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { authService } from '../../services/auth.service';
@@ -16,7 +16,31 @@ const schema = z.object({
   password: z.string().min(1, 'Password wajib diisi'),
 });
 
+const forgotPasswordVerifySchema = z
+  .object({
+    username: z.string().min(1, 'Username wajib diisi'),
+    name: z.string().min(1, 'Nama lengkap wajib diisi'),
+    email: z.string().email('Format email tidak valid').or(z.literal('')),
+    phone: z.string(),
+  })
+  .refine((values) => values.email.trim().length > 0 || values.phone.trim().length > 0, {
+    message: 'Isi email atau nomor HP yang terdaftar',
+    path: ['email'],
+  });
+
+const forgotPasswordResetSchema = z
+  .object({
+    password: z.string().min(6, 'Password minimal 6 karakter'),
+    confirmPassword: z.string().min(6, 'Konfirmasi password minimal 6 karakter'),
+  })
+  .refine((values) => values.password === values.confirmPassword, {
+    message: 'Konfirmasi password tidak sama',
+    path: ['confirmPassword'],
+  });
+
 type FormValues = z.infer<typeof schema>;
+type ForgotPasswordVerifyValues = z.infer<typeof forgotPasswordVerifySchema>;
+type ForgotPasswordResetValues = z.infer<typeof forgotPasswordResetSchema>;
 type SisWindowWithSlideshow = Window & {
   __SIS_SLIDESHOW_SETTINGS__?: {
     slideIntervalMs?: number;
@@ -80,9 +104,14 @@ export const LoginPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showPassword, setShowPassword] = useState(false);
+  const [isRecoveryOpen, setIsRecoveryOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [brokenSources, setBrokenSources] = useState<Set<string>>(new Set());
   const [gallery, setGallery] = useState<{ url: string; description: string }[]>([]);
+  const [recoveryToken, setRecoveryToken] = useState('');
+  const [recoveryExpiresAt, setRecoveryExpiresAt] = useState('');
+  const [recoveryContactHint, setRecoveryContactHint] = useState('');
+  const [recoveryChannel, setRecoveryChannel] = useState<'EMAIL' | 'PHONE' | 'CONTACT'>('CONTACT');
   const assetBase = useMemo(() => {
     if (typeof window === 'undefined') return '';
     const port = window.location.port;
@@ -210,6 +239,48 @@ export const LoginPage = () => {
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
+  const {
+    register: registerRecoveryVerification,
+    handleSubmit: handleRecoveryVerificationSubmit,
+    reset: resetRecoveryVerificationForm,
+    formState: {
+      errors: recoveryVerificationErrors,
+      isSubmitting: isRecoveryVerificationSubmitting,
+    },
+  } = useForm<ForgotPasswordVerifyValues>({
+    resolver: zodResolver(forgotPasswordVerifySchema),
+    defaultValues: {
+      username: '',
+      name: '',
+      email: '',
+      phone: '',
+    },
+  });
+  const {
+    register: registerRecoveryReset,
+    handleSubmit: handleRecoveryResetSubmit,
+    reset: resetRecoveryResetForm,
+    formState: {
+      errors: recoveryResetErrors,
+      isSubmitting: isRecoveryResetSubmitting,
+    },
+  } = useForm<ForgotPasswordResetValues>({
+    resolver: zodResolver(forgotPasswordResetSchema),
+    defaultValues: {
+      password: '',
+      confirmPassword: '',
+    },
+  });
+
+  const recoveryExpiryLabel = useMemo(() => {
+    if (!recoveryExpiresAt) return '';
+    const parsed = new Date(recoveryExpiresAt);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }, [recoveryExpiresAt]);
 
   const onSubmit = async (values: FormValues) => {
     try {
@@ -268,6 +339,77 @@ export const LoginPage = () => {
         msg = e;
       }
       toast.error(msg);
+    }
+  };
+
+  const openRecoveryModal = () => {
+    setIsRecoveryOpen(true);
+  };
+
+  const closeRecoveryModal = () => {
+    setIsRecoveryOpen(false);
+    setRecoveryToken('');
+    setRecoveryExpiresAt('');
+    setRecoveryContactHint('');
+    setRecoveryChannel('CONTACT');
+    resetRecoveryVerificationForm({
+      username: '',
+      name: '',
+      email: '',
+      phone: '',
+    });
+    resetRecoveryResetForm({
+      password: '',
+      confirmPassword: '',
+    });
+  };
+
+  const handleVerifyRecoveryIdentity = async (values: ForgotPasswordVerifyValues) => {
+    try {
+      const response = await authService.verifyForgotPassword({
+        username: values.username.trim(),
+        name: values.name.trim(),
+        email: values.email.trim() || undefined,
+        phone: values.phone.trim() || undefined,
+      });
+
+      setRecoveryToken(response.data.resetToken);
+      setRecoveryExpiresAt(response.data.expiresAt);
+      setRecoveryContactHint(response.data.contactHint || '');
+      setRecoveryChannel(response.data.channel || 'CONTACT');
+      resetRecoveryResetForm({
+        password: '',
+        confirmPassword: '',
+      });
+      toast.success(response.message || 'Identitas akun berhasil diverifikasi');
+    } catch (error: unknown) {
+      let message = 'Verifikasi data pemulihan gagal.';
+      if (isAxiosError(error)) {
+        message = error.response?.data?.message ?? error.message ?? message;
+      } else if (error instanceof Error) {
+        message = error.message || message;
+      }
+      toast.error(message);
+    }
+  };
+
+  const handleResetRecoveredPassword = async (values: ForgotPasswordResetValues) => {
+    try {
+      const response = await authService.resetForgotPassword({
+        token: recoveryToken,
+        password: values.password,
+        confirmPassword: values.confirmPassword,
+      });
+      toast.success(response.message || 'Password berhasil diperbarui');
+      closeRecoveryModal();
+    } catch (error: unknown) {
+      let message = 'Reset password gagal diproses.';
+      if (isAxiosError(error)) {
+        message = error.response?.data?.message ?? error.message ?? message;
+      } else if (error instanceof Error) {
+        message = error.message || message;
+      }
+      toast.error(message);
     }
   };
 
@@ -368,7 +510,7 @@ export const LoginPage = () => {
                         <Link
                           key={option.to}
                           to={option.to}
-                          className="auth-option-card group flex h-full min-h-[112px] flex-col rounded-2xl border border-slate-200 bg-white px-3.5 py-3 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-sm"
+                          className="auth-option-card auth-frost-tile group flex h-full min-h-[112px] flex-col rounded-2xl px-3.5 py-3 transition hover:-translate-y-0.5 hover:border-white/90 hover:shadow-sm"
                         >
                           <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${option.accent}`}>
                             {option.title}
@@ -412,9 +554,13 @@ export const LoginPage = () => {
                         <label htmlFor="password" className="mb-1 block text-sm font-medium text-gray-700">
                           Password
                         </label>
-                        <span className="text-sm text-blue-700">
+                        <button
+                          type="button"
+                          onClick={openRecoveryModal}
+                          className="text-sm font-medium text-blue-700 transition hover:text-blue-800 hover:underline"
+                        >
                           Lupa Password?
-                        </span>
+                        </button>
                       </div>
                       <div className="auth-field-shell relative rounded-xl">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
@@ -452,7 +598,7 @@ export const LoginPage = () => {
                   </form>
                 </div>
 
-                <div className="auth-option-card mt-5 rounded-[22px] border border-slate-200 bg-white/80 px-4 py-3">
+                <div className="auth-option-card auth-frost-tile mt-5 rounded-[22px] px-4 py-3">
                   <p className="text-center text-sm text-slate-600">
                     Belum punya akun?{' '}
                     <Link to="/register" className="font-semibold text-blue-700 hover:text-blue-800 hover:underline">
@@ -465,22 +611,22 @@ export const LoginPage = () => {
 
             <div className="order-1 hidden lg:block">
               <div className="auth-panel-dark auth-reveal-up auth-reveal-up-delay-1 flex h-full min-h-[560px] flex-col rounded-[28px] p-5 xl:min-h-[620px] xl:p-6">
-                <div className="mb-4 flex items-start justify-between gap-4 text-white">
+                <div className="mb-4 flex items-start justify-between gap-4">
                   <div>
-                    <p className="auth-kicker text-xs font-semibold uppercase text-white/65">
+                    <p className="auth-kicker text-xs font-semibold uppercase text-slate-500">
                       Ruang Informasi
                     </p>
-                    <h2 className="auth-font-display mt-2 text-[1.7rem] font-semibold leading-tight xl:text-3xl">
+                    <h2 className="auth-font-display mt-2 text-[1.7rem] font-semibold leading-tight text-slate-900 xl:text-3xl">
                       Aktivitas sekolah, layanan publik, dan akses dashboard dalam satu pintu.
                     </h2>
                   </div>
-                  <div className="rounded-2xl border border-white/18 bg-white/[0.08] px-3 py-2.5 text-right">
-                    <p className="text-xs uppercase tracking-[0.22em] text-white/60">Status</p>
-                    <p className="mt-1.5 text-sm font-semibold text-white">Portal aktif</p>
+                  <div className="auth-frost-tile rounded-2xl px-3 py-2.5 text-right">
+                    <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Status</p>
+                    <p className="mt-1.5 text-sm font-semibold text-slate-900">Portal aktif</p>
                   </div>
                 </div>
 
-                <div className="relative flex-1 overflow-hidden rounded-[28px] border border-white/15 shadow-xl">
+                <div className="relative flex-1 overflow-hidden rounded-[28px] border border-white/50 shadow-[0_24px_56px_rgba(15,23,42,0.16)]">
                   {activeDisplaySources.length > 0
                     ? activeDisplaySources.map((src, idx) => (
                         <img
@@ -516,13 +662,13 @@ export const LoginPage = () => {
                         />
                       ))}
 
-                  <div className="absolute inset-0 z-20 bg-[linear-gradient(180deg,rgba(7,24,51,0.14),rgba(7,24,51,0.26),rgba(7,24,51,0.72))]" />
+                  <div className="absolute inset-0 z-20 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.06),rgba(15,23,42,0.2))]" />
 
                   <div className="absolute left-4 right-4 top-4 z-30 flex flex-wrap gap-2">
                     {['PPDB', 'Orang Tua', 'BKK'].map((label) => (
                       <span
                         key={label}
-                        className="auth-option-card rounded-full border border-white/18 bg-white/[0.12] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white/88 backdrop-blur-md"
+                        className="auth-option-card auth-frost-tile rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700"
                       >
                         {label}
                       </span>
@@ -530,11 +676,11 @@ export const LoginPage = () => {
                   </div>
 
                   <div className="absolute inset-x-0 bottom-0 z-30 p-4">
-                    <div className="rounded-[24px] border border-white/18 bg-black/20 p-4 backdrop-blur-md">
-                      <p className="auth-kicker text-xs font-semibold uppercase text-white/60">
+                    <div className="auth-option-card auth-frost-tile rounded-[24px] p-4">
+                      <p className="auth-kicker text-xs font-semibold uppercase text-slate-500">
                         Sorotan
                       </p>
-                      <p className="auth-font-display mt-2.5 text-base font-semibold text-white xl:text-lg">
+                      <p className="auth-font-display mt-2.5 text-base font-semibold text-slate-900 xl:text-lg">
                         {currentSlideDescription || 'Kegiatan SMKS Karya Guna Bhakti 2'}
                       </p>
                       <div className="mt-3 grid grid-cols-3 gap-2.5">
@@ -543,9 +689,9 @@ export const LoginPage = () => {
                           { value: '1', label: 'Portal terintegrasi' },
                           { value: '24/7', label: 'Akses layanan' },
                         ].map((item) => (
-                          <div key={item.label} className="auth-option-card rounded-2xl border border-white/12 bg-white/[0.08] px-3 py-2.5 text-white">
+                          <div key={item.label} className="auth-option-card auth-frost-tile-muted rounded-2xl px-3 py-2.5 text-slate-900">
                             <p className="auth-font-display text-lg font-semibold xl:text-xl">{item.value}</p>
-                            <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-white/60">
+                            <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-500">
                               {item.label}
                             </p>
                           </div>
@@ -607,6 +753,248 @@ export const LoginPage = () => {
           </div>
         </div>
       </div>
+
+      {isRecoveryOpen ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
+          <div className="auth-panel-soft w-full max-w-xl rounded-[32px] p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="auth-kicker text-xs font-semibold uppercase text-[#1b6d99]">
+                  Pemulihan Akun
+                </p>
+                <h2 className="auth-font-display mt-2 text-2xl font-semibold text-slate-900">
+                  {recoveryToken ? 'Buat password baru' : 'Lupa password'}
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  {recoveryToken
+                    ? 'Password lama tidak diperlukan lagi. Buat password baru setelah identitas akun berhasil diverifikasi.'
+                    : 'Masukkan data akun yang sama seperti saat pendaftaran. Untuk keamanan, gunakan nama lengkap dan salah satu kontak yang tersimpan.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeRecoveryModal}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/70 text-slate-500 transition hover:bg-white hover:text-slate-700"
+                aria-label="Tutup modal pemulihan akun"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {recoveryToken ? (
+              <>
+                <div className="auth-section-card mt-5 rounded-[24px] p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="auth-frost-tile inline-flex rounded-2xl p-3 text-sky-700">
+                      <ShieldCheck size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900">
+                        Identitas akun berhasil diverifikasi
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-slate-600">
+                        {recoveryContactHint
+                          ? `Kontak yang cocok: ${recoveryContactHint}`
+                          : 'Data akun cocok dengan catatan sistem.'}
+                        {recoveryExpiryLabel ? ` Sesi ini aktif sampai ${recoveryExpiryLabel}.` : ''}
+                      </p>
+                      <p className="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
+                        Kanal verifikasi: {recoveryChannel === 'EMAIL' ? 'Email' : recoveryChannel === 'PHONE' ? 'Nomor HP' : 'Kontak akun'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <form
+                  onSubmit={handleRecoveryResetSubmit(handleResetRecoveredPassword)}
+                  className="mt-5 space-y-4"
+                >
+                  <div>
+                    <label htmlFor="recovery-password" className="mb-1 block text-sm font-medium text-slate-700">
+                      Password Baru
+                    </label>
+                    <div className="auth-field-shell relative rounded-xl">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                        <KeyRound size={18} />
+                      </span>
+                      <input
+                        id="recovery-password"
+                        type="password"
+                        autoComplete="new-password"
+                        className="auth-field-input rounded-xl py-2.5 pl-10 pr-3"
+                        placeholder="Minimal 6 karakter"
+                        {...registerRecoveryReset('password')}
+                      />
+                    </div>
+                    {recoveryResetErrors.password ? (
+                      <p className="mt-1 text-sm text-red-600">{recoveryResetErrors.password.message}</p>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <label htmlFor="recovery-confirm-password" className="mb-1 block text-sm font-medium text-slate-700">
+                      Konfirmasi Password Baru
+                    </label>
+                    <div className="auth-field-shell relative rounded-xl">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                        <KeyRound size={18} />
+                      </span>
+                      <input
+                        id="recovery-confirm-password"
+                        type="password"
+                        autoComplete="new-password"
+                        className="auth-field-input rounded-xl py-2.5 pl-10 pr-3"
+                        placeholder="Ulangi password baru"
+                        {...registerRecoveryReset('confirmPassword')}
+                      />
+                    </div>
+                    {recoveryResetErrors.confirmPassword ? (
+                      <p className="mt-1 text-sm text-red-600">{recoveryResetErrors.confirmPassword.message}</p>
+                    ) : null}
+                  </div>
+
+                  <div className="flex flex-col gap-3 pt-1 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRecoveryToken('');
+                        setRecoveryExpiresAt('');
+                        setRecoveryContactHint('');
+                        setRecoveryChannel('CONTACT');
+                        resetRecoveryResetForm({
+                          password: '',
+                          confirmPassword: '',
+                        });
+                      }}
+                      className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white/75 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white"
+                    >
+                      Ulangi verifikasi
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isRecoveryResetSubmitting}
+                      className="auth-primary-button inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#143a88] px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(20,58,136,0.24)] hover:bg-[#0f2f6e] disabled:opacity-60"
+                    >
+                      {isRecoveryResetSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      {isRecoveryResetSubmitting ? 'Menyimpan...' : 'Simpan password baru'}
+                    </button>
+                  </div>
+                </form>
+              </>
+            ) : (
+              <form
+                onSubmit={handleRecoveryVerificationSubmit(handleVerifyRecoveryIdentity)}
+                className="mt-5 space-y-4"
+              >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="recovery-username" className="mb-1 block text-sm font-medium text-slate-700">
+                      Username
+                    </label>
+                    <div className="auth-field-shell relative rounded-xl">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                        <User size={18} />
+                      </span>
+                      <input
+                        id="recovery-username"
+                        type="text"
+                        autoComplete="username"
+                        className="auth-field-input rounded-xl py-2.5 pl-10 pr-3"
+                        placeholder="Masukkan username"
+                        {...registerRecoveryVerification('username')}
+                      />
+                    </div>
+                    {recoveryVerificationErrors.username ? (
+                      <p className="mt-1 text-sm text-red-600">{recoveryVerificationErrors.username.message}</p>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <label htmlFor="recovery-name" className="mb-1 block text-sm font-medium text-slate-700">
+                      Nama Lengkap
+                    </label>
+                    <div className="auth-field-shell relative rounded-xl">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                        <ShieldCheck size={18} />
+                      </span>
+                      <input
+                        id="recovery-name"
+                        type="text"
+                        autoComplete="name"
+                        className="auth-field-input rounded-xl py-2.5 pl-10 pr-3"
+                        placeholder="Masukkan nama lengkap"
+                        {...registerRecoveryVerification('name')}
+                      />
+                    </div>
+                    {recoveryVerificationErrors.name ? (
+                      <p className="mt-1 text-sm text-red-600">{recoveryVerificationErrors.name.message}</p>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <label htmlFor="recovery-email" className="mb-1 block text-sm font-medium text-slate-700">
+                      Email Terdaftar
+                    </label>
+                    <div className="auth-field-shell relative rounded-xl">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                        <Mail size={18} />
+                      </span>
+                      <input
+                        id="recovery-email"
+                        type="email"
+                        autoComplete="email"
+                        className="auth-field-input rounded-xl py-2.5 pl-10 pr-3"
+                        placeholder="Opsional jika pakai nomor HP"
+                        {...registerRecoveryVerification('email')}
+                      />
+                    </div>
+                    {recoveryVerificationErrors.email ? (
+                      <p className="mt-1 text-sm text-red-600">{recoveryVerificationErrors.email.message}</p>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <label htmlFor="recovery-phone" className="mb-1 block text-sm font-medium text-slate-700">
+                      Nomor HP Terdaftar
+                    </label>
+                    <div className="auth-field-shell relative rounded-xl">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                        <Phone size={18} />
+                      </span>
+                      <input
+                        id="recovery-phone"
+                        type="tel"
+                        autoComplete="tel"
+                        className="auth-field-input rounded-xl py-2.5 pl-10 pr-3"
+                        placeholder="Opsional jika pakai email"
+                        {...registerRecoveryVerification('phone')}
+                      />
+                    </div>
+                    {recoveryVerificationErrors.phone ? (
+                      <p className="mt-1 text-sm text-red-600">{recoveryVerificationErrors.phone.message}</p>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="auth-section-card rounded-[24px] p-4">
+                  <p className="text-sm leading-6 text-slate-600">
+                    Sistem akan mencocokkan username, nama lengkap, dan salah satu kontak akun yang tersimpan. Jika akun belum memiliki email atau nomor HP, pemulihan mandiri belum bisa digunakan.
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isRecoveryVerificationSubmitting}
+                  className="auth-primary-button inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#143a88] px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(20,58,136,0.24)] hover:bg-[#0f2f6e] disabled:opacity-60"
+                >
+                  {isRecoveryVerificationSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {isRecoveryVerificationSubmitting ? 'Memverifikasi...' : 'Verifikasi identitas akun'}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

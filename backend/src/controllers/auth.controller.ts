@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { generateToken } from '../middleware/auth';
@@ -25,6 +26,7 @@ const loginSchema = z.object({
 });
 
 const SELF_SERVICE_PUBLIC_ROLES = new Set<Role>([Role.PARENT, Role.CALON_SISWA, Role.UMUM]);
+const PASSWORD_RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
 
 const optionalEmailSchema = z
   .string()
@@ -68,6 +70,42 @@ function isSelfServicePublicRole(role: Role): boolean {
 function normalizeOptionalText(value?: string | null): string | undefined {
   const normalized = String(value || '').trim();
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeNameComparisonValue(value?: string | null): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeEmailComparisonValue(value?: string | null): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizePhoneComparisonValue(value?: string | null): string {
+  return String(value || '').replace(/\D+/g, '');
+}
+
+function hashVerificationToken(token: string): string {
+  return crypto.createHash('sha256').update(String(token || '')).digest('hex');
+}
+
+function maskContactValue(value?: string | null): string | null {
+  const normalized = String(value || '').trim();
+  if (!normalized) return null;
+
+  if (normalized.includes('@')) {
+    const [localPart, domainPart] = normalized.split('@');
+    const safeLocalPart = localPart || '';
+    const visibleLocal = safeLocalPart.slice(0, Math.min(2, safeLocalPart.length));
+    return `${visibleLocal || '*'}***@${domainPart || '***'}`;
+  }
+
+  const digits = normalizePhoneComparisonValue(normalized);
+  if (!digits) return null;
+  if (digits.length <= 4) return `${digits.slice(0, 1)}***`;
+  return `${digits.slice(0, 2)}****${digits.slice(-2)}`;
 }
 
 function buildCandidateRegistrationNumber(userId: number, createdAt = new Date()): string {
@@ -334,6 +372,137 @@ export const getMe = asyncHandler(async (req: any, res: Response) => {
   res.setHeader('Cache-Control', 'private, max-age=5');
 
   res.status(200).json(new ApiResponse(200, responseUser, 'Profil pengguna berhasil diambil'));
+});
+
+const forgotPasswordVerifySchema = z
+  .object({
+    username: z.string().min(1, 'Username wajib diisi'),
+    name: z.string().min(1, 'Nama wajib diisi'),
+    email: optionalEmailSchema,
+    phone: optionalPhoneSchema,
+  })
+  .refine((data) => Boolean(data.email || data.phone), {
+    message: 'Isi email atau nomor HP yang terdaftar',
+    path: ['email'],
+  });
+
+const forgotPasswordResetSchema = z
+  .object({
+    token: z.string().min(16, 'Sesi reset password tidak valid'),
+    password: z.string().min(6, 'Password minimal 6 karakter'),
+    confirmPassword: z.string().min(6, 'Konfirmasi password minimal 6 karakter'),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Konfirmasi password tidak cocok',
+    path: ['confirmPassword'],
+  });
+
+export const verifyForgotPasswordIdentity = asyncHandler(async (req: Request, res: Response) => {
+  const body = forgotPasswordVerifySchema.parse(req.body);
+  const failureMessage =
+    'Data verifikasi tidak cocok. Pastikan username, nama lengkap, dan kontak sesuai akun.';
+
+  const user = await prisma.user.findUnique({
+    where: { username: body.username.trim() },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+    },
+  });
+
+  if (!user) {
+    throw new ApiError(400, failureMessage);
+  }
+
+  const storedEmail = normalizeEmailComparisonValue(user.email);
+  const storedPhone = normalizePhoneComparisonValue(user.phone);
+  if (!storedEmail && !storedPhone) {
+    throw new ApiError(
+      400,
+      'Akun ini belum memiliki email atau nomor HP pemulihan. Silakan hubungi admin.',
+    );
+  }
+
+  const nameMatches =
+    normalizeNameComparisonValue(user.name) === normalizeNameComparisonValue(body.name);
+  const emailMatches =
+    storedEmail.length > 0 &&
+    storedEmail === normalizeEmailComparisonValue(body.email);
+  const phoneMatches =
+    storedPhone.length > 0 &&
+    storedPhone === normalizePhoneComparisonValue(body.phone);
+
+  if (!nameMatches || (!emailMatches && !phoneMatches)) {
+    throw new ApiError(400, failureMessage);
+  }
+
+  const resetToken = crypto.randomBytes(24).toString('hex');
+  const expiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      verificationCode: hashVerificationToken(resetToken),
+      verificationExpires: expiresAt,
+    },
+  });
+
+  const channel = emailMatches ? 'EMAIL' : phoneMatches ? 'PHONE' : 'CONTACT';
+  const contactHint = emailMatches
+    ? maskContactValue(user.email)
+    : phoneMatches
+      ? maskContactValue(user.phone)
+      : maskContactValue(user.email || user.phone);
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        resetToken,
+        expiresAt: expiresAt.toISOString(),
+        contactHint,
+        channel,
+      },
+      'Identitas akun berhasil diverifikasi. Silakan buat password baru.',
+    ),
+  );
+});
+
+export const resetForgotPassword = asyncHandler(async (req: Request, res: Response) => {
+  const body = forgotPasswordResetSchema.parse(req.body);
+
+  const user = await prisma.user.findFirst({
+    where: {
+      verificationCode: hashVerificationToken(body.token),
+      verificationExpires: {
+        gt: new Date(),
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!user) {
+    throw new ApiError(400, 'Sesi reset password tidak valid atau sudah kedaluwarsa.');
+  }
+
+  const hashedPassword = await bcrypt.hash(body.password, 10);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      password: hashedPassword,
+      verificationCode: null,
+      verificationExpires: null,
+    },
+  });
+
+  res.status(200).json(
+    new ApiResponse(200, null, 'Password berhasil diperbarui. Silakan login kembali.'),
+  );
 });
 
 // Register Calon Siswa (PPDB) using NISN and password

@@ -239,6 +239,8 @@ function AuthCanvas({
   accentClass,
   eyebrow = 'Registrasi Publik',
   highlights = [],
+  showSupportStats = true,
+  showSupportFooter = true,
 }: {
   title: string;
   subtitle: string;
@@ -246,6 +248,8 @@ function AuthCanvas({
   accentClass: string;
   eyebrow?: string;
   highlights?: string[];
+  showSupportStats?: boolean;
+  showSupportFooter?: boolean;
 }) {
   return (
     <div className="auth-font-ui relative min-h-screen overflow-hidden bg-[#071833]">
@@ -288,73 +292,75 @@ function AuthCanvas({
       <div className="relative mx-auto flex min-h-screen w-full max-w-7xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
         <div className="grid w-full items-stretch gap-6 lg:grid-cols-[minmax(320px,0.92fr)_minmax(0,1.18fr)] xl:gap-8">
           <div className="order-2 lg:order-1">
-            <div className="auth-panel-dark auth-reveal-up auth-reveal-up-delay-1 flex h-full min-h-[280px] flex-col justify-between rounded-[32px] p-6 text-white sm:p-8 lg:min-h-[640px]">
+            <div className="auth-panel-dark auth-reveal-up auth-reveal-up-delay-1 flex h-full min-h-[280px] flex-col justify-between rounded-[32px] p-6 sm:p-8 lg:min-h-[640px]">
               <div>
                 <Link
                   to="/login"
-                  className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/[0.08] px-4 py-2 text-sm font-medium text-white/90 transition hover:bg-white/[0.14]"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/55 bg-white/[0.34] px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-white/[0.52]"
                 >
                   <ArrowLeft size={16} />
                   Kembali ke Login
                 </Link>
                 <div className="mt-8">
-                  <div className="inline-flex items-center gap-4 rounded-[28px] border border-white/[0.16] bg-slate-950/[0.16] px-4 py-4 shadow-lg backdrop-blur-md">
-                    <div className="rounded-[22px] border border-white/20 bg-white/[0.14] p-3">
-                      <img
-                        src="/logo_sis_kgb2.png"
-                        alt="Logo SMKS Karya Guna Bhakti 2"
-                        className="h-14 w-14 object-contain"
-                      />
-                    </div>
+                  <div className="flex items-center gap-4">
+                    <img
+                      src="/logo_sis_kgb2.png"
+                      alt="Logo SMKS Karya Guna Bhakti 2"
+                      className="h-16 w-16 object-contain drop-shadow-[0_18px_32px_rgba(15,23,42,0.18)]"
+                    />
                     <div>
-                      <p className="auth-kicker text-xs font-semibold uppercase text-white/[0.65]">
+                      <p className="auth-kicker text-xs font-semibold uppercase text-slate-500">
                         {eyebrow}
                       </p>
-                      <p className="mt-2 text-lg font-semibold text-white">SMKS Karya Guna Bhakti 2</p>
+                      <p className="mt-2 text-lg font-semibold text-slate-900">SMKS Karya Guna Bhakti 2</p>
                     </div>
                   </div>
-                  <h1 className="auth-font-display mt-7 max-w-lg text-3xl font-semibold leading-tight text-white sm:text-[2rem]">
+                  <h1 className="auth-font-display mt-7 max-w-lg text-3xl font-semibold leading-tight text-slate-900 sm:text-[2rem]">
                     {title}
                   </h1>
-                  <p className="mt-4 max-w-xl text-sm leading-7 text-white/[0.82] sm:text-[15px]">{subtitle}</p>
+                  <p className="mt-4 max-w-xl text-sm leading-7 text-slate-700 sm:text-[15px]">{subtitle}</p>
                 </div>
 
                 <div className="mt-8 grid gap-3">
                   {highlights.map((highlight) => (
                     <div
                       key={highlight}
-                      className="auth-option-card rounded-2xl border border-white/[0.14] bg-white/[0.08] px-4 py-3 text-sm leading-6 text-white/[0.84]"
+                      className="auth-option-card auth-frost-tile-muted rounded-2xl px-4 py-3 text-sm leading-6 text-slate-700"
                     >
                       {highlight}
                     </div>
                   ))}
                 </div>
 
-                <div className="mt-6 grid grid-cols-3 gap-3">
-                  {[
-                    { value: '3', label: 'jalur' },
-                    { value: '1', label: 'akun terarah' },
-                    { value: 'cepat', label: 'mulai layanan' },
-                  ].map((item) => (
-                    <div
-                      key={item.label}
-                      className="rounded-2xl border border-white/[0.14] bg-white/[0.08] px-4 py-3"
-                    >
-                      <p className="auth-font-display text-lg font-semibold text-white">{item.value}</p>
-                      <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-white/[0.62]">
-                        {item.label}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+                {showSupportStats ? (
+                  <div className="mt-6 grid grid-cols-3 gap-3">
+                    {[
+                      { value: '3', label: 'jalur' },
+                      { value: '1', label: 'akun terarah' },
+                      { value: 'cepat', label: 'mulai layanan' },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className="auth-frost-tile rounded-2xl px-4 py-3"
+                      >
+                        <p className="auth-font-display text-lg font-semibold text-slate-900">{item.value}</p>
+                        <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                          {item.label}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
-              <div className="auth-option-card rounded-[26px] border border-white/[0.14] bg-slate-950/[0.18] p-5">
-                <p className="text-sm font-semibold text-white">Alur registrasi dibuat per kebutuhan</p>
-                <p className="mt-2 text-sm leading-6 text-white/[0.78]">
-                  Setiap jalur memakai tampilan dan data yang lebih spesifik supaya pengguna tidak melihat form yang terlalu campur dan membingungkan.
-                </p>
-              </div>
+              {showSupportFooter ? (
+                <div className="auth-option-card auth-frost-tile rounded-[26px] p-5">
+                  <p className="text-sm font-semibold text-slate-900">Alur registrasi dibuat per kebutuhan</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-700">
+                    Setiap jalur memakai tampilan dan data yang lebih spesifik supaya pengguna tidak melihat form yang terlalu campur dan membingungkan.
+                  </p>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -376,6 +382,8 @@ function RegisterHub() {
       subtitle="Silakan pilih jenis akun yang paling sesuai agar proses registrasi langsung mengikuti kebutuhan Anda."
       accentClass="from-[#123c90] via-[#1f6ea5] to-[#1c998f]"
       eyebrow="Registrasi Publik"
+      showSupportStats={false}
+      showSupportFooter={false}
       highlights={[
         'Pilih jalur sesuai kebutuhan agar form yang muncul tetap ringkas dan relevan.',
         'Desain pendaftaran dipisah untuk calon siswa, orang tua, dan pelamar BKK.',
@@ -400,7 +408,7 @@ function RegisterHub() {
             <Link
               key={option.mode}
               to={`/register/${option.mode}`}
-              className="auth-option-card auth-reveal-up group relative flex h-full min-h-[292px] flex-col rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_22px_48px_rgba(15,23,42,0.14)]"
+              className="auth-option-card auth-reveal-up auth-frost-tile group relative flex h-full min-h-[292px] flex-col rounded-[30px] p-5 transition duration-200 hover:-translate-y-1 hover:border-white/90 hover:shadow-[0_22px_48px_rgba(15,23,42,0.14)]"
               style={{ animationDelay: `${120 + index * 90}ms` }}
             >
               <div className={`absolute inset-x-0 top-0 h-28 bg-gradient-to-br ${option.accentClass} opacity-100`} />
@@ -413,8 +421,8 @@ function RegisterHub() {
                 </p>
                 <h3 className="auth-font-display mt-3 min-h-[56px] text-xl font-semibold text-slate-900">{option.title}</h3>
                 <p className="mt-3 min-h-[96px] text-sm leading-6 text-slate-600">{option.description}</p>
-                <div className="mt-auto pt-6">
-                  <span className="inline-flex items-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition group-hover:bg-slate-800">
+                <div className="mt-auto flex justify-center pt-6">
+                  <span className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition group-hover:bg-slate-800">
                     Lanjutkan pendaftaran
                   </span>
                 </div>
@@ -507,7 +515,7 @@ function CandidateRegisterForm() {
               'Isi data dasar dulu, detail lain bisa dilengkapi setelah login.',
               'Hasil seleksi dan surat keputusan tampil dari akun ini.',
             ].map((item) => (
-              <div key={item} className="auth-option-card h-full min-h-[128px] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
+              <div key={item} className="auth-option-card auth-frost-tile h-full min-h-[128px] rounded-2xl px-4 py-3 text-sm leading-6 text-slate-700">
                 {item}
               </div>
             ))}
@@ -546,7 +554,7 @@ function CandidateRegisterForm() {
                 },
               }}
             />
-            <div className="md:col-span-2 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-900">
+            <div className="auth-frost-tile md:col-span-2 rounded-2xl border-sky-100/60 px-4 py-3 text-sm leading-6 text-sky-900">
               <p className="font-semibold">Gunakan NISN resmi</p>
               <p className="mt-1">{getNisnGuidanceText()}</p>
               <p className="mt-1 text-xs text-sky-700">Pola dummy seperti `0000000000` atau `1234567890` akan ditolak.</p>
@@ -714,7 +722,7 @@ function AccountRegisterForm({
                   'Gunakan username yang mudah diingat untuk akses BKK berikutnya.',
                   'Lowongan dan status rekrutmen dipantau dari akun yang sama.',
                 ]).map((item) => (
-              <div key={item} className="auth-option-card h-full min-h-[128px] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
+              <div key={item} className="auth-option-card auth-frost-tile h-full min-h-[128px] rounded-2xl px-4 py-3 text-sm leading-6 text-slate-700">
                 {item}
               </div>
             ))}

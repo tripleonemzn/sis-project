@@ -1,5 +1,17 @@
 import { Router } from 'express';
-import { login, register, getMe, registerCalonSiswa, registerUmum, registerParent, registerBkk, adminVerifyUser, adminAcceptCalonSiswa } from '../controllers/auth.controller';
+import {
+  login,
+  register,
+  getMe,
+  registerCalonSiswa,
+  registerUmum,
+  registerParent,
+  registerBkk,
+  adminVerifyUser,
+  adminAcceptCalonSiswa,
+  verifyForgotPasswordIdentity,
+  resetForgotPassword,
+} from '../controllers/auth.controller';
 import { authMiddleware } from '../middleware/auth';
 import { roleMiddleware } from '../middleware/role';
 
@@ -11,6 +23,8 @@ router.post('/register-calon-siswa', registerCalonSiswa);
 router.post('/register-parent', registerParent);
 router.post('/register-bkk', registerBkk);
 router.post('/register-umum', registerUmum);
+router.post('/forgot-password/verify', verifyForgotPasswordIdentity);
+router.post('/forgot-password/reset', resetForgotPassword);
 router.post('/admin/verify-user', authMiddleware, roleMiddleware(['ADMIN']), adminVerifyUser);
 router.post('/admin/accept-calon-siswa', authMiddleware, roleMiddleware(['ADMIN']), adminAcceptCalonSiswa);
 router.get('/me', authMiddleware, getMe);

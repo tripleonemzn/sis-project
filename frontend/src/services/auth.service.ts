@@ -1,6 +1,9 @@
 import api from './api';
 import type {
   AuthResponse,
+  ForgotPasswordResetPayload,
+  ForgotPasswordVerifyPayload,
+  ForgotPasswordVerifyResult,
   RegisterBkkPayload,
   RegisterCalonSiswaPayload,
   RegisterParentPayload,
@@ -68,6 +71,23 @@ export const authService = {
 
   registerBkk: async (payload: RegisterBkkPayload): Promise<ApiResponse<User>> => {
     const response = await api.post<ApiResponse<User>>('/auth/register-bkk', payload);
+    return response.data;
+  },
+
+  verifyForgotPassword: async (
+    payload: ForgotPasswordVerifyPayload,
+  ): Promise<ApiResponse<ForgotPasswordVerifyResult>> => {
+    const response = await api.post<ApiResponse<ForgotPasswordVerifyResult>>(
+      '/auth/forgot-password/verify',
+      payload,
+    );
+    return response.data;
+  },
+
+  resetForgotPassword: async (
+    payload: ForgotPasswordResetPayload,
+  ): Promise<ApiResponse<null>> => {
+    const response = await api.post<ApiResponse<null>>('/auth/forgot-password/reset', payload);
     return response.data;
   },
 
