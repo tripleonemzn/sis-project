@@ -1,21 +1,21 @@
 # Mobile Parity Audit (All Roles)
 
-Generated: 2026-03-27T16:59:20.032Z
+Generated: 2026-04-01T04:04:42.645Z
 
 ## Ringkasan per Role
 
 | Role | Total | Native Only | Native + Web Fallback | Web Bridge Route | Route Tree Punya openURL |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| ADMIN | 33 | 33 | 0 | 0 | 0 |
-| CALON_SISWA | 4 | 4 | 0 | 0 | 1 |
+| ADMIN | 35 | 35 | 0 | 0 | 0 |
+| CALON_SISWA | 5 | 5 | 0 | 0 | 0 |
 | EXAMINER | 4 | 4 | 0 | 0 | 0 |
 | EXTRACURRICULAR_TUTOR | 6 | 6 | 0 | 0 | 0 |
-| PARENT | 5 | 5 | 0 | 0 | 1 |
-| PRINCIPAL | 7 | 7 | 0 | 0 | 0 |
-| STAFF | 5 | 5 | 0 | 0 | 1 |
-| STUDENT | 15 | 15 | 0 | 0 | 1 |
-| TEACHER | 59 | 49 | 6 | 4 | 4 |
-| UMUM | 6 | 6 | 0 | 0 | 1 |
+| PARENT | 5 | 5 | 0 | 0 | 0 |
+| PRINCIPAL | 10 | 10 | 0 | 0 | 0 |
+| STAFF | 5 | 5 | 0 | 0 | 0 |
+| STUDENT | 15 | 15 | 0 | 0 | 0 |
+| TEACHER | 68 | 68 | 0 | 0 | 0 |
+| UMUM | 5 | 5 | 0 | 0 | 0 |
 
 ## Detail Web Bridge per Role
 
@@ -44,10 +44,7 @@ Generated: 2026-03-27T16:59:20.032Z
 - Tidak ada menu web-bridge.
 
 ### TEACHER
-- Dashboard BP/BK (`teacher-bk-dashboard`) -> route `/web-module/teacher-bk-dashboard`, webPath `/teacher/bk`
-- Kasus Perilaku (`teacher-bk-behaviors`) -> route `/web-module/teacher-bk-behaviors`, webPath `/teacher/bk/behaviors`
-- Perizinan Siswa (`teacher-bk-permissions`) -> route `/web-module/teacher-bk-permissions`, webPath `/teacher/bk/permissions`
-- Konseling & Tindak Lanjut (`teacher-bk-counselings`) -> route `/web-module/teacher-bk-counselings`, webPath `/teacher/bk/counselings`
+- Tidak ada menu web-bridge.
 
 ### UMUM
 - Tidak ada menu web-bridge.
@@ -58,8 +55,7 @@ Generated: 2026-03-27T16:59:20.032Z
 - Tidak ada.
 
 ### CALON_SISWA
-- Status Pendaftaran (`candidate-application`)
-  - `app/(app)/candidate/application.tsx:448`
+- Tidak ada.
 
 ### EXAMINER
 - Tidak ada.
@@ -68,33 +64,23 @@ Generated: 2026-03-27T16:59:20.032Z
 - Tidak ada.
 
 ### PARENT
-- Keuangan (`parent-finance`)
-  - `app/(app)/parent/finance.tsx:1029`
+- Tidak ada.
 
 ### PRINCIPAL
 - Tidak ada.
 
 ### STAFF
-- Pembayaran (SPP) (`staff-payments`)
-  - `app/(app)/staff/payments.tsx:3402`
+- Tidak ada.
 
 ### STUDENT
-- Keuangan (`student-finance`)
-  - `app/(app)/student/finance.tsx:937`
+- Tidak ada.
 
 ### TEACHER
 - Tidak ada.
 
 ### UMUM
-- Lowongan BKK (`public-vacancies`)
-  - `app/(app)/public/vacancies.tsx:394`
+- Tidak ada.
 
 ## Semua Pemanggilan Linking.openURL (Global)
 
-- `app/(app)/candidate/application.tsx:448`
-- `app/(app)/parent/finance.tsx:1029`
-- `app/(app)/public/vacancies.tsx:394`
-- `app/(app)/staff/payments.tsx:3402`
-- `app/(app)/student/finance.tsx:937`
-- `app/(app)/web-module/[moduleKey].tsx:44`
 
