@@ -57,6 +57,7 @@ import { userService } from '../../services/user.service';
 import { teacherAssignmentService, type TeacherAssignment } from '../../services/teacherAssignment.service';
 import { AttendanceRecapPage } from '../admin/academic/AttendanceRecapPage';
 import { ReportCardsPage } from '../admin/academic/ReportCardsPage';
+import { UserProfilePage } from '../common/UserProfilePage';
 import WorkProgramApprovalsPage from '../teacher/wakasek/curriculum/WorkProgramApprovalsPage';
 import { OsisElectionMonitoringPage } from '../common/OsisElectionMonitoringPage';
 import { getMenuItems, type MenuItem } from '../../components/layout/Sidebar';
@@ -5802,6 +5803,7 @@ export const PrincipalDashboard = () => {
       <Route path="teachers" element={<PrincipalTeachersPage />} />
       <Route path="finance" element={<PrincipalFinancePage />} />
       <Route path="finance/requests" element={<PrincipalFinancePage />} />
+      <Route path="profile" element={<UserProfilePage />} />
       <Route path="work-program-approvals" element={<WorkProgramApprovalsPage />} />
       <Route path="work-programs" element={<Navigate to="work-program-approvals" replace />} />
       <Route path="approvals" element={<PrincipalFinancePage />} />

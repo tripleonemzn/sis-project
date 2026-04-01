@@ -18,6 +18,7 @@ import { userService } from '../../services/user.service';
 import { academicYearService } from '../../services/academicYear.service';
 import { uploadService } from '../../services/upload.service';
 import api from '../../services/api';
+import { UserProfilePage } from '../common/UserProfilePage';
 import { normalizeNisnInput } from '../../utils/nisn';
 import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
 
@@ -2019,6 +2020,7 @@ export const ParentDashboard = () => {
       <Route path="children" element={<ParentChildrenPage />} />
       <Route path="finance" element={<ParentFinancePage />} />
       <Route path="attendance" element={<ParentAttendancePage />} />
+      <Route path="profile" element={<UserProfilePage />} />
       <Route path="*" element={<Navigate to="overview" replace />} />
     </Routes>
   );

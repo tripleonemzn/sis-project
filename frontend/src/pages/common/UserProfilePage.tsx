@@ -1,8 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userService } from '../../services/user.service';
 import { authService } from '../../services/auth.service';
-import { majorService, type Major } from '../../services/major.service';
 import { uploadService } from '../../services/upload.service';
 import {
   CANDIDATE_DOCUMENT_OPTIONS,
@@ -10,12 +9,12 @@ import {
 } from '../public/candidateShared';
 import type { User, UserWrite } from '../../types/auth';
 import { Loader2, Save, Trash2, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import Cropper, { type Point, type Area } from 'react-easy-crop';
-import { buildTeacherDutyOptions } from '../../utils/teacherDuty';
 
 // Helper function to create image from url
 const createImage = (url: string): Promise<HTMLImageElement> =>
@@ -86,7 +85,18 @@ const getErrorMessage = (error: unknown) => {
 const userFormSchema = z.object({
   username: z.string().min(3, 'Username minimal 3 karakter'),
   name: z.string().min(1, 'Nama wajib diisi'),
-  role: z.enum(['ADMIN', 'TEACHER', 'STUDENT', 'PRINCIPAL', 'STAFF', 'PARENT', 'CALON_SISWA', 'UMUM', 'EXAMINER']),
+  role: z.enum([
+    'ADMIN',
+    'TEACHER',
+    'STUDENT',
+    'PRINCIPAL',
+    'STAFF',
+    'PARENT',
+    'CALON_SISWA',
+    'UMUM',
+    'EXAMINER',
+    'EXTRACURRICULAR_TUTOR',
+  ]),
   password: z.string().optional(),
   nip: z.string().optional().nullable(),
   nis: z.string().optional().nullable(),
@@ -147,7 +157,41 @@ const userFormSchema = z.object({
 type UserFormValues = z.infer<typeof userFormSchema>;
 type UserFormRole = UserFormValues['role'];
 
-const USER_FORM_ROLES: UserFormRole[] = ['ADMIN', 'TEACHER', 'STUDENT', 'PRINCIPAL', 'STAFF', 'PARENT', 'CALON_SISWA', 'UMUM', 'EXAMINER'];
+const USER_FORM_ROLES: UserFormRole[] = [
+  'ADMIN',
+  'TEACHER',
+  'STUDENT',
+  'PRINCIPAL',
+  'STAFF',
+  'PARENT',
+  'CALON_SISWA',
+  'UMUM',
+  'EXAMINER',
+  'EXTRACURRICULAR_TUTOR',
+];
+
+const ROLE_LABELS: Record<UserFormRole, string> = {
+  ADMIN: 'Administrator',
+  TEACHER: 'Guru',
+  STUDENT: 'Siswa',
+  PRINCIPAL: 'Kepala Sekolah',
+  STAFF: 'Staff',
+  PARENT: 'Orang Tua / Wali',
+  CALON_SISWA: 'Calon Siswa',
+  UMUM: 'Pelamar BKK',
+  EXAMINER: 'Penguji Eksternal',
+  EXTRACURRICULAR_TUTOR: 'Tutor / Pembina',
+};
+
+const EMPLOYEE_PROFILE_ROLES: UserFormRole[] = [
+  'TEACHER',
+  'PRINCIPAL',
+  'STAFF',
+  'EXTRACURRICULAR_TUTOR',
+  'EXAMINER',
+];
+
+type ProfileVariant = 'employee' | 'student' | 'candidate' | 'parent' | 'admin';
 
 function resolveUserFormRole(role?: User['role'] | null): UserFormRole {
   const normalized = String(role || '').toUpperCase();
@@ -165,6 +209,169 @@ const tabs = [
   { id: 'parents', label: 'Data Orang Tua' },
   { id: 'documents', label: 'Upload File' },
 ] as const;
+
+type TabId = (typeof tabs)[number]['id'];
+
+const getProfileVariant = (role: UserFormRole): ProfileVariant => {
+  if (EMPLOYEE_PROFILE_ROLES.includes(role)) return 'employee';
+  if (role === 'STUDENT') return 'student';
+  if (role === 'CALON_SISWA') return 'candidate';
+  if (role === 'PARENT') return 'parent';
+  return 'admin';
+};
+
+const getVisibleTabs = (role: UserFormRole) => {
+  const variant = getProfileVariant(role);
+
+  if (variant === 'employee') {
+    return ['account', 'personal', 'contact', 'employment', 'documents'] as TabId[];
+  }
+  if (variant === 'student') {
+    return ['account', 'personal', 'contact', 'parents'] as TabId[];
+  }
+  if (variant === 'candidate') {
+    return ['account', 'personal', 'contact', 'documents'] as TabId[];
+  }
+  if (variant === 'parent') {
+    return ['account', 'personal', 'contact'] as TabId[];
+  }
+  return ['account', 'personal', 'contact', 'documents'] as TabId[];
+};
+
+const getTabLabel = (role: UserFormRole, tabId: TabId) => {
+  const variant = getProfileVariant(role);
+
+  if (variant === 'employee') {
+    const labels: Record<TabId, string> = {
+      account: 'Akun & Foto',
+      personal: 'Identitas PTK',
+      contact: 'Kontak & Alamat',
+      employment: 'Data PTK',
+      parents: 'Data Orang Tua',
+      documents: 'Dokumen',
+    };
+    return labels[tabId];
+  }
+
+  if (variant === 'student') {
+    const labels: Record<TabId, string> = {
+      account: 'Akun Siswa',
+      personal: 'Identitas Siswa',
+      contact: 'Kontak & Alamat',
+      employment: 'Data Kepegawaian',
+      parents: 'Data Keluarga',
+      documents: 'Upload File',
+    };
+    return labels[tabId];
+  }
+
+  if (variant === 'candidate') {
+    const labels: Record<TabId, string> = {
+      account: 'Akun & Foto',
+      personal: 'Biodata Inti',
+      contact: 'Kontak Dasar',
+      employment: 'Data Kepegawaian',
+      parents: 'Data Orang Tua',
+      documents: 'Dokumen PPDB',
+    };
+    return labels[tabId];
+  }
+
+  if (variant === 'parent') {
+    const labels: Record<TabId, string> = {
+      account: 'Akun Keluarga',
+      personal: 'Identitas Wali',
+      contact: 'Kontak Keluarga',
+      employment: 'Data Kepegawaian',
+      parents: 'Data Orang Tua',
+      documents: 'Upload File',
+    };
+    return labels[tabId];
+  }
+
+  return tabs.find((tab) => tab.id === tabId)?.label || tabId;
+};
+
+const getProfileCopy = (role: UserFormRole) => {
+  const variant = getProfileVariant(role);
+
+  if (variant === 'employee') {
+    return {
+      title: 'Profil PTK & Tenaga Internal',
+      subtitle:
+        'Guru, kepala sekolah, staff, tutor, dan penguji eksternal memakai struktur profil yang sama agar data inti, alamat, dan penugasan tetap konsisten di seluruh workspace.',
+      saveLabel: 'Simpan Profil PTK',
+      readinessTitle: 'Prioritas Data Inti',
+      readinessHelper: 'Fokus pada identitas, alamat, dan data penugasan yang saat ini sudah dipakai lintas modul sekolah.',
+      summaryTitle: 'Ringkasan Peran',
+    };
+  }
+
+  if (variant === 'student') {
+    return {
+      title: 'Profil Siswa',
+      subtitle:
+        'Lengkapi biodata siswa, kontak aktif, alamat, dan keluarga inti agar administrasi sekolah serta kebutuhan data siswa tetap rapi.',
+      saveLabel: 'Simpan Profil Siswa',
+      readinessTitle: 'Prioritas Data Siswa',
+      readinessHelper: 'Data inti siswa difokuskan pada identitas, alamat, dan keluarga yang dipakai operasional sekolah.',
+      summaryTitle: 'Ringkasan Akademik',
+    };
+  }
+
+  if (variant === 'candidate') {
+    return {
+      title: 'Profil Calon Siswa',
+      subtitle:
+        'Halaman ini dibuat ringkas untuk akun, biodata dasar, foto, dan dokumen PPDB. Formulir pendaftaran detail tetap dikelola dari menu Formulir PPDB.',
+      saveLabel: 'Simpan Profil Calon Siswa',
+      readinessTitle: 'Kesiapan Profil PPDB',
+      readinessHelper: 'Pastikan biodata dasar dan dokumen pendukung lengkap sebelum formulir PPDB dikirim untuk review.',
+      summaryTitle: 'Ringkasan Pendaftaran',
+    };
+  }
+
+  if (variant === 'parent') {
+    return {
+      title: 'Profil Orang Tua / Wali',
+      subtitle:
+        'Kelola identitas akun keluarga, kontak aktif, dan alamat yang dipakai saat menghubungkan serta memantau data anak.',
+      saveLabel: 'Simpan Profil Wali',
+      readinessTitle: 'Kesiapan Profil Wali',
+      readinessHelper: 'Kontak aktif dan alamat yang rapi membantu komunikasi sekolah dengan keluarga.',
+      summaryTitle: 'Ringkasan Keluarga',
+    };
+  }
+
+  return {
+    title: 'Profil Saya',
+    subtitle: 'Kelola informasi akun dan profil utama Anda.',
+    saveLabel: 'Simpan Perubahan',
+    readinessTitle: 'Kelengkapan Profil',
+    readinessHelper: 'Lengkapi data inti agar akun lebih mudah dipakai di seluruh modul.',
+    summaryTitle: 'Ringkasan Akun',
+  };
+};
+
+const getVerificationStatusMeta = (status?: User['verificationStatus'] | null) => {
+  const normalized = String(status || 'PENDING').toUpperCase();
+  if (normalized === 'VERIFIED') {
+    return {
+      label: 'Terverifikasi',
+      className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    };
+  }
+  if (normalized === 'REJECTED') {
+    return {
+      label: 'Perlu Review',
+      className: 'border-rose-200 bg-rose-50 text-rose-700',
+    };
+  }
+  return {
+    label: 'Menunggu Verifikasi',
+    className: 'border-amber-200 bg-amber-50 text-amber-700',
+  };
+};
 
 const STAFF_POSITION_CODES = ['STAFF_KEUANGAN', 'STAFF_ADMINISTRASI', 'KEPALA_TU'] as const;
 
@@ -227,27 +434,41 @@ export const UserProfilePage = () => {
   });
 
   const user = userResponse?.data;
-  const fixedRole = user?.role || 'STUDENT'; // Default fallback, but should wait for user data
-  const canUploadPhoto = ['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'STUDENT', 'PARENT', 'CALON_SISWA'].includes(
-    fixedRole,
-  );
-  const canUploadDocuments = ['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'CALON_SISWA'].includes(
-    fixedRole,
-  );
+  const fixedRole = resolveUserFormRole(user?.role);
+  const profileVariant = getProfileVariant(fixedRole);
+  const profileCopy = useMemo(() => getProfileCopy(fixedRole), [fixedRole]);
+  const visibleTabs = useMemo(() => getVisibleTabs(fixedRole), [fixedRole]);
+  const canUploadPhoto = [
+    'ADMIN',
+    'TEACHER',
+    'PRINCIPAL',
+    'STAFF',
+    'EXAMINER',
+    'EXTRACURRICULAR_TUTOR',
+    'STUDENT',
+    'PARENT',
+    'CALON_SISWA',
+  ].includes(fixedRole);
+  const canUploadDocuments = [
+    'ADMIN',
+    'TEACHER',
+    'PRINCIPAL',
+    'STAFF',
+    'EXAMINER',
+    'EXTRACURRICULAR_TUTOR',
+    'CALON_SISWA',
+  ].includes(fixedRole);
+  const verificationMeta = getVerificationStatusMeta(user?.verificationStatus);
+  const isEmployeeProfile = profileVariant === 'employee';
+  const isStudentProfile = profileVariant === 'student';
+  const isCandidateProfile = profileVariant === 'candidate';
+  const isParentProfile = profileVariant === 'parent';
 
   const { data: studentsForParent } = useQuery<{ data: User[] }>({
     queryKey: ['students-for-parent'],
     queryFn: async () => userService.getAll({ role: 'STUDENT' }),
     enabled: fixedRole === 'PARENT',
   });
-
-  const { data: majorsData } = useQuery({
-    queryKey: ['majors'],
-    queryFn: () => majorService.list({ limit: 100 }),
-    enabled: fixedRole === 'EXAMINER' || fixedRole === 'TEACHER',
-  });
-
-  const majors = majorsData?.data?.majors || [];
 
   const { register, handleSubmit, setValue, reset, control, watch, getValues, formState: { errors } } = useForm<UserFormValues>({
     resolver: zodResolver(userFormSchema),
@@ -264,6 +485,23 @@ export const UserProfilePage = () => {
   });
 
   const selectedChildNisns = watch('childNisns') || [];
+  const watchedName = watch('name');
+  const watchedEmail = watch('email');
+  const watchedPhone = watch('phone');
+  const watchedAddress = watch('address');
+  const watchedNis = watch('nis');
+  const watchedNisn = watch('nisn');
+  const watchedNik = watch('nik');
+  const watchedGender = watch('gender');
+  const watchedBirthPlace = watch('birthPlace');
+  const watchedBirthDate = watch('birthDate');
+  const watchedMotherName = watch('motherName');
+  const watchedPtkType = watch('ptkType');
+  const watchedEmployeeStatus = watch('employeeStatus');
+  const watchedInstitution = watch('institution');
+  const watchedStaffPosition = watch('staffPosition');
+  const watchedReligion = watch('religion');
+  const watchedDocuments = watch('documents') || [];
 
   const selectedChildren =
     fixedRole === 'PARENT' && studentsForParent?.data
@@ -272,6 +510,188 @@ export const UserProfilePage = () => {
           return nisn && selectedChildNisns.includes(nisn);
         })
       : [];
+
+  const completeness = useMemo(() => {
+    let fieldsToCheck: Array<{ label: string; value: unknown }> = [];
+
+    if (isEmployeeProfile) {
+      fieldsToCheck = [
+        { label: 'Nama lengkap', value: watchedName },
+        { label: 'NIK', value: watchedNik },
+        { label: 'Jenis kelamin', value: watchedGender },
+        { label: 'Tempat lahir', value: watchedBirthPlace },
+        { label: 'Tanggal lahir', value: watchedBirthDate },
+        { label: 'Nama ibu kandung', value: watchedMotherName },
+        { label: 'Jenis PTK / peran', value: watchedPtkType },
+        { label: 'Status kepegawaian', value: watchedEmployeeStatus },
+        { label: 'Kontak aktif', value: watchedPhone || watchedEmail },
+        { label: 'Alamat', value: watchedAddress },
+      ];
+    } else if (isStudentProfile) {
+      fieldsToCheck = [
+        { label: 'Nama lengkap', value: watchedName },
+        { label: 'NIS', value: watchedNis },
+        { label: 'NISN', value: watchedNisn },
+        { label: 'Jenis kelamin', value: watchedGender },
+        { label: 'Tempat lahir', value: watchedBirthPlace },
+        { label: 'Tanggal lahir', value: watchedBirthDate },
+        { label: 'Nama ibu kandung', value: watchedMotherName },
+        { label: 'Agama', value: watchedReligion },
+        { label: 'Kelas aktif', value: user?.studentClass?.name },
+        { label: 'Alamat', value: watchedAddress },
+      ];
+    } else if (isCandidateProfile) {
+      fieldsToCheck = [
+        { label: 'Nama lengkap', value: watchedName },
+        { label: 'NISN', value: watchedNisn },
+        { label: 'Tempat lahir', value: watchedBirthPlace },
+        { label: 'Tanggal lahir', value: watchedBirthDate },
+        { label: 'Kontak aktif', value: watchedPhone || watchedEmail },
+        { label: 'Alamat', value: watchedAddress },
+        { label: 'Dokumen PPDB', value: watchedDocuments.length > 0 ? watchedDocuments.length : null },
+      ];
+    } else if (isParentProfile) {
+      fieldsToCheck = [
+        { label: 'Nama lengkap', value: watchedName },
+        { label: 'Kontak aktif', value: watchedPhone || watchedEmail },
+        { label: 'Alamat', value: watchedAddress },
+      ];
+    } else {
+      fieldsToCheck = [
+        { label: 'Nama lengkap', value: watchedName },
+        { label: 'Kontak aktif', value: watchedPhone || watchedEmail },
+      ];
+    }
+
+    const missing = fieldsToCheck
+      .filter((item) => String(item.value || '').trim().length === 0)
+      .map((item) => item.label);
+    const total = fieldsToCheck.length;
+    const completed = total - missing.length;
+
+    return {
+      total,
+      completed,
+      missing,
+      percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+    };
+  }, [
+    isCandidateProfile,
+    isEmployeeProfile,
+    isParentProfile,
+    isStudentProfile,
+    user?.studentClass?.name,
+    watchedAddress,
+    watchedBirthDate,
+    watchedBirthPlace,
+    watchedDocuments.length,
+    watchedEmail,
+    watchedEmployeeStatus,
+    watchedGender,
+    watchedMotherName,
+    watchedName,
+    watchedNik,
+    watchedNis,
+    watchedNisn,
+    watchedPhone,
+    watchedPtkType,
+    watchedReligion,
+  ]);
+
+  const summaryLines = useMemo(() => {
+    if (isEmployeeProfile) {
+      if (fixedRole === 'TEACHER') {
+        return [
+          `Tugas tambahan: ${user?.additionalDuties?.length ? user.additionalDuties.join(', ') : 'Belum ada'}`,
+          `Kelas tugas: ${user?.teacherClasses?.length || 0} kelas`,
+          `Dokumen: ${watchedDocuments.length} file`,
+        ];
+      }
+
+      if (fixedRole === 'EXTRACURRICULAR_TUTOR') {
+        return [
+          `Ekstrakurikuler aktif: ${user?.ekskulTutorAssignments?.length || 0}`,
+          `Penugasan utama: ${watchedPtkType || 'Tutor / pembina'}`,
+          `Dokumen: ${watchedDocuments.length} file`,
+        ];
+      }
+
+      if (fixedRole === 'EXAMINER') {
+        return [
+          `Jurusan damping: ${user?.examinerMajor?.name || '-'}`,
+          `Instansi: ${watchedInstitution || 'Belum diisi'}`,
+          `Dokumen: ${watchedDocuments.length} file`,
+        ];
+      }
+
+      if (fixedRole === 'STAFF') {
+        return [
+          `Divisi: ${watchedStaffPosition || watchedPtkType || 'Belum dipilih'}`,
+          `Status kepegawaian: ${watchedEmployeeStatus || 'Belum diisi'}`,
+          `Dokumen: ${watchedDocuments.length} file`,
+        ];
+      }
+
+      return [
+        `Peran aktif: ${ROLE_LABELS[fixedRole]}`,
+        `Status kepegawaian: ${watchedEmployeeStatus || 'Belum diisi'}`,
+        `Dokumen: ${watchedDocuments.length} file`,
+      ];
+    }
+
+    if (isStudentProfile) {
+      return [
+        `Kelas aktif: ${user?.studentClass?.name || '-'}`,
+        `Status siswa: ${user?.studentStatus || 'ACTIVE'}`,
+        `Email / HP: ${watchedEmail || watchedPhone || 'Belum diisi'}`,
+      ];
+    }
+
+    if (isCandidateProfile) {
+      return [
+        `NISN: ${watchedNisn || '-'}`,
+        `Status akun: ${verificationMeta.label}`,
+        `Dokumen PPDB: ${watchedDocuments.length} file`,
+      ];
+    }
+
+    if (isParentProfile) {
+      return [
+        `Anak terhubung: ${selectedChildren.length}`,
+        `Kontak aktif: ${watchedEmail || watchedPhone || 'Belum diisi'}`,
+        `Alamat: ${watchedAddress ? 'Sudah diisi' : 'Belum diisi'}`,
+      ];
+    }
+
+    return [
+      `Role aktif: ${ROLE_LABELS[fixedRole]}`,
+      `Kontak aktif: ${watchedEmail || watchedPhone || 'Belum diisi'}`,
+      `Alamat: ${watchedAddress ? 'Sudah diisi' : 'Belum diisi'}`,
+    ];
+  }, [
+    fixedRole,
+    isCandidateProfile,
+    isEmployeeProfile,
+    isParentProfile,
+    isStudentProfile,
+    selectedChildren.length,
+    user?.additionalDuties,
+    user?.ekskulTutorAssignments?.length,
+    user?.examinerMajor?.name,
+    user?.studentClass?.name,
+    user?.studentStatus,
+    user?.teacherClasses?.length,
+    verificationMeta.label,
+    watchedAddress,
+    watchedDocuments.length,
+    watchedEmail,
+    watchedEmployeeStatus,
+    watchedInstitution,
+    watchedNisn,
+    watchedPhone,
+    watchedPtkType,
+    watchedStaffPosition,
+  ]);
 
   // Gunakan ref untuk melacak apakah form sudah diinisialisasi dengan data user saat ini
   const isInitializedRef = useRef(false);
@@ -394,6 +814,12 @@ export const UserProfilePage = () => {
       lastUserIdRef.current = user.id;
     }
   }, [user, reset]);
+
+  useEffect(() => {
+    if (!visibleTabs.includes(activeTab)) {
+      setActiveTab(visibleTabs[0]);
+    }
+  }, [activeTab, visibleTabs]);
 
 
 
@@ -658,19 +1084,98 @@ export const UserProfilePage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Profil Saya</h1>
-          <p className="text-gray-500">Kelola informasi profil Anda</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-bold text-gray-900">{profileCopy.title}</h1>
+            <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+              {ROLE_LABELS[fixedRole]}
+            </span>
+            <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${verificationMeta.className}`}>
+              {verificationMeta.label}
+            </span>
+          </div>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-gray-500">{profileCopy.subtitle}</p>
         </div>
-        <button
-          onClick={handleSubmit(onSubmit)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          disabled={updateMutation.isPending}
-        >
-            {updateMutation.isPending ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-            Simpan Perubahan
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {isCandidateProfile ? (
+            <Link
+              to="/candidate/application"
+              className="inline-flex items-center rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-50"
+            >
+              Buka Formulir PPDB
+            </Link>
+          ) : null}
+          <button
+            onClick={handleSubmit(onSubmit)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            disabled={updateMutation.isPending}
+          >
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
+              {profileCopy.saveLabel}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr_1fr]">
+        <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50 p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-600">Struktur Profil</p>
+          <h2 className="mt-2 text-xl font-semibold text-slate-900">{ROLE_LABELS[fixedRole]}</h2>
+          <p className="mt-3 text-sm leading-6 text-slate-600">{profileCopy.readinessHelper}</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            {summaryLines.map((line) => (
+              <div key={line} className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-sm text-slate-600">
+                {line}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{profileCopy.readinessTitle}</p>
+          <div className="mt-3 flex items-end justify-between gap-3">
+            <div>
+              <p className="text-3xl font-semibold text-slate-900">{completeness.percent}%</p>
+              <p className="mt-1 text-sm text-slate-500">
+                {completeness.completed} dari {completeness.total} data prioritas sudah terisi
+              </p>
+            </div>
+            <div className="rounded-2xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700">
+              {completeness.missing.length === 0 ? 'Siap' : `${completeness.missing.length} belum`}
+            </div>
+          </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full bg-blue-600 transition-all"
+              style={{ width: `${completeness.percent}%` }}
+            />
+          </div>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            {completeness.missing.length === 0
+              ? 'Data prioritas yang tersedia di sistem sudah terisi rapi.'
+              : `Masih perlu dilengkapi: ${completeness.missing.slice(0, 3).join(', ')}${completeness.missing.length > 3 ? ', dan lainnya.' : '.'}`}
+          </p>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{profileCopy.summaryTitle}</p>
+          <div className="mt-4 space-y-3">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Username</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">{user.username}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Kontak Utama</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">{watchedEmail || watchedPhone || '-'}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Foto Profil</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">
+                {photoPreview ? 'Sudah diunggah' : canUploadPhoto ? 'Belum diunggah' : 'Tidak tersedia'}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-md border-0 overflow-hidden">
@@ -746,12 +1251,8 @@ export const UserProfilePage = () => {
           <div className="border-b border-gray-100 overflow-x-auto">
             <div className="flex min-w-max px-4">
               {tabs.map((tab) => {
-                // Skip 'employment' tab for roles other than STAFF, PRINCIPAL, and TEACHER
-                if (tab.id === 'employment' && !['STAFF', 'PRINCIPAL', 'TEACHER'].includes(fixedRole)) return null;
+                if (!visibleTabs.includes(tab.id)) return null;
 
-                // Skip 'parents' tab for roles other than STUDENT
-                if (tab.id === 'parents' && fixedRole !== 'STUDENT') return null;
-                
                 return (
                   <button
                     key={tab.id}
@@ -763,7 +1264,7 @@ export const UserProfilePage = () => {
                         : 'border-transparent text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    {tab.label}
+                    {getTabLabel(fixedRole, tab.id)}
                   </button>
                 );
               })}
@@ -795,15 +1296,21 @@ export const UserProfilePage = () => {
                       id="user-name"
                       {...register('name')}
                       autoComplete="name"
-                      disabled={fixedRole === 'STUDENT'}
+                      disabled={isStudentProfile}
                       className={
-                        fixedRole === 'STUDENT'
+                        isStudentProfile
                           ? 'w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed'
                           : 'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent'
                       }
-                      placeholder={fixedRole === 'TEACHER' ? "Nama lengkap guru" : "Nama lengkap user"}
+                      placeholder={
+                        isEmployeeProfile
+                          ? 'Nama lengkap sesuai identitas PTK'
+                          : isCandidateProfile
+                            ? 'Nama lengkap calon siswa'
+                            : 'Nama lengkap pengguna'
+                      }
                     />
-                    {fixedRole === 'STUDENT' && (
+                    {isStudentProfile && (
                       <p className="text-xs text-gray-500 mt-1">Nama siswa diatur oleh Administrator</p>
                     )}
                     {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name.message}</p>}
@@ -823,7 +1330,7 @@ export const UserProfilePage = () => {
                     {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password.message}</p>}
                   </div>
 
-                  {fixedRole === 'STUDENT' && (
+                  {isStudentProfile && (
           <>
             <div>
               <label htmlFor="nis" className="block text-sm font-medium text-gray-700 mb-1">
@@ -870,23 +1377,35 @@ export const UserProfilePage = () => {
           </>
         )}
 
+                  {isCandidateProfile && (
+                    <div>
+                      <label htmlFor="candidate-nisn" className="block text-sm font-medium text-gray-700 mb-1">
+                        NISN
+                      </label>
+                      <input
+                        id="candidate-nisn"
+                        {...register('nisn')}
+                        disabled
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">NISN menjadi identitas login resmi calon siswa.</p>
+                    </div>
+                  )}
+
                   {fixedRole === 'EXAMINER' && (
                     <div className="md:col-span-2">
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Jurusan (Kompetensi Keahlian)
                       </label>
-                      <select
-                        {...register('examinerMajorId', { valueAsNumber: true })}
+                      <input
                         disabled
+                        value={
+                          user?.examinerMajor
+                            ? `${user.examinerMajor.name}${user.examinerMajor.code ? ` (${user.examinerMajor.code})` : ''}`
+                            : '-'
+                        }
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
-                      >
-                        <option value="">Pilih Jurusan</option>
-                        {majors.map((major: Major) => (
-                          <option key={major.id} value={major.id}>
-                            {major.name} ({major.code})
-                          </option>
-                        ))}
-                      </select>
+                      />
                       <p className="mt-1 text-xs text-gray-500">
                         Jurusan diatur oleh Administrator
                       </p>
@@ -947,10 +1466,10 @@ export const UserProfilePage = () => {
                               disabled={isUploadingPhoto || !canUploadPhoto}
                               className="px-4 py-2 bg-blue-50 text-blue-700 rounded-lg border-0 hover:bg-blue-100 transition-colors text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
                            >
-                              Choose file
+                              Pilih foto
                            </button>
                            <span className="text-sm text-gray-600">
-                             {isUploadingPhoto ? 'Uploading...' : canUploadPhoto ? 'No file chosen' : 'Upload tidak tersedia'}
+                             {isUploadingPhoto ? 'Mengunggah...' : canUploadPhoto ? 'Gunakan foto formal / rapi' : 'Upload tidak tersedia'}
                            </span>
                         </div>
                         <p className="text-xs text-gray-400 mt-1">Format: JPG/PNG, maks 500KB</p>
@@ -1074,7 +1593,7 @@ export const UserProfilePage = () => {
                       />
                     </div>
                   )}
-                  {(fixedRole === 'STAFF' || fixedRole === 'PRINCIPAL' || fixedRole === 'TEACHER') && (
+                  {isEmployeeProfile && (
                     <div>
                       <label htmlFor="nip" className="block text-sm font-medium text-gray-700 mb-1">NIP</label>
                       <input
@@ -1086,7 +1605,7 @@ export const UserProfilePage = () => {
                       />
                     </div>
                   )}
-                  {(fixedRole === 'PRINCIPAL' || fixedRole === 'TEACHER' || fixedRole === 'STUDENT') && (
+                  {(isEmployeeProfile || isStudentProfile) && (
                     <>
                       <div>
                         <label htmlFor="nik" className="block text-sm font-medium text-gray-700 mb-1">NIK</label>
@@ -1098,7 +1617,7 @@ export const UserProfilePage = () => {
                           placeholder="Nomor Induk Kependudukan"
                         />
                       </div>
-                      {fixedRole !== 'STUDENT' && (
+                      {isEmployeeProfile && (
                         <div>
                           <label htmlFor="nuptk" className="block text-sm font-medium text-gray-700 mb-1">NUPTK</label>
                           <input
@@ -1143,7 +1662,7 @@ export const UserProfilePage = () => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
-                  {fixedRole === 'STUDENT' && (
+                  {(isStudentProfile || isCandidateProfile) && (
                     <>
                       <div>
                         <label htmlFor="religion" className="block text-sm font-medium text-gray-700 mb-1">Agama</label>
@@ -1161,25 +1680,29 @@ export const UserProfilePage = () => {
                           <option value="KONGHUCU">Konghucu</option>
                         </select>
                       </div>
-                      <div>
-                        <label htmlFor="childNumber" className="block text-sm font-medium text-gray-700 mb-1">Anak Ke-</label>
-                        <input
-                          id="childNumber"
-                          {...register('childNumber')}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="siblingsCount" className="block text-sm font-medium text-gray-700 mb-1">Jumlah Saudara</label>
-                        <input
-                          id="siblingsCount"
-                          {...register('siblingsCount')}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      </div>
+                      {isStudentProfile && (
+                        <>
+                          <div>
+                            <label htmlFor="childNumber" className="block text-sm font-medium text-gray-700 mb-1">Anak Ke-</label>
+                            <input
+                              id="childNumber"
+                              {...register('childNumber')}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor="siblingsCount" className="block text-sm font-medium text-gray-700 mb-1">Jumlah Saudara</label>
+                            <input
+                              id="siblingsCount"
+                              {...register('siblingsCount')}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
-                  {(fixedRole === 'PRINCIPAL' || fixedRole === 'TEACHER') && (
+                  {isEmployeeProfile && (
                     <div className="md:col-span-2">
                       <label htmlFor="motherName" className="block text-sm font-medium text-gray-700 mb-1">Nama Ibu Kandung</label>
                       <input
@@ -1226,7 +1749,7 @@ export const UserProfilePage = () => {
                       rows={3}
                     />
                   </div>
-                  {(fixedRole === 'PRINCIPAL' || fixedRole === 'TEACHER' || fixedRole === 'STUDENT') && (
+                  {(isEmployeeProfile || isStudentProfile || isParentProfile) && (
                     <>
                       <div className="grid grid-cols-2 gap-4 md:col-span-2">
                         <div>
@@ -1308,13 +1831,21 @@ export const UserProfilePage = () => {
                     </div>
                   )}
                   <div>
-                    <label htmlFor="ptkType" className="block text-sm font-medium text-gray-700 mb-1">Jenis PTK</label>
+                    <label htmlFor="ptkType" className="block text-sm font-medium text-gray-700 mb-1">
+                      {fixedRole === 'EXAMINER' ? 'Peran Penguji / Asesor' : 'Jenis PTK / Peran'}
+                    </label>
                     <input
                       id="ptkType"
                       {...register('ptkType')}
                       autoComplete="off"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Contoh: Guru Mapel, Guru Kelas"
+                      placeholder={
+                        fixedRole === 'EXTRACURRICULAR_TUTOR'
+                          ? 'Contoh: Pembina Ekstrakurikuler'
+                          : fixedRole === 'EXAMINER'
+                            ? 'Contoh: Penguji Industri / Asesor'
+                            : 'Contoh: Guru Mapel, Staff Administrasi'
+                      }
                     />
                   </div>
                   <div>
@@ -1347,46 +1878,92 @@ export const UserProfilePage = () => {
                     />
                   </div>
                   <div>
-                    <label htmlFor="institution" className="block text-sm font-medium text-gray-700 mb-1">Lembaga Pengangkat</label>
+                    <label htmlFor="institution" className="block text-sm font-medium text-gray-700 mb-1">
+                      {fixedRole === 'EXAMINER' ? 'Instansi / Perusahaan' : 'Lembaga Pengangkat'}
+                    </label>
                     <input
                       id="institution"
                       {...register('institution')}
                       autoComplete="off"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder={
+                        fixedRole === 'EXAMINER'
+                          ? 'Nama perusahaan atau lembaga asal'
+                          : 'Contoh: Yayasan / Pemerintah Daerah'
+                      }
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <p className="block text-sm font-medium text-gray-700 mb-1">Tugas Tambahan</p>
-                    <div className="space-y-2 bg-gray-50 p-3 rounded-lg border border-gray-200">
-                      {(() => {
-                        const allDuties = buildTeacherDutyOptions(majors);
+                    <p className="block text-sm font-medium text-gray-700 mb-1">Penugasan Aktif</p>
+                    <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      {fixedRole === 'TEACHER' && (
+                        <>
+                          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+                            <p className="text-sm font-medium text-gray-900">Tugas tambahan</p>
+                            <p className="mt-1 text-sm text-gray-600">
+                              {user?.additionalDuties?.length ? user.additionalDuties.join(', ') : 'Belum ada tugas tambahan yang ditetapkan.'}
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+                            <p className="text-sm font-medium text-gray-900">Kelas yang diampu</p>
+                            <p className="mt-1 text-sm text-gray-600">
+                              {user?.teacherClasses?.length
+                                ? user.teacherClasses.map((item) => item.name).join(', ')
+                                : 'Belum ada kelas yang terhubung.'}
+                            </p>
+                          </div>
+                        </>
+                      )}
 
-                        const currentDuties = watch('additionalDuties') || [];
-                        const dutiesToDisplay = fixedRole === 'TEACHER'
-                          ? allDuties.filter(d => currentDuties.includes(d.value))
-                          : allDuties;
+                      {fixedRole === 'PRINCIPAL' && (
+                        <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+                          <p className="text-sm font-medium text-gray-900">Fokus penugasan</p>
+                          <p className="mt-1 text-sm text-gray-600">
+                            Profil kepala sekolah memakai struktur yang sama dengan PTK agar identitas dan data penugasan tetap konsisten di seluruh modul.
+                          </p>
+                        </div>
+                      )}
 
-                        if (dutiesToDisplay.length === 0 && fixedRole === 'TEACHER') {
-                          return <p className="text-sm text-gray-500 italic">Tidak ada tugas tambahan</p>;
-                        }
+                      {fixedRole === 'STAFF' && (
+                        <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+                          <p className="text-sm font-medium text-gray-900">Divisi kerja</p>
+                          <p className="mt-1 text-sm text-gray-600">
+                            {watchedStaffPosition || watchedPtkType || 'Pilih jabatan staff yang paling sesuai dengan workspace Anda.'}
+                          </p>
+                        </div>
+                      )}
 
-                        return dutiesToDisplay.map((duty) => {
-                          const id = `duty-${duty.value}`;
-                          return (
-                            <label key={duty.value} htmlFor={id} className={`flex items-center gap-2 ${fixedRole === 'TEACHER' ? 'cursor-default opacity-70' : 'cursor-pointer'}`}>
-                              <input
-                                id={id}
-                                type="checkbox"
-                                value={duty.value}
-                                {...register('additionalDuties')}
-                                disabled={fixedRole === 'TEACHER'}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4 disabled:opacity-50"
-                              />
-                              <span className="text-sm text-gray-700">{duty.label}</span>
-                            </label>
-                          );
-                        });
-                      })()}
+                      {fixedRole === 'EXTRACURRICULAR_TUTOR' && (
+                        <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+                          <p className="text-sm font-medium text-gray-900">Ekstrakurikuler aktif</p>
+                          <p className="mt-1 text-sm text-gray-600">
+                            {user?.ekskulTutorAssignments?.length
+                              ? user.ekskulTutorAssignments.map((item) => item.ekskul?.name || 'Ekskul').join(', ')
+                              : 'Belum ada ekstrakurikuler aktif yang ditautkan.'}
+                          </p>
+                        </div>
+                      )}
+
+                      {fixedRole === 'EXAMINER' && (
+                        <>
+                          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+                            <p className="text-sm font-medium text-gray-900">Jurusan damping</p>
+                            <p className="mt-1 text-sm text-gray-600">
+                              {user?.examinerMajor?.name || 'Belum diatur oleh administrator.'}
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+                            <p className="text-sm font-medium text-gray-900">Instansi</p>
+                            <p className="mt-1 text-sm text-gray-600">
+                              {watchedInstitution || 'Lengkapi nama instansi atau perusahaan asal penguji.'}
+                            </p>
+                          </div>
+                        </>
+                      )}
+
+                      <p className="text-xs text-gray-500">
+                        Penugasan struktural dan relasi kerja utama tetap mengikuti konfigurasi dari admin atau workspace terkait.
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1443,7 +2020,7 @@ export const UserProfilePage = () => {
                       </div>
                       <div className="flex text-sm text-gray-600 justify-center">
                         <span className="relative cursor-pointer rounded-md font-medium text-blue-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 hover:text-blue-500">
-                          <span>Upload a file</span>
+                          <span>Pilih dokumen</span>
                           <input 
                             ref={fileInputRef}
                             id="file-upload" 
@@ -1456,7 +2033,7 @@ export const UserProfilePage = () => {
                             onClick={(e) => e.stopPropagation()} // Prevent double trigger if input is clicked directly
                           />
                         </span>
-                        <p className="pl-1">{canUploadDocuments ? 'or drag and drop' : 'upload is disabled for this role'}</p>
+                        <p className="pl-1">{canUploadDocuments ? 'atau klik area ini untuk upload' : 'upload dokumen tidak tersedia untuk role ini'}</p>
                       </div>
                       <p className="text-xs text-gray-500">
                         PDF, PNG, JPG maksimal 2MB
@@ -1466,7 +2043,7 @@ export const UserProfilePage = () => {
 
                   {!canUploadDocuments && (
                     <p className="text-sm text-gray-500">
-                      Upload dokumen profil saat ini hanya tersedia untuk admin, guru, staff, examiner, dan calon siswa.
+                      Upload dokumen profil saat ini tersedia untuk admin, guru, kepala sekolah, staff, tutor, examiner, dan calon siswa.
                     </p>
                   )}
 

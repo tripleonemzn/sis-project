@@ -997,6 +997,7 @@ export const getMenuItems = (
           { label: 'Data Guru', path: '/principal/teachers', icon: Users },
         ],
       },
+      { label: 'Profil', path: '/principal/profile', icon: UserIcon },
     ];
 
     if ((assignedInventoryRooms?.length || 0) > 0) {
@@ -1039,6 +1040,7 @@ export const getMenuItems = (
             { label: 'Perizinan Siswa', path: '/staff/administration/permissions', icon: FileText },
           ],
         },
+        { label: 'Profil', path: '/staff/profile', icon: UserIcon },
       ];
 
       if (assignedInventoryChildren.length > 0) {
@@ -1079,6 +1081,7 @@ export const getMenuItems = (
             { label: 'Kartu Ujian', path: '/staff/head-tu/exam-cards', icon: ClipboardList },
           ],
         },
+        { label: 'Profil', path: '/staff/profile', icon: UserIcon },
       ];
 
       if (assignedInventoryChildren.length > 0) {
@@ -1113,6 +1116,7 @@ export const getMenuItems = (
           { label: 'Realisasi Anggaran', path: '/staff/finance/operations', icon: ClipboardList },
         ],
       },
+      { label: 'Profil', path: '/staff/profile', icon: UserIcon },
     ];
 
     if (assignedInventoryChildren.length > 0) {
@@ -1134,6 +1138,7 @@ export const getMenuItems = (
       { label: 'Hubungkan Anak', path: '/parent/children?mode=link', icon: UserCheck },
       { label: 'Keuangan', path: '/parent/finance', icon: Wallet },
       { label: 'Absensi Anak', path: '/parent/attendance', icon: UserCheck },
+      { label: 'Profil', path: '/parent/profile', icon: UserIcon },
     ];
   }
 

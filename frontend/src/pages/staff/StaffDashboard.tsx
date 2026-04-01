@@ -7,6 +7,7 @@ import HeadTuWorkspace from './HeadTuWorkspace';
 import InventoryHubPage from '../teacher/wakasek/sarpras/InventoryHubPage';
 import { InventoryDetailPage } from '../teacher/wakasek/sarpras/InventoryDetailPage';
 import StudentOsisElectionPage from '../student/StudentOsisElectionPage';
+import { UserProfilePage } from '../common/UserProfilePage';
 import { resolveStaffDivision } from '../../utils/staffRole';
 
 export const StaffDashboard = () => {
@@ -34,6 +35,10 @@ export const StaffDashboard = () => {
 
   if (location.pathname.startsWith('/staff/osis')) {
     return <StudentOsisElectionPage />;
+  }
+
+  if (location.pathname.startsWith('/staff/profile')) {
+    return <UserProfilePage />;
   }
 
   if (isLoading && !currentUser) {
