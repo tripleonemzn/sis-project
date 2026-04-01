@@ -84,6 +84,7 @@ type EditableProfileForm = {
   subdistrictCode: string;
   villageCode: string;
   postalCode: string;
+  staffPosition: string;
   ptkType: string;
   employeeStatus: string;
   employeeActiveStatus: string;
@@ -169,6 +170,7 @@ const emptyForm: EditableProfileForm = {
   subdistrictCode: '',
   villageCode: '',
   postalCode: '',
+  staffPosition: '',
   ptkType: '',
   employeeStatus: '',
   employeeActiveStatus: '',
@@ -221,6 +223,49 @@ const SALARY_SOURCE_OPTIONS = [
   'Perusahaan / Mitra',
   'Lainnya',
 ];
+const MANUAL_OPTION_VALUE = '__MANUAL__';
+const STAFF_POSITION_OPTIONS = [
+  { label: 'Bendahara (Staff Keuangan)', value: 'STAFF_KEUANGAN' },
+  { label: 'Staff Administrasi', value: 'STAFF_ADMINISTRASI' },
+  { label: 'Kepala Tata Usaha', value: 'KEPALA_TU' },
+];
+const EMPLOYEE_STATUS_OPTIONS = [
+  'PNS',
+  'PPPK',
+  'GTY / PTY',
+  'GTT / PTT',
+  'Honor Sekolah',
+  'Honor Daerah',
+  'Kontrak Yayasan',
+  'Mitra Industri / Profesional',
+];
+const EMPLOYEE_ROLE_OPTIONS_BY_ROLE = {
+  TEACHER: [
+    { label: 'Guru Mata Pelajaran', value: 'Guru Mata Pelajaran' },
+    { label: 'Guru BK', value: 'Guru BK' },
+    { label: 'Guru Produktif / Kejuruan', value: 'Guru Produktif / Kejuruan' },
+    { label: 'Wali Kelas', value: 'Wali Kelas' },
+    { label: 'Wakil Kepala Sekolah', value: 'Wakil Kepala Sekolah' },
+    { label: 'Kepala Program Keahlian', value: 'Kepala Program Keahlian' },
+    { label: 'Koordinator Laboratorium', value: 'Koordinator Laboratorium' },
+  ],
+  PRINCIPAL: [
+    { label: 'Kepala Sekolah', value: 'Kepala Sekolah' },
+    { label: 'Pelaksana Tugas Kepala Sekolah', value: 'Pelaksana Tugas Kepala Sekolah' },
+  ],
+  EXTRACURRICULAR_TUTOR: [
+    { label: 'Pembina Ekstrakurikuler', value: 'Pembina Ekstrakurikuler' },
+    { label: 'Pelatih Ekstrakurikuler', value: 'Pelatih Ekstrakurikuler' },
+    { label: 'Koordinator Ekstrakurikuler', value: 'Koordinator Ekstrakurikuler' },
+    { label: 'Mentor Kegiatan', value: 'Mentor Kegiatan' },
+  ],
+  EXAMINER: [
+    { label: 'Penguji Industri', value: 'Penguji Industri' },
+    { label: 'Asesor Kompetensi', value: 'Asesor Kompetensi' },
+    { label: 'Penguji Eksternal', value: 'Penguji Eksternal' },
+    { label: 'Mitra Industri', value: 'Mitra Industri' },
+  ],
+} as const;
 
 function toText(value?: string | number | null) {
   if (value === null || value === undefined) return '';
@@ -235,6 +280,34 @@ function toDateInput(value?: string | null) {
 function toNullable(value: string) {
   const cleaned = value.trim();
   return cleaned.length > 0 ? cleaned : null;
+}
+
+function normalizeStructuredFieldValue(value?: string | null) {
+  const cleaned = String(value || '').trim();
+  if (!cleaned || cleaned === MANUAL_OPTION_VALUE) {
+    return '';
+  }
+  return cleaned;
+}
+
+function getStructuredChoiceValue(
+  value: string | null | undefined,
+  options: readonly string[] | readonly { value: string; label: string }[],
+) {
+  const normalized = normalizeStructuredFieldValue(value);
+  if (!normalized) {
+    return '';
+  }
+  const knownValues = options.map((option) => (typeof option === 'string' ? option : option.value));
+  return knownValues.includes(normalized) ? normalized : MANUAL_OPTION_VALUE;
+}
+
+function getStaffPositionLabel(value?: string | null) {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    return '';
+  }
+  return STAFF_POSITION_OPTIONS.find((option) => option.value === normalized)?.label || normalized;
 }
 
 function toNullableNumber(value: string) {
@@ -267,6 +340,10 @@ function getFileExtension(name?: string | null) {
 
 function buildForm(profile: AuthUser | null): EditableProfileForm {
   if (!profile) return emptyForm;
+  const staffCodeFromPtk = STAFF_POSITION_OPTIONS.some((option) => option.value === toText(profile?.ptkType))
+    ? toText(profile?.ptkType)
+    : '';
+  const staffCodeFromDuty = (profile?.additionalDuties || []).includes('BENDAHARA') ? 'STAFF_KEUANGAN' : '';
   return {
     name: toText(profile?.name),
     gender: (profile?.gender as EditableProfileForm['gender']) || '',
@@ -320,6 +397,7 @@ function buildForm(profile: AuthUser | null): EditableProfileForm {
     subdistrictCode: toText(profile?.subdistrictCode),
     villageCode: toText(profile?.villageCode),
     postalCode: toText(profile?.postalCode),
+    staffPosition: staffCodeFromPtk || staffCodeFromDuty,
     ptkType: toText(profile?.ptkType),
     employeeStatus: toText(profile?.employeeStatus),
     employeeActiveStatus: toText(profile?.employeeActiveStatus),
@@ -437,6 +515,7 @@ export default function ProfileScreen() {
   const isParent = profile?.role === 'PARENT';
   const isExaminer = profile?.role === 'EXAMINER';
   const isTutor = profile?.role === 'EXTRACURRICULAR_TUTOR';
+  const isStaff = profile?.role === 'STAFF';
   const isCandidate = profile?.role === 'CALON_SISWA';
   const isEmployee = Boolean(
     profile?.role && ['TEACHER', 'PRINCIPAL', 'STAFF', 'EXAMINER', 'EXTRACURRICULAR_TUTOR'].includes(profile.role),
@@ -459,13 +538,29 @@ export default function ProfileScreen() {
     ? 'Contoh: Pembina Ekstrakurikuler'
     : isExaminer
       ? 'Contoh: Penguji Industri / Asesor'
-      : 'Contoh: Guru Mapel, Staff Administrasi';
+      : 'Contoh: Guru Mapel, Guru BK, Wakil Kepala Sekolah';
   const institutionLabel = isExaminer ? 'Instansi / Perusahaan' : 'Lembaga Pengangkat';
   const institutionPlaceholder = isExaminer
     ? 'Nama perusahaan atau lembaga asal'
     : 'Contoh: Yayasan / Pemerintah Daerah';
   const assignmentDecreeLabel = isExaminer ? 'Surat Tugas / SK Penugasan' : 'SK Penugasan';
   const assignmentDateLabel = isExaminer ? 'Mulai Penugasan (YYYY-MM-DD)' : 'TMT Penugasan (YYYY-MM-DD)';
+  const employeeRoleOptions = useMemo(() => {
+    if (!profile?.role || isStaff) {
+      return [];
+    }
+    return EMPLOYEE_ROLE_OPTIONS_BY_ROLE[profile.role as keyof typeof EMPLOYEE_ROLE_OPTIONS_BY_ROLE] || [];
+  }, [isStaff, profile?.role]);
+  const ptkTypeChoiceValue = useMemo(() => {
+    if (isStaff) {
+      return getStructuredChoiceValue(form.staffPosition || form.ptkType, STAFF_POSITION_OPTIONS);
+    }
+    return getStructuredChoiceValue(form.ptkType, employeeRoleOptions);
+  }, [employeeRoleOptions, form.ptkType, form.staffPosition, isStaff]);
+  const employeeStatusChoiceValue = useMemo(
+    () => getStructuredChoiceValue(form.employeeStatus, EMPLOYEE_STATUS_OPTIONS),
+    [form.employeeStatus],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -536,8 +631,10 @@ export default function ProfileScreen() {
         subdistrictCode: toNullable(form.subdistrictCode),
         villageCode: toNullable(form.villageCode),
         postalCode: toNullable(form.postalCode),
-        ptkType: toNullable(form.ptkType),
-        employeeStatus: toNullable(form.employeeStatus),
+        ptkType: isStaff
+          ? normalizeStructuredFieldValue(form.staffPosition) || normalizeStructuredFieldValue(form.ptkType) || null
+          : normalizeStructuredFieldValue(form.ptkType) || null,
+        employeeStatus: normalizeStructuredFieldValue(form.employeeStatus) || null,
         employeeActiveStatus: toNullable(form.employeeActiveStatus),
         salarySource: toNullable(form.salarySource),
         appointmentDecree: toNullable(form.appointmentDecree),
@@ -1165,18 +1262,52 @@ export default function ProfileScreen() {
           {showEmployment ? (
             <View style={cardStyle}>
               <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 10 }}>Data Kepegawaian</Text>
-              <FormField
-                label={employmentRoleLabel}
-                value={form.ptkType}
-                onChangeText={(value) => setForm((prev) => ({ ...prev, ptkType: value }))}
-                placeholder={employmentRolePlaceholder}
-              />
-              <FormField
+              {isStaff ? (
+                <ChoiceChips
+                  label="Posisi / Jabatan Staff"
+                  value={ptkTypeChoiceValue}
+                  options={[...STAFF_POSITION_OPTIONS, { label: 'Isi Manual', value: MANUAL_OPTION_VALUE }]}
+                  onSelect={(value) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      staffPosition: value,
+                      ptkType: value === MANUAL_OPTION_VALUE ? MANUAL_OPTION_VALUE : value,
+                    }))
+                  }
+                />
+              ) : (
+                <ChoiceChips
+                  label={employmentRoleLabel}
+                  value={ptkTypeChoiceValue}
+                  options={[...employeeRoleOptions, { label: 'Isi Manual', value: MANUAL_OPTION_VALUE }]}
+                  onSelect={(value) => setForm((prev) => ({ ...prev, ptkType: value }))}
+                />
+              )}
+              {ptkTypeChoiceValue === MANUAL_OPTION_VALUE ? (
+                <FormField
+                  label={isStaff ? 'Posisi / Jabatan Staff (Manual)' : employmentRoleLabel}
+                  value={form.ptkType === MANUAL_OPTION_VALUE ? '' : form.ptkType}
+                  onChangeText={(value) => setForm((prev) => ({ ...prev, ptkType: value }))}
+                  placeholder={isStaff ? 'Contoh: Operator Sekolah' : employmentRolePlaceholder}
+                />
+              ) : null}
+              <ChoiceChips
                 label="Status Kepegawaian"
-                value={form.employeeStatus}
-                onChangeText={(value) => setForm((prev) => ({ ...prev, employeeStatus: value }))}
-                placeholder="Contoh: PNS, GTY, GTT"
+                value={employeeStatusChoiceValue}
+                options={[
+                  ...EMPLOYEE_STATUS_OPTIONS.map((item) => ({ label: item, value: item })),
+                  { label: 'Isi Manual', value: MANUAL_OPTION_VALUE },
+                ]}
+                onSelect={(value) => setForm((prev) => ({ ...prev, employeeStatus: value }))}
               />
+              {employeeStatusChoiceValue === MANUAL_OPTION_VALUE ? (
+                <FormField
+                  label="Status Kepegawaian (Manual)"
+                  value={form.employeeStatus === MANUAL_OPTION_VALUE ? '' : form.employeeStatus}
+                  onChangeText={(value) => setForm((prev) => ({ ...prev, employeeStatus: value }))}
+                  placeholder="Contoh: PNS, GTY / PTY, GTT / PTT"
+                />
+              ) : null}
               <ChoiceChips
                 label="Status Keaktifan"
                 value={form.employeeActiveStatus}
@@ -1219,6 +1350,11 @@ export default function ProfileScreen() {
                 onChangeText={(value) => setForm((prev) => ({ ...prev, institution: value }))}
                 placeholder={institutionPlaceholder}
               />
+              {isStaff ? (
+                <Text style={{ color: '#64748b', fontSize: 12, marginTop: -2, marginBottom: 10 }}>
+                  Divisi kerja aktif: {getStaffPositionLabel(form.staffPosition) || normalizeStructuredFieldValue(form.ptkType) || '-'}
+                </Text>
+              ) : null}
               <FormField
                 label={assignmentDecreeLabel}
                 value={form.assignmentDecree}

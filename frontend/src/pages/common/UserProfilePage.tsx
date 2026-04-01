@@ -300,7 +300,93 @@ const SALARY_SOURCE_OPTIONS = [
   'Lainnya',
 ] as const;
 
+const MANUAL_OPTION_VALUE = '__MANUAL__' as const;
+
+const STAFF_POSITION_OPTIONS = [
+  { value: 'STAFF_KEUANGAN', label: 'Bendahara (Staff Keuangan)' },
+  { value: 'STAFF_ADMINISTRASI', label: 'Staff Administrasi' },
+  { value: 'KEPALA_TU', label: 'Kepala Tata Usaha' },
+] as const;
+
+const EMPLOYEE_STATUS_OPTIONS = [
+  'PNS',
+  'PPPK',
+  'GTY / PTY',
+  'GTT / PTT',
+  'Honor Sekolah',
+  'Honor Daerah',
+  'Kontrak Yayasan',
+  'Mitra Industri / Profesional',
+] as const;
+
+const EMPLOYEE_ROLE_OPTIONS_BY_ROLE: Record<
+  Exclude<UserFormRole, 'ADMIN' | 'STUDENT' | 'PARENT' | 'CALON_SISWA' | 'UMUM' | 'STAFF'>,
+  readonly { value: string; label: string }[]
+> = {
+  TEACHER: [
+    { value: 'Guru Mata Pelajaran', label: 'Guru Mata Pelajaran' },
+    { value: 'Guru BK', label: 'Guru BK' },
+    { value: 'Guru Produktif / Kejuruan', label: 'Guru Produktif / Kejuruan' },
+    { value: 'Wali Kelas', label: 'Wali Kelas' },
+    { value: 'Wakil Kepala Sekolah', label: 'Wakil Kepala Sekolah' },
+    { value: 'Kepala Program Keahlian', label: 'Kepala Program Keahlian' },
+    { value: 'Koordinator Laboratorium', label: 'Koordinator Laboratorium' },
+  ],
+  PRINCIPAL: [
+    { value: 'Kepala Sekolah', label: 'Kepala Sekolah' },
+    { value: 'Pelaksana Tugas Kepala Sekolah', label: 'Pelaksana Tugas Kepala Sekolah' },
+  ],
+  EXTRACURRICULAR_TUTOR: [
+    { value: 'Pembina Ekstrakurikuler', label: 'Pembina Ekstrakurikuler' },
+    { value: 'Pelatih Ekstrakurikuler', label: 'Pelatih Ekstrakurikuler' },
+    { value: 'Koordinator Ekstrakurikuler', label: 'Koordinator Ekstrakurikuler' },
+    { value: 'Mentor Kegiatan', label: 'Mentor Kegiatan' },
+  ],
+  EXAMINER: [
+    { value: 'Penguji Industri', label: 'Penguji Industri' },
+    { value: 'Asesor Kompetensi', label: 'Asesor Kompetensi' },
+    { value: 'Penguji Eksternal', label: 'Penguji Eksternal' },
+    { value: 'Mitra Industri', label: 'Mitra Industri' },
+  ],
+} as const;
+
 type ProfileVariant = 'employee' | 'student' | 'candidate' | 'parent' | 'admin';
+
+const normalizeStructuredFieldValue = (value?: string | null) => {
+  const trimmed = String(value || '').trim();
+  if (!trimmed || trimmed === MANUAL_OPTION_VALUE) {
+    return '';
+  }
+  return trimmed;
+};
+
+const getStructuredSelectValue = (
+  value: string | null | undefined,
+  options: readonly string[] | readonly { value: string; label: string }[]
+) => {
+  const normalized = normalizeStructuredFieldValue(value);
+  if (!normalized) {
+    return '';
+  }
+
+  const knownValues = options.map((option) => (typeof option === 'string' ? option : option.value));
+  return knownValues.includes(normalized) ? normalized : MANUAL_OPTION_VALUE;
+};
+
+const getEmployeeRoleOptions = (role: UserFormRole) => {
+  if (role === 'STAFF') {
+    return STAFF_POSITION_OPTIONS;
+  }
+  return EMPLOYEE_ROLE_OPTIONS_BY_ROLE[role as keyof typeof EMPLOYEE_ROLE_OPTIONS_BY_ROLE] || [];
+};
+
+const getStaffPositionLabel = (value?: string | null) => {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    return '';
+  }
+  return STAFF_POSITION_OPTIONS.find((option) => option.value === normalized)?.label || normalized;
+};
 
 function resolveUserFormRole(role?: User['role'] | null): UserFormRole {
   const normalized = String(role || '').toUpperCase();
@@ -519,6 +605,8 @@ export const UserProfilePage = () => {
   const [activeTab, setActiveTab] = useState<typeof tabs[number]['id']>('account');
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [isManualPtkType, setIsManualPtkType] = useState(false);
+  const [isManualEmployeeStatus, setIsManualEmployeeStatus] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [candidateDocumentCategory, setCandidateDocumentCategory] = useState<string>(
     CANDIDATE_DOCUMENT_OPTIONS[0]?.value || 'PPDB_AKTA_KELAHIRAN',
@@ -625,6 +713,33 @@ export const UserProfilePage = () => {
   const watchedProvince = watch('province');
   const watchedCityRegency = watch('cityRegency');
   const watchedDocuments = watch('documents') || [];
+  const employeeRoleOptions = useMemo(() => getEmployeeRoleOptions(fixedRole), [fixedRole]);
+  const ptkTypeSelectValue = useMemo(() => {
+    if (fixedRole !== 'STAFF' && isManualPtkType) {
+      return MANUAL_OPTION_VALUE;
+    }
+    if (fixedRole === 'STAFF') {
+      return getStructuredSelectValue(watchedStaffPosition || watchedPtkType, STAFF_POSITION_OPTIONS);
+    }
+    return getStructuredSelectValue(watchedPtkType, employeeRoleOptions);
+  }, [employeeRoleOptions, fixedRole, isManualPtkType, watchedPtkType, watchedStaffPosition]);
+  const employeeStatusSelectValue = useMemo(
+    () =>
+      isManualEmployeeStatus
+        ? MANUAL_OPTION_VALUE
+        : getStructuredSelectValue(watchedEmployeeStatus, EMPLOYEE_STATUS_OPTIONS),
+    [isManualEmployeeStatus, watchedEmployeeStatus]
+  );
+  const normalizedEmployeeRoleValue = useMemo(() => {
+    if (fixedRole === 'STAFF') {
+      return normalizeStructuredFieldValue(watchedStaffPosition) || normalizeStructuredFieldValue(watchedPtkType);
+    }
+    return normalizeStructuredFieldValue(watchedPtkType);
+  }, [fixedRole, watchedPtkType, watchedStaffPosition]);
+  const normalizedEmployeeStatusValue = useMemo(
+    () => normalizeStructuredFieldValue(watchedEmployeeStatus),
+    [watchedEmployeeStatus]
+  );
 
   const selectedChildren =
     fixedRole === 'PARENT' && studentsForParent?.data
@@ -651,8 +766,8 @@ export const UserProfilePage = () => {
         { label: 'Nama ibu kandung', value: watchedMotherName },
         { label: 'NIK ibu kandung', value: watchedMotherNik },
         { label: 'Pendidikan terakhir', value: watchedHighestEducation },
-        { label: 'Jenis PTK / peran', value: watchedPtkType },
-        { label: 'Status kepegawaian', value: watchedEmployeeStatus },
+        { label: 'Jenis PTK / peran', value: normalizedEmployeeRoleValue },
+        { label: 'Status kepegawaian', value: normalizedEmployeeStatusValue },
         { label: 'Status keaktifan', value: watchedEmployeeActiveStatus },
         { label: 'Sumber gaji', value: watchedSalarySource },
         { label: 'Kontak aktif', value: watchedPhone || watchedEmail },
@@ -732,7 +847,6 @@ export const UserProfilePage = () => {
     watchedDocuments.length,
     watchedEmail,
     watchedEmployeeActiveStatus,
-    watchedEmployeeStatus,
     watchedHighestEducation,
     watchedFamilyStatus,
     watchedFamilyCardNumber,
@@ -746,10 +860,11 @@ export const UserProfilePage = () => {
     watchedNis,
     watchedNisn,
     watchedPhone,
-    watchedPtkType,
     watchedProvince,
     watchedReligion,
     watchedSalarySource,
+    normalizedEmployeeRoleValue,
+    normalizedEmployeeStatusValue,
     watchedTransportationMode,
     watchedTravelTimeToSchool,
   ]);
@@ -767,7 +882,7 @@ export const UserProfilePage = () => {
       if (fixedRole === 'EXTRACURRICULAR_TUTOR') {
         return [
           `Ekstrakurikuler aktif: ${user?.ekskulTutorAssignments?.length || 0}`,
-          `Penugasan utama: ${watchedPtkType || 'Tutor / pembina'}`,
+          `Penugasan utama: ${normalizedEmployeeRoleValue || 'Tutor / pembina'}`,
           `Dokumen: ${watchedDocuments.length} file`,
         ];
       }
@@ -782,15 +897,15 @@ export const UserProfilePage = () => {
 
       if (fixedRole === 'STAFF') {
         return [
-          `Divisi: ${watchedStaffPosition || watchedPtkType || 'Belum dipilih'}`,
-          `Status kepegawaian: ${watchedEmployeeStatus || 'Belum diisi'}`,
+          `Divisi: ${getStaffPositionLabel(watchedStaffPosition) || normalizedEmployeeRoleValue || 'Belum dipilih'}`,
+          `Status kepegawaian: ${normalizedEmployeeStatusValue || 'Belum diisi'}`,
           `Dokumen: ${watchedDocuments.length} file`,
         ];
       }
 
       return [
         `Peran aktif: ${ROLE_LABELS[fixedRole]}`,
-        `Status kepegawaian: ${watchedEmployeeStatus || 'Belum diisi'}`,
+        `Status kepegawaian: ${normalizedEmployeeStatusValue || 'Belum diisi'}`,
         `Dokumen: ${watchedDocuments.length} file`,
       ];
     }
@@ -841,11 +956,11 @@ export const UserProfilePage = () => {
     watchedAddress,
     watchedDocuments.length,
     watchedEmail,
-    watchedEmployeeStatus,
     watchedInstitution,
     watchedNisn,
     watchedPhone,
-    watchedPtkType,
+    normalizedEmployeeRoleValue,
+    normalizedEmployeeStatusValue,
     watchedStaffPosition,
   ]);
 
@@ -993,11 +1108,17 @@ export const UserProfilePage = () => {
       // dan mencegah overwrite parsial yang bisa menghilangkan data saat refetch
       reset(formattedData);
       setPhotoPreview(user.photo || null);
+      setIsManualPtkType(
+        fixedRole !== 'STAFF' && getStructuredSelectValue(user.ptkType || '', employeeRoleOptions) === MANUAL_OPTION_VALUE
+      );
+      setIsManualEmployeeStatus(
+        getStructuredSelectValue(user.employeeStatus || '', EMPLOYEE_STATUS_OPTIONS) === MANUAL_OPTION_VALUE
+      );
       
       isInitializedRef.current = true;
       lastUserIdRef.current = user.id;
     }
-  }, [user, reset]);
+  }, [employeeRoleOptions, fixedRole, reset, user]);
 
   useEffect(() => {
     if (!visibleTabs.includes(activeTab)) {
@@ -1040,7 +1161,14 @@ export const UserProfilePage = () => {
        };
 
        if (fixedRole === 'STAFF') {
-         basePayload.ptkType = staffPosition || null;
+         basePayload.ptkType =
+           normalizeStructuredFieldValue(staffPosition) || normalizeStructuredFieldValue(data.ptkType) || null;
+       } else if (isEmployeeProfile) {
+         basePayload.ptkType = normalizeStructuredFieldValue(data.ptkType) || null;
+       }
+
+       if (isEmployeeProfile) {
+         basePayload.employeeStatus = normalizeStructuredFieldValue(data.employeeStatus) || null;
        }
 
        if (fixedRole === 'PARENT') {
@@ -2307,39 +2435,89 @@ export const UserProfilePage = () => {
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       >
                         <option value="">Pilih Jabatan</option>
-                        <option value="STAFF_KEUANGAN">Bendahara (Staff Keuangan)</option>
-                        <option value="STAFF_ADMINISTRASI">Staff Administrasi</option>
-                        <option value="KEPALA_TU">Kepala Tata Usaha</option>
+                        {STAFF_POSITION_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   )}
+                  {fixedRole !== 'STAFF' && (
+                    <div>
+                      <label htmlFor="ptkTypeSelect" className="block text-sm font-medium text-gray-700 mb-1">
+                        {fixedRole === 'EXAMINER' ? 'Peran Penguji / Asesor' : 'Jenis PTK / Peran'}
+                      </label>
+                      <select
+                        id="ptkTypeSelect"
+                        value={ptkTypeSelectValue}
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          setIsManualPtkType(nextValue === MANUAL_OPTION_VALUE);
+                          setValue('ptkType', nextValue === MANUAL_OPTION_VALUE ? '' : nextValue, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          });
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="">Pilih peran</option>
+                        {employeeRoleOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                        <option value={MANUAL_OPTION_VALUE}>Isi manual</option>
+                      </select>
+                      {ptkTypeSelectValue === MANUAL_OPTION_VALUE && (
+                        <input
+                          id="ptkType"
+                          {...register('ptkType')}
+                          autoComplete="off"
+                          className="mt-3 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder={
+                            fixedRole === 'EXTRACURRICULAR_TUTOR'
+                              ? 'Contoh: Pembina Ekstrakurikuler'
+                              : fixedRole === 'EXAMINER'
+                                ? 'Contoh: Penguji Industri / Asesor'
+                                : 'Contoh: Guru Mapel, Guru BK, Wakil Kepala Sekolah'
+                          }
+                        />
+                      )}
+                    </div>
+                  )}
                   <div>
-                    <label htmlFor="ptkType" className="block text-sm font-medium text-gray-700 mb-1">
-                      {fixedRole === 'EXAMINER' ? 'Peran Penguji / Asesor' : 'Jenis PTK / Peran'}
-                    </label>
-                    <input
-                      id="ptkType"
-                      {...register('ptkType')}
-                      autoComplete="off"
+                    <label htmlFor="employeeStatusSelect" className="block text-sm font-medium text-gray-700 mb-1">Status Kepegawaian</label>
+                    <select
+                      id="employeeStatusSelect"
+                      value={employeeStatusSelectValue}
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setIsManualEmployeeStatus(nextValue === MANUAL_OPTION_VALUE);
+                        setValue('employeeStatus', nextValue === MANUAL_OPTION_VALUE ? '' : nextValue, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder={
-                        fixedRole === 'EXTRACURRICULAR_TUTOR'
-                          ? 'Contoh: Pembina Ekstrakurikuler'
-                          : fixedRole === 'EXAMINER'
-                            ? 'Contoh: Penguji Industri / Asesor'
-                            : 'Contoh: Guru Mapel, Staff Administrasi'
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="employeeStatus" className="block text-sm font-medium text-gray-700 mb-1">Status Kepegawaian</label>
-                    <input
-                      id="employeeStatus"
-                      {...register('employeeStatus')}
-                      autoComplete="off"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Contoh: PNS, GTY, GTT"
-                    />
+                    >
+                      <option value="">Pilih status kepegawaian</option>
+                      {EMPLOYEE_STATUS_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                      <option value={MANUAL_OPTION_VALUE}>Isi manual</option>
+                    </select>
+                    {employeeStatusSelectValue === MANUAL_OPTION_VALUE && (
+                      <input
+                        id="employeeStatus"
+                        {...register('employeeStatus')}
+                        autoComplete="off"
+                        className="mt-3 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Contoh: PNS, GTY / PTY, GTT / PTT"
+                      />
+                    )}
                   </div>
                   <div>
                     <label htmlFor="employeeActiveStatus" className="block text-sm font-medium text-gray-700 mb-1">
@@ -2493,7 +2671,7 @@ export const UserProfilePage = () => {
                         <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
                           <p className="text-sm font-medium text-gray-900">Divisi kerja</p>
                           <p className="mt-1 text-sm text-gray-600">
-                            {watchedStaffPosition || watchedPtkType || 'Pilih jabatan staff yang paling sesuai dengan workspace Anda.'}
+                            {getStaffPositionLabel(watchedStaffPosition) || normalizeStructuredFieldValue(watchedPtkType) || 'Pilih jabatan staff yang paling sesuai dengan workspace Anda.'}
                           </p>
                         </div>
                       )}
