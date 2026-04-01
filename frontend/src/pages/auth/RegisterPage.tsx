@@ -38,8 +38,8 @@ const REGISTER_MODE_CONFIG: Record<
     title: 'Daftar Calon Siswa',
     subtitle: 'Buat akun PPDB untuk memantau proses pendaftaran dan tahap tes berikutnya.',
     submitLabel: 'Buat Akun Calon Siswa',
-    accentClass: 'from-[#123c90] via-[#1f6ea5] to-[#1c998f]',
-    buttonClass: 'bg-[#143a88] hover:bg-[#0f2f6e]',
+    accentClass: 'from-[#fbfdff] via-[#eef5ff] to-[#eef9f7]',
+    buttonClass: 'bg-[#2d5daa] hover:bg-[#244f91]',
     iconClass: 'bg-sky-100 text-sky-700 ring-sky-200',
     eyebrow: 'PPDB Terpadu',
     highlights: [
@@ -52,8 +52,8 @@ const REGISTER_MODE_CONFIG: Record<
     title: 'Daftar Orang Tua',
     subtitle: 'Buat satu akun untuk menghubungkan dan memantau data lebih dari satu anak.',
     submitLabel: 'Buat Akun Orang Tua',
-    accentClass: 'from-[#0f5b63] via-[#147578] to-[#1a9273]',
-    buttonClass: 'bg-[#0f5d61] hover:bg-[#0a4a4d]',
+    accentClass: 'from-[#fbfefd] via-[#effaf7] to-[#eef9fb]',
+    buttonClass: 'bg-[#1f7b76] hover:bg-[#186762]',
     iconClass: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
     eyebrow: 'Akun Keluarga',
     highlights: [
@@ -66,8 +66,8 @@ const REGISTER_MODE_CONFIG: Record<
     title: 'Daftar BKK',
     subtitle: 'Buat akun pelamar untuk melihat lowongan BKK dan mengikuti proses rekrutmen.',
     submitLabel: 'Buat Akun Pelamar',
-    accentClass: 'from-[#8b4f14] via-[#b35f24] to-[#b14455]',
-    buttonClass: 'bg-[#914d1f] hover:bg-[#783d19]',
+    accentClass: 'from-[#fffaf4] via-[#fff2e7] to-[#fbf6ef]',
+    buttonClass: 'bg-[#a35d25] hover:bg-[#8c4f1e]',
     iconClass: 'bg-amber-100 text-amber-700 ring-amber-200',
     eyebrow: 'BKK Karier',
     highlights: [
@@ -92,7 +92,7 @@ const REGISTER_HUB_OPTIONS: Array<{
     title: 'Calon Siswa',
     description: 'Untuk pendaftaran peserta didik baru, pengisian data PPDB, dan akses tahapan tes seleksi.',
     icon: <GraduationCap className="h-6 w-6" />,
-    accentClass: 'from-sky-500/20 via-cyan-400/10 to-transparent',
+    accentClass: 'from-sky-200/80 via-sky-100/60 to-transparent',
     iconClass: 'bg-sky-100 text-sky-700 ring-sky-200',
     tagline: 'Jalur PPDB dan tes seleksi',
   },
@@ -101,7 +101,7 @@ const REGISTER_HUB_OPTIONS: Array<{
     title: 'Orang Tua',
     description: 'Untuk satu akun keluarga yang bisa menghubungkan dan memantau lebih dari satu anak.',
     icon: <HeartHandshake className="h-6 w-6" />,
-    accentClass: 'from-emerald-500/20 via-teal-400/10 to-transparent',
+    accentClass: 'from-emerald-200/80 via-teal-100/60 to-transparent',
     iconClass: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
     tagline: 'Satu akun untuk beberapa anak',
   },
@@ -110,7 +110,7 @@ const REGISTER_HUB_OPTIONS: Array<{
     title: 'BKK / Pelamar',
     description: 'Untuk melihat lowongan BKK, melengkapi profil kerja, dan mengirim lamaran.',
     icon: <Briefcase className="h-6 w-6" />,
-    accentClass: 'from-amber-500/20 via-orange-400/10 to-transparent',
+    accentClass: 'from-amber-200/85 via-orange-100/60 to-transparent',
     iconClass: 'bg-amber-100 text-amber-700 ring-amber-200',
     tagline: 'Akun pelamar dan lowongan kerja',
   },
@@ -252,22 +252,23 @@ function AuthCanvas({
   showSupportFooter?: boolean;
 }) {
   return (
-    <div className="auth-font-ui relative min-h-screen overflow-hidden bg-[#071833]">
+    <div className="auth-font-ui relative min-h-screen overflow-hidden bg-[#f5f9ff]">
+      <div className="absolute inset-0 bg-[#f5f9ff]" />
       <div
         className={`absolute inset-0 bg-gradient-to-br ${accentClass}`}
-        style={{ opacity: 0.96 }}
+        style={{ opacity: 1 }}
       />
       <div
         className="absolute inset-0"
         style={{
           backgroundImage:
-            'radial-gradient(circle at 12% 16%, rgba(255,255,255,0.18) 0%, transparent 34%), radial-gradient(circle at 84% 14%, rgba(248,250,252,0.16) 0%, transparent 32%), radial-gradient(circle at 50% 88%, rgba(255,255,255,0.14) 0%, transparent 36%), linear-gradient(135deg, rgba(9,18,39,0.26) 0%, rgba(9,18,39,0.1) 45%, rgba(255,255,255,0.02) 100%)',
+            'radial-gradient(circle at 12% 16%, rgba(47, 93, 168, 0.12) 0%, transparent 34%), radial-gradient(circle at 84% 14%, rgba(231, 199, 104, 0.12) 0%, transparent 32%), radial-gradient(circle at 50% 88%, rgba(46, 156, 140, 0.11) 0%, transparent 36%), linear-gradient(136deg, rgba(255,255,255,0.5) 0%, rgba(238,245,255,0.24) 48%, rgba(242,251,248,0.28) 100%)',
         }}
       />
-      <div className="auth-grid-fade absolute inset-0 opacity-25" />
-      <div className="auth-float-soft absolute -left-16 top-10 h-72 w-72 rounded-full bg-[rgba(165,243,252,0.16)] blur-3xl" />
-      <div className="auth-float-soft-alt absolute right-[-6rem] top-[18%] h-80 w-80 rounded-full bg-[rgba(253,230,138,0.14)] blur-3xl" />
-      <div className="auth-float-soft absolute bottom-[-8rem] left-[28%] h-96 w-96 rounded-full bg-white/10 blur-3xl [animation-delay:-5s]" />
+      <div className="auth-grid-fade absolute inset-0 opacity-12" />
+      <div className="auth-float-soft absolute -left-16 top-10 h-72 w-72 rounded-full bg-[#8eb3e8]/18 blur-3xl" />
+      <div className="auth-float-soft-alt absolute right-[-6rem] top-[18%] h-80 w-80 rounded-full bg-[#c5eadf]/18 blur-3xl" />
+      <div className="auth-float-soft absolute bottom-[-8rem] left-[28%] h-96 w-96 rounded-full bg-[#f2df9d]/18 blur-3xl [animation-delay:-5s]" />
       <div className="pointer-events-none absolute inset-0 select-none">
         <img
           src="/logo_sis_kgb2.png"
@@ -288,6 +289,7 @@ function AuthCanvas({
           className="absolute right-[8%] bottom-[7%] hidden w-28 rotate-[-8deg] object-contain opacity-[0.06] lg:block"
         />
       </div>
+      <div className="absolute inset-0 bg-white/8" />
 
       <div className="relative mx-auto flex min-h-screen w-full max-w-7xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
         <div className="grid w-full items-stretch gap-6 lg:grid-cols-[minmax(320px,0.92fr)_minmax(0,1.18fr)] xl:gap-8">
@@ -296,7 +298,7 @@ function AuthCanvas({
               <div>
                 <Link
                   to="/login"
-                  className="inline-flex items-center gap-2 rounded-full border border-white/55 bg-white/[0.34] px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-white/[0.52]"
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/65 px-4 py-2 text-sm font-medium text-slate-700 shadow-[0_14px_28px_rgba(15,23,42,0.06)] transition hover:bg-white/85"
                 >
                   <ArrowLeft size={16} />
                   Kembali ke Login
@@ -380,7 +382,7 @@ function RegisterHub() {
     <AuthCanvas
       title="Pilih Jalur Pendaftaran"
       subtitle="Silakan pilih jenis akun yang paling sesuai agar proses registrasi langsung mengikuti kebutuhan Anda."
-      accentClass="from-[#123c90] via-[#1f6ea5] to-[#1c998f]"
+      accentClass="from-[#fafdff] via-[#eef5ff] to-[#eef9f7]"
       eyebrow="Registrasi Publik"
       showSupportStats={false}
       showSupportFooter={false}
