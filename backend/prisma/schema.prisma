@@ -34,7 +34,10 @@ model User {
   verificationStatus                                 VerificationStatus                  @default(PENDING)
   appointmentDate                                    DateTime?
   appointmentDecree                                  String?
+  assignmentDate                                     DateTime?
+  assignmentDecree                                   String?
   dusun                                              String?
+  employeeActiveStatus                               String?
   employeeStatus                                     String?
   institution                                        String?
   highestEducation                                   String?
@@ -48,6 +51,7 @@ model User {
   ptkType                                            String?
   province                                           String?
   provinceCode                                       String?
+  salarySource                                       String?
   cityRegency                                        String?
   cityRegencyCode                                    String?
   rt                                                 String?

@@ -132,7 +132,11 @@ const userFormSchema = z.object({
   employeeStatus: z.string().optional().nullable(),
   appointmentDecree: z.string().optional().nullable(),
   appointmentDate: z.string().optional().nullable(),
+  assignmentDecree: z.string().optional().nullable(),
+  assignmentDate: z.string().optional().nullable(),
   institution: z.string().optional().nullable(),
+  employeeActiveStatus: z.string().optional().nullable(),
+  salarySource: z.string().optional().nullable(),
   examinerMajorId: z.number().optional().nullable(),
   childNisns: z.array(z.string()).optional(),
   staffPosition: z.string().optional(),
@@ -252,6 +256,25 @@ const TRANSPORTATION_MODE_OPTIONS = [
   'Antar Jemput',
   'Ojek / Ojol',
   'Perahu Penyeberangan',
+  'Lainnya',
+] as const;
+
+const EMPLOYEE_ACTIVE_STATUS_OPTIONS = [
+  'Aktif',
+  'Cuti',
+  'Tugas Belajar',
+  'Tugas Tambahan',
+  'Nonaktif Sementara',
+] as const;
+
+const SALARY_SOURCE_OPTIONS = [
+  'APBN',
+  'APBD Provinsi',
+  'APBD Kabupaten/Kota',
+  'Yayasan',
+  'BOS',
+  'Mandiri / Honor Sekolah',
+  'Perusahaan / Mitra',
   'Lainnya',
 ] as const;
 
@@ -566,6 +589,8 @@ export const UserProfilePage = () => {
   const watchedPtkType = watch('ptkType');
   const watchedEmployeeStatus = watch('employeeStatus');
   const watchedInstitution = watch('institution');
+  const watchedEmployeeActiveStatus = watch('employeeActiveStatus');
+  const watchedSalarySource = watch('salarySource');
   const watchedStaffPosition = watch('staffPosition');
   const watchedReligion = watch('religion');
   const watchedFamilyStatus = watch('familyStatus');
@@ -598,6 +623,8 @@ export const UserProfilePage = () => {
         { label: 'Pendidikan terakhir', value: watchedHighestEducation },
         { label: 'Jenis PTK / peran', value: watchedPtkType },
         { label: 'Status kepegawaian', value: watchedEmployeeStatus },
+        { label: 'Status keaktifan', value: watchedEmployeeActiveStatus },
+        { label: 'Sumber gaji', value: watchedSalarySource },
         { label: 'Kontak aktif', value: watchedPhone || watchedEmail },
         { label: 'Provinsi', value: watchedProvince },
         { label: 'Kabupaten / Kota', value: watchedCityRegency },
@@ -670,6 +697,7 @@ export const UserProfilePage = () => {
     watchedCityRegency,
     watchedDocuments.length,
     watchedEmail,
+    watchedEmployeeActiveStatus,
     watchedEmployeeStatus,
     watchedHighestEducation,
     watchedFamilyStatus,
@@ -686,6 +714,7 @@ export const UserProfilePage = () => {
     watchedPtkType,
     watchedProvince,
     watchedReligion,
+    watchedSalarySource,
     watchedTransportationMode,
   ]);
 
@@ -825,6 +854,8 @@ export const UserProfilePage = () => {
         photo: user.photo || '',
         examinerMajorId: user.examinerMajor?.id || user.examinerMajorId || null,
         institution: user.institution || '',
+        employeeActiveStatus: user.employeeActiveStatus || '',
+        salarySource: user.salarySource || '',
         
         // Additional fields for Principal
         nik: user.nik || '',
@@ -880,6 +911,8 @@ export const UserProfilePage = () => {
         employeeStatus: user.employeeStatus || '',
         appointmentDecree: user.appointmentDecree || '',
         appointmentDate: user.appointmentDate ? String(user.appointmentDate).slice(0, 10) : '',
+        assignmentDecree: user.assignmentDecree || '',
+        assignmentDate: user.assignmentDate ? String(user.assignmentDate).slice(0, 10) : '',
         
         // Staff Position logic
         staffPosition: '',
@@ -2208,6 +2241,40 @@ export const UserProfilePage = () => {
                     />
                   </div>
                   <div>
+                    <label htmlFor="employeeActiveStatus" className="block text-sm font-medium text-gray-700 mb-1">
+                      Status Keaktifan
+                    </label>
+                    <select
+                      id="employeeActiveStatus"
+                      {...register('employeeActiveStatus')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Pilih status keaktifan</option>
+                      {EMPLOYEE_ACTIVE_STATUS_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="salarySource" className="block text-sm font-medium text-gray-700 mb-1">
+                      Sumber Gaji
+                    </label>
+                    <select
+                      id="salarySource"
+                      {...register('salarySource')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Pilih sumber gaji</option>
+                      {SALARY_SOURCE_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
                     <label htmlFor="highestEducation" className="block text-sm font-medium text-gray-700 mb-1">Pendidikan Terakhir</label>
                     <select
                       id="highestEducation"
@@ -2265,6 +2332,29 @@ export const UserProfilePage = () => {
                           ? 'Nama perusahaan atau lembaga asal'
                           : 'Contoh: Yayasan / Pemerintah Daerah'
                       }
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="assignmentDecree" className="block text-sm font-medium text-gray-700 mb-1">
+                      {fixedRole === 'EXAMINER' ? 'Surat Tugas / SK Penugasan' : 'SK Penugasan'}
+                    </label>
+                    <input
+                      id="assignmentDecree"
+                      {...register('assignmentDecree')}
+                      autoComplete="off"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="assignmentDate" className="block text-sm font-medium text-gray-700 mb-1">
+                      {fixedRole === 'EXAMINER' ? 'Mulai Penugasan' : 'TMT Penugasan'}
+                    </label>
+                    <input
+                      id="assignmentDate"
+                      type="date"
+                      {...register('assignmentDate')}
+                      autoComplete="off"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
                   <div className="md:col-span-2">

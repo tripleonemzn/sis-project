@@ -94,7 +94,11 @@ const createUserSchema = z.object({
   employeeStatus: z.string().optional().nullable(),
   appointmentDecree: z.string().optional().nullable(),
   appointmentDate: dateSchema,
+  assignmentDecree: z.string().optional().nullable(),
+  assignmentDate: dateSchema,
   institution: z.string().optional().nullable(),
+  employeeActiveStatus: z.string().optional().nullable(),
+  salarySource: z.string().optional().nullable(),
   classId: z.number().optional().nullable(),
   documents: z.array(z.object({
     title: z.string(),
@@ -174,7 +178,11 @@ const updateUserSchema = z.object({
   employeeStatus: z.string().optional().nullable(),
   appointmentDecree: z.string().optional().nullable(),
   appointmentDate: dateSchema,
+  assignmentDecree: z.string().optional().nullable(),
+  assignmentDate: dateSchema,
   institution: z.string().optional().nullable(),
+  employeeActiveStatus: z.string().optional().nullable(),
+  salarySource: z.string().optional().nullable(),
   classId: z.number().optional().nullable(),
 
   // Documents (URLs and names)
@@ -361,7 +369,11 @@ export const getUsers = asyncHandler(async (req: Request, res: Response) => {
       employeeStatus: true,
       appointmentDecree: true,
       appointmentDate: true,
+      assignmentDecree: true,
+      assignmentDate: true,
       institution: true,
+      employeeActiveStatus: true,
+      salarySource: true,
       classId: true,
       studentClass: {
         select: {

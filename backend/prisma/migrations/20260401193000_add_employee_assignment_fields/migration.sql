@@ -1,0 +1,5 @@
+ALTER TABLE "users"
+ADD COLUMN IF NOT EXISTS "assignmentDate" TIMESTAMP(3),
+ADD COLUMN IF NOT EXISTS "assignmentDecree" TEXT,
+ADD COLUMN IF NOT EXISTS "employeeActiveStatus" TEXT,
+ADD COLUMN IF NOT EXISTS "salarySource" TEXT;

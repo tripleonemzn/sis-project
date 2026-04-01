@@ -56,7 +56,11 @@ export interface User {
   employeeStatus?: string | null;
   appointmentDecree?: string | null;
   appointmentDate?: string | null;
+  assignmentDecree?: string | null;
+  assignmentDate?: string | null;
   institution?: string | null;
+  employeeActiveStatus?: string | null;
+  salarySource?: string | null;
 
   // Student Class
   classId?: number | null;
