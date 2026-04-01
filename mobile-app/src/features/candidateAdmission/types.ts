@@ -250,6 +250,37 @@ export type MobileCandidateAdmissionDetail = {
   canSubmit: boolean;
   canPublishDecision: boolean;
   canPromoteToStudent: boolean;
+  officialStudentAccount?: {
+    userId: number;
+    username: string;
+    nis?: string | null;
+    nisn?: string | null;
+    studentStatus?: 'ACTIVE' | 'GRADUATED' | 'MOVED' | 'DROPPED_OUT' | null;
+    currentAcademicYear?: {
+      id: number;
+      name: string;
+      isActive: boolean;
+    } | null;
+    currentMembership?: {
+      id: number;
+      academicYearId: number;
+      classId?: number | null;
+      status: string;
+      isCurrent: boolean;
+      startedAt?: string | null;
+      endedAt?: string | null;
+    } | null;
+    currentClass?: {
+      id: number;
+      name: string;
+      level?: string | null;
+      major?: {
+        id: number;
+        name: string;
+        code: string;
+      } | null;
+    } | null;
+  } | null;
   accountVerificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
   resolvedParentName?: string | null;
   resolvedParentPhone?: string | null;
@@ -264,6 +295,7 @@ export type MobileCandidateAdmissionDetail = {
     id: number;
     name: string;
     username: string;
+    nis?: string | null;
     nisn?: string | null;
     phone?: string | null;
     email?: string | null;

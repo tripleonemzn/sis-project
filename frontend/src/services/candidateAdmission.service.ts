@@ -166,6 +166,7 @@ export interface CandidateAdmissionUserSnapshot {
   id: number;
   name: string;
   username: string;
+  nis?: string | null;
   nisn?: string | null;
   phone?: string | null;
   email?: string | null;
@@ -181,6 +182,38 @@ export interface CandidateAdmissionUserSnapshot {
   verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
   role: string;
   documents: CandidateAdmissionDocument[];
+}
+
+export interface CandidateAdmissionOfficialStudentAccount {
+  userId: number;
+  username: string;
+  nis?: string | null;
+  nisn?: string | null;
+  studentStatus?: 'ACTIVE' | 'GRADUATED' | 'MOVED' | 'DROPPED_OUT' | null;
+  currentAcademicYear?: {
+    id: number;
+    name: string;
+    isActive: boolean;
+  } | null;
+  currentMembership?: {
+    id: number;
+    academicYearId: number;
+    classId?: number | null;
+    status: string;
+    isCurrent: boolean;
+    startedAt?: string | null;
+    endedAt?: string | null;
+  } | null;
+  currentClass?: {
+    id: number;
+    name: string;
+    level?: string | null;
+    major?: {
+      id: number;
+      name: string;
+      code: string;
+    } | null;
+  } | null;
 }
 
 export interface CandidateAdmissionCompleteness {
@@ -254,6 +287,7 @@ export interface CandidateAdmissionDetail {
   canSubmit: boolean;
   canPublishDecision: boolean;
   canPromoteToStudent: boolean;
+  officialStudentAccount?: CandidateAdmissionOfficialStudentAccount | null;
   accountVerificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
   resolvedParentName?: string | null;
   resolvedParentPhone?: string | null;

@@ -7,6 +7,7 @@ import { generateToken } from '../middleware/auth';
 import { z } from 'zod';
 import { getNisnValidationMessage, normalizeNisnInput } from '../utils/nisn';
 import { sendWebmailMessage } from '../services/webmailMailbox.service';
+import { activateCandidateAsOfficialStudent } from '../services/candidateStudentActivation.service';
 import {
   CandidateAdmissionStatus,
   Role,
@@ -887,36 +888,26 @@ export const adminAcceptCalonSiswa = asyncHandler(async (req: Request, res: Resp
     throw new ApiError(400, 'Pengguna bukan CALON_SISWA');
   }
 
-  const acceptedAt = new Date();
-  const updated = await prisma.$transaction(async (tx) => {
-    const updatedUser = await tx.user.update({
-      where: { id: userId },
-      data: {
-        role: Role.STUDENT,
-        studentStatus: undefined,
-        verificationStatus: VerificationStatus.VERIFIED,
-      },
-    });
-
-    await tx.candidateAdmission.upsert({
-      where: { userId },
-      create: {
-        userId,
-        registrationNumber: buildCandidateRegistrationNumber(userId, user.createdAt),
-        status: CandidateAdmissionStatus.ACCEPTED,
-        reviewedAt: acceptedAt,
-        acceptedAt,
-      },
-      update: {
-        status: CandidateAdmissionStatus.ACCEPTED,
-        reviewedAt: acceptedAt,
-        acceptedAt,
-      },
-    });
-
-    return updatedUser;
+  await prisma.candidateAdmission.upsert({
+    where: { userId },
+    create: {
+      userId,
+      registrationNumber: buildCandidateRegistrationNumber(userId, user.createdAt),
+      status: CandidateAdmissionStatus.ACCEPTED,
+      reviewedAt: new Date(),
+      acceptedAt: new Date(),
+    },
+    update: {
+      status: CandidateAdmissionStatus.ACCEPTED,
+      reviewedAt: new Date(),
+      acceptedAt: new Date(),
+    },
   });
 
+  await activateCandidateAsOfficialStudent({ userId });
+
+  const updated = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+
   const { password, ...userWithoutPassword } = updated;
-  res.status(200).json(new ApiResponse(200, userWithoutPassword, 'Calon siswa diterima sebagai Siswa'));
+  res.status(200).json(new ApiResponse(200, userWithoutPassword, 'Calon siswa diterima sebagai siswa resmi'));
 });

@@ -5,7 +5,6 @@ import {
   Prisma,
   Role,
   SelectionAssessmentSource,
-  VerificationStatus,
 } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
@@ -14,6 +13,7 @@ import {
   generateOfficeLetterNumber,
   resolveOfficeLetterTitle,
 } from '../utils/officeLetters';
+import { activateCandidateAsOfficialStudent } from '../services/candidateStudentActivation.service';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
@@ -162,6 +162,7 @@ const candidateAdmissionSelect = Prisma.validator<Prisma.CandidateAdmissionDefau
         id: true,
         name: true,
         username: true,
+        nis: true,
         nisn: true,
         phone: true,
         email: true,
@@ -174,8 +175,64 @@ const candidateAdmissionSelect = Prisma.validator<Prisma.CandidateAdmissionDefau
         motherName: true,
         guardianName: true,
         guardianPhone: true,
+        studentStatus: true,
         verificationStatus: true,
         role: true,
+        studentClass: {
+          select: {
+            id: true,
+            name: true,
+            level: true,
+            major: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+              },
+            },
+          },
+        },
+        academicMemberships: {
+          where: {
+            isCurrent: true,
+          },
+          orderBy: {
+            academicYear: {
+              semester1Start: 'desc',
+            },
+          },
+          take: 1,
+          select: {
+            id: true,
+            academicYearId: true,
+            classId: true,
+            status: true,
+            isCurrent: true,
+            startedAt: true,
+            endedAt: true,
+            academicYear: {
+              select: {
+                id: true,
+                name: true,
+                isActive: true,
+              },
+            },
+            class: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+                major: {
+                  select: {
+                    id: true,
+                    name: true,
+                    code: true,
+                  },
+                },
+              },
+            },
+          },
+        },
         documents: {
           select: {
             id: true,
@@ -971,6 +1028,30 @@ function serializeCandidateAdmission(
     record.user.motherName ||
     null;
   const resolvedParentPhone = record.parentPhone || record.user.guardianPhone || null;
+  const currentMembership = record.user.academicMemberships[0] || null;
+  const officialStudentAccount =
+    record.user.role === Role.STUDENT
+      ? {
+          userId: record.user.id,
+          username: record.user.username,
+          nis: record.user.nis,
+          nisn: record.user.nisn,
+          studentStatus: record.user.studentStatus,
+          currentAcademicYear: currentMembership?.academicYear || null,
+          currentMembership: currentMembership
+            ? {
+                id: currentMembership.id,
+                academicYearId: currentMembership.academicYearId,
+                classId: currentMembership.classId,
+                status: currentMembership.status,
+                isCurrent: currentMembership.isCurrent,
+                startedAt: currentMembership.startedAt,
+                endedAt: currentMembership.endedAt,
+              }
+            : null,
+          currentClass: currentMembership?.class || record.user.studentClass || null,
+        }
+      : null;
 
   return {
     id: record.id,
@@ -1008,11 +1089,13 @@ function serializeCandidateAdmission(
     canPublishDecision: decisionAnnouncement.isEligibleStatus,
     canPromoteToStudent:
       record.status === CandidateAdmissionStatus.ACCEPTED && record.user.role === Role.CALON_SISWA,
+    officialStudentAccount,
     accountVerificationStatus: record.user.verificationStatus,
     user: {
       id: record.user.id,
       name: record.user.name,
       username: record.user.username,
+      nis: record.user.nis,
       nisn: record.user.nisn,
       phone: record.user.phone,
       email: record.user.email,
@@ -1940,23 +2023,9 @@ export const acceptCandidateAdmissionAsStudent = asyncHandler(async (req: Reques
     throw new ApiError(400, 'Setujui status pendaftaran menjadi ACCEPTED sebelum mempromosikan menjadi siswa.');
   }
 
-  const acceptedAt = new Date();
-  await prisma.$transaction(async (tx) => {
-    await tx.user.update({
-      where: { id: existing.userId },
-      data: {
-        role: Role.STUDENT,
-        verificationStatus: VerificationStatus.VERIFIED,
-      },
-    });
-    await tx.candidateAdmission.update({
-      where: { id },
-      data: {
-        status: CandidateAdmissionStatus.ACCEPTED,
-        reviewedAt: acceptedAt,
-        acceptedAt,
-      },
-    });
+  await activateCandidateAsOfficialStudent({
+    userId: existing.userId,
+    candidateAdmissionId: id,
   });
 
   const refreshed = await prisma.candidateAdmission.findUnique({

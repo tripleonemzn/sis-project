@@ -233,7 +233,7 @@ export const CandidateAdmissionReviewPage = () => {
       return candidateAdmissionService.acceptAsStudent(selectedId);
     },
     onSuccess: async () => {
-      toast.success('Calon siswa berhasil dipromosikan menjadi siswa');
+      toast.success('Calon siswa berhasil diaktifkan menjadi akun siswa resmi');
       await queryClient.invalidateQueries({ queryKey: ADMIN_CANDIDATE_ADMISSION_QUERY_KEY });
       await queryClient.invalidateQueries({ queryKey: ['admin-candidate-admission-detail', selectedId] });
       await queryClient.invalidateQueries({ queryKey: ['users', 'verification'] });
@@ -279,7 +279,7 @@ export const CandidateAdmissionReviewPage = () => {
           <h1 className="text-2xl font-bold text-gray-900">PPDB Calon Siswa</h1>
           <p className="text-gray-500">
             Admin dapat mereview formulir calon siswa, memberi catatan perbaikan, dan mempromosikan yang sudah
-            diterima menjadi siswa aktif.
+            diterima menjadi akun siswa resmi.
           </p>
         </div>
       </div>
@@ -961,7 +961,11 @@ export const CandidateAdmissionReviewPage = () => {
                     className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
                   >
                     <UserCheck size={16} />
-                    {acceptMutation.isPending ? 'Memproses...' : 'Terima Menjadi Siswa'}
+                    {acceptMutation.isPending
+                      ? 'Memproses...'
+                      : detail.officialStudentAccount
+                        ? 'Sudah Menjadi Siswa Resmi'
+                        : 'Aktifkan Akun Siswa Resmi'}
                   </button>
                 </div>
               </div>
@@ -977,6 +981,43 @@ export const CandidateAdmissionReviewPage = () => {
                   <span className="font-semibold text-slate-900">Diterima:</span> {formatCandidateDateTime(detail.acceptedAt)}
                 </div>
               </div>
+
+              {detail.officialStudentAccount ? (
+                <div className="grid gap-3 rounded-3xl border border-emerald-200 bg-emerald-50 p-4">
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-900">Akun Siswa Resmi</p>
+                    <p className="mt-1 text-sm text-emerald-700">
+                      Calon siswa ini sudah terintegrasi ke akun siswa resmi dan siap mengikuti alur siswa aktif.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="text-sm text-emerald-800">
+                      <span className="font-semibold text-emerald-950">Username:</span>{' '}
+                      {detail.officialStudentAccount.username || '-'}
+                    </div>
+                    <div className="text-sm text-emerald-800">
+                      <span className="font-semibold text-emerald-950">NIS:</span>{' '}
+                      {detail.officialStudentAccount.nis || '-'}
+                    </div>
+                    <div className="text-sm text-emerald-800">
+                      <span className="font-semibold text-emerald-950">NISN:</span>{' '}
+                      {detail.officialStudentAccount.nisn || '-'}
+                    </div>
+                    <div className="text-sm text-emerald-800">
+                      <span className="font-semibold text-emerald-950">Status Siswa:</span>{' '}
+                      {detail.officialStudentAccount.studentStatus || '-'}
+                    </div>
+                    <div className="text-sm text-emerald-800">
+                      <span className="font-semibold text-emerald-950">Tahun Akademik Aktif:</span>{' '}
+                      {detail.officialStudentAccount.currentAcademicYear?.name || 'Belum ada'}
+                    </div>
+                    <div className="text-sm text-emerald-800">
+                      <span className="font-semibold text-emerald-950">Kelas Aktif:</span>{' '}
+                      {detail.officialStudentAccount.currentClass?.name || 'Belum ditempatkan'}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
                   </>
                 );
               })()}

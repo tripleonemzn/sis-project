@@ -555,7 +555,7 @@ export default function AdminCandidateAdmissionsScreen() {
       return adminApi.acceptCandidateAdmissionAsStudent(selectedId);
     },
     onSuccess: async () => {
-      notifySuccess('Calon siswa berhasil dipromosikan menjadi siswa aktif.');
+      notifySuccess('Calon siswa berhasil diaktifkan menjadi akun siswa resmi.');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['mobile-admin-candidate-admissions'] }),
         queryClient.invalidateQueries({ queryKey: ['mobile-admin-candidate-admission-detail', selectedId] }),
@@ -594,7 +594,7 @@ export default function AdminCandidateAdmissionsScreen() {
     >
       <SectionCard
         title="PPDB Calon Siswa"
-        helper="Review formulir calon siswa, cek kelengkapan, isi board penilaian, publikasi hasil, dan promosikan yang diterima menjadi siswa aktif."
+        helper="Review formulir calon siswa, cek kelengkapan, isi board penilaian, publikasi hasil, dan aktifkan yang diterima menjadi akun siswa resmi."
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <View
@@ -1367,7 +1367,7 @@ export default function AdminCandidateAdmissionsScreen() {
                 onPress={() =>
                   Alert.alert(
                     'Terima Menjadi Siswa',
-                    'Calon siswa ini akan dipromosikan menjadi siswa aktif. Lanjutkan?',
+                    'Calon siswa ini akan diaktifkan menjadi akun siswa resmi. Lanjutkan?',
                     [
                       { text: 'Batal', style: 'cancel' },
                       {
@@ -1388,7 +1388,11 @@ export default function AdminCandidateAdmissionsScreen() {
                 }}
               >
                 <Text style={{ color: '#fff', fontWeight: '800' }}>
-                  {acceptMutation.isPending ? 'Memproses...' : 'Terima Menjadi Siswa'}
+                  {acceptMutation.isPending
+                    ? 'Memproses...'
+                    : detail.officialStudentAccount
+                      ? 'Sudah Menjadi Siswa Resmi'
+                      : 'Aktifkan Akun Siswa Resmi'}
                 </Text>
               </Pressable>
             </View>
@@ -1403,6 +1407,32 @@ export default function AdminCandidateAdmissionsScreen() {
               Diterima: {formatDateTime(detail.acceptedAt)}
             </Text>
           </SectionCard>
+
+          {detail.officialStudentAccount ? (
+            <SectionCard title="Akun Siswa Resmi">
+              <Text style={{ color: BRAND_COLORS.textDark }}>
+                Calon siswa ini sudah terintegrasi ke akun siswa resmi dan siap mengikuti alur siswa aktif.
+              </Text>
+              <Text style={{ color: BRAND_COLORS.textDark, marginTop: 10 }}>
+                Username: {detail.officialStudentAccount.username || '-'}
+              </Text>
+              <Text style={{ color: BRAND_COLORS.textDark, marginTop: 6 }}>
+                NIS: {detail.officialStudentAccount.nis || '-'}
+              </Text>
+              <Text style={{ color: BRAND_COLORS.textDark, marginTop: 6 }}>
+                NISN: {detail.officialStudentAccount.nisn || '-'}
+              </Text>
+              <Text style={{ color: BRAND_COLORS.textDark, marginTop: 6 }}>
+                Status Siswa: {detail.officialStudentAccount.studentStatus || '-'}
+              </Text>
+              <Text style={{ color: BRAND_COLORS.textDark, marginTop: 6 }}>
+                Tahun Akademik Aktif: {detail.officialStudentAccount.currentAcademicYear?.name || 'Belum ada'}
+              </Text>
+              <Text style={{ color: BRAND_COLORS.textDark, marginTop: 6 }}>
+                Kelas Aktif: {detail.officialStudentAccount.currentClass?.name || 'Belum ditempatkan'}
+              </Text>
+            </SectionCard>
+          ) : null}
         </>
       )}
     </ScrollView>
