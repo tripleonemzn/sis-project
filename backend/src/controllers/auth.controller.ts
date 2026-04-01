@@ -6,6 +6,7 @@ import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { generateToken } from '../middleware/auth';
 import { z } from 'zod';
 import { getNisnValidationMessage, normalizeNisnInput } from '../utils/nisn';
+import { sendWebmailMessage } from '../services/webmailMailbox.service';
 import {
   CandidateAdmissionStatus,
   Role,
@@ -27,6 +28,10 @@ const loginSchema = z.object({
 
 const SELF_SERVICE_PUBLIC_ROLES = new Set<Role>([Role.PARENT, Role.CALON_SISWA, Role.UMUM]);
 const PASSWORD_RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
+const PASSWORD_RESET_REQUEST_COOLDOWN_MS = 60 * 1000;
+const PASSWORD_RESET_SUCCESS_MESSAGE =
+  'Jika data akun cocok, link reset password sudah dikirim ke email terdaftar. Periksa inbox atau folder spam.';
+const passwordResetRequestCooldown = new Map<string, number>();
 
 const optionalEmailSchema = z
   .string()
@@ -106,6 +111,170 @@ function maskContactValue(value?: string | null): string | null {
   if (!digits) return null;
   if (digits.length <= 4) return `${digits.slice(0, 1)}***`;
   return `${digits.slice(0, 2)}****${digits.slice(-2)}`;
+}
+
+function escapeHtml(value: string): string {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getFirstHeaderValue(value: string | string[] | undefined): string {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  return String(rawValue || '')
+    .split(',')
+    .map((item) => item.trim())
+    .find((item) => item.length > 0) || '';
+}
+
+function resolvePublicAppBaseUrl(req: Request): string {
+  const configuredBaseUrl = String(
+    process.env.APP_BASE_URL || process.env.PUBLIC_APP_URL || process.env.FRONTEND_BASE_URL || '',
+  ).trim();
+
+  if (configuredBaseUrl) {
+    const normalized =
+      /^https?:\/\//i.test(configuredBaseUrl) ? configuredBaseUrl : `https://${configuredBaseUrl}`;
+    return normalized.replace(/\/+$/, '');
+  }
+
+  const forwardedProto = getFirstHeaderValue(req.headers['x-forwarded-proto']);
+  const forwardedHost = getFirstHeaderValue(req.headers['x-forwarded-host']);
+  const host = forwardedHost || getFirstHeaderValue(req.headers.host);
+  if (host) {
+    const protocol = forwardedProto || req.protocol || 'https';
+    return `${protocol}://${host}`.replace(/\/+$/, '');
+  }
+
+  return 'https://siskgb2.id';
+}
+
+function resolvePasswordResetSenderMailbox(): string {
+  const configuredSender = String(
+    process.env.AUTH_RESET_SENDER_MAILBOX || process.env.WEBMAIL_FORCE_MAILBOX || '',
+  )
+    .trim()
+    .toLowerCase();
+  if (configuredSender) return configuredSender;
+
+  const defaultDomain = String(process.env.WEBMAIL_DEFAULT_DOMAIN || 'siskgb2.id')
+    .trim()
+    .toLowerCase();
+  return `info@${defaultDomain || 'siskgb2.id'}`;
+}
+
+function resolvePasswordResetSenderName(): string {
+  return String(process.env.AUTH_RESET_SENDER_NAME || 'Sistem Integrasi Sekolah').trim();
+}
+
+function buildPasswordResetLink(req: Request, token: string): string {
+  const url = new URL('/login', resolvePublicAppBaseUrl(req));
+  url.searchParams.set('resetToken', token);
+  return url.toString();
+}
+
+function formatPasswordResetExpiry(expiresAt: Date): string {
+  return new Intl.DateTimeFormat('id-ID', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Asia/Jakarta',
+  }).format(expiresAt);
+}
+
+function buildPasswordResetEmailContent(params: {
+  name: string;
+  resetLink: string;
+  expiresAt: Date;
+}) {
+  const safeName = params.name.trim() || 'Pengguna';
+  const formattedExpiry = formatPasswordResetExpiry(params.expiresAt);
+  const subject = 'Reset password akun SIS KGB2';
+  const plainText = [
+    `Halo ${safeName},`,
+    '',
+    'Kami menerima permintaan reset password untuk akun Sistem Integrasi Sekolah.',
+    `Link berikut berlaku sampai ${formattedExpiry} WIB:`,
+    params.resetLink,
+    '',
+    'Jika Anda tidak merasa meminta reset password, abaikan email ini. Password lama Anda tidak akan berubah sampai Anda menyimpan password baru melalui link di atas.',
+    '',
+    'Salam,',
+    'Tim Sistem Integrasi Sekolah',
+  ].join('\n');
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;background:#f4f8ff;padding:32px 16px;color:#0f172a;">
+      <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid rgba(148,163,184,0.22);border-radius:24px;overflow:hidden;box-shadow:0 20px 45px rgba(15,23,42,0.08);">
+        <div style="padding:28px 28px 20px;background:linear-gradient(135deg,#173a88 0%,#2b5fad 55%,#1e8da4 100%);color:#ffffff;">
+          <p style="margin:0;font-size:12px;letter-spacing:0.24em;text-transform:uppercase;opacity:0.8;">Pemulihan Akun</p>
+          <h1 style="margin:12px 0 0;font-size:28px;line-height:1.25;">Reset password SIS KGB2</h1>
+        </div>
+        <div style="padding:28px;">
+          <p style="margin:0 0 14px;font-size:15px;line-height:1.7;">Halo ${escapeHtml(safeName)},</p>
+          <p style="margin:0 0 14px;font-size:15px;line-height:1.7;">
+            Kami menerima permintaan reset password untuk akun Sistem Integrasi Sekolah. Klik tombol di bawah ini untuk membuat password baru.
+          </p>
+          <div style="margin:24px 0;">
+            <a href="${escapeHtml(params.resetLink)}" style="display:inline-block;background:#173a88;color:#ffffff;text-decoration:none;font-weight:700;padding:14px 22px;border-radius:14px;">
+              Buka halaman reset password
+            </a>
+          </div>
+          <p style="margin:0 0 10px;font-size:14px;line-height:1.7;color:#475569;">
+            Link ini berlaku sampai <strong>${escapeHtml(formattedExpiry)} WIB</strong>.
+          </p>
+          <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#475569;">
+            Jika tombol tidak bisa dibuka, salin link berikut ke browser:
+          </p>
+          <p style="margin:0 0 18px;padding:14px;border-radius:14px;background:#eff6ff;font-size:13px;line-height:1.7;word-break:break-all;color:#1e3a8a;">
+            ${escapeHtml(params.resetLink)}
+          </p>
+          <p style="margin:0;font-size:14px;line-height:1.7;color:#64748b;">
+            Jika Anda tidak meminta reset password, abaikan email ini. Password lama Anda tidak akan berubah tanpa tindakan lanjutan.
+          </p>
+        </div>
+      </div>
+    </div>
+  `.trim();
+
+  return {
+    subject,
+    plainText,
+    html,
+  };
+}
+
+function pruneExpiredPasswordResetCooldowns(now = Date.now()) {
+  passwordResetRequestCooldown.forEach((expiresAt, key) => {
+    if (expiresAt <= now) {
+      passwordResetRequestCooldown.delete(key);
+    }
+  });
+}
+
+function getPasswordResetCooldownKey(req: Request, username: string, email: string): string {
+  const forwardedFor = getFirstHeaderValue(req.headers['x-forwarded-for']);
+  const ipAddress = forwardedFor || String(req.ip || '').trim() || 'unknown';
+  return [
+    String(username || '').trim().toLowerCase(),
+    normalizeEmailComparisonValue(email),
+    ipAddress,
+  ].join('|');
+}
+
+function reservePasswordResetRequest(req: Request, username: string, email: string) {
+  const now = Date.now();
+  pruneExpiredPasswordResetCooldowns(now);
+
+  const key = getPasswordResetCooldownKey(req, username, email);
+  const expiresAt = passwordResetRequestCooldown.get(key) || 0;
+  if (expiresAt > now) {
+    const waitSeconds = Math.max(1, Math.ceil((expiresAt - now) / 1000));
+    throw new ApiError(429, `Tunggu ${waitSeconds} detik sebelum meminta link reset lagi.`);
+  }
+
+  passwordResetRequestCooldown.set(key, now + PASSWORD_RESET_REQUEST_COOLDOWN_MS);
 }
 
 function buildCandidateRegistrationNumber(userId: number, createdAt = new Date()): string {
@@ -374,17 +543,14 @@ export const getMe = asyncHandler(async (req: any, res: Response) => {
   res.status(200).json(new ApiResponse(200, responseUser, 'Profil pengguna berhasil diambil'));
 });
 
-const forgotPasswordVerifySchema = z
-  .object({
-    username: z.string().min(1, 'Username wajib diisi'),
-    name: z.string().min(1, 'Nama wajib diisi'),
-    email: optionalEmailSchema,
-    phone: optionalPhoneSchema,
-  })
-  .refine((data) => Boolean(data.email || data.phone), {
-    message: 'Isi email atau nomor HP yang terdaftar',
-    path: ['email'],
-  });
+const forgotPasswordRequestSchema = z.object({
+  username: z.string().trim().min(1, 'Username wajib diisi'),
+  email: z.string().trim().email('Format email tidak valid'),
+});
+
+const forgotPasswordValidateSchema = z.object({
+  token: z.string().trim().min(16, 'Link reset password tidak valid'),
+});
 
 const forgotPasswordResetSchema = z
   .object({
@@ -397,49 +563,40 @@ const forgotPasswordResetSchema = z
     path: ['confirmPassword'],
   });
 
-export const verifyForgotPasswordIdentity = asyncHandler(async (req: Request, res: Response) => {
-  const body = forgotPasswordVerifySchema.parse(req.body);
-  const failureMessage =
-    'Data verifikasi tidak cocok. Pastikan username, nama lengkap, dan kontak sesuai akun.';
+export const requestForgotPasswordReset = asyncHandler(async (req: Request, res: Response) => {
+  const body = forgotPasswordRequestSchema.parse(req.body);
+  reservePasswordResetRequest(req, body.username, body.email);
+
+  const genericPayload = {
+    contactHint: maskContactValue(body.email),
+    channel: 'EMAIL' as const,
+  };
 
   const user = await prisma.user.findUnique({
-    where: { username: body.username.trim() },
+    where: { username: body.username },
     select: {
       id: true,
       name: true,
       email: true,
-      phone: true,
     },
   });
 
-  if (!user) {
-    throw new ApiError(400, failureMessage);
-  }
-
-  const storedEmail = normalizeEmailComparisonValue(user.email);
-  const storedPhone = normalizePhoneComparisonValue(user.phone);
-  if (!storedEmail && !storedPhone) {
-    throw new ApiError(
-      400,
-      'Akun ini belum memiliki email atau nomor HP pemulihan. Silakan hubungi admin.',
-    );
-  }
-
-  const nameMatches =
-    normalizeNameComparisonValue(user.name) === normalizeNameComparisonValue(body.name);
-  const emailMatches =
-    storedEmail.length > 0 &&
-    storedEmail === normalizeEmailComparisonValue(body.email);
-  const phoneMatches =
-    storedPhone.length > 0 &&
-    storedPhone === normalizePhoneComparisonValue(body.phone);
-
-  if (!nameMatches || (!emailMatches && !phoneMatches)) {
-    throw new ApiError(400, failureMessage);
+  const normalizedInputEmail = normalizeEmailComparisonValue(body.email);
+  const storedEmail = normalizeEmailComparisonValue(user?.email);
+  if (!user || !storedEmail || storedEmail !== normalizedInputEmail) {
+    return res
+      .status(200)
+      .json(new ApiResponse(200, genericPayload, PASSWORD_RESET_SUCCESS_MESSAGE));
   }
 
   const resetToken = crypto.randomBytes(24).toString('hex');
   const expiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS);
+  const resetLink = buildPasswordResetLink(req, resetToken);
+  const mailContent = buildPasswordResetEmailContent({
+    name: user.name,
+    resetLink,
+    expiresAt,
+  });
 
   await prisma.user.update({
     where: { id: user.id },
@@ -449,23 +606,73 @@ export const verifyForgotPasswordIdentity = asyncHandler(async (req: Request, re
     },
   });
 
-  const channel = emailMatches ? 'EMAIL' : phoneMatches ? 'PHONE' : 'CONTACT';
-  const contactHint = emailMatches
-    ? maskContactValue(user.email)
-    : phoneMatches
-      ? maskContactValue(user.phone)
-      : maskContactValue(user.email || user.phone);
+  try {
+    await sendWebmailMessage({
+      mailboxIdentity: resolvePasswordResetSenderMailbox(),
+      fromName: resolvePasswordResetSenderName(),
+      to: [storedEmail],
+      subject: mailContent.subject,
+      plainText: mailContent.plainText,
+      html: mailContent.html,
+    });
+  } catch (error) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        verificationCode: null,
+        verificationExpires: null,
+      },
+    });
+    console.error('[FORGOT_PASSWORD_EMAIL_ERROR]', error);
+    throw new ApiError(
+      500,
+      'Sistem belum bisa mengirim email reset password. Coba lagi beberapa saat lagi.',
+    );
+  }
 
   res.status(200).json(
     new ApiResponse(
       200,
       {
-        resetToken,
-        expiresAt: expiresAt.toISOString(),
-        contactHint,
-        channel,
+        contactHint: maskContactValue(storedEmail),
+        channel: 'EMAIL',
       },
-      'Identitas akun berhasil diverifikasi. Silakan buat password baru.',
+      PASSWORD_RESET_SUCCESS_MESSAGE,
+    ),
+  );
+});
+
+export const validateForgotPasswordToken = asyncHandler(async (req: Request, res: Response) => {
+  const parsed = forgotPasswordValidateSchema.parse({
+    token: req.query.token ?? req.body?.token,
+  });
+
+  const user = await prisma.user.findFirst({
+    where: {
+      verificationCode: hashVerificationToken(parsed.token),
+      verificationExpires: {
+        gt: new Date(),
+      },
+    },
+    select: {
+      email: true,
+      verificationExpires: true,
+    },
+  });
+
+  if (!user || !user.verificationExpires) {
+    throw new ApiError(400, 'Link reset password tidak valid atau sudah kedaluwarsa.');
+  }
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        expiresAt: user.verificationExpires.toISOString(),
+        contactHint: maskContactValue(user.email),
+        channel: 'EMAIL',
+      },
+      'Link reset password valid.',
     ),
   );
 });

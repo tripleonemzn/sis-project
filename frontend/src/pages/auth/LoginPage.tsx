@@ -5,8 +5,8 @@ import { useForm } from 'react-hook-form';
 import { useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Apple, Eye, EyeOff, KeyRound, Loader2, Lock, Mail, Phone, ShieldCheck, User, X } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Apple, Eye, EyeOff, KeyRound, Loader2, Lock, Mail, ShieldCheck, User, X } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { authService } from '../../services/auth.service';
 import api from '../../services/api';
@@ -16,17 +16,10 @@ const schema = z.object({
   password: z.string().min(1, 'Password wajib diisi'),
 });
 
-const forgotPasswordVerifySchema = z
-  .object({
-    username: z.string().min(1, 'Username wajib diisi'),
-    name: z.string().min(1, 'Nama lengkap wajib diisi'),
-    email: z.string().email('Format email tidak valid').or(z.literal('')),
-    phone: z.string(),
-  })
-  .refine((values) => values.email.trim().length > 0 || values.phone.trim().length > 0, {
-    message: 'Isi email atau nomor HP yang terdaftar',
-    path: ['email'],
-  });
+const forgotPasswordRequestSchema = z.object({
+  username: z.string().min(1, 'Username wajib diisi'),
+  email: z.string().email('Masukkan email akun yang valid'),
+});
 
 const forgotPasswordResetSchema = z
   .object({
@@ -39,7 +32,7 @@ const forgotPasswordResetSchema = z
   });
 
 type FormValues = z.infer<typeof schema>;
-type ForgotPasswordVerifyValues = z.infer<typeof forgotPasswordVerifySchema>;
+type ForgotPasswordRequestValues = z.infer<typeof forgotPasswordRequestSchema>;
 type ForgotPasswordResetValues = z.infer<typeof forgotPasswordResetSchema>;
 type SisWindowWithSlideshow = Window & {
   __SIS_SLIDESHOW_SETTINGS__?: {
@@ -102,16 +95,19 @@ const normalizeGalleryImageUrl = (rawUrl: string, assetBase: string) => {
 
 export const LoginPage = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [showPassword, setShowPassword] = useState(false);
   const [isRecoveryOpen, setIsRecoveryOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [brokenSources, setBrokenSources] = useState<Set<string>>(new Set());
   const [gallery, setGallery] = useState<{ url: string; description: string }[]>([]);
+  const [isRecoveryTokenValidating, setIsRecoveryTokenValidating] = useState(false);
+  const [recoveryRequestSubmitted, setRecoveryRequestSubmitted] = useState(false);
   const [recoveryToken, setRecoveryToken] = useState('');
   const [recoveryExpiresAt, setRecoveryExpiresAt] = useState('');
   const [recoveryContactHint, setRecoveryContactHint] = useState('');
-  const [recoveryChannel, setRecoveryChannel] = useState<'EMAIL' | 'PHONE' | 'CONTACT'>('CONTACT');
+  const [recoveryChannel, setRecoveryChannel] = useState<'EMAIL' | 'CONTACT'>('EMAIL');
   const assetBase = useMemo(() => {
     if (typeof window === 'undefined') return '';
     const port = window.location.port;
@@ -240,20 +236,18 @@ export const LoginPage = () => {
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
   const {
-    register: registerRecoveryVerification,
-    handleSubmit: handleRecoveryVerificationSubmit,
-    reset: resetRecoveryVerificationForm,
+    register: registerRecoveryRequest,
+    handleSubmit: handleRecoveryRequestSubmit,
+    reset: resetRecoveryRequestForm,
     formState: {
-      errors: recoveryVerificationErrors,
-      isSubmitting: isRecoveryVerificationSubmitting,
+      errors: recoveryRequestErrors,
+      isSubmitting: isRecoveryRequestSubmitting,
     },
-  } = useForm<ForgotPasswordVerifyValues>({
-    resolver: zodResolver(forgotPasswordVerifySchema),
+  } = useForm<ForgotPasswordRequestValues>({
+    resolver: zodResolver(forgotPasswordRequestSchema),
     defaultValues: {
       username: '',
-      name: '',
       email: '',
-      phone: '',
     },
   });
   const {
@@ -281,6 +275,7 @@ export const LoginPage = () => {
       minute: '2-digit',
     });
   }, [recoveryExpiresAt]);
+  const recoveryTokenFromUrl = searchParams.get('resetToken')?.trim() || '';
 
   const onSubmit = async (values: FormValues) => {
     try {
@@ -342,21 +337,29 @@ export const LoginPage = () => {
     }
   };
 
+  const clearRecoverySearchParam = () => {
+    if (!recoveryTokenFromUrl) return;
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('resetToken');
+    setSearchParams(nextParams, { replace: true });
+  };
+
   const openRecoveryModal = () => {
     setIsRecoveryOpen(true);
   };
 
   const closeRecoveryModal = () => {
     setIsRecoveryOpen(false);
+    setIsRecoveryTokenValidating(false);
+    setRecoveryRequestSubmitted(false);
     setRecoveryToken('');
     setRecoveryExpiresAt('');
     setRecoveryContactHint('');
-    setRecoveryChannel('CONTACT');
-    resetRecoveryVerificationForm({
+    setRecoveryChannel('EMAIL');
+    clearRecoverySearchParam();
+    resetRecoveryRequestForm({
       username: '',
-      name: '',
       email: '',
-      phone: '',
     });
     resetRecoveryResetForm({
       password: '',
@@ -364,26 +367,75 @@ export const LoginPage = () => {
     });
   };
 
-  const handleVerifyRecoveryIdentity = async (values: ForgotPasswordVerifyValues) => {
-    try {
-      const response = await authService.verifyForgotPassword({
-        username: values.username.trim(),
-        name: values.name.trim(),
-        email: values.email.trim() || undefined,
-        phone: values.phone.trim() || undefined,
+  useEffect(() => {
+    let active = true;
+
+    if (!recoveryTokenFromUrl) {
+      return () => {
+        active = false;
+      };
+    }
+
+    setIsRecoveryOpen(true);
+    setIsRecoveryTokenValidating(true);
+    setRecoveryRequestSubmitted(false);
+    setRecoveryToken('');
+    setRecoveryExpiresAt('');
+    setRecoveryContactHint('');
+    setRecoveryChannel('EMAIL');
+    authService
+      .validateForgotPasswordToken(recoveryTokenFromUrl)
+      .then((response) => {
+        if (!active) return;
+        setRecoveryToken(recoveryTokenFromUrl);
+        setRecoveryExpiresAt(response.data.expiresAt);
+        setRecoveryContactHint(response.data.contactHint || '');
+        setRecoveryChannel(response.data.channel || 'EMAIL');
+        resetRecoveryResetForm({
+          password: '',
+          confirmPassword: '',
+        });
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        let message = 'Link reset password tidak dapat digunakan.';
+        if (isAxiosError(error)) {
+          message = error.response?.data?.message ?? error.message ?? message;
+        } else if (error instanceof Error) {
+          message = error.message || message;
+        }
+        clearRecoverySearchParam();
+        toast.error(message);
+      })
+      .finally(() => {
+        if (!active) return;
+        setIsRecoveryTokenValidating(false);
       });
 
-      setRecoveryToken(response.data.resetToken);
-      setRecoveryExpiresAt(response.data.expiresAt);
-      setRecoveryContactHint(response.data.contactHint || '');
-      setRecoveryChannel(response.data.channel || 'CONTACT');
+    return () => {
+      active = false;
+    };
+  }, [recoveryTokenFromUrl, resetRecoveryResetForm]);
+
+  const handleRequestRecoveryLink = async (values: ForgotPasswordRequestValues) => {
+    try {
+      const response = await authService.requestForgotPassword({
+        username: values.username.trim(),
+        email: values.email.trim(),
+      });
+
+      setRecoveryRequestSubmitted(true);
+      setRecoveryToken('');
+      setRecoveryExpiresAt('');
+      setRecoveryContactHint(response.data.contactHint || values.email.trim());
+      setRecoveryChannel(response.data.channel || 'EMAIL');
       resetRecoveryResetForm({
         password: '',
         confirmPassword: '',
       });
-      toast.success(response.message || 'Identitas akun berhasil diverifikasi');
+      toast.success(response.message || 'Link reset password sudah dikirim');
     } catch (error: unknown) {
-      let message = 'Verifikasi data pemulihan gagal.';
+      let message = 'Permintaan link reset password gagal diproses.';
       if (isAxiosError(error)) {
         message = error.response?.data?.message ?? error.message ?? message;
       } else if (error instanceof Error) {
@@ -762,12 +814,22 @@ export const LoginPage = () => {
                   Pemulihan Akun
                 </p>
                 <h2 className="auth-font-display mt-2 text-2xl font-semibold text-slate-900">
-                  {recoveryToken ? 'Buat password baru' : 'Lupa password'}
+                  {isRecoveryTokenValidating
+                    ? 'Memeriksa link reset'
+                    : recoveryToken
+                      ? 'Buat password baru'
+                      : recoveryRequestSubmitted
+                        ? 'Cek email Anda'
+                        : 'Lupa password'}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {recoveryToken
-                    ? 'Password lama tidak diperlukan lagi. Buat password baru setelah identitas akun berhasil diverifikasi.'
-                    : 'Masukkan data akun yang sama seperti saat pendaftaran. Untuk keamanan, gunakan nama lengkap dan salah satu kontak yang tersimpan.'}
+                  {isRecoveryTokenValidating
+                    ? 'Tunggu sebentar, kami sedang memastikan link reset password ini masih aktif.'
+                    : recoveryToken
+                      ? 'Password lama tidak diperlukan lagi. Buat password baru melalui link reset yang Anda buka dari email.'
+                      : recoveryRequestSubmitted
+                        ? 'Jika data akun cocok, link reset password sudah dikirim ke email terdaftar. Silakan buka inbox atau folder spam.'
+                        : 'Masukkan username dan email yang tersimpan di akun. Sistem akan mengirim link reset password langsung ke email tersebut.'}
                 </p>
               </div>
               <button
@@ -780,7 +842,23 @@ export const LoginPage = () => {
               </button>
             </div>
 
-            {recoveryToken ? (
+            {isRecoveryTokenValidating ? (
+              <div className="auth-section-card mt-5 rounded-[24px] p-5">
+                <div className="flex items-start gap-3">
+                  <div className="auth-frost-tile inline-flex rounded-2xl p-3 text-sky-700">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900">
+                      Memvalidasi link reset password
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">
+                      Link dari email sedang diperiksa. Setelah valid, form password baru akan muncul otomatis.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : recoveryToken ? (
               <>
                 <div className="auth-section-card mt-5 rounded-[24px] p-4">
                   <div className="flex items-start gap-3">
@@ -789,16 +867,16 @@ export const LoginPage = () => {
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-slate-900">
-                        Identitas akun berhasil diverifikasi
+                        Link reset password aktif
                       </p>
                       <p className="mt-1 text-sm leading-6 text-slate-600">
                         {recoveryContactHint
-                          ? `Kontak yang cocok: ${recoveryContactHint}`
-                          : 'Data akun cocok dengan catatan sistem.'}
+                          ? `Email tujuan: ${recoveryContactHint}.`
+                          : 'Link ini terkait dengan email pemulihan akun Anda.'}
                         {recoveryExpiryLabel ? ` Sesi ini aktif sampai ${recoveryExpiryLabel}.` : ''}
                       </p>
                       <p className="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
-                        Kanal verifikasi: {recoveryChannel === 'EMAIL' ? 'Email' : recoveryChannel === 'PHONE' ? 'Nomor HP' : 'Kontak akun'}
+                        Kanal verifikasi: {recoveryChannel === 'EMAIL' ? 'Email' : 'Kontak akun'}
                       </p>
                     </div>
                   </div>
@@ -856,10 +934,12 @@ export const LoginPage = () => {
                     <button
                       type="button"
                       onClick={() => {
+                        clearRecoverySearchParam();
+                        setRecoveryRequestSubmitted(false);
                         setRecoveryToken('');
                         setRecoveryExpiresAt('');
                         setRecoveryContactHint('');
-                        setRecoveryChannel('CONTACT');
+                        setRecoveryChannel('EMAIL');
                         resetRecoveryResetForm({
                           password: '',
                           confirmPassword: '',
@@ -867,7 +947,7 @@ export const LoginPage = () => {
                       }}
                       className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white/75 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white"
                     >
-                      Ulangi verifikasi
+                      Minta link baru
                     </button>
                     <button
                       type="submit"
@@ -880,9 +960,54 @@ export const LoginPage = () => {
                   </div>
                 </form>
               </>
+            ) : recoveryRequestSubmitted ? (
+              <>
+                <div className="auth-section-card mt-5 rounded-[24px] p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="auth-frost-tile inline-flex rounded-2xl p-3 text-sky-700">
+                      <Mail size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900">
+                        Permintaan reset sudah diterima
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-slate-600">
+                        {recoveryContactHint
+                          ? `Jika data akun cocok, link reset dikirim ke ${recoveryContactHint}.`
+                          : 'Jika data akun cocok, link reset sudah dikirim ke email terdaftar.'}{' '}
+                        Buka inbox atau folder spam, lalu klik link yang diterima.
+                      </p>
+                      <p className="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
+                        Tipe pemulihan: Email otomatis
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecoveryRequestSubmitted(false);
+                      setRecoveryContactHint('');
+                      setRecoveryChannel('EMAIL');
+                    }}
+                    className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white/75 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white"
+                  >
+                    Ganti username/email
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeRecoveryModal}
+                    className="auth-primary-button inline-flex flex-1 items-center justify-center rounded-xl bg-[#143a88] px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(20,58,136,0.24)] hover:bg-[#0f2f6e]"
+                  >
+                    Tutup
+                  </button>
+                </div>
+              </>
             ) : (
               <form
-                onSubmit={handleRecoveryVerificationSubmit(handleVerifyRecoveryIdentity)}
+                onSubmit={handleRecoveryRequestSubmit(handleRequestRecoveryLink)}
                 className="mt-5 space-y-4"
               >
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -900,39 +1025,17 @@ export const LoginPage = () => {
                         autoComplete="username"
                         className="auth-field-input rounded-xl py-2.5 pl-10 pr-3"
                         placeholder="Masukkan username"
-                        {...registerRecoveryVerification('username')}
+                        {...registerRecoveryRequest('username')}
                       />
                     </div>
-                    {recoveryVerificationErrors.username ? (
-                      <p className="mt-1 text-sm text-red-600">{recoveryVerificationErrors.username.message}</p>
-                    ) : null}
-                  </div>
-
-                  <div>
-                    <label htmlFor="recovery-name" className="mb-1 block text-sm font-medium text-slate-700">
-                      Nama Lengkap
-                    </label>
-                    <div className="auth-field-shell relative rounded-xl">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
-                        <ShieldCheck size={18} />
-                      </span>
-                      <input
-                        id="recovery-name"
-                        type="text"
-                        autoComplete="name"
-                        className="auth-field-input rounded-xl py-2.5 pl-10 pr-3"
-                        placeholder="Masukkan nama lengkap"
-                        {...registerRecoveryVerification('name')}
-                      />
-                    </div>
-                    {recoveryVerificationErrors.name ? (
-                      <p className="mt-1 text-sm text-red-600">{recoveryVerificationErrors.name.message}</p>
+                    {recoveryRequestErrors.username ? (
+                      <p className="mt-1 text-sm text-red-600">{recoveryRequestErrors.username.message}</p>
                     ) : null}
                   </div>
 
                   <div>
                     <label htmlFor="recovery-email" className="mb-1 block text-sm font-medium text-slate-700">
-                      Email Terdaftar
+                      Email Akun
                     </label>
                     <div className="auth-field-shell relative rounded-xl">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
@@ -943,51 +1046,29 @@ export const LoginPage = () => {
                         type="email"
                         autoComplete="email"
                         className="auth-field-input rounded-xl py-2.5 pl-10 pr-3"
-                        placeholder="Opsional jika pakai nomor HP"
-                        {...registerRecoveryVerification('email')}
+                        placeholder="Masukkan email yang tersimpan di akun"
+                        {...registerRecoveryRequest('email')}
                       />
                     </div>
-                    {recoveryVerificationErrors.email ? (
-                      <p className="mt-1 text-sm text-red-600">{recoveryVerificationErrors.email.message}</p>
-                    ) : null}
-                  </div>
-
-                  <div>
-                    <label htmlFor="recovery-phone" className="mb-1 block text-sm font-medium text-slate-700">
-                      Nomor HP Terdaftar
-                    </label>
-                    <div className="auth-field-shell relative rounded-xl">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
-                        <Phone size={18} />
-                      </span>
-                      <input
-                        id="recovery-phone"
-                        type="tel"
-                        autoComplete="tel"
-                        className="auth-field-input rounded-xl py-2.5 pl-10 pr-3"
-                        placeholder="Opsional jika pakai email"
-                        {...registerRecoveryVerification('phone')}
-                      />
-                    </div>
-                    {recoveryVerificationErrors.phone ? (
-                      <p className="mt-1 text-sm text-red-600">{recoveryVerificationErrors.phone.message}</p>
+                    {recoveryRequestErrors.email ? (
+                      <p className="mt-1 text-sm text-red-600">{recoveryRequestErrors.email.message}</p>
                     ) : null}
                   </div>
                 </div>
 
                 <div className="auth-section-card rounded-[24px] p-4">
                   <p className="text-sm leading-6 text-slate-600">
-                    Sistem akan mencocokkan username, nama lengkap, dan salah satu kontak akun yang tersimpan. Jika akun belum memiliki email atau nomor HP, pemulihan mandiri belum bisa digunakan.
+                    Link reset hanya dikirim ke email yang memang tersimpan di akun. Jika akun lama belum memiliki email aktif, pemulihan mandiri belum bisa digunakan dan perlu dibantu admin.
                   </p>
                 </div>
 
                 <button
                   type="submit"
-                  disabled={isRecoveryVerificationSubmitting}
+                  disabled={isRecoveryRequestSubmitting}
                   className="auth-primary-button inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#143a88] px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(20,58,136,0.24)] hover:bg-[#0f2f6e] disabled:opacity-60"
                 >
-                  {isRecoveryVerificationSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  {isRecoveryVerificationSubmitting ? 'Memverifikasi...' : 'Verifikasi identitas akun'}
+                  {isRecoveryRequestSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {isRecoveryRequestSubmitting ? 'Mengirim link...' : 'Kirim link reset ke email'}
                 </button>
               </form>
             )}

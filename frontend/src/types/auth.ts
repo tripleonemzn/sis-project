@@ -221,18 +221,20 @@ export interface RegisterBkkPayload {
   confirmPassword: string;
 }
 
-export interface ForgotPasswordVerifyPayload {
+export interface ForgotPasswordRequestPayload {
   username: string;
-  name: string;
-  email?: string;
-  phone?: string;
+  email: string;
 }
 
-export interface ForgotPasswordVerifyResult {
-  resetToken: string;
+export interface ForgotPasswordRequestResult {
+  contactHint?: string | null;
+  channel?: 'EMAIL';
+}
+
+export interface ForgotPasswordValidateResult {
   expiresAt: string;
   contactHint?: string | null;
-  channel?: 'EMAIL' | 'PHONE' | 'CONTACT';
+  channel?: 'EMAIL';
 }
 
 export interface ForgotPasswordResetPayload {

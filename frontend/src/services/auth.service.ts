@@ -1,9 +1,10 @@
 import api from './api';
 import type {
   AuthResponse,
+  ForgotPasswordRequestPayload,
+  ForgotPasswordRequestResult,
   ForgotPasswordResetPayload,
-  ForgotPasswordVerifyPayload,
-  ForgotPasswordVerifyResult,
+  ForgotPasswordValidateResult,
   RegisterBkkPayload,
   RegisterCalonSiswaPayload,
   RegisterParentPayload,
@@ -74,12 +75,24 @@ export const authService = {
     return response.data;
   },
 
-  verifyForgotPassword: async (
-    payload: ForgotPasswordVerifyPayload,
-  ): Promise<ApiResponse<ForgotPasswordVerifyResult>> => {
-    const response = await api.post<ApiResponse<ForgotPasswordVerifyResult>>(
-      '/auth/forgot-password/verify',
+  requestForgotPassword: async (
+    payload: ForgotPasswordRequestPayload,
+  ): Promise<ApiResponse<ForgotPasswordRequestResult>> => {
+    const response = await api.post<ApiResponse<ForgotPasswordRequestResult>>(
+      '/auth/forgot-password/request',
       payload,
+    );
+    return response.data;
+  },
+
+  validateForgotPasswordToken: async (
+    token: string,
+  ): Promise<ApiResponse<ForgotPasswordValidateResult>> => {
+    const response = await api.get<ApiResponse<ForgotPasswordValidateResult>>(
+      '/auth/forgot-password/validate',
+      {
+        params: { token },
+      },
     );
     return response.data;
   },
