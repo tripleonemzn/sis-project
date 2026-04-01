@@ -22,6 +22,8 @@ export interface User {
   nis?: string | null;
   nisn?: string | null;
   gender?: 'MALE' | 'FEMALE' | null;
+  citizenship?: string | null;
+  maritalStatus?: string | null;
   birthPlace?: string | null;
   birthDate?: string | null;
   email?: string | null;

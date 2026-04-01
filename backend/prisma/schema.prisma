@@ -26,6 +26,8 @@ model User {
   additionalDuties                                   AdditionalDuty[]
   birthDate                                          DateTime?
   birthPlace                                         String?
+  citizenship                                        String?
+  maritalStatus                                      String?
   nisn                                               String?                             @unique
   studentStatus                                      StudentStatus                       @default(ACTIVE)
   verificationCode                                   String?

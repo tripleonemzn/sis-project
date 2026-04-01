@@ -1,0 +1,3 @@
+ALTER TABLE "users"
+ADD COLUMN IF NOT EXISTS "citizenship" TEXT,
+ADD COLUMN IF NOT EXISTS "maritalStatus" TEXT;

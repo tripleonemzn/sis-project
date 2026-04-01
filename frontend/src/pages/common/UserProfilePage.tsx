@@ -102,6 +102,8 @@ const userFormSchema = z.object({
   nis: z.string().optional().nullable(),
   nisn: z.string().optional().nullable(),
   gender: z.enum(['MALE', 'FEMALE']).optional().nullable(),
+  citizenship: z.string().optional().nullable(),
+  maritalStatus: z.string().optional().nullable(),
   additionalDuties: z.array(z.string()).optional(),
   birthPlace: z.string().optional().nullable(),
   birthDate: z.string().optional().nullable(),
@@ -257,6 +259,15 @@ const TRANSPORTATION_MODE_OPTIONS = [
   'Ojek / Ojol',
   'Perahu Penyeberangan',
   'Lainnya',
+] as const;
+
+const CITIZENSHIP_OPTIONS = ['WNI', 'WNA'] as const;
+
+const MARITAL_STATUS_OPTIONS = [
+  'Belum Menikah',
+  'Menikah',
+  'Cerai Hidup',
+  'Cerai Mati',
 ] as const;
 
 const EMPLOYEE_ACTIVE_STATUS_OPTIONS = [
@@ -581,6 +592,8 @@ export const UserProfilePage = () => {
   const watchedNik = watch('nik');
   const watchedFamilyCardNumber = watch('familyCardNumber');
   const watchedGender = watch('gender');
+  const watchedCitizenship = watch('citizenship');
+  const watchedMaritalStatus = watch('maritalStatus');
   const watchedBirthPlace = watch('birthPlace');
   const watchedBirthDate = watch('birthDate');
   const watchedMotherName = watch('motherName');
@@ -616,6 +629,8 @@ export const UserProfilePage = () => {
         { label: 'Nama lengkap', value: watchedName },
         { label: 'NIK', value: watchedNik },
         { label: 'Jenis kelamin', value: watchedGender },
+        { label: 'Kewarganegaraan', value: watchedCitizenship },
+        { label: 'Status perkawinan', value: watchedMaritalStatus },
         { label: 'Tempat lahir', value: watchedBirthPlace },
         { label: 'Tanggal lahir', value: watchedBirthDate },
         { label: 'Nama ibu kandung', value: watchedMotherName },
@@ -694,6 +709,7 @@ export const UserProfilePage = () => {
     watchedAddress,
     watchedBirthDate,
     watchedBirthPlace,
+    watchedCitizenship,
     watchedCityRegency,
     watchedDocuments.length,
     watchedEmail,
@@ -706,6 +722,7 @@ export const UserProfilePage = () => {
     watchedLivingWith,
     watchedMotherNik,
     watchedMotherName,
+    watchedMaritalStatus,
     watchedName,
     watchedNik,
     watchedNis,
@@ -845,6 +862,8 @@ export const UserProfilePage = () => {
         nis: user.nis || '',
         nisn: user.nisn || '',
         gender: user.gender || null,
+        citizenship: user.citizenship || '',
+        maritalStatus: user.maritalStatus || '',
         additionalDuties: formDuties,
         birthPlace: user.birthPlace || '',
         birthDate: user.birthDate ? String(user.birthDate).slice(0, 10) : '',
@@ -1865,6 +1884,44 @@ export const UserProfilePage = () => {
                       <option value="FEMALE">Perempuan</option>
                     </select>
                   </div>
+                  {isEmployeeProfile && (
+                    <>
+                      <div>
+                        <label htmlFor="citizenship" className="block text-sm font-medium text-gray-700 mb-1">
+                          Kewarganegaraan
+                        </label>
+                        <select
+                          id="citizenship"
+                          {...register('citizenship')}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                          <option value="">Pilih kewarganegaraan</option>
+                          {CITIZENSHIP_OPTIONS.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="maritalStatus" className="block text-sm font-medium text-gray-700 mb-1">
+                          Status Perkawinan
+                        </label>
+                        <select
+                          id="maritalStatus"
+                          {...register('maritalStatus')}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                          <option value="">Pilih status perkawinan</option>
+                          {MARITAL_STATUS_OPTIONS.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
                   <div>
                     <label htmlFor="birthPlace" className="block text-sm font-medium text-gray-700 mb-1">Tempat Lahir</label>
                     <input
