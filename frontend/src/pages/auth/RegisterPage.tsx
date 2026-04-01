@@ -241,6 +241,7 @@ function AuthCanvas({
   highlights = [],
   showSupportStats = true,
   showSupportFooter = true,
+  matchFormHeight = false,
 }: {
   title: string;
   subtitle: string;
@@ -250,7 +251,11 @@ function AuthCanvas({
   highlights?: string[];
   showSupportStats?: boolean;
   showSupportFooter?: boolean;
+  matchFormHeight?: boolean;
 }) {
+  const leftPanelHeightClass = matchFormHeight ? 'lg:min-h-0' : 'lg:min-h-[640px]';
+  const rightPanelHeightClass = matchFormHeight ? 'lg:min-h-0' : 'lg:min-h-[640px]';
+
   return (
     <div className="auth-font-ui relative min-h-screen overflow-hidden bg-[#112754]">
       <div className="absolute inset-0 bg-[#112754]" />
@@ -294,7 +299,7 @@ function AuthCanvas({
       <div className="relative mx-auto flex min-h-screen w-full max-w-7xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
         <div className="grid w-full items-stretch gap-6 lg:grid-cols-[minmax(320px,0.92fr)_minmax(0,1.18fr)] xl:gap-8">
           <div className="order-2 lg:order-1">
-            <div className="auth-panel-dark auth-reveal-up auth-reveal-up-delay-1 flex h-full min-h-[280px] flex-col justify-between rounded-[32px] p-6 sm:p-8 lg:min-h-[640px]">
+            <div className={`auth-panel-dark auth-reveal-up auth-reveal-up-delay-1 flex h-full min-h-[280px] flex-col justify-between rounded-[32px] p-6 sm:p-8 ${leftPanelHeightClass}`}>
               <div>
                 <Link
                   to="/login"
@@ -367,7 +372,7 @@ function AuthCanvas({
           </div>
 
           <div className="order-1 lg:order-2">
-            <div className="auth-panel-soft auth-reveal-up flex min-h-[320px] flex-col rounded-[32px] p-5 sm:p-7 lg:min-h-[640px] lg:p-10">
+            <div className={`auth-panel-soft auth-reveal-up flex min-h-[320px] flex-col rounded-[32px] p-5 sm:p-7 ${rightPanelHeightClass} lg:p-10`}>
               {children}
             </div>
           </div>
@@ -681,6 +686,8 @@ function AccountRegisterForm({
       accentClass={config.accentClass}
       eyebrow={config.eyebrow}
       highlights={config.highlights}
+      showSupportFooter={false}
+      matchFormHeight
     >
       <div className="flex h-full flex-col space-y-6">
         <Link
