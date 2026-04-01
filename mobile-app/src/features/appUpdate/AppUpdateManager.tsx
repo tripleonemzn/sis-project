@@ -7,7 +7,7 @@ import { notifyInfo } from '../../lib/ui/feedback';
 import {
   APP_UPDATE_NOTIFICATION_CHANNEL_ID,
   ensureNotificationHandler,
-  isAppUpdatePushNotificationData,
+  extractAppUpdatePushMeta,
 } from '../pushNotifications/pushNotificationService';
 
 const CHECK_INTERVAL_MS = 60 * 1000;
@@ -16,6 +16,9 @@ const UPDATE_NOTIFICATION_TITLE = 'SIS KGB2 : Update Tersedia';
 const UPDATE_NOTIFICATION_BODY =
   'Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.';
 const OTA_MARKER = 'ota-2026-03-10-hotfix-01';
+const CURRENT_UPDATE_CHANNEL = Updates.channel || 'default';
+const CURRENT_RUNTIME_VERSION =
+  typeof Updates.runtimeVersion === 'string' ? Updates.runtimeVersion : String(Updates.runtimeVersion || 'unknown');
 
 function formatDateTime(value: string | null) {
   if (!value) return '-';
@@ -28,6 +31,14 @@ function formatDateTime(value: string | null) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function buildChannelMismatchMessage(targetChannel: string | null) {
+  if (!targetChannel) {
+    return `Notifikasi update diterima, tetapi channel target tidak terbaca. Aplikasi ini berjalan di channel ${CURRENT_UPDATE_CHANNEL}.`;
+  }
+
+  return `Notifikasi update ini ditujukan untuk channel ${targetChannel}, sedangkan aplikasi ini berjalan di channel ${CURRENT_UPDATE_CHANNEL}. Karena itu popup update tidak bisa memasang OTA dari notifikasi ini. Publish OTA ke channel ${CURRENT_UPDATE_CHANNEL} atau gunakan build dengan channel ${targetChannel}.`;
 }
 
 export function AppUpdateManager() {
@@ -54,7 +65,8 @@ export function AppUpdateManager() {
           body: UPDATE_NOTIFICATION_BODY,
           data: {
             type: 'APP_UPDATE',
-            channel: Updates.channel || 'default',
+            channel: CURRENT_UPDATE_CHANNEL,
+            runtimeVersion: CURRENT_RUNTIME_VERSION,
             marker: OTA_MARKER,
           },
           ...(Platform.OS === 'android'
@@ -68,9 +80,21 @@ export function AppUpdateManager() {
     }
   }, []);
 
-  const checkForUpdates = useCallback(async () => {
+  const checkForUpdates = useCallback(async (options?: { forceModal?: boolean; requestedChannel?: string | null }) => {
     if (!supported) return;
     if (checkingRef.current || isInstalling) return;
+
+    const requestedChannel = options?.requestedChannel?.trim() || null;
+    if (requestedChannel && requestedChannel !== CURRENT_UPDATE_CHANNEL) {
+      const checkedAt = new Date().toISOString();
+      setLastCheckedAt(checkedAt);
+      lastCheckTsRef.current = Date.now();
+      setUpdateAvailable(false);
+      setDismissed(false);
+      setErrorMessage(buildChannelMismatchMessage(requestedChannel));
+      setIsModalVisible(true);
+      return;
+    }
 
     checkingRef.current = true;
     try {
@@ -81,14 +105,30 @@ export function AppUpdateManager() {
       setUpdateAvailable(result.available);
       if (!result.available) {
         localNoticeSentRef.current = false;
-        setIsModalVisible(false);
-        setDismissed(false);
+        if (options?.forceModal) {
+          setDismissed(false);
+          setIsModalVisible(true);
+          setErrorMessage(
+            result.errorMessage ||
+              `Notifikasi update sudah diterima, tetapi paket OTA baru belum terbaca di channel ${CURRENT_UPDATE_CHANNEL}. Coba tekan "Cek Ulang" beberapa detik lagi.`,
+          );
+        } else {
+          setIsModalVisible(false);
+          setDismissed(false);
+        }
+        return;
       }
+      setDismissed(false);
+      setIsModalVisible(true);
     } catch (error: unknown) {
       setLastCheckedAt(new Date().toISOString());
       lastCheckTsRef.current = Date.now();
       const message = error instanceof Error ? error.message : 'Gagal memeriksa update.';
       setErrorMessage(message);
+      if (options?.forceModal) {
+        setDismissed(false);
+        setIsModalVisible(true);
+      }
     } finally {
       checkingRef.current = false;
     }
@@ -128,6 +168,20 @@ export function AppUpdateManager() {
     ensureNotificationHandler();
     void checkForUpdates();
 
+    let isCancelled = false;
+    const hydrateLastNotificationResponse = async () => {
+      const lastResponse = await Notifications.getLastNotificationResponseAsync().catch(() => null);
+      if (isCancelled || !lastResponse) return;
+      const meta = extractAppUpdatePushMeta(lastResponse.notification.request.content.data);
+      if (!meta) return;
+      setDismissed(false);
+      await checkForUpdates({ forceModal: true, requestedChannel: meta.channel });
+      if (typeof Notifications.clearLastNotificationResponseAsync === 'function') {
+        await Notifications.clearLastNotificationResponseAsync().catch(() => undefined);
+      }
+    };
+    void hydrateLastNotificationResponse();
+
     const stateSub = AppState.addEventListener('change', (nextState) => {
       const wasBackground =
         appStateRef.current === 'background' || appStateRef.current === 'inactive';
@@ -146,6 +200,7 @@ export function AppUpdateManager() {
     }, CHECK_INTERVAL_MS);
 
     return () => {
+      isCancelled = true;
       stateSub.remove();
       clearInterval(intervalId);
     };
@@ -155,19 +210,21 @@ export function AppUpdateManager() {
     if (!supported) return;
 
     const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
-      if (!isAppUpdatePushNotificationData(notification.request.content.data)) return;
+      const meta = extractAppUpdatePushMeta(notification.request.content.data);
+      if (!meta) return;
       setDismissed(false);
       notifyInfo('Update terbaru SIS KGB2 terdeteksi. Sedang memeriksa versi aplikasi...', {
         title: 'SIS KGB2',
         durationMs: 1800,
       });
-      void checkForUpdates();
+      void checkForUpdates({ requestedChannel: meta.channel });
     });
 
     const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      if (!isAppUpdatePushNotificationData(response.notification.request.content.data)) return;
+      const meta = extractAppUpdatePushMeta(response.notification.request.content.data);
+      if (!meta) return;
       setDismissed(false);
-      void checkForUpdates();
+      void checkForUpdates({ forceModal: true, requestedChannel: meta.channel });
     });
 
     return () => {
@@ -177,7 +234,7 @@ export function AppUpdateManager() {
   }, [supported, checkForUpdates]);
 
   if (!supported) return null;
-  if (!updateAvailable) return null;
+  if (!updateAvailable && !isModalVisible) return null;
 
   return (
     <Modal
@@ -223,13 +280,17 @@ export function AppUpdateManager() {
               marginBottom: 8,
             }}
           >
-            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>SIS KGB2</Text>
+            <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+              {updateAvailable ? 'SIS KGB2' : 'Status Update'}
+            </Text>
           </View>
           <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 19, marginBottom: 6 }}>
-            SIS KGB2 : Update Tersedia
+            {updateAvailable ? 'SIS KGB2 : Update Tersedia' : 'SIS KGB2 : Info Update'}
           </Text>
           <Text style={{ color: '#334155', fontSize: 13, marginBottom: 10 }}>
-            Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.
+            {updateAvailable
+              ? 'Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.'
+              : 'Aplikasi menerima sinyal update. Cek detail channel dan status terbaru di bawah ini.'}
           </Text>
           <View
             style={{
@@ -242,7 +303,10 @@ export function AppUpdateManager() {
             }}
           >
             <Text style={{ color: '#1e3a8a', fontSize: 12, marginBottom: 2 }}>
-              Channel: {Updates.channel || 'default'}
+              Channel: {CURRENT_UPDATE_CHANNEL}
+            </Text>
+            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 2 }}>
+              Runtime: {CURRENT_RUNTIME_VERSION}
             </Text>
             <Text style={{ color: '#64748b', fontSize: 12 }}>
               Cek terakhir: {formatDateTime(lastCheckedAt)}
@@ -264,10 +328,12 @@ export function AppUpdateManager() {
                 paddingVertical: 9,
                 paddingHorizontal: 12,
                 backgroundColor: '#fff',
-                marginRight: 8,
+                marginRight: updateAvailable ? 8 : 0,
               }}
             >
-              <Text style={{ color: '#334155', fontSize: 12, fontWeight: '700' }}>Nanti</Text>
+              <Text style={{ color: '#334155', fontSize: 12, fontWeight: '700' }}>
+                {updateAvailable ? 'Nanti' : 'Tutup'}
+              </Text>
             </Pressable>
             <Pressable
               onPress={() => void checkForUpdates()}
@@ -283,23 +349,25 @@ export function AppUpdateManager() {
             >
               <Text style={{ color: '#334155', fontSize: 12, fontWeight: '700' }}>Cek Ulang</Text>
             </Pressable>
-            <Pressable
-              onPress={() => void installUpdate()}
-              disabled={isInstalling}
-              style={{
-                borderWidth: 1,
-                borderColor: '#1d4ed8',
-                borderRadius: 10,
-                paddingVertical: 9,
-                paddingHorizontal: 12,
-                backgroundColor: '#1d4ed8',
-                opacity: isInstalling ? 0.6 : 1,
-              }}
-            >
-              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>
-                {isInstalling ? 'Mengunduh...' : 'Update Sekarang'}
-              </Text>
-            </Pressable>
+            {updateAvailable ? (
+              <Pressable
+                onPress={() => void installUpdate()}
+                disabled={isInstalling}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#1d4ed8',
+                  borderRadius: 10,
+                  paddingVertical: 9,
+                  paddingHorizontal: 12,
+                  backgroundColor: '#1d4ed8',
+                  opacity: isInstalling ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>
+                  {isInstalling ? 'Mengunduh...' : 'Update Sekarang'}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
       </View>

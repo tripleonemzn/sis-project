@@ -73,6 +73,11 @@ export type PushSelfTestResult = {
   staleTokensDisabled: number;
 };
 
+export type AppUpdatePushMeta = {
+  channel: string | null;
+  marker: string | null;
+};
+
 type ExpoConstantsSnapshot = {
   expoConfig?: {
     version?: string;
@@ -431,6 +436,17 @@ export function isAppUpdatePushNotificationData(rawData: unknown) {
   const data = rawData as Record<string, unknown>;
   const type = typeof data.type === 'string' ? data.type : '';
   return type.toUpperCase() === APP_UPDATE_PUSH_TYPE;
+}
+
+export function extractAppUpdatePushMeta(rawData: unknown): AppUpdatePushMeta | null {
+  if (!isAppUpdatePushNotificationData(rawData)) return null;
+  const data = rawData as Record<string, unknown>;
+  const channelRaw = typeof data.channel === 'string' ? data.channel.trim() : '';
+  const markerRaw = typeof data.marker === 'string' ? data.marker.trim() : '';
+  return {
+    channel: channelRaw || null,
+    marker: markerRaw || null,
+  };
 }
 
 export async function getLocalPushDebugSnapshot(): Promise<LocalPushDebugSnapshot> {

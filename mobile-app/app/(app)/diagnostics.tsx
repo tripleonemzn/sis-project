@@ -1,5 +1,6 @@
 import { Redirect, useRouter } from 'expo-router';
 import Constants from 'expo-constants';
+import * as Updates from 'expo-updates';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -65,6 +66,10 @@ export default function DiagnosticsScreen() {
   const appVersion = Constants.expoConfig?.version || Constants.nativeApplicationVersion || '-';
   const androidVersionCode =
     Constants.expoConfig?.android?.versionCode || Constants.nativeBuildVersion || '-';
+  const otaChannel = Updates.channel || 'default';
+  const otaRuntimeVersion =
+    typeof Updates.runtimeVersion === 'string' ? Updates.runtimeVersion : String(Updates.runtimeVersion || '-');
+  const otaUpdateId = Updates.updateId || '-';
   const cacheTtlHours = Math.round(CACHE_TTL_MS / (60 * 60 * 1000));
 
   const runApiCheck = async () => {
@@ -353,9 +358,11 @@ export default function DiagnosticsScreen() {
         <Text style={{ color: '#475569', fontSize: 12, marginBottom: 2 }}>
           Android Version Code: {androidVersionCode}
         </Text>
+        <Text style={{ color: '#475569', fontSize: 12, marginBottom: 2 }}>OTA Channel: {otaChannel}</Text>
         <Text style={{ color: '#475569', fontSize: 12, marginBottom: 2 }}>
-          OTA Marker: pilot-live-2026-03-31-01
+          OTA Runtime: {otaRuntimeVersion}
         </Text>
+        <Text style={{ color: '#475569', fontSize: 12, marginBottom: 2 }}>OTA Update ID: {otaUpdateId}</Text>
         <Text style={{ color: '#475569', fontSize: 12, marginBottom: 2 }}>Cache TTL: {cacheTtlHours} jam</Text>
         <Text style={{ color: '#475569', fontSize: 12, marginBottom: 2 }}>
           Max Snapshot/Fitur: {CACHE_MAX_SNAPSHOTS_PER_FEATURE}
