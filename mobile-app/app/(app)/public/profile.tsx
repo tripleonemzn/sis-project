@@ -131,6 +131,23 @@ function Field({
   );
 }
 
+function getApplicantVerificationContent(status?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null) {
+  const normalized = String(status || 'PENDING').toUpperCase();
+  if (normalized === 'REJECTED') {
+    return {
+      title: 'Akun pelamar ditolak sementara',
+      description:
+        'Periksa kembali data profil pelamar Anda, lalu hubungi admin atau tim BKK jika perlu perbaikan sebelum melamar lagi.',
+    };
+  }
+
+  return {
+    title: 'Akun pelamar masih menunggu verifikasi',
+    description:
+      'Lengkapi profil pelamar Anda terlebih dahulu. Fitur melamar lowongan dan mengikuti Tes BKK akan aktif setelah admin memverifikasi akun ini.',
+  };
+}
+
 export default function PublicBkkProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -189,6 +206,10 @@ export default function PublicBkkProfileScreen() {
   if (!isAuthenticated) return <Redirect href="/welcome" />;
   if (user?.role !== 'UMUM') return <Redirect href="/home" />;
 
+  const verificationStatus = profileQuery.data?.verificationStatus;
+  const normalizedVerificationStatus = String(verificationStatus || 'PENDING').toUpperCase();
+  const verificationContent = getApplicantVerificationContent(verificationStatus);
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: '#e9eefb' }}
@@ -211,7 +232,7 @@ export default function PublicBkkProfileScreen() {
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
         <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700' }}>
-          Profil Pelamar
+          Lengkapi Profil Karier BKK
         </Text>
       </View>
 
@@ -226,27 +247,69 @@ export default function PublicBkkProfileScreen() {
         <QueryStateView type="error" message="Gagal memuat profil pelamar." onRetry={() => void profileQuery.refetch()} />
       ) : (
         <>
+          <InfoCard title="Profil Pelamar">
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              Lengkapi profil karier agar data lamaran, verifikasi akun, dan proses BKK Anda tetap rapi dan mudah
+              dipantau.
+            </Text>
+          </InfoCard>
+
           <InfoCard title="Status Profil">
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 24 }}>
               {profileQuery.data?.completeness.isReady ? 'Siap' : 'Belum'}
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
               {profileQuery.data?.completeness.isReady
-                ? 'Profil sudah siap dipakai untuk melamar.'
-                : `Lengkapi: ${profileQuery.data?.completeness.missingFields.join(', ') || 'data utama pelamar'}.`}
+                ? 'Profil Anda siap dipakai untuk melamar.'
+                : `Masih perlu dilengkapi: ${profileQuery.data?.completeness.missingFields.join(', ') || 'data utama'}.`}
             </Text>
           </InfoCard>
 
           <InfoCard title="Status Verifikasi">
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 24 }}>
-              {String(profileQuery.data?.verificationStatus || 'PENDING').toUpperCase()}
+              {normalizedVerificationStatus}
             </Text>
             <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 6 }}>
-              {String(profileQuery.data?.verificationStatus || 'PENDING').toUpperCase() === 'VERIFIED'
+              {normalizedVerificationStatus === 'VERIFIED'
                 ? 'Akun pelamar sudah aktif untuk melamar lowongan dan mengikuti Tes BKK.'
                 : 'Akun pelamar masih menunggu verifikasi admin. Lengkapi profil agar proses verifikasi lebih cepat.'}
             </Text>
           </InfoCard>
+
+          <InfoCard title="Aksi Cepat">
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              <Pressable
+                onPress={() => router.push('/public/vacancies' as never)}
+                style={{
+                  backgroundColor: '#ea580c',
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700' }}>Lihat Lowongan</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => router.push('/public/applications' as never)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  backgroundColor: '#fff',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Lamaran Saya</Text>
+              </Pressable>
+            </View>
+          </InfoCard>
+
+          {normalizedVerificationStatus !== 'VERIFIED' ? (
+            <InfoCard title={verificationContent.title}>
+              <Text style={{ color: BRAND_COLORS.textMuted }}>{verificationContent.description}</Text>
+            </InfoCard>
+          ) : null}
 
           <InfoCard title="Data Utama">
             <Field label="Nama Pelamar" value={form.name} onChangeText={(value) => setForm((prev) => ({ ...prev, name: value }))} />
@@ -254,7 +317,7 @@ export default function PublicBkkProfileScreen() {
               label="Headline / Posisi yang Diminati"
               value={form.headline}
               onChangeText={(value) => setForm((prev) => ({ ...prev, headline: value }))}
-              placeholder="Contoh: Fresh graduate siap kerja entry-level"
+              placeholder="Contoh: Fresh graduate TKJ siap magang atau kerja entry-level"
             />
             <Field label="Nomor Telepon" value={form.phone} onChangeText={(value) => setForm((prev) => ({ ...prev, phone: value }))} />
             <Field label="Email Aktif" value={form.email} onChangeText={(value) => setForm((prev) => ({ ...prev, email: value }))} />
@@ -289,12 +352,14 @@ export default function PublicBkkProfileScreen() {
               value={form.skills}
               onChangeText={(value) => setForm((prev) => ({ ...prev, skills: value }))}
               multiline
+              placeholder="Tulis ringkas keahlian yang paling relevan."
             />
             <Field
               label="Pengalaman Singkat"
               value={form.experienceSummary}
               onChangeText={(value) => setForm((prev) => ({ ...prev, experienceSummary: value }))}
               multiline
+              placeholder="PKL, proyek, organisasi, freelance, dan pengalaman relevan lainnya."
             />
           </InfoCard>
 
@@ -325,7 +390,7 @@ export default function PublicBkkProfileScreen() {
                 paddingVertical: 10,
               }}
             >
-              <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700' }}>Lihat Lowongan</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700' }}>Kembali ke Lowongan</Text>
             </Pressable>
             <Pressable
               onPress={() => saveMutation.mutate()}
@@ -339,7 +404,7 @@ export default function PublicBkkProfileScreen() {
               }}
             >
               <Text style={{ color: '#fff', fontWeight: '700' }}>
-                {saveMutation.isPending ? 'Menyimpan...' : 'Simpan Profil'}
+                {saveMutation.isPending ? 'Menyimpan...' : 'Simpan Profil Pelamar'}
               </Text>
             </Pressable>
           </View>
