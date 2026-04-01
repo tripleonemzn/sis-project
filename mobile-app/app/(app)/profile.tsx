@@ -269,6 +269,21 @@ const EMPLOYEE_ROLE_OPTIONS_BY_ROLE = {
   ],
 } as const;
 
+const ROLE_LABELS: Record<string, string> = {
+  ADMIN: 'Administrator',
+  TEACHER: 'Guru',
+  STUDENT: 'Siswa',
+  PRINCIPAL: 'Kepala Sekolah',
+  STAFF: 'Staff',
+  PARENT: 'Orang Tua / Wali',
+  CALON_SISWA: 'Calon Siswa',
+  UMUM: 'Pelamar BKK',
+  EXAMINER: 'Penguji Eksternal',
+  EXTRACURRICULAR_TUTOR: 'Tutor / Pembina',
+};
+
+type ProfileVariant = 'employee' | 'student' | 'candidate' | 'parent' | 'admin';
+
 function toText(value?: string | number | null) {
   if (value === null || value === undefined) return '';
   return String(value);
@@ -326,6 +341,110 @@ function validateExactDigits(value: string, label: string, length: number) {
     return null;
   }
   return new RegExp(`^\\d{${length}}$`).test(cleaned) ? null : `${label} harus ${length} digit angka`;
+}
+
+function getProfileVariant(role?: string | null): ProfileVariant {
+  const normalized = String(role || '').toUpperCase();
+  if (['TEACHER', 'PRINCIPAL', 'STAFF', 'EXAMINER', 'EXTRACURRICULAR_TUTOR'].includes(normalized)) {
+    return 'employee';
+  }
+  if (normalized === 'STUDENT') {
+    return 'student';
+  }
+  if (normalized === 'CALON_SISWA') {
+    return 'candidate';
+  }
+  if (normalized === 'PARENT') {
+    return 'parent';
+  }
+  return 'admin';
+}
+
+function getProfileCopy(role?: string | null) {
+  const variant = getProfileVariant(role);
+
+  if (variant === 'employee') {
+    return {
+      title: 'Profil PTK & Tenaga Internal',
+      subtitle:
+        'Guru, kepala sekolah, staff, tutor, dan penguji eksternal memakai struktur profil yang sama agar data inti, alamat, dan penugasan tetap konsisten di seluruh workspace.',
+      saveLabel: 'Simpan Profil PTK',
+      readinessTitle: 'Prioritas Data Inti',
+      readinessHelper: 'Fokus pada identitas, alamat, dan data penugasan yang saat ini sudah dipakai lintas modul sekolah.',
+      summaryTitle: 'Ringkasan Peran',
+    };
+  }
+
+  if (variant === 'student') {
+    return {
+      title: 'Profil Siswa',
+      subtitle:
+        'Lengkapi biodata siswa, kontak aktif, alamat, dan keluarga inti agar administrasi sekolah serta kebutuhan data siswa tetap rapi.',
+      saveLabel: 'Simpan Profil Siswa',
+      readinessTitle: 'Prioritas Data Siswa',
+      readinessHelper: 'Data inti siswa difokuskan pada identitas, alamat, dan keluarga yang dipakai operasional sekolah.',
+      summaryTitle: 'Ringkasan Akademik',
+    };
+  }
+
+  if (variant === 'candidate') {
+    return {
+      title: 'Profil Calon Siswa',
+      subtitle:
+        'Halaman ini dibuat ringkas untuk akun, biodata dasar, foto, dan dokumen PPDB. Formulir pendaftaran detail tetap dikelola dari menu Formulir PPDB.',
+      saveLabel: 'Simpan Profil Calon Siswa',
+      readinessTitle: 'Kesiapan Profil PPDB',
+      readinessHelper: 'Pastikan biodata dasar dan dokumen pendukung lengkap sebelum formulir PPDB dikirim untuk review.',
+      summaryTitle: 'Ringkasan Pendaftaran',
+    };
+  }
+
+  if (variant === 'parent') {
+    return {
+      title: 'Profil Orang Tua / Wali',
+      subtitle:
+        'Kelola identitas akun keluarga, kontak aktif, dan alamat yang dipakai saat menghubungkan serta memantau data anak.',
+      saveLabel: 'Simpan Profil Wali',
+      readinessTitle: 'Kesiapan Profil Wali',
+      readinessHelper: 'Kontak aktif dan alamat yang rapi membantu komunikasi sekolah dengan keluarga.',
+      summaryTitle: 'Ringkasan Keluarga',
+    };
+  }
+
+  return {
+    title: 'Profil Saya',
+    subtitle: 'Kelola informasi akun dan profil utama Anda.',
+    saveLabel: 'Simpan Perubahan',
+    readinessTitle: 'Kelengkapan Profil',
+    readinessHelper: 'Lengkapi data inti agar akun lebih mudah dipakai di seluruh modul.',
+    summaryTitle: 'Ringkasan Akun',
+  };
+}
+
+function getVerificationStatusMeta(status?: AuthUser['verificationStatus'] | null) {
+  const normalized = String(status || 'PENDING').toUpperCase();
+  if (normalized === 'VERIFIED') {
+    return {
+      label: 'Terverifikasi',
+      borderColor: '#bbf7d0',
+      backgroundColor: '#f0fdf4',
+      textColor: '#15803d',
+    };
+  }
+  if (normalized === 'REJECTED') {
+    return {
+      label: 'Perlu Review',
+      borderColor: '#fecdd3',
+      backgroundColor: '#fff1f2',
+      textColor: '#be123c',
+    };
+  }
+  return {
+    label: 'Menunggu Verifikasi',
+    borderColor: '#fde68a',
+    backgroundColor: '#fffbeb',
+    textColor: '#b45309',
+  };
 }
 
 function toNullableNumber(value: string) {
@@ -567,6 +686,8 @@ export default function ProfileScreen() {
   const [candidateDocumentCategory, setCandidateDocumentCategory] = useState<string>(
     MOBILE_CANDIDATE_DOCUMENT_OPTIONS[0]?.value || 'PPDB_AKTA_KELAHIRAN',
   );
+  const profileCopy = useMemo(() => getProfileCopy(profile?.role), [profile?.role]);
+  const verificationMeta = useMemo(() => getVerificationStatusMeta(profile?.verificationStatus), [profile?.verificationStatus]);
   const showNip = isEmployee;
   const showNik = isEmployee || isStudent;
   const showNuptk = isEmployee;
@@ -600,6 +721,174 @@ export default function ProfileScreen() {
     () => getStructuredChoiceValue(form.employeeStatus, EMPLOYEE_STATUS_OPTIONS),
     [form.employeeStatus],
   );
+  const completeness = useMemo(() => {
+    if (!profile) {
+      return { total: 0, completed: 0, missing: [] as string[], percent: 0 };
+    }
+
+    let fieldsToCheck: Array<{ label: string; value: unknown }> = [];
+
+    if (isEmployee) {
+      fieldsToCheck = [
+        { label: 'Nama lengkap', value: form.name || profile.name },
+        { label: 'NIK', value: form.nik },
+        { label: 'Nomor KK', value: form.familyCardNumber },
+        { label: 'Jenis kelamin', value: form.gender },
+        { label: 'Kewarganegaraan', value: form.citizenship },
+        { label: 'Status perkawinan', value: form.maritalStatus },
+        { label: 'Tempat lahir', value: form.birthPlace },
+        { label: 'Tanggal lahir', value: form.birthDate },
+        { label: 'Agama', value: form.religion },
+        { label: 'Nama ibu kandung', value: form.motherName },
+        { label: 'NIK ibu kandung', value: form.motherNik },
+        { label: 'Pendidikan terakhir', value: form.highestEducation },
+        { label: 'Jenis PTK / peran', value: isStaff ? form.staffPosition || form.ptkType : form.ptkType },
+        { label: 'Status kepegawaian', value: form.employeeStatus },
+        { label: 'Status keaktifan', value: form.employeeActiveStatus },
+        { label: 'Sumber gaji', value: form.salarySource },
+        { label: 'Kontak aktif', value: form.phone || form.email },
+        { label: 'Provinsi', value: form.province },
+        { label: 'Kabupaten / Kota', value: form.cityRegency },
+        { label: 'Alamat', value: form.address },
+      ];
+    } else if (isStudent) {
+      fieldsToCheck = [
+        { label: 'Nama lengkap', value: profile.name },
+        { label: 'NIS', value: profile.nis },
+        { label: 'NISN', value: profile.nisn },
+        { label: 'Nomor KK', value: form.familyCardNumber },
+        { label: 'Jenis kelamin', value: form.gender },
+        { label: 'Tempat lahir', value: form.birthPlace },
+        { label: 'Tanggal lahir', value: form.birthDate },
+        { label: 'Nama ibu kandung', value: form.motherName },
+        { label: 'NIK ibu kandung', value: form.motherNik },
+        { label: 'Agama', value: form.religion },
+        { label: 'Status dalam keluarga', value: form.familyStatus },
+        { label: 'Jenis tinggal', value: form.livingWith },
+        { label: 'Alat transportasi', value: form.transportationMode },
+        { label: 'Jarak ke sekolah', value: form.distanceToSchool },
+        { label: 'Waktu tempuh ke sekolah', value: form.travelTimeToSchool },
+        { label: 'Kelas aktif', value: profile.studentClass?.name },
+        { label: 'Provinsi', value: form.province },
+        { label: 'Kabupaten / Kota', value: form.cityRegency },
+        { label: 'Alamat', value: form.address },
+      ];
+    } else if (isCandidate) {
+      fieldsToCheck = [
+        { label: 'Nama lengkap', value: form.name || profile.name },
+        { label: 'NISN', value: profile.nisn },
+        { label: 'Tempat lahir', value: form.birthPlace },
+        { label: 'Tanggal lahir', value: form.birthDate },
+        { label: 'Agama', value: form.religion },
+        { label: 'Kontak aktif', value: form.phone || form.email },
+        { label: 'Alamat', value: form.address },
+        { label: 'Dokumen pendukung', value: (profile.documents || []).length > 0 ? 'Ada' : '' },
+      ];
+    } else if (isParent) {
+      fieldsToCheck = [
+        { label: 'Nama lengkap', value: form.name || profile.name },
+        { label: 'Kontak aktif', value: form.phone || form.email },
+        { label: 'Provinsi', value: form.province },
+        { label: 'Kabupaten / Kota', value: form.cityRegency },
+        { label: 'Alamat', value: form.address },
+        { label: 'Anak terhubung', value: (profile.children || []).length > 0 ? 'Ada' : '' },
+      ];
+    } else {
+      fieldsToCheck = [
+        { label: 'Nama lengkap', value: form.name || profile.name },
+        { label: 'Kontak aktif', value: form.phone || form.email },
+        { label: 'Alamat', value: form.address },
+      ];
+    }
+
+    const missing = fieldsToCheck
+      .filter((item) => String(item.value || '').trim().length === 0)
+      .map((item) => item.label);
+    const total = fieldsToCheck.length;
+    const completed = total - missing.length;
+
+    return {
+      total,
+      completed,
+      missing,
+      percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+    };
+  }, [form, isCandidate, isEmployee, isParent, isStaff, isStudent, profile]);
+
+  const summaryLines = useMemo(() => {
+    if (!profile) {
+      return [] as string[];
+    }
+    if (isEmployee) {
+      if (profile.role === 'TEACHER') {
+        return [
+          `Tugas tambahan: ${profile.additionalDuties?.length ? profile.additionalDuties.join(', ') : 'Belum ada'}`,
+          `Kelas tugas: ${profile.teacherClasses?.length || 0} kelas`,
+          `Dokumen: ${(profile.documents || []).length} file`,
+        ];
+      }
+
+      if (profile.role === 'EXTRACURRICULAR_TUTOR') {
+        return [
+          `Ekstrakurikuler aktif: ${profile.ekskulTutorAssignments?.length || 0}`,
+          `Penugasan utama: ${normalizeStructuredFieldValue(form.ptkType) || 'Tutor / pembina'}`,
+          `Dokumen: ${(profile.documents || []).length} file`,
+        ];
+      }
+
+      if (profile.role === 'EXAMINER') {
+        return [
+          `Jurusan damping: ${profile.examinerMajor?.name || '-'}`,
+          `Instansi: ${form.institution || 'Belum diisi'}`,
+          `Dokumen: ${(profile.documents || []).length} file`,
+        ];
+      }
+
+      if (profile.role === 'STAFF') {
+        return [
+          `Divisi: ${getStaffPositionLabel(form.staffPosition) || normalizeStructuredFieldValue(form.ptkType) || 'Belum dipilih'}`,
+          `Status kepegawaian: ${normalizeStructuredFieldValue(form.employeeStatus) || 'Belum diisi'}`,
+          `Dokumen: ${(profile.documents || []).length} file`,
+        ];
+      }
+
+      return [
+        `Peran aktif: ${ROLE_LABELS[profile.role] || profile.role}`,
+        `Status kepegawaian: ${normalizeStructuredFieldValue(form.employeeStatus) || 'Belum diisi'}`,
+        `Dokumen: ${(profile.documents || []).length} file`,
+      ];
+    }
+
+    if (isStudent) {
+      return [
+        `Kelas aktif: ${profile.studentClass?.name || '-'}`,
+        `Status siswa: ${profile.studentStatus || 'ACTIVE'}`,
+        `Email / HP: ${form.email || form.phone || 'Belum diisi'}`,
+      ];
+    }
+
+    if (isCandidate) {
+      return [
+        `NISN: ${profile.nisn || '-'}`,
+        `Status akun: ${verificationMeta.label}`,
+        `Dokumen PPDB: ${(profile.documents || []).length} file`,
+      ];
+    }
+
+    if (isParent) {
+      return [
+        `Anak terhubung: ${(profile.children || []).length}`,
+        `Kontak aktif: ${form.email || form.phone || 'Belum diisi'}`,
+        `Alamat: ${form.address ? 'Sudah diisi' : 'Belum diisi'}`,
+      ];
+    }
+
+    return [
+      `Role aktif: ${ROLE_LABELS[profile.role] || profile.role}`,
+      `Kontak aktif: ${form.email || form.phone || 'Belum diisi'}`,
+      `Alamat: ${form.address ? 'Sudah diisi' : 'Belum diisi'}`,
+    ];
+  }, [form.address, form.email, form.employeeStatus, form.institution, form.phone, form.ptkType, form.staffPosition, isCandidate, isEmployee, isParent, isStudent, profile, verificationMeta.label]);
 
   useFocusEffect(
     useCallback(() => {
@@ -852,10 +1141,45 @@ export default function ProfileScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>Profil Saya</Text>
-      <Text style={{ color: '#64748b', marginBottom: 18 }}>
-        Form mobile ini mengikuti struktur data profil pada web.
-      </Text>
+      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>{profileCopy.title}</Text>
+      <Text style={{ color: '#64748b', marginBottom: 14 }}>{profileCopy.subtitle}</Text>
+
+      {profile ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 18 }}>
+          <View style={{ paddingHorizontal: 4, marginBottom: 8 }}>
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                backgroundColor: '#fff',
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700' }}>
+                {ROLE_LABELS[profile.role] || profile.role}
+              </Text>
+            </View>
+          </View>
+          <View style={{ paddingHorizontal: 4, marginBottom: 8 }}>
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: verificationMeta.borderColor,
+                backgroundColor: verificationMeta.backgroundColor,
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ color: verificationMeta.textColor, fontSize: 12, fontWeight: '700' }}>
+                {verificationMeta.label}
+              </Text>
+            </View>
+          </View>
+        </View>
+      ) : null}
 
       {profileQuery.isLoading ? <QueryStateView type="loading" message="Mengambil data profil..." /> : null}
 
@@ -871,6 +1195,138 @@ export default function ProfileScreen() {
 
       {profile ? (
         <>
+          <View
+            style={{
+              ...cardStyle,
+              backgroundColor: '#f8fbff',
+              borderColor: '#dbeafe',
+            }}
+          >
+            <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 }}>STRUKTUR PROFIL</Text>
+            <Text style={{ color: '#0f172a', fontSize: 20, fontWeight: '700', marginTop: 8 }}>
+              {ROLE_LABELS[profile.role] || profile.role}
+            </Text>
+            <Text style={{ color: '#475569', fontSize: 13, lineHeight: 20, marginTop: 10 }}>
+              {profileCopy.readinessHelper}
+            </Text>
+            <View style={{ marginTop: 14 }}>
+              {summaryLines.map((line) => (
+                <View
+                  key={line}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    backgroundColor: '#fff',
+                    borderRadius: 14,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={{ color: '#475569', fontSize: 13 }}>{line}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          <View style={cardStyle}>
+            <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 }}>
+              {profileCopy.readinessTitle.toUpperCase()}
+            </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={{ color: '#0f172a', fontSize: 28, fontWeight: '700' }}>{completeness.percent}%</Text>
+                <Text style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+                  {completeness.completed} dari {completeness.total} data prioritas sudah terisi
+                </Text>
+              </View>
+              <View
+                style={{
+                  borderRadius: 14,
+                  backgroundColor: '#f1f5f9',
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                }}
+              >
+                <Text style={{ color: '#334155', fontSize: 13, fontWeight: '700' }}>
+                  {completeness.missing.length === 0 ? 'Siap' : `${completeness.missing.length} belum`}
+                </Text>
+              </View>
+            </View>
+            <View
+              style={{
+                height: 8,
+                borderRadius: 999,
+                backgroundColor: '#e2e8f0',
+                overflow: 'hidden',
+                marginTop: 14,
+              }}
+            >
+              <View
+                style={{
+                  width: `${completeness.percent}%`,
+                  height: '100%',
+                  borderRadius: 999,
+                  backgroundColor: '#2563eb',
+                }}
+              />
+            </View>
+            <Text style={{ color: '#475569', fontSize: 13, lineHeight: 20, marginTop: 12 }}>
+              {completeness.missing.length === 0
+                ? 'Data prioritas yang tersedia di sistem sudah terisi rapi.'
+                : `Masih perlu dilengkapi: ${completeness.missing.slice(0, 3).join(', ')}${completeness.missing.length > 3 ? ', dan lainnya.' : '.'}`}
+            </Text>
+          </View>
+
+          <View style={cardStyle}>
+            <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 }}>
+              {profileCopy.summaryTitle.toUpperCase()}
+            </Text>
+            <View
+              style={{
+                marginTop: 12,
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                backgroundColor: '#f8fafc',
+                borderRadius: 14,
+                padding: 12,
+              }}
+            >
+              <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700', letterSpacing: 1.2 }}>USERNAME</Text>
+              <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700', marginTop: 4 }}>{profile.username}</Text>
+            </View>
+            <View
+              style={{
+                marginTop: 10,
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                backgroundColor: '#f8fafc',
+                borderRadius: 14,
+                padding: 12,
+              }}
+            >
+              <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700', letterSpacing: 1.2 }}>STATUS AKUN</Text>
+              <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700', marginTop: 4 }}>{verificationMeta.label}</Text>
+            </View>
+          </View>
+
+          {isCandidate ? (
+            <Pressable
+              onPress={() => router.push('/candidate/application')}
+              style={{
+                marginBottom: 12,
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                backgroundColor: '#eff6ff',
+                borderRadius: 10,
+                paddingVertical: 12,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Buka Formulir PPDB</Text>
+            </Pressable>
+          ) : null}
+
           <View style={cardStyle}>
             <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 10 }}>Data Akun</Text>
             <ProfileRow label="Username" value={profile.username} />
@@ -1675,7 +2131,7 @@ export default function ProfileScreen() {
             }}
           >
             <Text style={{ color: '#fff', fontWeight: '700' }}>
-              {saveMutation.isPending ? 'Menyimpan...' : 'Simpan Perubahan'}
+              {saveMutation.isPending ? 'Menyimpan...' : profileCopy.saveLabel}
             </Text>
           </Pressable>
 
