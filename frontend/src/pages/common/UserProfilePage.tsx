@@ -132,13 +132,13 @@ const userFormSchema = z.object({
   rw: z.string().optional().nullable(),
   dusun: z.string().optional().nullable(),
   province: z.string().optional().nullable(),
-  provinceCode: z.string().optional().nullable(),
+  provinceCode: optionalExactDigitsField('Kode Provinsi', 2),
   cityRegency: z.string().optional().nullable(),
-  cityRegencyCode: z.string().optional().nullable(),
+  cityRegencyCode: optionalExactDigitsField('Kode Kabupaten / Kota', 4),
   village: z.string().optional().nullable(),
   subdistrict: z.string().optional().nullable(),
-  subdistrictCode: z.string().optional().nullable(),
-  villageCode: z.string().optional().nullable(),
+  subdistrictCode: optionalExactDigitsField('Kode Kecamatan', 7),
+  villageCode: optionalExactDigitsField('Kode Desa / Kelurahan', 10),
   postalCode: optionalExactDigitsField('Kode Pos', 5),
   ptkType: z.string().optional().nullable(),
   employeeStatus: z.string().optional().nullable(),
@@ -2414,7 +2414,7 @@ export const UserProfilePage = () => {
                         <div className="md:col-span-2 rounded-lg border border-blue-100 bg-blue-50/60 p-4">
                           <p className="text-sm font-semibold text-blue-900">Kode Wilayah Administratif</p>
                           <p className="mt-1 text-xs text-blue-700">
-                            Opsional untuk sinkronisasi data induk. Isi sesuai referensi wilayah resmi bila sudah tersedia.
+                            Opsional untuk sinkronisasi data induk. Gunakan kode wilayah resmi: provinsi 2 digit, kabupaten/kota 4 digit, kecamatan 7 digit, desa/kelurahan 10 digit.
                           </p>
                           <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div>
@@ -2423,8 +2423,12 @@ export const UserProfilePage = () => {
                                 id="provinceCode"
                                 {...register('provinceCode')}
                                 autoComplete="off"
+                                inputMode="numeric"
+                                maxLength={2}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                               />
+                              <p className="mt-1 text-xs text-slate-500">Isi 2 digit angka.</p>
+                              {errors.provinceCode && <p className="mt-1 text-xs text-red-600">{errors.provinceCode.message}</p>}
                             </div>
                             <div>
                               <label htmlFor="cityRegencyCode" className="block text-sm font-medium text-gray-700 mb-1">Kode Kabupaten / Kota</label>
@@ -2432,8 +2436,12 @@ export const UserProfilePage = () => {
                                 id="cityRegencyCode"
                                 {...register('cityRegencyCode')}
                                 autoComplete="off"
+                                inputMode="numeric"
+                                maxLength={4}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                               />
+                              <p className="mt-1 text-xs text-slate-500">Isi 4 digit angka.</p>
+                              {errors.cityRegencyCode && <p className="mt-1 text-xs text-red-600">{errors.cityRegencyCode.message}</p>}
                             </div>
                             <div>
                               <label htmlFor="subdistrictCode" className="block text-sm font-medium text-gray-700 mb-1">Kode Kecamatan</label>
@@ -2441,8 +2449,12 @@ export const UserProfilePage = () => {
                                 id="subdistrictCode"
                                 {...register('subdistrictCode')}
                                 autoComplete="off"
+                                inputMode="numeric"
+                                maxLength={7}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                               />
+                              <p className="mt-1 text-xs text-slate-500">Isi 7 digit angka.</p>
+                              {errors.subdistrictCode && <p className="mt-1 text-xs text-red-600">{errors.subdistrictCode.message}</p>}
                             </div>
                             <div>
                               <label htmlFor="villageCode" className="block text-sm font-medium text-gray-700 mb-1">Kode Desa / Kelurahan</label>
@@ -2450,8 +2462,12 @@ export const UserProfilePage = () => {
                                 id="villageCode"
                                 {...register('villageCode')}
                                 autoComplete="off"
+                                inputMode="numeric"
+                                maxLength={10}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                               />
+                              <p className="mt-1 text-xs text-slate-500">Isi 10 digit angka.</p>
+                              {errors.villageCode && <p className="mt-1 text-xs text-red-600">{errors.villageCode.message}</p>}
                             </div>
                           </div>
                         </div>

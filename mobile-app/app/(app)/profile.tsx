@@ -436,6 +436,10 @@ function getProfileValidationMessage(form: EditableProfileForm, options: { showN
     validateExactDigits(form.motherNik, 'NIK Ibu', 16),
     validateExactDigits(form.fatherNik, 'NIK Ayah', 16),
     validateExactDigits(form.postalCode, 'Kode Pos', 5),
+    validateExactDigits(form.provinceCode, 'Kode Provinsi', 2),
+    validateExactDigits(form.cityRegencyCode, 'Kode Kabupaten / Kota', 4),
+    validateExactDigits(form.subdistrictCode, 'Kode Kecamatan', 7),
+    validateExactDigits(form.villageCode, 'Kode Desa / Kelurahan', 10),
   ];
 
   return checks.find((message) => Boolean(message)) || null;
@@ -1299,27 +1303,45 @@ export default function ProfileScreen() {
                       Kode Wilayah Administratif
                     </Text>
                     <Text style={{ color: '#1d4ed8', fontSize: 12, marginBottom: 10 }}>
-                      Opsional untuk sinkronisasi data induk. Isi sesuai referensi wilayah resmi bila sudah tersedia.
+                      Opsional untuk sinkronisasi data induk. Gunakan kode wilayah resmi: provinsi 2 digit, kabupaten/kota 4 digit, kecamatan 7 digit, desa/kelurahan 10 digit.
                     </Text>
                     <FormField
                       label="Kode Provinsi"
                       value={form.provinceCode}
-                      onChangeText={(value) => setForm((prev) => ({ ...prev, provinceCode: value }))}
+                      onChangeText={(value) => setForm((prev) => ({ ...prev, provinceCode: normalizeNumericText(value, 2) }))}
+                      keyboardType="numeric"
+                      helperText="Isi 2 digit angka."
+                      maxLength={2}
                     />
                     <FormField
                       label="Kode Kabupaten / Kota"
                       value={form.cityRegencyCode}
-                      onChangeText={(value) => setForm((prev) => ({ ...prev, cityRegencyCode: value }))}
+                      onChangeText={(value) =>
+                        setForm((prev) => ({ ...prev, cityRegencyCode: normalizeNumericText(value, 4) }))
+                      }
+                      keyboardType="numeric"
+                      helperText="Isi 4 digit angka."
+                      maxLength={4}
                     />
                     <FormField
                       label="Kode Kecamatan"
                       value={form.subdistrictCode}
-                      onChangeText={(value) => setForm((prev) => ({ ...prev, subdistrictCode: value }))}
+                      onChangeText={(value) =>
+                        setForm((prev) => ({ ...prev, subdistrictCode: normalizeNumericText(value, 7) }))
+                      }
+                      keyboardType="numeric"
+                      helperText="Isi 7 digit angka."
+                      maxLength={7}
                     />
                     <FormField
                       label="Kode Desa / Kelurahan"
                       value={form.villageCode}
-                      onChangeText={(value) => setForm((prev) => ({ ...prev, villageCode: value }))}
+                      onChangeText={(value) =>
+                        setForm((prev) => ({ ...prev, villageCode: normalizeNumericText(value, 10) }))
+                      }
+                      keyboardType="numeric"
+                      helperText="Isi 10 digit angka."
+                      maxLength={10}
                     />
                   </View>
                 ) : null}
