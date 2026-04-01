@@ -110,11 +110,15 @@ const userFormSchema = z.object({
   address: z.string().optional().nullable(),
   photo: z.string().optional().nullable(),
   nik: z.string().optional().nullable(),
+  familyCardNumber: z.string().optional().nullable(),
   nuptk: z.string().optional().nullable(),
   motherName: z.string().optional().nullable(),
+  motherNik: z.string().optional().nullable(),
   rt: z.string().optional().nullable(),
   rw: z.string().optional().nullable(),
   dusun: z.string().optional().nullable(),
+  province: z.string().optional().nullable(),
+  cityRegency: z.string().optional().nullable(),
   village: z.string().optional().nullable(),
   subdistrict: z.string().optional().nullable(),
   postalCode: z.string().optional().nullable(),
@@ -133,6 +137,7 @@ const userFormSchema = z.object({
   siblingsCount: z.string().optional().nullable(),
   
   fatherName: z.string().optional().nullable(),
+  fatherNik: z.string().optional().nullable(),
   fatherOccupation: z.string().optional().nullable(),
   fatherIncome: z.string().optional().nullable(),
   
@@ -492,15 +497,19 @@ export const UserProfilePage = () => {
   const watchedNis = watch('nis');
   const watchedNisn = watch('nisn');
   const watchedNik = watch('nik');
+  const watchedFamilyCardNumber = watch('familyCardNumber');
   const watchedGender = watch('gender');
   const watchedBirthPlace = watch('birthPlace');
   const watchedBirthDate = watch('birthDate');
   const watchedMotherName = watch('motherName');
+  const watchedMotherNik = watch('motherNik');
   const watchedPtkType = watch('ptkType');
   const watchedEmployeeStatus = watch('employeeStatus');
   const watchedInstitution = watch('institution');
   const watchedStaffPosition = watch('staffPosition');
   const watchedReligion = watch('religion');
+  const watchedProvince = watch('province');
+  const watchedCityRegency = watch('cityRegency');
   const watchedDocuments = watch('documents') || [];
 
   const selectedChildren =
@@ -522,9 +531,12 @@ export const UserProfilePage = () => {
         { label: 'Tempat lahir', value: watchedBirthPlace },
         { label: 'Tanggal lahir', value: watchedBirthDate },
         { label: 'Nama ibu kandung', value: watchedMotherName },
+        { label: 'NIK ibu kandung', value: watchedMotherNik },
         { label: 'Jenis PTK / peran', value: watchedPtkType },
         { label: 'Status kepegawaian', value: watchedEmployeeStatus },
         { label: 'Kontak aktif', value: watchedPhone || watchedEmail },
+        { label: 'Provinsi', value: watchedProvince },
+        { label: 'Kabupaten / Kota', value: watchedCityRegency },
         { label: 'Alamat', value: watchedAddress },
       ];
     } else if (isStudentProfile) {
@@ -532,12 +544,16 @@ export const UserProfilePage = () => {
         { label: 'Nama lengkap', value: watchedName },
         { label: 'NIS', value: watchedNis },
         { label: 'NISN', value: watchedNisn },
+        { label: 'Nomor KK', value: watchedFamilyCardNumber },
         { label: 'Jenis kelamin', value: watchedGender },
         { label: 'Tempat lahir', value: watchedBirthPlace },
         { label: 'Tanggal lahir', value: watchedBirthDate },
         { label: 'Nama ibu kandung', value: watchedMotherName },
+        { label: 'NIK ibu kandung', value: watchedMotherNik },
         { label: 'Agama', value: watchedReligion },
         { label: 'Kelas aktif', value: user?.studentClass?.name },
+        { label: 'Provinsi', value: watchedProvince },
+        { label: 'Kabupaten / Kota', value: watchedCityRegency },
         { label: 'Alamat', value: watchedAddress },
       ];
     } else if (isCandidateProfile) {
@@ -584,10 +600,13 @@ export const UserProfilePage = () => {
     watchedAddress,
     watchedBirthDate,
     watchedBirthPlace,
+    watchedCityRegency,
     watchedDocuments.length,
     watchedEmail,
     watchedEmployeeStatus,
+    watchedFamilyCardNumber,
     watchedGender,
+    watchedMotherNik,
     watchedMotherName,
     watchedName,
     watchedNik,
@@ -595,6 +614,7 @@ export const UserProfilePage = () => {
     watchedNisn,
     watchedPhone,
     watchedPtkType,
+    watchedProvince,
     watchedReligion,
   ]);
 
@@ -737,8 +757,10 @@ export const UserProfilePage = () => {
         
         // Additional fields for Principal
         nik: user.nik || '',
+        familyCardNumber: user.familyCardNumber || '',
         nuptk: user.nuptk || '',
         motherName: user.motherName || '',
+        motherNik: user.motherNik || '',
         
         // Student Specific
         religion: user.religion || '',
@@ -746,6 +768,7 @@ export const UserProfilePage = () => {
         siblingsCount: user.siblingsCount ? String(user.siblingsCount) : '',
         
         fatherName: user.fatherName || '',
+        fatherNik: user.fatherNik || '',
         fatherOccupation: user.fatherOccupation || '',
         fatherIncome: user.fatherIncome || '',
         
@@ -760,6 +783,8 @@ export const UserProfilePage = () => {
         rt: user.rt || '',
         rw: user.rw || '',
         dusun: user.dusun || '',
+        province: user.province || '',
+        cityRegency: user.cityRegency || '',
         village: user.village || '',
         subdistrict: user.subdistrict || '',
         postalCode: user.postalCode || '',
@@ -1501,6 +1526,15 @@ export const UserProfilePage = () => {
                     />
                   </div>
                   <div>
+                    <label htmlFor="fatherNik" className="block text-sm font-medium text-gray-700 mb-1">NIK Ayah</label>
+                    <input
+                      id="fatherNik"
+                      {...register('fatherNik')}
+                      autoComplete="off"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
                     <label htmlFor="fatherIncome" className="block text-sm font-medium text-gray-700 mb-1">Penghasilan Ayah</label>
                     <input
                       id="fatherIncome"
@@ -1528,6 +1562,15 @@ export const UserProfilePage = () => {
                     <input
                       id="motherOccupation"
                       {...register('motherOccupation')}
+                      autoComplete="off"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="studentMotherNik" className="block text-sm font-medium text-gray-700 mb-1">NIK Ibu</label>
+                    <input
+                      id="studentMotherNik"
+                      {...register('motherNik')}
                       autoComplete="off"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
@@ -1628,6 +1671,20 @@ export const UserProfilePage = () => {
                           />
                         </div>
                       )}
+                      {isStudentProfile && (
+                        <div>
+                          <label htmlFor="familyCardNumber" className="block text-sm font-medium text-gray-700 mb-1">
+                            Nomor KK
+                          </label>
+                          <input
+                            id="familyCardNumber"
+                            {...register('familyCardNumber')}
+                            autoComplete="off"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Nomor kartu keluarga"
+                          />
+                        </div>
+                      )}
                     </>
                   )}
                   <div>
@@ -1711,6 +1768,18 @@ export const UserProfilePage = () => {
                         autoComplete="off"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
+                      <div className="mt-4">
+                        <label htmlFor="motherNik" className="block text-sm font-medium text-gray-700 mb-1">
+                          NIK Ibu Kandung
+                        </label>
+                        <input
+                          id="motherNik"
+                          {...register('motherNik')}
+                          autoComplete="off"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Diisi sesuai data identitas keluarga"
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1770,6 +1839,28 @@ export const UserProfilePage = () => {
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           />
                         </div>
+                      </div>
+                      <div>
+                        <label htmlFor="province" className="block text-sm font-medium text-gray-700 mb-1">Provinsi</label>
+                        <input
+                          id="province"
+                          {...register('province')}
+                          autoComplete="address-level1"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Contoh: Jawa Barat"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="cityRegency" className="block text-sm font-medium text-gray-700 mb-1">
+                          Kabupaten / Kota
+                        </label>
+                        <input
+                          id="cityRegency"
+                          {...register('cityRegency')}
+                          autoComplete="address-level2"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Contoh: Kota Bekasi"
+                        />
                       </div>
                       <div>
                         <label htmlFor="dusun" className="block text-sm font-medium text-gray-700 mb-1">Nama Dusun</label>

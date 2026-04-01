@@ -38,16 +38,21 @@ model User {
   employeeStatus                                     String?
   institution                                        String?
   motherName                                         String?
+  motherNik                                          String?
   nik                                                String?
+  familyCardNumber                                   String?
   nuptk                                              String?
   postalCode                                         String?
   ptkType                                            String?
+  province                                           String?
+  cityRegency                                        String?
   rt                                                 String?
   rw                                                 String?
   subdistrict                                        String?
   village                                            String?
   childNumber                                        Int?
   fatherIncome                                       String?
+  fatherNik                                          String?
   fatherName                                         String?
   fatherOccupation                                   String?
   guardianName                                       String?

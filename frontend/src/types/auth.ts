@@ -30,13 +30,17 @@ export interface User {
   
   // New Personal Data
   nik?: string | null;
+  familyCardNumber?: string | null;
   nuptk?: string | null;
   motherName?: string | null;
+  motherNik?: string | null;
 
   // New Contact Data
   rt?: string | null;
   rw?: string | null;
   dusun?: string | null;
+  province?: string | null;
+  cityRegency?: string | null;
   village?: string | null;
   subdistrict?: string | null;
   postalCode?: string | null;
@@ -69,6 +73,7 @@ export interface User {
   siblingsCount?: number | null;
 
   fatherName?: string | null;
+  fatherNik?: string | null;
   fatherOccupation?: string | null;
   fatherIncome?: string | null;
 
