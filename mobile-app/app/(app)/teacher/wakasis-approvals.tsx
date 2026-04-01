@@ -225,13 +225,13 @@ export default function TeacherWakasisApprovalsScreen() {
     });
   };
 
-  if (isLoading) return <AppLoadingScreen message="Memuat persetujuan kesiswaan..." />;
+  if (isLoading) return <AppLoadingScreen message="Memuat persetujuan..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
   if (user?.role !== 'TEACHER') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
-        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Persetujuan Kesiswaan</Text>
+        <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8 }}>Persetujuan</Text>
         <QueryStateView type="error" message="Halaman ini khusus untuk role guru." />
         <Pressable
           onPress={() => router.replace('/home')}
@@ -253,7 +253,7 @@ export default function TeacherWakasisApprovalsScreen() {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
         <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 8, color: BRAND_COLORS.textDark }}>
-          Persetujuan Kesiswaan
+          Persetujuan
         </Text>
         <QueryStateView
           type="error"
@@ -309,12 +309,12 @@ export default function TeacherWakasisApprovalsScreen() {
           <Feather name="arrow-left" size={18} color={BRAND_COLORS.textDark} />
         </Pressable>
         <Text style={{ marginLeft: 10, color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700' }}>
-          Persetujuan Kesiswaan
+          Persetujuan
         </Text>
       </View>
 
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10 }}>
-        Verifikasi pengajuan izin siswa dan tindaklanjuti status persetujuannya.
+        Verifikasi pengajuan izin siswa dan tindak lanjuti status persetujuannya.
       </Text>
 
       <View

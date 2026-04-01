@@ -512,7 +512,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     {
       key: 'teacher-wakakur-reports',
       label: 'Laporan Akademik',
-      route: '/teacher/wakakur-performance',
+      route: '/teacher/wakakur-reports',
     },
     {
       key: 'teacher-wakasis-students',
