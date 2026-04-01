@@ -259,7 +259,7 @@ export default function TutorMembersScreen() {
     });
   }, [members, search]);
 
-  if (isLoading) return <AppLoadingScreen message="Memuat anggota ekskul..." />;
+  if (isLoading) return <AppLoadingScreen message="Memuat anggota & nilai..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
   if (!hasTutorWorkspaceAccess) {
@@ -286,7 +286,7 @@ export default function TutorMembersScreen() {
         />
       }
     >
-      <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Anggota & Nilai Ekskul</Text>
+      <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>Anggota & Nilai</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Input nilai ekstrakurikuler sesuai Program Ujian aktif dan semester.
       </Text>

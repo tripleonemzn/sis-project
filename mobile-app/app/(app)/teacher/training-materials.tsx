@@ -3,12 +3,12 @@ import { TeacherWebBridgeModuleScreen } from '../../../src/features/teacherBridg
 export default function TeacherTrainingMaterialsScreen() {
   return (
     <TeacherWebBridgeModuleScreen
-      title="Materi Training"
-      subtitle="Kelola materi pembelajaran untuk kelas training."
+      title="Materi & Tugas"
+      subtitle="Kelola materi pembelajaran dan tugas untuk kelas training."
       icon="book-open"
       requireTrainingClass
       quickActions={[
-        { label: 'Kelas Training', route: '/teacher/training-classes' },
+        { label: 'Daftar Kelas', route: '/teacher/training-classes' },
         { label: 'Nilai Training', route: '/teacher/training-grades' },
       ]}
     />

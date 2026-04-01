@@ -8,7 +8,7 @@ export default function TeacherTrainingAttendanceScreen() {
       icon="check-square"
       requireTrainingClass
       quickActions={[
-        { label: 'Kelas Training', route: '/teacher/training-classes' },
+        { label: 'Daftar Kelas', route: '/teacher/training-classes' },
         { label: 'Nilai Training', route: '/teacher/training-grades' },
       ]}
     />

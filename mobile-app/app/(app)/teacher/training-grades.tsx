@@ -8,7 +8,7 @@ export default function TeacherTrainingGradesScreen() {
       icon="bar-chart-2"
       requireTrainingClass
       quickActions={[
-        { label: 'Kelas Training', route: '/teacher/training-classes' },
+        { label: 'Daftar Kelas', route: '/teacher/training-classes' },
         { label: 'Laporan Training', route: '/teacher/training-reports' },
       ]}
     />

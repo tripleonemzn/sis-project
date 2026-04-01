@@ -8,7 +8,7 @@ export default function TeacherTrainingReportsScreen() {
       icon="file-text"
       requireTrainingClass
       quickActions={[
-        { label: 'Kelas Training', route: '/teacher/training-classes' },
+        { label: 'Daftar Kelas', route: '/teacher/training-classes' },
         { label: 'Presensi Training', route: '/teacher/training-attendance' },
         { label: 'Nilai Training', route: '/teacher/training-grades' },
       ]}

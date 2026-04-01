@@ -3,7 +3,7 @@ import { TeacherWebBridgeModuleScreen } from '../../../src/features/teacherBridg
 export default function TeacherHeadLabIncidentsScreen() {
   return (
     <TeacherWebBridgeModuleScreen
-      title="Laporan Insiden Lab"
+      title="Laporan Insiden"
       subtitle="Pantau laporan insiden laboratorium dan tindak lanjut perbaikan."
       icon="alert-triangle"
       expectedDuties={['KEPALA_LAB']}

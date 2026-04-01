@@ -8,8 +8,8 @@ export default function TeacherExamPacketsScreen() {
 
   return (
     <TeacherExamPacketsModuleScreen
-      title="Daftar Ujian"
-      subtitle="Bank ujian berdasarkan kelas dan mata pelajaran yang Anda ampu."
+      title="Program Ujian"
+      subtitle="Kelola paket soal berdasarkan program ujian untuk kelas dan mata pelajaran yang Anda ampu."
       fixedType={type || undefined}
       fixedProgramCode={programCode || undefined}
     />
