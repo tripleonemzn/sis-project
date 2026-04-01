@@ -12,7 +12,6 @@ import {
   BKK_APPLICANT_PROFILE_QUERY_KEY,
   BKK_MY_APPLICATIONS_QUERY_KEY,
   InfoCard,
-  VerificationBadge,
   extractApplicantProfilePayload,
   extractApplicationsPayload,
   getActiveBkkProcessingCount,
@@ -117,14 +116,6 @@ export const BkkDashboardPage = () => {
         meta={`Username pelamar: ${user?.username || '-'}`}
         tone="orange"
         className="mt-10"
-        aside={
-          <div className="rounded-2xl border border-orange-100 bg-white/90 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Status Verifikasi</p>
-            <div className="mt-2">
-              <VerificationBadge status={user?.verificationStatus} />
-            </div>
-          </div>
-        }
       />
 
       <div className="grid gap-4 xl:grid-cols-4">

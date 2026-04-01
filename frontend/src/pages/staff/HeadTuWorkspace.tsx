@@ -3511,14 +3511,6 @@ const HeadTuWorkspace = () => {
         tone="rose"
         className="mt-10"
         fallbackName="Kepala Tata Usaha"
-        aside={
-          <div className="rounded-2xl border border-rose-100 bg-white/90 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Divisi Staff</p>
-            <p className="mt-2 text-sm font-semibold text-slate-900">
-              {getStaffDivisionLabel(currentUser)}
-            </p>
-          </div>
-        }
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">

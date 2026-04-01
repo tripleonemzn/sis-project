@@ -520,14 +520,6 @@ const ParentOverviewPage = () => {
         tone="teal"
         className="mt-10"
         fallbackName="Orang Tua"
-        aside={
-          <div className="rounded-2xl border border-teal-100 bg-white/90 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Akun Keluarga</p>
-            <p className="mt-2 text-sm font-semibold text-slate-900">
-              {loading ? 'Memuat...' : `${summary?.childCount || children.length} anak terhubung`}
-            </p>
-          </div>
-        }
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

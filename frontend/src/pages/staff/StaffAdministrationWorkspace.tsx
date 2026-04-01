@@ -676,12 +676,6 @@ export const StaffAdministrationWorkspace = () => {
         tone="emerald"
         className="mt-10"
         fallbackName="Staff Administrasi"
-        aside={
-          <div className="rounded-2xl border border-emerald-100 bg-white/90 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Fokus Workspace</p>
-            <p className="mt-2 text-sm font-semibold text-slate-900">Administrasi sekolah</p>
-          </div>
-        }
       />
 
       {administrationSummaryQuery.isError ? (

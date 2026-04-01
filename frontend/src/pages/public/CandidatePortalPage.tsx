@@ -9,7 +9,6 @@ import {
   CANDIDATE_ADMISSION_QUERY_KEY,
   formatCandidateDateTime,
   formatCandidateCurrency,
-  CandidateAdmissionStatusBadge,
   CandidateInfoCard,
   VerificationBadge,
   extractCandidateAdmissionPayload,
@@ -62,18 +61,6 @@ export const CandidateDashboardPage = () => {
         meta={`NISN / Username: ${user?.nisn || user?.username || '-'}`}
         tone="blue"
         className="mt-10"
-        aside={
-          <div className="space-y-2 rounded-2xl border border-blue-100 bg-white/90 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Status PPDB Saat Ini</p>
-            {admission ? (
-              <CandidateAdmissionStatusBadge status={admission.status} />
-            ) : (
-              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                Belum Tersedia
-              </span>
-            )}
-          </div>
-        }
       />
 
       {admission?.decisionAnnouncement.isPublished ? (

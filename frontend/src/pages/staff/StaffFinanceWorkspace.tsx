@@ -470,12 +470,6 @@ export const StaffFinanceWorkspace = () => {
           tone="violet"
           className="mt-10"
           fallbackName="Staff Keuangan"
-          aside={
-            <div className="rounded-2xl border border-violet-100 bg-white/90 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Fokus Workspace</p>
-              <p className="mt-2 text-sm font-semibold text-slate-900">Keuangan sekolah</p>
-            </div>
-          }
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

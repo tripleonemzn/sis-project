@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@600;700;800&family=Noto+Naskh+Arabic:wght@400;600&family=Noto+Sans+JP:wght@400;700&family=Noto+Sans+SC:wght@400;700&family=Noto+Sans+Javanese:wght@400;700&family=Noto+Sans+Sundanese:wght@400;700&display=swap');
 
+:root {
+  --dashboard-sidebar-offset: 256px;
+}
+
 body { background-color: #f9fafb; color: #111827; }
 
 /* Keep exam text stable and prevent browser/extension auto-translate side effects */
@@ -366,10 +370,10 @@ a, button, [role="button"] {
   cursor: pointer;
 }
 
-/* Keep dashboard popups fully visible on smaller desktop widths (sidebar-safe area). */
+/* Keep dashboard popups centered relative to the content area after sidebar resizing. */
 @media (min-width: 768px) {
   .dashboard-main .fixed.inset-0 {
-    left: 16rem;
+    left: var(--dashboard-sidebar-offset, 256px);
   }
 }
 

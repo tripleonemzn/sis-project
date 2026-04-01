@@ -1387,6 +1387,15 @@ export const Sidebar = ({ user }: SidebarProps) => {
     window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth));
   }, [sidebarWidth]);
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.documentElement.style.setProperty('--dashboard-sidebar-offset', `${sidebarWidth}px`);
+
+    return () => {
+      document.documentElement.style.setProperty('--dashboard-sidebar-offset', `${DEFAULT_SIDEBAR_WIDTH}px`);
+    };
+  }, [sidebarWidth]);
+
   const isPathActive = useCallback((itemPath: string) => getMenuPathMatchScore(itemPath) >= 0, [getMenuPathMatchScore]);
 
   const getMostSpecificChildPath = useCallback((children?: MenuItem[]) => {

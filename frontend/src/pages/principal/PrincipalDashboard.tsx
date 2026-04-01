@@ -1206,12 +1206,6 @@ const PrincipalHomePage = () => {
         tone="rose"
         className="mt-10"
         fallbackName="Kepala Sekolah"
-        aside={
-          <div className="rounded-2xl border border-rose-100 bg-white/90 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Dashboard Utama</p>
-            <p className="mt-2 text-sm font-semibold text-slate-900">{yearLabel}</p>
-          </div>
-        }
       />
 
       {isError && !isLoading && (
