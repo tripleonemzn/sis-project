@@ -7,7 +7,7 @@ export default function TeacherOsisInventoryRoute() {
         pathname: '/teacher/sarpras-inventory',
         params: {
           managedOnly: '1',
-          title: 'Inventaris OSIS',
+          title: 'Kelola Inventaris OSIS',
           subtitle: 'Kelola inventaris ruangan OSIS yang ditugaskan kepada Anda.',
         },
       }}

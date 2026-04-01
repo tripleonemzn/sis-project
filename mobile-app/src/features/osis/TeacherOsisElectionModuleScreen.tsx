@@ -480,7 +480,7 @@ export function TeacherOsisElectionModuleScreen() {
           onPress={() => router.push('/teacher/osis/inventory' as never)}
           style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#d5e1f5', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}
         >
-          <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Inventaris OSIS</Text>
+          <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>Kelola Inventaris OSIS</Text>
         </Pressable>
       </View>
 

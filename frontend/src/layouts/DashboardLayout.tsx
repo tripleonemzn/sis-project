@@ -421,7 +421,7 @@ const buildSidebarCrumbLookup = (roleSegment: string, user: User | null): Record
 
       // PEMBINA OSIS
       'osis/management': { label: 'Struktur & Nilai OSIS', group: 'PEMBINA OSIS' },
-      'osis/inventory': { label: 'Inventaris OSIS', group: 'PEMBINA OSIS' },
+      'osis/inventory': { label: 'Kelola Inventaris OSIS', group: 'PEMBINA OSIS' },
       'osis/election': { label: 'Pemilihan OSIS', group: 'PEMBINA OSIS' },
       'osis/vote': { label: 'Pemungutan Suara', group: 'PEMBINA OSIS' },
 

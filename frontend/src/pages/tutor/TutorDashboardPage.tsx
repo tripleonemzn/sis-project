@@ -211,7 +211,7 @@ export const TutorDashboardPage = () => {
                 <BookOpen size={22} />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Akses Cepat</h2>
+                <h2 className="text-lg font-semibold text-slate-900">Aksi Cepat</h2>
                 <p className="text-sm text-slate-500">Masuk cepat ke fitur yang paling sering dipakai.</p>
               </div>
             </div>
@@ -221,11 +221,11 @@ export const TutorDashboardPage = () => {
                 <span>&rsaquo;</span>
               </Link>
               <Link to="/tutor/work-programs?duty=PEMBINA_EKSKUL" className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-gray-50">
-                <span className="flex items-center gap-2"><ClipboardList size={16} /> Program Kerja Ekskul</span>
+                <span className="flex items-center gap-2"><ClipboardList size={16} /> Program Kerja</span>
                 <span>&rsaquo;</span>
               </Link>
               <Link to="/tutor/inventory" className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-gray-50">
-                <span className="flex items-center gap-2"><Database size={16} /> Inventaris Ekskul</span>
+                <span className="flex items-center gap-2"><Database size={16} /> Kelola Inventaris</span>
                 <span>&rsaquo;</span>
               </Link>
             </div>

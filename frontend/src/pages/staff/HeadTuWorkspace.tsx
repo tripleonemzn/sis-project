@@ -3479,7 +3479,7 @@ const HeadTuWorkspace = () => {
           </div>
 
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Akses Cepat</h3>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Aksi Cepat</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Link to="/staff/head-tu/students" className="inline-flex items-center justify-center rounded-lg border border-blue-200 bg-white px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">
                 <GraduationCap className="w-4 h-4 mr-2" /> Data Siswa
@@ -3577,7 +3577,7 @@ const HeadTuWorkspace = () => {
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
           <div className="flex items-center gap-2 mb-3">
             <FileText className="w-4 h-4 text-amber-600" />
-            <h3 className="text-sm font-semibold text-gray-900">Akses Cepat Kepala TU</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Aksi Cepat Kepala TU</h3>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Link to="/staff/head-tu/letters" className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">

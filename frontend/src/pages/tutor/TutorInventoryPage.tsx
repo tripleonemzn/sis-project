@@ -58,7 +58,7 @@ export const TutorInventoryPage = () => {
   const selectedScope = resolveInventoryScope(location.pathname, searchParams.get('scope'));
   const scopeLabel = selectedScope === 'osis' ? 'OSIS' : 'Ekskul';
   const scopeLabelLower = selectedScope === 'osis' ? 'OSIS' : 'ekskul';
-  const scopeTitle = selectedScope === 'osis' ? 'Inventaris OSIS' : 'Inventaris Ekskul';
+  const scopeTitle = selectedScope === 'osis' ? 'Kelola Inventaris OSIS' : 'Kelola Inventaris';
   const [search, setSearch] = useState('');
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<number | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
