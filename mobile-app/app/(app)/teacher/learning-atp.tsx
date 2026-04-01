@@ -4,7 +4,7 @@ export default function TeacherLearningAtpScreen() {
   return (
     <TeacherLearningResourceProgramScreen
       programCode="ATP"
-      fallbackTitle="Perangkat Ajar ATP"
+      fallbackTitle="Alur Tujuan Pembelajaran (ATP)"
       fallbackDescription="Kelola alur tujuan pembelajaran berdasarkan konteks pengajaran aktif."
       icon="map"
     />

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -107,11 +107,11 @@ const STATUS_FILTERS: Array<{ key: StatusFilter; label: string }> = [
 const PROGRAM_NAVIGATION = [
   { code: 'CP', route: '/teacher/learning-cp', label: 'CP' },
   { code: 'ATP', route: '/teacher/learning-atp', label: 'ATP' },
-  { code: 'PROTA', route: '/teacher/learning-prota', label: 'Prota' },
-  { code: 'PROMES', route: '/teacher/learning-promes', label: 'Promes' },
-  { code: 'MODUL_AJAR', route: '/teacher/learning-modules', label: 'Modul' },
+  { code: 'PROTA', route: '/teacher/learning-prota', label: 'Program Tahunan' },
+  { code: 'PROMES', route: '/teacher/learning-promes', label: 'Program Semester' },
+  { code: 'MODUL_AJAR', route: '/teacher/learning-modules', label: 'Modul Ajar' },
   { code: 'KKTP', route: '/teacher/learning-kktp', label: 'KKTP' },
-  { code: 'MATRIKS_SEBARAN', route: '/teacher/learning-matriks-sebaran', label: 'Matriks' },
+  { code: 'MATRIKS_SEBARAN', route: '/teacher/learning-matriks-sebaran', label: 'Matriks Sebaran' },
 ];
 
 function normalizeProgramCode(raw: unknown): string {
@@ -408,16 +408,16 @@ export function TeacherLearningResourceProgramScreen({
     return assignments.filter((item) => Number(item.academicYear.id) === Number(activeYearQuery.data?.id));
   }, [assignments, activeYearQuery.data?.id]);
 
-  useEffect(() => {
-    if (!relevantAssignments.length) {
-      setSelectedAssignmentId(null);
-      return;
+  const effectiveSelectedAssignmentId = useMemo(() => {
+    if (!relevantAssignments.length) return null;
+    if (selectedAssignmentId && relevantAssignments.some((item) => item.id === selectedAssignmentId)) {
+      return selectedAssignmentId;
     }
-    if (selectedAssignmentId && relevantAssignments.some((item) => item.id === selectedAssignmentId)) return;
-    setSelectedAssignmentId(relevantAssignments[0].id);
+    return relevantAssignments[0]?.id || null;
   }, [relevantAssignments, selectedAssignmentId]);
 
-  const selectedAssignment = relevantAssignments.find((item) => item.id === selectedAssignmentId) || null;
+  const selectedAssignment =
+    relevantAssignments.find((item) => item.id === effectiveSelectedAssignmentId) || null;
   const academicYearName = useMemo(() => String(activeYearQuery.data?.name || '').trim(), [activeYearQuery.data?.name]);
   const activeSemesterLabel = useMemo(
     () => resolveSemesterLabel(activeYearQuery.data?.semester),
@@ -502,12 +502,7 @@ export function TeacherLearningResourceProgramScreen({
   const rows = ensureArray<TeachingResourceEntryItem>(entriesQuery.data?.rows);
   const total = Number(entriesQuery.data?.total || 0);
   const totalPages = Math.max(1, Number(entriesQuery.data?.totalPages || 1));
-
-  useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
+  const currentPage = Math.min(page, totalPages);
 
   const closeEditor = () => {
     setIsEditorOpen(false);
@@ -521,8 +516,8 @@ export function TeacherLearningResourceProgramScreen({
 
   const openCreateEditor = () => {
     const defaultAssignmentId = usesSheetTemplate
-      ? selectedAssignmentId || relevantAssignments[0]?.id || null
-      : selectedAssignmentId;
+      ? effectiveSelectedAssignmentId || relevantAssignments[0]?.id || null
+      : effectiveSelectedAssignmentId;
     const assignment =
       relevantAssignments.find((item) => item.id === defaultAssignmentId) || null;
     const generatedSections = buildDefaultSections(activeProgramSchemaSections);
@@ -575,21 +570,6 @@ export function TeacherLearningResourceProgramScreen({
     }
     setIsEditorOpen(true);
   };
-
-  useEffect(() => {
-    if (!isEditorOpen) return;
-    if (editingEntry) return;
-    setSections((prev) => {
-      const hasMeaningfulContent = prev.some(
-        (section) =>
-          section.title.trim() ||
-          section.body.trim() ||
-          section.rows.some((row) => Object.values(row.values).some((value) => String(value || '').trim())),
-      );
-      if (hasMeaningfulContent) return prev;
-      return buildDefaultSections(activeProgramSchemaSections);
-    });
-  }, [activeProgramSchemaSections, editingEntry, isEditorOpen]);
 
   const mutateSuccess = async (message: string) => {
     await queryClient.invalidateQueries({ queryKey: ['mobile-learning-resource-entries'] });
@@ -1000,6 +980,7 @@ export function TeacherLearningResourceProgramScreen({
                     router.replace(item.route as never);
                   }}
                   style={{
+                    maxWidth: '100%',
                     borderWidth: 1,
                     borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
                     backgroundColor: active ? '#e9f1ff' : '#fff',
@@ -1010,7 +991,10 @@ export function TeacherLearningResourceProgramScreen({
                     marginBottom: 8,
                   }}
                 >
-                  <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
+                  <Text
+                    style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}
+                    numberOfLines={2}
+                  >
                     {item.label}
                   </Text>
                 </Pressable>
@@ -1034,7 +1018,7 @@ export function TeacherLearningResourceProgramScreen({
             {relevantAssignments.length > 0 ? (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
                 {relevantAssignments.map((assignment) => {
-                  const selected = assignment.id === selectedAssignmentId;
+                  const selected = assignment.id === effectiveSelectedAssignmentId;
                   return (
                     <Pressable
                       key={assignment.id}
@@ -1309,36 +1293,36 @@ export function TeacherLearningResourceProgramScreen({
             }}
           >
             <Text style={{ color: '#64748b' }}>
-              Halaman {page}/{totalPages} • Total {total} dokumen
+              Halaman {currentPage}/{totalPages} • Total {total} dokumen
             </Text>
             <View style={{ flexDirection: 'row' }}>
               <Pressable
                 onPress={() => setPage((prev) => Math.max(1, prev - 1))}
-                disabled={page <= 1}
+                disabled={currentPage <= 1}
                 style={{
                   borderWidth: 1,
                   borderColor: '#cbd5e1',
-                  backgroundColor: page <= 1 ? '#f8fafc' : '#fff',
+                  backgroundColor: currentPage <= 1 ? '#f8fafc' : '#fff',
                   borderRadius: 8,
                   paddingHorizontal: 10,
                   paddingVertical: 7,
                   marginRight: 8,
-                  opacity: page <= 1 ? 0.6 : 1,
+                  opacity: currentPage <= 1 ? 0.6 : 1,
                 }}
               >
                 <Text style={{ color: '#334155', fontWeight: '600' }}>Prev</Text>
               </Pressable>
               <Pressable
                 onPress={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-                disabled={page >= totalPages}
+                disabled={currentPage >= totalPages}
                 style={{
                   borderWidth: 1,
                   borderColor: '#cbd5e1',
-                  backgroundColor: page >= totalPages ? '#f8fafc' : '#fff',
+                  backgroundColor: currentPage >= totalPages ? '#f8fafc' : '#fff',
                   borderRadius: 8,
                   paddingHorizontal: 10,
                   paddingVertical: 7,
-                  opacity: page >= totalPages ? 0.6 : 1,
+                  opacity: currentPage >= totalPages ? 0.6 : 1,
                 }}
               >
                 <Text style={{ color: '#334155', fontWeight: '600' }}>Next</Text>

@@ -23,12 +23,12 @@ type SectionConfig = {
 
 const SECTION_CONFIG: Record<LearningResourceSection, SectionConfig> = {
   CP: {
-    title: 'Perangkat Ajar CP',
+    title: 'Capaian Pembelajaran (CP)',
     subtitle: 'Kelola analisis CP untuk konteks kelas dan mata pelajaran yang Anda ampu.',
     icon: 'book-open',
   },
   ATP: {
-    title: 'Perangkat Ajar ATP',
+    title: 'Alur Tujuan Pembelajaran (ATP)',
     subtitle: 'Kelola alur tujuan pembelajaran berdasarkan konteks pengajaran aktif.',
     icon: 'map',
   },
@@ -48,7 +48,7 @@ const SECTION_CONFIG: Record<LearningResourceSection, SectionConfig> = {
     icon: 'file-text',
   },
   KKTP: {
-    title: 'KKTP',
+    title: 'Kriteria Ketercapaian Tujuan Pembelajaran (KKTP)',
     subtitle: 'Kelola kriteria ketercapaian tujuan pembelajaran pada konteks mengajar Anda.',
     icon: 'check-square',
   },
@@ -66,11 +66,11 @@ const SECTION_LINKS: Array<{
 }> = [
   { section: 'CP', route: '/teacher/learning-cp', label: 'CP' },
   { section: 'ATP', route: '/teacher/learning-atp', label: 'ATP' },
-  { section: 'PROTA', route: '/teacher/learning-prota', label: 'Prota' },
-  { section: 'PROMES', route: '/teacher/learning-promes', label: 'Promes' },
-  { section: 'MODULES', route: '/teacher/learning-modules', label: 'Modul' },
+  { section: 'PROTA', route: '/teacher/learning-prota', label: 'Program Tahunan' },
+  { section: 'PROMES', route: '/teacher/learning-promes', label: 'Program Semester' },
+  { section: 'MODULES', route: '/teacher/learning-modules', label: 'Modul Ajar' },
   { section: 'KKTP', route: '/teacher/learning-kktp', label: 'KKTP' },
-  { section: 'MATRIKS_SEBARAN', route: '/teacher/learning-matriks-sebaran', label: 'Matriks' },
+  { section: 'MATRIKS_SEBARAN', route: '/teacher/learning-matriks-sebaran', label: 'Matriks Sebaran' },
 ];
 
 type CpAnalysisItemDraft = {
@@ -196,6 +196,7 @@ function SectionChip({
     <Pressable
       onPress={onPress}
       style={{
+        maxWidth: '100%',
         borderWidth: 1,
         borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
         backgroundColor: active ? '#e9f1ff' : '#fff',
@@ -204,7 +205,10 @@ function SectionChip({
         paddingVertical: 7,
       }}
     >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
+      <Text
+        style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}
+        numberOfLines={2}
+      >
         {label}
       </Text>
     </Pressable>

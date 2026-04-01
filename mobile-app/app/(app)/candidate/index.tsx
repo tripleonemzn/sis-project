@@ -111,7 +111,7 @@ export default function CandidateDashboardScreen() {
     staleTime: 60_000,
   });
 
-  if (isLoading) return <AppLoadingScreen message="Memuat dashboard calon siswa..." />;
+  if (isLoading) return <AppLoadingScreen message="Memuat dashboard pendaftaran..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
   if (user?.role !== 'CALON_SISWA') return <Redirect href="/home" />;
 
@@ -141,7 +141,7 @@ export default function CandidateDashboardScreen() {
 
       {admissionQuery.isLoading ? <QueryStateView type="loading" message="Memuat ringkasan PPDB..." /> : null}
       {admissionQuery.isError ? (
-        <QueryStateView type="error" message="Gagal memuat dashboard calon siswa." onRetry={() => admissionQuery.refetch()} />
+        <QueryStateView type="error" message="Gagal memuat dashboard pendaftaran." onRetry={() => admissionQuery.refetch()} />
       ) : null}
 
       {admission ? (

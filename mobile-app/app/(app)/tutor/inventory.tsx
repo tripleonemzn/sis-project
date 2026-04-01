@@ -135,7 +135,7 @@ export default function TutorInventoryScreen() {
     },
   });
 
-  if (isLoading) return <AppLoadingScreen message="Memuat inventaris ekskul..." />;
+  if (isLoading) return <AppLoadingScreen message="Memuat halaman kelola inventaris..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
   if (!hasTutorWorkspaceAccess) {
@@ -384,9 +384,9 @@ export default function TutorInventoryScreen() {
         </View>
       ) : null}
 
-      {inventoryQuery.isLoading ? <QueryStateView type="loading" message="Memuat inventaris ekskul..." /> : null}
+      {inventoryQuery.isLoading ? <QueryStateView type="loading" message="Memuat halaman kelola inventaris..." /> : null}
       {inventoryQuery.isError ? (
-        <QueryStateView type="error" message="Gagal memuat inventaris ekskul." onRetry={() => inventoryQuery.refetch()} />
+        <QueryStateView type="error" message="Gagal memuat halaman kelola inventaris." onRetry={() => inventoryQuery.refetch()} />
       ) : null}
 
       {!inventoryQuery.isLoading && !inventoryQuery.isError ? (
