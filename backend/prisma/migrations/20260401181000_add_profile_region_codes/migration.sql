@@ -1,0 +1,5 @@
+ALTER TABLE "users"
+ADD COLUMN IF NOT EXISTS "provinceCode" TEXT,
+ADD COLUMN IF NOT EXISTS "cityRegencyCode" TEXT,
+ADD COLUMN IF NOT EXISTS "subdistrictCode" TEXT,
+ADD COLUMN IF NOT EXISTS "villageCode" TEXT;

@@ -42,9 +42,13 @@ export interface User {
   rw?: string | null;
   dusun?: string | null;
   province?: string | null;
+  provinceCode?: string | null;
   cityRegency?: string | null;
+  cityRegencyCode?: string | null;
   village?: string | null;
   subdistrict?: string | null;
+  subdistrictCode?: string | null;
+  villageCode?: string | null;
   postalCode?: string | null;
 
   // New Employment Data

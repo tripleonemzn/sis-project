@@ -47,11 +47,15 @@ model User {
   postalCode                                         String?
   ptkType                                            String?
   province                                           String?
+  provinceCode                                       String?
   cityRegency                                        String?
+  cityRegencyCode                                    String?
   rt                                                 String?
   rw                                                 String?
   subdistrict                                        String?
+  subdistrictCode                                    String?
   village                                            String?
+  villageCode                                        String?
   childNumber                                        Int?
   fatherIncome                                       String?
   fatherNik                                          String?

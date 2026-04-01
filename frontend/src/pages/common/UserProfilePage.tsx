@@ -120,9 +120,13 @@ const userFormSchema = z.object({
   rw: z.string().optional().nullable(),
   dusun: z.string().optional().nullable(),
   province: z.string().optional().nullable(),
+  provinceCode: z.string().optional().nullable(),
   cityRegency: z.string().optional().nullable(),
+  cityRegencyCode: z.string().optional().nullable(),
   village: z.string().optional().nullable(),
   subdistrict: z.string().optional().nullable(),
+  subdistrictCode: z.string().optional().nullable(),
+  villageCode: z.string().optional().nullable(),
   postalCode: z.string().optional().nullable(),
   ptkType: z.string().optional().nullable(),
   employeeStatus: z.string().optional().nullable(),
@@ -812,9 +816,13 @@ export const UserProfilePage = () => {
         rw: user.rw || '',
         dusun: user.dusun || '',
         province: user.province || '',
+        provinceCode: user.provinceCode || '',
         cityRegency: user.cityRegency || '',
+        cityRegencyCode: user.cityRegencyCode || '',
         village: user.village || '',
         subdistrict: user.subdistrict || '',
+        subdistrictCode: user.subdistrictCode || '',
+        villageCode: user.villageCode || '',
         postalCode: user.postalCode || '',
 
         // Employment details
@@ -1972,6 +1980,52 @@ export const UserProfilePage = () => {
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </div>
+                      {(isEmployeeProfile || isStudentProfile) && (
+                        <div className="md:col-span-2 rounded-lg border border-blue-100 bg-blue-50/60 p-4">
+                          <p className="text-sm font-semibold text-blue-900">Kode Wilayah Administratif</p>
+                          <p className="mt-1 text-xs text-blue-700">
+                            Opsional untuk sinkronisasi data induk. Isi sesuai referensi wilayah resmi bila sudah tersedia.
+                          </p>
+                          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div>
+                              <label htmlFor="provinceCode" className="block text-sm font-medium text-gray-700 mb-1">Kode Provinsi</label>
+                              <input
+                                id="provinceCode"
+                                {...register('provinceCode')}
+                                autoComplete="off"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              />
+                            </div>
+                            <div>
+                              <label htmlFor="cityRegencyCode" className="block text-sm font-medium text-gray-700 mb-1">Kode Kabupaten / Kota</label>
+                              <input
+                                id="cityRegencyCode"
+                                {...register('cityRegencyCode')}
+                                autoComplete="off"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              />
+                            </div>
+                            <div>
+                              <label htmlFor="subdistrictCode" className="block text-sm font-medium text-gray-700 mb-1">Kode Kecamatan</label>
+                              <input
+                                id="subdistrictCode"
+                                {...register('subdistrictCode')}
+                                autoComplete="off"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              />
+                            </div>
+                            <div>
+                              <label htmlFor="villageCode" className="block text-sm font-medium text-gray-700 mb-1">Kode Desa / Kelurahan</label>
+                              <input
+                                id="villageCode"
+                                {...register('villageCode')}
+                                autoComplete="off"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
