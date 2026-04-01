@@ -415,19 +415,19 @@ export const LoginPage = () => {
 
   return (
     <div className="auth-font-ui relative min-h-screen w-full overflow-hidden lg:h-screen">
-      {/* Bright glass background dengan palet lembut dari logo KGB2 */}
-      <div className="absolute inset-0 bg-[#f5f9ff]" />
+      {/* Blue glass background dengan aksen hidup dari palet logo KGB2 */}
+      <div className="absolute inset-0 bg-[#173a88]" />
       <div
         className="absolute inset-0"
         style={{
           backgroundImage:
-            'radial-gradient(circle at 14% 18%, rgba(47, 93, 168, 0.12) 0%, transparent 42%), radial-gradient(circle at 86% 16%, rgba(231, 199, 104, 0.12) 0%, transparent 38%), radial-gradient(circle at 50% 86%, rgba(46, 156, 140, 0.11) 0%, transparent 44%), linear-gradient(132deg, #f8fbff 0%, #eef5ff 48%, #f2fbf8 100%)',
+            'radial-gradient(circle at 14% 18%, rgba(116, 195, 192, 0.24) 0%, transparent 42%), radial-gradient(circle at 86% 16%, rgba(243, 191, 36, 0.16) 0%, transparent 34%), radial-gradient(circle at 50% 86%, rgba(93, 176, 255, 0.2) 0%, transparent 44%), linear-gradient(132deg, #173a88 0%, #2b5fad 46%, #1e8da4 100%)',
         }}
       />
-      <div className="auth-grid-fade absolute inset-0 opacity-12" />
-      <div className="auth-float-soft absolute -top-24 -left-16 h-80 w-80 rounded-full bg-[#8eb3e8]/18 blur-3xl" />
-      <div className="auth-float-soft-alt absolute top-10 right-[-3rem] h-96 w-96 rounded-full bg-[#c5eadf]/18 blur-3xl" />
-      <div className="auth-float-soft absolute -bottom-24 left-1/3 h-96 w-96 rounded-full bg-[#f2df9d]/18 blur-3xl [animation-delay:-4s]" />
+      <div className="auth-grid-fade absolute inset-0 opacity-18" />
+      <div className="auth-float-soft absolute -top-24 -left-16 h-80 w-80 rounded-full bg-[#74c3c0]/20 blur-3xl" />
+      <div className="auth-float-soft-alt absolute top-10 right-[-3rem] h-96 w-96 rounded-full bg-[#f3bf24]/16 blur-3xl" />
+      <div className="auth-float-soft absolute -bottom-24 left-1/3 h-96 w-96 rounded-full bg-[#68b7ff]/18 blur-3xl [animation-delay:-4s]" />
       <div className="pointer-events-none select-none absolute inset-0">
         <img
           src="/logo_sis_kgb2.png"
@@ -460,7 +460,7 @@ export const LoginPage = () => {
           className="absolute bottom-[12%] right-[5%] w-20 rotate-[-9deg] object-contain opacity-[0.12] sm:w-24 md:w-32 lg:w-36"
         />
       </div>
-      <div className="absolute inset-0 bg-white/8" />
+      <div className="absolute inset-0 bg-[rgba(7,18,45,0.1)]" />
 
       <div className="relative flex min-h-screen flex-col lg:h-screen">
         <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 py-3 sm:px-6 lg:px-8 lg:py-3">
@@ -704,7 +704,7 @@ export const LoginPage = () => {
           </div>
 
           <div className="mt-3 hidden w-full xl:block">
-            <p className="auth-font-display mx-auto max-w-4xl text-center text-sm font-medium italic leading-relaxed text-slate-700 xl:text-base">
+            <p className="auth-font-display mx-auto max-w-4xl text-center text-sm font-medium italic leading-relaxed text-white/90 drop-shadow-md xl:text-base">
               “Menjadi SMK yang Unggul dalam Membentuk Lulusan Berakhlak Mulia, 
               Kreatif, Kompeten, dan Berkarakter.”
             </p>
@@ -713,8 +713,8 @@ export const LoginPage = () => {
 
         <div className="mx-auto w-full max-w-7xl px-4 pb-2 sm:px-6 lg:px-8 lg:pb-2">
           <div className="flex flex-col items-center gap-4">
-            <div className="flex items-center justify-center gap-2.5 rounded-full border border-slate-200/80 bg-white/65 px-3 py-1.5 shadow-[0_14px_28px_rgba(15,23,42,0.08)] backdrop-blur-md">
-              <span className="hidden text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 sm:inline">
+            <div className="flex items-center justify-center gap-2.5 rounded-full border border-white/16 bg-white/10 px-3 py-1.5 backdrop-blur-md">
+              <span className="hidden text-[10px] font-semibold uppercase tracking-[0.2em] text-white/70 sm:inline">
                 Download Mobile Apps
               </span>
               <div className="flex items-center gap-2">
@@ -724,7 +724,7 @@ export const LoginPage = () => {
                       key={item.key}
                       title={`${item.label} belum tersedia`}
                       aria-label={`${item.label} belum tersedia`}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-100/80 text-slate-400"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/12 bg-white/8 text-white/45"
                     >
                       {item.icon}
                     </span>
@@ -736,7 +736,7 @@ export const LoginPage = () => {
                       rel="noreferrer"
                       title={item.label}
                       aria-label={item.label}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-[0_10px_20px_rgba(5,15,40,0.08)] transition hover:-translate-y-0.5 hover:bg-slate-50 hover:text-slate-900"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/16 bg-white/12 text-white shadow-[0_10px_20px_rgba(5,15,40,0.16)] transition hover:-translate-y-0.5 hover:bg-white/18 hover:text-white"
                     >
                       {item.icon}
                     </a>
@@ -745,8 +745,8 @@ export const LoginPage = () => {
               </div>
             </div>
 
-            <p className="text-center text-[11px] font-normal leading-6 text-slate-600 sm:text-sm">
-              © 2025 JHA Teknologi Solusi. All rights reserved. <span className="mx-2 text-slate-400">|</span>{' '}
+            <p className="text-center text-[11px] font-normal leading-6 text-white/92 drop-shadow-md sm:text-sm">
+              © 2025 JHA Teknologi Solusi. All rights reserved. <span className="mx-2 text-white/70">|</span>{' '}
               Licensed to SMKS Karya Guna Bhakti 2 for use only.
             </p>
           </div>
