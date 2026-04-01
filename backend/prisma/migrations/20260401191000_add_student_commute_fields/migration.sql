@@ -1,0 +1,3 @@
+ALTER TABLE "users"
+ADD COLUMN IF NOT EXISTS "distanceToSchool" TEXT,
+ADD COLUMN IF NOT EXISTS "travelTimeToSchool" TEXT;

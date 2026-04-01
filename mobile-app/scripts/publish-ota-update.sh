@@ -16,6 +16,12 @@ export NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-/tmp/.npm}"
 export CI="${CI:-1}"
 mkdir -p "${XDG_CACHE_HOME}" "${NPM_CONFIG_CACHE}"
 
+resolve_runtime_version() {
+  node -e "const app=require(process.argv[1]); const runtime=app?.expo?.runtimeVersion; if (typeof runtime === 'string') { process.stdout.write(runtime); process.exit(0); } if (runtime && runtime.policy === 'appVersion') { process.stdout.write(String(app?.expo?.version || '')); process.exit(0); } if (runtime && typeof runtime.version === 'string') { process.stdout.write(runtime.version); process.exit(0); } process.exit(1);" ./app.json
+}
+
+RUNTIME_VERSION="${OTA_RUNTIME_VERSION:-$(resolve_runtime_version)}"
+
 if [ -f ".env" ]; then
   set -a
   # shellcheck disable=SC1091
@@ -42,6 +48,7 @@ notify_broadcast() {
   local safe_body
   local safe_channel
   local safe_platform
+  local safe_runtime_version
   local notify_platform
   local payload
   local curl_status
@@ -57,7 +64,8 @@ notify_broadcast() {
   safe_body="$(printf '%s' "${NOTIFY_BODY}" | sed 's/\\/\\\\/g; s/"/\\"/g')"
   safe_channel="$(printf '%s' "${CHANNEL}" | sed 's/\\/\\\\/g; s/"/\\"/g')"
   safe_platform="$(printf '%s' "${notify_platform}" | sed 's/\\/\\\\/g; s/"/\\"/g')"
-  payload="{\"title\":\"${safe_title}\",\"message\":\"${safe_body}\",\"channel\":\"${safe_channel}\",\"platform\":\"${safe_platform}\"}"
+  safe_runtime_version="$(printf '%s' "${RUNTIME_VERSION}" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  payload="{\"title\":\"${safe_title}\",\"message\":\"${safe_body}\",\"channel\":\"${safe_channel}\",\"runtimeVersion\":\"${safe_runtime_version}\",\"platform\":\"${safe_platform}\"}"
 
   if [ -z "${NOTIFY_URL}" ]; then
     echo "Skip push notify: OTA_PUSH_NOTIFY_URL tidak dikonfigurasi."

@@ -424,6 +424,10 @@ export default function DiagnosticsScreen() {
               : 'Belum pernah'}
           </Text>
           <Text style={{ color: '#475569', fontSize: 12 }}>
+            Last Sync OTA: {localPushDebug?.lastSync?.updateChannel || '-'} /{' '}
+            {localPushDebug?.lastSync?.runtimeVersion || '-'}
+          </Text>
+          <Text style={{ color: '#475569', fontSize: 12 }}>
             Device Server Aktif: {serverPushStatus ? `${serverPushStatus.enabledDevices}/${serverPushStatus.totalDevices}` : '-'}
           </Text>
           <Text style={{ color: currentServerDevice ? '#166534' : '#b45309', fontSize: 12 }}>
@@ -433,6 +437,11 @@ export default function DiagnosticsScreen() {
                 )}).`
               : 'Device ini belum terdeteksi di server.'}
           </Text>
+          {currentServerDevice ? (
+            <Text style={{ color: '#475569', fontSize: 12 }}>
+              Device Server OTA: {currentServerDevice.updateChannel || '-'} / {currentServerDevice.runtimeVersion || '-'}
+            </Text>
+          ) : null}
           {localPushDebug?.androidPushNativeConfigStatus === 'missing' ? (
             <Text style={{ color: '#b91c1c', fontSize: 12 }}>
               Build Android ini belum membawa konfigurasi `google-services.json`. Notifikasi update saat aplikasi tertutup

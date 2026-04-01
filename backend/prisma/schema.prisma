@@ -2545,6 +2545,8 @@ model MobilePushDevice {
   deviceId      String?
   deviceName    String?
   appVersion    String?
+  updateChannel String?
+  runtimeVersion String?
   isEnabled     Boolean        @default(true)
   lastSeenAt    DateTime       @default(now())
   createdAt     DateTime       @default(now())
@@ -2552,6 +2554,7 @@ model MobilePushDevice {
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isEnabled])
+  @@index([platform, isEnabled, updateChannel, runtimeVersion])
   @@map("mobile_push_devices")
 }
 

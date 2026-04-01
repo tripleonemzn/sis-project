@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
+import * as Updates from 'expo-updates';
 import { Platform } from 'react-native';
 import { apiClient } from '../../lib/api/client';
 
@@ -31,6 +32,8 @@ export type PushSyncResult = {
   projectId: string | null;
   deviceName: string | null;
   appVersion: string | null;
+  updateChannel: string | null;
+  runtimeVersion: string | null;
   syncedAt: string;
 };
 
@@ -42,6 +45,8 @@ export type LocalPushDebugSnapshot = {
   projectId: string | null;
   deviceName: string | null;
   appVersion: string | null;
+  updateChannel: string | null;
+  runtimeVersion: string | null;
   androidPushNativeConfigStatus: 'configured' | 'missing' | 'not_applicable';
   androidGoogleServicesFile: string | null;
   lastSync: PushSyncResult | null;
@@ -52,6 +57,8 @@ export type MobilePushDeviceSummary = {
   platform: 'ANDROID' | 'IOS' | 'UNKNOWN';
   deviceName: string | null;
   appVersion: string | null;
+  updateChannel: string | null;
+  runtimeVersion: string | null;
   isEnabled: boolean;
   lastSeenAt: string;
   updatedAt: string;
@@ -191,6 +198,22 @@ function resolveAppVersion() {
   const constants = getExpoConstantsSnapshot();
   const version = constants.expoConfig?.version || null;
   return typeof version === 'string' && version.trim().length > 0 ? version.trim() : null;
+}
+
+function resolveUpdateChannel() {
+  const channel = Updates.channel || null;
+  return typeof channel === 'string' && channel.trim().length > 0 ? channel.trim() : null;
+}
+
+function resolveRuntimeVersion() {
+  const raw = Updates.runtimeVersion;
+  if (typeof raw === 'string') {
+    const normalized = raw.trim();
+    return normalized.length > 0 ? normalized : null;
+  }
+  if (raw == null) return null;
+  const normalized = String(raw).trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 function resolveDeviceName() {
@@ -348,6 +371,8 @@ export async function syncPushDeviceRegistration() {
   const syncedAt = new Date().toISOString();
   const deviceName = resolveDeviceName();
   const appVersion = resolveAppVersion();
+  const updateChannel = resolveUpdateChannel();
+  const runtimeVersion = resolveRuntimeVersion();
   try {
     const tokenRequest = await requestExpoPushToken();
     const nextToken = tokenRequest.token;
@@ -360,6 +385,8 @@ export async function syncPushDeviceRegistration() {
         projectId: tokenRequest.projectId,
         deviceName,
         appVersion,
+        updateChannel,
+        runtimeVersion,
         syncedAt,
       };
       await persistPushSyncResult(result);
@@ -383,6 +410,8 @@ export async function syncPushDeviceRegistration() {
       platform: resolvePlatform(),
       appVersion,
       deviceName,
+      updateChannel,
+      runtimeVersion,
     });
 
     await AsyncStorage.setItem(PUSH_TOKEN_STORAGE_KEY, nextToken);
@@ -393,6 +422,8 @@ export async function syncPushDeviceRegistration() {
       projectId: tokenRequest.projectId,
       deviceName,
       appVersion,
+      updateChannel,
+      runtimeVersion,
       syncedAt,
     };
     await persistPushSyncResult(result);
@@ -411,6 +442,8 @@ export async function syncPushDeviceRegistration() {
       projectId: resolveExpoProjectId(),
       deviceName,
       appVersion,
+      updateChannel,
+      runtimeVersion,
       syncedAt,
     };
     await persistPushSyncResult(result);
@@ -466,6 +499,8 @@ export async function getLocalPushDebugSnapshot(): Promise<LocalPushDebugSnapsho
     projectId: resolveExpoProjectId(),
     deviceName: resolveDeviceName(),
     appVersion: resolveAppVersion(),
+    updateChannel: resolveUpdateChannel(),
+    runtimeVersion: resolveRuntimeVersion(),
     androidPushNativeConfigStatus: resolveAndroidPushNativeConfigStatus(),
     androidGoogleServicesFile: resolveAndroidGoogleServicesFile(),
     lastSync,

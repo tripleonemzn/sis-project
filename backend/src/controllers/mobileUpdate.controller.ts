@@ -18,6 +18,8 @@ const registerDeviceSchema = z.object({
   deviceId: z.string().trim().max(120).optional().nullable(),
   deviceName: z.string().trim().max(120).optional().nullable(),
   appVersion: z.string().trim().max(60).optional().nullable(),
+  updateChannel: z.string().trim().max(80).optional().nullable(),
+  runtimeVersion: z.string().trim().max(80).optional().nullable(),
 });
 
 const unregisterDeviceSchema = z.object({
@@ -28,6 +30,7 @@ const broadcastUpdateSchema = z.object({
   title: z.string().trim().max(120).optional(),
   message: z.string().trim().max(500).optional(),
   channel: z.string().trim().max(80).optional(),
+  runtimeVersion: z.string().trim().max(80).optional(),
   platform: mobilePlatformSchema.optional(),
 });
 
@@ -104,6 +107,12 @@ function dedupeRecipients<T extends { expoPushToken: string }>(devices: T[]) {
     }
   }
   return Array.from(uniqueByToken.values());
+}
+
+function normalizeOptionalText(value: string | null | undefined) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 async function dispatchExpoPushMessages(
@@ -199,6 +208,8 @@ export const registerMobilePushDevice = asyncHandler(async (req: Request, res: R
       deviceId: payload.deviceId || null,
       deviceName: payload.deviceName || null,
       appVersion: payload.appVersion || null,
+      updateChannel: normalizeOptionalText(payload.updateChannel),
+      runtimeVersion: normalizeOptionalText(payload.runtimeVersion),
       isEnabled: true,
       lastSeenAt: new Date(),
     },
@@ -209,6 +220,8 @@ export const registerMobilePushDevice = asyncHandler(async (req: Request, res: R
       deviceId: payload.deviceId || null,
       deviceName: payload.deviceName || null,
       appVersion: payload.appVersion || null,
+      updateChannel: normalizeOptionalText(payload.updateChannel),
+      runtimeVersion: normalizeOptionalText(payload.runtimeVersion),
       isEnabled: true,
       lastSeenAt: new Date(),
     },
@@ -216,6 +229,8 @@ export const registerMobilePushDevice = asyncHandler(async (req: Request, res: R
       id: true,
       expoPushToken: true,
       platform: true,
+      updateChannel: true,
+      runtimeVersion: true,
       isEnabled: true,
       lastSeenAt: true,
     },
@@ -266,6 +281,8 @@ export const getMyMobilePushDevices = asyncHandler(async (req: Request, res: Res
       platform: true,
       deviceName: true,
       appVersion: true,
+      updateChannel: true,
+      runtimeVersion: true,
       isEnabled: true,
       lastSeenAt: true,
       updatedAt: true,
@@ -285,6 +302,8 @@ export const getMyMobilePushDevices = asyncHandler(async (req: Request, res: Res
           platform: device.platform,
           deviceName: device.deviceName,
           appVersion: device.appVersion,
+          updateChannel: device.updateChannel,
+          runtimeVersion: device.runtimeVersion,
           isEnabled: device.isEnabled,
           lastSeenAt: device.lastSeenAt,
           updatedAt: device.updatedAt,
@@ -369,6 +388,7 @@ export const broadcastMobileUpdateNotification = asyncHandler(async (req: Reques
 
   const title = payload.title || 'SIS KGB2 : Update Tersedia';
   const channel = payload.channel || 'pilot';
+  const runtimeVersion = normalizeOptionalText(payload.runtimeVersion);
   const message =
     payload.message ||
     'Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.';
@@ -376,6 +396,10 @@ export const broadcastMobileUpdateNotification = asyncHandler(async (req: Reques
   const where: any = { isEnabled: true };
   if (payload.platform) {
     where.platform = payload.platform;
+  }
+  where.updateChannel = channel;
+  if (runtimeVersion) {
+    where.runtimeVersion = runtimeVersion;
   }
 
   const devices = await prisma.mobilePushDevice.findMany({
@@ -415,6 +439,7 @@ export const broadcastMobileUpdateNotification = asyncHandler(async (req: Reques
     data: {
       type: 'APP_UPDATE',
       channel,
+      ...(runtimeVersion ? { runtimeVersion } : {}),
     },
   })));
 
@@ -428,7 +453,10 @@ export const broadcastMobileUpdateNotification = asyncHandler(async (req: Reques
         title,
         message,
         type: 'APP_UPDATE',
-        data: { channel },
+        data: {
+          channel,
+          ...(runtimeVersion ? { runtimeVersion } : {}),
+        },
       })),
     }, { skipPush: true });
   }
@@ -440,6 +468,7 @@ export const broadcastMobileUpdateNotification = asyncHandler(async (req: Reques
       recipients: recipients.length,
       staleTokensDisabled,
       channel,
+      runtimeVersion,
     }, 'Broadcast notifikasi update selesai'),
   );
 });
