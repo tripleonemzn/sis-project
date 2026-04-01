@@ -582,7 +582,7 @@ export default function TeacherWakakurPerformanceScreen() {
 
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                 <SummaryCard
-                  title="Perangkat Ajar Pending"
+                  title="Perangkat Ajar Pending Review"
                   value={formatNumber(teachingResourceSummary.submitted)}
                   subtitle={`${formatNumber(teachingResourceSummary.approved)} disetujui`}
                 />

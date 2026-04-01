@@ -1305,7 +1305,7 @@ export default function AdminCandidateAdmissionsScreen() {
               value={reviewForm.decisionSummary}
               onChangeText={(value) => setReviewForm((prev) => ({ ...prev, decisionSummary: value }))}
               multiline
-              placeholder="Ringkasan resmi yang akan tampil di dashboard calon siswa"
+              placeholder="Ringkasan resmi yang akan tampil di dashboard pendaftaran"
             />
             <Field
               label="Langkah Berikutnya"

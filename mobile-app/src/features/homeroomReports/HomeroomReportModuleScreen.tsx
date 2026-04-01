@@ -1448,7 +1448,7 @@ export function HomeroomReportModuleScreen({
         </Text>
         <QueryStateView
           type="error"
-          message="Aktifkan minimal satu Program Ujian rapor di Kelola Ujian terlebih dahulu."
+          message="Aktifkan program dengan komponen nilai rapor di menu Kelola Ujian."
         />
         <Pressable
           onPress={() => router.replace('/home')}

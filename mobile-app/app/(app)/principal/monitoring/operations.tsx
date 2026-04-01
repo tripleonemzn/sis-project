@@ -351,7 +351,7 @@ export default function PrincipalMonitoringOperationsScreen() {
             </View>
             <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
               <MonitoringCard
-                title="Perangkat Ajar Pending"
+                title="Perangkat Ajar Pending Review"
                 value={countTeachingStatus(monitoring.teaching.byStatus, 'SUBMITTED')}
                 subtitle={`${countTeachingStatus(monitoring.teaching.byStatus, 'APPROVED')} disetujui`}
                 accent="#bae6fd"
