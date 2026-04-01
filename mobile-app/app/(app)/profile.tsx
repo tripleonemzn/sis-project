@@ -34,6 +34,8 @@ import { openWebModuleRoute } from '../../src/lib/navigation/webModuleRoute';
 type EditableProfileForm = {
   name: string;
   gender: '' | 'MALE' | 'FEMALE';
+  citizenship: string;
+  maritalStatus: string;
   birthPlace: string;
   birthDate: string;
   email: string;
@@ -41,29 +43,55 @@ type EditableProfileForm = {
   address: string;
   nip: string;
   nik: string;
+  familyCardNumber: string;
   nuptk: string;
+  highestEducation: string;
+  studyProgram: string;
   motherName: string;
+  motherNik: string;
   religion: string;
   childNumber: string;
+  distanceToSchool: string;
+  familyStatus: string;
+  livingWith: string;
+  transportationMode: string;
+  travelTimeToSchool: string;
+  kipNumber: string;
+  pkhNumber: string;
+  kksNumber: string;
   siblingsCount: string;
   fatherName: string;
+  fatherNik: string;
+  fatherEducation: string;
   fatherOccupation: string;
   fatherIncome: string;
+  motherEducation: string;
   motherOccupation: string;
   motherIncome: string;
   guardianName: string;
+  guardianEducation: string;
   guardianOccupation: string;
   guardianPhone: string;
   rt: string;
   rw: string;
   dusun: string;
+  province: string;
+  provinceCode: string;
+  cityRegency: string;
+  cityRegencyCode: string;
   village: string;
   subdistrict: string;
+  subdistrictCode: string;
+  villageCode: string;
   postalCode: string;
   ptkType: string;
   employeeStatus: string;
+  employeeActiveStatus: string;
+  salarySource: string;
   appointmentDecree: string;
   appointmentDate: string;
+  assignmentDecree: string;
+  assignmentDate: string;
   institution: string;
 };
 
@@ -91,6 +119,8 @@ const cardStyle = {
 const emptyForm: EditableProfileForm = {
   name: '',
   gender: '',
+  citizenship: '',
+  maritalStatus: '',
   birthPlace: '',
   birthDate: '',
   email: '',
@@ -98,33 +128,99 @@ const emptyForm: EditableProfileForm = {
   address: '',
   nip: '',
   nik: '',
+  familyCardNumber: '',
   nuptk: '',
+  highestEducation: '',
+  studyProgram: '',
   motherName: '',
+  motherNik: '',
   religion: '',
   childNumber: '',
+  distanceToSchool: '',
+  familyStatus: '',
+  livingWith: '',
+  transportationMode: '',
+  travelTimeToSchool: '',
+  kipNumber: '',
+  pkhNumber: '',
+  kksNumber: '',
   siblingsCount: '',
   fatherName: '',
+  fatherNik: '',
+  fatherEducation: '',
   fatherOccupation: '',
   fatherIncome: '',
+  motherEducation: '',
   motherOccupation: '',
   motherIncome: '',
   guardianName: '',
+  guardianEducation: '',
   guardianOccupation: '',
   guardianPhone: '',
   rt: '',
   rw: '',
   dusun: '',
+  province: '',
+  provinceCode: '',
+  cityRegency: '',
+  cityRegencyCode: '',
   village: '',
   subdistrict: '',
+  subdistrictCode: '',
+  villageCode: '',
   postalCode: '',
   ptkType: '',
   employeeStatus: '',
+  employeeActiveStatus: '',
+  salarySource: '',
   appointmentDecree: '',
   appointmentDate: '',
+  assignmentDecree: '',
+  assignmentDate: '',
   institution: '',
 };
 
 const RELIGION_OPTIONS = ['ISLAM', 'KRISTEN', 'KATOLIK', 'HINDU', 'BUDDHA', 'KONGHUCU'];
+const CITIZENSHIP_OPTIONS = ['WNI', 'WNA'];
+const MARITAL_STATUS_OPTIONS = ['Belum Menikah', 'Menikah', 'Cerai Hidup', 'Cerai Mati'];
+const EDUCATION_LEVEL_OPTIONS = [
+  'Tidak Sekolah',
+  'PAUD',
+  'TK / Sederajat',
+  'SD / Sederajat',
+  'SMP / Sederajat',
+  'SMA / SMK / Sederajat',
+  'D1',
+  'D2',
+  'D3',
+  'D4 / S1',
+  'S2',
+  'S3',
+];
+const FAMILY_STATUS_OPTIONS = ['Anak Kandung', 'Anak Tiri', 'Anak Angkat'];
+const LIVING_WITH_OPTIONS = ['Orang Tua', 'Wali', 'Saudara', 'Asrama', 'Panti Asuhan', 'Pesantren', 'Kost', 'Lainnya'];
+const TRANSPORTATION_MODE_OPTIONS = [
+  'Jalan Kaki',
+  'Sepeda',
+  'Sepeda Motor',
+  'Mobil Pribadi',
+  'Angkutan Umum',
+  'Antar Jemput',
+  'Ojek / Ojol',
+  'Perahu Penyeberangan',
+  'Lainnya',
+];
+const EMPLOYEE_ACTIVE_STATUS_OPTIONS = ['Aktif', 'Cuti', 'Tugas Belajar', 'Tugas Tambahan', 'Nonaktif Sementara'];
+const SALARY_SOURCE_OPTIONS = [
+  'APBN',
+  'APBD Provinsi',
+  'APBD Kabupaten/Kota',
+  'Yayasan',
+  'BOS',
+  'Mandiri / Honor Sekolah',
+  'Perusahaan / Mitra',
+  'Lainnya',
+];
 
 function toText(value?: string | number | null) {
   if (value === null || value === undefined) return '';
@@ -174,6 +270,8 @@ function buildForm(profile: AuthUser | null): EditableProfileForm {
   return {
     name: toText(profile?.name),
     gender: (profile?.gender as EditableProfileForm['gender']) || '',
+    citizenship: toText(profile?.citizenship),
+    maritalStatus: toText(profile?.maritalStatus),
     birthPlace: toText(profile?.birthPlace),
     birthDate: toDateInput(profile?.birthDate),
     email: toText(profile?.email),
@@ -181,29 +279,55 @@ function buildForm(profile: AuthUser | null): EditableProfileForm {
     address: toText(profile?.address),
     nip: toText(profile?.nip),
     nik: toText(profile?.nik),
+    familyCardNumber: toText(profile?.familyCardNumber),
     nuptk: toText(profile?.nuptk),
+    highestEducation: toText(profile?.highestEducation),
+    studyProgram: toText(profile?.studyProgram),
     motherName: toText(profile?.motherName),
+    motherNik: toText(profile?.motherNik),
     religion: toText(profile?.religion),
     childNumber: toText(profile?.childNumber),
+    distanceToSchool: toText(profile?.distanceToSchool),
+    familyStatus: toText(profile?.familyStatus),
+    livingWith: toText(profile?.livingWith),
+    transportationMode: toText(profile?.transportationMode),
+    travelTimeToSchool: toText(profile?.travelTimeToSchool),
+    kipNumber: toText(profile?.kipNumber),
+    pkhNumber: toText(profile?.pkhNumber),
+    kksNumber: toText(profile?.kksNumber),
     siblingsCount: toText(profile?.siblingsCount),
     fatherName: toText(profile?.fatherName),
+    fatherNik: toText(profile?.fatherNik),
+    fatherEducation: toText(profile?.fatherEducation),
     fatherOccupation: toText(profile?.fatherOccupation),
     fatherIncome: toText(profile?.fatherIncome),
+    motherEducation: toText(profile?.motherEducation),
     motherOccupation: toText(profile?.motherOccupation),
     motherIncome: toText(profile?.motherIncome),
     guardianName: toText(profile?.guardianName),
+    guardianEducation: toText(profile?.guardianEducation),
     guardianOccupation: toText(profile?.guardianOccupation),
     guardianPhone: toText(profile?.guardianPhone),
     rt: toText(profile?.rt),
     rw: toText(profile?.rw),
     dusun: toText(profile?.dusun),
+    province: toText(profile?.province),
+    provinceCode: toText(profile?.provinceCode),
+    cityRegency: toText(profile?.cityRegency),
+    cityRegencyCode: toText(profile?.cityRegencyCode),
     village: toText(profile?.village),
     subdistrict: toText(profile?.subdistrict),
+    subdistrictCode: toText(profile?.subdistrictCode),
+    villageCode: toText(profile?.villageCode),
     postalCode: toText(profile?.postalCode),
     ptkType: toText(profile?.ptkType),
     employeeStatus: toText(profile?.employeeStatus),
+    employeeActiveStatus: toText(profile?.employeeActiveStatus),
+    salarySource: toText(profile?.salarySource),
     appointmentDecree: toText(profile?.appointmentDecree),
     appointmentDate: toDateInput(profile?.appointmentDate),
+    assignmentDecree: toText(profile?.assignmentDecree),
+    assignmentDate: toDateInput(profile?.assignmentDate),
     institution: toText(profile?.institution),
   };
 }
@@ -310,25 +434,38 @@ export default function ProfileScreen() {
   const baseline = useMemo(() => (profile ? buildForm(profile) : emptyForm), [profile]);
 
   const isStudent = profile?.role === 'STUDENT';
-  const isTeacher = profile?.role === 'TEACHER';
-  const isPrincipal = profile?.role === 'PRINCIPAL';
-  const isStaff = profile?.role === 'STAFF';
   const isParent = profile?.role === 'PARENT';
   const isExaminer = profile?.role === 'EXAMINER';
+  const isTutor = profile?.role === 'EXTRACURRICULAR_TUTOR';
   const isCandidate = profile?.role === 'CALON_SISWA';
+  const isEmployee = Boolean(
+    profile?.role && ['TEACHER', 'PRINCIPAL', 'STAFF', 'EXAMINER', 'EXTRACURRICULAR_TUTOR'].includes(profile.role),
+  );
   const profilePhotoUrl = resolveMediaUrl(profile?.photo);
-  const canUploadPhoto = ['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'STUDENT', 'PARENT', 'CALON_SISWA'].includes(profile?.role || '');
-  const canUploadDocuments = ['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'CALON_SISWA'].includes(profile?.role || '');
+  const canUploadPhoto = ['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXAMINER', 'EXTRACURRICULAR_TUTOR', 'STUDENT', 'PARENT', 'CALON_SISWA'].includes(profile?.role || '');
+  const canUploadDocuments = ['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXAMINER', 'EXTRACURRICULAR_TUTOR', 'CALON_SISWA'].includes(profile?.role || '');
   const [photoUploading, setPhotoUploading] = useState(false);
   const [documentUploading, setDocumentUploading] = useState(false);
   const [candidateDocumentCategory, setCandidateDocumentCategory] = useState<string>(
     MOBILE_CANDIDATE_DOCUMENT_OPTIONS[0]?.value || 'PPDB_AKTA_KELAHIRAN',
   );
-  const showNip = isTeacher || isPrincipal || isStaff;
-  const showNik = isTeacher || isPrincipal || isStudent;
-  const showNuptk = isTeacher || isPrincipal || isStaff;
-  const showAddressDetails = isTeacher || isPrincipal || isStudent;
-  const showEmployment = isTeacher || isPrincipal || isStaff || isExaminer;
+  const showNip = isEmployee;
+  const showNik = isEmployee || isStudent;
+  const showNuptk = isEmployee;
+  const showAddressDetails = isEmployee || isStudent || isParent;
+  const showEmployment = isEmployee;
+  const employmentRoleLabel = isExaminer ? 'Peran Penguji / Asesor' : 'Jenis PTK / Peran';
+  const employmentRolePlaceholder = isTutor
+    ? 'Contoh: Pembina Ekstrakurikuler'
+    : isExaminer
+      ? 'Contoh: Penguji Industri / Asesor'
+      : 'Contoh: Guru Mapel, Staff Administrasi';
+  const institutionLabel = isExaminer ? 'Instansi / Perusahaan' : 'Lembaga Pengangkat';
+  const institutionPlaceholder = isExaminer
+    ? 'Nama perusahaan atau lembaga asal'
+    : 'Contoh: Yayasan / Pemerintah Daerah';
+  const assignmentDecreeLabel = isExaminer ? 'Surat Tugas / SK Penugasan' : 'SK Penugasan';
+  const assignmentDateLabel = isExaminer ? 'Mulai Penugasan (YYYY-MM-DD)' : 'TMT Penugasan (YYYY-MM-DD)';
 
   useFocusEffect(
     useCallback(() => {
@@ -349,6 +486,8 @@ export default function ProfileScreen() {
       if (!profile?.id) throw new Error('Data profil belum siap.');
       const payload: UpdateSelfProfilePayload = {
         gender: (form.gender || null) as 'MALE' | 'FEMALE' | null,
+        citizenship: toNullable(form.citizenship),
+        maritalStatus: toNullable(form.maritalStatus),
         birthPlace: toNullable(form.birthPlace),
         birthDate: toNullable(form.birthDate),
         email: toNullable(form.email),
@@ -356,29 +495,55 @@ export default function ProfileScreen() {
         address: toNullable(form.address),
         nip: toNullable(form.nip),
         nik: toNullable(form.nik),
+        familyCardNumber: toNullable(form.familyCardNumber),
         nuptk: toNullable(form.nuptk),
+        highestEducation: toNullable(form.highestEducation),
+        studyProgram: toNullable(form.studyProgram),
         motherName: toNullable(form.motherName),
+        motherNik: toNullable(form.motherNik),
         religion: toNullable(form.religion),
         childNumber: toNullableNumber(form.childNumber),
+        distanceToSchool: toNullable(form.distanceToSchool),
+        familyStatus: toNullable(form.familyStatus),
+        livingWith: toNullable(form.livingWith),
+        transportationMode: toNullable(form.transportationMode),
+        travelTimeToSchool: toNullable(form.travelTimeToSchool),
+        kipNumber: toNullable(form.kipNumber),
+        pkhNumber: toNullable(form.pkhNumber),
+        kksNumber: toNullable(form.kksNumber),
         siblingsCount: toNullableNumber(form.siblingsCount),
         fatherName: toNullable(form.fatherName),
+        fatherNik: toNullable(form.fatherNik),
+        fatherEducation: toNullable(form.fatherEducation),
         fatherOccupation: toNullable(form.fatherOccupation),
         fatherIncome: toNullable(form.fatherIncome),
+        motherEducation: toNullable(form.motherEducation),
         motherOccupation: toNullable(form.motherOccupation),
         motherIncome: toNullable(form.motherIncome),
         guardianName: toNullable(form.guardianName),
+        guardianEducation: toNullable(form.guardianEducation),
         guardianOccupation: toNullable(form.guardianOccupation),
         guardianPhone: toNullable(form.guardianPhone),
         rt: toNullable(form.rt),
         rw: toNullable(form.rw),
         dusun: toNullable(form.dusun),
+        province: toNullable(form.province),
+        provinceCode: toNullable(form.provinceCode),
+        cityRegency: toNullable(form.cityRegency),
+        cityRegencyCode: toNullable(form.cityRegencyCode),
         village: toNullable(form.village),
         subdistrict: toNullable(form.subdistrict),
+        subdistrictCode: toNullable(form.subdistrictCode),
+        villageCode: toNullable(form.villageCode),
         postalCode: toNullable(form.postalCode),
         ptkType: toNullable(form.ptkType),
         employeeStatus: toNullable(form.employeeStatus),
+        employeeActiveStatus: toNullable(form.employeeActiveStatus),
+        salarySource: toNullable(form.salarySource),
         appointmentDecree: toNullable(form.appointmentDecree),
         appointmentDate: toNullable(form.appointmentDate),
+        assignmentDecree: toNullable(form.assignmentDecree),
+        assignmentDate: toNullable(form.assignmentDate),
         institution: toNullable(form.institution),
       };
 
@@ -626,6 +791,16 @@ export default function ProfileScreen() {
               />
             ) : null}
 
+            {(isEmployee || isStudent) ? (
+              <FormField
+                label="Nomor KK"
+                value={form.familyCardNumber}
+                onChangeText={(value) => setForm((prev) => ({ ...prev, familyCardNumber: value }))}
+                placeholder="Nomor kartu keluarga"
+                keyboardType="numeric"
+              />
+            ) : null}
+
             <ChoiceChips
               label="Jenis Kelamin"
               value={form.gender}
@@ -641,6 +816,24 @@ export default function ProfileScreen() {
               }
             />
 
+            {isEmployee ? (
+              <ChoiceChips
+                label="Kewarganegaraan"
+                value={form.citizenship}
+                options={CITIZENSHIP_OPTIONS.map((item) => ({ label: item, value: item }))}
+                onSelect={(value) => setForm((prev) => ({ ...prev, citizenship: value }))}
+              />
+            ) : null}
+
+            {isEmployee ? (
+              <ChoiceChips
+                label="Status Perkawinan"
+                value={form.maritalStatus}
+                options={MARITAL_STATUS_OPTIONS.map((item) => ({ label: item, value: item }))}
+                onSelect={(value) => setForm((prev) => ({ ...prev, maritalStatus: value }))}
+              />
+            ) : null}
+
             <FormField
               label="Tempat Lahir"
               value={form.birthPlace}
@@ -655,7 +848,7 @@ export default function ProfileScreen() {
               autoCapitalize="none"
             />
 
-            {isStudent ? (
+            {(isEmployee || isStudent || isCandidate) ? (
               <>
                 <ChoiceChips
                   label="Agama"
@@ -663,11 +856,28 @@ export default function ProfileScreen() {
                   options={RELIGION_OPTIONS.map((item) => ({ label: item, value: item }))}
                   onSelect={(value) => setForm((prev) => ({ ...prev, religion: value }))}
                 />
+              </>
+            ) : null}
+
+            {isStudent ? (
+              <>
+                <ChoiceChips
+                  label="Status Dalam Keluarga"
+                  value={form.familyStatus}
+                  options={FAMILY_STATUS_OPTIONS.map((item) => ({ label: item, value: item }))}
+                  onSelect={(value) => setForm((prev) => ({ ...prev, familyStatus: value }))}
+                />
                 <FormField
                   label="Anak Ke-"
                   value={form.childNumber}
                   onChangeText={(value) => setForm((prev) => ({ ...prev, childNumber: value }))}
                   keyboardType="numeric"
+                />
+                <ChoiceChips
+                  label="Jenis Tinggal"
+                  value={form.livingWith}
+                  options={LIVING_WITH_OPTIONS.map((item) => ({ label: item, value: item }))}
+                  onSelect={(value) => setForm((prev) => ({ ...prev, livingWith: value }))}
                 />
                 <FormField
                   label="Jumlah Saudara"
@@ -675,26 +885,96 @@ export default function ProfileScreen() {
                   onChangeText={(value) => setForm((prev) => ({ ...prev, siblingsCount: value }))}
                   keyboardType="numeric"
                 />
+                <ChoiceChips
+                  label="Alat Transportasi"
+                  value={form.transportationMode}
+                  options={TRANSPORTATION_MODE_OPTIONS.map((item) => ({ label: item, value: item }))}
+                  onSelect={(value) => setForm((prev) => ({ ...prev, transportationMode: value }))}
+                />
+                <FormField
+                  label="Jarak ke Sekolah"
+                  value={form.distanceToSchool}
+                  onChangeText={(value) => setForm((prev) => ({ ...prev, distanceToSchool: value }))}
+                  placeholder="Contoh: 3 km"
+                />
+                <FormField
+                  label="Waktu Tempuh ke Sekolah"
+                  value={form.travelTimeToSchool}
+                  onChangeText={(value) => setForm((prev) => ({ ...prev, travelTimeToSchool: value }))}
+                  placeholder="Contoh: 25 menit"
+                />
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#bfdbfe',
+                    backgroundColor: '#eff6ff',
+                    borderRadius: 12,
+                    padding: 12,
+                    marginBottom: 10,
+                  }}
+                >
+                  <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>Bantuan Pendidikan</Text>
+                  <Text style={{ color: '#1d4ed8', fontSize: 12, marginBottom: 10 }}>
+                    Isi hanya jika siswa memang memiliki identitas bantuan resmi yang aktif.
+                  </Text>
+                  <FormField
+                    label="Nomor KIP"
+                    value={form.kipNumber}
+                    onChangeText={(value) => setForm((prev) => ({ ...prev, kipNumber: value }))}
+                  />
+                  <FormField
+                    label="Nomor PKH"
+                    value={form.pkhNumber}
+                    onChangeText={(value) => setForm((prev) => ({ ...prev, pkhNumber: value }))}
+                  />
+                  <FormField
+                    label="Nomor KKS"
+                    value={form.kksNumber}
+                    onChangeText={(value) => setForm((prev) => ({ ...prev, kksNumber: value }))}
+                  />
+                </View>
               </>
             ) : null}
 
-            {(isTeacher || isPrincipal) ? (
-              <FormField
-                label="Nama Ibu Kandung"
-                value={form.motherName}
-                onChangeText={(value) => setForm((prev) => ({ ...prev, motherName: value }))}
-                placeholder="Masukkan nama ibu kandung"
-              />
+            {isEmployee ? (
+              <>
+                <FormField
+                  label="Nama Ibu Kandung"
+                  value={form.motherName}
+                  onChangeText={(value) => setForm((prev) => ({ ...prev, motherName: value }))}
+                  placeholder="Masukkan nama ibu kandung"
+                />
+                <FormField
+                  label="NIK Ibu Kandung"
+                  value={form.motherNik}
+                  onChangeText={(value) => setForm((prev) => ({ ...prev, motherNik: value }))}
+                  placeholder="Diisi sesuai data identitas keluarga"
+                  keyboardType="numeric"
+                />
+              </>
             ) : null}
           </View>
 
           {isStudent ? (
             <View style={cardStyle}>
-              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 10 }}>Data Orang Tua & Wali</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 10 }}>Data Keluarga</Text>
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13, marginBottom: 8 }}>Data Ayah</Text>
               <FormField
                 label="Nama Ayah"
                 value={form.fatherName}
                 onChangeText={(value) => setForm((prev) => ({ ...prev, fatherName: value }))}
+              />
+              <FormField
+                label="NIK Ayah"
+                value={form.fatherNik}
+                onChangeText={(value) => setForm((prev) => ({ ...prev, fatherNik: value }))}
+                keyboardType="numeric"
+              />
+              <ChoiceChips
+                label="Pendidikan Ayah"
+                value={form.fatherEducation}
+                options={EDUCATION_LEVEL_OPTIONS.map((item) => ({ label: item, value: item }))}
+                onSelect={(value) => setForm((prev) => ({ ...prev, fatherEducation: value }))}
               />
               <FormField
                 label="Pekerjaan Ayah"
@@ -706,10 +986,24 @@ export default function ProfileScreen() {
                 value={form.fatherIncome}
                 onChangeText={(value) => setForm((prev) => ({ ...prev, fatherIncome: value }))}
               />
+              <View style={{ height: 1, backgroundColor: '#e2e8f0', marginVertical: 10 }} />
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13, marginBottom: 8 }}>Data Ibu</Text>
               <FormField
                 label="Nama Ibu"
                 value={form.motherName}
                 onChangeText={(value) => setForm((prev) => ({ ...prev, motherName: value }))}
+              />
+              <FormField
+                label="NIK Ibu"
+                value={form.motherNik}
+                onChangeText={(value) => setForm((prev) => ({ ...prev, motherNik: value }))}
+                keyboardType="numeric"
+              />
+              <ChoiceChips
+                label="Pendidikan Ibu"
+                value={form.motherEducation}
+                options={EDUCATION_LEVEL_OPTIONS.map((item) => ({ label: item, value: item }))}
+                onSelect={(value) => setForm((prev) => ({ ...prev, motherEducation: value }))}
               />
               <FormField
                 label="Pekerjaan Ibu"
@@ -721,18 +1015,28 @@ export default function ProfileScreen() {
                 value={form.motherIncome}
                 onChangeText={(value) => setForm((prev) => ({ ...prev, motherIncome: value }))}
               />
+              <View style={{ height: 1, backgroundColor: '#e2e8f0', marginVertical: 10 }} />
+              <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13, marginBottom: 8 }}>
+                Data Wali (Opsional)
+              </Text>
               <FormField
-                label="Nama Wali (Opsional)"
+                label="Nama Wali"
                 value={form.guardianName}
                 onChangeText={(value) => setForm((prev) => ({ ...prev, guardianName: value }))}
               />
+              <ChoiceChips
+                label="Pendidikan Wali"
+                value={form.guardianEducation}
+                options={EDUCATION_LEVEL_OPTIONS.map((item) => ({ label: item, value: item }))}
+                onSelect={(value) => setForm((prev) => ({ ...prev, guardianEducation: value }))}
+              />
               <FormField
-                label="Pekerjaan Wali (Opsional)"
+                label="Pekerjaan Wali"
                 value={form.guardianOccupation}
                 onChangeText={(value) => setForm((prev) => ({ ...prev, guardianOccupation: value }))}
               />
               <FormField
-                label="No. HP Wali (Opsional)"
+                label="No. HP Wali"
                 value={form.guardianPhone}
                 onChangeText={(value) => setForm((prev) => ({ ...prev, guardianPhone: value }))}
                 keyboardType="phone-pad"
@@ -784,12 +1088,22 @@ export default function ProfileScreen() {
                 </View>
 
                 <FormField
+                  label="Provinsi"
+                  value={form.province}
+                  onChangeText={(value) => setForm((prev) => ({ ...prev, province: value }))}
+                />
+                <FormField
+                  label="Kabupaten / Kota"
+                  value={form.cityRegency}
+                  onChangeText={(value) => setForm((prev) => ({ ...prev, cityRegency: value }))}
+                />
+                <FormField
                   label="Nama Dusun"
                   value={form.dusun}
                   onChangeText={(value) => setForm((prev) => ({ ...prev, dusun: value }))}
                 />
                 <FormField
-                  label="Desa / Kelurahan"
+                  label="Desa/Kelurahan"
                   value={form.village}
                   onChangeText={(value) => setForm((prev) => ({ ...prev, village: value }))}
                 />
@@ -804,6 +1118,46 @@ export default function ProfileScreen() {
                   onChangeText={(value) => setForm((prev) => ({ ...prev, postalCode: value }))}
                   keyboardType="numeric"
                 />
+
+                {(isEmployee || isStudent) ? (
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#bfdbfe',
+                      backgroundColor: '#eff6ff',
+                      borderRadius: 12,
+                      padding: 12,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>
+                      Kode Wilayah Administratif
+                    </Text>
+                    <Text style={{ color: '#1d4ed8', fontSize: 12, marginBottom: 10 }}>
+                      Opsional untuk sinkronisasi data induk. Isi sesuai referensi wilayah resmi bila sudah tersedia.
+                    </Text>
+                    <FormField
+                      label="Kode Provinsi"
+                      value={form.provinceCode}
+                      onChangeText={(value) => setForm((prev) => ({ ...prev, provinceCode: value }))}
+                    />
+                    <FormField
+                      label="Kode Kabupaten / Kota"
+                      value={form.cityRegencyCode}
+                      onChangeText={(value) => setForm((prev) => ({ ...prev, cityRegencyCode: value }))}
+                    />
+                    <FormField
+                      label="Kode Kecamatan"
+                      value={form.subdistrictCode}
+                      onChangeText={(value) => setForm((prev) => ({ ...prev, subdistrictCode: value }))}
+                    />
+                    <FormField
+                      label="Kode Desa / Kelurahan"
+                      value={form.villageCode}
+                      onChangeText={(value) => setForm((prev) => ({ ...prev, villageCode: value }))}
+                    />
+                  </View>
+                ) : null}
               </>
             ) : null}
           </View>
@@ -812,16 +1166,40 @@ export default function ProfileScreen() {
             <View style={cardStyle}>
               <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 10 }}>Data Kepegawaian</Text>
               <FormField
-                label="Jenis PTK"
+                label={employmentRoleLabel}
                 value={form.ptkType}
                 onChangeText={(value) => setForm((prev) => ({ ...prev, ptkType: value }))}
-                placeholder="Contoh: Guru Mapel, Staff Administrasi"
+                placeholder={employmentRolePlaceholder}
               />
               <FormField
                 label="Status Kepegawaian"
                 value={form.employeeStatus}
                 onChangeText={(value) => setForm((prev) => ({ ...prev, employeeStatus: value }))}
                 placeholder="Contoh: PNS, GTY, GTT"
+              />
+              <ChoiceChips
+                label="Status Keaktifan"
+                value={form.employeeActiveStatus}
+                options={EMPLOYEE_ACTIVE_STATUS_OPTIONS.map((item) => ({ label: item, value: item }))}
+                onSelect={(value) => setForm((prev) => ({ ...prev, employeeActiveStatus: value }))}
+              />
+              <ChoiceChips
+                label="Sumber Gaji"
+                value={form.salarySource}
+                options={SALARY_SOURCE_OPTIONS.map((item) => ({ label: item, value: item }))}
+                onSelect={(value) => setForm((prev) => ({ ...prev, salarySource: value }))}
+              />
+              <ChoiceChips
+                label="Pendidikan Terakhir"
+                value={form.highestEducation}
+                options={EDUCATION_LEVEL_OPTIONS.map((item) => ({ label: item, value: item }))}
+                onSelect={(value) => setForm((prev) => ({ ...prev, highestEducation: value }))}
+              />
+              <FormField
+                label="Program Studi / Jurusan"
+                value={form.studyProgram}
+                onChangeText={(value) => setForm((prev) => ({ ...prev, studyProgram: value }))}
+                placeholder="Contoh: Pendidikan Matematika / Akuntansi"
               />
               <FormField
                 label="SK Pengangkatan"
@@ -836,15 +1214,28 @@ export default function ProfileScreen() {
                 autoCapitalize="none"
               />
               <FormField
-                label="Lembaga / Instansi"
+                label={institutionLabel}
                 value={form.institution}
                 onChangeText={(value) => setForm((prev) => ({ ...prev, institution: value }))}
+                placeholder={institutionPlaceholder}
+              />
+              <FormField
+                label={assignmentDecreeLabel}
+                value={form.assignmentDecree}
+                onChangeText={(value) => setForm((prev) => ({ ...prev, assignmentDecree: value }))}
+              />
+              <FormField
+                label={assignmentDateLabel}
+                value={form.assignmentDate}
+                onChangeText={(value) => setForm((prev) => ({ ...prev, assignmentDate: value }))}
+                placeholder="Contoh: 2024-07-01"
+                autoCapitalize="none"
               />
             </View>
           ) : null}
 
           <View style={cardStyle}>
-            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Media & Dokumen</Text>
+            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Upload File</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
               <View
                 style={{

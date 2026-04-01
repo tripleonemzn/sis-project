@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
@@ -137,7 +137,7 @@ export default function PublicBkkProfileScreen() {
   const queryClient = useQueryClient();
   const { isLoading, isAuthenticated, user } = useAuth();
   const pageContentPadding = getStandardPagePadding(insets);
-  const [form, setForm] = useState<ProfileFormState>(emptyForm);
+  const [formDraft, setFormDraft] = useState<ProfileFormState | null>(null);
 
   const profileQuery = useQuery({
     queryKey: ['mobile-public-bkk-profile'],
@@ -146,10 +146,11 @@ export default function PublicBkkProfileScreen() {
     staleTime: 60_000,
   });
 
-  useEffect(() => {
-    if (!profileQuery.data) return;
-    setForm(buildForm(profileQuery.data));
-  }, [profileQuery.data]);
+  const baselineForm = useMemo(() => buildForm(profileQuery.data), [profileQuery.data]);
+  const form = formDraft ?? baselineForm;
+  const setForm = (updater: (prev: ProfileFormState) => ProfileFormState) => {
+    setFormDraft((prev) => updater(prev ?? baselineForm));
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () =>
@@ -170,6 +171,7 @@ export default function PublicBkkProfileScreen() {
         linkedinUrl: form.linkedinUrl.trim() || undefined,
       }),
     onSuccess: async () => {
+      setFormDraft(null);
       notifySuccess('Profil pelamar berhasil disimpan.');
       try {
         await authService.me({ force: true });
@@ -214,7 +216,8 @@ export default function PublicBkkProfileScreen() {
       </View>
 
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
-        Lengkapi profil kerja Anda agar bisa melamar lowongan BKK langsung dari aplikasi.
+        Data di sini dipakai saat Anda melamar lowongan melalui aplikasi. Semakin lengkap profilnya, semakin mudah
+        tim BKK menilai kecocokan lamaran Anda.
       </Text>
 
       {profileQuery.isLoading ? (
@@ -223,7 +226,7 @@ export default function PublicBkkProfileScreen() {
         <QueryStateView type="error" message="Gagal memuat profil pelamar." onRetry={() => void profileQuery.refetch()} />
       ) : (
         <>
-          <InfoCard title="Status Kelengkapan">
+          <InfoCard title="Status Profil">
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 24 }}>
               {profileQuery.data?.completeness.isReady ? 'Siap' : 'Belum'}
             </Text>
@@ -248,7 +251,7 @@ export default function PublicBkkProfileScreen() {
           <InfoCard title="Data Utama">
             <Field label="Nama Pelamar" value={form.name} onChangeText={(value) => setForm((prev) => ({ ...prev, name: value }))} />
             <Field
-              label="Headline / Posisi Diminati"
+              label="Headline / Posisi yang Diminati"
               value={form.headline}
               onChangeText={(value) => setForm((prev) => ({ ...prev, headline: value }))}
               placeholder="Contoh: Fresh graduate siap kerja entry-level"
