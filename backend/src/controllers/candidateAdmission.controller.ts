@@ -743,7 +743,7 @@ function buildCompleteness(record: CandidateAdmissionRecord) {
     { label: 'Asal sekolah', completed: Boolean(String(record.previousSchool || '').trim()) },
     { label: 'Jurusan tujuan', completed: Boolean(record.desiredMajorId) },
     {
-      label: 'Nama orang tua / wali',
+      label: 'Data keluarga inti (ayah / ibu / wali)',
       completed: Boolean(
         String(record.parentName || '').trim() ||
           String(record.user.fatherName || '').trim() ||
@@ -752,7 +752,7 @@ function buildCompleteness(record: CandidateAdmissionRecord) {
       ),
     },
     {
-      label: 'Kontak orang tua / wali',
+      label: 'Kontak utama orang tua / wali',
       completed: Boolean(
         String(record.parentPhone || '').trim() || String(record.user.guardianPhone || '').trim(),
       ),

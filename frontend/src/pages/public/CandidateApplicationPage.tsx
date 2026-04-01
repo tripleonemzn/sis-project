@@ -33,6 +33,10 @@ type CandidateFormState = {
   previousSchool: string;
   lastEducation: string;
   desiredMajorId: string;
+  fatherName: string;
+  motherName: string;
+  guardianName: string;
+  guardianPhone: string;
   parentName: string;
   parentPhone: string;
   domicileCity: string;
@@ -52,6 +56,10 @@ const emptyForm: CandidateFormState = {
   previousSchool: '',
   lastEducation: '',
   desiredMajorId: '',
+  fatherName: '',
+  motherName: '',
+  guardianName: '',
+  guardianPhone: '',
   parentName: '',
   parentPhone: '',
   domicileCity: '',
@@ -73,6 +81,10 @@ function buildForm(admission: CandidateAdmissionDetail | null): CandidateFormSta
     previousSchool: admission.previousSchool || '',
     lastEducation: admission.lastEducation || '',
     desiredMajorId: admission.desiredMajorId ? String(admission.desiredMajorId) : '',
+    fatherName: admission.user.fatherName || '',
+    motherName: admission.user.motherName || '',
+    guardianName: admission.user.guardianName || '',
+    guardianPhone: admission.user.guardianPhone || '',
     parentName: admission.parentName || admission.resolvedParentName || '',
     parentPhone: admission.parentPhone || admission.resolvedParentPhone || '',
     domicileCity: admission.domicileCity || '',
@@ -168,6 +180,10 @@ export const CandidateApplicationPage = () => {
         birthDate: form.birthDate || undefined,
         address: form.address.trim() || undefined,
         religion: form.religion.trim() || undefined,
+        fatherName: form.fatherName.trim() || undefined,
+        motherName: form.motherName.trim() || undefined,
+        guardianName: form.guardianName.trim() || undefined,
+        guardianPhone: form.guardianPhone.trim() || undefined,
         previousSchool: form.previousSchool.trim() || undefined,
         lastEducation: form.lastEducation.trim() || undefined,
         desiredMajorId: form.desiredMajorId ? Number(form.desiredMajorId) : undefined,
@@ -661,15 +677,49 @@ export const CandidateApplicationPage = () => {
             onChange={(value) => setForm((prev) => ({ ...prev, domicileCity: value }))}
           />
 
+          <div className="xl:col-span-2 rounded-2xl border border-blue-100 bg-blue-50/80 px-4 py-3">
+            <p className="text-sm font-semibold text-blue-900">Data Keluarga & Kontak Utama</p>
+            <p className="mt-1 text-sm leading-6 text-blue-700">
+              Data ayah, ibu, dan wali dipakai untuk identitas keluarga. Kontak utama dipakai panitia untuk komunikasi
+              PPDB yang paling aktif.
+            </p>
+          </div>
+
           <Field
-            label="Nama Orang Tua / Wali"
-            value={form.parentName}
-            onChange={(value) => setForm((prev) => ({ ...prev, parentName: value }))}
+            label="Nama Ayah"
+            value={form.fatherName}
+            onChange={(value) => setForm((prev) => ({ ...prev, fatherName: value }))}
+            placeholder="Sesuai dokumen keluarga"
           />
           <Field
-            label="Kontak Orang Tua / Wali"
+            label="Nama Ibu"
+            value={form.motherName}
+            onChange={(value) => setForm((prev) => ({ ...prev, motherName: value }))}
+            placeholder="Sesuai dokumen keluarga"
+          />
+          <Field
+            label="Nama Wali (Opsional)"
+            value={form.guardianName}
+            onChange={(value) => setForm((prev) => ({ ...prev, guardianName: value }))}
+            placeholder="Diisi jika ada wali selain orang tua"
+          />
+          <Field
+            label="No. HP Wali (Opsional)"
+            value={form.guardianPhone}
+            onChange={(value) => setForm((prev) => ({ ...prev, guardianPhone: value }))}
+            placeholder="Nomor aktif wali"
+          />
+          <Field
+            label="Nama Kontak Utama Orang Tua / Wali"
+            value={form.parentName}
+            onChange={(value) => setForm((prev) => ({ ...prev, parentName: value }))}
+            placeholder="Pihak yang paling aktif dihubungi panitia"
+          />
+          <Field
+            label="No. HP Kontak Utama Orang Tua / Wali"
             value={form.parentPhone}
             onChange={(value) => setForm((prev) => ({ ...prev, parentPhone: value }))}
+            placeholder="Nomor aktif WhatsApp / telepon"
           />
 
           <div className="xl:col-span-2">

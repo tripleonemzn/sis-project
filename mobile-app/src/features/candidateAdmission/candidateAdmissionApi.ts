@@ -33,6 +33,10 @@ export const candidateAdmissionApi = {
     birthDate?: string;
     address?: string;
     religion?: string;
+    fatherName?: string;
+    motherName?: string;
+    guardianName?: string;
+    guardianPhone?: string;
     previousSchool?: string;
     lastEducation?: string;
     desiredMajorId?: number;

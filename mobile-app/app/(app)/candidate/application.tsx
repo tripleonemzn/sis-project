@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
@@ -29,6 +29,10 @@ type CandidateFormState = {
   previousSchool: string;
   lastEducation: string;
   desiredMajorId: string;
+  fatherName: string;
+  motherName: string;
+  guardianName: string;
+  guardianPhone: string;
   parentName: string;
   parentPhone: string;
   domicileCity: string;
@@ -48,6 +52,10 @@ const emptyForm: CandidateFormState = {
   previousSchool: '',
   lastEducation: '',
   desiredMajorId: '',
+  fatherName: '',
+  motherName: '',
+  guardianName: '',
+  guardianPhone: '',
   parentName: '',
   parentPhone: '',
   domicileCity: '',
@@ -69,6 +77,10 @@ function buildForm(admission: MobileCandidateAdmissionDetail | undefined): Candi
     previousSchool: admission.previousSchool || '',
     lastEducation: admission.lastEducation || '',
     desiredMajorId: admission.desiredMajorId ? String(admission.desiredMajorId) : '',
+    fatherName: admission.user.fatherName || '',
+    motherName: admission.user.motherName || '',
+    guardianName: admission.user.guardianName || '',
+    guardianPhone: admission.user.guardianPhone || '',
     parentName: admission.parentName || admission.resolvedParentName || '',
     parentPhone: admission.parentPhone || admission.resolvedParentPhone || '',
     domicileCity: admission.domicileCity || '',
@@ -263,7 +275,7 @@ export default function CandidateApplicationScreen() {
   const queryClient = useQueryClient();
   const { isLoading, isAuthenticated, user } = useAuth();
   const pageContentPadding = getStandardPagePadding(insets);
-  const [form, setForm] = useState<CandidateFormState>(emptyForm);
+  const [formDraft, setFormDraft] = useState<CandidateFormState | null>(null);
 
   const admissionQuery = useQuery({
     queryKey: ['mobile-candidate-admission'],
@@ -278,10 +290,11 @@ export default function CandidateApplicationScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
-  useEffect(() => {
-    if (!admissionQuery.data) return;
-    setForm(buildForm(admissionQuery.data));
-  }, [admissionQuery.data]);
+  const baselineForm = useMemo(() => buildForm(admissionQuery.data), [admissionQuery.data]);
+  const form = formDraft ?? baselineForm;
+  const setForm = (updater: (prev: CandidateFormState) => CandidateFormState) => {
+    setFormDraft((prev) => updater(prev ?? baselineForm));
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () =>
@@ -294,6 +307,10 @@ export default function CandidateApplicationScreen() {
         birthDate: form.birthDate || undefined,
         address: form.address.trim() || undefined,
         religion: form.religion.trim() || undefined,
+        fatherName: form.fatherName.trim() || undefined,
+        motherName: form.motherName.trim() || undefined,
+        guardianName: form.guardianName.trim() || undefined,
+        guardianPhone: form.guardianPhone.trim() || undefined,
         previousSchool: form.previousSchool.trim() || undefined,
         lastEducation: form.lastEducation.trim() || undefined,
         desiredMajorId: form.desiredMajorId ? Number(form.desiredMajorId) : undefined,
@@ -304,6 +321,7 @@ export default function CandidateApplicationScreen() {
         submissionNotes: form.submissionNotes.trim() || undefined,
       }),
     onSuccess: async () => {
+      setFormDraft(null);
       notifySuccess('Data pendaftaran berhasil disimpan.');
       try {
         await authService.me({ force: true });
@@ -903,16 +921,52 @@ export default function CandidateApplicationScreen() {
               value={form.domicileCity}
               onChangeText={(value) => setForm((prev) => ({ ...prev, domicileCity: value }))}
             />
+          </InfoCard>
+
+          <InfoCard title="Data Keluarga & Kontak Utama">
+            <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 10 }}>
+              Data ayah, ibu, dan wali dipakai untuk identitas keluarga. Kontak utama dipakai panitia untuk komunikasi
+              PPDB yang paling aktif.
+            </Text>
             <Field
-              label="Nama Orang Tua / Wali"
+              label="Nama Ayah"
+              value={form.fatherName}
+              onChangeText={(value) => setForm((prev) => ({ ...prev, fatherName: value }))}
+              placeholder="Sesuai dokumen keluarga"
+            />
+            <Field
+              label="Nama Ibu"
+              value={form.motherName}
+              onChangeText={(value) => setForm((prev) => ({ ...prev, motherName: value }))}
+              placeholder="Sesuai dokumen keluarga"
+            />
+            <Field
+              label="Nama Wali (Opsional)"
+              value={form.guardianName}
+              onChangeText={(value) => setForm((prev) => ({ ...prev, guardianName: value }))}
+              placeholder="Diisi jika ada wali selain orang tua"
+            />
+            <Field
+              label="No. HP Wali (Opsional)"
+              value={form.guardianPhone}
+              onChangeText={(value) => setForm((prev) => ({ ...prev, guardianPhone: value }))}
+              placeholder="Nomor aktif wali"
+            />
+            <Field
+              label="Nama Kontak Utama Orang Tua / Wali"
               value={form.parentName}
               onChangeText={(value) => setForm((prev) => ({ ...prev, parentName: value }))}
+              placeholder="Pihak yang paling aktif dihubungi panitia"
             />
             <Field
-              label="Kontak Orang Tua / Wali"
+              label="No. HP Kontak Utama Orang Tua / Wali"
               value={form.parentPhone}
               onChangeText={(value) => setForm((prev) => ({ ...prev, parentPhone: value }))}
+              placeholder="Nomor aktif WhatsApp / telepon"
             />
+          </InfoCard>
+
+          <InfoCard title="Motivasi & Catatan">
             <Field
               label="Motivasi / Catatan Singkat"
               value={form.motivation}
