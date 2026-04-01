@@ -140,6 +140,12 @@ const userFormSchema = z.object({
   // Student Specific Fields
   religion: z.string().optional().nullable(),
   childNumber: z.string().optional().nullable(),
+  familyStatus: z.string().optional().nullable(),
+  livingWith: z.string().optional().nullable(),
+  transportationMode: z.string().optional().nullable(),
+  kipNumber: z.string().optional().nullable(),
+  pkhNumber: z.string().optional().nullable(),
+  kksNumber: z.string().optional().nullable(),
   siblingsCount: z.string().optional().nullable(),
   
   fatherName: z.string().optional().nullable(),
@@ -218,6 +224,35 @@ const EDUCATION_LEVEL_OPTIONS = [
   'D4 / S1',
   'S2',
   'S3',
+] as const;
+
+const FAMILY_STATUS_OPTIONS = [
+  'Anak Kandung',
+  'Anak Tiri',
+  'Anak Angkat',
+] as const;
+
+const LIVING_WITH_OPTIONS = [
+  'Orang Tua',
+  'Wali',
+  'Saudara',
+  'Asrama',
+  'Panti Asuhan',
+  'Pesantren',
+  'Kost',
+  'Lainnya',
+] as const;
+
+const TRANSPORTATION_MODE_OPTIONS = [
+  'Jalan Kaki',
+  'Sepeda',
+  'Sepeda Motor',
+  'Mobil Pribadi',
+  'Angkutan Umum',
+  'Antar Jemput',
+  'Ojek / Ojol',
+  'Perahu Penyeberangan',
+  'Lainnya',
 ] as const;
 
 type ProfileVariant = 'employee' | 'student' | 'candidate' | 'parent' | 'admin';
@@ -533,6 +568,9 @@ export const UserProfilePage = () => {
   const watchedInstitution = watch('institution');
   const watchedStaffPosition = watch('staffPosition');
   const watchedReligion = watch('religion');
+  const watchedFamilyStatus = watch('familyStatus');
+  const watchedLivingWith = watch('livingWith');
+  const watchedTransportationMode = watch('transportationMode');
   const watchedProvince = watch('province');
   const watchedCityRegency = watch('cityRegency');
   const watchedDocuments = watch('documents') || [];
@@ -577,6 +615,9 @@ export const UserProfilePage = () => {
         { label: 'Nama ibu kandung', value: watchedMotherName },
         { label: 'NIK ibu kandung', value: watchedMotherNik },
         { label: 'Agama', value: watchedReligion },
+        { label: 'Status dalam keluarga', value: watchedFamilyStatus },
+        { label: 'Jenis tinggal', value: watchedLivingWith },
+        { label: 'Alat transportasi', value: watchedTransportationMode },
         { label: 'Kelas aktif', value: user?.studentClass?.name },
         { label: 'Provinsi', value: watchedProvince },
         { label: 'Kabupaten / Kota', value: watchedCityRegency },
@@ -631,8 +672,10 @@ export const UserProfilePage = () => {
     watchedEmail,
     watchedEmployeeStatus,
     watchedHighestEducation,
+    watchedFamilyStatus,
     watchedFamilyCardNumber,
     watchedGender,
+    watchedLivingWith,
     watchedMotherNik,
     watchedMotherName,
     watchedName,
@@ -643,6 +686,7 @@ export const UserProfilePage = () => {
     watchedPtkType,
     watchedProvince,
     watchedReligion,
+    watchedTransportationMode,
   ]);
 
   const summaryLines = useMemo(() => {
@@ -794,6 +838,12 @@ export const UserProfilePage = () => {
         // Student Specific
         religion: user.religion || '',
         childNumber: user.childNumber ? String(user.childNumber) : '',
+        familyStatus: user.familyStatus || '',
+        livingWith: user.livingWith || '',
+        transportationMode: user.transportationMode || '',
+        kipNumber: user.kipNumber || '',
+        pkhNumber: user.pkhNumber || '',
+        kksNumber: user.kksNumber || '',
         siblingsCount: user.siblingsCount ? String(user.siblingsCount) : '',
         
         fatherName: user.fatherName || '',
@@ -1822,6 +1872,21 @@ export const UserProfilePage = () => {
                       {isStudentProfile && (
                         <>
                           <div>
+                            <label htmlFor="familyStatus" className="block text-sm font-medium text-gray-700 mb-1">Status Dalam Keluarga</label>
+                            <select
+                              id="familyStatus"
+                              {...register('familyStatus')}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            >
+                              <option value="">Pilih status</option>
+                              {FAMILY_STATUS_OPTIONS.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
                             <label htmlFor="childNumber" className="block text-sm font-medium text-gray-700 mb-1">Anak Ke-</label>
                             <input
                               id="childNumber"
@@ -1830,12 +1895,77 @@ export const UserProfilePage = () => {
                             />
                           </div>
                           <div>
+                            <label htmlFor="livingWith" className="block text-sm font-medium text-gray-700 mb-1">Jenis Tinggal</label>
+                            <select
+                              id="livingWith"
+                              {...register('livingWith')}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            >
+                              <option value="">Pilih jenis tinggal</option>
+                              {LIVING_WITH_OPTIONS.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
                             <label htmlFor="siblingsCount" className="block text-sm font-medium text-gray-700 mb-1">Jumlah Saudara</label>
                             <input
                               id="siblingsCount"
                               {...register('siblingsCount')}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             />
+                          </div>
+                          <div>
+                            <label htmlFor="transportationMode" className="block text-sm font-medium text-gray-700 mb-1">Alat Transportasi</label>
+                            <select
+                              id="transportationMode"
+                              {...register('transportationMode')}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            >
+                              <option value="">Pilih alat transportasi</option>
+                              {TRANSPORTATION_MODE_OPTIONS.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="md:col-span-2 rounded-lg border border-blue-100 bg-blue-50/60 p-4">
+                            <p className="text-sm font-semibold text-blue-900">Bantuan Pendidikan</p>
+                            <p className="mt-1 text-xs text-blue-700">
+                              Isi hanya jika siswa memang memiliki identitas bantuan resmi yang aktif.
+                            </p>
+                            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                              <div>
+                                <label htmlFor="kipNumber" className="block text-sm font-medium text-gray-700 mb-1">Nomor KIP</label>
+                                <input
+                                  id="kipNumber"
+                                  {...register('kipNumber')}
+                                  autoComplete="off"
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                />
+                              </div>
+                              <div>
+                                <label htmlFor="pkhNumber" className="block text-sm font-medium text-gray-700 mb-1">Nomor PKH</label>
+                                <input
+                                  id="pkhNumber"
+                                  {...register('pkhNumber')}
+                                  autoComplete="off"
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                />
+                              </div>
+                              <div>
+                                <label htmlFor="kksNumber" className="block text-sm font-medium text-gray-700 mb-1">Nomor KKS</label>
+                                <input
+                                  id="kksNumber"
+                                  {...register('kksNumber')}
+                                  autoComplete="off"
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                />
+                              </div>
+                            </div>
                           </div>
                         </>
                       )}

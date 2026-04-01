@@ -76,6 +76,12 @@ export interface User {
   // Additional Student Data (currently optional/not fully used)
   religion?: string | null;
   childNumber?: number | null;
+  familyStatus?: string | null;
+  livingWith?: string | null;
+  transportationMode?: string | null;
+  kipNumber?: string | null;
+  pkhNumber?: string | null;
+  kksNumber?: string | null;
   siblingsCount?: number | null;
 
   fatherName?: string | null;
