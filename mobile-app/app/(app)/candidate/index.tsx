@@ -133,7 +133,7 @@ export default function CandidateDashboardScreen() {
       }
     >
       <Text style={{ color: BRAND_COLORS.textDark, fontSize: 24, fontWeight: '700', marginBottom: 6 }}>
-        Dashboard Calon Siswa
+        Dashboard Pendaftaran
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         Pantau status PPDB, kesiapan berkas, nilai seleksi, dan hasil keputusan dari akun ini.

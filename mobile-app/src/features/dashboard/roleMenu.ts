@@ -286,7 +286,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     },
     { key: 'student-grade-history', label: 'Riwayat Nilai', route: '/grades' },
     { key: 'student-finance', label: 'Keuangan', route: '/student/finance' },
-    { key: 'student-profile-web', label: 'Profile', route: '/profile' },
+    { key: 'student-profile-web', label: 'Profil', route: '/profile' },
   ],
   TEACHER: [
     { key: 'teacher-dashboard', label: 'Dashboard', route: '/home' },
@@ -411,12 +411,12 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     },
     {
       key: 'teacher-extracurricular-dashboard',
-      label: 'Dashboard Pembina',
+      label: 'Dashboard Ekskul',
       route: '/tutor/dashboard',
     },
     {
       key: 'teacher-extracurricular-members',
-      label: 'Anggota & Nilai Ekskul',
+      label: 'Anggota & Nilai',
       route: '/tutor/members',
     },
     {
@@ -436,7 +436,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     },
     {
       key: 'teacher-osis-inventory',
-      label: 'Inventaris OSIS',
+      label: 'Kelola Inventaris',
       route: '/teacher/osis/inventory',
     },
     {
@@ -708,7 +708,6 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     { key: 'admin-exam-sessions', label: 'Sesi Ujian', route: '/admin/academic?section=exam-sessions' },
     { key: 'admin-slideshow', label: 'Slideshow', route: '/admin/slideshow' },
     { key: 'admin-server-area', label: 'Area Server', route: '/admin/server-area' },
-    { key: 'admin-webmail', label: 'Webmail Admin', route: '/admin/server-area?tab=webmail' },
     { key: 'admin-school-profile', label: 'Profil Sekolah', route: '/profile' },
     { key: 'admin-password', label: 'Ubah Password', route: '/profile' },
   ],
@@ -769,7 +768,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
   STAFF: [
     { key: 'staff-dashboard', label: 'Dashboard', route: '/home' },
     { key: 'staff-email', label: 'Email', route: '/email' },
-    { key: 'staff-payments', label: 'Pembayaran (SPP)', route: '/staff/payments' },
+    { key: 'staff-payments', label: 'Ringkasan Keuangan', route: '/staff/payments' },
     { key: 'staff-students', label: 'Data Siswa', route: '/staff/students' },
     { key: 'staff-admin', label: 'Administrasi', route: '/staff/admin' },
   ],
@@ -789,7 +788,6 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
   ],
   UMUM: [
     { key: 'public-dashboard', label: 'Dashboard BKK', route: '/public' },
-    { key: 'public-information', label: 'Informasi Sekolah', route: '/public/information' },
     { key: 'public-vacancies', label: 'Lowongan BKK', route: '/public/vacancies' },
     { key: 'public-applications', label: 'Lamaran Saya', route: '/public/applications' },
     { key: 'public-exams', label: 'Tes BKK', route: '/public/exams' },
@@ -800,7 +798,7 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
     { key: 'tutor-email', label: 'Email', route: '/email' },
     { key: 'tutor-members', label: 'Anggota & Nilai', route: '/tutor/members' },
     { key: 'tutor-work-program', label: 'Program Kerja', route: '/tutor/work-program?duty=PEMBINA_EKSKUL' },
-    { key: 'tutor-inventory', label: 'Inventaris Ekskul', route: '/tutor/inventory' },
+    { key: 'tutor-inventory', label: 'Kelola Inventaris', route: '/tutor/inventory' },
     { key: 'tutor-profile', label: 'Profil', route: '/profile' },
   ],
 };
@@ -1219,7 +1217,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     {
       key: 'settings',
       label: 'PENGATURAN',
-      menuKeys: ['admin-slideshow', 'admin-server-area', 'admin-webmail', 'admin-school-profile', 'admin-password'],
+      menuKeys: ['admin-slideshow', 'admin-server-area', 'admin-school-profile', 'admin-password'],
     },
   ],
   PRINCIPAL: [
@@ -1231,9 +1229,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
   ],
   STAFF: [
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['staff-dashboard', 'staff-email'] },
-    { key: 'payments', label: 'Pembayaran (SPP)', menuKeys: ['staff-payments'] },
-    { key: 'students', label: 'Data Siswa', menuKeys: ['staff-students'] },
-    { key: 'administration', label: 'Administrasi', menuKeys: ['staff-admin'] },
+    { key: 'payments', label: 'KEUANGAN', menuKeys: ['staff-payments', 'staff-students', 'staff-admin'] },
   ],
   PARENT: [
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['parent-dashboard'] },
@@ -1251,18 +1247,18 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['tutor-dashboard', 'tutor-email'] },
     { key: 'members', label: 'Anggota & Nilai', menuKeys: ['tutor-members'] },
     { key: 'work-program', label: 'Program Kerja', menuKeys: ['tutor-work-program'] },
-    { key: 'inventory', label: 'Inventaris Ekskul', menuKeys: ['tutor-inventory'] },
+    { key: 'inventory', label: 'Kelola Inventaris', menuKeys: ['tutor-inventory'] },
     { key: 'settings', label: 'PENGATURAN', menuKeys: ['tutor-profile'] },
   ],
   CALON_SISWA: [
     { key: 'dashboard', label: 'Dashboard', menuKeys: ['candidate-dashboard'] },
-    { key: 'registration', label: 'Pendaftaran', menuKeys: ['candidate-application'] },
+    { key: 'registration', label: 'Formulir PPDB', menuKeys: ['candidate-application'] },
     { key: 'information', label: 'Informasi PPDB', menuKeys: ['candidate-information'] },
     { key: 'exam', label: 'Tes Seleksi', menuKeys: ['candidate-exams'] },
-    { key: 'settings', label: 'PENGATURAN', menuKeys: ['candidate-profile'] },
+    { key: 'profile', label: 'Profil', menuKeys: ['candidate-profile'] },
   ],
   UMUM: [
-    { key: 'dashboard', label: 'Dashboard', menuKeys: ['public-dashboard'] },
+    { key: 'dashboard', label: 'Dashboard BKK', menuKeys: ['public-dashboard'] },
     { key: 'vacancies', label: 'Lowongan BKK', menuKeys: ['public-vacancies'] },
     { key: 'applications', label: 'Lamaran Saya', menuKeys: ['public-applications'] },
     { key: 'exam', label: 'Tes BKK', menuKeys: ['public-exams'] },
@@ -1273,7 +1269,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
 const STAFF_EXTRA_MENU_ITEMS: Record<string, RoleMenuItem> = {
   'staff-administration-dashboard': {
     key: 'staff-administration-dashboard',
-    label: 'Dashboard Administrasi',
+    label: 'Dashboard',
     route: '/staff/admin?focus=administration-dashboard',
   },
   'staff-administration-teachers': {
@@ -1288,7 +1284,7 @@ const STAFF_EXTRA_MENU_ITEMS: Record<string, RoleMenuItem> = {
   },
   'staff-head-tu-dashboard': {
     key: 'staff-head-tu-dashboard',
-    label: 'Dashboard Kepala TU',
+    label: 'Dashboard',
     route: '/staff/admin?focus=head-tu-dashboard',
   },
   'staff-head-tu-administration': {
@@ -1409,41 +1405,13 @@ function buildStaffRoleMenu(user: AuthUser) {
     .map((key) => getStaffMenuItemByKey(key))
     .map((item) => {
       if (!item) return null;
-      if (item.key === 'staff-dashboard') {
-        return {
-          ...item,
-          label:
-            division === 'HEAD_TU'
-              ? 'Dashboard Kepala TU'
-              : division === 'ADMINISTRATION'
-                ? 'Dashboard Administrasi'
-                : division === 'FINANCE'
-                  ? 'Dashboard Keuangan'
-                  : 'Dashboard Staff',
-          route: '/staff/admin',
-        };
-      }
       if (item.key === 'staff-admin') {
         return {
           ...item,
           label:
-            division === 'HEAD_TU'
-              ? 'Monitoring TU'
-              : division === 'ADMINISTRATION'
-                ? 'Administrasi'
-                : 'Operasional Staff',
-        };
-      }
-      if (item.key === 'staff-payments') {
-        return {
-          ...item,
-          label: 'Keuangan & Tagihan',
-        };
-      }
-      if (item.key === 'staff-students' && division === 'HEAD_TU') {
-        return {
-          ...item,
-          label: 'Layanan Siswa',
+            division === 'FINANCE'
+              ? 'Realisasi Anggaran'
+              : 'Administrasi',
         };
       }
       return item;
@@ -1481,9 +1449,11 @@ function buildStaffGroups(user: AuthUser, menus: RoleMenuItem[]) {
   }
 
   if (division === 'ADMINISTRATION') {
-    pushGroup(groups, 'students', 'DATA SISWA', ['staff-students']);
-    pushGroup(groups, 'teachers', 'ADMINISTRASI GURU', ['staff-administration-teachers']);
-    pushGroup(groups, 'permissions', 'PERIZINAN SISWA', ['staff-administration-permissions']);
+    pushGroup(groups, 'administration', 'ADMINISTRASI', [
+      'staff-students',
+      'staff-administration-teachers',
+      'staff-administration-permissions',
+    ]);
     return groups;
   }
 

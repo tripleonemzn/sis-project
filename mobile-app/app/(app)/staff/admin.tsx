@@ -660,14 +660,14 @@ export default function StaffAdminScreen() {
             ? 'Perizinan Siswa'
             : focus === 'administration'
               ? 'Operasional TU'
-              : 'Workspace Kepala TU'
+              : 'Dashboard Kepala TU'
       : staffDivision === 'ADMINISTRATION'
         ? focus === 'teachers'
           ? 'Administrasi Guru'
           : focus === 'permissions'
             ? 'Perizinan Siswa'
-            : 'Administrasi Staff'
-        : 'Operasional Keuangan';
+            : 'Dashboard Staff Administrasi'
+        : 'Realisasi Anggaran';
   const subtitle =
     staffDivision === 'HEAD_TU'
       ? focus === 'finance'

@@ -54,19 +54,19 @@ export function getStaffHomeSubtitle(user?: StaffProfile | null) {
 
 export function getStaffSectionTitle(user?: StaffProfile | null) {
   const division = resolveStaffDivision(user);
-  if (division === 'HEAD_TU') return 'Statistik Kepala TU';
-  if (division === 'ADMINISTRATION') return 'Statistik Administrasi';
-  if (division === 'FINANCE') return 'Statistik Bendahara';
-  return 'Statistik Staff';
+  if (division === 'HEAD_TU') return 'Dashboard Kepala TU';
+  if (division === 'ADMINISTRATION') return 'Dashboard Staff Administrasi';
+  if (division === 'FINANCE') return 'Dashboard Staff Keuangan';
+  return 'Dashboard Staff';
 }
 
 export function getStaffPreferredMenuKeys(user?: StaffProfile | null) {
   const division = resolveStaffDivision(user);
   if (division === 'HEAD_TU') {
-    return ['staff-admin', 'staff-students'];
+    return ['staff-head-tu-administration', 'staff-head-tu-students', 'staff-head-tu-letters'];
   }
   if (division === 'ADMINISTRATION') {
-    return ['staff-admin', 'staff-students'];
+    return ['staff-students', 'staff-administration-teachers', 'staff-administration-permissions'];
   }
   return ['staff-payments', 'staff-students', 'staff-admin'];
 }

@@ -2189,7 +2189,7 @@ export default function HomeScreen() {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Statistik Kepala Sekolah</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Dashboard Kepala Sekolah</Text>
             {principalStatsQuery.isLoading ? (
               <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>Memuat ringkasan kepala sekolah...</Text>
             ) : null}

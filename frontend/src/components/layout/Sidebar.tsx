@@ -867,7 +867,7 @@ export const getMenuItems = (
           path: '/student/settings',
           icon: Settings,
           children: [
-            { label: 'Profile', path: '/student/profile', icon: UserIcon },
+            { label: 'Profil', path: '/student/profile', icon: UserIcon },
           ]
         }
       ];
@@ -946,7 +946,7 @@ export const getMenuItems = (
         path: '/student/settings',
         icon: Settings,
         children: [
-          { label: 'Profile', path: '/student/profile', icon: UserIcon },
+          { label: 'Profil', path: '/student/profile', icon: UserIcon },
         ]
       }
     ];

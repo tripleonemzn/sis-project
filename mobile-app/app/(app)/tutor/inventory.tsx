@@ -142,7 +142,7 @@ export default function TutorInventoryScreen() {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={pagePadding}>
         <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 8 }}>
-          Inventaris Ekskul
+          Kelola Inventaris
         </Text>
         <QueryStateView type="error" message="Halaman ini tersedia untuk pembina ekstrakurikuler aktif." />
       </ScrollView>
@@ -164,7 +164,7 @@ export default function TutorInventoryScreen() {
       }
     >
       <Text style={{ fontSize: 24, fontWeight: '700', color: BRAND_COLORS.textDark, marginBottom: 6 }}>
-        {focusedAssignmentId ? 'Kelola Inventaris' : 'Inventaris Ekskul'}
+        Kelola Inventaris
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
         {focusedAssignmentId
