@@ -1536,7 +1536,7 @@ export default function TeacherExamEditorScreen() {
           alignItems: 'center',
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Daftar Ujian</Text>
+        <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Program Ujian</Text>
       </Pressable>
     </ScrollView>
   );

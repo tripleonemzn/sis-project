@@ -41,7 +41,7 @@ export function canAccessStaffPayments(user?: StaffProfile | null) {
 export function getStaffHomeSubtitle(user?: StaffProfile | null) {
   const division = resolveStaffDivision(user);
   if (division === 'HEAD_TU') {
-    return 'Pantau operasional TU, surat sekolah, dan monitoring layanan administrasi.';
+    return 'Pantau operasional tata usaha, surat sekolah, dan monitoring layanan administrasi.';
   }
   if (division === 'ADMINISTRATION') {
     return 'Kelola administrasi siswa, guru, dan perizinan secara terpusat.';
@@ -54,7 +54,7 @@ export function getStaffHomeSubtitle(user?: StaffProfile | null) {
 
 export function getStaffSectionTitle(user?: StaffProfile | null) {
   const division = resolveStaffDivision(user);
-  if (division === 'HEAD_TU') return 'Dashboard Kepala TU';
+  if (division === 'HEAD_TU') return 'Dashboard Kepala Tata Usaha';
   if (division === 'ADMINISTRATION') return 'Dashboard Staff Administrasi';
   if (division === 'FINANCE') return 'Dashboard Staff Keuangan';
   return 'Dashboard Staff';
@@ -85,7 +85,7 @@ export function getStaffStudentsSubtitle(user?: StaffProfile | null) {
 export function getStaffPaymentsBlockedMessage(user?: StaffProfile | null) {
   const division = resolveStaffDivision(user);
   if (division === 'HEAD_TU') {
-    return 'Modul pembayaran native khusus bendahara. Gunakan workspace Kepala TU untuk monitoring keuangan.';
+    return 'Modul pembayaran native khusus bendahara. Gunakan workspace Kepala Tata Usaha untuk monitoring keuangan.';
   }
   if (division === 'ADMINISTRATION') {
     return 'Modul pembayaran hanya tersedia untuk bendahara. Staff administrasi menggunakan workspace administrasi.';

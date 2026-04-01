@@ -660,7 +660,7 @@ export default function StaffAdminScreen() {
             ? 'Perizinan Siswa'
             : focus === 'administration'
               ? 'Operasional TU'
-              : 'Dashboard Kepala TU'
+              : 'Dashboard Kepala Tata Usaha'
       : staffDivision === 'ADMINISTRATION'
         ? focus === 'teachers'
           ? 'Administrasi Guru'
@@ -671,7 +671,7 @@ export default function StaffAdminScreen() {
   const subtitle =
     staffDivision === 'HEAD_TU'
       ? focus === 'finance'
-        ? 'Fokus pada governance finance, approval, settlement, dan closing period untuk Head TU.'
+        ? 'Fokus pada governance finance, approval, settlement, dan closing period untuk Kepala Tata Usaha.'
         : focus === 'teachers'
           ? 'Rekap guru dan staff untuk kontrol layanan TU dan kelengkapan data.'
           : focus === 'permissions'
@@ -2116,7 +2116,9 @@ export default function StaffAdminScreen() {
               marginBottom: 12,
             }}
           >
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Ringkasan Kepala TU</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>
+              Ringkasan Kepala Tata Usaha
+            </Text>
             <Text style={{ color: '#475569', marginBottom: 4 }}>
               Pengajuan anggaran menunggu: <Text style={{ color: '#b45309', fontWeight: '700' }}>{headTuPendingBudgets}</Text>
             </Text>
