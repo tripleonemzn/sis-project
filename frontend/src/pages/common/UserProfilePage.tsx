@@ -112,6 +112,8 @@ const userFormSchema = z.object({
   nik: z.string().optional().nullable(),
   familyCardNumber: z.string().optional().nullable(),
   nuptk: z.string().optional().nullable(),
+  highestEducation: z.string().optional().nullable(),
+  studyProgram: z.string().optional().nullable(),
   motherName: z.string().optional().nullable(),
   motherNik: z.string().optional().nullable(),
   rt: z.string().optional().nullable(),
@@ -138,13 +140,16 @@ const userFormSchema = z.object({
   
   fatherName: z.string().optional().nullable(),
   fatherNik: z.string().optional().nullable(),
+  fatherEducation: z.string().optional().nullable(),
   fatherOccupation: z.string().optional().nullable(),
   fatherIncome: z.string().optional().nullable(),
   
+  motherEducation: z.string().optional().nullable(),
   motherOccupation: z.string().optional().nullable(),
   motherIncome: z.string().optional().nullable(),
   
   guardianName: z.string().optional().nullable(),
+  guardianEducation: z.string().optional().nullable(),
   guardianOccupation: z.string().optional().nullable(),
   guardianPhone: z.string().optional().nullable(),
 
@@ -195,6 +200,21 @@ const EMPLOYEE_PROFILE_ROLES: UserFormRole[] = [
   'EXTRACURRICULAR_TUTOR',
   'EXAMINER',
 ];
+
+const EDUCATION_LEVEL_OPTIONS = [
+  'Tidak Sekolah',
+  'PAUD',
+  'TK / Sederajat',
+  'SD / Sederajat',
+  'SMP / Sederajat',
+  'SMA / SMK / Sederajat',
+  'D1',
+  'D2',
+  'D3',
+  'D4 / S1',
+  'S2',
+  'S3',
+] as const;
 
 type ProfileVariant = 'employee' | 'student' | 'candidate' | 'parent' | 'admin';
 
@@ -503,6 +523,7 @@ export const UserProfilePage = () => {
   const watchedBirthDate = watch('birthDate');
   const watchedMotherName = watch('motherName');
   const watchedMotherNik = watch('motherNik');
+  const watchedHighestEducation = watch('highestEducation');
   const watchedPtkType = watch('ptkType');
   const watchedEmployeeStatus = watch('employeeStatus');
   const watchedInstitution = watch('institution');
@@ -532,6 +553,7 @@ export const UserProfilePage = () => {
         { label: 'Tanggal lahir', value: watchedBirthDate },
         { label: 'Nama ibu kandung', value: watchedMotherName },
         { label: 'NIK ibu kandung', value: watchedMotherNik },
+        { label: 'Pendidikan terakhir', value: watchedHighestEducation },
         { label: 'Jenis PTK / peran', value: watchedPtkType },
         { label: 'Status kepegawaian', value: watchedEmployeeStatus },
         { label: 'Kontak aktif', value: watchedPhone || watchedEmail },
@@ -604,6 +626,7 @@ export const UserProfilePage = () => {
     watchedDocuments.length,
     watchedEmail,
     watchedEmployeeStatus,
+    watchedHighestEducation,
     watchedFamilyCardNumber,
     watchedGender,
     watchedMotherNik,
@@ -759,6 +782,8 @@ export const UserProfilePage = () => {
         nik: user.nik || '',
         familyCardNumber: user.familyCardNumber || '',
         nuptk: user.nuptk || '',
+        highestEducation: user.highestEducation || '',
+        studyProgram: user.studyProgram || '',
         motherName: user.motherName || '',
         motherNik: user.motherNik || '',
         
@@ -769,13 +794,16 @@ export const UserProfilePage = () => {
         
         fatherName: user.fatherName || '',
         fatherNik: user.fatherNik || '',
+        fatherEducation: user.fatherEducation || '',
         fatherOccupation: user.fatherOccupation || '',
         fatherIncome: user.fatherIncome || '',
         
+        motherEducation: user.motherEducation || '',
         motherOccupation: user.motherOccupation || '',
         motherIncome: user.motherIncome || '',
         
         guardianName: user.guardianName || '',
+        guardianEducation: user.guardianEducation || '',
         guardianOccupation: user.guardianOccupation || '',
         guardianPhone: user.guardianPhone || '',
         
@@ -925,6 +953,7 @@ export const UserProfilePage = () => {
        return userService.update(id, finalPayload);
     },
     onSuccess: () => {
+      authService.clearMeCache();
       queryClient.invalidateQueries({ queryKey: ['me'] });
       toast.success('Profil berhasil diperbarui');
     },
@@ -1526,6 +1555,21 @@ export const UserProfilePage = () => {
                     />
                   </div>
                   <div>
+                    <label htmlFor="fatherEducation" className="block text-sm font-medium text-gray-700 mb-1">Pendidikan Ayah</label>
+                    <select
+                      id="fatherEducation"
+                      {...register('fatherEducation')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Pilih pendidikan terakhir</option>
+                      {EDUCATION_LEVEL_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
                     <label htmlFor="fatherNik" className="block text-sm font-medium text-gray-700 mb-1">NIK Ayah</label>
                     <input
                       id="fatherNik"
@@ -1567,6 +1611,21 @@ export const UserProfilePage = () => {
                     />
                   </div>
                   <div>
+                    <label htmlFor="motherEducation" className="block text-sm font-medium text-gray-700 mb-1">Pendidikan Ibu</label>
+                    <select
+                      id="motherEducation"
+                      {...register('motherEducation')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Pilih pendidikan terakhir</option>
+                      {EDUCATION_LEVEL_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
                     <label htmlFor="studentMotherNik" className="block text-sm font-medium text-gray-700 mb-1">NIK Ibu</label>
                     <input
                       id="studentMotherNik"
@@ -1606,6 +1665,21 @@ export const UserProfilePage = () => {
                       autoComplete="off"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
+                  </div>
+                  <div>
+                    <label htmlFor="guardianEducation" className="block text-sm font-medium text-gray-700 mb-1">Pendidikan Wali</label>
+                    <select
+                      id="guardianEducation"
+                      {...register('guardianEducation')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Pilih pendidikan terakhir</option>
+                      {EDUCATION_LEVEL_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label htmlFor="guardianPhone" className="block text-sm font-medium text-gray-700 mb-1">No. HP Wali</label>
@@ -1947,6 +2021,31 @@ export const UserProfilePage = () => {
                       autoComplete="off"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="Contoh: PNS, GTY, GTT"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="highestEducation" className="block text-sm font-medium text-gray-700 mb-1">Pendidikan Terakhir</label>
+                    <select
+                      id="highestEducation"
+                      {...register('highestEducation')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Pilih pendidikan terakhir</option>
+                      {EDUCATION_LEVEL_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="studyProgram" className="block text-sm font-medium text-gray-700 mb-1">Program Studi / Jurusan</label>
+                    <input
+                      id="studyProgram"
+                      {...register('studyProgram')}
+                      autoComplete="off"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Contoh: Pendidikan Matematika / Akuntansi"
                     />
                   </div>
                   <div>

@@ -37,6 +37,8 @@ model User {
   dusun                                              String?
   employeeStatus                                     String?
   institution                                        String?
+  highestEducation                                   String?
+  studyProgram                                       String?
   motherName                                         String?
   motherNik                                          String?
   nik                                                String?
@@ -56,12 +58,15 @@ model User {
   fatherName                                         String?
   fatherOccupation                                   String?
   guardianName                                       String?
+  guardianEducation                                  String?
   guardianOccupation                                 String?
   guardianPhone                                      String?
+  motherEducation                                    String?
   motherIncome                                       String?
   motherOccupation                                   String?
   religion                                           String?
   siblingsCount                                      Int?
+  fatherEducation                                    String?
   preferences                                        Json?
   examinerMajorId                                    Int?
   assignments                                        Assignment[]

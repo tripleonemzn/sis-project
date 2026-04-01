@@ -1,0 +1,6 @@
+ALTER TABLE "users"
+ADD COLUMN IF NOT EXISTS "highestEducation" TEXT,
+ADD COLUMN IF NOT EXISTS "studyProgram" TEXT,
+ADD COLUMN IF NOT EXISTS "fatherEducation" TEXT,
+ADD COLUMN IF NOT EXISTS "motherEducation" TEXT,
+ADD COLUMN IF NOT EXISTS "guardianEducation" TEXT;

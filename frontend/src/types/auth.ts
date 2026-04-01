@@ -32,6 +32,8 @@ export interface User {
   nik?: string | null;
   familyCardNumber?: string | null;
   nuptk?: string | null;
+  highestEducation?: string | null;
+  studyProgram?: string | null;
   motherName?: string | null;
   motherNik?: string | null;
 
@@ -74,13 +76,16 @@ export interface User {
 
   fatherName?: string | null;
   fatherNik?: string | null;
+  fatherEducation?: string | null;
   fatherOccupation?: string | null;
   fatherIncome?: string | null;
 
+  motherEducation?: string | null;
   motherOccupation?: string | null;
   motherIncome?: string | null;
 
   guardianName?: string | null;
+  guardianEducation?: string | null;
   guardianOccupation?: string | null;
   guardianPhone?: string | null;
 
