@@ -63,9 +63,11 @@ model User {
   village                                            String?
   villageCode                                        String?
   childNumber                                        Int?
+  distanceToSchool                                   String?
   familyStatus                                       String?
   livingWith                                         String?
   transportationMode                                 String?
+  travelTimeToSchool                                 String?
   kipNumber                                          String?
   pkhNumber                                          String?
   kksNumber                                          String?

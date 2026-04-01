@@ -146,9 +146,11 @@ const userFormSchema = z.object({
   // Student Specific Fields
   religion: z.string().optional().nullable(),
   childNumber: z.string().optional().nullable(),
+  distanceToSchool: z.string().optional().nullable(),
   familyStatus: z.string().optional().nullable(),
   livingWith: z.string().optional().nullable(),
   transportationMode: z.string().optional().nullable(),
+  travelTimeToSchool: z.string().optional().nullable(),
   kipNumber: z.string().optional().nullable(),
   pkhNumber: z.string().optional().nullable(),
   kksNumber: z.string().optional().nullable(),
@@ -615,9 +617,11 @@ export const UserProfilePage = () => {
   const watchedSalarySource = watch('salarySource');
   const watchedStaffPosition = watch('staffPosition');
   const watchedReligion = watch('religion');
+  const watchedDistanceToSchool = watch('distanceToSchool');
   const watchedFamilyStatus = watch('familyStatus');
   const watchedLivingWith = watch('livingWith');
   const watchedTransportationMode = watch('transportationMode');
+  const watchedTravelTimeToSchool = watch('travelTimeToSchool');
   const watchedProvince = watch('province');
   const watchedCityRegency = watch('cityRegency');
   const watchedDocuments = watch('documents') || [];
@@ -671,6 +675,8 @@ export const UserProfilePage = () => {
         { label: 'Status dalam keluarga', value: watchedFamilyStatus },
         { label: 'Jenis tinggal', value: watchedLivingWith },
         { label: 'Alat transportasi', value: watchedTransportationMode },
+        { label: 'Jarak ke sekolah', value: watchedDistanceToSchool },
+        { label: 'Waktu tempuh ke sekolah', value: watchedTravelTimeToSchool },
         { label: 'Kelas aktif', value: user?.studentClass?.name },
         { label: 'Provinsi', value: watchedProvince },
         { label: 'Kabupaten / Kota', value: watchedCityRegency },
@@ -722,6 +728,7 @@ export const UserProfilePage = () => {
     watchedBirthPlace,
     watchedCitizenship,
     watchedCityRegency,
+    watchedDistanceToSchool,
     watchedDocuments.length,
     watchedEmail,
     watchedEmployeeActiveStatus,
@@ -744,6 +751,7 @@ export const UserProfilePage = () => {
     watchedReligion,
     watchedSalarySource,
     watchedTransportationMode,
+    watchedTravelTimeToSchool,
   ]);
 
   const summaryLines = useMemo(() => {
@@ -899,9 +907,11 @@ export const UserProfilePage = () => {
         // Student Specific
         religion: user.religion || '',
         childNumber: user.childNumber ? String(user.childNumber) : '',
+        distanceToSchool: user.distanceToSchool || '',
         familyStatus: user.familyStatus || '',
         livingWith: user.livingWith || '',
         transportationMode: user.transportationMode || '',
+        travelTimeToSchool: user.travelTimeToSchool || '',
         kipNumber: user.kipNumber || '',
         pkhNumber: user.pkhNumber || '',
         kksNumber: user.kksNumber || '',
@@ -2031,6 +2041,30 @@ export const UserProfilePage = () => {
                                 </option>
                               ))}
                             </select>
+                          </div>
+                          <div>
+                            <label htmlFor="distanceToSchool" className="block text-sm font-medium text-gray-700 mb-1">
+                              Jarak ke Sekolah
+                            </label>
+                            <input
+                              id="distanceToSchool"
+                              {...register('distanceToSchool')}
+                              autoComplete="off"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="Contoh: 3 km"
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor="travelTimeToSchool" className="block text-sm font-medium text-gray-700 mb-1">
+                              Waktu Tempuh ke Sekolah
+                            </label>
+                            <input
+                              id="travelTimeToSchool"
+                              {...register('travelTimeToSchool')}
+                              autoComplete="off"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="Contoh: 25 menit"
+                            />
                           </div>
                           <div className="md:col-span-2 rounded-lg border border-blue-100 bg-blue-50/60 p-4">
                             <p className="text-sm font-semibold text-blue-900">Bantuan Pendidikan</p>
