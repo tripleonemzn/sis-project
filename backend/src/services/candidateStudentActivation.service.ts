@@ -3,6 +3,7 @@ import {
   Prisma,
   Role,
   StudentAcademicMembershipStatus,
+  StudentStatus,
   VerificationStatus,
 } from '@prisma/client';
 import { ApiError } from '../utils/api';
@@ -23,6 +24,7 @@ type CandidateStudentActivationResult = {
 };
 
 type ActivationTx = Prisma.TransactionClient;
+const ENTRY_LEVEL_CLASS_LEVEL = 'X';
 
 function buildAcademicYearNisPrefix(academicYearName?: string | null, fallbackDate = new Date()) {
   const normalized = String(academicYearName || '').trim();
@@ -75,6 +77,75 @@ async function generateOfficialStudentNis(
   return `${prefix}.${String(maxSequence + 1).padStart(3, '0')}`;
 }
 
+async function resolveOfficialStudentClassId(
+  tx: ActivationTx,
+  params: {
+    activeAcademicYearId: number | null;
+    existingClassId: number | null;
+    desiredMajorId: number | null;
+  },
+) {
+  if (!params.activeAcademicYearId) {
+    return params.existingClassId ?? null;
+  }
+
+  if (params.existingClassId) {
+    const existingClass = await tx.class.findUnique({
+      where: { id: params.existingClassId },
+      select: {
+        id: true,
+        academicYearId: true,
+      },
+    });
+
+    if (existingClass?.academicYearId === params.activeAcademicYearId) {
+      return existingClass.id;
+    }
+  }
+
+  if (!params.desiredMajorId) {
+    return null;
+  }
+
+  const entryLevelClasses = await tx.class.findMany({
+    where: {
+      academicYearId: params.activeAcademicYearId,
+      majorId: params.desiredMajorId,
+      level: ENTRY_LEVEL_CLASS_LEVEL,
+    },
+    select: {
+      id: true,
+      name: true,
+      students: {
+        where: {
+          role: Role.STUDENT,
+          studentStatus: StudentStatus.ACTIVE,
+        },
+        select: {
+          id: true,
+        },
+      },
+    },
+  });
+
+  if (!entryLevelClasses.length) {
+    return null;
+  }
+
+  const selectedClass = entryLevelClasses
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      currentStudentCount: item.students.length,
+    }))
+    .sort(
+      (left, right) =>
+        left.currentStudentCount - right.currentStudentCount || left.name.localeCompare(right.name, 'id'),
+    )[0];
+
+  return selectedClass?.id ?? null;
+}
+
 async function activateCandidateAsOfficialStudentInTx(
   tx: ActivationTx,
   params: CandidateStudentActivationContext,
@@ -95,6 +166,7 @@ async function activateCandidateAsOfficialStudentInTx(
           status: true,
           acceptedAt: true,
           reviewedAt: true,
+          desiredMajorId: true,
         },
       },
     },
@@ -114,13 +186,14 @@ async function activateCandidateAsOfficialStudentInTx(
       : await tx.candidateAdmission.findUnique({
           where: { id: Number(params.candidateAdmissionId || 0) },
           select: {
-            id: true,
-            userId: true,
-            status: true,
-            acceptedAt: true,
-            reviewedAt: true,
-          },
-        });
+          id: true,
+          userId: true,
+          status: true,
+          acceptedAt: true,
+          reviewedAt: true,
+          desiredMajorId: true,
+        },
+      });
 
   if (!admission || ('userId' in admission && admission.userId !== user.id)) {
     throw new ApiError(404, 'Pendaftaran calon siswa tidak ditemukan.');
@@ -153,6 +226,11 @@ async function activateCandidateAsOfficialStudentInTx(
         });
 
   const username = user.nisn?.trim() ? user.nisn.trim() : user.username;
+  const resolvedClassId = await resolveOfficialStudentClassId(tx, {
+    activeAcademicYearId: activeAcademicYear?.id || null,
+    existingClassId: user.classId ?? null,
+    desiredMajorId: admission.desiredMajorId ?? null,
+  });
 
   await tx.user.update({
     where: { id: user.id },
@@ -160,6 +238,7 @@ async function activateCandidateAsOfficialStudentInTx(
       role: Role.STUDENT,
       username,
       nis: officialNis,
+      classId: resolvedClassId,
       studentStatus: 'ACTIVE',
       verificationStatus: VerificationStatus.VERIFIED,
     },
@@ -189,21 +268,17 @@ async function activateCandidateAsOfficialStudentInTx(
       create: {
         studentId: user.id,
         academicYearId: activeAcademicYear.id,
-        classId: user.classId ?? null,
+        classId: resolvedClassId,
         status: StudentAcademicMembershipStatus.ACTIVE,
         isCurrent: true,
         startedAt: admission.acceptedAt || activeAcademicYear.semester1Start || new Date(),
         endedAt: null,
       },
       update: {
+        classId: resolvedClassId,
         status: StudentAcademicMembershipStatus.ACTIVE,
         isCurrent: true,
         endedAt: null,
-        ...(user.classId != null
-          ? {
-              classId: user.classId,
-            }
-          : {}),
         ...(admission.acceptedAt || activeAcademicYear.semester1Start
           ? {
               startedAt: admission.acceptedAt || activeAcademicYear.semester1Start,

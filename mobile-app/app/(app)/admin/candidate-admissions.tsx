@@ -245,6 +245,25 @@ function buildAssessmentForm(detail?: MobileCandidateAdmissionDetail | null): Ma
   return next;
 }
 
+function getOfficialStudentPlacementMessage(detail: MobileCandidateAdmissionDetail) {
+  if (!detail.officialStudentAccount) return null;
+
+  const currentClassName = detail.officialStudentAccount.currentClass?.name?.trim();
+  if (currentClassName) {
+    return `Penempatan kelas awal sudah tercatat di ${currentClassName} dan akun siap mengikuti alur siswa aktif.`;
+  }
+
+  if (!detail.officialStudentAccount.currentAcademicYear?.id) {
+    return 'Belum ada tahun akademik aktif, jadi penempatan kelas awal masih menunggu konfigurasi sekolah.';
+  }
+
+  if (!detail.desiredMajor?.id) {
+    return 'Jurusan tujuan belum ditentukan, jadi penempatan kelas awal masih perlu diproses manual.';
+  }
+
+  return `Penempatan kelas awal belum terbentuk otomatis. Pastikan kelas X jurusan ${detail.desiredMajor.code} - ${detail.desiredMajor.name} tersedia di tahun akademik aktif, lalu tempatkan manual bila perlu.`;
+}
+
 function SectionCard({
   title,
   children,
@@ -554,8 +573,13 @@ export default function AdminCandidateAdmissionsScreen() {
       if (!selectedId) throw new Error('Pilih calon siswa terlebih dahulu.');
       return adminApi.acceptCandidateAdmissionAsStudent(selectedId);
     },
-    onSuccess: async () => {
-      notifySuccess('Calon siswa berhasil diaktifkan menjadi akun siswa resmi.');
+    onSuccess: async (data) => {
+      const assignedClassName = data?.officialStudentAccount?.currentClass?.name?.trim();
+      notifySuccess(
+        assignedClassName
+          ? `Calon siswa berhasil diaktifkan dan ditempatkan ke ${assignedClassName}.`
+          : 'Calon siswa berhasil diaktifkan menjadi akun siswa resmi.',
+      );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['mobile-admin-candidate-admissions'] }),
         queryClient.invalidateQueries({ queryKey: ['mobile-admin-candidate-admission-detail', selectedId] }),
@@ -1431,6 +1455,20 @@ export default function AdminCandidateAdmissionsScreen() {
               <Text style={{ color: BRAND_COLORS.textDark, marginTop: 6 }}>
                 Kelas Aktif: {detail.officialStudentAccount.currentClass?.name || 'Belum ditempatkan'}
               </Text>
+              <View
+                style={{
+                  marginTop: 12,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: '#a7f3d0',
+                  backgroundColor: '#ffffffdd',
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark }}>
+                  {getOfficialStudentPlacementMessage(detail)}
+                </Text>
+              </View>
             </SectionCard>
           ) : null}
         </>

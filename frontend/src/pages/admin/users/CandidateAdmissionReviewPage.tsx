@@ -4,6 +4,7 @@ import { Loader2, Search, UserCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
   candidateAdmissionService,
+  type CandidateAdmissionDetail,
   type CandidateAdmissionStatus,
 } from '../../../services/candidateAdmission.service';
 import { majorService, type Major } from '../../../services/major.service';
@@ -50,6 +51,25 @@ const getErrorMessage = (error: unknown, fallback: string) => {
     return anyErr.response?.data?.message || anyErr.message || fallback;
   }
   return fallback;
+};
+
+const getOfficialStudentPlacementMessage = (detail: CandidateAdmissionDetail) => {
+  if (!detail.officialStudentAccount) return null;
+
+  const currentClassName = detail.officialStudentAccount.currentClass?.name?.trim();
+  if (currentClassName) {
+    return `Penempatan kelas awal sudah tercatat di ${currentClassName} dan akun siap mengikuti alur siswa aktif.`;
+  }
+
+  if (!detail.officialStudentAccount.currentAcademicYear?.id) {
+    return 'Belum ada tahun akademik aktif, jadi penempatan kelas awal masih menunggu konfigurasi sekolah.';
+  }
+
+  if (!detail.desiredMajor?.id) {
+    return 'Jurusan tujuan belum ditentukan, jadi penempatan kelas awal masih perlu diproses manual.';
+  }
+
+  return `Penempatan kelas awal belum terbentuk otomatis. Pastikan kelas X jurusan ${detail.desiredMajor.code} - ${detail.desiredMajor.name} tersedia di tahun akademik aktif, lalu tempatkan manual bila perlu.`;
 };
 
 type ReviewForm = {
@@ -232,8 +252,14 @@ export const CandidateAdmissionReviewPage = () => {
       if (!selectedId) throw new Error('Pilih calon siswa terlebih dahulu.');
       return candidateAdmissionService.acceptAsStudent(selectedId);
     },
-    onSuccess: async () => {
-      toast.success('Calon siswa berhasil diaktifkan menjadi akun siswa resmi');
+    onSuccess: async (response) => {
+      const payload = extractCandidateAdmissionPayload(response);
+      const assignedClassName = payload?.officialStudentAccount?.currentClass?.name?.trim();
+      toast.success(
+        assignedClassName
+          ? `Calon siswa berhasil diaktifkan dan ditempatkan ke ${assignedClassName}`
+          : 'Calon siswa berhasil diaktifkan menjadi akun siswa resmi',
+      );
       await queryClient.invalidateQueries({ queryKey: ADMIN_CANDIDATE_ADMISSION_QUERY_KEY });
       await queryClient.invalidateQueries({ queryKey: ['admin-candidate-admission-detail', selectedId] });
       await queryClient.invalidateQueries({ queryKey: ['users', 'verification'] });
@@ -1014,6 +1040,9 @@ export const CandidateAdmissionReviewPage = () => {
                     <div className="text-sm text-emerald-800">
                       <span className="font-semibold text-emerald-950">Kelas Aktif:</span>{' '}
                       {detail.officialStudentAccount.currentClass?.name || 'Belum ditempatkan'}
+                    </div>
+                    <div className="rounded-2xl border border-emerald-200 bg-white/80 p-3 text-sm text-emerald-800 md:col-span-2">
+                      {getOfficialStudentPlacementMessage(detail)}
                     </div>
                   </div>
                 </div>
