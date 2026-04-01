@@ -575,7 +575,7 @@ function getPrincipalClosingPeriodStatusTone(period: FinanceClosingPeriod) {
 
 function getPrincipalClosingPeriodApprovalTone(period: FinanceClosingPeriod) {
   if (period.approvalStatus === 'PENDING_HEAD_TU') {
-    return { label: 'Menunggu Head TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+    return { label: 'Menunggu Kepala TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
   }
   if (period.approvalStatus === 'PENDING_PRINCIPAL') {
     return { label: 'Menunggu Kepsek', className: 'bg-sky-50 text-sky-700 border border-sky-200' };
@@ -591,7 +591,7 @@ function getPrincipalClosingPeriodApprovalTone(period: FinanceClosingPeriod) {
 
 function getPrincipalClosingPeriodReopenTone(request: FinanceClosingPeriodReopenRequest) {
   if (request.status === 'PENDING_HEAD_TU') {
-    return { label: 'Menunggu Head TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+    return { label: 'Menunggu Kepala TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
   }
   if (request.status === 'PENDING_PRINCIPAL') {
     return { label: 'Menunggu Kepsek', className: 'bg-sky-50 text-sky-700 border border-sky-200' };
@@ -4205,7 +4205,7 @@ const PrincipalFinancePage = () => {
               </div>
             </div>
             <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2">
-              <div className="text-sky-700">Pending Head TU</div>
+              <div className="text-sky-700">Pending Kepala TU</div>
               <div className="mt-1 font-semibold text-sky-900">{financeCashSessionSummary?.pendingHeadTuCount || 0}</div>
             </div>
             <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2">
@@ -4283,7 +4283,7 @@ const PrincipalFinancePage = () => {
                         {session.approvalStatus === 'PENDING_PRINCIPAL'
                           ? 'Menunggu Kepsek'
                           : session.approvalStatus === 'PENDING_HEAD_TU'
-                            ? 'Menunggu Head TU'
+                            ? 'Menunggu Kepala TU'
                             : session.approvalStatus === 'REJECTED'
                               ? 'Ditolak'
                               : session.approvalStatus === 'AUTO_APPROVED'
@@ -4618,7 +4618,7 @@ const PrincipalFinancePage = () => {
                         <div className="text-xs text-gray-500 mt-1">Diajukan {period.requestedBy.name}</div>
                       ) : null}
                       {period.headTuDecisionNote ? (
-                        <div className="text-xs text-gray-500 mt-1">Review Head TU: {period.headTuDecisionNote}</div>
+                        <div className="text-xs text-gray-500 mt-1">Review Kepala TU: {period.headTuDecisionNote}</div>
                       ) : null}
                       {period.principalDecisionNote ? (
                         <div className="text-xs text-gray-500 mt-1">Keputusan Kepsek: {period.principalDecisionNote}</div>
@@ -4675,7 +4675,7 @@ const PrincipalFinancePage = () => {
           <div>
             <h3 className="text-sm font-semibold text-gray-900">Approval Reopen Closing Period</h3>
             <p className="mt-1 text-xs text-gray-500">
-              Review unlock periode yang sudah lolos Head TU sebelum period lock benar-benar dibuka kembali.
+              Review unlock periode yang sudah lolos Kepala TU sebelum period lock benar-benar dibuka kembali.
             </p>
           </div>
           <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
@@ -4711,7 +4711,7 @@ const PrincipalFinancePage = () => {
                         {request.requestNo} • {request.closingPeriod.periodNo}
                       </div>
                       {request.headTuDecision.note ? (
-                        <div className="text-xs text-gray-500 mt-1">Review Head TU: {request.headTuDecision.note}</div>
+                        <div className="text-xs text-gray-500 mt-1">Review Kepala TU: {request.headTuDecision.note}</div>
                       ) : null}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-700">
@@ -4768,7 +4768,7 @@ const PrincipalFinancePage = () => {
           <div>
             <h3 className="text-sm font-semibold text-gray-900">Approval Closing Period</h3>
             <p className="mt-1 text-xs text-gray-500">
-              Review closing period yang sudah lolos Head TU atau masuk ambang eskalasi Kepala Sekolah.
+              Review closing period yang sudah lolos Kepala TU atau masuk ambang eskalasi Kepala Sekolah.
             </p>
           </div>
           <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
@@ -4812,7 +4812,7 @@ const PrincipalFinancePage = () => {
                         {period.periodNo} • {formatFinanceDate(period.periodStart)} - {formatFinanceDate(period.periodEnd)}
                       </div>
                       {period.headTuDecisionNote ? (
-                        <div className="text-xs text-gray-500 mt-1">Review Head TU: {period.headTuDecisionNote}</div>
+                        <div className="text-xs text-gray-500 mt-1">Review Kepala TU: {period.headTuDecisionNote}</div>
                       ) : null}
                     </td>
                     <td className="px-6 py-4 text-sm text-right text-gray-700">
@@ -4864,7 +4864,7 @@ const PrincipalFinancePage = () => {
           <div>
             <h3 className="text-sm font-semibold text-gray-900">Approval Settlement Kas</h3>
             <p className="mt-1 text-xs text-gray-500">
-              Review settlement kas yang sudah lolos Head TU dan masuk ambang eskalasi Kepala Sekolah.
+              Review settlement kas yang sudah lolos Kepala TU dan masuk ambang eskalasi Kepala Sekolah.
             </p>
           </div>
           <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
@@ -4911,7 +4911,7 @@ const PrincipalFinancePage = () => {
                         {new Date(session.businessDate).toLocaleDateString('id-ID')} • {session.openedBy?.name || '-'}
                       </div>
                       {session.headTuDecision.note ? (
-                        <div className="text-xs text-gray-500 mt-1">Review Head TU: {session.headTuDecision.note}</div>
+                        <div className="text-xs text-gray-500 mt-1">Review Kepala TU: {session.headTuDecision.note}</div>
                       ) : null}
                     </td>
                     <td className="px-6 py-4 text-sm text-right text-gray-700">

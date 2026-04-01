@@ -563,8 +563,8 @@ const HeadTuWorkspace = () => {
       queryClient.invalidateQueries({ queryKey: ['head-tu-finance-integrity'] });
       toast.success(
         payload.approved
-          ? 'Settlement kas diproses oleh Head TU'
-          : 'Settlement kas ditolak oleh Head TU',
+          ? 'Settlement kas diproses oleh Kepala TU'
+          : 'Settlement kas ditolak oleh Kepala TU',
       );
     },
     onError: (error: unknown) => {
@@ -585,8 +585,8 @@ const HeadTuWorkspace = () => {
       queryClient.invalidateQueries({ queryKey: ['head-tu-finance-integrity'] });
       toast.success(
         payload.approved
-          ? 'Closing period diproses oleh Head TU'
-          : 'Closing period ditolak oleh Head TU',
+          ? 'Closing period diproses oleh Kepala TU'
+          : 'Closing period ditolak oleh Kepala TU',
       );
     },
     onError: (error: unknown) => {
@@ -608,8 +608,8 @@ const HeadTuWorkspace = () => {
       queryClient.invalidateQueries({ queryKey: ['head-tu-finance-integrity'] });
       toast.success(
         payload.approved
-          ? 'Reopen closing period diproses oleh Head TU'
-          : 'Reopen closing period ditolak oleh Head TU',
+          ? 'Reopen closing period diproses oleh Kepala TU'
+          : 'Reopen closing period ditolak oleh Kepala TU',
       );
     },
     onError: (error: unknown) => {
@@ -2248,7 +2248,7 @@ const HeadTuWorkspace = () => {
           <div className="px-6 py-4 border-b border-gray-100">
             <h3 className="text-sm font-semibold text-gray-900">Performance Trend 6 Bulan</h3>
             <p className="mt-1 text-xs text-gray-500">
-              Tren invoice, pace koleksi, pending verifikasi, treasury flow, dan disiplin closing untuk monitoring Head TU.
+              Tren invoice, pace koleksi, pending verifikasi, treasury flow, dan disiplin closing untuk monitoring Kepala TU.
             </p>
           </div>
           {financePerformanceQuery.isLoading ? (
@@ -2453,7 +2453,7 @@ const HeadTuWorkspace = () => {
           <div className="px-6 py-4 border-b border-gray-100">
             <h3 className="text-sm font-semibold text-gray-900">Audit Finance 30 Hari</h3>
             <p className="mt-1 text-xs text-gray-500">
-              Ringkasan perubahan policy, approval sensitif, dan kontrol treasury terbaru untuk audit Head TU.
+              Ringkasan perubahan policy, approval sensitif, dan kontrol treasury terbaru untuk audit Kepala TU.
             </p>
           </div>
           {financeAuditQuery.isLoading ? (
@@ -2785,7 +2785,7 @@ const HeadTuWorkspace = () => {
             <div>
               <h3 className="text-sm font-semibold text-gray-900">Budget vs Realization</h3>
               <p className="mt-1 text-xs text-gray-500">
-                Monitoring anggaran approved, progres LPJ, actual spent, dan variance agar Head TU bisa melihat bottleneck realisasi sebelum masuk closing period.
+                Monitoring anggaran approved, progres LPJ, actual spent, dan variance agar Kepala TU bisa melihat bottleneck realisasi sebelum masuk closing period.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs">
@@ -2921,7 +2921,7 @@ const HeadTuWorkspace = () => {
             <div>
               <h3 className="text-sm font-semibold text-gray-900">Closing Period Finance</h3>
               <p className="mt-1 text-xs text-gray-500">
-                Monitoring snapshot lock periode finance agar Head TU bisa melihat outstanding, pending verifikasi, dan kondisi kas/bank sebelum period ditutup.
+                Monitoring snapshot lock periode finance agar Kepala TU bisa melihat outstanding, pending verifikasi, dan kondisi kas/bank sebelum period ditutup.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs">
@@ -2975,7 +2975,7 @@ const HeadTuWorkspace = () => {
                           <div className="text-xs text-gray-500 mt-1">Diajukan {period.requestedBy.name}</div>
                         ) : null}
                         {period.headTuDecisionNote ? (
-                          <div className="text-xs text-gray-500 mt-1">Review Head TU: {period.headTuDecisionNote}</div>
+                          <div className="text-xs text-gray-500 mt-1">Review Kepala TU: {period.headTuDecisionNote}</div>
                         ) : null}
                         {period.principalDecisionNote ? (
                           <div className="text-xs text-gray-500 mt-1">Keputusan Kepsek: {period.principalDecisionNote}</div>

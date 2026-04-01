@@ -443,7 +443,7 @@ const StudentInternshipReportPage = () => {
     { id: 'cover', label: 'Cover Laporan', icon: Book },
     { id: 'school-approval', label: 'Lembar Pengesahan Sekolah', icon: FileCheck },
     { id: 'industry-approval', label: 'Lembar Pengesahan Industri', icon: FileCheck },
-    { id: 'school-profile', label: 'Profile Sekolah', icon: Building2 },
+    { id: 'school-profile', label: 'Profil Sekolah', icon: Building2 },
     { id: 'industry-profile', label: 'Identitas Industri', icon: Building2 },
     { id: 'biodata', label: 'Biodata', icon: User },
     { id: 'statement', label: 'Surat Pernyataan', icon: FileText },
@@ -663,14 +663,14 @@ const StudentInternshipReportPage = () => {
           <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
             <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
               <Building2 className="w-6 h-6 text-orange-600" />
-              Profile Sekolah
+              Profil Sekolah
             </h3>
             <p className="text-gray-600 mb-6">
               Halaman ini berisi identitas sekolah, visi misi, dan struktur organisasi sekolah.
             </p>
             <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
               <Printer className="w-4 h-4" />
-              Cetak Profile Sekolah
+              Cetak Profil Sekolah
             </button>
           </div>
         );

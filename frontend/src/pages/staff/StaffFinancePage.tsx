@@ -556,7 +556,7 @@ function getCashSessionStatusMeta(status: FinanceCashSession['status']) {
 
 function getCashSessionApprovalMeta(status: FinanceCashSessionApprovalStatus) {
   if (status === 'PENDING_HEAD_TU') {
-    return { label: 'Menunggu Head TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+    return { label: 'Menunggu Kepala TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
   }
   if (status === 'PENDING_PRINCIPAL') {
     return { label: 'Menunggu Kepsek', className: 'bg-sky-50 text-sky-700 border border-sky-200' };
@@ -585,7 +585,7 @@ function getClosingPeriodStatusMeta(status: FinanceClosingPeriod['status']) {
 
 function getClosingPeriodApprovalMeta(status: FinanceClosingPeriod['approvalStatus']) {
   if (status === 'PENDING_HEAD_TU') {
-    return { label: 'Menunggu Head TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+    return { label: 'Menunggu Kepala TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
   }
   if (status === 'PENDING_PRINCIPAL') {
     return { label: 'Menunggu Kepsek', className: 'bg-sky-50 text-sky-700 border border-sky-200' };
@@ -601,7 +601,7 @@ function getClosingPeriodApprovalMeta(status: FinanceClosingPeriod['approvalStat
 
 function getClosingPeriodReopenStatusMeta(status: FinanceClosingPeriodReopenRequest['status']) {
   if (status === 'PENDING_HEAD_TU') {
-    return { label: 'Menunggu Head TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
+    return { label: 'Menunggu Kepala TU', className: 'bg-amber-50 text-amber-700 border border-amber-200' };
   }
   if (status === 'PENDING_PRINCIPAL') {
     return { label: 'Menunggu Kepsek', className: 'bg-sky-50 text-sky-700 border border-sky-200' };
@@ -2066,7 +2066,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
     onSuccess: (session) => {
       const approvalLabel =
         session.approvalStatus === 'PENDING_HEAD_TU'
-          ? 'dan menunggu review Head TU'
+          ? 'dan menunggu review Kepala TU'
           : session.approvalStatus === 'AUTO_APPROVED'
             ? 'dan auto-approved'
             : '';
@@ -3217,7 +3217,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
                 </div>
               </div>
               <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2">
-                <div className="text-sky-700">Pending Head TU</div>
+                <div className="text-sky-700">Pending Kepala TU</div>
                 <div className="mt-1 font-semibold text-sky-900">{cashSessionSummary?.pendingHeadTuCount || 0}</div>
               </div>
               <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2">
@@ -3325,7 +3325,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
                     {activeCashSession.openingNote ? ` • catatan: ${activeCashSession.openingNote}` : ''}
                   </div>
                   <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-3 text-xs text-sky-900">
-                    Zero variance {cashSessionZeroVarianceAutoApproved ? 'auto-approved' : 'tetap direview Head TU'} •
+                    Zero variance {cashSessionZeroVarianceAutoApproved ? 'auto-approved' : 'tetap direview Kepala TU'} •
                     eskalasi ke Kepala Sekolah mulai{' '}
                     <span className="font-semibold">
                       {formatCurrency(Number(cashSessionPrincipalApprovalThresholdAmount || 0))}
@@ -3504,7 +3504,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
                               ) : null}
                               {session.headTuDecision.note ? (
                                 <div className="mt-1 text-[11px] text-slate-500">
-                                  Review Head TU: {session.headTuDecision.note}
+                                  Review Kepala TU: {session.headTuDecision.note}
                                 </div>
                               ) : null}
                               {session.principalDecision.note ? (
@@ -3553,7 +3553,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
               Jika ada reversal pada pembayaran tunai, net kas masuk sesi ikut terkoreksi sehingga angka closing tidak misleading.
             </div>
 	            <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-3 text-amber-900">
-	              Head TU dan Kepala Sekolah bisa membaca settlement ini melalui endpoint finance yang sama, jadi monitoring lintas web/mobile tetap konsisten.
+	              Kepala TU dan Kepala Sekolah bisa membaca settlement ini melalui endpoint finance yang sama, jadi monitoring lintas web/mobile tetap konsisten.
 	            </div>
 	          </div>
 	      </div>
@@ -5221,7 +5221,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
                       className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                     />
                     <div>
-                      <div className="text-sm font-medium text-slate-900">Wajib review Head TU</div>
+                      <div className="text-sm font-medium text-slate-900">Wajib review Kepala TU</div>
                       <div className="text-xs text-slate-500">
                         Jika aktif, semua closing period minimal akan masuk review Kepala TU sebelum bisa ditutup.
                       </div>
@@ -5237,7 +5237,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
                         className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       />
                       <div>
-                        <div className="text-sm font-medium text-slate-900">Reopen wajib review Head TU</div>
+                        <div className="text-sm font-medium text-slate-900">Reopen wajib review Kepala TU</div>
                         <div className="text-xs text-slate-500">
                           Mengontrol apakah unlock period harus lebih dulu lewat review Kepala TU.
                         </div>
@@ -5338,7 +5338,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
                     </div>
                   </div>
                   <div className="text-xs text-slate-500">
-                    {closingPeriodReopenSummary?.pendingHeadTuCount || 0} Head TU •{' '}
+                    {closingPeriodReopenSummary?.pendingHeadTuCount || 0} Kepala TU •{' '}
                     {closingPeriodReopenSummary?.pendingPrincipalCount || 0} Kepsek
                   </div>
                 </div>
@@ -5484,7 +5484,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
                         ) : null}
                         {period.headTuDecisionNote ? (
                           <div className="mt-1 text-[11px] text-slate-500">
-                            Review Head TU: {period.headTuDecisionNote}
+                            Review Kepala TU: {period.headTuDecisionNote}
                           </div>
                         ) : null}
                         {period.principalDecisionNote ? (
@@ -5546,7 +5546,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
                               <div className="mt-1 text-[11px] text-slate-500">{request.requestedNote}</div>
                             ) : null}
                             {request.headTuDecision.note ? (
-                              <div className="mt-1 text-[11px] text-slate-500">Head TU: {request.headTuDecision.note}</div>
+                              <div className="mt-1 text-[11px] text-slate-500">Kepala TU: {request.headTuDecision.note}</div>
                             ) : null}
                             {request.principalDecision.note ? (
                               <div className="mt-1 text-[11px] text-slate-500">Kepsek: {request.principalDecision.note}</div>
