@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, CircleAlert, FileCheck2, GraduationCap, ShieldCheck, UserRound } from 'lucide-react';
 import { authService } from '../../services/auth.service';
 import { candidateAdmissionService } from '../../services/candidateAdmission.service';
+import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
 import {
   CANDIDATE_ADMISSION_QUERY_KEY,
   formatCandidateDateTime,
@@ -54,16 +55,14 @@ export const CandidateDashboardPage = () => {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[30px] border border-slate-200 bg-gradient-to-br from-sky-50 via-white to-blue-50 p-6 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-blue-600">Calon Siswa</p>
-            <h1 className="mt-2 text-2xl font-semibold text-slate-900">Dashboard Pendaftaran</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-              Akun ini sekarang sudah memiliki alur PPDB yang lebih lengkap. Isi formulir, unggah dokumen, lalu pantau
-              review admin dan jadwal tes seleksi dari aplikasi.
-            </p>
-          </div>
+      <DashboardWelcomeCard
+        user={user}
+        eyebrow="Calon Siswa"
+        subtitle="Pantau status PPDB, lengkapi formulir, unggah dokumen, dan ikuti tahapan seleksi dari akun ini."
+        meta={`NISN / Username: ${user?.nisn || user?.username || '-'}`}
+        tone="blue"
+        className="mt-10"
+        aside={
           <div className="space-y-2 rounded-2xl border border-blue-100 bg-white/90 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Status PPDB Saat Ini</p>
             {admission ? (
@@ -74,8 +73,8 @@ export const CandidateDashboardPage = () => {
               </span>
             )}
           </div>
-        </div>
-      </section>
+        }
+      />
 
       {admission?.decisionAnnouncement.isPublished ? (
         <section className="rounded-[30px] border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-6 shadow-sm">

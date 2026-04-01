@@ -61,6 +61,7 @@ import WorkProgramApprovalsPage from '../teacher/wakasek/curriculum/WorkProgramA
 import { OsisElectionMonitoringPage } from '../common/OsisElectionMonitoringPage';
 import { getMenuItems, type MenuItem } from '../../components/layout/Sidebar';
 import type { User } from '../../types/auth';
+import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
 
 type StatTone = 'blue' | 'orange' | 'red' | 'teal';
 
@@ -1197,12 +1198,21 @@ const PrincipalHomePage = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Dashboard Kepala Sekolah</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Ringkasan akademik, keuangan, dan SDM berdasarkan tahun ajaran aktif.
-        </p>
-      </div>
+      <DashboardWelcomeCard
+        user={contextUser}
+        eyebrow="Kepala Sekolah"
+        subtitle="Ringkasan akademik, keuangan, dan SDM sekolah tersedia berdasarkan tahun ajaran aktif."
+        meta={yearLabel ? `Periode aktif: ${yearLabel}` : undefined}
+        tone="rose"
+        className="mt-10"
+        fallbackName="Kepala Sekolah"
+        aside={
+          <div className="rounded-2xl border border-rose-100 bg-white/90 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Dashboard Utama</p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">{yearLabel}</p>
+          </div>
+        }
+      />
 
       {isError && !isLoading && (
         <div className="bg-red-50 border border-red-100 text-red-700 text-sm rounded-xl px-4 py-3">

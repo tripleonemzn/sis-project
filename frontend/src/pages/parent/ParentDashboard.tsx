@@ -19,6 +19,7 @@ import { academicYearService } from '../../services/academicYear.service';
 import { uploadService } from '../../services/upload.service';
 import api from '../../services/api';
 import { normalizeNisnInput } from '../../utils/nisn';
+import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
 
 type SemesterCode = 'ODD' | 'EVEN';
 type ParentPaymentStatus = 'PENDING' | 'PAID' | 'PARTIAL' | 'CANCELLED';
@@ -474,6 +475,13 @@ function PageHeader({ title, subtitle }: { title: string; subtitle: string }) {
 
 const ParentOverviewPage = () => {
   const { isParent, meQuery, children, childrenQuery } = useParentChildrenData();
+  const me = meQuery.data?.data as
+    | (ParentMePayload & {
+        name?: string;
+        username?: string;
+        photo?: string | null;
+      })
+    | undefined;
 
   const financeOverviewQuery = useQuery({
     queryKey: ['parent-finance-overview-web', 'all'],
@@ -504,9 +512,22 @@ const ParentOverviewPage = () => {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Dashboard Orang Tua"
-        subtitle="Ringkasan anak, keuangan, dan akses cepat modul parent."
+      <DashboardWelcomeCard
+        user={me}
+        eyebrow="Orang Tua / Wali"
+        subtitle="Ringkasan anak, keuangan, dan akses cepat modul parent tersedia dari akun keluarga ini."
+        meta={`Username akun: ${me?.username || '-'}`}
+        tone="teal"
+        className="mt-10"
+        fallbackName="Orang Tua"
+        aside={
+          <div className="rounded-2xl border border-teal-100 bg-white/90 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Akun Keluarga</p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              {loading ? 'Memuat...' : `${summary?.childCount || children.length} anak terhubung`}
+            </p>
+          </div>
+        }
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

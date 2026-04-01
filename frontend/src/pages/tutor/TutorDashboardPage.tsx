@@ -7,6 +7,7 @@ import { authService } from '../../services/auth.service';
 import { tutorService, type TutorAssignmentSummary } from '../../services/tutor.service';
 import { buildTutorMembersHref, getExtracurricularTutorAssignments } from '../../features/tutor/tutorAccess';
 import type { User as AuthUser } from '../../types/auth';
+import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
 
 interface AcademicYear {
   id: number;
@@ -61,30 +62,18 @@ export const TutorDashboardPage = () => {
   const inventoryRows = ((inventoryData?.data || []) as InventoryOverviewRow[]) || [];
   const inventoryRoomCount = inventoryRows.filter((row) => row.room?.id).length;
   const inventoryItemCount = inventoryRows.reduce((sum, row) => sum + row.items.length, 0);
-  const tutorInitial = String(user?.name || 'P').trim().charAt(0).toUpperCase() || 'P';
 
   return (
     <div className="space-y-6">
-      <div className="rounded-3xl border border-cyan-100 bg-gradient-to-r from-cyan-50 via-white to-emerald-50 px-6 py-7 shadow-sm">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
-          <div className="flex items-center gap-4">
-            <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-white bg-cyan-100 text-5xl font-bold text-cyan-800 shadow-sm">
-              {tutorInitial}
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900">Selamat Datang, {user?.name || 'Pembina Ekskul'}</h1>
-              <p className="mt-1 text-sm text-slate-600">
-                Ringkasan pengelolaan ekstrakurikuler pada tahun ajaran aktif.
-              </p>
-              {activeAcademicYear?.name ? (
-                <p className="mt-2 text-xs font-medium text-slate-500">
-                  Tahun ajaran aktif: {activeAcademicYear.name}
-                </p>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </div>
+      <DashboardWelcomeCard
+        user={user}
+        eyebrow="Pembina Ekstrakurikuler"
+        subtitle="Berikut adalah ringkasan pengelolaan ekstrakurikuler dan inventaris binaan Anda."
+        meta={activeAcademicYear?.name ? `Tahun ajaran aktif: ${activeAcademicYear.name}` : undefined}
+        tone="sky"
+        className="mt-10"
+        fallbackName="Pembina Ekskul"
+      />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Link

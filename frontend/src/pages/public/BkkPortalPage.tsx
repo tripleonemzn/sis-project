@@ -5,6 +5,7 @@ import { Briefcase, Building2, ExternalLink, FileText, ShieldCheck, UserRound } 
 import toast from 'react-hot-toast';
 import { authService } from '../../services/auth.service';
 import { humasService, type JobVacancy } from '../../services/humas.service';
+import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
 import {
   ApplicationStatusBadge,
   ApplicantVerificationNotice,
@@ -109,24 +110,22 @@ export const BkkDashboardPage = () => {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[30px] border border-slate-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-6 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-orange-600">Portal BKK</p>
-            <h1 className="mt-2 text-2xl font-semibold text-slate-900">Dashboard Pelamar</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-              Akun pelamar sekarang sudah bisa dipakai untuk melengkapi profil kerja, memantau lowongan aktif, dan
-              mengirim lamaran langsung dari aplikasi.
-            </p>
-          </div>
+      <DashboardWelcomeCard
+        user={user}
+        eyebrow="Portal BKK"
+        subtitle="Lengkapi profil kerja, pantau lowongan aktif, dan kirim lamaran langsung dari akun pelamar Anda."
+        meta={`Username pelamar: ${user?.username || '-'}`}
+        tone="orange"
+        className="mt-10"
+        aside={
           <div className="rounded-2xl border border-orange-100 bg-white/90 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Status Verifikasi</p>
             <div className="mt-2">
               <VerificationBadge status={user?.verificationStatus} />
             </div>
           </div>
-        </div>
-      </section>
+        }
+      />
 
       <div className="grid gap-4 xl:grid-cols-4">
         <InfoCard title="Ringkasan Akun">

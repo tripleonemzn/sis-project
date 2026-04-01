@@ -24,6 +24,7 @@ import {
 import { userService } from '../../services/user.service';
 import toast from 'react-hot-toast';
 import { isFinanceStaffProfile } from '../../utils/staffRole';
+import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
 
 type FinanceWorkspaceSection =
   | 'overview'
@@ -121,6 +122,9 @@ export const StaffFinanceWorkspace = () => {
         additionalDuties?: string[];
         role?: string;
         ptkType?: string;
+        name?: string;
+        username?: string;
+        photo?: string | null;
       }
     | undefined;
 
@@ -458,12 +462,21 @@ export const StaffFinanceWorkspace = () => {
 
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Dashboard Staff Keuangan</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Ringkasan tagihan siswa, kolektibilitas pembayaran, dan prioritas operasional.
-          </p>
-        </div>
+        <DashboardWelcomeCard
+          user={currentUser}
+          eyebrow="Staff Keuangan"
+          subtitle="Ringkasan tagihan siswa, kolektibilitas pembayaran, dan prioritas operasional tersedia di workspace ini."
+          meta={activeYear?.name ? `Tahun ajaran aktif: ${activeYear.name}` : undefined}
+          tone="violet"
+          className="mt-10"
+          fallbackName="Staff Keuangan"
+          aside={
+            <div className="rounded-2xl border border-violet-100 bg-white/90 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Fokus Workspace</p>
+              <p className="mt-2 text-sm font-semibold text-slate-900">Keuangan sekolah</p>
+            </div>
+          }
+        />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <Link to="/staff/finance/students" className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">

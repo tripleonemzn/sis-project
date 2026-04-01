@@ -2,10 +2,12 @@ import { useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ClipboardCheck, FileText, GraduationCap, Loader2, Search, ShieldCheck, Users } from 'lucide-react';
+import { authService } from '../../services/auth.service';
 import { userService } from '../../services/user.service';
 import { officeService } from '../../services/office.service';
 import { permissionService, type StudentPermission } from '../../services/permission.service';
 import type { User } from '../../types/auth';
+import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
 
 type PermissionRow = StudentPermission & {
   student?: StudentPermission['student'] & {
@@ -115,6 +117,12 @@ export const StaffAdministrationWorkspace = () => {
   const [teacherCompletenessFilter, setTeacherCompletenessFilter] = useState<CompletenessFilter>('ALL');
   const [permissionStatusFilter, setPermissionStatusFilter] = useState<PermissionStatusFilter>('ALL');
 
+  const meQuery = useQuery({
+    queryKey: ['staff-administration-me'],
+    queryFn: authService.getMe,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const studentsQuery = useQuery({
     queryKey: ['staff-admin-students'],
     queryFn: () => userService.getUsers({ role: 'STUDENT', limit: 10000 }),
@@ -145,6 +153,7 @@ export const StaffAdministrationWorkspace = () => {
     () => ((permissionsQuery.data?.data?.permissions as PermissionRow[]) || []),
     [permissionsQuery.data?.data?.permissions],
   );
+  const currentUser = meQuery.data?.data;
   const administrationSummary = administrationSummaryQuery.data;
 
   const studentAdministrationRows = useMemo<StudentAdministrationRow[]>(
@@ -660,12 +669,20 @@ export const StaffAdministrationWorkspace = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Dashboard Staff Administrasi</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Fokus pada administrasi siswa, administrasi guru, dan arus layanan administratif sekolah.
-        </p>
-      </div>
+      <DashboardWelcomeCard
+        user={currentUser}
+        eyebrow="Staff Administrasi"
+        subtitle="Fokus pada administrasi siswa, administrasi guru, dan arus layanan administratif sekolah."
+        tone="emerald"
+        className="mt-10"
+        fallbackName="Staff Administrasi"
+        aside={
+          <div className="rounded-2xl border border-emerald-100 bg-white/90 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Fokus Workspace</p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">Administrasi sekolah</p>
+          </div>
+        }
+      />
 
       {administrationSummaryQuery.isError ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

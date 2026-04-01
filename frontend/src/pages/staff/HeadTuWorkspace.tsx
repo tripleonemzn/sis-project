@@ -46,6 +46,7 @@ import {
   getCandidateDecisionLetterPrintPath,
 } from '../public/candidateShared';
 import { getStaffDivisionLabel, resolveStaffDivision } from '../../utils/staffRole';
+import { DashboardWelcomeCard } from '../../components/common/DashboardWelcomeCard';
 
 function matchesSearch(term: string, values: Array<string | number | null | undefined>) {
   if (!term) return true;
@@ -3502,10 +3503,23 @@ const HeadTuWorkspace = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Dashboard Kepala Tata Usaha</h2>
-        <p className="mt-1 text-sm text-gray-500">Kontrol layanan administrasi, keuangan, operasional TU, surat sekolah, dan kartu ujian.</p>
-      </div>
+      <DashboardWelcomeCard
+        user={currentUser}
+        eyebrow="Kepala Tata Usaha"
+        subtitle="Kontrol layanan administrasi, keuangan, operasional TU, surat sekolah, dan kartu ujian dari satu dashboard."
+        meta={activeYear?.name ? `Tahun ajaran aktif: ${activeYear.name}` : undefined}
+        tone="rose"
+        className="mt-10"
+        fallbackName="Kepala Tata Usaha"
+        aside={
+          <div className="rounded-2xl border border-rose-100 bg-white/90 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Divisi Staff</p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              {getStaffDivisionLabel(currentUser)}
+            </p>
+          </div>
+        }
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
         <Link to="/staff/head-tu/administration" className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
