@@ -82,6 +82,16 @@ const getErrorMessage = (error: unknown) => {
   return 'Terjadi kesalahan';
 };
 
+const normalizeDigitsInput = (value?: string | null) => String(value || '').replace(/\s+/g, '').trim();
+
+const optionalExactDigitsField = (label: string, length: number) =>
+  z
+    .union([z.string(), z.null(), z.undefined()])
+    .transform((value) => (typeof value === 'string' ? normalizeDigitsInput(value) : value))
+    .refine((value) => value == null || value === '' || new RegExp(`^\\d{${length}}$`).test(value), {
+      message: `${label} harus ${length} digit angka`,
+    });
+
 const userFormSchema = z.object({
   username: z.string().min(3, 'Username minimal 3 karakter'),
   name: z.string().min(1, 'Nama wajib diisi'),
@@ -111,13 +121,13 @@ const userFormSchema = z.object({
   phone: z.string().optional().nullable(),
   address: z.string().optional().nullable(),
   photo: z.string().optional().nullable(),
-  nik: z.string().optional().nullable(),
-  familyCardNumber: z.string().optional().nullable(),
-  nuptk: z.string().optional().nullable(),
+  nik: optionalExactDigitsField('NIK', 16),
+  familyCardNumber: optionalExactDigitsField('Nomor KK', 16),
+  nuptk: optionalExactDigitsField('NUPTK', 16),
   highestEducation: z.string().optional().nullable(),
   studyProgram: z.string().optional().nullable(),
   motherName: z.string().optional().nullable(),
-  motherNik: z.string().optional().nullable(),
+  motherNik: optionalExactDigitsField('NIK Ibu', 16),
   rt: z.string().optional().nullable(),
   rw: z.string().optional().nullable(),
   dusun: z.string().optional().nullable(),
@@ -129,7 +139,7 @@ const userFormSchema = z.object({
   subdistrict: z.string().optional().nullable(),
   subdistrictCode: z.string().optional().nullable(),
   villageCode: z.string().optional().nullable(),
-  postalCode: z.string().optional().nullable(),
+  postalCode: optionalExactDigitsField('Kode Pos', 5),
   ptkType: z.string().optional().nullable(),
   employeeStatus: z.string().optional().nullable(),
   appointmentDecree: z.string().optional().nullable(),
@@ -157,7 +167,7 @@ const userFormSchema = z.object({
   siblingsCount: z.string().optional().nullable(),
   
   fatherName: z.string().optional().nullable(),
-  fatherNik: z.string().optional().nullable(),
+  fatherNik: optionalExactDigitsField('NIK Ayah', 16),
   fatherEducation: z.string().optional().nullable(),
   fatherOccupation: z.string().optional().nullable(),
   fatherIncome: z.string().optional().nullable(),
@@ -1834,8 +1844,12 @@ export const UserProfilePage = () => {
                       id="fatherNik"
                       {...register('fatherNik')}
                       autoComplete="off"
+                      inputMode="numeric"
+                      maxLength={16}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
+                    <p className="mt-1 text-xs text-slate-500">Isi 16 digit angka tanpa spasi.</p>
+                    {errors.fatherNik && <p className="mt-1 text-xs text-red-600">{errors.fatherNik.message}</p>}
                   </div>
                   <div>
                     <label htmlFor="fatherIncome" className="block text-sm font-medium text-gray-700 mb-1">Penghasilan Ayah</label>
@@ -1890,8 +1904,12 @@ export const UserProfilePage = () => {
                       id="studentMotherNik"
                       {...register('motherNik')}
                       autoComplete="off"
+                      inputMode="numeric"
+                      maxLength={16}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
+                    <p className="mt-1 text-xs text-slate-500">Isi 16 digit angka tanpa spasi.</p>
+                    {errors.motherNik && <p className="mt-1 text-xs text-red-600">{errors.motherNik.message}</p>}
                   </div>
                   <div>
                     <label htmlFor="motherIncome" className="block text-sm font-medium text-gray-700 mb-1">Penghasilan Ibu</label>
@@ -1989,9 +2007,13 @@ export const UserProfilePage = () => {
                           id="nik"
                           {...register('nik')}
                           autoComplete="off"
+                          inputMode="numeric"
+                          maxLength={16}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           placeholder="Nomor Induk Kependudukan"
                         />
+                        <p className="mt-1 text-xs text-slate-500">Isi 16 digit angka tanpa spasi.</p>
+                        {errors.nik && <p className="mt-1 text-xs text-red-600">{errors.nik.message}</p>}
                       </div>
                       {isEmployeeProfile && (
                         <div>
@@ -2000,8 +2022,12 @@ export const UserProfilePage = () => {
                             id="nuptk"
                             {...register('nuptk')}
                             autoComplete="off"
+                            inputMode="numeric"
+                            maxLength={16}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           />
+                          <p className="mt-1 text-xs text-slate-500">Isi 16 digit angka tanpa spasi.</p>
+                          {errors.nuptk && <p className="mt-1 text-xs text-red-600">{errors.nuptk.message}</p>}
                         </div>
                       )}
                       {(isEmployeeProfile || isStudentProfile) && (
@@ -2013,9 +2039,13 @@ export const UserProfilePage = () => {
                             id="familyCardNumber"
                             {...register('familyCardNumber')}
                             autoComplete="off"
+                            inputMode="numeric"
+                            maxLength={16}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             placeholder="Nomor kartu keluarga"
                           />
+                          <p className="mt-1 text-xs text-slate-500">Isi 16 digit angka tanpa spasi.</p>
+                          {errors.familyCardNumber && <p className="mt-1 text-xs text-red-600">{errors.familyCardNumber.message}</p>}
                         </div>
                       )}
                     </>
@@ -2250,9 +2280,13 @@ export const UserProfilePage = () => {
                           id="motherNik"
                           {...register('motherNik')}
                           autoComplete="off"
+                          inputMode="numeric"
+                          maxLength={16}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           placeholder="Diisi sesuai data identitas keluarga"
                         />
+                        <p className="mt-1 text-xs text-slate-500">Isi 16 digit angka tanpa spasi.</p>
+                        {errors.motherNik && <p className="mt-1 text-xs text-red-600">{errors.motherNik.message}</p>}
                       </div>
                     </div>
                   )}
@@ -2369,8 +2403,12 @@ export const UserProfilePage = () => {
                           id="postalCode"
                           {...register('postalCode')}
                           autoComplete="postal-code"
+                          inputMode="numeric"
+                          maxLength={5}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
+                        <p className="mt-1 text-xs text-slate-500">Isi 5 digit angka.</p>
+                        {errors.postalCode && <p className="mt-1 text-xs text-red-600">{errors.postalCode.message}</p>}
                       </div>
                       {(isEmployeeProfile || isStudentProfile) && (
                         <div className="md:col-span-2 rounded-lg border border-blue-100 bg-blue-50/60 p-4">

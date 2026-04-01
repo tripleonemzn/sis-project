@@ -105,6 +105,8 @@ type FormFieldProps = {
   multiline?: boolean;
   numberOfLines?: number;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  helperText?: string;
+  maxLength?: number;
 };
 type ProfileDocument = NonNullable<AuthUser['documents']>[number] & { originalname?: string | null };
 
@@ -282,6 +284,14 @@ function toNullable(value: string) {
   return cleaned.length > 0 ? cleaned : null;
 }
 
+function normalizeNumericText(value: string, maxLength: number) {
+  return value.replace(/\D/g, '').slice(0, maxLength);
+}
+
+function normalizeDigitsInput(value?: string | null) {
+  return String(value || '').replace(/\s+/g, '').trim();
+}
+
 function normalizeStructuredFieldValue(value?: string | null) {
   const cleaned = String(value || '').trim();
   if (!cleaned || cleaned === MANUAL_OPTION_VALUE) {
@@ -308,6 +318,14 @@ function getStaffPositionLabel(value?: string | null) {
     return '';
   }
   return STAFF_POSITION_OPTIONS.find((option) => option.value === normalized)?.label || normalized;
+}
+
+function validateExactDigits(value: string, label: string, length: number) {
+  const cleaned = normalizeDigitsInput(value);
+  if (!cleaned) {
+    return null;
+  }
+  return new RegExp(`^\\d{${length}}$`).test(cleaned) ? null : `${label} harus ${length} digit angka`;
 }
 
 function toNullableNumber(value: string) {
@@ -410,6 +428,19 @@ function buildForm(profile: AuthUser | null): EditableProfileForm {
   };
 }
 
+function getProfileValidationMessage(form: EditableProfileForm, options: { showNik: boolean; showNuptk: boolean }) {
+  const checks = [
+    options.showNik ? validateExactDigits(form.nik, 'NIK', 16) : null,
+    options.showNuptk ? validateExactDigits(form.nuptk, 'NUPTK', 16) : null,
+    validateExactDigits(form.familyCardNumber, 'Nomor KK', 16),
+    validateExactDigits(form.motherNik, 'NIK Ibu', 16),
+    validateExactDigits(form.fatherNik, 'NIK Ayah', 16),
+    validateExactDigits(form.postalCode, 'Kode Pos', 5),
+  ];
+
+  return checks.find((message) => Boolean(message)) || null;
+}
+
 function ProfileRow({ label, value }: { label: string; value?: string | null }) {
   return (
     <View style={{ marginBottom: 10 }}>
@@ -428,6 +459,8 @@ function FormField({
   multiline = false,
   numberOfLines = 1,
   autoCapitalize = 'sentences',
+  helperText,
+  maxLength,
 }: FormFieldProps) {
   return (
     <View style={{ marginBottom: 10 }}>
@@ -440,6 +473,7 @@ function FormField({
         multiline={multiline}
         numberOfLines={numberOfLines}
         autoCapitalize={autoCapitalize}
+        maxLength={maxLength}
         textAlignVertical={multiline ? 'top' : 'center'}
         placeholderTextColor="#94a3b8"
         style={{
@@ -453,6 +487,7 @@ function FormField({
           minHeight: multiline ? 88 : undefined,
         }}
       />
+      {helperText ? <Text style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>{helperText}</Text> : null}
     </View>
   );
 }
@@ -659,6 +694,20 @@ export default function ProfileScreen() {
       notifyApiError(error, 'Gagal menyimpan perubahan profil.');
     },
   });
+
+  const handleSave = () => {
+    const validationMessage = getProfileValidationMessage(form, {
+      showNik,
+      showNuptk,
+    });
+
+    if (validationMessage) {
+      notifyError(validationMessage);
+      return;
+    }
+
+    saveMutation.mutate();
+  };
 
   const handleUploadPhoto = async () => {
     if (!profile?.id || !canUploadPhoto || photoUploading) return;
@@ -873,9 +922,11 @@ export default function ProfileScreen() {
               <FormField
                 label="NIK"
                 value={form.nik}
-                onChangeText={(value) => setForm((prev) => ({ ...prev, nik: value }))}
+                onChangeText={(value) => setForm((prev) => ({ ...prev, nik: normalizeNumericText(value, 16) }))}
                 placeholder="Nomor Induk Kependudukan"
                 keyboardType="numeric"
+                helperText="Isi 16 digit angka tanpa spasi."
+                maxLength={16}
               />
             ) : null}
 
@@ -883,8 +934,11 @@ export default function ProfileScreen() {
               <FormField
                 label="NUPTK"
                 value={form.nuptk}
-                onChangeText={(value) => setForm((prev) => ({ ...prev, nuptk: value }))}
+                onChangeText={(value) => setForm((prev) => ({ ...prev, nuptk: normalizeNumericText(value, 16) }))}
                 placeholder="Nomor Unik Pendidik dan Tenaga Kependidikan"
+                keyboardType="numeric"
+                helperText="Isi 16 digit angka tanpa spasi."
+                maxLength={16}
               />
             ) : null}
 
@@ -892,9 +946,13 @@ export default function ProfileScreen() {
               <FormField
                 label="Nomor KK"
                 value={form.familyCardNumber}
-                onChangeText={(value) => setForm((prev) => ({ ...prev, familyCardNumber: value }))}
+                onChangeText={(value) =>
+                  setForm((prev) => ({ ...prev, familyCardNumber: normalizeNumericText(value, 16) }))
+                }
                 placeholder="Nomor kartu keluarga"
                 keyboardType="numeric"
+                helperText="Isi 16 digit angka tanpa spasi."
+                maxLength={16}
               />
             ) : null}
 
@@ -1044,9 +1102,13 @@ export default function ProfileScreen() {
                 <FormField
                   label="NIK Ibu Kandung"
                   value={form.motherNik}
-                  onChangeText={(value) => setForm((prev) => ({ ...prev, motherNik: value }))}
+                  onChangeText={(value) =>
+                    setForm((prev) => ({ ...prev, motherNik: normalizeNumericText(value, 16) }))
+                  }
                   placeholder="Diisi sesuai data identitas keluarga"
                   keyboardType="numeric"
+                  helperText="Isi 16 digit angka tanpa spasi."
+                  maxLength={16}
                 />
               </>
             ) : null}
@@ -1064,8 +1126,10 @@ export default function ProfileScreen() {
               <FormField
                 label="NIK Ayah"
                 value={form.fatherNik}
-                onChangeText={(value) => setForm((prev) => ({ ...prev, fatherNik: value }))}
+                onChangeText={(value) => setForm((prev) => ({ ...prev, fatherNik: normalizeNumericText(value, 16) }))}
                 keyboardType="numeric"
+                helperText="Isi 16 digit angka tanpa spasi."
+                maxLength={16}
               />
               <ChoiceChips
                 label="Pendidikan Ayah"
@@ -1093,8 +1157,10 @@ export default function ProfileScreen() {
               <FormField
                 label="NIK Ibu"
                 value={form.motherNik}
-                onChangeText={(value) => setForm((prev) => ({ ...prev, motherNik: value }))}
+                onChangeText={(value) => setForm((prev) => ({ ...prev, motherNik: normalizeNumericText(value, 16) }))}
                 keyboardType="numeric"
+                helperText="Isi 16 digit angka tanpa spasi."
+                maxLength={16}
               />
               <ChoiceChips
                 label="Pendidikan Ibu"
@@ -1212,8 +1278,10 @@ export default function ProfileScreen() {
                 <FormField
                   label="Kode Pos"
                   value={form.postalCode}
-                  onChangeText={(value) => setForm((prev) => ({ ...prev, postalCode: value }))}
+                  onChangeText={(value) => setForm((prev) => ({ ...prev, postalCode: normalizeNumericText(value, 5) }))}
                   keyboardType="numeric"
+                  helperText="Isi 5 digit angka."
+                  maxLength={5}
                 />
 
                 {(isEmployee || isStudent) ? (
@@ -1575,7 +1643,7 @@ export default function ProfileScreen() {
 
           <Pressable
             disabled={!isDirty || saveMutation.isPending}
-            onPress={() => saveMutation.mutate()}
+            onPress={handleSave}
             style={{
               marginBottom: 12,
               backgroundColor: !isDirty || saveMutation.isPending ? '#93c5fd' : '#1d4ed8',

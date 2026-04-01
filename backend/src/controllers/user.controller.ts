@@ -35,6 +35,19 @@ const emailSchema = z
   .nullable()
   .transform((value) => (value === '' ? null : value));
 
+const normalizeDigitsInput = (value?: string | null) => String(value || '').replace(/\s+/g, '').trim();
+
+const optionalExactDigitsField = (label: string, length: number) =>
+  z
+    .string()
+    .optional()
+    .nullable()
+    .transform((value) => normalizeDigitsInput(value))
+    .refine((value) => value.length === 0 || new RegExp(`^\\d{${length}}$`).test(value), {
+      message: `${label} harus ${length} digit angka`,
+    })
+    .transform((value) => (value === '' ? null : value));
+
 const createUserSchema = z.object({
   username: z.string().min(3),
   password: z.string().min(6),
@@ -52,13 +65,13 @@ const createUserSchema = z.object({
   phone: z.string().optional().nullable(),
   address: z.string().optional().nullable(),
   religion: z.string().optional().nullable(),
-  nik: z.string().optional().nullable(),
-  familyCardNumber: z.string().optional().nullable(),
-  nuptk: z.string().optional().nullable(),
+  nik: optionalExactDigitsField('NIK', 16),
+  familyCardNumber: optionalExactDigitsField('Nomor KK', 16),
+  nuptk: optionalExactDigitsField('NUPTK', 16),
   highestEducation: z.string().optional().nullable(),
   studyProgram: z.string().optional().nullable(),
   motherName: z.string().optional().nullable(),
-  motherNik: z.string().optional().nullable(),
+  motherNik: optionalExactDigitsField('NIK Ibu', 16),
   childNumber: z.number().int().optional().nullable(),
   distanceToSchool: z.string().optional().nullable(),
   familyStatus: z.string().optional().nullable(),
@@ -69,7 +82,7 @@ const createUserSchema = z.object({
   pkhNumber: z.string().optional().nullable(),
   kksNumber: z.string().optional().nullable(),
   siblingsCount: z.number().int().optional().nullable(),
-  fatherNik: z.string().optional().nullable(),
+  fatherNik: optionalExactDigitsField('NIK Ayah', 16),
   preferences: z.any().optional().nullable(),
   fatherName: z.string().optional().nullable(),
   fatherEducation: z.string().optional().nullable(),
@@ -93,7 +106,7 @@ const createUserSchema = z.object({
   subdistrict: z.string().optional().nullable(),
   subdistrictCode: z.string().optional().nullable(),
   villageCode: z.string().optional().nullable(),
-  postalCode: z.string().optional().nullable(),
+  postalCode: optionalExactDigitsField('Kode Pos', 5),
   ptkType: z.string().optional().nullable(),
   employeeStatus: z.string().optional().nullable(),
   appointmentDecree: z.string().optional().nullable(),
@@ -137,13 +150,13 @@ const updateUserSchema = z.object({
   
   // New Personal Data
   religion: z.string().optional().nullable(),
-  nik: z.string().optional().nullable(),
-  familyCardNumber: z.string().optional().nullable(),
-  nuptk: z.string().optional().nullable(),
+  nik: optionalExactDigitsField('NIK', 16),
+  familyCardNumber: optionalExactDigitsField('Nomor KK', 16),
+  nuptk: optionalExactDigitsField('NUPTK', 16),
   highestEducation: z.string().optional().nullable(),
   studyProgram: z.string().optional().nullable(),
   motherName: z.string().optional().nullable(),
-  motherNik: z.string().optional().nullable(),
+  motherNik: optionalExactDigitsField('NIK Ibu', 16),
   childNumber: z.number().int().optional().nullable(),
   distanceToSchool: z.string().optional().nullable(),
   familyStatus: z.string().optional().nullable(),
@@ -154,7 +167,7 @@ const updateUserSchema = z.object({
   pkhNumber: z.string().optional().nullable(),
   kksNumber: z.string().optional().nullable(),
   siblingsCount: z.number().int().optional().nullable(),
-  fatherNik: z.string().optional().nullable(),
+  fatherNik: optionalExactDigitsField('NIK Ayah', 16),
   fatherName: z.string().optional().nullable(),
   fatherEducation: z.string().optional().nullable(),
   fatherOccupation: z.string().optional().nullable(),
@@ -179,7 +192,7 @@ const updateUserSchema = z.object({
   subdistrict: z.string().optional().nullable(),
   subdistrictCode: z.string().optional().nullable(),
   villageCode: z.string().optional().nullable(),
-  postalCode: z.string().optional().nullable(),
+  postalCode: optionalExactDigitsField('Kode Pos', 5),
 
   // New Employment Data
   ptkType: z.string().optional().nullable(),
