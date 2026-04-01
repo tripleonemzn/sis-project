@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authService } from '../../services/auth.service';
-import { getNisnGuidanceText, getNisnValidationMessage, normalizeNisnInput } from '../../utils/nisn';
+import { getNisnValidationMessage, normalizeNisnInput } from '../../utils/nisn';
 
 type RegisterMode = 'candidate' | 'parent' | 'bkk';
 
@@ -488,6 +488,8 @@ function CandidateRegisterForm() {
       accentClass={REGISTER_MODE_CONFIG.candidate.accentClass}
       eyebrow={REGISTER_MODE_CONFIG.candidate.eyebrow}
       highlights={REGISTER_MODE_CONFIG.candidate.highlights}
+      showSupportFooter={false}
+      matchFormHeight
     >
       <div className="flex h-full flex-col space-y-6">
         <Link
@@ -561,11 +563,6 @@ function CandidateRegisterForm() {
                 },
               }}
             />
-            <div className="auth-frost-tile md:col-span-2 rounded-2xl border-sky-100/60 px-4 py-3 text-sm leading-6 text-sky-900">
-              <p className="font-semibold">Gunakan NISN resmi</p>
-              <p className="mt-1">{getNisnGuidanceText()}</p>
-              <p className="mt-1 text-xs text-sky-700">Pola dummy seperti `0000000000` atau `1234567890` akan ditolak.</p>
-            </div>
             <FormField
               id="candidate-phone"
               name="phone"
