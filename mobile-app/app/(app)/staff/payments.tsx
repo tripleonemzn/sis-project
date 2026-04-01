@@ -552,7 +552,7 @@ function getCashSessionStatusBadge(status: StaffFinanceCashSession['status']) {
 
 function getCashSessionApprovalBadge(status: StaffFinanceCashSession['approvalStatus']) {
   if (status === 'PENDING_HEAD_TU') {
-    return { label: 'Menunggu Head TU', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+    return { label: 'Menunggu Kepala TU', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
   }
   if (status === 'PENDING_PRINCIPAL') {
     return { label: 'Menunggu Kepsek', bg: '#e0f2fe', border: '#7dd3fc', text: '#075985' };
@@ -581,7 +581,7 @@ function getClosingPeriodStatusBadge(status: StaffFinanceClosingPeriod['status']
 
 function getClosingPeriodApprovalBadge(status: StaffFinanceClosingPeriod['approvalStatus']) {
   if (status === 'PENDING_HEAD_TU') {
-    return { label: 'Menunggu Head TU', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+    return { label: 'Menunggu Kepala TU', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
   }
   if (status === 'PENDING_PRINCIPAL') {
     return { label: 'Menunggu Kepsek', bg: '#e0f2fe', border: '#7dd3fc', text: '#075985' };
@@ -597,7 +597,7 @@ function getClosingPeriodApprovalBadge(status: StaffFinanceClosingPeriod['approv
 
 function getClosingPeriodReopenBadge(status: StaffFinanceClosingPeriodReopenRequest['status']) {
   if (status === 'PENDING_HEAD_TU') {
-    return { label: 'Menunggu Head TU', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
+    return { label: 'Menunggu Kepala TU', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
   }
   if (status === 'PENDING_PRINCIPAL') {
     return { label: 'Menunggu Kepsek', bg: '#e0f2fe', border: '#7dd3fc', text: '#075985' };
@@ -705,6 +705,7 @@ export default function StaffPaymentsScreen() {
   const [invoiceReplaceExisting, setInvoiceReplaceExisting] = useState(false);
   const [invoiceStudentSearch, setInvoiceStudentSearch] = useState('');
   const [invoiceSelectedStudentIds, setInvoiceSelectedStudentIds] = useState<number[]>([]);
+  const [todayTimestamp] = useState(() => Date.now());
 
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [invoiceStatus, setInvoiceStatus] = useState<'' | FinanceInvoiceStatus>('');
@@ -995,7 +996,6 @@ export default function StaffPaymentsScreen() {
   const closingPeriodsSummary = closingPeriodsQuery.data?.summary;
   const closingPeriods = closingPeriodsQuery.data?.periods || [];
   const closingPeriodReopenRequests = closingPeriodReopenRequestsQuery.data?.requests || [];
-  const closingPeriodReopenSummary = closingPeriodReopenRequestsQuery.data?.summary;
   const closingPeriodApprovalPolicy = closingPeriodApprovalPolicyQuery.data || null;
   const budgetRealizationSummary = budgetRealizationQuery.data || null;
   const performanceSummary = performanceSummaryQuery.data || null;
@@ -1062,21 +1062,6 @@ export default function StaffPaymentsScreen() {
       setSelectedBankReconciliationId(bankReconciliations[0].id);
     }
   }, [bankReconciliations, selectedBankReconciliationId]);
-
-  useEffect(() => {
-    if (!reminderPolicy) return;
-    applyReminderPolicyToForm(reminderPolicy);
-  }, [reminderPolicy?.updatedAt]);
-
-  useEffect(() => {
-    if (!cashSessionApprovalPolicy) return;
-    applyCashSessionApprovalPolicyToForm(cashSessionApprovalPolicy);
-  }, [cashSessionApprovalPolicy?.updatedAt]);
-
-  useEffect(() => {
-    if (!closingPeriodApprovalPolicy) return;
-    applyClosingPeriodApprovalPolicyToForm(closingPeriodApprovalPolicy);
-  }, [closingPeriodApprovalPolicy?.updatedAt]);
 
   const studentLookup = useMemo(() => {
     return new Map((studentsQuery.data || []).map((student) => [student.id, student]));
@@ -1279,13 +1264,12 @@ export default function StaffPaymentsScreen() {
   }, [activeYearQuery.data?.id, invoiceAcademicYearId]);
 
   const overdueCount = useMemo(() => {
-    const today = Date.now();
     return invoices.filter((invoice) => {
       if (!invoice.dueDate) return false;
       if (invoice.status === 'PAID' || invoice.status === 'CANCELLED') return false;
-      return new Date(invoice.dueDate).getTime() < today;
+      return new Date(invoice.dueDate).getTime() < todayTimestamp;
     }).length;
-  }, [invoices]);
+  }, [invoices, todayTimestamp]);
 
   const topClassOutstanding = useMemo(() => {
     const map = new Map<string, { className: string; amount: number }>();
@@ -1353,7 +1337,7 @@ export default function StaffPaymentsScreen() {
     resetTariffForm();
   };
 
-  const applyReminderPolicyToForm = (policy: StaffFinanceReminderPolicy) => {
+  function applyReminderPolicyToForm(policy: StaffFinanceReminderPolicy) {
     setReminderPolicyIsActive(policy.isActive);
     setReminderDueSoonDays(String(policy.dueSoonDays));
     setReminderDueSoonRepeatIntervalDays(String(policy.dueSoonRepeatIntervalDays));
@@ -1370,16 +1354,16 @@ export default function StaffPaymentsScreen() {
     setReminderEscalateToHeadTu(policy.escalateToHeadTu);
     setReminderEscalateToPrincipal(policy.escalateToPrincipal);
     setReminderPolicyNotes(policy.notes || '');
-  };
+  }
 
-  const applyCashSessionApprovalPolicyToForm = (policy: StaffFinanceCashSessionApprovalPolicy) => {
+  function applyCashSessionApprovalPolicyToForm(policy: StaffFinanceCashSessionApprovalPolicy) {
     setCashSessionZeroVarianceAutoApproved(policy.zeroVarianceAutoApproved);
     setCashSessionRequireVarianceNote(policy.requireVarianceNote);
     setCashSessionPrincipalApprovalThresholdAmount(String(Number(policy.principalApprovalThresholdAmount || 0)));
     setCashSessionApprovalPolicyNotes(policy.notes || '');
-  };
+  }
 
-  const applyClosingPeriodApprovalPolicyToForm = (policy: StaffFinanceClosingPeriodApprovalPolicy) => {
+  function applyClosingPeriodApprovalPolicyToForm(policy: StaffFinanceClosingPeriodApprovalPolicy) {
     setClosingPeriodRequireHeadTuApproval(policy.requireHeadTuApproval);
     setClosingPeriodRequireHeadTuReopenApproval(policy.requireHeadTuReopenApproval);
     setClosingPeriodRequirePrincipalReopenApproval(policy.requirePrincipalReopenApproval);
@@ -1391,7 +1375,22 @@ export default function StaffPaymentsScreen() {
     setClosingPeriodEscalateIfOpenCashSession(policy.escalateIfOpenCashSession);
     setClosingPeriodEscalateIfOpenReconciliation(policy.escalateIfOpenReconciliation);
     setClosingPeriodPolicyNotes(policy.notes || '');
-  };
+  }
+
+  useEffect(() => {
+    if (!reminderPolicy) return;
+    applyReminderPolicyToForm(reminderPolicy);
+  }, [reminderPolicy?.updatedAt]);
+
+  useEffect(() => {
+    if (!cashSessionApprovalPolicy) return;
+    applyCashSessionApprovalPolicyToForm(cashSessionApprovalPolicy);
+  }, [cashSessionApprovalPolicy?.updatedAt]);
+
+  useEffect(() => {
+    if (!closingPeriodApprovalPolicy) return;
+    applyClosingPeriodApprovalPolicyToForm(closingPeriodApprovalPolicy);
+  }, [closingPeriodApprovalPolicy?.updatedAt]);
 
   const openReminderPolicyModal = () => {
     if (reminderPolicy) {
@@ -2070,7 +2069,7 @@ export default function StaffPaymentsScreen() {
     onSuccess: (session) => {
       notifySuccess(
         session.approvalStatus === 'PENDING_HEAD_TU'
-          ? 'Sesi kas ditutup dan menunggu review Head TU.'
+          ? 'Sesi kas ditutup dan menunggu review Kepala TU.'
           : session.approvalStatus === 'AUTO_APPROVED'
             ? 'Sesi kas ditutup dan auto-approved.'
             : 'Sesi kas harian berhasil ditutup.',
@@ -3520,7 +3519,7 @@ export default function StaffPaymentsScreen() {
           </View>
           <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
             <View style={{ backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 10, padding: 10 }}>
-              <Text style={{ color: '#1d4ed8', fontSize: 11 }}>Pending Head TU</Text>
+              <Text style={{ color: '#1d4ed8', fontSize: 11 }}>Pending Kepala TU</Text>
               <Text style={{ color: '#1e3a8a', fontWeight: '700', fontSize: 18 }}>{cashSessionSummary?.pendingHeadTuCount || 0}</Text>
             </View>
           </View>
@@ -3644,7 +3643,7 @@ export default function StaffPaymentsScreen() {
               {activeCashSession.totalCashPayments} pembayaran • {activeCashSession.totalCashRefunds} refund
             </Text>
             <Text style={{ color: '#0f172a', fontSize: 12, marginBottom: 8 }}>
-              Zero variance {cashSessionZeroVarianceAutoApproved ? 'auto-approved' : 'direview Head TU'} • eskalasi kepsek{' '}
+              Zero variance {cashSessionZeroVarianceAutoApproved ? 'auto-approved' : 'direview Kepala TU'} • eskalasi kepsek{' '}
               <Text style={{ fontWeight: '700' }}>{formatCurrency(Number(cashSessionPrincipalApprovalThresholdAmount || 0))}</Text>
             </Text>
             <TextInput
@@ -3817,7 +3816,7 @@ export default function StaffPaymentsScreen() {
                       ) : null}
                       {session.headTuDecision.note ? (
                         <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
-                          Review Head TU: {session.headTuDecision.note}
+                          Review Kepala TU: {session.headTuDecision.note}
                         </Text>
                       ) : null}
                       {session.principalDecision.note ? (
@@ -5279,12 +5278,12 @@ export default function StaffPaymentsScreen() {
             {
               checked: closingPeriodRequireHeadTuApproval,
               onPress: () => setClosingPeriodRequireHeadTuApproval((value) => !value),
-              title: 'Wajib review Head TU',
+              title: 'Wajib review Kepala TU',
             },
             {
               checked: closingPeriodRequireHeadTuReopenApproval,
               onPress: () => setClosingPeriodRequireHeadTuReopenApproval((value) => !value),
-              title: 'Reopen wajib review Head TU',
+              title: 'Reopen wajib review Kepala TU',
             },
             {
               checked: closingPeriodRequirePrincipalReopenApproval,
@@ -5532,7 +5531,7 @@ export default function StaffPaymentsScreen() {
                 ) : null}
                 {period.headTuDecisionNote ? (
                   <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>
-                    Review Head TU: {period.headTuDecisionNote}
+                    Review Kepala TU: {period.headTuDecisionNote}
                   </Text>
                 ) : null}
                 {period.principalDecisionNote ? (
@@ -5596,7 +5595,7 @@ export default function StaffPaymentsScreen() {
                   <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{request.requestedNote}</Text>
                 ) : null}
                 {request.headTuDecision.note ? (
-                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>Head TU: {request.headTuDecision.note}</Text>
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>Kepala TU: {request.headTuDecision.note}</Text>
                 ) : null}
                 {request.principalDecision.note ? (
                   <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>Kepsek: {request.principalDecision.note}</Text>

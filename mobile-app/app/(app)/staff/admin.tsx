@@ -392,7 +392,7 @@ export default function StaffAdminScreen() {
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-cash-session-approvals', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-cash-sessions', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-integrity', user?.id] });
-      notifySuccess(payload.approved ? 'Settlement kas diproses oleh Head TU.' : 'Settlement kas ditolak.');
+      notifySuccess(payload.approved ? 'Settlement kas diproses oleh Kepala TU.' : 'Settlement kas ditolak.');
     },
     onError: (error: unknown) => {
       notifyApiError(error, 'Gagal memproses approval settlement kas.');
@@ -409,7 +409,7 @@ export default function StaffAdminScreen() {
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-closing-periods', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-closing-period-approvals', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-integrity', user?.id] });
-      notifySuccess(payload.approved ? 'Closing period diproses oleh Head TU.' : 'Closing period ditolak.');
+      notifySuccess(payload.approved ? 'Closing period diproses oleh Kepala TU.' : 'Closing period ditolak.');
     },
     onError: (error: unknown) => {
       notifyApiError(error, 'Gagal memproses closing period.');
@@ -427,7 +427,7 @@ export default function StaffAdminScreen() {
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-closing-period-reopen-requests', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-closing-period-reopen-approvals', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['mobile-head-tu-finance-integrity', user?.id] });
-      notifySuccess(payload.approved ? 'Reopen closing period diproses oleh Head TU.' : 'Reopen closing period ditolak.');
+      notifySuccess(payload.approved ? 'Reopen closing period diproses oleh Kepala TU.' : 'Reopen closing period ditolak.');
     },
     onError: (error: unknown) => {
       notifyApiError(error, 'Gagal memproses reopen closing period.');
@@ -653,7 +653,7 @@ export default function StaffAdminScreen() {
   const title =
     staffDivision === 'HEAD_TU'
       ? focus === 'finance'
-        ? 'Monitoring Keuangan TU'
+        ? 'Monitoring Keuangan'
         : focus === 'teachers'
           ? 'Data Guru & Staff'
           : focus === 'permissions'
@@ -740,7 +740,7 @@ export default function StaffAdminScreen() {
             <View style={{ marginBottom: 8 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Performance Trend 6 Bulan</Text>
               <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
-                Tren invoice, koleksi, pending verifikasi, treasury flow, dan closing untuk monitoring Head TU.
+                Tren invoice, koleksi, pending verifikasi, treasury flow, dan closing untuk monitoring Kepala TU.
               </Text>
             </View>
 
@@ -1304,7 +1304,7 @@ export default function StaffAdminScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Governance Summary</Text>
                 <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
-                  Ringkasan kontrol finance untuk area risiko utama Head TU.
+                  Ringkasan kontrol finance untuk area risiko utama Kepala TU.
                 </Text>
               </View>
               {headTuGovernance ? (
@@ -1433,7 +1433,7 @@ export default function StaffAdminScreen() {
             <View style={{ marginBottom: 8 }}>
               <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Audit Finance 30 Hari</Text>
               <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
-                Ringkasan perubahan policy, approval sensitif, dan kontrol treasury terbaru untuk audit Head TU.
+                Ringkasan perubahan policy, approval sensitif, dan kontrol treasury terbaru untuk audit Kepala TU.
               </Text>
             </View>
 
@@ -1710,7 +1710,7 @@ export default function StaffAdminScreen() {
                     </View>
                     {period.headTuDecisionNote ? (
                       <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
-                        Review Head TU: {period.headTuDecisionNote}
+                        Review Kepala TU: {period.headTuDecisionNote}
                       </Text>
                     ) : null}
                     {period.principalDecisionNote ? (
@@ -2184,7 +2184,7 @@ export default function StaffAdminScreen() {
                   ) : null}
                   <Text style={{ color: '#1d4ed8', fontSize: 12, marginTop: 2 }}>
                     {session.approvalStatus === 'PENDING_HEAD_TU'
-                      ? 'Menunggu review Head TU'
+                      ? 'Menunggu review Kepala TU'
                       : session.approvalStatus === 'PENDING_PRINCIPAL'
                         ? 'Menunggu Kepala Sekolah'
                         : session.approvalStatus === 'REJECTED'

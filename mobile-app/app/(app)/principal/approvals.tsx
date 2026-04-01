@@ -73,7 +73,7 @@ function getClosingPeriodStatusStyle(period: StaffFinanceClosingPeriod) {
 }
 
 function getClosingPeriodApprovalStyle(period: StaffFinanceClosingPeriod) {
-  if (period.approvalStatus === 'PENDING_HEAD_TU') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e', label: 'Menunggu Head TU' };
+  if (period.approvalStatus === 'PENDING_HEAD_TU') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e', label: 'Menunggu Kepala TU' };
   if (period.approvalStatus === 'PENDING_PRINCIPAL') return { bg: '#e0f2fe', border: '#bae6fd', text: '#075985', label: 'Menunggu Kepsek' };
   if (period.approvalStatus === 'APPROVED') return { bg: '#dcfce7', border: '#86efac', text: '#166534', label: 'Disetujui' };
   if (period.approvalStatus === 'REJECTED') return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b', label: 'Ditolak' };
@@ -81,7 +81,7 @@ function getClosingPeriodApprovalStyle(period: StaffFinanceClosingPeriod) {
 }
 
 function getClosingPeriodReopenStyle(request: StaffFinanceClosingPeriodReopenRequest) {
-  if (request.status === 'PENDING_HEAD_TU') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e', label: 'Menunggu Head TU' };
+  if (request.status === 'PENDING_HEAD_TU') return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e', label: 'Menunggu Kepala TU' };
   if (request.status === 'PENDING_PRINCIPAL') return { bg: '#e0f2fe', border: '#bae6fd', text: '#075985', label: 'Menunggu Kepsek' };
   if (request.status === 'APPLIED') return { bg: '#dcfce7', border: '#86efac', text: '#166534', label: 'Direopen' };
   return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b', label: 'Ditolak' };
@@ -1306,7 +1306,7 @@ export default function PrincipalApprovalsScreen() {
           </View>
         </View>
         <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
-          Pending Head TU {financeCashSummary?.pendingHeadTuCount || 0} • pending Kepsek {financeCashSummary?.pendingPrincipalCount || 0}
+          Pending Kepala TU {financeCashSummary?.pendingHeadTuCount || 0} • pending Kepsek {financeCashSummary?.pendingPrincipalCount || 0}
         </Text>
 
         {cashSessionsQuery.isLoading ? (
@@ -1338,7 +1338,7 @@ export default function PrincipalApprovalsScreen() {
                   {session.approvalStatus === 'PENDING_PRINCIPAL'
                     ? 'Menunggu Kepala Sekolah'
                     : session.approvalStatus === 'PENDING_HEAD_TU'
-                      ? 'Menunggu Head TU'
+                      ? 'Menunggu Kepala TU'
                       : session.approvalStatus === 'REJECTED'
                         ? 'Ditolak'
                         : session.approvalStatus === 'AUTO_APPROVED'
@@ -1553,7 +1553,7 @@ export default function PrincipalApprovalsScreen() {
                     </Text>
                     {period.headTuDecisionNote ? (
                       <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
-                        Review Head TU: {period.headTuDecisionNote}
+                        Review Kepala TU: {period.headTuDecisionNote}
                       </Text>
                     ) : null}
                     {period.principalDecisionNote ? (
@@ -1613,7 +1613,7 @@ export default function PrincipalApprovalsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Approval Reopen Closing Period</Text>
             <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
-              Review pembukaan kembali period lock finance yang sudah lolos Head TU.
+              Review pembukaan kembali period lock finance yang sudah lolos review Kepala TU.
             </Text>
           </View>
           <View
@@ -1666,7 +1666,7 @@ export default function PrincipalApprovalsScreen() {
                     ) : null}
                     {request.headTuDecision.note ? (
                       <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
-                        Review Head TU: {request.headTuDecision.note}
+                        Review Kepala TU: {request.headTuDecision.note}
                       </Text>
                     ) : null}
                   </View>
@@ -1743,7 +1743,7 @@ export default function PrincipalApprovalsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Approval Closing Period</Text>
             <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
-              Review closing period yang sudah lolos Head TU atau masuk ambang eskalasi Kepala Sekolah.
+              Review closing period yang sudah lolos review Kepala TU atau masuk ambang eskalasi Kepala Sekolah.
             </Text>
           </View>
           <View
@@ -1790,7 +1790,7 @@ export default function PrincipalApprovalsScreen() {
               </Text>
               {period.headTuDecisionNote ? (
                 <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
-                  Review Head TU: {period.headTuDecisionNote}
+                  Review Kepala TU: {period.headTuDecisionNote}
                 </Text>
               ) : null}
 
@@ -1929,7 +1929,7 @@ export default function PrincipalApprovalsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Approval Settlement Kas</Text>
             <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
-              Review settlement kas yang sudah lolos Head TU dan masuk ambang eskalasi Kepala Sekolah.
+              Review settlement kas yang sudah lolos review Kepala TU dan masuk ambang eskalasi Kepala Sekolah.
             </Text>
           </View>
           <View
@@ -1976,7 +1976,7 @@ export default function PrincipalApprovalsScreen() {
               </Text>
               {session.headTuDecision.note ? (
                 <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
-                  Review Head TU: {session.headTuDecision.note}
+                  Review Kepala TU: {session.headTuDecision.note}
                 </Text>
               ) : null}
 
