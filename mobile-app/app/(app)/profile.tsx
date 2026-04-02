@@ -24,6 +24,7 @@ import {
 } from '../../src/features/candidateAdmission/types';
 import { MOBILE_PROFILE_QUERY_KEY, useProfileQuery } from '../../src/features/profile/useProfileQuery';
 import { ProfileEducationEditor } from '../../src/features/profile/ProfileEducationEditor';
+import { SupportingDocumentsEditor } from '../../src/features/profile/SupportingDocumentsEditor';
 import { profileApi } from '../../src/features/profile/profileApi';
 import type { UpdateSelfProfilePayload } from '../../src/features/profile/profileApi';
 import {
@@ -36,6 +37,10 @@ import {
   type ProfileEducationHistory,
   type ProfileEducationLevel,
 } from '../../src/features/profile/profileEducation';
+import {
+  SUPPORTING_DOCUMENT_CATEGORY,
+  type SupportingDocumentRecord,
+} from '../../src/features/profile/supportingDocuments';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifyError, notifySuccess } from '../../src/lib/ui/feedback';
@@ -85,7 +90,6 @@ type EditableProfileForm = {
   guardianPhone: string;
   rt: string;
   rw: string;
-  dusun: string;
   province: string;
   provinceCode: string;
   cityRegency: string;
@@ -98,8 +102,6 @@ type EditableProfileForm = {
   staffPosition: string;
   ptkType: string;
   employeeStatus: string;
-  employeeActiveStatus: string;
-  salarySource: string;
   appointmentDecree: string;
   appointmentDate: string;
   assignmentDecree: string;
@@ -173,7 +175,6 @@ const emptyForm: EditableProfileForm = {
   guardianPhone: '',
   rt: '',
   rw: '',
-  dusun: '',
   province: '',
   provinceCode: '',
   cityRegency: '',
@@ -186,8 +187,6 @@ const emptyForm: EditableProfileForm = {
   staffPosition: '',
   ptkType: '',
   employeeStatus: '',
-  employeeActiveStatus: '',
-  salarySource: '',
   appointmentDecree: '',
   appointmentDate: '',
   assignmentDecree: '',
@@ -205,8 +204,6 @@ const EDUCATION_LEVEL_OPTIONS = [
   'SD / Sederajat',
   'SMP / Sederajat',
   'SMA / SMK / Sederajat',
-  'D1',
-  'D2',
   'D3',
   'D4 / S1',
   'S2',
@@ -223,17 +220,6 @@ const TRANSPORTATION_MODE_OPTIONS = [
   'Antar Jemput',
   'Ojek / Ojol',
   'Perahu Penyeberangan',
-  'Lainnya',
-];
-const EMPLOYEE_ACTIVE_STATUS_OPTIONS = ['Aktif', 'Cuti', 'Tugas Belajar', 'Tugas Tambahan', 'Nonaktif Sementara'];
-const SALARY_SOURCE_OPTIONS = [
-  'APBN',
-  'APBD Provinsi',
-  'APBD Kabupaten/Kota',
-  'Yayasan',
-  'BOS',
-  'Mandiri / Honor Sekolah',
-  'Perusahaan / Mitra',
   'Lainnya',
 ];
 const MANUAL_OPTION_VALUE = '__MANUAL__';
@@ -303,7 +289,7 @@ const PROFILE_TABS: Array<{ id: ProfileTabId; label: string }> = [
   { id: 'employment', label: 'Data Kepegawaian' },
   { id: 'parents', label: 'Data Orang Tua' },
   { id: 'education', label: 'Riwayat Pendidikan' },
-  { id: 'documents', label: 'Upload File' },
+  { id: 'documents', label: 'Dokumen Pendukung' },
 ];
 
 function toText(value?: string | number | null) {
@@ -409,7 +395,7 @@ function getTabLabel(role: string | null | undefined, tabId: ProfileTabId) {
       employment: 'Data PTK',
       parents: 'Data Orang Tua',
       education: 'Riwayat Pendidikan',
-      documents: 'Dokumen',
+      documents: 'Dokumen Pendukung',
     };
     return labels[tabId];
   }
@@ -421,7 +407,7 @@ function getTabLabel(role: string | null | undefined, tabId: ProfileTabId) {
       employment: 'Data Kepegawaian',
       parents: 'Data Keluarga',
       education: 'Riwayat Pendidikan',
-      documents: 'Upload File',
+      documents: 'Dokumen Pendukung',
     };
     return labels[tabId];
   }
@@ -445,7 +431,7 @@ function getTabLabel(role: string | null | undefined, tabId: ProfileTabId) {
       employment: 'Data Kepegawaian',
       parents: 'Data Orang Tua',
       education: 'Riwayat Pendidikan',
-      documents: 'Upload File',
+      documents: 'Dokumen Pendukung',
     };
     return labels[tabId];
   }
@@ -616,7 +602,6 @@ function buildForm(profile: AuthUser | null): EditableProfileForm {
     guardianPhone: toText(profile?.guardianPhone),
     rt: toText(profile?.rt),
     rw: toText(profile?.rw),
-    dusun: toText(profile?.dusun),
     province: toText(profile?.province),
     provinceCode: toText(profile?.provinceCode),
     cityRegency: toText(profile?.cityRegency),
@@ -629,8 +614,6 @@ function buildForm(profile: AuthUser | null): EditableProfileForm {
     staffPosition: staffCodeFromPtk || staffCodeFromDuty,
     ptkType: toText(profile?.ptkType),
     employeeStatus: toText(profile?.employeeStatus),
-    employeeActiveStatus: toText(profile?.employeeActiveStatus),
-    salarySource: toText(profile?.salarySource),
     appointmentDecree: toText(profile?.appointmentDecree),
     appointmentDate: toDateInput(profile?.appointmentDate),
     assignmentDecree: toText(profile?.assignmentDecree),
@@ -639,12 +622,15 @@ function buildForm(profile: AuthUser | null): EditableProfileForm {
   };
 }
 
-function getProfileValidationMessage(form: EditableProfileForm, options: { showNik: boolean; showNuptk: boolean }) {
+function getProfileValidationMessage(
+  form: EditableProfileForm,
+  options: { showNik: boolean; showNuptk: boolean; showMotherNik: boolean },
+) {
   const checks = [
     options.showNik ? validateExactDigits(form.nik, 'NIK', 16) : null,
     options.showNuptk ? validateExactDigits(form.nuptk, 'NUPTK', 16) : null,
     validateExactDigits(form.familyCardNumber, 'Nomor KK', 16),
-    validateExactDigits(form.motherNik, 'NIK Ibu', 16),
+    options.showMotherNik ? validateExactDigits(form.motherNik, 'NIK Ibu', 16) : null,
     validateExactDigits(form.fatherNik, 'NIK Ayah', 16),
     validateExactDigits(form.postalCode, 'Kode Pos', 5),
     validateExactDigits(form.provinceCode, 'Kode Provinsi', 2),
@@ -677,13 +663,14 @@ function FormField({
   helperText,
   maxLength,
 }: FormFieldProps) {
+  const resolvedPlaceholder = placeholder || `Masukkan ${label.toLowerCase()}`;
   return (
     <View style={{ marginBottom: 10 }}>
       <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
-        placeholder={placeholder}
+        placeholder={resolvedPlaceholder}
         keyboardType={keyboardType}
         multiline={multiline}
         numberOfLines={numberOfLines}
@@ -775,6 +762,7 @@ export default function ProfileScreen() {
   const profilePhotoUrl = resolveMediaUrl(profile?.photo);
   const canUploadPhoto = ['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXAMINER', 'EXTRACURRICULAR_TUTOR', 'STUDENT', 'PARENT', 'CALON_SISWA'].includes(profile?.role || '');
   const canUploadDocuments = ['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXAMINER', 'EXTRACURRICULAR_TUTOR', 'CALON_SISWA'].includes(profile?.role || '');
+  const usesStructuredSupportingDocuments = isEmployee || profile?.role === 'ADMIN';
   const [photoUploading, setPhotoUploading] = useState(false);
   const [documentUploading, setDocumentUploading] = useState(false);
   const [candidateDocumentCategory, setCandidateDocumentCategory] = useState<string>(
@@ -798,6 +786,15 @@ export default function ProfileScreen() {
   const educationSummary = useMemo(
     () => resolveEducationSummaryFromHistories(educationHistories, educationTrack),
     [educationHistories, educationTrack],
+  );
+  const supportingDocuments = useMemo<SupportingDocumentRecord[]>(
+    () =>
+      (profile?.documents || []).map((doc) => ({
+        title: doc.title || 'Dokumen',
+        fileUrl: doc.fileUrl,
+        category: doc.category || SUPPORTING_DOCUMENT_CATEGORY,
+      })),
+    [profile?.documents],
   );
   const showNip = isEmployee;
   const showNik = isEmployee || isStudent;
@@ -851,12 +848,9 @@ export default function ProfileScreen() {
         { label: 'Tanggal lahir', value: form.birthDate },
         { label: 'Agama', value: form.religion },
         { label: 'Nama ibu kandung', value: form.motherName },
-        { label: 'NIK ibu kandung', value: form.motherNik },
         { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
         { label: 'Jenis PTK / peran', value: isStaff ? form.staffPosition || form.ptkType : form.ptkType },
         { label: 'Status kepegawaian', value: form.employeeStatus },
-        { label: 'Status keaktifan', value: form.employeeActiveStatus },
-        { label: 'Sumber gaji', value: form.salarySource },
         { label: 'Kontak aktif', value: form.phone || form.email },
         { label: 'Provinsi', value: form.province },
         { label: 'Kabupaten / Kota', value: form.cityRegency },
@@ -895,7 +889,7 @@ export default function ProfileScreen() {
         { label: 'Kontak aktif', value: form.phone || form.email },
         { label: 'Alamat', value: form.address },
         { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
-        { label: 'Dokumen pendukung', value: (profile.documents || []).length > 0 ? 'Ada' : '' },
+        { label: 'Dokumen PPDB', value: (profile.documents || []).length > 0 ? 'Ada' : '' },
       ];
     } else if (isParent) {
       fieldsToCheck = [
@@ -940,7 +934,7 @@ export default function ProfileScreen() {
           `Tugas tambahan: ${profile.additionalDuties?.length ? profile.additionalDuties.join(', ') : 'Belum ada'}`,
           `Kelas tugas: ${profile.teacherClasses?.length || 0} kelas`,
           `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
-          `Dokumen: ${(profile.documents || []).length} file`,
+          `Dokumen pendukung: ${supportingDocuments.length} file`,
         ];
       }
 
@@ -949,7 +943,7 @@ export default function ProfileScreen() {
           `Ekstrakurikuler aktif: ${profile.ekskulTutorAssignments?.length || 0}`,
           `Penugasan utama: ${normalizeStructuredFieldValue(form.ptkType) || 'Tutor / pembina'}`,
           `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
-          `Dokumen: ${(profile.documents || []).length} file`,
+          `Dokumen pendukung: ${supportingDocuments.length} file`,
         ];
       }
 
@@ -958,7 +952,7 @@ export default function ProfileScreen() {
           `Jurusan damping: ${profile.examinerMajor?.name || '-'}`,
           `Instansi: ${form.institution || 'Belum diisi'}`,
           `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
-          `Dokumen: ${(profile.documents || []).length} file`,
+          `Dokumen pendukung: ${supportingDocuments.length} file`,
         ];
       }
 
@@ -967,7 +961,7 @@ export default function ProfileScreen() {
           `Divisi: ${getStaffPositionLabel(form.staffPosition) || normalizeStructuredFieldValue(form.ptkType) || 'Belum dipilih'}`,
           `Status kepegawaian: ${normalizeStructuredFieldValue(form.employeeStatus) || 'Belum diisi'}`,
           `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
-          `Dokumen: ${(profile.documents || []).length} file`,
+          `Dokumen pendukung: ${supportingDocuments.length} file`,
         ];
       }
 
@@ -975,7 +969,7 @@ export default function ProfileScreen() {
         `Peran aktif: ${ROLE_LABELS[profile.role] || profile.role}`,
         `Status kepegawaian: ${normalizeStructuredFieldValue(form.employeeStatus) || 'Belum diisi'}`,
         `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
-        `Dokumen: ${(profile.documents || []).length} file`,
+        `Dokumen pendukung: ${supportingDocuments.length} file`,
       ];
     }
 
@@ -1012,7 +1006,7 @@ export default function ProfileScreen() {
       `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
       `Alamat: ${form.address ? 'Sudah diisi' : 'Belum diisi'}`,
     ];
-  }, [educationSummary.completedLevels, form.address, form.email, form.employeeStatus, form.institution, form.phone, form.ptkType, form.staffPosition, isCandidate, isEmployee, isParent, isStudent, profile, verificationMeta.label]);
+  }, [educationSummary.completedLevels, form.address, form.email, form.employeeStatus, form.institution, form.phone, form.ptkType, form.staffPosition, isCandidate, isEmployee, isParent, isStudent, profile, supportingDocuments.length, verificationMeta.label]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1084,7 +1078,6 @@ export default function ProfileScreen() {
         guardianPhone: toNullable(form.guardianPhone),
         rt: toNullable(form.rt),
         rw: toNullable(form.rw),
-        dusun: toNullable(form.dusun),
         province: toNullable(form.province),
         provinceCode: toNullable(form.provinceCode),
         cityRegency: toNullable(form.cityRegency),
@@ -1098,8 +1091,6 @@ export default function ProfileScreen() {
           ? normalizeStructuredFieldValue(form.staffPosition) || normalizeStructuredFieldValue(form.ptkType) || null
           : normalizeStructuredFieldValue(form.ptkType) || null,
         employeeStatus: normalizeStructuredFieldValue(form.employeeStatus) || null,
-        employeeActiveStatus: toNullable(form.employeeActiveStatus),
-        salarySource: toNullable(form.salarySource),
         appointmentDecree: toNullable(form.appointmentDecree),
         appointmentDate: toNullable(form.appointmentDate),
         assignmentDecree: toNullable(form.assignmentDecree),
@@ -1127,6 +1118,7 @@ export default function ProfileScreen() {
     const validationMessage = getProfileValidationMessage(form, {
       showNik,
       showNuptk,
+      showMotherNik: isStudent,
     });
 
     if (validationMessage) {
@@ -1258,6 +1250,71 @@ export default function ProfileScreen() {
     } catch (error) {
       notifyApiError(error, 'Gagal menghapus dokumen.');
     }
+  };
+
+  const handleSupportingDocumentPick = async (): Promise<SupportingDocumentRecord | null> => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled || !result.assets || result.assets.length === 0) return null;
+
+      const asset = result.assets[0];
+      const mime = String(asset.mimeType || '').toLowerCase();
+      const name = asset.name || `supporting-document-${Date.now()}`;
+      if (!['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(mime)) {
+        notifyError('Dokumen pendukung hanya boleh berformat PDF, JPG, JPEG, atau PNG.');
+        throw new Error('Tipe file dokumen pendukung tidak didukung');
+      }
+      if ((asset.size || 0) > 2 * 1024 * 1024) {
+        notifyError('Ukuran dokumen pendukung maksimal 2MB.');
+        throw new Error('Ukuran dokumen pendukung melebihi batas');
+      }
+
+      const uploaded = await profileApi.uploadProfileDocument({
+        uri: asset.uri,
+        name,
+        type: mime || 'application/octet-stream',
+      });
+
+      return {
+        title: uploaded.originalname || name,
+        fileUrl: uploaded.url,
+        category: SUPPORTING_DOCUMENT_CATEGORY,
+      } satisfies SupportingDocumentRecord;
+    } catch (error) {
+      notifyApiError(error, 'Gagal mengunggah dokumen pendukung.');
+      throw error;
+    }
+  };
+
+  const persistSupportingDocuments = async (nextDocuments: SupportingDocumentRecord[]) => {
+    if (!profile?.id) return;
+    await profileApi.updateSelf(profile.id, {
+      documents: nextDocuments.map((document) => ({
+        title: document.title,
+        fileUrl: document.fileUrl,
+        category: document.category,
+      })),
+    });
+    await queryClient.invalidateQueries({ queryKey: MOBILE_PROFILE_QUERY_KEY });
+    await profileQuery.refetch();
+    notifySuccess('Dokumen pendukung berhasil disimpan.');
+  };
+
+  const handleSupportingDocumentView = (document: SupportingDocumentRecord) => {
+    const url = resolveMediaUrl(document.fileUrl);
+    if (!url) {
+      notifyError('File dokumen belum tersedia.');
+      return;
+    }
+    openWebModuleRoute(router, {
+      moduleKey: 'profile',
+      webPath: url,
+      label: document.title || 'Dokumen Pendukung',
+    });
   };
 
   const handleEducationHistorySave = (history: ProfileEducationHistory) => {
@@ -1859,25 +1916,12 @@ export default function ProfileScreen() {
             ) : null}
 
             {isEmployee ? (
-              <>
-                <FormField
-                  label="Nama Ibu Kandung"
-                  value={form.motherName}
-                  onChangeText={(value) => setForm((prev) => ({ ...prev, motherName: value }))}
-                  placeholder="Masukkan nama ibu kandung"
-                />
-                <FormField
-                  label="NIK Ibu Kandung"
-                  value={form.motherNik}
-                  onChangeText={(value) =>
-                    setForm((prev) => ({ ...prev, motherNik: normalizeNumericText(value, 16) }))
-                  }
-                  placeholder="Diisi sesuai data identitas keluarga"
-                  keyboardType="numeric"
-                  helperText="Isi 16 digit angka tanpa spasi."
-                  maxLength={16}
-                />
-              </>
+              <FormField
+                label="Nama Ibu Kandung"
+                value={form.motherName}
+                onChangeText={(value) => setForm((prev) => ({ ...prev, motherName: value }))}
+                placeholder="Masukkan nama ibu kandung"
+              />
             ) : null}
             </View>
           ) : null}
@@ -2030,11 +2074,6 @@ export default function ProfileScreen() {
                   onChangeText={(value) => setForm((prev) => ({ ...prev, cityRegency: value }))}
                 />
                 <FormField
-                  label="Nama Dusun"
-                  value={form.dusun}
-                  onChangeText={(value) => setForm((prev) => ({ ...prev, dusun: value }))}
-                />
-                <FormField
                   label="Desa/Kelurahan"
                   value={form.village}
                   onChangeText={(value) => setForm((prev) => ({ ...prev, village: value }))}
@@ -2164,22 +2203,11 @@ export default function ProfileScreen() {
                   placeholder="Contoh: PNS, GTY / PTY, GTT / PTT"
                 />
               ) : null}
-              <ChoiceChips
-                label="Status Keaktifan"
-                value={form.employeeActiveStatus}
-                options={EMPLOYEE_ACTIVE_STATUS_OPTIONS.map((item) => ({ label: item, value: item }))}
-                onSelect={(value) => setForm((prev) => ({ ...prev, employeeActiveStatus: value }))}
-              />
-              <ChoiceChips
-                label="Sumber Gaji"
-                value={form.salarySource}
-                options={SALARY_SOURCE_OPTIONS.map((item) => ({ label: item, value: item }))}
-                onSelect={(value) => setForm((prev) => ({ ...prev, salarySource: value }))}
-              />
               <FormField
                 label="SK Pengangkatan"
                 value={form.appointmentDecree}
                 onChangeText={(value) => setForm((prev) => ({ ...prev, appointmentDecree: value }))}
+                placeholder="Contoh: SK/2026/001"
               />
               <FormField
                 label="TMT Pengangkatan (YYYY-MM-DD)"
@@ -2203,6 +2231,9 @@ export default function ProfileScreen() {
                 label={assignmentDecreeLabel}
                 value={form.assignmentDecree}
                 onChangeText={(value) => setForm((prev) => ({ ...prev, assignmentDecree: value }))}
+                placeholder={
+                  isExaminer ? 'Contoh: Surat tugas penguji industri' : 'Contoh: SK penugasan tambahan'
+                }
               />
               <FormField
                 label={assignmentDateLabel}
@@ -2230,151 +2261,163 @@ export default function ProfileScreen() {
 
           {activeTab === 'documents' ? (
             <View style={cardStyle}>
-            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Upload File</Text>
-            <View style={{ marginTop: 4 }}>
-              {isCandidate ? (
-                <View
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#bfdbfe',
-                    backgroundColor: '#eff6ff',
-                    borderRadius: 12,
-                    padding: 12,
-                    marginBottom: 10,
-                  }}
-                >
-                  <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>
-                    Kategori Dokumen PPDB
-                  </Text>
-                  <Text style={{ color: '#1d4ed8', fontSize: 12, marginBottom: 10 }}>
-                    Pilih kategori sebelum upload supaya checklist PPDB mengenali dokumen dengan benar.
-                  </Text>
-                  {MOBILE_CANDIDATE_DOCUMENT_OPTIONS.map((option) => {
-                    const active = candidateDocumentCategory === option.value;
-                    return (
-                      <Pressable
-                        key={option.value}
-                        onPress={() => setCandidateDocumentCategory(option.value)}
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>
+                {isCandidate ? 'Dokumen PPDB' : 'Dokumen Pendukung'}
+              </Text>
+              <View style={{ marginTop: 4 }}>
+                {usesStructuredSupportingDocuments ? (
+                  <SupportingDocumentsEditor
+                    documents={supportingDocuments}
+                    canUpload={canUploadDocuments}
+                    onPickDocument={handleSupportingDocumentPick}
+                    onSaveDocuments={persistSupportingDocuments}
+                    onViewDocument={handleSupportingDocumentView}
+                  />
+                ) : (
+                  <>
+                    {isCandidate ? (
+                      <View
                         style={{
                           borderWidth: 1,
-                          borderColor: active ? '#1d4ed8' : '#bfdbfe',
-                          backgroundColor: '#fff',
-                          borderRadius: 10,
-                          padding: 10,
-                          marginBottom: 8,
+                          borderColor: '#bfdbfe',
+                          backgroundColor: '#eff6ff',
+                          borderRadius: 12,
+                          padding: 12,
+                          marginBottom: 10,
                         }}
                       >
-                        <Text style={{ color: active ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: 13 }}>
-                          {option.label}
+                        <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 6 }}>
+                          Kategori Dokumen PPDB
                         </Text>
-                        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>
-                          {option.description}
+                        <Text style={{ color: '#1d4ed8', fontSize: 12, marginBottom: 10 }}>
+                          Pilih kategori sebelum upload supaya checklist PPDB mengenali dokumen dengan benar.
                         </Text>
-                        <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 4 }}>
-                          Format: {option.acceptedFormats.join(', ')}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ) : null}
+                        {MOBILE_CANDIDATE_DOCUMENT_OPTIONS.map((option) => {
+                          const active = candidateDocumentCategory === option.value;
+                          return (
+                            <Pressable
+                              key={option.value}
+                              onPress={() => setCandidateDocumentCategory(option.value)}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: active ? '#1d4ed8' : '#bfdbfe',
+                                backgroundColor: '#fff',
+                                borderRadius: 10,
+                                padding: 10,
+                                marginBottom: 8,
+                              }}
+                            >
+                              <Text style={{ color: active ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: 13 }}>
+                                {option.label}
+                              </Text>
+                              <Text style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>
+                                {option.description}
+                              </Text>
+                              <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 4 }}>
+                                Format: {option.acceptedFormats.join(', ')}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : null}
 
-              <Text style={{ color: '#334155', fontSize: 12, marginBottom: 8 }}>
-                Dokumen Pendukung (PDF/JPG/PNG max 2MB)
-              </Text>
-              <Pressable
-                onPress={() => {
-                  void handleUploadDocument();
-                }}
-                disabled={!canUploadDocuments || documentUploading}
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#1d4ed8',
-                  backgroundColor: !canUploadDocuments || documentUploading ? '#bfdbfe' : '#eff6ff',
-                  borderRadius: 10,
-                  paddingVertical: 9,
-                  alignItems: 'center',
-                  marginBottom: 10,
-                }}
-              >
-                <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
-                  {documentUploading ? 'Mengunggah Dokumen...' : 'Upload Dokumen'}
-                </Text>
-              </Pressable>
-
-              {!canUploadDocuments ? (
-                <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
-                  Role ini tidak memiliki akses upload dokumen sesuai policy backend.
-                </Text>
-              ) : null}
-
-              {(profile.documents || []).length > 0 ? (
-                (profile.documents || []).map((doc, index: number) => (
-                  <View
-                    key={`${doc.fileUrl}-${index}`}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: '#e2e8f0',
-                      borderRadius: 10,
-                      padding: 10,
-                      marginBottom: 8,
-                      backgroundColor: '#fff',
-                    }}
-                  >
-                    <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13 }}>{doc.title || 'Dokumen'}</Text>
-                    <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
-                      {isCandidate
-                        ? getMobileCandidateDocumentCategoryLabel(doc.category)
-                        : doc.category || 'Dokumen Pendukung'}
+                    <Text style={{ color: '#334155', fontSize: 12, marginBottom: 8 }}>
+                      Dokumen PPDB (PDF/JPG/PNG max 2MB)
                     </Text>
-                    <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
-                      <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                        <Pressable
-                          onPress={() => {
-                            const url = resolveMediaUrl(doc.fileUrl);
-                            if (!url) return;
-                            openWebModuleRoute(router, {
-                              moduleKey: 'profile',
-                              webPath: url,
-                              label: doc.title || 'Dokumen Profil',
-                            });
-                          }}
+                    <Pressable
+                      onPress={() => {
+                        void handleUploadDocument();
+                      }}
+                      disabled={!canUploadDocuments || documentUploading}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#1d4ed8',
+                        backgroundColor: !canUploadDocuments || documentUploading ? '#bfdbfe' : '#eff6ff',
+                        borderRadius: 10,
+                        paddingVertical: 9,
+                        alignItems: 'center',
+                        marginBottom: 10,
+                      }}
+                    >
+                      <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
+                        {documentUploading ? 'Mengunggah Dokumen...' : 'Upload Dokumen'}
+                      </Text>
+                    </Pressable>
+
+                    {!canUploadDocuments ? (
+                      <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                        Role ini tidak memiliki akses upload dokumen sesuai policy backend.
+                      </Text>
+                    ) : null}
+
+                    {(profile.documents || []).length > 0 ? (
+                      (profile.documents || []).map((doc, index: number) => (
+                        <View
+                          key={`${doc.fileUrl}-${index}`}
                           style={{
                             borderWidth: 1,
-                            borderColor: '#1d4ed8',
-                            borderRadius: 8,
-                            paddingVertical: 8,
-                            alignItems: 'center',
-                            backgroundColor: '#eff6ff',
+                            borderColor: '#e2e8f0',
+                            borderRadius: 10,
+                            padding: 10,
+                            marginBottom: 8,
+                            backgroundColor: '#fff',
                           }}
                         >
-                          <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Lihat</Text>
-                        </Pressable>
-                      </View>
-                      <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                        <Pressable
-                          onPress={() => {
-                            void handleDeleteDocument(index);
-                          }}
-                          style={{
-                            borderWidth: 1,
-                            borderColor: '#fecaca',
-                            borderRadius: 8,
-                            paddingVertical: 8,
-                            alignItems: 'center',
-                            backgroundColor: '#fef2f2',
-                          }}
-                        >
-                          <Text style={{ color: '#dc2626', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  </View>
-                ))
-              ) : (
-                <Text style={{ color: '#64748b', fontSize: 12 }}>Belum ada dokumen.</Text>
-              )}
-            </View>
+                          <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13 }}>{doc.title || 'Dokumen'}</Text>
+                          <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+                            {getMobileCandidateDocumentCategoryLabel(doc.category)}
+                          </Text>
+                          <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+                            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                              <Pressable
+                                onPress={() => {
+                                  const url = resolveMediaUrl(doc.fileUrl);
+                                  if (!url) return;
+                                  openWebModuleRoute(router, {
+                                    moduleKey: 'profile',
+                                    webPath: url,
+                                    label: doc.title || 'Dokumen Profil',
+                                  });
+                                }}
+                                style={{
+                                  borderWidth: 1,
+                                  borderColor: '#1d4ed8',
+                                  borderRadius: 8,
+                                  paddingVertical: 8,
+                                  alignItems: 'center',
+                                  backgroundColor: '#eff6ff',
+                                }}
+                              >
+                                <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Lihat</Text>
+                              </Pressable>
+                            </View>
+                            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+                              <Pressable
+                                onPress={() => {
+                                  void handleDeleteDocument(index);
+                                }}
+                                style={{
+                                  borderWidth: 1,
+                                  borderColor: '#fecaca',
+                                  borderRadius: 8,
+                                  paddingVertical: 8,
+                                  alignItems: 'center',
+                                  backgroundColor: '#fef2f2',
+                                }}
+                              >
+                                <Text style={{ color: '#dc2626', fontWeight: '700', fontSize: 12 }}>Hapus</Text>
+                              </Pressable>
+                            </View>
+                          </View>
+                        </View>
+                      ))
+                    ) : (
+                      <Text style={{ color: '#64748b', fontSize: 12 }}>Belum ada dokumen.</Text>
+                    )}
+                  </>
+                )}
+              </View>
 
             {(photoUploading || documentUploading) ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>

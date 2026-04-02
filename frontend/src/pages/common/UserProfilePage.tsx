@@ -4,6 +4,7 @@ import { userService } from '../../services/user.service';
 import { authService } from '../../services/auth.service';
 import { uploadService } from '../../services/upload.service';
 import { ProfileEducationEditor } from '../../components/profile/ProfileEducationEditor';
+import { SupportingDocumentsEditor } from '../../components/profile/SupportingDocumentsEditor';
 import {
   CANDIDATE_DOCUMENT_OPTIONS,
   getCandidateDocumentCategoryLabel,
@@ -11,7 +12,7 @@ import {
 import type { User, UserWrite } from '../../types/auth';
 import { Loader2, Save, Trash2, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
@@ -26,6 +27,10 @@ import {
   type ProfileEducationHistory,
   type ProfileEducationLevel,
 } from '../../features/profileEducation/profileEducation';
+import {
+  SUPPORTING_DOCUMENT_CATEGORY,
+  type SupportingDocumentRecord,
+} from '../../features/profileDocuments/supportingDocuments';
 
 // Helper function to create image from url
 const createImage = (url: string): Promise<HTMLImageElement> =>
@@ -247,8 +252,6 @@ const EDUCATION_LEVEL_OPTIONS = [
   'SD / Sederajat',
   'SMP / Sederajat',
   'SMA / SMK / Sederajat',
-  'D1',
-  'D2',
   'D3',
   'D4 / S1',
   'S2',
@@ -300,25 +303,6 @@ const RELIGION_OPTIONS = [
   { value: 'HINDU', label: 'Hindu' },
   { value: 'BUDDHA', label: 'Buddha' },
   { value: 'KONGHUCU', label: 'Konghucu' },
-] as const;
-
-const EMPLOYEE_ACTIVE_STATUS_OPTIONS = [
-  'Aktif',
-  'Cuti',
-  'Tugas Belajar',
-  'Tugas Tambahan',
-  'Nonaktif Sementara',
-] as const;
-
-const SALARY_SOURCE_OPTIONS = [
-  'APBN',
-  'APBD Provinsi',
-  'APBD Kabupaten/Kota',
-  'Yayasan',
-  'BOS',
-  'Mandiri / Honor Sekolah',
-  'Perusahaan / Mitra',
-  'Lainnya',
 ] as const;
 
 const MANUAL_OPTION_VALUE = '__MANUAL__' as const;
@@ -424,7 +408,7 @@ const tabs = [
   { id: 'employment', label: 'Data Kepegawaian' },
   { id: 'parents', label: 'Data Orang Tua' },
   { id: 'education', label: 'Riwayat Pendidikan' },
-  { id: 'documents', label: 'Upload File' },
+  { id: 'documents', label: 'Dokumen Pendukung' },
 ] as const;
 
 type TabId = (typeof tabs)[number]['id'];
@@ -466,7 +450,7 @@ const getTabLabel = (role: UserFormRole, tabId: TabId) => {
       employment: 'Data PTK',
       parents: 'Data Orang Tua',
       education: 'Riwayat Pendidikan',
-      documents: 'Dokumen',
+      documents: 'Dokumen Pendukung',
     };
     return labels[tabId];
   }
@@ -479,7 +463,7 @@ const getTabLabel = (role: UserFormRole, tabId: TabId) => {
       employment: 'Data Kepegawaian',
       parents: 'Data Keluarga',
       education: 'Riwayat Pendidikan',
-      documents: 'Upload File',
+      documents: 'Dokumen Pendukung',
     };
     return labels[tabId];
   }
@@ -505,7 +489,7 @@ const getTabLabel = (role: UserFormRole, tabId: TabId) => {
       employment: 'Data Kepegawaian',
       parents: 'Data Orang Tua',
       education: 'Riwayat Pendidikan',
-      documents: 'Upload File',
+      documents: 'Dokumen Pendukung',
     };
     return labels[tabId];
   }
@@ -692,6 +676,7 @@ export const UserProfilePage = () => {
   const isStudentProfile = profileVariant === 'student';
   const isCandidateProfile = profileVariant === 'candidate';
   const isParentProfile = profileVariant === 'parent';
+  const usesStructuredSupportingDocuments = isEmployeeProfile || fixedRole === 'ADMIN';
 
   const { data: studentsForParent } = useQuery<{ data: User[] }>({
     queryKey: ['students-for-parent'],
@@ -699,18 +684,13 @@ export const UserProfilePage = () => {
     enabled: fixedRole === 'PARENT',
   });
 
-  const { register, handleSubmit, setValue, reset, control, watch, getValues, formState: { errors } } = useForm<UserFormValues>({
+  const { register, handleSubmit, setValue, reset, watch, getValues, formState: { errors } } = useForm<UserFormValues>({
     resolver: zodResolver(userFormSchema),
     defaultValues: {
       documents: [],
       additionalDuties: [],
       childNisns: [],
     }
-  });
-
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: 'documents',
   });
 
   const selectedChildNisns = watch('childNisns') || [];
@@ -732,8 +712,6 @@ export const UserProfilePage = () => {
   const watchedPtkType = watch('ptkType');
   const watchedEmployeeStatus = watch('employeeStatus');
   const watchedInstitution = watch('institution');
-  const watchedEmployeeActiveStatus = watch('employeeActiveStatus');
-  const watchedSalarySource = watch('salarySource');
   const watchedStaffPosition = watch('staffPosition');
   const watchedReligion = watch('religion');
   const watchedDistanceToSchool = watch('distanceToSchool');
@@ -743,7 +721,7 @@ export const UserProfilePage = () => {
   const watchedTravelTimeToSchool = watch('travelTimeToSchool');
   const watchedProvince = watch('province');
   const watchedCityRegency = watch('cityRegency');
-  const watchedDocuments = watch('documents') || [];
+  const watchedDocuments = (watch('documents') || []) as SupportingDocumentRecord[];
   const employeeRoleOptions = useMemo(() => getEmployeeRoleOptions(fixedRole), [fixedRole]);
   const ptkTypeSelectValue = useMemo(() => {
     if (fixedRole !== 'STAFF' && isManualPtkType) {
@@ -795,12 +773,9 @@ export const UserProfilePage = () => {
         { label: 'Tanggal lahir', value: watchedBirthDate },
         { label: 'Agama', value: watchedReligion },
         { label: 'Nama ibu kandung', value: watchedMotherName },
-        { label: 'NIK ibu kandung', value: watchedMotherNik },
         { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
         { label: 'Jenis PTK / peran', value: normalizedEmployeeRoleValue },
         { label: 'Status kepegawaian', value: normalizedEmployeeStatusValue },
-        { label: 'Status keaktifan', value: watchedEmployeeActiveStatus },
-        { label: 'Sumber gaji', value: watchedSalarySource },
         { label: 'Kontak aktif', value: watchedPhone || watchedEmail },
         { label: 'Provinsi', value: watchedProvince },
         { label: 'Kabupaten / Kota', value: watchedCityRegency },
@@ -881,14 +856,13 @@ export const UserProfilePage = () => {
     watchedDistanceToSchool,
     watchedDocuments.length,
     watchedEmail,
-    watchedEmployeeActiveStatus,
     educationSummary.highestEducation,
     watchedFamilyStatus,
     watchedFamilyCardNumber,
     watchedGender,
     watchedLivingWith,
-    watchedMotherNik,
     watchedMotherName,
+    watchedMotherNik,
     watchedMaritalStatus,
     watchedName,
     watchedNik,
@@ -897,7 +871,6 @@ export const UserProfilePage = () => {
     watchedPhone,
     watchedProvince,
     watchedReligion,
-    watchedSalarySource,
     normalizedEmployeeRoleValue,
     normalizedEmployeeStatusValue,
     watchedTransportationMode,
@@ -911,7 +884,7 @@ export const UserProfilePage = () => {
           `Tugas tambahan: ${user?.additionalDuties?.length ? user.additionalDuties.join(', ') : 'Belum ada'}`,
           `Kelas tugas: ${user?.teacherClasses?.length || 0} kelas`,
           `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
-          `Dokumen: ${watchedDocuments.length} file`,
+          `Dokumen pendukung: ${watchedDocuments.length} file`,
         ];
       }
 
@@ -920,7 +893,7 @@ export const UserProfilePage = () => {
           `Ekstrakurikuler aktif: ${user?.ekskulTutorAssignments?.length || 0}`,
           `Penugasan utama: ${normalizedEmployeeRoleValue || 'Tutor / pembina'}`,
           `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
-          `Dokumen: ${watchedDocuments.length} file`,
+          `Dokumen pendukung: ${watchedDocuments.length} file`,
         ];
       }
 
@@ -929,7 +902,7 @@ export const UserProfilePage = () => {
           `Jurusan damping: ${user?.examinerMajor?.name || '-'}`,
           `Instansi: ${watchedInstitution || 'Belum diisi'}`,
           `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
-          `Dokumen: ${watchedDocuments.length} file`,
+          `Dokumen pendukung: ${watchedDocuments.length} file`,
         ];
       }
 
@@ -938,7 +911,7 @@ export const UserProfilePage = () => {
           `Divisi: ${getStaffPositionLabel(watchedStaffPosition) || normalizedEmployeeRoleValue || 'Belum dipilih'}`,
           `Status kepegawaian: ${normalizedEmployeeStatusValue || 'Belum diisi'}`,
           `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
-          `Dokumen: ${watchedDocuments.length} file`,
+          `Dokumen pendukung: ${watchedDocuments.length} file`,
         ];
       }
 
@@ -946,7 +919,7 @@ export const UserProfilePage = () => {
         `Peran aktif: ${ROLE_LABELS[fixedRole]}`,
         `Status kepegawaian: ${normalizedEmployeeStatusValue || 'Belum diisi'}`,
         `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
-        `Dokumen: ${watchedDocuments.length} file`,
+        `Dokumen pendukung: ${watchedDocuments.length} file`,
       ];
     }
 
@@ -1329,8 +1302,8 @@ export const UserProfilePage = () => {
     setIsUploading(true);
     try {
       const uploadCategory =
-        fixedRole === 'CALON_SISWA' ? candidateDocumentCategory : 'Dokumen Pendukung';
-      const newDocs: Array<{ title: string; fileUrl: string; category: string }> = [];
+        fixedRole === 'CALON_SISWA' ? candidateDocumentCategory : SUPPORTING_DOCUMENT_CATEGORY;
+      const newDocs: SupportingDocumentRecord[] = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const result = await uploadService.uploadTeacherDocument(file);
@@ -1342,9 +1315,9 @@ export const UserProfilePage = () => {
       }
       
       // Update form state
-      const currentDocs = (getValues('documents') || []) as { title: string; fileUrl: string; category: string }[];
-      const updatedDocs = [...currentDocs, ...newDocs] as { title: string; fileUrl: string; category: string }[];
-      append(newDocs);
+      const currentDocs = (getValues('documents') || []) as SupportingDocumentRecord[];
+      const updatedDocs = [...currentDocs, ...newDocs] as SupportingDocumentRecord[];
+      setValue('documents', updatedDocs, { shouldDirty: true, shouldValidate: true });
       
       // Auto-save to backend
       if (user?.id) {
@@ -1417,6 +1390,60 @@ export const UserProfilePage = () => {
     } catch (error) {
       console.error(error);
       toast.error(getErrorMessage(error) || 'Gagal mengunggah dokumen pendidikan');
+      throw error;
+    }
+  };
+
+  const handleSupportingDocumentUpload = async (file: File) => {
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/x-png'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Dokumen pendukung hanya boleh berformat PDF, JPG, JPEG, atau PNG.');
+      throw new Error('Tipe file dokumen pendukung tidak didukung');
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error(`Ukuran file ${file.name} melebihi 2MB.`);
+      throw new Error('Ukuran dokumen pendukung melebihi batas');
+    }
+
+    try {
+      const uploaded = await uploadService.uploadTeacherDocument(file);
+      return {
+        title: file.name,
+        fileUrl: uploaded.url,
+        category: SUPPORTING_DOCUMENT_CATEGORY,
+      } satisfies SupportingDocumentRecord;
+    } catch (error) {
+      toast.error(getErrorMessage(error) || 'Gagal mengunggah dokumen pendukung');
+      throw error;
+    }
+  };
+
+  const persistSupportingDocuments = async (nextDocuments: SupportingDocumentRecord[]) => {
+    const previousDocuments = ((getValues('documents') || []) as SupportingDocumentRecord[]).map((document) => ({
+      title: document.title,
+      fileUrl: document.fileUrl,
+      category: document.category,
+    }));
+
+    setValue('documents', nextDocuments, { shouldDirty: true, shouldValidate: true });
+
+    if (!user?.id) {
+      return;
+    }
+
+    try {
+      await userService.update(user.id, {
+        documents: nextDocuments.map((document) => ({
+          title: document.title,
+          fileUrl: document.fileUrl,
+          category: document.category,
+        })),
+      });
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      toast.success('Dokumen pendukung berhasil disimpan');
+    } catch (error) {
+      setValue('documents', previousDocuments, { shouldDirty: false, shouldValidate: false });
+      toast.error(getErrorMessage(error) || 'Gagal menyimpan dokumen pendukung');
       throw error;
     }
   };
@@ -2129,6 +2156,7 @@ export const UserProfilePage = () => {
                             inputMode="numeric"
                             maxLength={16}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Nomor Unik Pendidik dan Tenaga Kependidikan"
                           />
                           <p className="mt-1 text-xs text-slate-500">Isi 16 digit angka tanpa spasi.</p>
                           {errors.nuptk && <p className="mt-1 text-xs text-red-600">{errors.nuptk.message}</p>}
@@ -2212,6 +2240,7 @@ export const UserProfilePage = () => {
                       {...register('birthPlace')}
                       autoComplete="address-level2"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Contoh: Bekasi"
                     />
                   </div>
                   <div>
@@ -2375,23 +2404,8 @@ export const UserProfilePage = () => {
                         {...register('motherName')}
                         autoComplete="off"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Masukkan nama ibu kandung"
                       />
-                      <div className="mt-4">
-                        <label htmlFor="motherNik" className="block text-sm font-medium text-gray-700 mb-1">
-                          NIK Ibu Kandung
-                        </label>
-                        <input
-                          id="motherNik"
-                          {...register('motherNik')}
-                          autoComplete="off"
-                          inputMode="numeric"
-                          maxLength={16}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="Diisi sesuai data identitas keluarga"
-                        />
-                        <p className="mt-1 text-xs text-slate-500">Isi 16 digit angka tanpa spasi.</p>
-                        {errors.motherNik && <p className="mt-1 text-xs text-red-600">{errors.motherNik.message}</p>}
-                      </div>
                     </div>
                   )}
                 </div>
@@ -2408,6 +2422,7 @@ export const UserProfilePage = () => {
                       {...register('email')}
                       autoComplete="email"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Contoh: nama@email.com"
                     />
                     {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email.message}</p>}
                   </div>
@@ -2418,6 +2433,7 @@ export const UserProfilePage = () => {
                       {...register('phone')}
                       autoComplete="tel"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Contoh: 0812xxxxxxxx"
                     />
                   </div>
                   <div className="md:col-span-2">
@@ -2428,6 +2444,7 @@ export const UserProfilePage = () => {
                       autoComplete="street-address"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       rows={3}
+                      placeholder="Contoh: Jl. Mawar No. 10, RT 01/RW 05"
                     />
                   </div>
                   {(isEmployeeProfile || isStudentProfile || isParentProfile) && (
@@ -2440,6 +2457,7 @@ export const UserProfilePage = () => {
                             {...register('rt')}
                             autoComplete="off"
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Contoh: 001"
                           />
                         </div>
                         <div>
@@ -2449,6 +2467,7 @@ export const UserProfilePage = () => {
                             {...register('rw')}
                             autoComplete="off"
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Contoh: 005"
                           />
                         </div>
                       </div>
@@ -2475,21 +2494,13 @@ export const UserProfilePage = () => {
                         />
                       </div>
                       <div>
-                        <label htmlFor="dusun" className="block text-sm font-medium text-gray-700 mb-1">Nama Dusun</label>
-                        <input
-                          id="dusun"
-                          {...register('dusun')}
-                          autoComplete="off"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      </div>
-                      <div>
                         <label htmlFor="village" className="block text-sm font-medium text-gray-700 mb-1">Desa/Kelurahan</label>
                         <input
                           id="village"
                           {...register('village')}
                           autoComplete="off"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Contoh: Jatibening"
                         />
                       </div>
                       <div>
@@ -2499,6 +2510,7 @@ export const UserProfilePage = () => {
                           {...register('subdistrict')}
                           autoComplete="off"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Contoh: Pondokgede"
                         />
                       </div>
                       <div>
@@ -2510,6 +2522,7 @@ export const UserProfilePage = () => {
                           inputMode="numeric"
                           maxLength={5}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Contoh: 17412"
                         />
                         <p className="mt-1 text-xs text-slate-500">Isi 5 digit angka.</p>
                         {errors.postalCode && <p className="mt-1 text-xs text-red-600">{errors.postalCode.message}</p>}
@@ -2530,6 +2543,7 @@ export const UserProfilePage = () => {
                                 inputMode="numeric"
                                 maxLength={2}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="Contoh: 32"
                               />
                               <p className="mt-1 text-xs text-slate-500">Isi 2 digit angka.</p>
                               {errors.provinceCode && <p className="mt-1 text-xs text-red-600">{errors.provinceCode.message}</p>}
@@ -2543,6 +2557,7 @@ export const UserProfilePage = () => {
                                 inputMode="numeric"
                                 maxLength={4}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="Contoh: 3275"
                               />
                               <p className="mt-1 text-xs text-slate-500">Isi 4 digit angka.</p>
                               {errors.cityRegencyCode && <p className="mt-1 text-xs text-red-600">{errors.cityRegencyCode.message}</p>}
@@ -2556,6 +2571,7 @@ export const UserProfilePage = () => {
                                 inputMode="numeric"
                                 maxLength={7}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="Contoh: 3275040"
                               />
                               <p className="mt-1 text-xs text-slate-500">Isi 7 digit angka.</p>
                               {errors.subdistrictCode && <p className="mt-1 text-xs text-red-600">{errors.subdistrictCode.message}</p>}
@@ -2569,6 +2585,7 @@ export const UserProfilePage = () => {
                                 inputMode="numeric"
                                 maxLength={10}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="Contoh: 3275040001"
                               />
                               <p className="mt-1 text-xs text-slate-500">Isi 10 digit angka.</p>
                               {errors.villageCode && <p className="mt-1 text-xs text-red-600">{errors.villageCode.message}</p>}
@@ -2678,47 +2695,14 @@ export const UserProfilePage = () => {
                     )}
                   </div>
                   <div>
-                    <label htmlFor="employeeActiveStatus" className="block text-sm font-medium text-gray-700 mb-1">
-                      Status Keaktifan
-                    </label>
-                    <select
-                      id="employeeActiveStatus"
-                      {...register('employeeActiveStatus')}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="">Pilih status keaktifan</option>
-                      {EMPLOYEE_ACTIVE_STATUS_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="salarySource" className="block text-sm font-medium text-gray-700 mb-1">
-                      Sumber Gaji
-                    </label>
-                    <select
-                      id="salarySource"
-                      {...register('salarySource')}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="">Pilih sumber gaji</option>
-                      {SALARY_SOURCE_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
                     <label htmlFor="appointmentDecree" className="block text-sm font-medium text-gray-700 mb-1">SK Pengangkatan</label>
-                    <input
-                      id="appointmentDecree"
-                      {...register('appointmentDecree')}
-                      autoComplete="off"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
+                      <input
+                        id="appointmentDecree"
+                        {...register('appointmentDecree')}
+                        autoComplete="off"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Contoh: SK/2026/001"
+                      />
                   </div>
                   <div>
                     <label htmlFor="appointmentDate" className="block text-sm font-medium text-gray-700 mb-1">TMT Pengangkatan</label>
@@ -2755,6 +2739,11 @@ export const UserProfilePage = () => {
                       {...register('assignmentDecree')}
                       autoComplete="off"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder={
+                        fixedRole === 'EXAMINER'
+                          ? 'Contoh: Surat tugas penguji industri'
+                          : 'Contoh: SK penugasan tambahan'
+                      }
                     />
                   </div>
                   <div>
@@ -2857,145 +2846,149 @@ export const UserProfilePage = () => {
 
               {/* Upload File Tab */}
               {activeTab === 'documents' && (
-                <div className="space-y-4">
-                  {fixedRole === 'CALON_SISWA' && (
-                    <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-4">
-                      <p className="text-sm font-semibold text-blue-900">Kategori Dokumen PPDB</p>
-                      <p className="mt-1 text-xs text-blue-700">
-                        Pilih kategori sebelum upload supaya checklist PPDB mengenali dokumen dengan benar.
-                      </p>
-                      <div className="mt-3 grid gap-2 md:grid-cols-2">
-                        {CANDIDATE_DOCUMENT_OPTIONS.map((option) => {
-                          const active = candidateDocumentCategory === option.value;
-                          return (
-                            <button
-                              key={option.value}
-                              type="button"
-                              onClick={() => setCandidateDocumentCategory(option.value)}
-                              className={`rounded-xl border px-3 py-3 text-left transition ${
-                                active
-                                  ? 'border-blue-300 bg-white text-blue-900 shadow-sm'
-                                  : 'border-blue-100 bg-white/80 text-slate-700 hover:border-blue-200'
-                              }`}
-                            >
-                              <p className="text-sm font-semibold">{option.label}</p>
-                              <p className="mt-1 text-xs text-slate-500">{option.description}</p>
-                              <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">
-                                Format: {option.acceptedFormats.join(', ')}
-                              </p>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  <div
-                    className={`flex justify-center rounded-lg border-2 border-dashed px-6 pt-5 pb-6 transition-colors ${
-                      canUploadDocuments
-                        ? 'cursor-pointer border-gray-300 hover:bg-gray-50'
-                        : 'cursor-not-allowed border-gray-200 bg-gray-50'
-                    }`}
-                    onClick={() => {
-                      if (canUploadDocuments) fileInputRef.current?.click();
-                    }}
-                  >
-                    <div className="space-y-1 text-center">
-                      <div className="mx-auto h-12 w-12 text-gray-400">
-                        {isUploading ? <Loader2 className="animate-spin w-12 h-12" /> : <Save className="w-12 h-12" />}
-                      </div>
-                      <div className="flex text-sm text-gray-600 justify-center">
-                        <span className="relative cursor-pointer rounded-md font-medium text-blue-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 hover:text-blue-500">
-                          <span>Pilih dokumen</span>
-                          <input 
-                            ref={fileInputRef}
-                            id="file-upload" 
-                            name="file-upload" 
-                            type="file" 
-                            className="sr-only" 
-                            multiple 
-                            onChange={handleFileUpload} 
-                            disabled={isUploading || !canUploadDocuments} 
-                            onClick={(e) => e.stopPropagation()} // Prevent double trigger if input is clicked directly
-                          />
-                        </span>
-                        <p className="pl-1">{canUploadDocuments ? 'atau klik area ini untuk upload' : 'upload dokumen tidak tersedia untuk role ini'}</p>
-                      </div>
-                      <p className="text-xs text-gray-500">
-                        PDF, PNG, JPG maksimal 2MB
-                      </p>
-                    </div>
-                  </div>
-
-                  {!canUploadDocuments && (
-                    <p className="text-sm text-gray-500">
-                      Upload dokumen profil saat ini tersedia untuk admin, guru, kepala sekolah, staff, tutor, examiner, dan calon siswa.
-                    </p>
-                  )}
-
-                  <div className="grid grid-cols-1 gap-4">
-                    {fields.map((field, index) => (
-                      <div key={field.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
-                        <div className="flex items-center gap-3 overflow-hidden">
-                          <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
-                            <Save size={20} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">{field.title}</p>
-                            <p className="text-xs text-gray-500 truncate">
-                              {fixedRole === 'CALON_SISWA'
-                                ? getCandidateDocumentCategoryLabel(field.category)
-                                : field.category}
-                            </p>
-                            <a 
-                              href={field.fileUrl} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="text-xs text-blue-600 hover:underline"
-                            >
-                              Lihat File
-                            </a>
-                          </div>
+                usesStructuredSupportingDocuments ? (
+                  <SupportingDocumentsEditor
+                    documents={watchedDocuments}
+                    canUpload={canUploadDocuments}
+                    onUploadDocument={handleSupportingDocumentUpload}
+                    onSaveDocuments={persistSupportingDocuments}
+                  />
+                ) : (
+                  <div className="space-y-4">
+                    {fixedRole === 'CALON_SISWA' && (
+                      <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-4">
+                        <p className="text-sm font-semibold text-blue-900">Kategori Dokumen PPDB</p>
+                        <p className="mt-1 text-xs text-blue-700">
+                          Pilih kategori sebelum upload supaya checklist PPDB mengenali dokumen dengan benar.
+                        </p>
+                        <div className="mt-3 grid gap-2 md:grid-cols-2">
+                          {CANDIDATE_DOCUMENT_OPTIONS.map((option) => {
+                            const active = candidateDocumentCategory === option.value;
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => setCandidateDocumentCategory(option.value)}
+                                className={`rounded-xl border px-3 py-3 text-left transition ${
+                                  active
+                                    ? 'border-blue-300 bg-white text-blue-900 shadow-sm'
+                                    : 'border-blue-100 bg-white/80 text-slate-700 hover:border-blue-200'
+                                }`}
+                              >
+                                <p className="text-sm font-semibold">{option.label}</p>
+                                <p className="mt-1 text-xs text-slate-500">{option.description}</p>
+                                <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">
+                                  Format: {option.acceptedFormats.join(', ')}
+                                </p>
+                              </button>
+                            );
+                          })}
                         </div>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const currentDocs = (getValues('documents') || []) as { title: string; fileUrl: string; category: string }[];
-                            const updatedDocs = currentDocs.filter((_doc: { title: string; fileUrl: string; category: string }, i: number) => i !== index);
-                            
-                            // Remove from UI
-                            remove(index);
-                            
-                            // Auto-save to backend
-                            if (user?.id) {
-                                try {
-                                    await userService.update(user.id, { 
-                                        documents: updatedDocs.map((d) => ({
-                                            title: d.title,
-                                            fileUrl: d.fileUrl,
-                                            category: d.category
-                                        }))
-                                    });
-                                    queryClient.invalidateQueries({ queryKey: ['me'] });
-                                    toast.success('Dokumen berhasil dihapus');
-                                } catch (error) {
-                                    console.error(error);
-                                    toast.error('Gagal menghapus dokumen dari server');
-                                }
-                            }
-                          }}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                          title="Hapus Dokumen"
-                        >
-                          <Trash2 size={20} />
-                        </button>
                       </div>
-                    ))}
-                    {fields.length === 0 && (
-                      <p className="text-center text-sm text-gray-500 py-4">Belum ada dokumen yang diunggah</p>
                     )}
+
+                    <div
+                      className={`flex justify-center rounded-lg border-2 border-dashed px-6 pt-5 pb-6 transition-colors ${
+                        canUploadDocuments
+                          ? 'cursor-pointer border-gray-300 hover:bg-gray-50'
+                          : 'cursor-not-allowed border-gray-200 bg-gray-50'
+                      }`}
+                      onClick={() => {
+                        if (canUploadDocuments) fileInputRef.current?.click();
+                      }}
+                    >
+                      <div className="space-y-1 text-center">
+                        <div className="mx-auto h-12 w-12 text-gray-400">
+                          {isUploading ? <Loader2 className="animate-spin w-12 h-12" /> : <Save className="w-12 h-12" />}
+                        </div>
+                        <div className="flex text-sm text-gray-600 justify-center">
+                          <span className="relative cursor-pointer rounded-md font-medium text-blue-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 hover:text-blue-500">
+                            <span>Pilih dokumen</span>
+                            <input
+                              ref={fileInputRef}
+                              id="file-upload"
+                              name="file-upload"
+                              type="file"
+                              className="sr-only"
+                              multiple
+                              onChange={handleFileUpload}
+                              disabled={isUploading || !canUploadDocuments}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </span>
+                          <p className="pl-1">{canUploadDocuments ? 'atau klik area ini untuk upload' : 'upload dokumen tidak tersedia untuk role ini'}</p>
+                        </div>
+                        <p className="text-xs text-gray-500">PDF, PNG, JPG maksimal 2MB</p>
+                      </div>
+                    </div>
+
+                    {!canUploadDocuments && (
+                      <p className="text-sm text-gray-500">
+                        Upload dokumen profil saat ini tersedia untuk admin, guru, kepala sekolah, staff, tutor, examiner, dan calon siswa.
+                      </p>
+                    )}
+
+                    <div className="grid grid-cols-1 gap-4">
+                      {watchedDocuments.map((document, index) => (
+                        <div key={`${document.fileUrl}-${index}`} className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-4">
+                          <div className="flex items-center gap-3 overflow-hidden">
+                            <div className="rounded-lg bg-blue-100 p-2 text-blue-600">
+                              <Save size={20} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-gray-900">{document.title}</p>
+                              <p className="truncate text-xs text-gray-500">
+                                {fixedRole === 'CALON_SISWA'
+                                  ? getCandidateDocumentCategoryLabel(document.category)
+                                  : document.category}
+                              </p>
+                              <a
+                                href={document.fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-600 hover:underline"
+                              >
+                                Lihat File
+                              </a>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const currentDocs = (getValues('documents') || []) as SupportingDocumentRecord[];
+                              const updatedDocs = currentDocs.filter((_, docIndex) => docIndex !== index);
+                              setValue('documents', updatedDocs, { shouldDirty: true, shouldValidate: true });
+
+                              if (user?.id) {
+                                try {
+                                  await userService.update(user.id, {
+                                    documents: updatedDocs.map((doc) => ({
+                                      title: doc.title,
+                                      fileUrl: doc.fileUrl,
+                                      category: doc.category,
+                                    })),
+                                  });
+                                  queryClient.invalidateQueries({ queryKey: ['me'] });
+                                  toast.success('Dokumen berhasil dihapus');
+                                } catch (error) {
+                                  console.error(error);
+                                  toast.error('Gagal menghapus dokumen dari server');
+                                }
+                              }
+                            }}
+                            className="rounded-full p-2 text-red-500 transition-colors hover:bg-red-50"
+                            title="Hapus Dokumen"
+                          >
+                            <Trash2 size={20} />
+                          </button>
+                        </div>
+                      ))}
+                      {watchedDocuments.length === 0 && (
+                        <p className="py-4 text-center text-sm text-gray-500">Belum ada dokumen yang diunggah</p>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )
               )}
             </form>
           </div>

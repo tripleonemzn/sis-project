@@ -2,7 +2,7 @@ import { Role } from '@prisma/client';
 import { z } from 'zod';
 
 export const STUDENT_PROFILE_EDUCATION_LEVELS = ['TK', 'SD', 'SMP_MTS'] as const;
-export const NON_STUDENT_PROFILE_EDUCATION_LEVELS = ['SLTA', 'D1', 'D2', 'D3', 'D4_S1', 'S2', 'S3'] as const;
+export const NON_STUDENT_PROFILE_EDUCATION_LEVELS = ['SLTA', 'D3', 'D4_S1', 'S2', 'S3'] as const;
 export const PROFILE_EDUCATION_LEVELS = [
   ...STUDENT_PROFILE_EDUCATION_LEVELS,
   ...NON_STUDENT_PROFILE_EDUCATION_LEVELS,
@@ -41,8 +41,6 @@ const PROFILE_EDUCATION_LEVEL_LABELS: Record<ProfileEducationLevel, string> = {
   SD: 'SD',
   SMP_MTS: 'SMP/MTs',
   SLTA: 'SLTA/Sederajat',
-  D1: 'D1',
-  D2: 'D2',
   D3: 'D3',
   D4_S1: 'D4/S1',
   S2: 'S2',

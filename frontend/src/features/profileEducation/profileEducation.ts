@@ -1,7 +1,7 @@
 import type { UserRole } from '../../types/auth';
 
 export const STUDENT_PROFILE_EDUCATION_LEVELS = ['TK', 'SD', 'SMP_MTS'] as const;
-export const NON_STUDENT_PROFILE_EDUCATION_LEVELS = ['SLTA', 'D1', 'D2', 'D3', 'D4_S1', 'S2', 'S3'] as const;
+export const NON_STUDENT_PROFILE_EDUCATION_LEVELS = ['SLTA', 'D3', 'D4_S1', 'S2', 'S3'] as const;
 export const PROFILE_EDUCATION_LEVELS = [
   ...STUDENT_PROFILE_EDUCATION_LEVELS,
   ...NON_STUDENT_PROFILE_EDUCATION_LEVELS,
@@ -38,8 +38,6 @@ const LEVEL_LABELS: Record<ProfileEducationLevel, string> = {
   SD: 'SD',
   SMP_MTS: 'SMP/MTs',
   SLTA: 'SLTA/Sederajat',
-  D1: 'D1',
-  D2: 'D2',
   D3: 'D3',
   D4_S1: 'D4/S1',
   S2: 'S2',
@@ -64,8 +62,6 @@ const LEGACY_LEVEL_MAP: Record<string, ProfileEducationLevel> = {
   SMK: 'SLTA',
   'SMA / SMK / SEDERAJAT': 'SLTA',
   'SMA/SMK/SEDERAJAT': 'SLTA',
-  D1: 'D1',
-  D2: 'D2',
   D3: 'D3',
   'D4/S1': 'D4_S1',
   'D4 / S1': 'D4_S1',
