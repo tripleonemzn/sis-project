@@ -28,10 +28,11 @@ import { profileApi } from '../../src/features/profile/profileApi';
 import type { UpdateSelfProfilePayload } from '../../src/features/profile/profileApi';
 import {
   buildEducationHistoryState,
+  createEmptyEducationHistory,
   resolveEducationSummaryFromHistories,
   resolveProfileEducationTrackForRole,
   sanitizeEducationHistories,
-  type ProfileEducationDocumentKind,
+  type ProfileEducationDocument,
   type ProfileEducationHistory,
   type ProfileEducationLevel,
 } from '../../src/features/profile/profileEducation';
@@ -776,7 +777,6 @@ export default function ProfileScreen() {
   const canUploadDocuments = ['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXAMINER', 'EXTRACURRICULAR_TUTOR', 'CALON_SISWA'].includes(profile?.role || '');
   const [photoUploading, setPhotoUploading] = useState(false);
   const [documentUploading, setDocumentUploading] = useState(false);
-  const [educationUploadKey, setEducationUploadKey] = useState<string | null>(null);
   const [candidateDocumentCategory, setCandidateDocumentCategory] = useState<string>(
     MOBILE_CANDIDATE_DOCUMENT_OPTIONS[0]?.value || 'PPDB_AKTA_KELAHIRAN',
   );
@@ -1260,91 +1260,68 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleEducationHistoryChange = (
-    level: ProfileEducationLevel,
-    field: 'institutionName' | 'faculty' | 'studyProgram' | 'gpa' | 'degree',
-    value: string,
-  ) => {
+  const handleEducationHistorySave = (history: ProfileEducationHistory) => {
     setEducationHistories((prev) =>
-      prev.map((entry) => (entry.level === level ? { ...entry, [field]: value } : entry)),
+      sanitizeEducationHistories(
+        prev.map((entry) => (entry.level === history.level ? history : entry)),
+        educationTrack,
+      ),
     );
   };
 
-  const handleEducationDocumentPick = async (
-    level: ProfileEducationLevel,
-    kind: ProfileEducationDocumentKind,
-  ) => {
-    if (educationUploadKey) return;
+  const handleEducationHistoryRemove = (level: ProfileEducationLevel) => {
+    setEducationHistories((prev) =>
+      sanitizeEducationHistories(
+        prev.map((entry) => (entry.level === level ? createEmptyEducationHistory(level) : entry)),
+        educationTrack,
+      ),
+    );
+  };
+
+  const handleEducationDocumentPick = async (): Promise<ProfileEducationDocument | null> => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'],
         copyToCacheDirectory: true,
         multiple: false,
       });
-      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      if (result.canceled || !result.assets || result.assets.length === 0) return null;
 
       const asset = result.assets[0];
       const mime = String(asset.mimeType || '').toLowerCase();
       const name = asset.name || `education-${Date.now()}`;
       if (!['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(mime)) {
         notifyError('Dokumen pendidikan hanya boleh berformat PDF, JPG, JPEG, atau PNG.');
-        return;
+        throw new Error('Tipe file dokumen pendidikan tidak didukung');
       }
       if ((asset.size || 0) > 500 * 1024) {
         notifyError('Ukuran dokumen pendidikan maksimal 500KB.');
-        return;
+        throw new Error('Ukuran dokumen pendidikan melebihi batas');
       }
-
-      const uploadKey = `${level}:${kind}`;
-      setEducationUploadKey(uploadKey);
       const uploaded = await profileApi.uploadEducationHistoryDocument({
         uri: asset.uri,
         name,
         type: mime || 'application/octet-stream',
       });
-
-      setEducationHistories((prev) =>
-        prev.map((entry) => {
-          if (entry.level !== level) return entry;
-          const nextDocuments = entry.documents.filter((document) => document.kind !== kind);
-          nextDocuments.push({
-            kind,
-            label: name,
-            fileUrl: uploaded.url,
-            originalName: uploaded.originalname,
-            mimeType: uploaded.mimetype,
-            size: uploaded.size ?? null,
-            uploadedAt: new Date().toISOString(),
-          });
-          return { ...entry, documents: nextDocuments };
-        }),
-      );
-      notifySuccess('Dokumen riwayat pendidikan berhasil diunggah. Simpan profil untuk merekam perubahan.');
+      const document: ProfileEducationDocument = {
+        kind: 'IJAZAH',
+        label: name,
+        fileUrl: uploaded.url,
+        originalName: uploaded.originalname,
+        mimeType: uploaded.mimetype,
+        size: uploaded.size ?? null,
+        uploadedAt: new Date().toISOString(),
+      };
+      notifySuccess('Dokumen riwayat pendidikan berhasil diunggah. Simpan riwayat pendidikan untuk merekam perubahan.');
+      return document;
     } catch (error) {
       notifyApiError(error, 'Gagal mengunggah dokumen riwayat pendidikan.');
-    } finally {
-      setEducationUploadKey(null);
+      throw error;
     }
   };
 
-  const handleEducationDocumentRemove = (level: ProfileEducationLevel, kind: ProfileEducationDocumentKind) => {
-    setEducationHistories((prev) =>
-      prev.map((entry) =>
-        entry.level === level
-          ? {
-              ...entry,
-              documents: entry.documents.filter((document) => document.kind !== kind),
-            }
-          : entry,
-      ),
-    );
-  };
-
-  const handleEducationDocumentView = (level: ProfileEducationLevel, kind: ProfileEducationDocumentKind) => {
-    const document = educationHistories
-      .find((entry) => entry.level === level)
-      ?.documents.find((item) => item.kind === kind);
-    const url = resolveMediaUrl(document?.fileUrl);
+  const handleEducationDocumentView = (document: ProfileEducationDocument) => {
+    const url = resolveMediaUrl(document.fileUrl);
     if (!url) {
       notifyError('File dokumen belum tersedia.');
       return;
@@ -2243,10 +2220,9 @@ export default function ProfileScreen() {
               <ProfileEducationEditor
                 track={educationTrack}
                 histories={educationHistories}
-                uploadingKey={educationUploadKey}
-                onHistoryChange={handleEducationHistoryChange}
+                onSaveHistory={handleEducationHistorySave}
+                onRemoveHistory={handleEducationHistoryRemove}
                 onPickDocument={handleEducationDocumentPick}
-                onRemoveDocument={handleEducationDocumentRemove}
                 onViewDocument={handleEducationDocumentView}
               />
             </View>

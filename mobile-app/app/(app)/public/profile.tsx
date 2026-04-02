@@ -17,9 +17,10 @@ import { publicBkkApi } from '../../../src/features/publicBkk/bkkApi';
 import type { PublicBkkApplicantProfile } from '../../../src/features/publicBkk/types';
 import {
   buildEducationHistoryState,
+  createEmptyEducationHistory,
   resolveEducationSummaryFromHistories,
   sanitizeEducationHistories,
-  type ProfileEducationDocumentKind,
+  type ProfileEducationDocument,
   type ProfileEducationHistory,
   type ProfileEducationLevel,
 } from '../../../src/features/profile/profileEducation';
@@ -173,7 +174,6 @@ export default function PublicBkkProfileScreen() {
   const pageContentPadding = getStandardPagePadding(insets);
   const [formDraft, setFormDraft] = useState<ProfileFormState | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTabId>('main');
-  const [educationUploadKey, setEducationUploadKey] = useState<string | null>(null);
 
   const profileQuery = useQuery({
     queryKey: ['mobile-public-bkk-profile'],
@@ -244,91 +244,68 @@ export default function PublicBkkProfileScreen() {
     onError: (error: unknown) => notifyApiError(error, 'Gagal menyimpan profil pelamar.'),
   });
 
-  const handleEducationHistoryChange = (
-    level: ProfileEducationLevel,
-    field: 'institutionName' | 'faculty' | 'studyProgram' | 'gpa' | 'degree',
-    value: string,
-  ) => {
+  const handleEducationHistorySave = (history: ProfileEducationHistory) => {
     setEducationHistories((prev) =>
-      prev.map((entry) => (entry.level === level ? { ...entry, [field]: value } : entry)),
+      sanitizeEducationHistories(
+        prev.map((entry) => (entry.level === history.level ? history : entry)),
+        'NON_STUDENT',
+      ),
     );
   };
 
-  const handleEducationDocumentPick = async (
-    level: ProfileEducationLevel,
-    kind: ProfileEducationDocumentKind,
-  ) => {
-    if (educationUploadKey) return;
+  const handleEducationHistoryRemove = (level: ProfileEducationLevel) => {
+    setEducationHistories((prev) =>
+      sanitizeEducationHistories(
+        prev.map((entry) => (entry.level === level ? createEmptyEducationHistory(level) : entry)),
+        'NON_STUDENT',
+      ),
+    );
+  };
+
+  const handleEducationDocumentPick = async (): Promise<ProfileEducationDocument | null> => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'],
         copyToCacheDirectory: true,
         multiple: false,
       });
-      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      if (result.canceled || !result.assets || result.assets.length === 0) return null;
       const asset = result.assets[0];
       const mime = String(asset.mimeType || '').toLowerCase();
       const name = asset.name || `education-${Date.now()}`;
 
       if (!['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(mime)) {
         notifyError('Dokumen riwayat pendidikan hanya boleh berformat PDF, JPG, JPEG, atau PNG.');
-        return;
+        throw new Error('Tipe file dokumen riwayat pendidikan tidak didukung');
       }
       if ((asset.size || 0) > 500 * 1024) {
         notifyError('Ukuran dokumen riwayat pendidikan maksimal 500KB.');
-        return;
+        throw new Error('Ukuran dokumen riwayat pendidikan melebihi batas');
       }
-
-      const uploadKey = `${level}:${kind}`;
-      setEducationUploadKey(uploadKey);
       const uploaded = await profileApi.uploadEducationHistoryDocument({
         uri: asset.uri,
         name,
         type: mime || 'application/octet-stream',
       });
-
-      setEducationHistories((prev) =>
-        prev.map((entry) => {
-          if (entry.level !== level) return entry;
-          const nextDocuments = entry.documents.filter((document) => document.kind !== kind);
-          nextDocuments.push({
-            kind,
-            label: name,
-            fileUrl: uploaded.url,
-            originalName: uploaded.originalname,
-            mimeType: uploaded.mimetype,
-            size: uploaded.size ?? null,
-            uploadedAt: new Date().toISOString(),
-          });
-          return { ...entry, documents: nextDocuments };
-        }),
-      );
-      notifySuccess('Dokumen riwayat pendidikan berhasil diunggah. Simpan profil untuk merekam perubahan.');
+      const document: ProfileEducationDocument = {
+        kind: 'IJAZAH',
+        label: name,
+        fileUrl: uploaded.url,
+        originalName: uploaded.originalname,
+        mimeType: uploaded.mimetype,
+        size: uploaded.size ?? null,
+        uploadedAt: new Date().toISOString(),
+      };
+      notifySuccess('Dokumen riwayat pendidikan berhasil diunggah. Simpan riwayat pendidikan untuk merekam perubahan.');
+      return document;
     } catch (error) {
       notifyApiError(error, 'Gagal mengunggah dokumen riwayat pendidikan.');
-    } finally {
-      setEducationUploadKey(null);
+      throw error;
     }
   };
 
-  const handleEducationDocumentRemove = (level: ProfileEducationLevel, kind: ProfileEducationDocumentKind) => {
-    setEducationHistories((prev) =>
-      prev.map((entry) =>
-        entry.level === level
-          ? {
-              ...entry,
-              documents: entry.documents.filter((document) => document.kind !== kind),
-            }
-          : entry,
-      ),
-    );
-  };
-
-  const handleEducationDocumentView = (level: ProfileEducationLevel, kind: ProfileEducationDocumentKind) => {
-    const document = educationHistories
-      .find((entry) => entry.level === level)
-      ?.documents.find((item) => item.kind === kind);
-    const url = resolveMediaUrl(document?.fileUrl);
+  const handleEducationDocumentView = (document: ProfileEducationDocument) => {
+    const url = resolveMediaUrl(document.fileUrl);
     if (!url) {
       notifyError('File dokumen belum tersedia.');
       return;
@@ -506,10 +483,9 @@ export default function PublicBkkProfileScreen() {
               <ProfileEducationEditor
                 track="NON_STUDENT"
                 histories={educationHistories}
-                uploadingKey={educationUploadKey}
-                onHistoryChange={handleEducationHistoryChange}
+                onSaveHistory={handleEducationHistorySave}
+                onRemoveHistory={handleEducationHistoryRemove}
                 onPickDocument={handleEducationDocumentPick}
-                onRemoveDocument={handleEducationDocumentRemove}
                 onViewDocument={handleEducationDocumentView}
               />
             </InfoCard>

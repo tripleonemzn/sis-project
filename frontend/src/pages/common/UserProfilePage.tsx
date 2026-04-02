@@ -18,10 +18,11 @@ import toast from 'react-hot-toast';
 import Cropper, { type Point, type Area } from 'react-easy-crop';
 import {
   buildEducationHistoryState,
+  createEmptyEducationHistory,
   resolveEducationSummaryFromHistories,
   resolveProfileEducationTrackForRole,
   sanitizeEducationHistories,
-  type ProfileEducationDocumentKind,
+  type ProfileEducationDocument,
   type ProfileEducationHistory,
   type ProfileEducationLevel,
 } from '../../features/profileEducation/profileEducation';
@@ -630,7 +631,6 @@ export const UserProfilePage = () => {
   const [activeTab, setActiveTab] = useState<typeof tabs[number]['id']>('account');
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
-  const [educationUploadKey, setEducationUploadKey] = useState<string | null>(null);
   const [isManualPtkType, setIsManualPtkType] = useState(false);
   const [isManualEmployeeStatus, setIsManualEmployeeStatus] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -1190,10 +1190,12 @@ export const UserProfilePage = () => {
          password,
          childNisns,
          additionalDuties,
-         highestEducation: _highestEducation,
-         studyProgram: _studyProgram,
+         highestEducation,
+         studyProgram,
          ...rest
        } = data;
+       void highestEducation;
+       void studyProgram;
 
        // Process additional duties and managed major
        const processedDuties: string[] = [];
@@ -1371,71 +1373,52 @@ export const UserProfilePage = () => {
     }
   };
 
-  const handleEducationHistoryChange = (
-    level: ProfileEducationLevel,
-    field: 'institutionName' | 'faculty' | 'studyProgram' | 'gpa' | 'degree',
-    value: string,
-  ) => {
+  const handleEducationHistorySave = (history: ProfileEducationHistory) => {
     setEducationHistories((prev) =>
-      prev.map((entry) => (entry.level === level ? { ...entry, [field]: value } : entry)),
+      sanitizeEducationHistories(
+        prev.map((entry) => (entry.level === history.level ? history : entry)),
+        educationTrack,
+      ),
     );
   };
 
-  const handleEducationDocumentUpload = async (
-    level: ProfileEducationLevel,
-    kind: ProfileEducationDocumentKind,
-    file: File,
-  ) => {
+  const handleEducationHistoryRemove = (level: ProfileEducationLevel) => {
+    setEducationHistories((prev) =>
+      sanitizeEducationHistories(
+        prev.map((entry) => (entry.level === level ? createEmptyEducationHistory(level) : entry)),
+        educationTrack,
+      ),
+    );
+  };
+
+  const handleEducationDocumentUpload = async (file: File): Promise<ProfileEducationDocument> => {
     const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/x-png'];
     if (!allowedTypes.includes(file.type)) {
       toast.error('Dokumen pendidikan hanya boleh berformat PDF, JPG, JPEG, atau PNG.');
-      return;
+      throw new Error('Tipe file dokumen pendidikan tidak didukung');
     }
     if (file.size > 500 * 1024) {
       toast.error(`Ukuran file ${file.name} melebihi 500KB.`);
-      return;
+      throw new Error('Ukuran dokumen pendidikan melebihi batas');
     }
-
-    const uploadKey = `${level}:${kind}`;
-    setEducationUploadKey(uploadKey);
     try {
       const uploaded = await uploadService.uploadProfileEducationDocument(file);
-      setEducationHistories((prev) =>
-        prev.map((entry) => {
-          if (entry.level !== level) return entry;
-          const nextDocuments = entry.documents.filter((document) => document.kind !== kind);
-          nextDocuments.push({
-            kind,
-            label: file.name,
-            fileUrl: uploaded.url,
-            originalName: uploaded.originalname,
-            mimeType: uploaded.mimetype,
-            size: uploaded.size,
-            uploadedAt: new Date().toISOString(),
-          });
-          return { ...entry, documents: nextDocuments };
-        }),
-      );
-      toast.success(`${file.name} berhasil diunggah. Jangan lupa simpan profil untuk merekam perubahan.`);
+      const document: ProfileEducationDocument = {
+        kind: 'IJAZAH',
+        label: file.name,
+        fileUrl: uploaded.url,
+        originalName: uploaded.originalname,
+        mimeType: uploaded.mimetype,
+        size: uploaded.size,
+        uploadedAt: new Date().toISOString(),
+      };
+      toast.success(`${file.name} berhasil diunggah. Simpan riwayat pendidikan untuk merekam perubahan.`);
+      return document;
     } catch (error) {
       console.error(error);
       toast.error(getErrorMessage(error) || 'Gagal mengunggah dokumen pendidikan');
-    } finally {
-      setEducationUploadKey(null);
+      throw error;
     }
-  };
-
-  const handleEducationDocumentRemove = (level: ProfileEducationLevel, kind: ProfileEducationDocumentKind) => {
-    setEducationHistories((prev) =>
-      prev.map((entry) =>
-        entry.level === level
-          ? {
-              ...entry,
-              documents: entry.documents.filter((document) => document.kind !== kind),
-            }
-          : entry,
-      ),
-    );
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2866,10 +2849,9 @@ export const UserProfilePage = () => {
                 <ProfileEducationEditor
                   track={educationTrack}
                   histories={educationHistories}
-                  uploadingKey={educationUploadKey}
-                  onHistoryChange={handleEducationHistoryChange}
+                  onSaveHistory={handleEducationHistorySave}
+                  onRemoveHistory={handleEducationHistoryRemove}
                   onUploadDocument={handleEducationDocumentUpload}
-                  onRemoveDocument={handleEducationDocumentRemove}
                 />
               )}
 

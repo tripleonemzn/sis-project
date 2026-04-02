@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -8,9 +8,10 @@ import { uploadService } from '../../services/upload.service';
 import { ProfileEducationEditor } from '../../components/profile/ProfileEducationEditor';
 import {
   buildEducationHistoryState,
+  createEmptyEducationHistory,
   resolveEducationSummaryFromHistories,
   sanitizeEducationHistories,
-  type ProfileEducationDocumentKind,
+  type ProfileEducationDocument,
   type ProfileEducationHistory,
   type ProfileEducationLevel,
 } from '../../features/profileEducation/profileEducation';
@@ -117,9 +118,8 @@ export const BkkCareerProfilePage = () => {
     staleTime: 60_000,
   });
   const applicantProfile = useMemo(() => extractApplicantProfilePayload(profileQuery.data), [profileQuery.data]);
-  const [form, setForm] = useState<ProfileFormState>(emptyForm);
+  const [formDraft, setFormDraft] = useState<ProfileFormState | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTabId>('main');
-  const [educationUploadKey, setEducationUploadKey] = useState<string | null>(null);
   const baselineEducationHistories = useMemo(
     () =>
       buildEducationHistoryState({
@@ -136,16 +136,19 @@ export const BkkCareerProfilePage = () => {
       applicantProfile?.schoolName,
     ],
   );
-  const [educationHistories, setEducationHistories] = useState<ProfileEducationHistory[]>(baselineEducationHistories);
+  const [educationHistoriesDraft, setEducationHistoriesDraft] = useState<ProfileEducationHistory[] | null>(null);
+  const form = formDraft ?? buildForm(applicantProfile);
+  const setForm = (updater: (prev: ProfileFormState) => ProfileFormState) => {
+    setFormDraft((prev) => updater(prev ?? buildForm(applicantProfile)));
+  };
+  const educationHistories = educationHistoriesDraft ?? baselineEducationHistories;
+  const setEducationHistories = (updater: (prev: ProfileEducationHistory[]) => ProfileEducationHistory[]) => {
+    setEducationHistoriesDraft((prev) => updater(prev ?? baselineEducationHistories));
+  };
   const educationSummary = useMemo(
     () => resolveEducationSummaryFromHistories(educationHistories, 'NON_STUDENT'),
     [educationHistories],
   );
-
-  useEffect(() => {
-    setForm(buildForm(applicantProfile));
-    setEducationHistories(baselineEducationHistories);
-  }, [applicantProfile, baselineEducationHistories]);
 
   const saveMutation = useMutation({
     mutationFn: async () =>
@@ -175,71 +178,52 @@ export const BkkCareerProfilePage = () => {
     },
   });
 
-  const handleEducationHistoryChange = (
-    level: ProfileEducationLevel,
-    field: 'institutionName' | 'faculty' | 'studyProgram' | 'gpa' | 'degree',
-    value: string,
-  ) => {
+  const handleEducationHistorySave = (history: ProfileEducationHistory) => {
     setEducationHistories((prev) =>
-      prev.map((entry) => (entry.level === level ? { ...entry, [field]: value } : entry)),
+      sanitizeEducationHistories(
+        prev.map((entry) => (entry.level === history.level ? history : entry)),
+        'NON_STUDENT',
+      ),
     );
   };
 
-  const handleEducationDocumentUpload = async (
-    level: ProfileEducationLevel,
-    kind: ProfileEducationDocumentKind,
-    file: File,
-  ) => {
+  const handleEducationHistoryRemove = (level: ProfileEducationLevel) => {
+    setEducationHistories((prev) =>
+      sanitizeEducationHistories(
+        prev.map((entry) => (entry.level === level ? createEmptyEducationHistory(level) : entry)),
+        'NON_STUDENT',
+      ),
+    );
+  };
+
+  const handleEducationDocumentUpload = async (file: File): Promise<ProfileEducationDocument> => {
     const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/x-png'];
     if (!allowedTypes.includes(file.type)) {
       toast.error('Dokumen riwayat pendidikan hanya boleh berformat PDF, JPG, JPEG, atau PNG.');
-      return;
+      throw new Error('Tipe file dokumen riwayat pendidikan tidak didukung');
     }
     if (file.size > 500 * 1024) {
       toast.error(`Ukuran file ${file.name} melebihi 500KB.`);
-      return;
+      throw new Error('Ukuran dokumen riwayat pendidikan melebihi batas');
     }
-
-    const uploadKey = `${level}:${kind}`;
-    setEducationUploadKey(uploadKey);
     try {
       const uploaded = await uploadService.uploadProfileEducationDocument(file);
-      setEducationHistories((prev) =>
-        prev.map((entry) => {
-          if (entry.level !== level) return entry;
-          const nextDocuments = entry.documents.filter((document) => document.kind !== kind);
-          nextDocuments.push({
-            kind,
-            label: file.name,
-            fileUrl: uploaded.url,
-            originalName: uploaded.originalname,
-            mimeType: uploaded.mimetype,
-            size: uploaded.size,
-            uploadedAt: new Date().toISOString(),
-          });
-          return { ...entry, documents: nextDocuments };
-        }),
-      );
-      toast.success(`${file.name} berhasil diunggah. Simpan profil untuk merekam perubahan.`);
+      const document: ProfileEducationDocument = {
+        kind: 'IJAZAH',
+        label: file.name,
+        fileUrl: uploaded.url,
+        originalName: uploaded.originalname,
+        mimeType: uploaded.mimetype,
+        size: uploaded.size,
+        uploadedAt: new Date().toISOString(),
+      };
+      toast.success(`${file.name} berhasil diunggah. Simpan riwayat pendidikan untuk merekam perubahan.`);
+      return document;
     } catch (error: unknown) {
       const normalized = error as { response?: { data?: { message?: string } }; message?: string };
       toast.error(normalized.response?.data?.message || normalized.message || 'Gagal mengunggah dokumen pendidikan');
-    } finally {
-      setEducationUploadKey(null);
+      throw error;
     }
-  };
-
-  const handleEducationDocumentRemove = (level: ProfileEducationLevel, kind: ProfileEducationDocumentKind) => {
-    setEducationHistories((prev) =>
-      prev.map((entry) =>
-        entry.level === level
-          ? {
-              ...entry,
-              documents: entry.documents.filter((document) => document.kind !== kind),
-            }
-          : entry,
-      ),
-    );
   };
 
   return (
@@ -342,10 +326,9 @@ export const BkkCareerProfilePage = () => {
             <ProfileEducationEditor
               track="NON_STUDENT"
               histories={educationHistories}
-              uploadingKey={educationUploadKey}
-              onHistoryChange={handleEducationHistoryChange}
+              onSaveHistory={handleEducationHistorySave}
+              onRemoveHistory={handleEducationHistoryRemove}
               onUploadDocument={handleEducationDocumentUpload}
-              onRemoveDocument={handleEducationDocumentRemove}
             />
           </div>
         ) : null}

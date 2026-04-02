@@ -123,6 +123,18 @@ export function getEducationInstitutionLabel(level: ProfileEducationLevel) {
   return levelUsesHigherEducationFields(level) ? 'Nama Perguruan Tinggi' : 'Nama Sekolah';
 }
 
+export function createEmptyEducationHistory(level: ProfileEducationLevel): ProfileEducationHistory {
+  return {
+    level,
+    institutionName: '',
+    faculty: '',
+    studyProgram: '',
+    gpa: '',
+    degree: '',
+    documents: [],
+  };
+}
+
 export function getEducationLevelFromLegacyLabel(label?: string | null): ProfileEducationLevel | null {
   const normalized = normalizeText(label).toUpperCase();
   if (!normalized) return null;
@@ -170,15 +182,7 @@ export function sanitizeEducationHistories(
   }
 
   return getEducationLevelsForTrack(track).map((level) =>
-    normalizedByLevel.get(level) || {
-      level,
-      institutionName: '',
-      faculty: '',
-      studyProgram: '',
-      gpa: '',
-      degree: '',
-      documents: [],
-    },
+    normalizedByLevel.get(level) || createEmptyEducationHistory(level),
   );
 }
 
