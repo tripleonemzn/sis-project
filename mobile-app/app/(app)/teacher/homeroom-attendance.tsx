@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileTabChip } from '../../../src/components/MobileTabChip';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -442,34 +443,19 @@ export default function TeacherHomeroomAttendanceScreen() {
         }}
       >
         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Mode Tampilan</Text>
-        <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
-          {[
-            { key: 'DAILY' as TabKey, label: 'Harian' },
-            { key: 'RECAP' as TabKey, label: 'Rekap' },
-            { key: 'LATE' as TabKey, label: 'Telat' },
-          ].map((item) => {
-            const selected = tab === item.key;
-            return (
-              <View key={item.key} style={{ flex: 1, paddingHorizontal: 4 }}>
-                <Pressable
-                  onPress={() => setTab(item.key)}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',
-                    backgroundColor: selected ? '#e9f1ff' : '#fff',
-                    borderRadius: 9,
-                    alignItems: 'center',
-                    paddingVertical: 10,
-                  }}
-                >
-                  <Text style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}>
-                    {item.label}
-                  </Text>
-                </Pressable>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={{ flexDirection: 'row', paddingRight: 4 }}>
+            {[
+              { key: 'DAILY' as TabKey, label: 'Harian' },
+              { key: 'RECAP' as TabKey, label: 'Rekap' },
+              { key: 'LATE' as TabKey, label: 'Telat' },
+            ].map((item) => (
+              <View key={item.key} style={{ marginRight: 8 }}>
+                <MobileTabChip active={tab === item.key} label={item.label} onPress={() => setTab(item.key)} compact />
               </View>
-            );
-          })}
-        </View>
+            ))}
+          </View>
+        </ScrollView>
       </View>
 
       {tab === 'RECAP' ? (
@@ -484,41 +470,11 @@ export default function TeacherHomeroomAttendanceScreen() {
           }}
         >
           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Semester Rekap</Text>
-          <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
-            <View style={{ flex: 1, paddingHorizontal: 4 }}>
-              <Pressable
-                onPress={() => setSemester('ODD')}
-                style={{
-                  borderWidth: 1,
-                  borderColor: semester === 'ODD' ? BRAND_COLORS.blue : '#d5e1f5',
-                  backgroundColor: semester === 'ODD' ? '#e9f1ff' : '#fff',
-                  borderRadius: 9,
-                  alignItems: 'center',
-                  paddingVertical: 10,
-                }}
-              >
-                <Text style={{ color: semester === 'ODD' ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}>
-                  Ganjil
-                </Text>
-              </Pressable>
+          <View style={{ flexDirection: 'row' }}>
+            <View style={{ marginRight: 8 }}>
+              <MobileTabChip active={semester === 'ODD'} label="Ganjil" onPress={() => setSemester('ODD')} compact minWidth={96} />
             </View>
-            <View style={{ flex: 1, paddingHorizontal: 4 }}>
-              <Pressable
-                onPress={() => setSemester('EVEN')}
-                style={{
-                  borderWidth: 1,
-                  borderColor: semester === 'EVEN' ? BRAND_COLORS.blue : '#d5e1f5',
-                  backgroundColor: semester === 'EVEN' ? '#e9f1ff' : '#fff',
-                  borderRadius: 9,
-                  alignItems: 'center',
-                  paddingVertical: 10,
-                }}
-              >
-                <Text style={{ color: semester === 'EVEN' ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}>
-                  Genap
-                </Text>
-              </Pressable>
-            </View>
+            <MobileTabChip active={semester === 'EVEN'} label="Genap" onPress={() => setSemester('EVEN')} compact minWidth={96} />
           </View>
         </View>
       ) : null}

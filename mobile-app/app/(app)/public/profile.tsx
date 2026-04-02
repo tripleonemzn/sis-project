@@ -6,6 +6,7 @@ import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileTabChip } from '../../../src/components/MobileTabChip';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -371,26 +372,13 @@ export default function PublicBkkProfileScreen() {
 
           <InfoCard title="Navigasi Profil">
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flexDirection: 'row' }}>
                 {PROFILE_TABS.map((tab) => {
                   const active = activeTab === tab.id;
                   return (
-                    <Pressable
-                      key={tab.id}
-                      onPress={() => setActiveTab(tab.id)}
-                      style={{
-                        borderWidth: 1,
-                        borderColor: active ? '#ea580c' : '#d6e0f2',
-                        backgroundColor: active ? '#fff7ed' : '#fff',
-                        borderRadius: 999,
-                        paddingHorizontal: 14,
-                        paddingVertical: 10,
-                      }}
-                    >
-                      <Text style={{ color: active ? '#c2410c' : BRAND_COLORS.textDark, fontWeight: '700', fontSize: 12 }}>
-                        {tab.label}
-                      </Text>
-                    </Pressable>
+                    <View key={tab.id} style={{ marginRight: 8 }}>
+                      <MobileTabChip active={active} label={tab.label} onPress={() => setActiveTab(tab.id)} compact />
+                    </View>
                   );
                 })}
               </View>

@@ -3,6 +3,7 @@ import { Redirect, useRouter } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
+import { MobileTabChip } from '../../src/components/MobileTabChip';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { useAuth } from '../../src/features/auth/AuthProvider';
 import { DayOfWeek, ScheduleEntry } from '../../src/features/schedule/types';
@@ -111,27 +112,20 @@ export default function ScheduleScreen() {
 
       {!scheduleQuery.isLoading && !scheduleQuery.isError ? (
         <>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
-            {dayTabs.map((day) => (
-              <View key={day} style={{ width: '33.3333%', paddingHorizontal: 4, marginBottom: 8 }}>
-                <Pressable
-                  onPress={() => setActiveDay(day)}
-                  style={{
-                    borderWidth: 1,
-                  borderColor: effectiveActiveDay === day ? '#2563eb' : '#cbd5e1',
-                  backgroundColor: effectiveActiveDay === day ? '#2563eb' : '#fff',
-                    borderRadius: 10,
-                    paddingVertical: 10,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: effectiveActiveDay === day ? '#fff' : '#334155', fontWeight: '600' }}>
-                    {DAY_LABELS[day]}
-                  </Text>
-                </Pressable>
-              </View>
-            ))}
-          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+            <View style={{ flexDirection: 'row', paddingRight: 4 }}>
+              {dayTabs.map((day) => (
+                <View key={day} style={{ marginRight: 8 }}>
+                  <MobileTabChip
+                    active={effectiveActiveDay === day}
+                    label={DAY_LABELS[day]}
+                    onPress={() => setActiveDay(day)}
+                    minWidth={92}
+                  />
+                </View>
+              ))}
+            </View>
+          </ScrollView>
 
           {dayEntries.length > 0 ? (
             <View>

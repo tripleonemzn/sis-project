@@ -15,6 +15,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
+import { MobileTabChip } from '../../src/components/MobileTabChip';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { useAuth } from '../../src/features/auth/AuthProvider';
 import type { AuthUser } from '../../src/features/auth/types';
@@ -1601,23 +1602,14 @@ export default function ProfileScreen() {
             {visibleTabs.map((tabId) => {
               const active = activeTab === tabId;
               return (
-                <Pressable
-                  key={tabId}
-                  onPress={() => setActiveTab(tabId)}
-                  style={{
-                    marginRight: 8,
-                    borderWidth: 1,
-                    borderColor: active ? '#2563eb' : '#dbeafe',
-                    backgroundColor: active ? '#eff6ff' : '#fff',
-                    borderRadius: 999,
-                    paddingHorizontal: 14,
-                    paddingVertical: 9,
-                  }}
-                >
-                  <Text style={{ color: active ? '#1d4ed8' : '#475569', fontWeight: '700', fontSize: 12 }}>
-                    {getTabLabel(profile.role, tabId)}
-                  </Text>
-                </Pressable>
+                <View key={tabId} style={{ marginRight: 8 }}>
+                  <MobileTabChip
+                    active={active}
+                    label={getTabLabel(profile.role, tabId)}
+                    onPress={() => setActiveTab(tabId)}
+                    compact
+                  />
+                </View>
               );
             })}
           </ScrollView>

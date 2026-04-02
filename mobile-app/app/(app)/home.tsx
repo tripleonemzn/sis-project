@@ -66,7 +66,14 @@ import {
 import { osisApi } from '../../src/features/osis/osisApi';
 
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
-type DashboardStatItem = { label: string; value: string; color: string; icon?: FeatherIconName; menuKey?: string };
+type DashboardStatItem = {
+  label: string;
+  value: string;
+  color: string;
+  icon?: FeatherIconName;
+  menuKey?: string;
+  labelPosition?: 'top' | 'bottom';
+};
 type DashboardIconStatItem = {
   label: string;
   value: string;
@@ -387,6 +394,8 @@ const getMenuIcon = (menu: RoleMenuItem): FeatherIconName => {
 
 const getGroupIcon = (group: RoleMenuGroup): FeatherIconName => {
   const key = group.key.toLowerCase();
+  const onlyEmailMenus = group.items.every((item) => item.key.toLowerCase().includes('email') || item.key.toLowerCase().includes('mail'));
+  if (onlyEmailMenus) return 'mail';
   if (key.includes('dashboard')) return 'home';
   if (key.includes('academic')) return 'book-open';
   if (key.includes('exams') || key.includes('cbt')) return 'file-text';
@@ -950,13 +959,20 @@ export default function HomeScreen() {
         managedInventoryRooms: profile.managedInventoryRooms || [],
       })
         .map((group) => ({
-          ...group,
           // Keep non-dashboard entries (e.g. Email) even when they are grouped under Dashboard.
-          items: group.items.filter((item) => {
-            const key = item.key.toLowerCase();
-            const label = item.label.toLowerCase();
-            return key !== 'dashboard' && !key.endsWith('-dashboard') && label !== 'dashboard';
-          }),
+          ...(() => {
+            const items = group.items.filter((item) => {
+              const key = item.key.toLowerCase();
+              const label = item.label.toLowerCase();
+              return key !== 'dashboard' && !key.endsWith('-dashboard') && label !== 'dashboard';
+            });
+            const useSingleItemLabel = group.label.toLowerCase() === 'dashboard' && items.length === 1;
+            return {
+              ...group,
+              label: useSingleItemLabel ? items[0].label : group.label,
+              items,
+            };
+          })(),
         }))
         .filter((group) => group.items.length > 0);
 
@@ -1474,13 +1490,14 @@ export default function HomeScreen() {
 
   const studentStatCards: DashboardStatItem[] = useMemo(
     () => [
-      { label: 'Role', value: profile.role, color: BRAND_COLORS.blue, icon: 'shield' },
+      { label: 'Role', value: profile.role, color: BRAND_COLORS.blue, icon: 'shield', labelPosition: 'top' },
       {
         label: 'Kelas',
         value: profile.studentClass?.name || '-',
         color: BRAND_COLORS.navy,
         icon: 'layers',
         menuKey: 'student-schedule',
+        labelPosition: 'top',
       },
       {
         label: 'Jurusan',
@@ -1488,6 +1505,7 @@ export default function HomeScreen() {
         color: BRAND_COLORS.teal,
         icon: 'grid',
         menuKey: 'student-learning',
+        labelPosition: 'top',
       },
       {
         label: 'Status',
@@ -1495,6 +1513,7 @@ export default function HomeScreen() {
         color: BRAND_COLORS.gold,
         icon: 'activity',
         menuKey: 'student-grade-history',
+        labelPosition: 'top',
       },
     ],
     [profile.role, profile.studentClass?.name, profile.studentClass?.major?.code, profile.studentClass?.major?.name, profile.studentStatus],
@@ -1888,6 +1907,7 @@ export default function HomeScreen() {
           const isOpeningThisMenu = linkedMenu ? openingMenuKey === linkedMenu.key : false;
           const iconName = getStatIcon(item, linkedMenu);
           const tone = getMenuIconTone(item.label);
+          const labelPosition = item.labelPosition || 'bottom';
 
           return (
             <View key={item.label} style={{ width: itemWidth, paddingHorizontal: 4, marginBottom: 10 }}>
@@ -1922,12 +1942,25 @@ export default function HomeScreen() {
                     <Feather name={iconName} size={17} color={tone.fg} />
                   )}
                 </View>
-                <Text style={{ color: item.color, fontWeight: '700', fontSize: item.value.length > 12 ? 12 : 15, marginTop: 6 }}>
-                  {item.value}
-                </Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 10, textAlign: 'center' }} numberOfLines={2}>
-                  {isOpeningThisMenu ? 'Membuka...' : item.label}
-                </Text>
+                {labelPosition === 'top' ? (
+                  <>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 10, textAlign: 'center', marginTop: 6 }} numberOfLines={2}>
+                      {item.label}
+                    </Text>
+                    <Text style={{ color: item.color, fontWeight: '700', fontSize: item.value.length > 12 ? 12 : 15, marginTop: 2 }}>
+                      {item.value}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={{ color: item.color, fontWeight: '700', fontSize: item.value.length > 12 ? 12 : 15, marginTop: 6 }}>
+                      {item.value}
+                    </Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 10, textAlign: 'center' }} numberOfLines={2}>
+                      {isOpeningThisMenu ? 'Membuka...' : item.label}
+                    </Text>
+                  </>
+                )}
               </Pressable>
             </View>
           );
