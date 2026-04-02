@@ -1,11 +1,5 @@
-import { TeacherExamPacketsModuleScreen } from '../../../src/features/exams/TeacherExamPacketsModuleScreen';
+import { TeacherQuestionBankModuleScreen } from '../../../src/features/exams/TeacherQuestionBankModuleScreen';
 
 export default function TeacherExamBankScreen() {
-  return (
-    <TeacherExamPacketsModuleScreen
-      title="Bank Soal"
-      subtitle="Kelola bank soal lintas tipe ujian untuk kelas dan mata pelajaran yang Anda ampu."
-      defaultType="ALL"
-    />
-  );
+  return <TeacherQuestionBankModuleScreen />;
 }

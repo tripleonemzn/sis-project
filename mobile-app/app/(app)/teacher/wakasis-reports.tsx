@@ -12,6 +12,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
 import { MobileTabChip } from '../../../src/components/MobileTabChip';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
@@ -144,7 +145,9 @@ function makeMonthLabel(monthKey: string) {
   });
 }
 
-const SectionChip = MobileTabChip;
+const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
+  <MobileMenuTab active={active} label={label} onPress={onPress} minWidth={96} />
+);
 
 function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
   return (
@@ -530,9 +533,9 @@ export default function TeacherWakasisReportsScreen() {
       </View>
 
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-        <SectionChip active={section === 'RINGKASAN'} label="Ringkasan" onPress={() => setSection('RINGKASAN')} stacked useAutoIcon minWidth={102} />
-        <SectionChip active={section === 'PER_KELAS'} label="Per Kelas" onPress={() => setSection('PER_KELAS')} stacked useAutoIcon minWidth={102} />
-        <SectionChip active={section === 'PERIZINAN'} label="Perizinan" onPress={() => setSection('PERIZINAN')} stacked useAutoIcon minWidth={102} />
+        <SectionChip active={section === 'RINGKASAN'} label="Ringkasan" onPress={() => setSection('RINGKASAN')} />
+        <SectionChip active={section === 'PER_KELAS'} label="Per Kelas" onPress={() => setSection('PER_KELAS')} />
+        <SectionChip active={section === 'PERIZINAN'} label="Perizinan" onPress={() => setSection('PERIZINAN')} />
       </View>
 
       <View

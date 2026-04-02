@@ -13,7 +13,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
-import { MobileTabChip } from '../../../src/components/MobileTabChip';
+import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -578,7 +578,7 @@ function createNewComponentDraft(rows: GradeComponentDraft[]): GradeComponentDra
 }
 
 const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
-  <MobileTabChip active={active} label={label} onPress={onPress} compact stacked useAutoIcon minWidth={104} />
+  <MobileMenuTab active={active} label={label} onPress={onPress} minWidth={96} />
 );
 
 function TypeChip({

@@ -13,6 +13,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
 import { MobileTabChip } from '../../../src/components/MobileTabChip';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
@@ -223,7 +224,9 @@ function normalizeItemAttributes(item?: SarprasInventoryItem | null): InventoryA
   return next;
 }
 
-const SectionChip = MobileTabChip;
+const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
+  <MobileMenuTab active={active} label={label} onPress={onPress} minWidth={96} />
+);
 
 function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
   return (
@@ -1469,24 +1472,18 @@ export default function TeacherSarprasInventoryScreen() {
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{pageSubtitle}</Text>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        <SectionChip active={section === 'RINGKASAN'} label="Ringkasan" onPress={() => setSection('RINGKASAN')} stacked useAutoIcon minWidth={102} />
-        <SectionChip active={section === 'RUANGAN'} label="Ruangan" onPress={() => setSection('RUANGAN')} stacked useAutoIcon minWidth={102} />
+        <SectionChip active={section === 'RINGKASAN'} label="Ringkasan" onPress={() => setSection('RINGKASAN')} />
+        <SectionChip active={section === 'RUANGAN'} label="Ruangan" onPress={() => setSection('RUANGAN')} />
         <SectionChip
           active={section === 'INVENTARIS'}
           label={inventoryScope === 'LIBRARY' ? 'Inventaris Perpustakaan' : 'Inventaris'}
           onPress={() => setSection('INVENTARIS')}
-          stacked
-          useAutoIcon
-          minWidth={112}
         />
         {inventoryScope === 'LIBRARY' ? (
           <SectionChip
             active={section === 'PEMINJAMAN'}
             label="Daftar Peminjaman Buku"
             onPress={() => setSection('PEMINJAMAN')}
-            stacked
-            useAutoIcon
-            minWidth={116}
           />
         ) : null}
       </View>

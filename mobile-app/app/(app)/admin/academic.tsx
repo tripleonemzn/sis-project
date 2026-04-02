@@ -6,7 +6,8 @@ import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } f
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { ExamHtmlContent, plainTextFromExamRichText } from '../../../src/components/ExamHtmlContent';
-import { MobileTabChip } from '../../../src/components/MobileTabChip';
+import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -556,14 +557,12 @@ function SectionChip({
 }) {
   const iconColor = active ? BRAND_COLORS.blue : '#64748b';
   return (
-    <MobileTabChip
+    <MobileMenuTab
       active={active}
       label={label}
       onPress={onPress}
-      compact
-      stacked
-      minWidth={104}
-      icon={<Feather name={icon} size={16} color={iconColor} />}
+      iconName={icon}
+      minWidth={96}
     />
   );
 }
@@ -723,7 +722,6 @@ export default function AdminAcademicScreen() {
   const [teachingLoadTeacherSearch, setTeachingLoadTeacherSearch] = useState('');
   const [questionBankAcademicYearId, setQuestionBankAcademicYearId] = useState('');
   const [questionBankSubjectId, setQuestionBankSubjectId] = useState('');
-  const [questionBankSubjectSearch, setQuestionBankSubjectSearch] = useState('');
   const [questionBankTypeFilter, setQuestionBankTypeFilter] = useState<'' | AdminExamQuestionType>('');
   const [questionBankSemesterFilter, setQuestionBankSemesterFilter] = useState<'' | 'ODD' | 'EVEN'>('');
   const [questionBankSearchDraft, setQuestionBankSearchDraft] = useState('');
@@ -2247,16 +2245,20 @@ export default function AdminAcademicScreen() {
   const questionBankPagination = questionBankQuery.data?.pagination || { page: 1, limit: 20, total: 0, totalPages: 1 };
   const questionBankTotalPages = Math.max(1, Number(questionBankPagination.totalPages || 1));
   const questionBankCurrentPage = Math.min(Math.max(1, questionBankPage), questionBankTotalPages);
-  const selectedQuestionBankSubject =
-    (academicQuery.data?.subjects.items || []).find((item) => item.id === Number(questionBankSubjectId)) || null;
-  const filteredQuestionBankSubjectOptions = useMemo(() => {
-    const subjects = academicQuery.data?.subjects.items || [];
-    const q = questionBankSubjectSearch.trim().toLowerCase();
-    if (!q) return subjects.slice(0, 120);
-    return subjects
-      .filter((item) => `${item.code} ${item.name} ${item.category?.name || ''}`.toLowerCase().includes(q))
-      .slice(0, 160);
-  }, [academicQuery.data?.subjects.items, questionBankSubjectSearch]);
+  const questionBankAcademicYearOptions = useMemo(
+    () => (academicQuery.data?.years.items || []).map((item) => ({ value: String(item.id), label: item.name })),
+    [academicQuery.data?.years.items],
+  );
+  const questionBankSubjectOptions = useMemo(
+    () => [
+      { value: '', label: 'Semua Mapel' },
+      ...(academicQuery.data?.subjects.items || []).map((item) => ({
+        value: String(item.id),
+        label: `${item.code} - ${item.name}`,
+      })),
+    ],
+    [academicQuery.data?.subjects.items],
+  );
 
   useEffect(() => {
     if (questionBankPage > questionBankTotalPages) {
@@ -5441,19 +5443,13 @@ export default function AdminAcademicScreen() {
 
           {shouldShow('question-bank') ? (
             <SectionCard title="Bank Soal" subtitle="Filter by tahun/mapel/semester/tipe + pencarian konten seperti modul web.">
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Ajaran</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  {(academicQuery.data?.years.items || []).map((item) => (
-                    <SelectChip
-                      key={`question-bank-year-${item.id}`}
-                      active={effectiveQuestionBankAcademicYearId === item.id}
-                      label={item.name}
-                      onPress={() => setQuestionBankAcademicYearId(String(item.id))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Tahun Ajaran"
+                value={String(effectiveQuestionBankAcademicYearId || '')}
+                options={questionBankAcademicYearOptions}
+                onChange={setQuestionBankAcademicYearId}
+                placeholder="Pilih tahun ajaran"
+              />
 
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                 <TextInput
@@ -5486,74 +5482,33 @@ export default function AdminAcademicScreen() {
                 </Pressable>
               </View>
 
-              <TextInput
-                value={questionBankSubjectSearch}
-                onChangeText={setQuestionBankSubjectSearch}
-                placeholder="Cari mapel..."
-                placeholderTextColor="#94a3b8"
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#d5e0f5',
-                  borderRadius: 10,
-                  paddingHorizontal: 12,
-                  paddingVertical: 9,
-                  color: BRAND_COLORS.textDark,
-                  marginBottom: 6,
-                }}
+              <MobileSelectField
+                label="Mapel"
+                value={questionBankSubjectId}
+                options={questionBankSubjectOptions}
+                onChange={setQuestionBankSubjectId}
+                placeholder="Pilih mapel"
               />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  <SelectChip
-                    active={!questionBankSubjectId}
-                    label="Semua Mapel"
-                    onPress={() => setQuestionBankSubjectId('')}
-                  />
-                  {filteredQuestionBankSubjectOptions.map((item) => (
-                    <SelectChip
-                      key={`question-bank-subject-${item.id}`}
-                      active={questionBankSubjectId === String(item.id)}
-                      label={`${item.code} - ${item.name}`}
-                      onPress={() => setQuestionBankSubjectId(String(item.id))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
-                Mapel terpilih: {selectedQuestionBankSubject ? `${selectedQuestionBankSubject.code} - ${selectedQuestionBankSubject.name}` : 'Semua Mapel'}
-              </Text>
 
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tipe Soal</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  {EXAM_QUESTION_TYPE_OPTIONS.map((item) => (
-                    <SelectChip
-                      key={`question-bank-type-${item.value || 'ALL'}`}
-                      active={questionBankTypeFilter === item.value}
-                      label={item.label}
-                      onPress={() => setQuestionBankTypeFilter(item.value)}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Tipe Soal"
+                value={questionBankTypeFilter}
+                options={EXAM_QUESTION_TYPE_OPTIONS.map((item) => ({ value: item.value, label: item.label }))}
+                onChange={(next) => setQuestionBankTypeFilter((next as '' | AdminExamQuestionType) || '')}
+                placeholder="Pilih tipe soal"
+              />
 
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Semester</Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <SelectChip
-                  active={questionBankSemesterFilter === ''}
-                  label="Semua Semester"
-                  onPress={() => setQuestionBankSemesterFilter('')}
-                />
-                <SelectChip
-                  active={questionBankSemesterFilter === 'ODD'}
-                  label="Ganjil"
-                  onPress={() => setQuestionBankSemesterFilter('ODD')}
-                />
-                <SelectChip
-                  active={questionBankSemesterFilter === 'EVEN'}
-                  label="Genap"
-                  onPress={() => setQuestionBankSemesterFilter('EVEN')}
-                />
-              </View>
+              <MobileSelectField
+                label="Semester"
+                value={questionBankSemesterFilter}
+                options={[
+                  { value: '', label: 'Semua Semester' },
+                  { value: 'ODD', label: 'Semester Ganjil' },
+                  { value: 'EVEN', label: 'Semester Genap' },
+                ]}
+                onChange={(next) => setQuestionBankSemesterFilter((next as '' | 'ODD' | 'EVEN') || '')}
+                placeholder="Pilih semester"
+              />
 
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                 <StatCard

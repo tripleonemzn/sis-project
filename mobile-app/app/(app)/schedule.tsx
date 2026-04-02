@@ -29,6 +29,16 @@ const DAY_LABELS: Record<DayOfWeek, string> = {
   SATURDAY: 'Sabtu',
 };
 
+function getDayLabel(day: string) {
+  const normalized = String(day || '').trim().toUpperCase() as DayOfWeek;
+  if (DAY_LABELS[normalized]) return DAY_LABELS[normalized];
+  return String(day || '')
+    .trim()
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase()) || 'Hari';
+}
+
 function ScheduleCard({ item }: { item: ScheduleEntry }) {
   const displayHour = typeof item.teachingHour === 'number' ? item.teachingHour : item.period;
   return (
@@ -118,8 +128,9 @@ export default function ScheduleScreen() {
                 <View key={day} style={{ marginRight: 8 }}>
                   <MobileTabChip
                     active={effectiveActiveDay === day}
-                    label={DAY_LABELS[day]}
+                    label={getDayLabel(day)}
                     onPress={() => setActiveDay(day)}
+                    compact
                     minWidth={92}
                   />
                 </View>

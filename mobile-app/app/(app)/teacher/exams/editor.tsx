@@ -4,9 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../../src/components/AppLoadingScreen';
+import { MobileMenuTab } from '../../../../src/components/MobileMenuTab';
+import { MobileSelectField } from '../../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../../src/components/QueryStateView';
 import { useAuth } from '../../../../src/features/auth/AuthProvider';
 import { examApi, ExamProgramItem } from '../../../../src/features/exams/examApi';
+import { plainTextFromExamRichText } from '../../../../src/components/ExamHtmlContent';
 import {
   ExamDisplayType,
   ExamQuestionBlueprint,
@@ -207,7 +210,7 @@ function parseQuestions(raw: unknown): QuestionDraft[] {
           const data = option as Record<string, unknown>;
           return {
             id: String(data.id || createId('opt')),
-            content: String(data.content || data.option_text || ''),
+            content: plainTextFromExamRichText(String(data.content || data.option_text || '')),
             isCorrect: Boolean(data.isCorrect),
           };
         });
@@ -215,7 +218,7 @@ function parseQuestions(raw: unknown): QuestionDraft[] {
       return {
         id: String(q.id || `q-${idx + 1}`),
         type,
-        content: String(q.content || q.question_text || ''),
+        content: plainTextFromExamRichText(String(q.content || q.question_text || '')),
         score: String(typeof q.score === 'number' ? q.score : 1),
         blueprint: normalizeBlueprint(q.blueprint || (q.metadata as Record<string, unknown> | undefined)?.blueprint),
         questionCard: normalizeQuestionCard(
@@ -334,6 +337,29 @@ export default function TeacherExamEditorScreen() {
     if (!selectedProgram || allowedSubjectIdsByProgram.size === 0) return assignments;
     return assignments.filter((assignment) => allowedSubjectIdsByProgram.has(Number(assignment.subject?.id)));
   }, [selectedProgram, allowedSubjectIdsByProgram, assignments]);
+  const assignmentOptions = useMemo(
+    () =>
+      filteredAssignments.map((assignment) => ({
+        value: String(assignment.id),
+        label: `${assignment.subject.name} • ${assignment.class.name}`,
+      })),
+    [filteredAssignments],
+  );
+  const programOptions = useMemo(
+    () =>
+      availablePrograms.map((program) => ({
+        value: normalizeProgramCode(program.code) || '',
+        label: String(program.label || program.shortLabel || program.code).trim() || String(program.code),
+      })),
+    [availablePrograms],
+  );
+  const semesterOptions = useMemo(
+    () => [
+      { value: 'ODD', label: 'Semester Ganjil' },
+      { value: 'EVEN', label: 'Semester Genap' },
+    ],
+    [],
+  );
   const lockedSemester = (selectedProgram?.fixedSemester as 'ODD' | 'EVEN' | null) || null;
   const isTypeLockedFromMenu = !isEditMode && !!forcedProgramCode;
   const scoreSyncHint = useMemo(
@@ -579,7 +605,7 @@ export default function TeacherExamEditorScreen() {
       }
     >
       <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6 }}>
-        {isEditMode ? 'Edit Packet Ujian' : 'Buat Packet Ujian'}
+        {isEditMode ? 'Edit Paket Ujian' : 'Buat Paket Ujian'}
       </Text>
       <Text style={{ color: '#64748b', marginBottom: 12 }}>
         Susun metadata ujian dan soal secara sederhana dari mobile.
@@ -588,50 +614,18 @@ export default function TeacherExamEditorScreen() {
       <View
         style={{
           flexDirection: 'row',
-          marginHorizontal: -4,
+          gap: 8,
           marginBottom: 10,
         }}
       >
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <Pressable
-            onPress={() => setActiveSection('INFO')}
-            style={{
-              borderWidth: 1,
-              borderColor: activeSection === 'INFO' ? '#1d4ed8' : '#cbd5e1',
-              backgroundColor: activeSection === 'INFO' ? '#eff6ff' : '#fff',
-              borderRadius: 10,
-              paddingVertical: 10,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ color: activeSection === 'INFO' ? '#1d4ed8' : '#334155', fontWeight: '700', fontSize: 12 }}>
-              1. Informasi Ujian
-            </Text>
-          </Pressable>
-        </View>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <Pressable
-            onPress={() => setActiveSection('QUESTIONS')}
-            style={{
-              borderWidth: 1,
-              borderColor: activeSection === 'QUESTIONS' ? '#1d4ed8' : '#cbd5e1',
-              backgroundColor: activeSection === 'QUESTIONS' ? '#eff6ff' : '#fff',
-              borderRadius: 10,
-              paddingVertical: 10,
-              alignItems: 'center',
-            }}
-          >
-            <Text
-              style={{
-                color: activeSection === 'QUESTIONS' ? '#1d4ed8' : '#334155',
-                fontWeight: '700',
-                fontSize: 12,
-              }}
-            >
-              2. Butir Soal ({completedQuestions}/{questions.length})
-            </Text>
-          </Pressable>
-        </View>
+        <MobileMenuTab active={activeSection === 'INFO'} label="Informasi Ujian" onPress={() => setActiveSection('INFO')} iconName="file-text" minWidth={108} />
+        <MobileMenuTab
+          active={activeSection === 'QUESTIONS'}
+          label={`Butir Soal ${completedQuestions}/${questions.length}`}
+          onPress={() => setActiveSection('QUESTIONS')}
+          iconName="clipboard"
+          minWidth={108}
+        />
       </View>
 
       {activeSection === 'INFO' ? (
@@ -681,37 +675,17 @@ export default function TeacherExamEditorScreen() {
         }}
       >
         <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Kelas & Mapel</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
-          {filteredAssignments.map((assignment) => {
-            const selected = selectedAssignmentId === assignment.id;
-            return (
-              <View key={assignment.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-                <Pressable
-                  onPress={() => setSelectedAssignmentId(assignment.id)}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                    backgroundColor: selected ? '#eff6ff' : '#fff',
-                    borderRadius: 8,
-                    padding: 8,
-                  }}
-                >
-                  <Text style={{ color: selected ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: 11 }} numberOfLines={2}>
-                    {assignment.subject.name}
-                  </Text>
-                  <Text style={{ color: '#334155', fontSize: 11 }} numberOfLines={1}>
-                    Kelas: {assignment.class.name}
-                  </Text>
-                </Pressable>
-              </View>
-            );
-          })}
-        </View>
-        {filteredAssignments.length === 0 ? (
-          <Text style={{ color: '#b45309', fontSize: 11, marginTop: 4 }}>
-            Tidak ada mapel penugasan yang diizinkan untuk program ini.
-          </Text>
-        ) : null}
+        <MobileSelectField
+          value={selectedAssignmentId ? String(selectedAssignmentId) : ''}
+          options={assignmentOptions}
+          onChange={(next) => setSelectedAssignmentId(next ? Number(next) : null)}
+          placeholder="Pilih kelas dan mapel"
+          helperText={
+            filteredAssignments.length === 0
+              ? 'Tidak ada mapel penugasan yang diizinkan untuk program ini.'
+              : 'Pilihan mengikuti assignment guru yang aktif.'
+          }
+        />
       </View>
 
       <TextInput
@@ -802,37 +776,17 @@ export default function TeacherExamEditorScreen() {
       {examProgramsQuery.isLoading ? (
         <QueryStateView type="loading" message="Memuat program ujian..." />
       ) : availablePrograms.length > 0 ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
-          {availablePrograms.map((program) => {
-            const code = normalizeProgramCode(program.code) || '';
-            const selected = selectedProgramCode === code;
-            const optionLocked = isTypeLockedFromMenu && forcedProgramCode !== code;
-            return (
-              <View key={code} style={{ paddingHorizontal: 4, marginBottom: 8 }}>
-                <Pressable
-                  onPress={() => {
-                    if (optionLocked) return;
-                    setSelectedProgramCode(code);
-                  }}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                    backgroundColor: selected ? '#eff6ff' : optionLocked ? '#f8fafc' : '#fff',
-                    borderRadius: 8,
-                    paddingVertical: 8,
-                    paddingHorizontal: 10,
-                    alignItems: 'center',
-                    opacity: optionLocked ? 0.45 : 1,
-                  }}
-                >
-                  <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 11, fontWeight: '700' }}>
-                    {String(program.shortLabel || program.label || code).trim() || code}
-                  </Text>
-                </Pressable>
-              </View>
-            );
-          })}
-        </View>
+        <MobileSelectField
+          value={selectedProgramCode}
+          options={programOptions}
+          onChange={(next) => {
+            if (isTypeLockedFromMenu && forcedProgramCode && next !== forcedProgramCode) return;
+            setSelectedProgramCode(next);
+          }}
+          placeholder="Pilih program ujian"
+          helperText={isTypeLockedFromMenu ? `Program ujian dikunci sesuai menu yang dipilih: ${selectedProgram?.label || forcedProgramCode}.` : undefined}
+          disabled={Boolean(isTypeLockedFromMenu)}
+        />
       ) : (
         <View
           style={{
@@ -849,42 +803,19 @@ export default function TeacherExamEditorScreen() {
           </Text>
         </View>
       )}
-      {isTypeLockedFromMenu ? (
-        <Text style={{ color: '#475569', fontSize: 11, marginBottom: 8 }}>
-          Program ujian dikunci sesuai menu yang dipilih: {selectedProgram?.label || forcedProgramCode}.
-        </Text>
-      ) : null}
-
       <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 6 }}>Semester</Text>
-      <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
-        {(['ODD', 'EVEN'] as Array<'ODD' | 'EVEN'>).map((item) => {
-          const selected = semester === item;
-          const optionLocked = !!lockedSemester && lockedSemester !== item;
-          return (
-            <View key={item} style={{ width: '50%', paddingHorizontal: 4 }}>
-              <Pressable
-                onPress={() => {
-                  if (lockedSemester) return;
-                  setSemester(item);
-                }}
-                style={{
-                  borderWidth: 1,
-                  borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                  backgroundColor: selected ? '#eff6ff' : optionLocked ? '#f8fafc' : '#fff',
-                  borderRadius: 8,
-                  paddingVertical: 8,
-                  alignItems: 'center',
-                  opacity: optionLocked ? 0.45 : 1,
-                }}
-              >
-                <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 12, fontWeight: '700' }}>
-                  {item === 'ODD' ? 'Ganjil' : 'Genap'}
-                </Text>
-              </Pressable>
-            </View>
-          );
-        })}
-      </View>
+      <MobileSelectField
+        value={semester}
+        options={semesterOptions}
+        onChange={(next) => {
+          if (next === 'ODD' || next === 'EVEN') {
+            if (lockedSemester) return;
+            setSemester(next);
+          }
+        }}
+        placeholder="Pilih semester"
+        disabled={Boolean(lockedSemester)}
+      />
       {lockedSemester ? (
         <Text style={{ color: '#475569', fontSize: 11, marginBottom: 8 }}>
           Semester otomatis untuk {selectedProgram?.label || examType}: {lockedSemester === 'ODD' ? 'Ganjil' : 'Genap'}.
@@ -921,39 +852,11 @@ export default function TeacherExamEditorScreen() {
         </Text>
       </Pressable>
 
-      <Pressable
-        onPress={() => setActiveSection('QUESTIONS')}
-        style={{
-          borderWidth: 1,
-          borderColor: '#1d4ed8',
-          backgroundColor: '#eff6ff',
-          borderRadius: 10,
-          paddingVertical: 10,
-          alignItems: 'center',
-          marginBottom: 12,
-        }}
-      >
-        <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>Lanjut ke Butir Soal</Text>
-      </Pressable>
         </>
       ) : null}
 
       {activeSection === 'QUESTIONS' ? (
         <>
-      <Pressable
-        onPress={() => setActiveSection('INFO')}
-        style={{
-          borderWidth: 1,
-          borderColor: '#cbd5e1',
-          backgroundColor: '#fff',
-          borderRadius: 10,
-          paddingVertical: 10,
-          alignItems: 'center',
-          marginBottom: 10,
-        }}
-      >
-        <Text style={{ color: '#334155', fontWeight: '700' }}>Kembali ke Informasi Ujian</Text>
-      </Pressable>
       <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Daftar Soal</Text>
       {questions.map((question, index) => (
         <View

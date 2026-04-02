@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
 import { MobileTabChip } from '../../../src/components/MobileTabChip';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
@@ -451,14 +452,11 @@ export default function TeacherHomeroomAttendanceScreen() {
               { key: 'LATE' as TabKey, label: 'Telat' },
             ].map((item) => (
               <View key={item.key} style={{ marginRight: 8 }}>
-                <MobileTabChip
+                <MobileMenuTab
                   active={tab === item.key}
                   label={item.label}
                   onPress={() => setTab(item.key)}
-                  compact
-                  stacked
-                  useAutoIcon
-                  minWidth={98}
+                  minWidth={92}
                 />
               </View>
             ))}

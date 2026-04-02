@@ -6,7 +6,7 @@ import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
-import { MobileTabChip } from '../../../src/components/MobileTabChip';
+import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -377,14 +377,11 @@ export default function PublicBkkProfileScreen() {
                   const active = activeTab === tab.id;
                   return (
                     <View key={tab.id} style={{ marginRight: 8 }}>
-                      <MobileTabChip
+                      <MobileMenuTab
                         active={active}
                         label={tab.label}
                         onPress={() => setActiveTab(tab.id)}
-                        compact
-                        stacked
-                        useAutoIcon
-                        minWidth={110}
+                        minWidth={96}
                       />
                     </View>
                   );

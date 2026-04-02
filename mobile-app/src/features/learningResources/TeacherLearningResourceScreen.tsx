@@ -5,7 +5,7 @@ import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } f
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
-import { MobileTabChip } from '../../components/MobileTabChip';
+import { MobileMenuTab } from '../../components/MobileMenuTab';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
@@ -185,7 +185,7 @@ function toPayloadRows(rows: CpAnalysisRowDraft[]): CpTpAnalysisItem[] {
 }
 
 const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
-  <MobileTabChip active={active} label={label} onPress={onPress} compact stacked useAutoIcon minWidth={108} />
+  <MobileMenuTab active={active} label={label} onPress={onPress} minWidth={98} />
 );
 
 function SummaryCard({
