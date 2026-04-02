@@ -14,6 +14,7 @@ import { MOBILE_NOTIFICATIONS_QUERY_KEY } from '../../src/features/notifications
 import { MobileWebmailMessageSummary, webmailApi } from '../../src/features/webmail/webmailApi';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
+import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
 
 const ALLOWED_WEBMAIL_ROLES = new Set(['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXTRACURRICULAR_TUTOR']);
 const MAILBOX_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,62}$/;
@@ -210,6 +211,7 @@ export default function MobileEmailScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const isScreenActive = useIsScreenActive();
   const pagePadding = getStandardPagePadding(insets, { bottom: 16 });
   const webviewRef = useRef<WebView | null>(null);
   const hasNativeWebView = useMemo(() => Boolean(UIManager.getViewManagerConfig?.('RNCWebView')), []);
@@ -249,9 +251,10 @@ export default function MobileEmailScreen() {
   const emailFeedQuery = useQuery({
     queryKey: ['mobile-email-inbox-feed', configQuery.data?.mailboxIdentity || 'all'],
     queryFn: () => webmailApi.getMessages({ page: 1, limit: 20 }),
-    enabled: isAuthenticated && isAllowedRole,
-    staleTime: 15_000,
-    refetchInterval: isAuthenticated && isAllowedRole ? 20_000 : false,
+    enabled: isAuthenticated && isAllowedRole && isScreenActive && !isWebmailMode,
+    staleTime: 30_000,
+    refetchInterval: isAuthenticated && isAllowedRole && isScreenActive && !isWebmailMode ? 60_000 : false,
+    refetchIntervalInBackground: false,
     refetchOnReconnect: true,
   });
 
@@ -309,8 +312,14 @@ export default function MobileEmailScreen() {
   const selectedEmailDetailQuery = useQuery({
     queryKey: ['mobile-email-message-detail', effectiveSelectedEmailGuid || 'empty'],
     queryFn: () => webmailApi.getMessageDetail(String(effectiveSelectedEmailGuid)),
-    enabled: Boolean(effectiveSelectedEmailGuid) && isAuthenticated && isAllowedRole && emailFeedQuery.data?.mailboxAvailable !== false,
-    staleTime: 15_000,
+    enabled:
+      Boolean(effectiveSelectedEmailGuid) &&
+      isAuthenticated &&
+      isAllowedRole &&
+      isScreenActive &&
+      !isWebmailMode &&
+      emailFeedQuery.data?.mailboxAvailable !== false,
+    staleTime: 30_000,
   });
 
   const startSsoMutation = useMutation({

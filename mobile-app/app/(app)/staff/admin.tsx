@@ -37,6 +37,7 @@ import type {
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+import { useIsScreenActive } from '../../../src/hooks/useIsScreenActive';
 
 function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
   return (
@@ -193,6 +194,7 @@ export default function StaffAdminScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const isScreenActive = useIsScreenActive();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const staffDivision = resolveStaffDivision(user);
   const focus = Array.isArray(params.focus) ? params.focus[0] : params.focus;
@@ -320,7 +322,8 @@ export default function StaffAdminScreen() {
         limit: 6,
       }),
     staleTime: 60 * 1000,
-    refetchInterval: 45_000,
+    refetchInterval: isScreenActive ? 120_000 : false,
+    refetchIntervalInBackground: false,
   });
 
   const headTuClosingPeriodsQuery = useQuery({

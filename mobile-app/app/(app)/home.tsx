@@ -50,6 +50,7 @@ import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
 import type { AuthUser } from '../../src/features/auth/types';
 import { useUnreadNotificationsQuery } from '../../src/features/notifications/useUnreadNotificationsQuery';
+import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
 import {
   getStaffHomeSubtitle,
   getStaffPreferredMenuKeys,
@@ -745,7 +746,8 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
-  const unreadNotificationsQuery = useUnreadNotificationsQuery(isAuthenticated);
+  const isScreenActive = useIsScreenActive();
+  const unreadNotificationsQuery = useUnreadNotificationsQuery(isAuthenticated, isScreenActive);
   const unreadNotificationCount = unreadNotificationsQuery.data ?? 0;
   const profileQuery = useProfileQuery(isAuthenticated);
   const [isRefreshing, setIsRefreshing] = useState(false);

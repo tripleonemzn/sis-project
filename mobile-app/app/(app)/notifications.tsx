@@ -24,6 +24,7 @@ import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../src/lib/ui/feedback';
 import { BRAND_COLORS } from '../../src/config/brand';
 import { getStaffFinanceNotificationTarget } from '../../src/features/staff/staffRole';
+import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
 
 function formatDateTime(value: string) {
   const date = new Date(value);
@@ -121,12 +122,14 @@ export default function NotificationsScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const queryClient = useQueryClient();
   const pageContentPadding = getStandardPagePadding(insets);
+  const isScreenActive = useIsScreenActive();
 
   const notificationsQuery = useQuery({
     queryKey: MOBILE_NOTIFICATIONS_INBOX_QUERY_KEY,
     queryFn: () => notificationApi.getNotifications({ page: 1, limit: 50 }),
-    enabled: isAuthenticated,
-    refetchInterval: isAuthenticated ? 10_000 : false,
+    enabled: isAuthenticated && isScreenActive,
+    refetchInterval: isAuthenticated && isScreenActive ? 30_000 : false,
+    refetchIntervalInBackground: false,
     refetchOnReconnect: true,
   });
 

@@ -58,6 +58,7 @@ import { BRAND_COLORS } from '../../../src/config/brand';
 import { ENV } from '../../../src/config/env';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
 import { canAccessStaffPayments, getStaffPaymentsBlockedMessage } from '../../../src/features/staff/staffRole';
+import { useIsScreenActive } from '../../../src/hooks/useIsScreenActive';
 
 const PERIODICITY_OPTIONS: Array<{ value: FinanceComponentPeriodicity; label: string }> = [
   { value: 'MONTHLY', label: 'Bulanan' },
@@ -645,6 +646,7 @@ export default function StaffPaymentsScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const isScreenActive = useIsScreenActive();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const canOpenPayments = canAccessStaffPayments(user);
 
@@ -954,7 +956,8 @@ export default function StaffPaymentsScreen() {
         limit: 6,
       }),
     staleTime: 30_000,
-    refetchInterval: 45_000,
+    refetchInterval: isScreenActive ? 120_000 : false,
+    refetchIntervalInBackground: false,
   });
 
   const closingPeriodApprovalPolicyQuery = useQuery({

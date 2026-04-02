@@ -35,6 +35,7 @@ import {
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
+import { useIsScreenActive } from '../../../src/hooks/useIsScreenActive';
 
 type FilterStatus = 'ALL' | PrincipalBudgetRequestStatus;
 
@@ -137,6 +138,7 @@ export default function PrincipalApprovalsScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const isScreenActive = useIsScreenActive();
   const activeYearQuery = useQuery({
     queryKey: ['mobile-principal-active-year'],
     enabled: isAuthenticated && user?.role === 'PRINCIPAL',
@@ -233,7 +235,8 @@ export default function PrincipalApprovalsScreen() {
         limit: 6,
       }),
     staleTime: 60 * 1000,
-    refetchInterval: 45_000,
+    refetchInterval: isScreenActive ? 120_000 : false,
+    refetchIntervalInBackground: false,
   });
 
   const closingPeriodsQuery = useQuery({
