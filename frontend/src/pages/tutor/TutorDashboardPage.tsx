@@ -47,6 +47,8 @@ export const TutorDashboardPage = () => {
     queryKey: ['tutor-assignments', activeAcademicYearId],
     queryFn: () => tutorService.getAssignments(activeAcademicYearId),
     enabled: !!activeAcademicYearId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const assignments = (assignmentsData?.data || []) as TutorAssignmentSummary[];
@@ -57,6 +59,8 @@ export const TutorDashboardPage = () => {
     queryKey: ['tutor-dashboard-inventory', activeAcademicYearId],
     queryFn: () => tutorService.getInventoryOverview(activeAcademicYearId),
     enabled: !!activeAcademicYearId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const inventoryRows = ((inventoryData?.data || []) as InventoryOverviewRow[]) || [];

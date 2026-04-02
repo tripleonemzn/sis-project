@@ -16,6 +16,50 @@ import {
   resolveProfileEducationTrack,
 } from '../utils/profileEducation';
 
+const USER_LIST_CACHE_TTL_MS = 60_000;
+const USER_LIST_MAX_LIMIT = 1000;
+
+type CachedUserListEntry = {
+  expiresAt: number;
+  data: any[];
+};
+
+const userListCache = new Map<string, CachedUserListEntry>();
+
+const parseUserListLimit = (value: unknown) => {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return USER_LIST_MAX_LIMIT;
+  }
+
+  return Math.min(parsed, USER_LIST_MAX_LIMIT);
+};
+
+const getCachedUserList = (key: string) => {
+  const entry = userListCache.get(key);
+  if (!entry) {
+    return null;
+  }
+
+  if (entry.expiresAt <= Date.now()) {
+    userListCache.delete(key);
+    return null;
+  }
+
+  return entry.data;
+};
+
+const setCachedUserList = (key: string, data: any[]) => {
+  userListCache.set(key, {
+    expiresAt: Date.now() + USER_LIST_CACHE_TTL_MS,
+    data,
+  });
+};
+
+const clearUserListCache = () => {
+  userListCache.clear();
+};
+
 const dateSchema = z
   .string()
   .transform((str, ctx) => {
@@ -291,8 +335,25 @@ function normalizeDateOnly(date: Date) {
 export const getUsers = asyncHandler(async (req: Request, res: Response) => {
   const { role, verificationStatus, class_id } = req.query;
   const user = (req as any).user;
+  const limit = parseUserListLimit(req.query.limit);
   const where: any = {};
   let historicalStudentScope: Awaited<ReturnType<typeof resolveHistoricalStudentScope>> | null = null;
+  const canUseUserListCache = !class_id;
+  const userListCacheKey = canUseUserListCache
+    ? JSON.stringify({
+        role: String(role || '').trim().toUpperCase(),
+        verificationStatus: String(verificationStatus || '').trim().toUpperCase(),
+        limit,
+      })
+    : null;
+
+  if (userListCacheKey) {
+    const cachedUsers = getCachedUserList(userListCacheKey);
+    if (cachedUsers) {
+      res.status(200).json(new ApiResponse(200, cachedUsers, 'Daftar pengguna berhasil diambil'));
+      return;
+    }
+  }
   
   if (role) {
     where.role = String(role);
@@ -462,6 +523,7 @@ export const getUsers = asyncHandler(async (req: Request, res: Response) => {
     orderBy: {
       name: 'asc',
     },
+    take: limit,
   });
 
   const normalizedUsers = historicalStudentScope
@@ -486,6 +548,10 @@ export const getUsers = asyncHandler(async (req: Request, res: Response) => {
         };
       })
     : users;
+
+  if (userListCacheKey) {
+    setCachedUserList(userListCacheKey, normalizedUsers as any[]);
+  }
 
   res.status(200).json(new ApiResponse(200, normalizedUsers, 'Daftar pengguna berhasil diambil'));
 });
@@ -705,6 +771,8 @@ export const linkMyChild = asyncHandler(async (req: Request, res: Response) => {
     });
   }
 
+  clearUserListCache();
+
   const refreshedParent = await prisma.user.findUnique({
     where: { id: parent.id },
     select: {
@@ -770,6 +838,8 @@ export const unlinkMyChild = asyncHandler(async (req: Request, res: Response) =>
       },
     },
   });
+
+  clearUserListCache();
 
   const refreshedParent = await prisma.user.findUnique({
     where: { id: parent.id },
@@ -888,6 +958,8 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
   });
 
   const { password, ...userWithoutPassword } = user;
+
+  clearUserListCache();
 
   res.status(201).json(new ApiResponse(201, userWithoutPassword, 'Pengguna berhasil dibuat'));
 });
@@ -1106,6 +1178,8 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
     console.warn('[AUDIT] gagal mencatat update user', auditError);
   }
 
+  clearUserListCache();
+
   res.status(200).json(new ApiResponse(200, userWithoutPassword, 'Pengguna berhasil diperbarui'));
 });
 
@@ -1187,6 +1261,8 @@ export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
     where: { id: userId },
   });
 
+  clearUserListCache();
+
   res.status(200).json(new ApiResponse(200, null, 'Pengguna berhasil dihapus'));
 });
 
@@ -1202,6 +1278,10 @@ export const verifyUsersBulk = asyncHandler(async (req: Request, res: Response) 
       verificationStatus: VerificationStatus.VERIFIED,
     },
   });
+
+  if (result.count > 0) {
+    clearUserListCache();
+  }
 
   res
     .status(200)

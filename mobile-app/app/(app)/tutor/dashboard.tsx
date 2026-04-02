@@ -51,6 +51,7 @@ export default function TutorDashboardScreen() {
     queryKey: ['mobile-tutor-assignments', user?.id, activeYearQuery.data?.id],
     enabled: isAuthenticated && hasTutorWorkspaceAccess,
     queryFn: () => tutorApi.listAssignments(activeYearQuery.data?.id),
+    staleTime: 5 * 60 * 1000,
   });
 
   const assignments = useMemo(() => assignmentsQuery.data || [], [assignmentsQuery.data]);

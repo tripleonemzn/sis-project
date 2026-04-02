@@ -28,6 +28,9 @@ type GalleryApiResponse = {
   }>;
 };
 
+const GALLERY_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const HERO_ROTATION_INTERVAL_MS = 3500;
+
 const formatPhotoDescription = (raw?: string) => {
   if (!raw) return '';
   const separator = '->';
@@ -82,6 +85,14 @@ export default function WelcomeScreen() {
     [activeSources, brokenSources],
   );
 
+  const prefetchSources = useMemo(() => {
+    if (displaySources.length === 0) return [];
+    const currentSource = displaySources[activeIndex] || displaySources[0];
+    const nextSource =
+      displaySources.length > 1 ? displaySources[(activeIndex + 1) % displaySources.length] : null;
+    return Array.from(new Set([currentSource, nextSource].filter((value): value is string => Boolean(value))));
+  }, [activeIndex, displaySources]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -113,7 +124,7 @@ export default function WelcomeScreen() {
     };
 
     syncGallery();
-    const refreshId = setInterval(syncGallery, 60000);
+    const refreshId = setInterval(syncGallery, GALLERY_REFRESH_INTERVAL_MS);
 
     return () => {
       mounted = false;
@@ -132,20 +143,18 @@ export default function WelcomeScreen() {
 
   useEffect(() => {
     if (displaySources.length <= 1) return;
-    const defaultMs = 3500;
-    const intervalMs = defaultMs;
     const intervalId = setInterval(() => {
       setActiveIndex((prev) => (prev >= displaySources.length - 1 ? 0 : prev + 1));
-    }, intervalMs);
+    }, HERO_ROTATION_INTERVAL_MS);
     return () => clearInterval(intervalId);
   }, [displaySources.length]);
 
   useEffect(() => {
-    if (displaySources.length === 0) return;
-    displaySources.forEach((src) => {
+    if (prefetchSources.length === 0) return;
+    prefetchSources.forEach((src) => {
       Image.prefetch(src).catch(() => undefined);
     });
-  }, [displaySources]);
+  }, [prefetchSources]);
 
   if (isLoading) return <AppLoadingScreen message="Memuat aplikasi..." />;
   if (isAuthenticated) return <Redirect href="/home" />;

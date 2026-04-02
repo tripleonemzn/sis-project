@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth';
 import { osisManagementService } from '../services/osisManagement.service';
 import { createInAppNotification } from '../services/mobilePushNotification.service';
+import { invalidateTutorAssignmentsCache } from '../services/tutor.service';
 
 const extracurricularCategorySchema = z.preprocess((value) => {
   if (typeof value === 'string') return value.trim().toUpperCase();
@@ -190,6 +191,7 @@ export const assignTutor = asyncHandler(async (req: Request, res: Response) => {
         where: { id: existing.id },
         data: { isActive: true },
       });
+      invalidateTutorAssignmentsCache(body.tutorId, body.academicYearId);
       res.status(200).json(new ApiResponse(200, updated, 'Pembina berhasil diaktifkan kembali'));
       return;
     }
@@ -204,6 +206,8 @@ export const assignTutor = asyncHandler(async (req: Request, res: Response) => {
       isActive: true,
     },
   });
+
+  invalidateTutorAssignmentsCache(body.tutorId, body.academicYearId);
 
   res.status(201).json(new ApiResponse(201, assignment, 'Pembina berhasil ditugaskan'));
 });
@@ -230,10 +234,21 @@ export const getAssignments = asyncHandler(async (req: Request, res: Response) =
 
 export const removeAssignment = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  
+  const existing = await (prisma as any).ekstrakurikulerTutorAssignment.findUnique({
+    where: { id: Number(id) },
+    select: {
+      tutorId: true,
+      academicYearId: true,
+    },
+  });
+
   await (prisma as any).ekstrakurikulerTutorAssignment.delete({
     where: { id: Number(id) },
   });
+
+  if (existing?.tutorId && existing?.academicYearId) {
+    invalidateTutorAssignmentsCache(existing.tutorId, existing.academicYearId);
+  }
 
   res.status(200).json(new ApiResponse(200, null, 'Penugasan berhasil dihapus'));
 });

@@ -19,6 +19,44 @@ const DEFAULT_EXTRACURRICULAR_PREDICATE_LABELS: Record<ExtracurricularPredicate,
 };
 
 const EXTRACURRICULAR_ATTENDANCE_STATUSES = ['PRESENT', 'PERMIT', 'SICK', 'ABSENT'] as const;
+const TUTOR_ASSIGNMENTS_CACHE_TTL_MS = 60 * 1000;
+
+const tutorAssignmentsCache = new Map<string, { expiresAt: number; payload: unknown }>();
+
+function buildTutorAssignmentsCacheKey(tutorId: number, academicYearId: number, actorRole: string) {
+  return `${tutorId}:${academicYearId}:${String(actorRole || '').trim().toUpperCase() || 'UNKNOWN'}`;
+}
+
+function getTutorAssignmentsCache(key: string) {
+  const cached = tutorAssignmentsCache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    tutorAssignmentsCache.delete(key);
+    return null;
+  }
+  return cached.payload;
+}
+
+function setTutorAssignmentsCache(key: string, payload: unknown) {
+  tutorAssignmentsCache.set(key, {
+    expiresAt: Date.now() + TUTOR_ASSIGNMENTS_CACHE_TTL_MS,
+    payload,
+  });
+}
+
+export function invalidateTutorAssignmentsCache(tutorId?: number, academicYearId?: number) {
+  if (!tutorId && !academicYearId) {
+    tutorAssignmentsCache.clear();
+    return;
+  }
+
+  for (const key of tutorAssignmentsCache.keys()) {
+    const [cachedTutorId, cachedAcademicYearId] = key.split(':');
+    if (tutorId && Number(cachedTutorId) !== Number(tutorId)) continue;
+    if (academicYearId && Number(cachedAcademicYearId) !== Number(academicYearId)) continue;
+    tutorAssignmentsCache.delete(key);
+  }
+}
 type ExtracurricularAttendanceStatus = (typeof EXTRACURRICULAR_ATTENDANCE_STATUSES)[number];
 
 function normalizeAttendanceStatus(raw: unknown): ExtracurricularAttendanceStatus {
@@ -445,6 +483,11 @@ export class TutorService {
     }
 
     const actorRole = await this.getTutorActorRole(tutorId);
+    const cacheKey = buildTutorAssignmentsCacheKey(tutorId, targetAcademicYearId, actorRole);
+    const cachedAssignments = getTutorAssignmentsCache(cacheKey);
+    if (cachedAssignments) {
+      return cachedAssignments;
+    }
 
     // Cast prisma to any because Typescript definitions might be out of sync
     // verified runtime existence via check_prisma_keys.ts
@@ -468,6 +511,8 @@ export class TutorService {
         academicYear: true,
       },
     });
+
+    setTutorAssignmentsCache(cacheKey, assignments);
 
     return assignments;
   }

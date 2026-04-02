@@ -11,6 +11,7 @@ const APP_UPDATE_PUSH_TYPE = 'APP_UPDATE';
 const NOTIFICATION_PERMISSION_REQUESTED_KEY = 'mobile_notification_permission_requested_v1';
 const NOTIFICATION_SETTINGS_PROMPT_AT_KEY = 'mobile_notification_settings_prompt_at_v1';
 const NOTIFICATION_SETTINGS_PROMPT_COOLDOWN_MS = 12 * 60 * 60 * 1000;
+const PUSH_SYNC_MIN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_NOTIFICATION_CHANNEL_ID = 'default';
 export const APP_UPDATE_NOTIFICATION_CHANNEL_ID = 'updates';
 const FALLBACK_EAS_PROJECT_ID = 'cc9265c5-45b0-4964-8ed2-3e7a996b8c5a';
@@ -367,7 +368,30 @@ async function readLastPushSyncResult() {
   }
 }
 
-export async function syncPushDeviceRegistration() {
+function canReuseRecentPushSync(params: {
+  lastSync: PushSyncResult | null;
+  nextToken: string;
+  previousToken: string | null;
+  deviceName: string | null;
+  appVersion: string | null;
+  updateChannel: string | null;
+  runtimeVersion: string | null;
+}) {
+  const { lastSync, nextToken, previousToken, deviceName, appVersion, updateChannel, runtimeVersion } = params;
+  if (!lastSync?.registered) return false;
+  if (!previousToken || previousToken !== nextToken) return false;
+  if (lastSync.token !== nextToken) return false;
+  if (lastSync.deviceName !== deviceName) return false;
+  if (lastSync.appVersion !== appVersion) return false;
+  if (lastSync.updateChannel !== updateChannel) return false;
+  if (lastSync.runtimeVersion !== runtimeVersion) return false;
+
+  const lastSyncedAt = Date.parse(String(lastSync.syncedAt || ''));
+  if (!Number.isFinite(lastSyncedAt)) return false;
+  return Date.now() - lastSyncedAt < PUSH_SYNC_MIN_INTERVAL_MS;
+}
+
+export async function syncPushDeviceRegistration(): Promise<PushSyncResult> {
   const syncedAt = new Date().toISOString();
   const deviceName = resolveDeviceName();
   const appVersion = resolveAppVersion();
@@ -393,7 +417,24 @@ export async function syncPushDeviceRegistration() {
       return result;
     }
 
-    const previousToken = await AsyncStorage.getItem(PUSH_TOKEN_STORAGE_KEY);
+    const [previousToken, lastSync] = await Promise.all([
+      AsyncStorage.getItem(PUSH_TOKEN_STORAGE_KEY),
+      readLastPushSyncResult(),
+    ]);
+
+    if (
+      canReuseRecentPushSync({
+        lastSync,
+        nextToken,
+        previousToken,
+        deviceName,
+        appVersion,
+        updateChannel,
+        runtimeVersion,
+      })
+    ) {
+      return lastSync as PushSyncResult;
+    }
 
     if (previousToken && previousToken !== nextToken) {
       try {

@@ -1,9 +1,9 @@
-export const MOBILE_LIVE_QUERY_INTERVAL_MS = 15000;
+export const MOBILE_LIVE_QUERY_INTERVAL_MS = 30000;
 
 export const mobileLiveQueryOptions = {
-  staleTime: 10000,
+  staleTime: 20000,
   refetchInterval: MOBILE_LIVE_QUERY_INTERVAL_MS,
   refetchIntervalInBackground: false,
-  refetchOnReconnect: true,
-  refetchOnMount: true,
+  refetchOnReconnect: false,
+  refetchOnMount: false,
 } as const;

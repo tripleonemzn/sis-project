@@ -12,7 +12,8 @@ import {
   syncPushDeviceRegistration,
 } from '../pushNotifications/pushNotificationService';
 
-const PUSH_SYNC_RETRY_DELAYS_MS = [0, 5000, 15000, 30000] as const;
+const PUSH_SYNC_RETRY_DELAYS_MS = [0, 15000, 60000] as const;
+const PUSH_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -149,7 +150,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
     const syncIntervalId = setInterval(() => {
       void syncPushDeviceRegistration();
-    }, 15 * 60 * 1000);
+    }, PUSH_SYNC_INTERVAL_MS);
 
     return () => {
       clearInterval(syncIntervalId);

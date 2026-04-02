@@ -1594,17 +1594,33 @@ export const getTeachingResourcePrograms = asyncHandler(async (req: Request, res
   const academicYearId = await resolveAcademicYearId(req.query?.academicYearId);
   const roleContext = normalizeRoleContext(req.query?.roleContext);
   const includeInactive = toBoolean(req.query?.includeInactive, false);
+  const authRole = String(user?.role || '').toUpperCase();
+  const authUserId = Number(user?.id || 0);
+  const cacheKey = buildProgramsCacheKey({
+    academicYearId,
+    roleContext,
+    includeInactive,
+    authRole,
+    authUserId,
+  });
+  const cachedPayload = getProgramsCache(cacheKey);
+  if (cachedPayload) {
+    return res
+      .status(200)
+      .json(new ApiResponse(200, cachedPayload, 'Konfigurasi program perangkat ajar berhasil dimuat.'));
+  }
 
   const programs = await loadPrograms(academicYearId);
   const teacherScope =
-    roleContext === 'teacher' && String(user?.role || '').toUpperCase() === 'TEACHER' && Number(user?.id || 0) > 0
-      ? await resolveTeacherProgramScope(Number(user?.id), academicYearId)
+    roleContext === 'teacher' && authRole === 'TEACHER' && authUserId > 0
+      ? await resolveTeacherProgramScope(authUserId, academicYearId)
       : null;
   const payload = {
     academicYearId,
     roleContext,
     programs: filterPrograms(programs, roleContext, includeInactive, teacherScope),
   };
+  setProgramsCache(cacheKey, payload);
 
   return res
     .status(200)

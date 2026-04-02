@@ -234,6 +234,8 @@ export const TutorMembersPage = () => {
     queryKey: ['tutor-assignments', selectedAcademicYearId],
     queryFn: () => tutorService.getAssignments(selectedAcademicYearId!),
     enabled: !!selectedAcademicYearId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   // Type assertion for API response

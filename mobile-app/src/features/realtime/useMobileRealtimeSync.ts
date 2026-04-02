@@ -7,6 +7,13 @@ import { tokenStorage } from '../../lib/storage/tokenStorage';
 const INITIAL_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 15000;
 const INVALIDATE_DEBOUNCE_MS = 150;
+const SHORT_LIVED_CONNECTION_MS = 5000;
+const MAX_SHORT_LIVED_CONNECTIONS = 3;
+const SOCKET_COOLDOWN_MS = 5 * 60 * 1000;
+
+type RealtimeEventPayload = {
+  type?: string;
+};
 
 function buildRealtimeWsUrl(token: string) {
   const normalizedBase = String(ENV.API_BASE_URL || '').trim().replace(/\/+$/, '');
@@ -26,6 +33,27 @@ export function useMobileRealtimeSync(enabled: boolean) {
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let invalidateTimer: ReturnType<typeof setTimeout> | null = null;
     let backoffMs = INITIAL_BACKOFF_MS;
+    let appState = AppState.currentState;
+    let shortLivedConnections = 0;
+    let socketCooldownUntil = 0;
+    let lastOpenedAt = 0;
+
+    const isAppActive = () => appState === 'active';
+
+    const clearReconnectTimer = () => {
+      if (!reconnectTimer) return;
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    };
+
+    const scheduleReconnect = (delayMs: number) => {
+      if (disposed || !isAppActive()) return;
+      clearReconnectTimer();
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        void connect();
+      }, Math.max(delayMs, INITIAL_BACKOFF_MS));
+    };
 
     const scheduleInvalidate = () => {
       if (invalidateTimer) return;
@@ -48,7 +76,10 @@ export function useMobileRealtimeSync(enabled: boolean) {
     };
 
     const connect = async () => {
-      if (disposed) return;
+      if (disposed || !isAppActive() || socketCooldownUntil > Date.now()) return;
+      if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
 
       const token = await tokenStorage.getAccessToken();
       if (disposed || !token) return;
@@ -56,13 +87,25 @@ export function useMobileRealtimeSync(enabled: boolean) {
       const wsUrl = buildRealtimeWsUrl(token);
       if (!wsUrl) return;
 
+      lastOpenedAt = Date.now();
       socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
         backoffMs = INITIAL_BACKOFF_MS;
+        shortLivedConnections = 0;
+        socketCooldownUntil = 0;
+        clearReconnectTimer();
       };
 
-      socket.onmessage = () => {
+      socket.onmessage = (event) => {
+        if (typeof event.data === 'string' && event.data.length > 0) {
+          try {
+            const payload = JSON.parse(event.data) as RealtimeEventPayload;
+            if (payload?.type === 'READY') return;
+          } catch {
+            // noop
+          }
+        }
         scheduleInvalidate();
       };
 
@@ -76,18 +119,37 @@ export function useMobileRealtimeSync(enabled: boolean) {
 
       socket.onclose = () => {
         if (disposed) return;
-        reconnectTimer = setTimeout(() => {
-          reconnectTimer = null;
-          void connect();
-        }, backoffMs);
+        const livedMs = Date.now() - lastOpenedAt;
+        if (livedMs > 0 && livedMs < SHORT_LIVED_CONNECTION_MS) {
+          shortLivedConnections += 1;
+          if (shortLivedConnections >= MAX_SHORT_LIVED_CONNECTIONS) {
+            socketCooldownUntil = Date.now() + SOCKET_COOLDOWN_MS;
+            scheduleReconnect(SOCKET_COOLDOWN_MS);
+            return;
+          }
+        } else {
+          shortLivedConnections = 0;
+        }
+        if (!isAppActive()) return;
+        scheduleReconnect(backoffMs);
         backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
       };
     };
 
     const appStateSubscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') return;
+      appState = state;
+      if (state !== 'active') {
+        clearReconnectTimer();
+        closeSocket();
+        return;
+      }
       scheduleInvalidate();
+      if (socketCooldownUntil > Date.now()) {
+        scheduleReconnect(socketCooldownUntil - Date.now());
+        return;
+      }
       if (!socket || socket.readyState === WebSocket.CLOSED) {
+        backoffMs = INITIAL_BACKOFF_MS;
         void connect();
       }
     });

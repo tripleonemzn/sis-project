@@ -5,6 +5,8 @@ const INITIAL_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 15000;
 const INVALIDATE_DEBOUNCE_MS = 120;
 const MAX_COLD_START_FAILURES = 2;
+const SHORT_LIVED_CONNECTION_MS = 5000;
+const MAX_SHORT_LIVED_CONNECTIONS = 3;
 const COLD_START_COOLDOWN_MS = 10 * 60 * 1000;
 const WS_DISABLE_UNTIL_KEY = '__realtime_ws_disabled_until';
 const HIGH_FREQUENCY_MUTATION_PATTERNS: RegExp[] = [
@@ -66,7 +68,26 @@ export function useRealtimeSync(enabled: boolean) {
     let backoffMs = INITIAL_BACKOFF_MS;
     let hasEverConnected = false;
     let coldStartFailures = 0;
-    let disableReconnect = false;
+    let shortLivedConnections = 0;
+    let lastOpenedAt = 0;
+
+    const canUseRealtime = () =>
+      document.visibilityState === 'visible' && typeof navigator !== 'undefined' && navigator.onLine !== false;
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimer === null) return;
+      window.clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    };
+
+    const scheduleReconnect = (delayMs: number) => {
+      if (disposed) return;
+      clearReconnectTimer();
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, Math.max(delayMs, INITIAL_BACKOFF_MS));
+    };
 
     const clearSocketCooldown = () => {
       try {
@@ -87,20 +108,22 @@ export function useRealtimeSync(enabled: boolean) {
       }
     };
 
-    const canAttemptSocket = () => {
+    const getSocketCooldownRemainingMs = () => {
       try {
         const raw = window.sessionStorage.getItem(WS_DISABLE_UNTIL_KEY);
-        if (!raw) return true;
+        if (!raw) return 0;
         const until = Number(raw);
         if (!Number.isFinite(until) || until <= Date.now()) {
           window.sessionStorage.removeItem(WS_DISABLE_UNTIL_KEY);
-          return true;
+          return 0;
         }
-        return false;
+        return until - Date.now();
       } catch {
-        return true;
+        return 0;
       }
     };
+
+    const canAttemptSocket = () => getSocketCooldownRemainingMs() === 0;
 
     const shouldSkipGlobalInvalidate = (path: string) =>
       HIGH_FREQUENCY_MUTATION_PATTERNS.some((pattern) => pattern.test(path));
@@ -159,16 +182,21 @@ export function useRealtimeSync(enabled: boolean) {
     };
 
     const connect = () => {
-      if (disposed || disableReconnect || !canAttemptSocket()) return;
+      if (disposed || !canAttemptSocket() || !canUseRealtime()) return;
+      if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
       const token = localStorage.getItem('token');
       if (!token) return;
 
+      lastOpenedAt = Date.now();
       socket = new WebSocket(buildRealtimeWsUrl(token));
 
       socket.onopen = () => {
         backoffMs = INITIAL_BACKOFF_MS;
         hasEverConnected = true;
         coldStartFailures = 0;
+        clearReconnectTimer();
         clearSocketCooldown();
       };
 
@@ -181,6 +209,7 @@ export function useRealtimeSync(enabled: boolean) {
             payload = null;
           }
         }
+        if (payload?.type === 'READY') return;
         if (payload?.type === 'MUTATION' && typeof payload.path === 'string') {
           if (shouldSkipGlobalInvalidate(payload.path)) return;
           const targets = resolveQueryKeyPrefixes(payload.path);
@@ -200,53 +229,77 @@ export function useRealtimeSync(enabled: boolean) {
 
       socket.onclose = () => {
         if (disposed) return;
+        const livedMs = Date.now() - lastOpenedAt;
         if (!hasEverConnected) {
           coldStartFailures += 1;
           if (coldStartFailures >= MAX_COLD_START_FAILURES) {
-            disableReconnect = true;
             markSocketCooldown();
+            scheduleReconnect(COLD_START_COOLDOWN_MS);
             return;
           }
         }
-        reconnectTimer = window.setTimeout(() => {
-          reconnectTimer = null;
-          connect();
-        }, backoffMs);
+        if (livedMs > 0 && livedMs < SHORT_LIVED_CONNECTION_MS) {
+          shortLivedConnections += 1;
+          if (shortLivedConnections >= MAX_SHORT_LIVED_CONNECTIONS) {
+            markSocketCooldown();
+            scheduleReconnect(COLD_START_COOLDOWN_MS);
+            return;
+          }
+        } else {
+          shortLivedConnections = 0;
+        }
+        if (!canUseRealtime()) return;
+        scheduleReconnect(backoffMs);
         backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
       };
     };
 
-    const handleFocus = () => {
-      if (document.visibilityState !== 'visible') return;
+    const handleVisibleState = () => {
+      if (!canUseRealtime()) {
+        clearReconnectTimer();
+        closeSocket();
+        return;
+      }
       scheduleInvalidate();
+      if (!canAttemptSocket()) {
+        scheduleReconnect(getSocketCooldownRemainingMs());
+        return;
+      }
+      if (!socket || socket.readyState === WebSocket.CLOSED) {
+        backoffMs = INITIAL_BACKOFF_MS;
+        connect();
+      }
     };
 
     const handleStorage = (event: StorageEvent) => {
       if (event.key !== 'token') return;
+      clearReconnectTimer();
       closeSocket();
       backoffMs = INITIAL_BACKOFF_MS;
       hasEverConnected = false;
       coldStartFailures = 0;
-      disableReconnect = false;
+      shortLivedConnections = 0;
       clearSocketCooldown();
       connect();
     };
 
     connect();
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleFocus);
+    window.addEventListener('focus', handleVisibleState);
+    window.addEventListener('online', handleVisibleState);
+    window.addEventListener('offline', handleVisibleState);
+    document.addEventListener('visibilitychange', handleVisibleState);
     window.addEventListener('storage', handleStorage);
 
     return () => {
       disposed = true;
-      if (reconnectTimer !== null) {
-        window.clearTimeout(reconnectTimer);
-      }
+      clearReconnectTimer();
       if (invalidateTimer !== null) {
         window.clearTimeout(invalidateTimer);
       }
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleFocus);
+      window.removeEventListener('focus', handleVisibleState);
+      window.removeEventListener('online', handleVisibleState);
+      window.removeEventListener('offline', handleVisibleState);
+      document.removeEventListener('visibilitychange', handleVisibleState);
       window.removeEventListener('storage', handleStorage);
       closeSocket();
     };

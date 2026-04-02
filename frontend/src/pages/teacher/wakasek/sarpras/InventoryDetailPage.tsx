@@ -109,8 +109,9 @@ export const InventoryDetailPage = () => {
     queryKey: ['assigned-rooms-fallback', user?.id],
     queryFn: () => inventoryService.getAssignedRooms(),
     enabled: hasValidRoomId && isAssignedInventoryPath,
-    staleTime: 0,
-    refetchOnMount: 'always',
+    staleTime: 5 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
   // Fetch Inventory Items

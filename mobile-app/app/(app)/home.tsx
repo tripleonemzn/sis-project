@@ -880,6 +880,7 @@ export default function HomeScreen() {
       isAuthenticated &&
       canAccessTutorWorkspace(profile) &&
       Boolean(activeAcademicYearQuery.data?.id),
+    staleTime: 5 * 60 * 1000,
     queryFn: () => tutorApi.listAssignments(activeAcademicYearQuery.data?.id),
   });
 
@@ -906,7 +907,7 @@ export default function HomeScreen() {
   );
 
   const activeOsisElectionQuery = useQuery({
-    queryKey: ['mobile-home-active-osis-election', profile.role],
+    queryKey: ['mobile-home-active-osis-election', profile.id, profile.role],
     enabled:
       isAuthenticated &&
       ['TEACHER', 'STUDENT', 'STAFF'].includes(profile.role),

@@ -61,6 +61,8 @@ const INVENTORY_PRIVILEGED_DUTIES = [
   'KEPALA_LAB',
   'KEPALA_PERPUSTAKAAN',
 ] as const;
+const INVENTORY_MANAGER_SYNC_TTL_MS = 5 * 60 * 1000;
+const ASSIGNED_ROOMS_CACHE_TTL_MS = 60 * 1000;
 
 type InventoryAuthUser = {
   id: number;
@@ -68,6 +70,37 @@ type InventoryAuthUser = {
   name: string;
   ptkType?: string | null;
   additionalDuties?: string[] | null;
+};
+
+const assignedRoomsResponseCache = new Map<number, { expiresAt: number; payload: unknown }>();
+const inventoryManagerSyncState = {
+  defaultExpiresAt: 0,
+  advisorExpiresAt: new Map<number, number>(),
+};
+
+const getAssignedRoomsCache = (userId: number) => {
+  const cached = assignedRoomsResponseCache.get(userId);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    assignedRoomsResponseCache.delete(userId);
+    return null;
+  }
+  return cached.payload;
+};
+
+const setAssignedRoomsCache = (userId: number, payload: unknown) => {
+  assignedRoomsResponseCache.set(userId, {
+    expiresAt: Date.now() + ASSIGNED_ROOMS_CACHE_TTL_MS,
+    payload,
+  });
+};
+
+const invalidateAssignedRoomsCache = (userId?: number) => {
+  if (typeof userId === 'number' && Number.isFinite(userId) && userId > 0) {
+    assignedRoomsResponseCache.delete(userId);
+    return;
+  }
+  assignedRoomsResponseCache.clear();
 };
 
 const getInventoryAuthUser = async (
@@ -224,6 +257,22 @@ const syncAdvisorInventoryRoomManagers = async (userId: number) => {
   });
 };
 
+const ensureDefaultInventoryRoomManagersSynced = async () => {
+  if (inventoryManagerSyncState.defaultExpiresAt > Date.now()) return;
+  await syncDefaultInventoryRoomManagers();
+  inventoryManagerSyncState.defaultExpiresAt = Date.now() + INVENTORY_MANAGER_SYNC_TTL_MS;
+  invalidateAssignedRoomsCache();
+};
+
+const ensureAdvisorInventoryRoomManagersSynced = async (userId: number) => {
+  if (!Number.isFinite(userId) || userId <= 0) return;
+  const nextAllowedSyncAt = inventoryManagerSyncState.advisorExpiresAt.get(userId) || 0;
+  if (nextAllowedSyncAt > Date.now()) return;
+  await syncAdvisorInventoryRoomManagers(userId);
+  inventoryManagerSyncState.advisorExpiresAt.set(userId, Date.now() + INVENTORY_MANAGER_SYNC_TTL_MS);
+  invalidateAssignedRoomsCache(userId);
+};
+
 const assertAssignableManager = async (managerUserId?: number | null) => {
   if (!managerUserId) return null;
   const manager = await prisma.user.findUnique({
@@ -312,8 +361,14 @@ export const getAssignedInventoryRooms = asyncHandler(async (req: Request, res: 
   const authUser = await getInventoryAuthUser(req as AuthRequest);
   if (!authUser) throw new ApiError(401, 'Pengguna tidak ditemukan');
 
-  await syncDefaultInventoryRoomManagers();
-  await syncAdvisorInventoryRoomManagers(authUser.id);
+  const cached = getAssignedRoomsCache(authUser.id);
+  if (cached) {
+    res.status(200).json(new ApiResponse(200, cached, 'Data inventaris tugas berhasil diambil'));
+    return;
+  }
+
+  await ensureDefaultInventoryRoomManagersSynced();
+  await ensureAdvisorInventoryRoomManagersSynced(authUser.id);
 
   const rooms = await prisma.room.findMany({
     where: {
@@ -336,6 +391,8 @@ export const getAssignedInventoryRooms = asyncHandler(async (req: Request, res: 
       },
     },
   });
+
+  setAssignedRoomsCache(authUser.id, rooms);
 
   res.status(200).json(new ApiResponse(200, rooms, 'Data inventaris tugas berhasil diambil'));
 });
@@ -930,7 +987,7 @@ export const getRooms = asyncHandler(async (req: Request, res: Response) => {
   const { categoryId, assignedOnly } = req.query;
   const authUser = await getInventoryAuthUser(req as AuthRequest);
 
-  await syncDefaultInventoryRoomManagers();
+  await ensureDefaultInventoryRoomManagersSynced();
 
   const where: any = {};
   if (categoryId) {
@@ -938,7 +995,7 @@ export const getRooms = asyncHandler(async (req: Request, res: Response) => {
   }
   if (String(assignedOnly || '').toLowerCase() === 'true') {
     if (!authUser) throw new ApiError(401, 'Pengguna tidak ditemukan');
-    await syncAdvisorInventoryRoomManagers(authUser.id);
+    await ensureAdvisorInventoryRoomManagersSynced(authUser.id);
     where.managerUserId = authUser.id;
   }
 
@@ -1014,6 +1071,8 @@ export const createRoom = asyncHandler(async (req: Request, res: Response) => {
     },
   });
 
+  invalidateAssignedRoomsCache();
+
   res.status(201).json(new ApiResponse(201, room, 'Ruangan berhasil dibuat'));
 });
 
@@ -1039,6 +1098,8 @@ export const updateRoom = asyncHandler(async (req: Request, res: Response) => {
     },
   });
 
+  invalidateAssignedRoomsCache();
+
   res.status(200).json(new ApiResponse(200, room, 'Ruangan berhasil diperbarui'));
 });
 
@@ -1062,6 +1123,8 @@ export const deleteRoom = asyncHandler(async (req: Request, res: Response) => {
   await prisma.room.delete({
     where: { id: Number(id) }
   });
+
+  invalidateAssignedRoomsCache();
 
   res.status(200).json(new ApiResponse(200, null, 'Ruangan berhasil dihapus'));
 });

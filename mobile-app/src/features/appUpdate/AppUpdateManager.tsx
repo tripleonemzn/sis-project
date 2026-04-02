@@ -10,8 +10,8 @@ import {
   extractAppUpdatePushMeta,
 } from '../pushNotifications/pushNotificationService';
 
-const CHECK_INTERVAL_MS = 60 * 1000;
-const FOREGROUND_CHECK_THROTTLE_MS = 15 * 1000;
+const CHECK_INTERVAL_MS = 15 * 60 * 1000;
+const FOREGROUND_CHECK_THROTTLE_MS = 5 * 60 * 1000;
 const UPDATE_NOTIFICATION_TITLE = 'SIS KGB2 : Update Tersedia';
 const UPDATE_NOTIFICATION_BODY =
   'Versi terbaru SIS KGB2 tersedia. Silakan perbarui untuk menikmati fitur terbaru.';
@@ -196,6 +196,9 @@ export function AppUpdateManager() {
     });
 
     const intervalId = setInterval(() => {
+      if (appStateRef.current !== 'active') return;
+      const elapsed = Date.now() - lastCheckTsRef.current;
+      if (elapsed < FOREGROUND_CHECK_THROTTLE_MS) return;
       void checkForUpdates();
     }, CHECK_INTERVAL_MS);
 

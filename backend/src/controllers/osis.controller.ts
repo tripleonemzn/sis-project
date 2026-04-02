@@ -185,6 +185,9 @@ const updateJoinRequestStatusSchema = z.object({
   note: z.string().optional().nullable(),
 });
 
+const ACTIVE_OSIS_ELECTION_CACHE_TTL_MS = 30 * 1000;
+const activeOsisElectionCache = new Map<string, { expiresAt: number; payload: unknown }>();
+
 const toDate = (value?: string | null) => {
   if (!value) throw new ApiError(400, 'Tanggal wajib diisi');
   const date = new Date(value);
@@ -202,6 +205,30 @@ const getAuthUser = (req: Request) => {
   const user = (req as any).user as { id: number; role: string } | undefined;
   if (!user?.id) throw new ApiError(401, 'Tidak memiliki otorisasi');
   return user;
+};
+
+const buildActiveOsisElectionCacheKey = (actorId: number, actorRole: string) =>
+  `${Number(actorId) || 0}:${String(actorRole || '').trim().toUpperCase() || 'UNKNOWN'}`;
+
+const getActiveOsisElectionCache = (key: string) => {
+  const cached = activeOsisElectionCache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    activeOsisElectionCache.delete(key);
+    return null;
+  }
+  return cached.payload;
+};
+
+const setActiveOsisElectionCache = (key: string, payload: unknown) => {
+  activeOsisElectionCache.set(key, {
+    expiresAt: Date.now() + ACTIVE_OSIS_ELECTION_CACHE_TTL_MS,
+    payload,
+  });
+};
+
+const invalidateActiveOsisElectionCache = () => {
+  activeOsisElectionCache.clear();
 };
 
 const getActorAccess = async (req: Request) => {
@@ -735,6 +762,8 @@ export const createOsisElectionPeriod = asyncHandler(async (req: Request, res: R
     },
   });
 
+  invalidateActiveOsisElectionCache();
+
   res.status(201).json(new ApiResponse(201, period, 'Periode pemilihan OSIS berhasil dibuat'));
 });
 
@@ -802,6 +831,8 @@ export const updateOsisElectionPeriod = asyncHandler(async (req: Request, res: R
     }
   }
 
+  invalidateActiveOsisElectionCache();
+
   res.status(200).json(new ApiResponse(200, period, 'Periode pemilihan OSIS berhasil diperbarui'));
 });
 
@@ -858,6 +889,8 @@ export const finalizeOsisElectionPeriod = asyncHandler(async (req: Request, res:
     'Pemilihan OSIS Ditutup',
     `Periode "${period.title}" telah difinalisasi dan hasil akhir siap dipantau.`,
   );
+
+  invalidateActiveOsisElectionCache();
 
   res.status(200).json(new ApiResponse(200, period, 'Periode pemilihan OSIS berhasil difinalisasi'));
 });
@@ -945,6 +978,8 @@ export const createOsisElectionCandidate = asyncHandler(async (req: Request, res
     },
   });
 
+  invalidateActiveOsisElectionCache();
+
   res.status(201).json(new ApiResponse(201, candidate, 'Calon ketua OSIS berhasil ditambahkan'));
 });
 
@@ -998,6 +1033,8 @@ export const updateOsisElectionCandidate = asyncHandler(async (req: Request, res
     },
   });
 
+  invalidateActiveOsisElectionCache();
+
   res.status(200).json(new ApiResponse(200, candidate, 'Calon ketua OSIS berhasil diperbarui'));
 });
 
@@ -1013,6 +1050,7 @@ export const deleteOsisElectionCandidate = asyncHandler(async (req: Request, res
     throw new ApiError(400, 'Calon tidak dapat dihapus karena sudah menerima suara');
   }
   await prisma.osisElectionCandidate.delete({ where: { id } });
+  invalidateActiveOsisElectionCache();
   res.status(200).json(new ApiResponse(200, null, 'Calon ketua OSIS berhasil dihapus'));
 });
 
@@ -1047,6 +1085,13 @@ export const getActiveStudentOsisElection = asyncHandler(async (req: Request, re
   const actor = await getActorAccess(req);
   if (!canVoteInOsisElection(actor)) {
     return res.status(200).json(new ApiResponse(200, null, 'Role ini tidak memiliki akses pemungutan suara OSIS'));
+  }
+  const cacheKey = buildActiveOsisElectionCacheKey(actor.id, actor.role);
+  const cachedPayload = getActiveOsisElectionCache(cacheKey);
+  if (cachedPayload) {
+    return res
+      .status(200)
+      .json(new ApiResponse(200, cachedPayload, 'Data pemilihan OSIS aktif berhasil diambil'));
   }
   const now = new Date();
 
@@ -1090,18 +1135,14 @@ export const getActiveStudentOsisElection = asyncHandler(async (req: Request, re
   }
 
   const quickCount = election.allowQuickCount ? await buildQuickCount(election) : null;
+  const payload = {
+    ...election,
+    myVote: election.votes[0] || null,
+    quickCount,
+  };
+  setActiveOsisElectionCache(cacheKey, payload);
 
-  res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        ...election,
-        myVote: election.votes[0] || null,
-        quickCount,
-      },
-      'Data pemilihan OSIS aktif berhasil diambil',
-    ),
-  );
+  res.status(200).json(new ApiResponse(200, payload, 'Data pemilihan OSIS aktif berhasil diambil'));
 });
 
 export const getActiveOsisElection = getActiveStudentOsisElection;
@@ -1209,6 +1250,8 @@ export const submitOsisElectionVote = asyncHandler(async (req: Request, res: Res
       voterId: actor.id,
     },
   });
+
+  invalidateActiveOsisElectionCache();
 
   res.status(201).json(new ApiResponse(201, vote, 'Suara berhasil dikirim'));
 });

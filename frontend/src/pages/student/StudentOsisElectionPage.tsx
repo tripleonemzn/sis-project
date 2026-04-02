@@ -31,6 +31,8 @@ export const StudentOsisElectionPage = () => {
       const response = await osisService.getActiveElection();
       return response.data;
     },
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const voteMutation = useMutation({

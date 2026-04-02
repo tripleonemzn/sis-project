@@ -1,4 +1,4 @@
-const DEFAULT_INSTANCES = 4;
+const DEFAULT_INSTANCES = 2;
 const MAX_INSTANCES = 8;
 
 function resolveInstances() {

@@ -1200,6 +1200,8 @@ export const Sidebar = ({ user }: SidebarProps) => {
     queryKey: ['sidebar-teaching-resource-programs', user.role, activeAcademicYearData?.id],
     enabled: user.role === 'TEACHER' && Boolean(activeAcademicYearData?.id),
     staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     queryFn: async () => {
       return teachingResourceProgramService.getPrograms({
         academicYearId: activeAcademicYearData?.id,
@@ -1247,28 +1249,31 @@ export const Sidebar = ({ user }: SidebarProps) => {
   const { data: assignedInventoryRoomsData } = useQuery({
     queryKey: ['sidebar-assigned-inventory-rooms', user.id],
     enabled: shouldLoadAssignedInventoryRooms,
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    staleTime: 5 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     queryFn: () => inventoryService.getAssignedRooms(),
   });
   const { data: tutorAssignmentsData } = useQuery({
     queryKey: ['sidebar-tutor-assignments', user.id, activeAcademicYearData?.id],
     enabled: shouldLoadTutorAssignments,
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    staleTime: 5 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     queryFn: () => tutorService.getAssignments(activeAcademicYearData?.id),
   });
   const shouldLoadActiveOsisElection = ['TEACHER', 'STUDENT', 'STAFF'].includes(
     String(user.role || '').toUpperCase(),
   );
   const { data: activeOsisElectionData } = useQuery({
-    queryKey: ['sidebar-active-osis-election', user.role],
+    queryKey: ['sidebar-active-osis-election', user.id, user.role],
     enabled: shouldLoadActiveOsisElection,
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    staleTime: 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     queryFn: () => osisService.getActiveElection(),
   });
 
