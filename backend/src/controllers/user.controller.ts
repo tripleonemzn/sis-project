@@ -9,6 +9,12 @@ import { validateCandidateProfileDocuments } from '../utils/candidateAdmissionDo
 import { getNisnValidationMessage, normalizeNisnInput } from '../utils/nisn';
 import { resolveHistoricalStudentScope } from '../utils/studentAcademicHistory';
 import { ensureAcademicYearArchiveReadAccess } from '../utils/academicYearArchiveAccess';
+import {
+  deriveEducationSummary,
+  educationHistoriesSchema,
+  normalizeEducationHistories,
+  resolveProfileEducationTrack,
+} from '../utils/profileEducation';
 
 const dateSchema = z
   .string()
@@ -70,6 +76,7 @@ const createUserSchema = z.object({
   nuptk: optionalExactDigitsField('NUPTK', 16),
   highestEducation: z.string().optional().nullable(),
   studyProgram: z.string().optional().nullable(),
+  educationHistories: educationHistoriesSchema,
   motherName: z.string().optional().nullable(),
   motherNik: optionalExactDigitsField('NIK Ibu', 16),
   childNumber: z.number().int().optional().nullable(),
@@ -155,6 +162,7 @@ const updateUserSchema = z.object({
   nuptk: optionalExactDigitsField('NUPTK', 16),
   highestEducation: z.string().optional().nullable(),
   studyProgram: z.string().optional().nullable(),
+  educationHistories: educationHistoriesSchema,
   motherName: z.string().optional().nullable(),
   motherNik: optionalExactDigitsField('NIK Ibu', 16),
   childNumber: z.number().int().optional().nullable(),
@@ -354,6 +362,7 @@ export const getUsers = asyncHandler(async (req: Request, res: Response) => {
       nuptk: true,
       highestEducation: true,
       studyProgram: true,
+      educationHistories: true,
       motherName: true,
       motherNik: true,
       childNumber: true,
@@ -780,7 +789,8 @@ export const unlinkMyChild = asyncHandler(async (req: Request, res: Response) =>
 });
 
 export const createUser = asyncHandler(async (req: Request, res: Response) => {
-  const { documents, childNisns, managedMajorIds, examinerMajorId, ...body } = createUserSchema.parse(req.body);
+  const { documents, childNisns, managedMajorIds, examinerMajorId, educationHistories, ...body } =
+    createUserSchema.parse(req.body);
 
   if (body.role === Role.CALON_SISWA && documents) {
     const validation = validateCandidateProfileDocuments(documents);
@@ -806,11 +816,21 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const hashedPassword = await bcrypt.hash(body.password, 10);
+  const normalizedEducationHistories =
+    typeof educationHistories !== 'undefined'
+      ? normalizeEducationHistories(educationHistories, resolveProfileEducationTrack(body.role))
+      : undefined;
+  const educationSummary = normalizedEducationHistories
+    ? deriveEducationSummary(normalizedEducationHistories, resolveProfileEducationTrack(body.role))
+    : null;
 
   const user = await prisma.$transaction(async (tx) => {
     const created = await tx.user.create({
       data: {
         ...body,
+        educationHistories: typeof normalizedEducationHistories !== 'undefined' ? (normalizedEducationHistories as any) : undefined,
+        highestEducation: educationSummary ? educationSummary.highestEducation : body.highestEducation,
+        studyProgram: educationSummary ? educationSummary.studyProgram : body.studyProgram,
         password: hashedPassword,
         birthDate: (body as any).birthDate ?? undefined,
         examinerMajorId: examinerMajorId,
@@ -881,7 +901,8 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
     throw new ApiError(403, 'Anda tidak memiliki izin untuk mengubah data pengguna ini');
   }
 
-  const { documents, childNisns, managedMajorIds, examinerMajorId, ...body } = updateUserSchema.parse(req.body);
+  const { documents, childNisns, managedMajorIds, examinerMajorId, educationHistories, ...body } =
+    updateUserSchema.parse(req.body);
 
   // Prevent non-admin from updating sensitive fields
   if (currentUser?.role !== Role.ADMIN) {
@@ -917,6 +938,13 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
 
   const updatedUser = await prisma.$transaction(async (tx) => {
     const roleAfterUpdate = body.role ?? user.role;
+    const normalizedEducationHistories =
+      typeof educationHistories !== 'undefined'
+        ? normalizeEducationHistories(educationHistories, resolveProfileEducationTrack(roleAfterUpdate))
+        : undefined;
+    const educationSummary = normalizedEducationHistories
+      ? deriveEducationSummary(normalizedEducationHistories, resolveProfileEducationTrack(roleAfterUpdate))
+      : null;
 
     if (roleAfterUpdate === Role.CALON_SISWA && documents) {
       const validation = validateCandidateProfileDocuments(documents);
@@ -981,6 +1009,15 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
       where: { id: Number(id) },
       data: {
         ...body,
+        educationHistories: typeof normalizedEducationHistories !== 'undefined' ? (normalizedEducationHistories as any) : undefined,
+        highestEducation:
+          typeof normalizedEducationHistories !== 'undefined'
+            ? educationSummary?.highestEducation ?? null
+            : body.highestEducation,
+        studyProgram:
+          typeof normalizedEducationHistories !== 'undefined'
+            ? educationSummary?.studyProgram ?? null
+            : body.studyProgram,
         password: hashedPassword,
         birthDate: (body as any).birthDate ?? undefined,
         examinerMajorId: examinerMajorId,

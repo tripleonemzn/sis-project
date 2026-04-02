@@ -9,6 +9,11 @@ import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import { AuthRequest } from '../types';
+import {
+  deriveEducationSummary,
+  educationHistoriesSchema,
+  normalizeEducationHistories,
+} from '../utils/profileEducation';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
@@ -74,6 +79,7 @@ const applicantProfileSelect = {
   graduationYear: true,
   schoolName: true,
   major: true,
+  educationHistories: true,
   skills: true,
   experienceSummary: true,
   cvUrl: true,
@@ -136,6 +142,7 @@ const myApplicationListSelect = {
       graduationYear: true,
       schoolName: true,
       major: true,
+      educationHistories: true,
       cvUrl: true,
       portfolioUrl: true,
       linkedinUrl: true,
@@ -195,6 +202,7 @@ const reviewApplicationSelect = {
       graduationYear: true,
       schoolName: true,
       major: true,
+      educationHistories: true,
       skills: true,
       experienceSummary: true,
       cvUrl: true,
@@ -424,19 +432,32 @@ function hasOwn(body: unknown, key: string): boolean {
   return typeof body === 'object' && body !== null && Object.prototype.hasOwnProperty.call(body, key);
 }
 
+function getApplicantEducationHistories(profile: ApplicantProfileRow | null) {
+  const parsed = educationHistoriesSchema.safeParse(profile?.educationHistories);
+  if (!parsed.success) {
+    return [];
+  }
+  return normalizeEducationHistories(parsed.data, 'NON_STUDENT');
+}
+
 function isApplicantProfileReady(user: ApplicantUser, profile: ApplicantProfileRow | null) {
   const effectivePhone = normalizeOptionalText(profile?.phone ?? user.phone);
   const effectiveEmail = normalizeOptionalText(profile?.email ?? user.email);
   const effectiveAddress = normalizeOptionalText(profile?.address ?? user.address);
+  const educationHistories = getApplicantEducationHistories(profile);
+  const educationSummary = deriveEducationSummary(educationHistories, 'NON_STUDENT');
+  const effectiveEducationLevel = normalizeOptionalText(educationSummary.highestEducation || profile?.educationLevel);
+  const effectiveSchoolName = normalizeOptionalText(educationSummary.institutionName || profile?.schoolName);
+  const effectiveMajor = normalizeOptionalText(educationSummary.studyProgram || profile?.major);
   const missingFields: string[] = [];
 
   if (!normalizeOptionalText(user.name)) missingFields.push('nama pelamar');
   if (!effectivePhone) missingFields.push('nomor telepon');
   if (!effectiveEmail) missingFields.push('email aktif');
   if (!effectiveAddress) missingFields.push('alamat domisili');
-  if (!normalizeOptionalText(profile?.educationLevel)) missingFields.push('jenjang pendidikan');
-  if (!normalizeOptionalText(profile?.schoolName)) missingFields.push('asal sekolah');
-  if (!normalizeOptionalText(profile?.major)) missingFields.push('jurusan / kompetensi');
+  if (!effectiveEducationLevel) missingFields.push('jenjang pendidikan');
+  if (!effectiveSchoolName) missingFields.push('asal sekolah');
+  if (!effectiveMajor) missingFields.push('jurusan / kompetensi');
 
   return {
     isReady: missingFields.length === 0,
@@ -446,6 +467,8 @@ function isApplicantProfileReady(user: ApplicantUser, profile: ApplicantProfileR
 
 function serializeApplicantProfile(user: ApplicantUser, profile: ApplicantProfileRow | null) {
   const readiness = isApplicantProfileReady(user, profile);
+  const educationHistories = getApplicantEducationHistories(profile);
+  const educationSummary = deriveEducationSummary(educationHistories, 'NON_STUDENT');
   return {
     id: profile?.id || null,
     userId: user.id,
@@ -456,10 +479,11 @@ function serializeApplicantProfile(user: ApplicantUser, profile: ApplicantProfil
     phone: profile?.phone ?? user.phone ?? null,
     email: profile?.email ?? user.email ?? null,
     address: profile?.address ?? user.address ?? null,
-    educationLevel: profile?.educationLevel || null,
+    educationLevel: educationSummary.highestEducation || profile?.educationLevel || null,
     graduationYear: profile?.graduationYear ?? null,
-    schoolName: profile?.schoolName || null,
-    major: profile?.major || null,
+    schoolName: educationSummary.institutionName || profile?.schoolName || null,
+    major: educationSummary.studyProgram || profile?.major || null,
+    educationHistories,
     skills: profile?.skills || null,
     experienceSummary: profile?.experienceSummary || null,
     cvUrl: profile?.cvUrl || null,
@@ -1163,6 +1187,19 @@ export const upsertMyApplicantProfile = asyncHandler(async (req: Request, res: R
     profileUpdate.major = normalizeOptionalText(body.major);
     shouldUpsertProfile = true;
   }
+  if (hasOwn(body, 'educationHistories')) {
+    const parsedEducationHistories = educationHistoriesSchema.safeParse(body.educationHistories);
+    if (!parsedEducationHistories.success) {
+      throw new ApiError(400, parsedEducationHistories.error.issues[0]?.message || 'Riwayat pendidikan tidak valid.');
+    }
+    const normalizedEducationHistories = normalizeEducationHistories(parsedEducationHistories.data, 'NON_STUDENT');
+    const educationSummary = deriveEducationSummary(normalizedEducationHistories, 'NON_STUDENT');
+    profileUpdate.educationHistories = normalizedEducationHistories as unknown as Prisma.InputJsonValue;
+    profileUpdate.educationLevel = educationSummary.highestEducation;
+    profileUpdate.schoolName = educationSummary.institutionName;
+    profileUpdate.major = educationSummary.studyProgram;
+    shouldUpsertProfile = true;
+  }
   if (hasOwn(body, 'skills')) {
     profileUpdate.skills = normalizeOptionalText(body.skills);
     shouldUpsertProfile = true;
@@ -1206,6 +1243,10 @@ export const upsertMyApplicantProfile = asyncHandler(async (req: Request, res: R
             typeof profileUpdate.graduationYear === 'number' ? profileUpdate.graduationYear : null,
           schoolName: typeof profileUpdate.schoolName === 'string' ? profileUpdate.schoolName : null,
           major: typeof profileUpdate.major === 'string' ? profileUpdate.major : null,
+          educationHistories:
+            Array.isArray(profileUpdate.educationHistories) || profileUpdate.educationHistories === Prisma.JsonNull
+              ? (profileUpdate.educationHistories as Prisma.InputJsonValue)
+              : undefined,
           skills: typeof profileUpdate.skills === 'string' ? profileUpdate.skills : null,
           experienceSummary:
             typeof profileUpdate.experienceSummary === 'string' ? profileUpdate.experienceSummary : null,

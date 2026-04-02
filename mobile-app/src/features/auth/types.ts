@@ -88,6 +88,23 @@ export type AuthUser = {
   nuptk?: string | null;
   highestEducation?: string | null;
   studyProgram?: string | null;
+  educationHistories?: Array<{
+    level: 'TK' | 'SD' | 'SMP_MTS' | 'SLTA' | 'D1' | 'D2' | 'D3' | 'D4_S1' | 'S2' | 'S3';
+    institutionName?: string | null;
+    faculty?: string | null;
+    studyProgram?: string | null;
+    gpa?: string | null;
+    degree?: string | null;
+    documents: Array<{
+      kind: 'IJAZAH' | 'SKHUN' | 'TRANSKRIP';
+      label: string;
+      fileUrl: string;
+      originalName?: string | null;
+      mimeType?: string | null;
+      size?: number | null;
+      uploadedAt?: string | null;
+    }>;
+  }> | null;
   rt?: string | null;
   rw?: string | null;
   dusun?: string | null;

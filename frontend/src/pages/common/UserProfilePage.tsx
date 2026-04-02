@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userService } from '../../services/user.service';
 import { authService } from '../../services/auth.service';
 import { uploadService } from '../../services/upload.service';
+import { ProfileEducationEditor } from '../../components/profile/ProfileEducationEditor';
 import {
   CANDIDATE_DOCUMENT_OPTIONS,
   getCandidateDocumentCategoryLabel,
@@ -15,6 +16,15 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import Cropper, { type Point, type Area } from 'react-easy-crop';
+import {
+  buildEducationHistoryState,
+  resolveEducationSummaryFromHistories,
+  resolveProfileEducationTrackForRole,
+  sanitizeEducationHistories,
+  type ProfileEducationDocumentKind,
+  type ProfileEducationHistory,
+  type ProfileEducationLevel,
+} from '../../features/profileEducation/profileEducation';
 
 // Helper function to create image from url
 const createImage = (url: string): Promise<HTMLImageElement> =>
@@ -412,6 +422,7 @@ const tabs = [
   { id: 'contact', label: 'Data Kontak' },
   { id: 'employment', label: 'Data Kepegawaian' },
   { id: 'parents', label: 'Data Orang Tua' },
+  { id: 'education', label: 'Riwayat Pendidikan' },
   { id: 'documents', label: 'Upload File' },
 ] as const;
 
@@ -429,18 +440,18 @@ const getVisibleTabs = (role: UserFormRole) => {
   const variant = getProfileVariant(role);
 
   if (variant === 'employee') {
-    return ['account', 'personal', 'contact', 'employment', 'documents'] as TabId[];
+    return ['account', 'personal', 'contact', 'employment', 'education', 'documents'] as TabId[];
   }
   if (variant === 'student') {
-    return ['account', 'personal', 'contact', 'parents'] as TabId[];
+    return ['account', 'personal', 'contact', 'parents', 'education'] as TabId[];
   }
   if (variant === 'candidate') {
-    return ['account', 'personal', 'contact', 'documents'] as TabId[];
+    return ['account', 'personal', 'contact', 'education', 'documents'] as TabId[];
   }
   if (variant === 'parent') {
-    return ['account', 'personal', 'contact'] as TabId[];
+    return ['account', 'personal', 'contact', 'education'] as TabId[];
   }
-  return ['account', 'personal', 'contact', 'documents'] as TabId[];
+  return ['account', 'personal', 'contact', 'education', 'documents'] as TabId[];
 };
 
 const getTabLabel = (role: UserFormRole, tabId: TabId) => {
@@ -453,6 +464,7 @@ const getTabLabel = (role: UserFormRole, tabId: TabId) => {
       contact: 'Kontak & Alamat',
       employment: 'Data PTK',
       parents: 'Data Orang Tua',
+      education: 'Riwayat Pendidikan',
       documents: 'Dokumen',
     };
     return labels[tabId];
@@ -465,6 +477,7 @@ const getTabLabel = (role: UserFormRole, tabId: TabId) => {
       contact: 'Kontak & Alamat',
       employment: 'Data Kepegawaian',
       parents: 'Data Keluarga',
+      education: 'Riwayat Pendidikan',
       documents: 'Upload File',
     };
     return labels[tabId];
@@ -477,6 +490,7 @@ const getTabLabel = (role: UserFormRole, tabId: TabId) => {
       contact: 'Kontak Dasar',
       employment: 'Data Kepegawaian',
       parents: 'Data Orang Tua',
+      education: 'Riwayat Pendidikan',
       documents: 'Dokumen PPDB',
     };
     return labels[tabId];
@@ -489,6 +503,7 @@ const getTabLabel = (role: UserFormRole, tabId: TabId) => {
       contact: 'Kontak Keluarga',
       employment: 'Data Kepegawaian',
       parents: 'Data Orang Tua',
+      education: 'Riwayat Pendidikan',
       documents: 'Upload File',
     };
     return labels[tabId];
@@ -615,9 +630,11 @@ export const UserProfilePage = () => {
   const [activeTab, setActiveTab] = useState<typeof tabs[number]['id']>('account');
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [educationUploadKey, setEducationUploadKey] = useState<string | null>(null);
   const [isManualPtkType, setIsManualPtkType] = useState(false);
   const [isManualEmployeeStatus, setIsManualEmployeeStatus] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [educationHistories, setEducationHistories] = useState<ProfileEducationHistory[]>([]);
   const [candidateDocumentCategory, setCandidateDocumentCategory] = useState<string>(
     CANDIDATE_DOCUMENT_OPTIONS[0]?.value || 'PPDB_AKTA_KELAHIRAN',
   );
@@ -645,6 +662,7 @@ export const UserProfilePage = () => {
   const profileVariant = getProfileVariant(fixedRole);
   const profileCopy = useMemo(() => getProfileCopy(fixedRole), [fixedRole]);
   const visibleTabs = useMemo(() => getVisibleTabs(fixedRole), [fixedRole]);
+  const educationTrack = useMemo(() => resolveProfileEducationTrackForRole(fixedRole), [fixedRole]);
   const canUploadPhoto = [
     'ADMIN',
     'TEACHER',
@@ -666,6 +684,10 @@ export const UserProfilePage = () => {
     'CALON_SISWA',
   ].includes(fixedRole);
   const verificationMeta = getVerificationStatusMeta(user?.verificationStatus);
+  const educationSummary = useMemo(
+    () => resolveEducationSummaryFromHistories(educationHistories, educationTrack),
+    [educationHistories, educationTrack],
+  );
   const isEmployeeProfile = profileVariant === 'employee';
   const isStudentProfile = profileVariant === 'student';
   const isCandidateProfile = profileVariant === 'candidate';
@@ -707,7 +729,6 @@ export const UserProfilePage = () => {
   const watchedBirthDate = watch('birthDate');
   const watchedMotherName = watch('motherName');
   const watchedMotherNik = watch('motherNik');
-  const watchedHighestEducation = watch('highestEducation');
   const watchedPtkType = watch('ptkType');
   const watchedEmployeeStatus = watch('employeeStatus');
   const watchedInstitution = watch('institution');
@@ -775,7 +796,7 @@ export const UserProfilePage = () => {
         { label: 'Agama', value: watchedReligion },
         { label: 'Nama ibu kandung', value: watchedMotherName },
         { label: 'NIK ibu kandung', value: watchedMotherNik },
-        { label: 'Pendidikan terakhir', value: watchedHighestEducation },
+        { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
         { label: 'Jenis PTK / peran', value: normalizedEmployeeRoleValue },
         { label: 'Status kepegawaian', value: normalizedEmployeeStatusValue },
         { label: 'Status keaktifan', value: watchedEmployeeActiveStatus },
@@ -797,6 +818,7 @@ export const UserProfilePage = () => {
         { label: 'Nama ibu kandung', value: watchedMotherName },
         { label: 'NIK ibu kandung', value: watchedMotherNik },
         { label: 'Agama', value: watchedReligion },
+        { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
         { label: 'Status dalam keluarga', value: watchedFamilyStatus },
         { label: 'Jenis tinggal', value: watchedLivingWith },
         { label: 'Alat transportasi', value: watchedTransportationMode },
@@ -815,6 +837,7 @@ export const UserProfilePage = () => {
         { label: 'Tanggal lahir', value: watchedBirthDate },
         { label: 'Kontak aktif', value: watchedPhone || watchedEmail },
         { label: 'Alamat', value: watchedAddress },
+        { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
         { label: 'Dokumen PPDB', value: watchedDocuments.length > 0 ? watchedDocuments.length : null },
       ];
     } else if (isParentProfile) {
@@ -822,11 +845,13 @@ export const UserProfilePage = () => {
         { label: 'Nama lengkap', value: watchedName },
         { label: 'Kontak aktif', value: watchedPhone || watchedEmail },
         { label: 'Alamat', value: watchedAddress },
+        { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
       ];
     } else {
       fieldsToCheck = [
         { label: 'Nama lengkap', value: watchedName },
         { label: 'Kontak aktif', value: watchedPhone || watchedEmail },
+        { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
       ];
     }
 
@@ -857,7 +882,7 @@ export const UserProfilePage = () => {
     watchedDocuments.length,
     watchedEmail,
     watchedEmployeeActiveStatus,
-    watchedHighestEducation,
+    educationSummary.highestEducation,
     watchedFamilyStatus,
     watchedFamilyCardNumber,
     watchedGender,
@@ -885,6 +910,7 @@ export const UserProfilePage = () => {
         return [
           `Tugas tambahan: ${user?.additionalDuties?.length ? user.additionalDuties.join(', ') : 'Belum ada'}`,
           `Kelas tugas: ${user?.teacherClasses?.length || 0} kelas`,
+          `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
           `Dokumen: ${watchedDocuments.length} file`,
         ];
       }
@@ -893,6 +919,7 @@ export const UserProfilePage = () => {
         return [
           `Ekstrakurikuler aktif: ${user?.ekskulTutorAssignments?.length || 0}`,
           `Penugasan utama: ${normalizedEmployeeRoleValue || 'Tutor / pembina'}`,
+          `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
           `Dokumen: ${watchedDocuments.length} file`,
         ];
       }
@@ -901,6 +928,7 @@ export const UserProfilePage = () => {
         return [
           `Jurusan damping: ${user?.examinerMajor?.name || '-'}`,
           `Instansi: ${watchedInstitution || 'Belum diisi'}`,
+          `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
           `Dokumen: ${watchedDocuments.length} file`,
         ];
       }
@@ -909,6 +937,7 @@ export const UserProfilePage = () => {
         return [
           `Divisi: ${getStaffPositionLabel(watchedStaffPosition) || normalizedEmployeeRoleValue || 'Belum dipilih'}`,
           `Status kepegawaian: ${normalizedEmployeeStatusValue || 'Belum diisi'}`,
+          `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
           `Dokumen: ${watchedDocuments.length} file`,
         ];
       }
@@ -916,6 +945,7 @@ export const UserProfilePage = () => {
       return [
         `Peran aktif: ${ROLE_LABELS[fixedRole]}`,
         `Status kepegawaian: ${normalizedEmployeeStatusValue || 'Belum diisi'}`,
+        `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
         `Dokumen: ${watchedDocuments.length} file`,
       ];
     }
@@ -924,6 +954,7 @@ export const UserProfilePage = () => {
       return [
         `Kelas aktif: ${user?.studentClass?.name || '-'}`,
         `Status siswa: ${user?.studentStatus || 'ACTIVE'}`,
+        `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
         `Email / HP: ${watchedEmail || watchedPhone || 'Belum diisi'}`,
       ];
     }
@@ -932,6 +963,7 @@ export const UserProfilePage = () => {
       return [
         `NISN: ${watchedNisn || '-'}`,
         `Status akun: ${verificationMeta.label}`,
+        `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
         `Dokumen PPDB: ${watchedDocuments.length} file`,
       ];
     }
@@ -940,6 +972,7 @@ export const UserProfilePage = () => {
       return [
         `Anak terhubung: ${selectedChildren.length}`,
         `Kontak aktif: ${watchedEmail || watchedPhone || 'Belum diisi'}`,
+        `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
         `Alamat: ${watchedAddress ? 'Sudah diisi' : 'Belum diisi'}`,
       ];
     }
@@ -947,10 +980,12 @@ export const UserProfilePage = () => {
     return [
       `Role aktif: ${ROLE_LABELS[fixedRole]}`,
       `Kontak aktif: ${watchedEmail || watchedPhone || 'Belum diisi'}`,
+      `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
       `Alamat: ${watchedAddress ? 'Sudah diisi' : 'Belum diisi'}`,
     ];
   }, [
     fixedRole,
+    educationSummary.completedLevels,
     isCandidateProfile,
     isEmployeeProfile,
     isParentProfile,
@@ -1117,6 +1152,15 @@ export const UserProfilePage = () => {
       // Gunakan reset untuk mengisi seluruh form sekaligus, menghindari masalah sinkronisasi field array
       // dan mencegah overwrite parsial yang bisa menghilangkan data saat refetch
       reset(formattedData);
+      setEducationHistories(
+        buildEducationHistoryState({
+          track: educationTrack,
+          histories: (user.educationHistories || []) as ProfileEducationHistory[],
+          legacyHighestEducation: user.highestEducation,
+          legacyInstitutionName: '',
+          legacyStudyProgram: user.studyProgram,
+        }),
+      );
       setPhotoPreview(user.photo || null);
       setIsManualPtkType(
         fixedRole !== 'STAFF' && getStructuredSelectValue(user.ptkType || '', employeeRoleOptions) === MANUAL_OPTION_VALUE
@@ -1128,7 +1172,7 @@ export const UserProfilePage = () => {
       isInitializedRef.current = true;
       lastUserIdRef.current = user.id;
     }
-  }, [employeeRoleOptions, fixedRole, reset, user]);
+  }, [educationTrack, employeeRoleOptions, fixedRole, reset, user]);
 
   useEffect(() => {
     if (!visibleTabs.includes(activeTab)) {
@@ -1140,7 +1184,16 @@ export const UserProfilePage = () => {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: UserFormValues }) => {
-       const { staffPosition, documents, password, childNisns, additionalDuties, ...rest } = data;
+       const {
+         staffPosition,
+         documents,
+         password,
+         childNisns,
+         additionalDuties,
+         highestEducation: _highestEducation,
+         studyProgram: _studyProgram,
+         ...rest
+       } = data;
 
        // Process additional duties and managed major
        const processedDuties: string[] = [];
@@ -1200,6 +1253,7 @@ export const UserProfilePage = () => {
 
       const finalPayload: Partial<UserWrite> = {
         ...basePayload,
+        educationHistories: sanitizeEducationHistories(educationHistories, educationTrack),
         documents: documents?.map((d) => ({
           title: d.title,
           fileUrl: d.fileUrl,
@@ -1315,6 +1369,73 @@ export const UserProfilePage = () => {
       if (fileInputRef.current) fileInputRef.current.value = '';
       e.target.value = '';
     }
+  };
+
+  const handleEducationHistoryChange = (
+    level: ProfileEducationLevel,
+    field: 'institutionName' | 'faculty' | 'studyProgram' | 'gpa' | 'degree',
+    value: string,
+  ) => {
+    setEducationHistories((prev) =>
+      prev.map((entry) => (entry.level === level ? { ...entry, [field]: value } : entry)),
+    );
+  };
+
+  const handleEducationDocumentUpload = async (
+    level: ProfileEducationLevel,
+    kind: ProfileEducationDocumentKind,
+    file: File,
+  ) => {
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/x-png'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Dokumen pendidikan hanya boleh berformat PDF, JPG, JPEG, atau PNG.');
+      return;
+    }
+    if (file.size > 500 * 1024) {
+      toast.error(`Ukuran file ${file.name} melebihi 500KB.`);
+      return;
+    }
+
+    const uploadKey = `${level}:${kind}`;
+    setEducationUploadKey(uploadKey);
+    try {
+      const uploaded = await uploadService.uploadProfileEducationDocument(file);
+      setEducationHistories((prev) =>
+        prev.map((entry) => {
+          if (entry.level !== level) return entry;
+          const nextDocuments = entry.documents.filter((document) => document.kind !== kind);
+          nextDocuments.push({
+            kind,
+            label: file.name,
+            fileUrl: uploaded.url,
+            originalName: uploaded.originalname,
+            mimeType: uploaded.mimetype,
+            size: uploaded.size,
+            uploadedAt: new Date().toISOString(),
+          });
+          return { ...entry, documents: nextDocuments };
+        }),
+      );
+      toast.success(`${file.name} berhasil diunggah. Jangan lupa simpan profil untuk merekam perubahan.`);
+    } catch (error) {
+      console.error(error);
+      toast.error(getErrorMessage(error) || 'Gagal mengunggah dokumen pendidikan');
+    } finally {
+      setEducationUploadKey(null);
+    }
+  };
+
+  const handleEducationDocumentRemove = (level: ProfileEducationLevel, kind: ProfileEducationDocumentKind) => {
+    setEducationHistories((prev) =>
+      prev.map((entry) =>
+        entry.level === level
+          ? {
+              ...entry,
+              documents: entry.documents.filter((document) => document.kind !== kind),
+            }
+          : entry,
+      ),
+    );
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2608,31 +2729,6 @@ export const UserProfilePage = () => {
                     </select>
                   </div>
                   <div>
-                    <label htmlFor="highestEducation" className="block text-sm font-medium text-gray-700 mb-1">Pendidikan Terakhir</label>
-                    <select
-                      id="highestEducation"
-                      {...register('highestEducation')}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="">Pilih pendidikan terakhir</option>
-                      {EDUCATION_LEVEL_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="studyProgram" className="block text-sm font-medium text-gray-700 mb-1">Program Studi / Jurusan</label>
-                    <input
-                      id="studyProgram"
-                      {...register('studyProgram')}
-                      autoComplete="off"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Contoh: Pendidikan Matematika / Akuntansi"
-                    />
-                  </div>
-                  <div>
                     <label htmlFor="appointmentDecree" className="block text-sm font-medium text-gray-700 mb-1">SK Pengangkatan</label>
                     <input
                       id="appointmentDecree"
@@ -2764,6 +2860,17 @@ export const UserProfilePage = () => {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {activeTab === 'education' && (
+                <ProfileEducationEditor
+                  track={educationTrack}
+                  histories={educationHistories}
+                  uploadingKey={educationUploadKey}
+                  onHistoryChange={handleEducationHistoryChange}
+                  onUploadDocument={handleEducationDocumentUpload}
+                  onRemoveDocument={handleEducationDocumentRemove}
+                />
               )}
 
               {/* Upload File Tab */}

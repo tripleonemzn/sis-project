@@ -37,6 +37,23 @@ export type UpdateSelfProfilePayload = {
   nuptk?: string | null;
   highestEducation?: string | null;
   studyProgram?: string | null;
+  educationHistories?: Array<{
+    level: 'TK' | 'SD' | 'SMP_MTS' | 'SLTA' | 'D1' | 'D2' | 'D3' | 'D4_S1' | 'S2' | 'S3';
+    institutionName?: string | null;
+    faculty?: string | null;
+    studyProgram?: string | null;
+    gpa?: string | null;
+    degree?: string | null;
+    documents: Array<{
+      kind: 'IJAZAH' | 'SKHUN' | 'TRANSKRIP';
+      label: string;
+      fileUrl: string;
+      originalName?: string | null;
+      mimeType?: string | null;
+      size?: number | null;
+      uploadedAt?: string | null;
+    }>;
+  }> | null;
   motherName?: string | null;
   motherNik?: string | null;
   religion?: string | null;
@@ -124,6 +141,25 @@ export const profileApi = {
         'Content-Type': 'multipart/form-data',
       },
     });
+    return response.data?.data;
+  },
+  async uploadEducationHistoryDocument(file: { uri: string; name: string; type: string }) {
+    const formData = new FormData();
+    const filePart: ReactNativeFilePart = {
+      uri: file.uri,
+      name: file.name,
+      type: file.type,
+    };
+    formData.append('file', filePart as unknown as Blob);
+    const response = await apiClient.post<ApiEnvelope<UploadResponse & { size?: number }>>(
+      '/upload/profile-education/document',
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      },
+    );
     return response.data?.data;
   },
 };

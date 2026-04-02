@@ -44,6 +44,18 @@ const teacherPhotoStorage = multer.diskStorage({
   },
 });
 
+const profileEducationDocumentStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.resolve(__dirname, '../../../../uploads/profile-education/documents');
+    ensureDir(uploadDir);
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
 export const teacherDocumentUpload = multer({
   storage: teacherDocumentStorage,
   limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
@@ -65,6 +77,20 @@ export const teacherPhotoUpload = multer({
     } else {
       cb(new Error('Foto profil harus berupa file gambar!'));
     }
+  },
+});
+
+export const profileEducationDocumentUpload = multer({
+  storage: profileEducationDocumentStorage,
+  limits: { fileSize: 500 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const normalizedMime = String(file.mimetype || '').toLowerCase();
+    const allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+    if (allowedMimeTypes.includes(normalizedMime)) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error('Dokumen pendidikan hanya boleh berformat PDF, JPG, JPEG, atau PNG.'));
   },
 });
 
@@ -216,6 +242,28 @@ export const uploadTeacherPhoto = asyncHandler(async (req: Request, res: Respons
     originalname: req.file.originalname,
     mimetype: req.file.mimetype,
   }, 'Foto profil guru berhasil diunggah'));
+});
+
+export const uploadProfileEducationDocument = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.file) {
+    throw new ApiError(400, 'Tidak ada file riwayat pendidikan yang diunggah');
+  }
+
+  const fileUrl = `/api/uploads/profile-education/documents/${req.file.filename}`;
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        url: fileUrl,
+        filename: req.file.filename,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+      },
+      'Dokumen riwayat pendidikan berhasil diunggah',
+    ),
+  );
 });
 
 export const uploadQuestionImage = asyncHandler(async (req: Request, res: Response) => {

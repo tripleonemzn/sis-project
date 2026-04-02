@@ -44,6 +44,7 @@ model User {
   institution                                        String?
   highestEducation                                   String?
   studyProgram                                       String?
+  educationHistories                                 Json?
   motherName                                         String?
   motherNik                                          String?
   nik                                                String?
@@ -3319,6 +3320,7 @@ model JobApplicantProfile {
   graduationYear    Int?
   schoolName        String?
   major             String?
+  educationHistories Json?
   skills            String?  @db.Text
   experienceSummary String?  @db.Text
   cvUrl             String?

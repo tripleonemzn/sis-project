@@ -49,6 +49,7 @@ backup_*.sql
 !backend/prisma/migrations/20260330184500_add_osis_management_workflow_context/migration.sql
 !backend/prisma/migrations/20260326170500_add_bkk_partner_handoff_archive/migration.sql
 !backend/prisma/migrations/20260401191000_add_student_commute_fields/migration.sql
+!backend/prisma/migrations/20260402001500_add_profile_education_histories/migration.sql
 !backend/prisma/migrations/20260402043000_add_mobile_push_update_context/migration.sql
 temp_repo/
 uploads/

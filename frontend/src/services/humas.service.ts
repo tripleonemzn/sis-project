@@ -112,6 +112,26 @@ export interface ApplicantCompleteness {
   missingFields: string[];
 }
 
+export interface JobApplicantEducationHistoryDocument {
+  kind: 'IJAZAH' | 'SKHUN' | 'TRANSKRIP';
+  label: string;
+  fileUrl: string;
+  originalName?: string | null;
+  mimeType?: string | null;
+  size?: number | null;
+  uploadedAt?: string | null;
+}
+
+export interface JobApplicantEducationHistory {
+  level: 'TK' | 'SD' | 'SMP_MTS' | 'SLTA' | 'D1' | 'D2' | 'D3' | 'D4_S1' | 'S2' | 'S3';
+  institutionName?: string | null;
+  faculty?: string | null;
+  studyProgram?: string | null;
+  gpa?: string | null;
+  degree?: string | null;
+  documents: JobApplicantEducationHistoryDocument[];
+}
+
 export interface JobApplicantProfile {
   id: number | null;
   userId: number;
@@ -126,6 +146,7 @@ export interface JobApplicantProfile {
   graduationYear?: number | null;
   schoolName?: string | null;
   major?: string | null;
+  educationHistories?: JobApplicantEducationHistory[] | null;
   skills?: string | null;
   experienceSummary?: string | null;
   cvUrl?: string | null;
@@ -172,6 +193,7 @@ export interface JobApplicationRow {
     graduationYear?: number | null;
     schoolName?: string | null;
     major?: string | null;
+    educationHistories?: JobApplicantEducationHistory[] | null;
     cvUrl?: string | null;
     portfolioUrl?: string | null;
     linkedinUrl?: string | null;
@@ -211,6 +233,7 @@ export interface JobApplicationReviewRow {
     graduationYear?: number | null;
     schoolName?: string | null;
     major?: string | null;
+    educationHistories?: JobApplicantEducationHistory[] | null;
     skills?: string | null;
     experienceSummary?: string | null;
     cvUrl?: string | null;

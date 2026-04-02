@@ -4,6 +4,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { authService } from '../../services/auth.service';
 import { humasService } from '../../services/humas.service';
+import { uploadService } from '../../services/upload.service';
+import { ProfileEducationEditor } from '../../components/profile/ProfileEducationEditor';
+import {
+  buildEducationHistoryState,
+  resolveEducationSummaryFromHistories,
+  sanitizeEducationHistories,
+  type ProfileEducationDocumentKind,
+  type ProfileEducationHistory,
+  type ProfileEducationLevel,
+} from '../../features/profileEducation/profileEducation';
 import {
   ApplicantVerificationNotice,
   BKK_APPLICANT_PROFILE_QUERY_KEY,
@@ -19,10 +29,6 @@ type ProfileFormState = {
   phone: string;
   email: string;
   address: string;
-  educationLevel: string;
-  graduationYear: string;
-  schoolName: string;
-  major: string;
   skills: string;
   experienceSummary: string;
   cvUrl: string;
@@ -30,16 +36,20 @@ type ProfileFormState = {
   linkedinUrl: string;
 };
 
+type ProfileTabId = 'main' | 'education' | 'career';
+
+const PROFILE_TABS: Array<{ id: ProfileTabId; label: string }> = [
+  { id: 'main', label: 'Data Utama' },
+  { id: 'education', label: 'Riwayat Pendidikan' },
+  { id: 'career', label: 'Karier & Tautan' },
+];
+
 const emptyForm: ProfileFormState = {
   name: '',
   headline: '',
   phone: '',
   email: '',
   address: '',
-  educationLevel: '',
-  graduationYear: '',
-  schoolName: '',
-  major: '',
   skills: '',
   experienceSummary: '',
   cvUrl: '',
@@ -55,10 +65,6 @@ function buildForm(profile: ReturnType<typeof extractApplicantProfilePayload>) {
     phone: profile.phone || '',
     email: profile.email || '',
     address: profile.address || '',
-    educationLevel: profile.educationLevel || '',
-    graduationYear: profile.graduationYear ? String(profile.graduationYear) : '',
-    schoolName: profile.schoolName || '',
-    major: profile.major || '',
     skills: profile.skills || '',
     experienceSummary: profile.experienceSummary || '',
     cvUrl: profile.cvUrl || '',
@@ -112,11 +118,34 @@ export const BkkCareerProfilePage = () => {
   });
   const applicantProfile = useMemo(() => extractApplicantProfilePayload(profileQuery.data), [profileQuery.data]);
   const [form, setForm] = useState<ProfileFormState>(emptyForm);
+  const [activeTab, setActiveTab] = useState<ProfileTabId>('main');
+  const [educationUploadKey, setEducationUploadKey] = useState<string | null>(null);
+  const baselineEducationHistories = useMemo(
+    () =>
+      buildEducationHistoryState({
+        track: 'NON_STUDENT',
+        histories: (applicantProfile?.educationHistories || []) as ProfileEducationHistory[],
+        legacyHighestEducation: applicantProfile?.educationLevel,
+        legacyInstitutionName: applicantProfile?.schoolName,
+        legacyStudyProgram: applicantProfile?.major,
+      }),
+    [
+      applicantProfile?.educationHistories,
+      applicantProfile?.educationLevel,
+      applicantProfile?.major,
+      applicantProfile?.schoolName,
+    ],
+  );
+  const [educationHistories, setEducationHistories] = useState<ProfileEducationHistory[]>(baselineEducationHistories);
+  const educationSummary = useMemo(
+    () => resolveEducationSummaryFromHistories(educationHistories, 'NON_STUDENT'),
+    [educationHistories],
+  );
 
   useEffect(() => {
-    if (!applicantProfile) return;
     setForm(buildForm(applicantProfile));
-  }, [applicantProfile]);
+    setEducationHistories(baselineEducationHistories);
+  }, [applicantProfile, baselineEducationHistories]);
 
   const saveMutation = useMutation({
     mutationFn: async () =>
@@ -126,10 +155,7 @@ export const BkkCareerProfilePage = () => {
         phone: form.phone.trim() || undefined,
         email: form.email.trim() || undefined,
         address: form.address.trim() || undefined,
-        educationLevel: form.educationLevel.trim() || undefined,
-        graduationYear: form.graduationYear.trim() || undefined,
-        schoolName: form.schoolName.trim() || undefined,
-        major: form.major.trim() || undefined,
+        educationHistories: sanitizeEducationHistories(educationHistories, 'NON_STUDENT'),
         skills: form.skills.trim() || undefined,
         experienceSummary: form.experienceSummary.trim() || undefined,
         cvUrl: form.cvUrl.trim() || undefined,
@@ -148,6 +174,73 @@ export const BkkCareerProfilePage = () => {
       toast.error(normalized.response?.data?.message || normalized.message || 'Gagal menyimpan profil pelamar');
     },
   });
+
+  const handleEducationHistoryChange = (
+    level: ProfileEducationLevel,
+    field: 'institutionName' | 'faculty' | 'studyProgram' | 'gpa' | 'degree',
+    value: string,
+  ) => {
+    setEducationHistories((prev) =>
+      prev.map((entry) => (entry.level === level ? { ...entry, [field]: value } : entry)),
+    );
+  };
+
+  const handleEducationDocumentUpload = async (
+    level: ProfileEducationLevel,
+    kind: ProfileEducationDocumentKind,
+    file: File,
+  ) => {
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/x-png'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Dokumen riwayat pendidikan hanya boleh berformat PDF, JPG, JPEG, atau PNG.');
+      return;
+    }
+    if (file.size > 500 * 1024) {
+      toast.error(`Ukuran file ${file.name} melebihi 500KB.`);
+      return;
+    }
+
+    const uploadKey = `${level}:${kind}`;
+    setEducationUploadKey(uploadKey);
+    try {
+      const uploaded = await uploadService.uploadProfileEducationDocument(file);
+      setEducationHistories((prev) =>
+        prev.map((entry) => {
+          if (entry.level !== level) return entry;
+          const nextDocuments = entry.documents.filter((document) => document.kind !== kind);
+          nextDocuments.push({
+            kind,
+            label: file.name,
+            fileUrl: uploaded.url,
+            originalName: uploaded.originalname,
+            mimeType: uploaded.mimetype,
+            size: uploaded.size,
+            uploadedAt: new Date().toISOString(),
+          });
+          return { ...entry, documents: nextDocuments };
+        }),
+      );
+      toast.success(`${file.name} berhasil diunggah. Simpan profil untuk merekam perubahan.`);
+    } catch (error: unknown) {
+      const normalized = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(normalized.response?.data?.message || normalized.message || 'Gagal mengunggah dokumen pendidikan');
+    } finally {
+      setEducationUploadKey(null);
+    }
+  };
+
+  const handleEducationDocumentRemove = (level: ProfileEducationLevel, kind: ProfileEducationDocumentKind) => {
+    setEducationHistories((prev) =>
+      prev.map((entry) =>
+        entry.level === level
+          ? {
+              ...entry,
+              documents: entry.documents.filter((document) => document.kind !== kind),
+            }
+          : entry,
+      ),
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -194,69 +287,100 @@ export const BkkCareerProfilePage = () => {
 
       <ApplicantVerificationNotice status={applicantProfile?.verificationStatus} />
 
-      <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-5 xl:grid-cols-2">
-          <Field label="Nama Pelamar" value={form.name} onChange={(value) => setForm((prev) => ({ ...prev, name: value }))} />
-          <Field
-            label="Headline / Posisi yang Diminati"
-            value={form.headline}
-            onChange={(value) => setForm((prev) => ({ ...prev, headline: value }))}
-            placeholder="Contoh: Fresh graduate TKJ siap magang atau kerja entry-level"
-          />
-          <Field label="Nomor Telepon" value={form.phone} onChange={(value) => setForm((prev) => ({ ...prev, phone: value }))} />
-          <Field label="Email Aktif" value={form.email} onChange={(value) => setForm((prev) => ({ ...prev, email: value }))} />
-          <Field
-            label="Alamat Domisili"
-            value={form.address}
-            onChange={(value) => setForm((prev) => ({ ...prev, address: value }))}
-            multiline
-          />
-          <Field
-            label="Jenjang Pendidikan"
-            value={form.educationLevel}
-            onChange={(value) => setForm((prev) => ({ ...prev, educationLevel: value }))}
-            placeholder="Contoh: SMK / SMA / D3"
-          />
-          <Field
-            label="Tahun Lulus"
-            value={form.graduationYear}
-            onChange={(value) => setForm((prev) => ({ ...prev, graduationYear: value }))}
-            placeholder="Contoh: 2025"
-          />
-          <Field
-            label="Asal Sekolah / Kampus"
-            value={form.schoolName}
-            onChange={(value) => setForm((prev) => ({ ...prev, schoolName: value }))}
-          />
-          <Field label="Jurusan / Kompetensi" value={form.major} onChange={(value) => setForm((prev) => ({ ...prev, major: value }))} />
-          <Field
-            label="Skill / Keahlian"
-            value={form.skills}
-            onChange={(value) => setForm((prev) => ({ ...prev, skills: value }))}
-            multiline
-            placeholder="Tulis ringkas keahlian yang paling relevan."
-          />
-          <Field
-            label="Pengalaman Singkat"
-            value={form.experienceSummary}
-            onChange={(value) => setForm((prev) => ({ ...prev, experienceSummary: value }))}
-            multiline
-            placeholder="PKL, proyek, organisasi, freelance, dan pengalaman relevan lainnya."
-          />
-          <Field label="URL CV" value={form.cvUrl} onChange={(value) => setForm((prev) => ({ ...prev, cvUrl: value }))} placeholder="https://..." />
-          <Field
-            label="URL Portofolio"
-            value={form.portfolioUrl}
-            onChange={(value) => setForm((prev) => ({ ...prev, portfolioUrl: value }))}
-            placeholder="https://..."
-          />
-          <Field
-            label="URL LinkedIn"
-            value={form.linkedinUrl}
-            onChange={(value) => setForm((prev) => ({ ...prev, linkedinUrl: value }))}
-            placeholder="https://..."
-          />
+      <section className="rounded-[30px] border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap gap-2">
+          {PROFILE_TABS.map((tab) => {
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`inline-flex items-center rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                  active
+                    ? 'border-orange-200 bg-orange-50 text-orange-700'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
+      </section>
+
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
+        {activeTab === 'main' ? (
+          <div className="grid gap-5 xl:grid-cols-2">
+            <Field label="Nama Pelamar" value={form.name} onChange={(value) => setForm((prev) => ({ ...prev, name: value }))} />
+            <Field
+              label="Headline / Posisi yang Diminati"
+              value={form.headline}
+              onChange={(value) => setForm((prev) => ({ ...prev, headline: value }))}
+              placeholder="Contoh: Fresh graduate TKJ siap magang atau kerja entry-level"
+            />
+            <Field label="Nomor Telepon" value={form.phone} onChange={(value) => setForm((prev) => ({ ...prev, phone: value }))} />
+            <Field label="Email Aktif" value={form.email} onChange={(value) => setForm((prev) => ({ ...prev, email: value }))} />
+            <Field
+              label="Alamat Domisili"
+              value={form.address}
+              onChange={(value) => setForm((prev) => ({ ...prev, address: value }))}
+              multiline
+            />
+          </div>
+        ) : null}
+
+        {activeTab === 'education' ? (
+          <div className="space-y-5">
+            <div className="rounded-2xl border border-orange-100 bg-orange-50/70 p-4">
+              <p className="text-sm font-semibold text-orange-900">Riwayat Pendidikan Pelamar</p>
+              <p className="mt-1 text-sm leading-6 text-orange-800">
+                Lengkapi riwayat pendidikan mulai SLTA/Sederajat hingga jenjang tertinggi yang Anda miliki.
+                Saat ini sudah terisi {educationSummary.completedLevels} jenjang.
+              </p>
+            </div>
+            <ProfileEducationEditor
+              track="NON_STUDENT"
+              histories={educationHistories}
+              uploadingKey={educationUploadKey}
+              onHistoryChange={handleEducationHistoryChange}
+              onUploadDocument={handleEducationDocumentUpload}
+              onRemoveDocument={handleEducationDocumentRemove}
+            />
+          </div>
+        ) : null}
+
+        {activeTab === 'career' ? (
+          <div className="grid gap-5 xl:grid-cols-2">
+            <Field
+              label="Skill / Keahlian"
+              value={form.skills}
+              onChange={(value) => setForm((prev) => ({ ...prev, skills: value }))}
+              multiline
+              placeholder="Tulis ringkas keahlian yang paling relevan."
+            />
+            <Field
+              label="Pengalaman Singkat"
+              value={form.experienceSummary}
+              onChange={(value) => setForm((prev) => ({ ...prev, experienceSummary: value }))}
+              multiline
+              placeholder="PKL, proyek, organisasi, freelance, dan pengalaman relevan lainnya."
+            />
+            <Field label="URL CV" value={form.cvUrl} onChange={(value) => setForm((prev) => ({ ...prev, cvUrl: value }))} placeholder="https://..." />
+            <Field
+              label="URL Portofolio"
+              value={form.portfolioUrl}
+              onChange={(value) => setForm((prev) => ({ ...prev, portfolioUrl: value }))}
+              placeholder="https://..."
+            />
+            <Field
+              label="URL LinkedIn"
+              value={form.linkedinUrl}
+              onChange={(value) => setForm((prev) => ({ ...prev, linkedinUrl: value }))}
+              placeholder="https://..."
+            />
+          </div>
+        ) : null}
 
         <div className="mt-6 flex flex-wrap justify-end gap-3">
           <Link

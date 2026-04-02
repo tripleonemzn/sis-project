@@ -4,6 +4,8 @@ import {
     uploadTeacherDocument, 
     teacherPhotoUpload, 
     uploadTeacherPhoto, 
+    profileEducationDocumentUpload,
+    uploadProfileEducationDocument,
     uploadQuestionImage, 
     uploadQuestionVideo,
     questionImageUpload,
@@ -28,6 +30,14 @@ router.post('/teacher/document', roleMiddleware(['ADMIN', 'TEACHER', 'STAFF', 'E
 
 // Upload foto profil guru (dan user lain)
 router.post('/teacher/photo', roleMiddleware(['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'STUDENT', 'PARENT', 'CALON_SISWA']), teacherPhotoUpload.single('file'), uploadTeacherPhoto);
+
+// Upload dokumen riwayat pendidikan
+router.post(
+  '/profile-education/document',
+  roleMiddleware(['ADMIN', 'TEACHER', 'STAFF', 'EXAMINER', 'PRINCIPAL', 'EXTRACURRICULAR_TUTOR', 'STUDENT', 'PARENT', 'CALON_SISWA', 'UMUM']),
+  profileEducationDocumentUpload.single('file'),
+  uploadProfileEducationDocument,
+);
 
 // Upload Media Soal (Guru & Admin)
 router.post('/question-image', roleMiddleware(['TEACHER', 'ADMIN']), questionImageUpload.single('image'), uploadQuestionImage);

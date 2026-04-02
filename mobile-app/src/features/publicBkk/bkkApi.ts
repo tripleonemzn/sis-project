@@ -50,6 +50,23 @@ export const publicBkkApi = {
     graduationYear?: string;
     schoolName?: string;
     major?: string;
+    educationHistories?: Array<{
+      level: 'TK' | 'SD' | 'SMP_MTS' | 'SLTA' | 'D1' | 'D2' | 'D3' | 'D4_S1' | 'S2' | 'S3';
+      institutionName?: string | null;
+      faculty?: string | null;
+      studyProgram?: string | null;
+      gpa?: string | null;
+      degree?: string | null;
+      documents: Array<{
+        kind: 'IJAZAH' | 'SKHUN' | 'TRANSKRIP';
+        label: string;
+        fileUrl: string;
+        originalName?: string | null;
+        mimeType?: string | null;
+        size?: number | null;
+        uploadedAt?: string | null;
+      }>;
+    }>;
     skills?: string;
     experienceSummary?: string;
     cvUrl?: string;

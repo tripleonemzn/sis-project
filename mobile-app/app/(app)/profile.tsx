@@ -23,8 +23,18 @@ import {
   getMobileCandidateDocumentCategoryLabel,
 } from '../../src/features/candidateAdmission/types';
 import { MOBILE_PROFILE_QUERY_KEY, useProfileQuery } from '../../src/features/profile/useProfileQuery';
+import { ProfileEducationEditor } from '../../src/features/profile/ProfileEducationEditor';
 import { profileApi } from '../../src/features/profile/profileApi';
 import type { UpdateSelfProfilePayload } from '../../src/features/profile/profileApi';
+import {
+  buildEducationHistoryState,
+  resolveEducationSummaryFromHistories,
+  resolveProfileEducationTrackForRole,
+  sanitizeEducationHistories,
+  type ProfileEducationDocumentKind,
+  type ProfileEducationHistory,
+  type ProfileEducationLevel,
+} from '../../src/features/profile/profileEducation';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { notifyApiError, notifyError, notifySuccess } from '../../src/lib/ui/feedback';
@@ -283,6 +293,17 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 type ProfileVariant = 'employee' | 'student' | 'candidate' | 'parent' | 'admin';
+type ProfileTabId = 'account' | 'personal' | 'contact' | 'employment' | 'parents' | 'education' | 'documents';
+
+const PROFILE_TABS: Array<{ id: ProfileTabId; label: string }> = [
+  { id: 'account', label: 'Data Akun' },
+  { id: 'personal', label: 'Data Pribadi' },
+  { id: 'contact', label: 'Data Kontak' },
+  { id: 'employment', label: 'Data Kepegawaian' },
+  { id: 'parents', label: 'Data Orang Tua' },
+  { id: 'education', label: 'Riwayat Pendidikan' },
+  { id: 'documents', label: 'Upload File' },
+];
 
 function toText(value?: string | number | null) {
   if (value === null || value === undefined) return '';
@@ -358,6 +379,76 @@ function getProfileVariant(role?: string | null): ProfileVariant {
     return 'parent';
   }
   return 'admin';
+}
+
+function getVisibleTabs(role?: string | null): ProfileTabId[] {
+  const variant = getProfileVariant(role);
+  if (variant === 'employee') {
+    return ['account', 'personal', 'contact', 'employment', 'education', 'documents'];
+  }
+  if (variant === 'student') {
+    return ['account', 'personal', 'contact', 'parents', 'education'];
+  }
+  if (variant === 'candidate') {
+    return ['account', 'personal', 'contact', 'education', 'documents'];
+  }
+  if (variant === 'parent') {
+    return ['account', 'personal', 'contact', 'education'];
+  }
+  return ['account', 'personal', 'contact', 'education', 'documents'];
+}
+
+function getTabLabel(role: string | null | undefined, tabId: ProfileTabId) {
+  const variant = getProfileVariant(role);
+  if (variant === 'employee') {
+    const labels: Record<ProfileTabId, string> = {
+      account: 'Akun & Foto',
+      personal: 'Identitas PTK',
+      contact: 'Kontak & Alamat',
+      employment: 'Data PTK',
+      parents: 'Data Orang Tua',
+      education: 'Riwayat Pendidikan',
+      documents: 'Dokumen',
+    };
+    return labels[tabId];
+  }
+  if (variant === 'student') {
+    const labels: Record<ProfileTabId, string> = {
+      account: 'Akun Siswa',
+      personal: 'Identitas Siswa',
+      contact: 'Kontak & Alamat',
+      employment: 'Data Kepegawaian',
+      parents: 'Data Keluarga',
+      education: 'Riwayat Pendidikan',
+      documents: 'Upload File',
+    };
+    return labels[tabId];
+  }
+  if (variant === 'candidate') {
+    const labels: Record<ProfileTabId, string> = {
+      account: 'Akun & Foto',
+      personal: 'Biodata Inti',
+      contact: 'Kontak Dasar',
+      employment: 'Data Kepegawaian',
+      parents: 'Data Orang Tua',
+      education: 'Riwayat Pendidikan',
+      documents: 'Dokumen PPDB',
+    };
+    return labels[tabId];
+  }
+  if (variant === 'parent') {
+    const labels: Record<ProfileTabId, string> = {
+      account: 'Akun Keluarga',
+      personal: 'Identitas Wali',
+      contact: 'Kontak Keluarga',
+      employment: 'Data Kepegawaian',
+      parents: 'Data Orang Tua',
+      education: 'Riwayat Pendidikan',
+      documents: 'Upload File',
+    };
+    return labels[tabId];
+  }
+  return PROFILE_TABS.find((tab) => tab.id === tabId)?.label || tabId;
 }
 
 function getProfileCopy(role?: string | null) {
@@ -664,7 +755,9 @@ export default function ProfileScreen() {
   const { isAuthenticated, isLoading } = useAuth();
   const profileQuery = useProfileQuery(isAuthenticated);
   const pageContentPadding = getStandardPagePadding(insets, { bottom: 120 });
+  const [activeTab, setActiveTab] = useState<ProfileTabId>('account');
   const [form, setForm] = useState<EditableProfileForm>(emptyForm);
+  const [educationHistories, setEducationHistories] = useState<ProfileEducationHistory[]>([]);
 
   const profile = profileQuery.data?.profile ?? null;
   const baseline = useMemo(() => (profile ? buildForm(profile) : emptyForm), [profile]);
@@ -683,11 +776,29 @@ export default function ProfileScreen() {
   const canUploadDocuments = ['ADMIN', 'TEACHER', 'PRINCIPAL', 'STAFF', 'EXAMINER', 'EXTRACURRICULAR_TUTOR', 'CALON_SISWA'].includes(profile?.role || '');
   const [photoUploading, setPhotoUploading] = useState(false);
   const [documentUploading, setDocumentUploading] = useState(false);
+  const [educationUploadKey, setEducationUploadKey] = useState<string | null>(null);
   const [candidateDocumentCategory, setCandidateDocumentCategory] = useState<string>(
     MOBILE_CANDIDATE_DOCUMENT_OPTIONS[0]?.value || 'PPDB_AKTA_KELAHIRAN',
   );
   const profileCopy = useMemo(() => getProfileCopy(profile?.role), [profile?.role]);
   const verificationMeta = useMemo(() => getVerificationStatusMeta(profile?.verificationStatus), [profile?.verificationStatus]);
+  const visibleTabs = useMemo(() => getVisibleTabs(profile?.role), [profile?.role]);
+  const educationTrack = useMemo(() => resolveProfileEducationTrackForRole(profile?.role), [profile?.role]);
+  const baselineEducationHistories = useMemo(
+    () =>
+      buildEducationHistoryState({
+        track: educationTrack,
+        histories: (profile?.educationHistories || []) as ProfileEducationHistory[],
+        legacyHighestEducation: profile?.highestEducation,
+        legacyInstitutionName: '',
+        legacyStudyProgram: profile?.studyProgram,
+      }),
+    [educationTrack, profile?.educationHistories, profile?.highestEducation, profile?.studyProgram],
+  );
+  const educationSummary = useMemo(
+    () => resolveEducationSummaryFromHistories(educationHistories, educationTrack),
+    [educationHistories, educationTrack],
+  );
   const showNip = isEmployee;
   const showNik = isEmployee || isStudent;
   const showNuptk = isEmployee;
@@ -741,7 +852,7 @@ export default function ProfileScreen() {
         { label: 'Agama', value: form.religion },
         { label: 'Nama ibu kandung', value: form.motherName },
         { label: 'NIK ibu kandung', value: form.motherNik },
-        { label: 'Pendidikan terakhir', value: form.highestEducation },
+        { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
         { label: 'Jenis PTK / peran', value: isStaff ? form.staffPosition || form.ptkType : form.ptkType },
         { label: 'Status kepegawaian', value: form.employeeStatus },
         { label: 'Status keaktifan', value: form.employeeActiveStatus },
@@ -763,6 +874,7 @@ export default function ProfileScreen() {
         { label: 'Nama ibu kandung', value: form.motherName },
         { label: 'NIK ibu kandung', value: form.motherNik },
         { label: 'Agama', value: form.religion },
+        { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
         { label: 'Status dalam keluarga', value: form.familyStatus },
         { label: 'Jenis tinggal', value: form.livingWith },
         { label: 'Alat transportasi', value: form.transportationMode },
@@ -782,6 +894,7 @@ export default function ProfileScreen() {
         { label: 'Agama', value: form.religion },
         { label: 'Kontak aktif', value: form.phone || form.email },
         { label: 'Alamat', value: form.address },
+        { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
         { label: 'Dokumen pendukung', value: (profile.documents || []).length > 0 ? 'Ada' : '' },
       ];
     } else if (isParent) {
@@ -791,6 +904,7 @@ export default function ProfileScreen() {
         { label: 'Provinsi', value: form.province },
         { label: 'Kabupaten / Kota', value: form.cityRegency },
         { label: 'Alamat', value: form.address },
+        { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
         { label: 'Anak terhubung', value: (profile.children || []).length > 0 ? 'Ada' : '' },
       ];
     } else {
@@ -798,6 +912,7 @@ export default function ProfileScreen() {
         { label: 'Nama lengkap', value: form.name || profile.name },
         { label: 'Kontak aktif', value: form.phone || form.email },
         { label: 'Alamat', value: form.address },
+        { label: 'Riwayat pendidikan', value: educationSummary.highestEducation },
       ];
     }
 
@@ -813,7 +928,7 @@ export default function ProfileScreen() {
       missing,
       percent: total > 0 ? Math.round((completed / total) * 100) : 0,
     };
-  }, [form, isCandidate, isEmployee, isParent, isStaff, isStudent, profile]);
+  }, [educationSummary.highestEducation, form, isCandidate, isEmployee, isParent, isStaff, isStudent, profile]);
 
   const summaryLines = useMemo(() => {
     if (!profile) {
@@ -824,6 +939,7 @@ export default function ProfileScreen() {
         return [
           `Tugas tambahan: ${profile.additionalDuties?.length ? profile.additionalDuties.join(', ') : 'Belum ada'}`,
           `Kelas tugas: ${profile.teacherClasses?.length || 0} kelas`,
+          `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
           `Dokumen: ${(profile.documents || []).length} file`,
         ];
       }
@@ -832,6 +948,7 @@ export default function ProfileScreen() {
         return [
           `Ekstrakurikuler aktif: ${profile.ekskulTutorAssignments?.length || 0}`,
           `Penugasan utama: ${normalizeStructuredFieldValue(form.ptkType) || 'Tutor / pembina'}`,
+          `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
           `Dokumen: ${(profile.documents || []).length} file`,
         ];
       }
@@ -840,6 +957,7 @@ export default function ProfileScreen() {
         return [
           `Jurusan damping: ${profile.examinerMajor?.name || '-'}`,
           `Instansi: ${form.institution || 'Belum diisi'}`,
+          `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
           `Dokumen: ${(profile.documents || []).length} file`,
         ];
       }
@@ -848,6 +966,7 @@ export default function ProfileScreen() {
         return [
           `Divisi: ${getStaffPositionLabel(form.staffPosition) || normalizeStructuredFieldValue(form.ptkType) || 'Belum dipilih'}`,
           `Status kepegawaian: ${normalizeStructuredFieldValue(form.employeeStatus) || 'Belum diisi'}`,
+          `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
           `Dokumen: ${(profile.documents || []).length} file`,
         ];
       }
@@ -855,6 +974,7 @@ export default function ProfileScreen() {
       return [
         `Peran aktif: ${ROLE_LABELS[profile.role] || profile.role}`,
         `Status kepegawaian: ${normalizeStructuredFieldValue(form.employeeStatus) || 'Belum diisi'}`,
+        `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
         `Dokumen: ${(profile.documents || []).length} file`,
       ];
     }
@@ -863,6 +983,7 @@ export default function ProfileScreen() {
       return [
         `Kelas aktif: ${profile.studentClass?.name || '-'}`,
         `Status siswa: ${profile.studentStatus || 'ACTIVE'}`,
+        `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
         `Email / HP: ${form.email || form.phone || 'Belum diisi'}`,
       ];
     }
@@ -871,6 +992,7 @@ export default function ProfileScreen() {
       return [
         `NISN: ${profile.nisn || '-'}`,
         `Status akun: ${verificationMeta.label}`,
+        `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
         `Dokumen PPDB: ${(profile.documents || []).length} file`,
       ];
     }
@@ -879,6 +1001,7 @@ export default function ProfileScreen() {
       return [
         `Anak terhubung: ${(profile.children || []).length}`,
         `Kontak aktif: ${form.email || form.phone || 'Belum diisi'}`,
+        `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
         `Alamat: ${form.address ? 'Sudah diisi' : 'Belum diisi'}`,
       ];
     }
@@ -886,9 +1009,10 @@ export default function ProfileScreen() {
     return [
       `Role aktif: ${ROLE_LABELS[profile.role] || profile.role}`,
       `Kontak aktif: ${form.email || form.phone || 'Belum diisi'}`,
+      `Riwayat pendidikan: ${educationSummary.completedLevels} jenjang`,
       `Alamat: ${form.address ? 'Sudah diisi' : 'Belum diisi'}`,
     ];
-  }, [form.address, form.email, form.employeeStatus, form.institution, form.phone, form.ptkType, form.staffPosition, isCandidate, isEmployee, isParent, isStudent, profile, verificationMeta.label]);
+  }, [educationSummary.completedLevels, form.address, form.email, form.employeeStatus, form.institution, form.phone, form.ptkType, form.staffPosition, isCandidate, isEmployee, isParent, isStudent, profile, verificationMeta.label]);
 
   useFocusEffect(
     useCallback(() => {
@@ -900,9 +1024,21 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (!profile) return;
     setForm(buildForm(profile));
-  }, [profile]);
+    setEducationHistories(baselineEducationHistories);
+  }, [baselineEducationHistories, profile]);
 
-  const isDirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(baseline), [form, baseline]);
+  useEffect(() => {
+    if (!visibleTabs.includes(activeTab)) {
+      setActiveTab(visibleTabs[0]);
+    }
+  }, [activeTab, visibleTabs]);
+
+  const isDirty = useMemo(
+    () =>
+      JSON.stringify(form) !== JSON.stringify(baseline) ||
+      JSON.stringify(educationHistories) !== JSON.stringify(baselineEducationHistories),
+    [baseline, baselineEducationHistories, educationHistories, form],
+  );
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -920,8 +1056,7 @@ export default function ProfileScreen() {
         nik: toNullable(form.nik),
         familyCardNumber: toNullable(form.familyCardNumber),
         nuptk: toNullable(form.nuptk),
-        highestEducation: toNullable(form.highestEducation),
-        studyProgram: toNullable(form.studyProgram),
+        educationHistories: sanitizeEducationHistories(educationHistories, educationTrack),
         motherName: toNullable(form.motherName),
         motherNik: toNullable(form.motherNik),
         religion: toNullable(form.religion),
@@ -1123,6 +1258,102 @@ export default function ProfileScreen() {
     } catch (error) {
       notifyApiError(error, 'Gagal menghapus dokumen.');
     }
+  };
+
+  const handleEducationHistoryChange = (
+    level: ProfileEducationLevel,
+    field: 'institutionName' | 'faculty' | 'studyProgram' | 'gpa' | 'degree',
+    value: string,
+  ) => {
+    setEducationHistories((prev) =>
+      prev.map((entry) => (entry.level === level ? { ...entry, [field]: value } : entry)),
+    );
+  };
+
+  const handleEducationDocumentPick = async (
+    level: ProfileEducationLevel,
+    kind: ProfileEducationDocumentKind,
+  ) => {
+    if (educationUploadKey) return;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+      const asset = result.assets[0];
+      const mime = String(asset.mimeType || '').toLowerCase();
+      const name = asset.name || `education-${Date.now()}`;
+      if (!['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(mime)) {
+        notifyError('Dokumen pendidikan hanya boleh berformat PDF, JPG, JPEG, atau PNG.');
+        return;
+      }
+      if ((asset.size || 0) > 500 * 1024) {
+        notifyError('Ukuran dokumen pendidikan maksimal 500KB.');
+        return;
+      }
+
+      const uploadKey = `${level}:${kind}`;
+      setEducationUploadKey(uploadKey);
+      const uploaded = await profileApi.uploadEducationHistoryDocument({
+        uri: asset.uri,
+        name,
+        type: mime || 'application/octet-stream',
+      });
+
+      setEducationHistories((prev) =>
+        prev.map((entry) => {
+          if (entry.level !== level) return entry;
+          const nextDocuments = entry.documents.filter((document) => document.kind !== kind);
+          nextDocuments.push({
+            kind,
+            label: name,
+            fileUrl: uploaded.url,
+            originalName: uploaded.originalname,
+            mimeType: uploaded.mimetype,
+            size: uploaded.size ?? null,
+            uploadedAt: new Date().toISOString(),
+          });
+          return { ...entry, documents: nextDocuments };
+        }),
+      );
+      notifySuccess('Dokumen riwayat pendidikan berhasil diunggah. Simpan profil untuk merekam perubahan.');
+    } catch (error) {
+      notifyApiError(error, 'Gagal mengunggah dokumen riwayat pendidikan.');
+    } finally {
+      setEducationUploadKey(null);
+    }
+  };
+
+  const handleEducationDocumentRemove = (level: ProfileEducationLevel, kind: ProfileEducationDocumentKind) => {
+    setEducationHistories((prev) =>
+      prev.map((entry) =>
+        entry.level === level
+          ? {
+              ...entry,
+              documents: entry.documents.filter((document) => document.kind !== kind),
+            }
+          : entry,
+      ),
+    );
+  };
+
+  const handleEducationDocumentView = (level: ProfileEducationLevel, kind: ProfileEducationDocumentKind) => {
+    const document = educationHistories
+      .find((entry) => entry.level === level)
+      ?.documents.find((item) => item.kind === kind);
+    const url = resolveMediaUrl(document?.fileUrl);
+    if (!url) {
+      notifyError('File dokumen belum tersedia.');
+      return;
+    }
+    openWebModuleRoute(router, {
+      moduleKey: 'profile',
+      webPath: url,
+      label: document?.originalName || document?.label || 'Dokumen Riwayat Pendidikan',
+    });
   };
 
   if (isLoading) return <AppLoadingScreen message="Memuat profil..." />;
@@ -1327,7 +1558,38 @@ export default function ProfileScreen() {
             </Pressable>
           ) : null}
 
-          <View style={cardStyle}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 12 }}
+            style={{ marginBottom: 8 }}
+          >
+            {visibleTabs.map((tabId) => {
+              const active = activeTab === tabId;
+              return (
+                <Pressable
+                  key={tabId}
+                  onPress={() => setActiveTab(tabId)}
+                  style={{
+                    marginRight: 8,
+                    borderWidth: 1,
+                    borderColor: active ? '#2563eb' : '#dbeafe',
+                    backgroundColor: active ? '#eff6ff' : '#fff',
+                    borderRadius: 999,
+                    paddingHorizontal: 14,
+                    paddingVertical: 9,
+                  }}
+                >
+                  <Text style={{ color: active ? '#1d4ed8' : '#475569', fontWeight: '700', fontSize: 12 }}>
+                    {getTabLabel(profile.role, tabId)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          {activeTab === 'account' ? (
+            <View style={cardStyle}>
             <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 10 }}>Data Akun</Text>
             <ProfileRow label="Username" value={profile.username} />
             <ProfileRow label="Role" value={profile.role} />
@@ -1365,9 +1627,77 @@ export default function ProfileScreen() {
                 )}
               </View>
             ) : null}
-          </View>
 
-          <View style={cardStyle}>
+            <View
+              style={{
+                marginTop: 4,
+                flexDirection: 'row',
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                backgroundColor: '#f8fafc',
+                borderRadius: 14,
+                padding: 12,
+              }}
+            >
+              <View
+                style={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: 36,
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  overflow: 'hidden',
+                  backgroundColor: '#f1f5f9',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  marginRight: 12,
+                }}
+              >
+                {profilePhotoUrl ? (
+                  <Image
+                    source={{ uri: profilePhotoUrl }}
+                    style={{ width: '100%', height: '100%' }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Text style={{ color: '#64748b', fontSize: 11 }}>No Photo</Text>
+                )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#334155', fontSize: 12, marginBottom: 6 }}>
+                  Foto Profil (JPG/PNG max 500KB)
+                </Text>
+                <Pressable
+                  onPress={() => {
+                    void handleUploadPhoto();
+                  }}
+                  disabled={!canUploadPhoto || photoUploading}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#1d4ed8',
+                    backgroundColor: !canUploadPhoto || photoUploading ? '#bfdbfe' : '#eff6ff',
+                    borderRadius: 10,
+                    paddingVertical: 9,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
+                    {photoUploading ? 'Mengunggah Foto...' : 'Upload Foto'}
+                  </Text>
+                </Pressable>
+                {!canUploadPhoto ? (
+                  <Text style={{ color: '#64748b', fontSize: 11, marginTop: 6 }}>
+                    Upload foto tidak tersedia untuk role ini.
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+            </View>
+          ) : null}
+
+          {activeTab === 'personal' ? (
+            <View style={cardStyle}>
             <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 10 }}>Data Pribadi</Text>
             {showNip ? (
               <FormField
@@ -1572,9 +1902,10 @@ export default function ProfileScreen() {
                 />
               </>
             ) : null}
-          </View>
+            </View>
+          ) : null}
 
-          {isStudent ? (
+          {isStudent && activeTab === 'parents' ? (
             <View style={cardStyle}>
               <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 10 }}>Data Keluarga</Text>
               <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13, marginBottom: 8 }}>Data Ayah</Text>
@@ -1667,7 +1998,8 @@ export default function ProfileScreen() {
             </View>
           ) : null}
 
-          <View style={cardStyle}>
+          {activeTab === 'contact' ? (
+            <View style={cardStyle}>
             <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 10 }}>Data Kontak</Text>
             <FormField
               label="Email"
@@ -1803,9 +2135,10 @@ export default function ProfileScreen() {
                 ) : null}
               </>
             ) : null}
-          </View>
+            </View>
+          ) : null}
 
-          {showEmployment ? (
+          {showEmployment && activeTab === 'employment' ? (
             <View style={cardStyle}>
               <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 10 }}>Data Kepegawaian</Text>
               {isStaff ? (
@@ -1866,18 +2199,6 @@ export default function ProfileScreen() {
                 options={SALARY_SOURCE_OPTIONS.map((item) => ({ label: item, value: item }))}
                 onSelect={(value) => setForm((prev) => ({ ...prev, salarySource: value }))}
               />
-              <ChoiceChips
-                label="Pendidikan Terakhir"
-                value={form.highestEducation}
-                options={EDUCATION_LEVEL_OPTIONS.map((item) => ({ label: item, value: item }))}
-                onSelect={(value) => setForm((prev) => ({ ...prev, highestEducation: value }))}
-              />
-              <FormField
-                label="Program Studi / Jurusan"
-                value={form.studyProgram}
-                onChangeText={(value) => setForm((prev) => ({ ...prev, studyProgram: value }))}
-                placeholder="Contoh: Pendidikan Matematika / Akuntansi"
-              />
               <FormField
                 label="SK Pengangkatan"
                 value={form.appointmentDecree}
@@ -1916,56 +2237,24 @@ export default function ProfileScreen() {
             </View>
           ) : null}
 
-          <View style={cardStyle}>
-            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Upload File</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-              <View
-                style={{
-                  width: 72,
-                  height: 72,
-                  borderRadius: 36,
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  overflow: 'hidden',
-                  backgroundColor: '#f1f5f9',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  marginRight: 12,
-                }}
-              >
-                {profilePhotoUrl ? (
-                  <Image
-                    source={{ uri: profilePhotoUrl }}
-                    style={{ width: '100%', height: '100%' }}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <Text style={{ color: '#64748b', fontSize: 11 }}>No Photo</Text>
-                )}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: '#334155', fontSize: 12, marginBottom: 6 }}>Foto Profil (JPG/PNG max 500KB)</Text>
-                <Pressable
-                  onPress={() => {
-                    void handleUploadPhoto();
-                  }}
-                  disabled={!canUploadPhoto || photoUploading}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#1d4ed8',
-                    backgroundColor: !canUploadPhoto || photoUploading ? '#bfdbfe' : '#eff6ff',
-                    borderRadius: 10,
-                    paddingVertical: 9,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
-                    {photoUploading ? 'Mengunggah Foto...' : 'Upload Foto'}
-                  </Text>
-                </Pressable>
-              </View>
+          {activeTab === 'education' ? (
+            <View style={cardStyle}>
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 10 }}>Riwayat Pendidikan</Text>
+              <ProfileEducationEditor
+                track={educationTrack}
+                histories={educationHistories}
+                uploadingKey={educationUploadKey}
+                onHistoryChange={handleEducationHistoryChange}
+                onPickDocument={handleEducationDocumentPick}
+                onRemoveDocument={handleEducationDocumentRemove}
+                onViewDocument={handleEducationDocumentView}
+              />
             </View>
+          ) : null}
 
+          {activeTab === 'documents' ? (
+            <View style={cardStyle}>
+            <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Upload File</Text>
             <View style={{ marginTop: 4 }}>
               {isCandidate ? (
                 <View
@@ -2117,7 +2406,8 @@ export default function ProfileScreen() {
                 <Text style={{ color: '#64748b', marginLeft: 8, fontSize: 12 }}>Menyinkronkan perubahan...</Text>
               </View>
             ) : null}
-          </View>
+            </View>
+          ) : null}
 
           <Pressable
             disabled={!isDirty || saveMutation.isPending}
