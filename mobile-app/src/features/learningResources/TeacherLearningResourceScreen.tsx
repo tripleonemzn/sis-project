@@ -184,7 +184,9 @@ function toPayloadRows(rows: CpAnalysisRowDraft[]): CpTpAnalysisItem[] {
   }));
 }
 
-const SectionChip = MobileTabChip;
+const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
+  <MobileTabChip active={active} label={label} onPress={onPress} compact stacked useAutoIcon minWidth={108} />
+);
 
 function SummaryCard({
   title,

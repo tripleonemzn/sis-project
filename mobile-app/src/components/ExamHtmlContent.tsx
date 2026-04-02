@@ -29,11 +29,66 @@ function escapeHtml(value: string) {
     .replace(/'/g, '&#39;');
 }
 
-function normalizeHtmlContent(value?: string | null) {
+function decodeSimpleEntities(value: string) {
+  return String(value || '')
+    .replace(/&#x([0-9a-f]+);/gi, (_full, hex: string) => {
+      const code = Number.parseInt(hex, 16);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : _full;
+    })
+    .replace(/&#([0-9]+);/g, (_full, dec: string) => {
+      const code = Number.parseInt(dec, 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : _full;
+    })
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'");
+}
+
+function extractQuillDeltaHtml(raw: string) {
+  const normalized = String(raw || '').trim();
+  if (!normalized.startsWith('{') && !normalized.startsWith('[')) return null;
+
+  try {
+    const parsed = JSON.parse(normalized) as
+      | { ops?: Array<{ insert?: string | { image?: string } }> }
+      | Array<{ insert?: string | { image?: string } }>;
+    const ops = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.ops) ? parsed.ops : [];
+    if (!ops.length) return null;
+
+    const fragments = ops
+      .map((op) => {
+        if (typeof op?.insert === 'string') {
+          return escapeHtml(op.insert)
+            .replace(/\r\n?/g, '\n')
+            .replace(/\n{2,}/g, '\n\n')
+            .replace(/\n/g, '<br />');
+        }
+        const imageUrl = typeof op?.insert === 'object' ? String(op.insert?.image || '').trim() : '';
+        if (imageUrl) {
+          return `<img class="question-media" src="${escapeHtml(toMediaUrl(imageUrl))}" alt="Media soal" />`;
+        }
+        return '';
+      })
+      .filter((item) => item.length > 0);
+
+    if (!fragments.length) return null;
+    return fragments.join('');
+  } catch {
+    return null;
+  }
+}
+
+export function normalizeExamRichTextToHtml(value?: string | null) {
   const raw = String(value || '').trim();
   if (!raw) return '<p>-</p>';
+  const normalizedRaw = raw.replace(/&amp;(?=(?:[a-z]+|#\d+|#x[0-9a-f]+);)/gi, '&');
+  const deltaHtml = extractQuillDeltaHtml(normalizedRaw);
+  if (deltaHtml) return deltaHtml;
 
-  const cleaned = raw
+  const cleaned = normalizedRaw
     .replace(/<!--StartFragment-->|<!--EndFragment-->/gi, '')
     .replace(/<\/?o:p\b[^>]*>/gi, '')
     .replace(/\sclass=(['"])[^'"]*\bMso[a-zA-Z0-9_-]*[^'"]*\1/gi, '')
@@ -67,13 +122,22 @@ function normalizeHtmlContent(value?: string | null) {
       },
     )
     .trim();
+  const decoded = decodeSimpleEntities(cleaned);
 
-  if (/<[a-z][\s\S]*>/i.test(cleaned)) return cleaned;
+  if (/<[a-z][\s\S]*>/i.test(decoded)) return decoded;
 
-  return escapeHtml(cleaned)
+  return escapeHtml(decoded)
     .replace(/\r\n?/g, '\n')
     .replace(/\n{2,}/g, '\n\n')
     .replace(/\n/g, '<br />');
+}
+
+export function plainTextFromExamRichText(value?: string | null) {
+  return decodeSimpleEntities(normalizeExamRichTextToHtml(value))
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function getYoutubeEmbedUrl(url?: string | null) {
@@ -115,7 +179,7 @@ export function ExamHtmlContent({
   const webBaseUrl = ENV.API_BASE_URL.replace(/\/api\/?$/, '');
 
   const documentHtml = useMemo(() => {
-    const normalizedHtml = normalizeHtmlContent(html);
+    const normalizedHtml = normalizeExamRichTextToHtml(html);
     const resolvedImageUrl = toMediaUrl(imageUrl);
     const resolvedVideoUrl = toMediaUrl(videoUrl);
     const youtubeEmbedUrl = videoType === 'youtube' ? getYoutubeEmbedUrl(videoUrl) : '';

@@ -377,7 +377,15 @@ export default function PublicBkkProfileScreen() {
                   const active = activeTab === tab.id;
                   return (
                     <View key={tab.id} style={{ marginRight: 8 }}>
-                      <MobileTabChip active={active} label={tab.label} onPress={() => setActiveTab(tab.id)} compact />
+                      <MobileTabChip
+                        active={active}
+                        label={tab.label}
+                        onPress={() => setActiveTab(tab.id)}
+                        compact
+                        stacked
+                        useAutoIcon
+                        minWidth={110}
+                      />
                     </View>
                   );
                 })}

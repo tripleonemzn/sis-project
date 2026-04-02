@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ActivityIndicator,
@@ -706,33 +707,91 @@ function ChoiceChips({
   options: Array<{ label: string; value: string }>;
   onSelect: (next: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const selectedOption = options.find((option) => option.value === value) || null;
+
   return (
     <View style={{ marginBottom: 10 }}>
       <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>{label}</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
-        {options.map((option) => {
-          const active = value === option.value;
-          return (
-            <View key={option.value} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <Pressable
-                onPress={() => onSelect(option.value)}
-                style={{
-                  borderWidth: 1,
-                  borderColor: active ? '#1d4ed8' : '#cbd5e1',
-                  backgroundColor: active ? '#eff6ff' : '#fff',
-                  borderRadius: 8,
-                  paddingVertical: 8,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: active ? '#1d4ed8' : '#334155', fontWeight: '600', fontSize: 12 }}>
-                  {option.label}
-                </Text>
-              </Pressable>
-            </View>
-          );
-        })}
-      </View>
+      <Pressable
+        onPress={() => setOpen((prev) => !prev)}
+        style={{
+          borderWidth: 1,
+          borderColor: open ? '#93c5fd' : '#cbd5e1',
+          backgroundColor: '#fff',
+          borderRadius: 12,
+          paddingHorizontal: 12,
+          paddingVertical: 11,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <Text style={{ color: selectedOption ? '#0f172a' : '#94a3b8', fontSize: 13, fontWeight: selectedOption ? '600' : '500', flex: 1 }}>
+          {selectedOption?.label || `Pilih ${label.toLowerCase()}`}
+        </Text>
+        <Feather name={open ? 'chevron-up' : 'chevron-down'} size={18} color="#64748b" />
+      </Pressable>
+
+      {open ? (
+        <View
+          style={{
+            marginTop: 8,
+            borderWidth: 1,
+            borderColor: '#dbe7fb',
+            borderRadius: 12,
+            backgroundColor: '#fff',
+            overflow: 'hidden',
+          }}
+        >
+          <ScrollView nestedScrollEnabled style={{ maxHeight: 220 }}>
+            {options.map((option, index) => {
+              const active = value === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => {
+                    onSelect(option.value);
+                    setOpen(false);
+                  }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingHorizontal: 12,
+                    paddingVertical: 11,
+                    backgroundColor: active ? '#eff6ff' : '#fff',
+                    borderBottomWidth: index === options.length - 1 ? 0 : 1,
+                    borderBottomColor: '#eef2ff',
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 10 }}>
+                    <View
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 999,
+                        marginRight: 10,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: active ? '#dbeafe' : '#f8fafc',
+                        borderWidth: 1,
+                        borderColor: active ? '#93c5fd' : '#e2e8f0',
+                      }}
+                    >
+                      <Feather name={active ? 'check' : 'circle'} size={12} color={active ? '#1d4ed8' : '#94a3b8'} />
+                    </View>
+                    <Text style={{ color: active ? '#1d4ed8' : '#334155', fontWeight: active ? '700' : '600', fontSize: 12.5, flex: 1 }}>
+                      {option.label}
+                    </Text>
+                  </View>
+                  {active ? <Text style={{ color: '#1d4ed8', fontSize: 11, fontWeight: '700' }}>Terpilih</Text> : null}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1608,6 +1667,9 @@ export default function ProfileScreen() {
                     label={getTabLabel(profile.role, tabId)}
                     onPress={() => setActiveTab(tabId)}
                     compact
+                    stacked
+                    useAutoIcon
+                    minWidth={110}
                   />
                 </View>
               );

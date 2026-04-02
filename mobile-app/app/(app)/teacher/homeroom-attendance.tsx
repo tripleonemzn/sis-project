@@ -451,7 +451,15 @@ export default function TeacherHomeroomAttendanceScreen() {
               { key: 'LATE' as TabKey, label: 'Telat' },
             ].map((item) => (
               <View key={item.key} style={{ marginRight: 8 }}>
-                <MobileTabChip active={tab === item.key} label={item.label} onPress={() => setTab(item.key)} compact />
+                <MobileTabChip
+                  active={tab === item.key}
+                  label={item.label}
+                  onPress={() => setTab(item.key)}
+                  compact
+                  stacked
+                  useAutoIcon
+                  minWidth={98}
+                />
               </View>
             ))}
           </View>

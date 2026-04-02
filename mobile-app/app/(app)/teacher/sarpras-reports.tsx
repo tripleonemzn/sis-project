@@ -83,7 +83,9 @@ function resolveConditionLabel(room: SarprasRoom) {
   return 'Belum diisi';
 }
 
-const SectionChip = MobileTabChip;
+const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
+  <MobileTabChip active={active} label={label} onPress={onPress} compact stacked useAutoIcon minWidth={102} />
+);
 
 function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
   return (

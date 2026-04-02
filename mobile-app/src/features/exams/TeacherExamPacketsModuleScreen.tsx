@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
-import { ExamHtmlContent } from '../../components/ExamHtmlContent';
+import { ExamHtmlContent, plainTextFromExamRichText } from '../../components/ExamHtmlContent';
 import { MobileTabChip } from '../../components/MobileTabChip';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
@@ -122,21 +122,6 @@ function parsePacketQuestions(raw: unknown): ExamQuestion[] {
         options,
       };
     });
-}
-
-function stripHtmlToText(value?: string | null) {
-  return String(value || '')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<\/?[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&#39;/gi, "'")
-    .replace(/&quot;/gi, '"')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 function resolveQuestionHtml(question?: ExamQuestion | null) {
@@ -677,7 +662,7 @@ export function TeacherExamPacketsModuleScreen({
               const qCount = questionCountFromUnknown(item.questions);
               const parsedQuestions = parsePacketQuestions(item.questions);
               const firstQuestion = parsedQuestions[0] || null;
-              const firstQuestionPreview = stripHtmlToText(resolveQuestionHtml(firstQuestion));
+              const firstQuestionPreview = plainTextFromExamRichText(resolveQuestionHtml(firstQuestion));
               const isPreviewOpen = expandedPacketId === item.id;
               return (
                 <View

@@ -577,7 +577,9 @@ function createNewComponentDraft(rows: GradeComponentDraft[]): GradeComponentDra
   };
 }
 
-const SectionChip = MobileTabChip;
+const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
+  <MobileTabChip active={active} label={label} onPress={onPress} compact stacked useAutoIcon minWidth={104} />
+);
 
 function TypeChip({
   active,

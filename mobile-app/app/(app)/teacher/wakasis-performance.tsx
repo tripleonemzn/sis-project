@@ -79,7 +79,9 @@ function resolveRiskLevel(percentage: number) {
   return { label: 'Rendah', bg: '#dcfce7', border: '#86efac', text: '#166534' };
 }
 
-const SectionChip = MobileTabChip;
+const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
+  <MobileTabChip active={active} label={label} onPress={onPress} compact stacked useAutoIcon minWidth={102} />
+);
 
 function SummaryCard({
   title,

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { ExamHtmlContent, plainTextFromExamRichText } from '../../../src/components/ExamHtmlContent';
 import { MobileTabChip } from '../../../src/components/MobileTabChip';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
@@ -267,10 +268,39 @@ const EXAM_TYPE_OPTIONS: Array<{ value: 'ALL' | AdminExamType; label: string }> 
 const getExamTypeLabel = (value?: string | null) =>
   EXAM_TYPE_OPTIONS.find((item) => item.value === value)?.label || value || '-';
 
-const stripHtml = (value?: string | null) => {
-  if (!value) return '';
-  return value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-};
+function resolveQuestionMediaProps(mediaUrl?: string | null, mediaType?: string | null) {
+  const normalizedUrl = String(mediaUrl || '').trim();
+  const normalizedType = String(mediaType || '').trim().toLowerCase();
+  if (!normalizedUrl) {
+    return {
+      imageUrl: null,
+      videoUrl: null,
+      videoType: null as 'upload' | 'youtube' | null,
+    };
+  }
+
+  if (normalizedType.includes('youtube')) {
+    return { imageUrl: null, videoUrl: normalizedUrl, videoType: 'youtube' as const };
+  }
+
+  if (normalizedType.includes('video')) {
+    return { imageUrl: null, videoUrl: normalizedUrl, videoType: 'upload' as const };
+  }
+
+  if (/\.(mp4|mov|webm|m4v)(\?|$)/i.test(normalizedUrl)) {
+    return { imageUrl: null, videoUrl: normalizedUrl, videoType: 'upload' as const };
+  }
+
+  if (normalizedType.includes('image') || /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(normalizedUrl)) {
+    return { imageUrl: normalizedUrl, videoUrl: null, videoType: null };
+  }
+
+  return {
+    imageUrl: normalizedUrl,
+    videoUrl: null,
+    videoType: null as 'upload' | 'youtube' | null,
+  };
+}
 
 type ScheduleDay = AdminScheduleDayOfWeek;
 type SchedulePeriodType = AdminSchedulePeriodType;
@@ -524,14 +554,16 @@ function SectionChip({
   icon: FeatherIconName;
   onPress: () => void;
 }) {
-  const iconColor = active ? BRAND_COLORS.blue : BRAND_COLORS.textMuted;
+  const iconColor = active ? BRAND_COLORS.blue : '#64748b';
   return (
     <MobileTabChip
       active={active}
       label={label}
       onPress={onPress}
       compact
-      icon={<Feather name={icon} size={13} color={iconColor} />}
+      stacked
+      minWidth={104}
+      icon={<Feather name={icon} size={16} color={iconColor} />}
     />
   );
 }
@@ -697,6 +729,7 @@ export default function AdminAcademicScreen() {
   const [questionBankSearchDraft, setQuestionBankSearchDraft] = useState('');
   const [questionBankSearch, setQuestionBankSearch] = useState('');
   const [questionBankPage, setQuestionBankPage] = useState(1);
+  const [expandedQuestionBankId, setExpandedQuestionBankId] = useState<number | null>(null);
   const [examSessionAcademicYearId, setExamSessionAcademicYearId] = useState('');
   const [examSessionTypeFilter, setExamSessionTypeFilter] = useState<'ALL' | AdminExamType>('ALL');
   const [examSessionSearch, setExamSessionSearch] = useState('');
@@ -5545,19 +5578,131 @@ export default function AdminAcademicScreen() {
               {!questionBankQuery.isLoading && !questionBankQuery.isError ? (
                 <>
                   {questionBankItems.map((item) => (
-                    <View key={`question-bank-item-${item.id}`} style={{ borderTopWidth: 1, borderTopColor: '#eef3ff', paddingVertical: 8 }}>
-                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
-                        #{item.id} • {item.type || '-'}
-                      </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
-                        Mapel: {item.bank?.subject?.code || '-'} {item.bank?.subject?.name || '-'} | TA:{' '}
-                        {item.bank?.academicYear?.name || '-'} | Semester: {item.bank?.semester || '-'}
-                      </Text>
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
-                        {stripHtml(item.content).slice(0, 180) || '-'}
-                        {stripHtml(item.content).length > 180 ? '...' : ''}
-                      </Text>
-                    </View>
+                    (() => {
+                      const previewText = plainTextFromExamRichText(item.content);
+                      const isPreviewOpen = expandedQuestionBankId === item.id;
+                      const mediaProps = resolveQuestionMediaProps(item.mediaUrl, item.mediaType);
+                      const questionOptions = Array.isArray(item.options) ? item.options : [];
+                      return (
+                        <View
+                          key={`question-bank-item-${item.id}`}
+                          style={{
+                            borderTopWidth: 1,
+                            borderTopColor: '#eef3ff',
+                            paddingVertical: 10,
+                          }}
+                        >
+                          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                            #{item.id} • {item.type || '-'}
+                          </Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                            Mapel: {item.bank?.subject?.code || '-'} {item.bank?.subject?.name || '-'} | TA:{' '}
+                            {item.bank?.academicYear?.name || '-'} | Semester: {item.bank?.semester || '-'}
+                          </Text>
+                          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+                            {previewText.slice(0, 180) || '-'}
+                            {previewText.length > 180 ? '...' : ''}
+                          </Text>
+                          <View
+                            style={{
+                              marginTop: 8,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 10,
+                            }}
+                          >
+                            <Text style={{ color: '#64748b', fontSize: 11, flex: 1 }}>
+                              {item.points ? `${item.points} poin` : 'Tanpa poin khusus'}
+                              {questionOptions.length > 0 ? ` • ${questionOptions.length} opsi` : ''}
+                            </Text>
+                            <Pressable
+                              onPress={() => setExpandedQuestionBankId((prev) => (prev === item.id ? null : item.id))}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#bfdbfe',
+                                backgroundColor: '#f8fbff',
+                                borderRadius: 999,
+                                paddingHorizontal: 12,
+                                paddingVertical: 6,
+                              }}
+                            >
+                              <Text style={{ color: '#1d4ed8', fontSize: 12, fontWeight: '700' }}>
+                                {isPreviewOpen ? 'Tutup Pratinjau' : 'Lihat Soal'}
+                              </Text>
+                            </Pressable>
+                          </View>
+
+                          {isPreviewOpen ? (
+                            <View
+                              style={{
+                                marginTop: 10,
+                                borderWidth: 1,
+                                borderColor: '#dbeafe',
+                                backgroundColor: '#f8fbff',
+                                borderRadius: 12,
+                                padding: 10,
+                              }}
+                            >
+                              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Pratinjau Soal</Text>
+                              <ExamHtmlContent
+                                html={item.content}
+                                imageUrl={mediaProps.imageUrl}
+                                videoUrl={mediaProps.videoUrl}
+                                videoType={mediaProps.videoType}
+                                minHeight={72}
+                              />
+
+                              {questionOptions.length > 0 ? (
+                                <View style={{ marginTop: 10 }}>
+                                  {questionOptions.map((option, optionIndex) => (
+                                    <View
+                                      key={`${item.id}-option-${option.id || optionIndex}`}
+                                      style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'flex-start',
+                                        marginBottom: optionIndex === questionOptions.length - 1 ? 0 : 8,
+                                      }}
+                                    >
+                                      <View
+                                        style={{
+                                          width: 24,
+                                          height: 24,
+                                          borderRadius: 999,
+                                          backgroundColor: option.isCorrect ? '#dcfce7' : '#dbeafe',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          marginRight: 8,
+                                          marginTop: 2,
+                                        }}
+                                      >
+                                        <Text
+                                          style={{
+                                            color: option.isCorrect ? '#166534' : '#1d4ed8',
+                                            fontWeight: '700',
+                                            fontSize: 11,
+                                          }}
+                                        >
+                                          {String.fromCharCode(65 + optionIndex)}
+                                        </Text>
+                                      </View>
+                                      <View style={{ flex: 1 }}>
+                                        <ExamHtmlContent html={option.content} minHeight={36} />
+                                        {option.isCorrect ? (
+                                          <Text style={{ color: '#15803d', fontSize: 11, fontWeight: '700', marginTop: 4 }}>
+                                            Kunci jawaban
+                                          </Text>
+                                        ) : null}
+                                      </View>
+                                    </View>
+                                  ))}
+                                </View>
+                              ) : null}
+                            </View>
+                          ) : null}
+                        </View>
+                      );
+                    })()
                   ))}
                 </>
               ) : null}

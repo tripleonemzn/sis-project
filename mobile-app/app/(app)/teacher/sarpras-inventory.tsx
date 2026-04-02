@@ -1469,18 +1469,24 @@ export default function TeacherSarprasInventoryScreen() {
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{pageSubtitle}</Text>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        <SectionChip active={section === 'RINGKASAN'} label="Ringkasan" onPress={() => setSection('RINGKASAN')} />
-        <SectionChip active={section === 'RUANGAN'} label="Ruangan" onPress={() => setSection('RUANGAN')} />
+        <SectionChip active={section === 'RINGKASAN'} label="Ringkasan" onPress={() => setSection('RINGKASAN')} stacked useAutoIcon minWidth={102} />
+        <SectionChip active={section === 'RUANGAN'} label="Ruangan" onPress={() => setSection('RUANGAN')} stacked useAutoIcon minWidth={102} />
         <SectionChip
           active={section === 'INVENTARIS'}
           label={inventoryScope === 'LIBRARY' ? 'Inventaris Perpustakaan' : 'Inventaris'}
           onPress={() => setSection('INVENTARIS')}
+          stacked
+          useAutoIcon
+          minWidth={112}
         />
         {inventoryScope === 'LIBRARY' ? (
           <SectionChip
             active={section === 'PEMINJAMAN'}
             label="Daftar Peminjaman Buku"
             onPress={() => setSection('PEMINJAMAN')}
+            stacked
+            useAutoIcon
+            minWidth={116}
           />
         ) : null}
       </View>

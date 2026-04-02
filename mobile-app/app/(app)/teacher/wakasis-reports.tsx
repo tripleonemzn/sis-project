@@ -530,9 +530,9 @@ export default function TeacherWakasisReportsScreen() {
       </View>
 
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-        <SectionChip active={section === 'RINGKASAN'} label="Ringkasan" onPress={() => setSection('RINGKASAN')} />
-        <SectionChip active={section === 'PER_KELAS'} label="Per Kelas" onPress={() => setSection('PER_KELAS')} />
-        <SectionChip active={section === 'PERIZINAN'} label="Perizinan" onPress={() => setSection('PERIZINAN')} />
+        <SectionChip active={section === 'RINGKASAN'} label="Ringkasan" onPress={() => setSection('RINGKASAN')} stacked useAutoIcon minWidth={102} />
+        <SectionChip active={section === 'PER_KELAS'} label="Per Kelas" onPress={() => setSection('PER_KELAS')} stacked useAutoIcon minWidth={102} />
+        <SectionChip active={section === 'PERIZINAN'} label="Perizinan" onPress={() => setSection('PERIZINAN')} stacked useAutoIcon minWidth={102} />
       </View>
 
       <View

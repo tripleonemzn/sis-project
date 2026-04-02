@@ -74,7 +74,9 @@ function resolveStudentStatusStyle(status: string | null | undefined) {
   return { bg: '#e2e8f0', border: '#cbd5e1', text: '#334155' };
 }
 
-const SectionChip = MobileTabChip;
+const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
+  <MobileTabChip active={active} label={label} onPress={onPress} compact stacked useAutoIcon minWidth={102} />
+);
 
 function SummaryCard({
   title,
