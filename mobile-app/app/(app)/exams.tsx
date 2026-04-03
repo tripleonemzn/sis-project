@@ -13,7 +13,7 @@ import { useStudentExamsQuery } from '../../src/features/exams/useStudentExamsQu
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { examApi, ExamProgramItem } from '../../src/features/exams/examApi';
 
-type StatusFilter = 'ALL' | 'OPEN' | 'UPCOMING' | 'MISSED' | 'COMPLETED';
+type StatusFilter = 'ALL' | 'OPEN' | 'MAKEUP' | 'UPCOMING' | 'MISSED' | 'COMPLETED';
 type ExamLabelMap = Record<string, string>;
 
 function normalizeProgramCode(raw?: string | null): string {
@@ -26,9 +26,14 @@ function normalizeProgramCode(raw?: string | null): string {
     .replace(/^_+|_+$/g, '');
 }
 
-function normalizeStatus(raw: string, hasSubmitted: boolean): 'OPEN' | 'UPCOMING' | 'MISSED' | 'COMPLETED' {
+function normalizeStatus(
+  raw: string,
+  hasSubmitted: boolean,
+  makeupAvailable?: boolean,
+): 'OPEN' | 'MAKEUP' | 'UPCOMING' | 'MISSED' | 'COMPLETED' {
   if (hasSubmitted) return 'COMPLETED';
   const value = String(raw || '').toUpperCase();
+  if (value.includes('MAKEUP') || makeupAvailable) return 'MAKEUP';
   if (value.includes('OPEN') || value.includes('IN_PROGRESS')) return 'OPEN';
   if (value.includes('UPCOMING')) return 'UPCOMING';
   if (value.includes('MISSED') || value.includes('TIMEOUT')) return 'MISSED';
@@ -56,8 +61,9 @@ function formatExamCurrency(value?: number | null) {
   }).format(Number(value || 0));
 }
 
-function statusStyle(status: 'OPEN' | 'UPCOMING' | 'MISSED' | 'COMPLETED') {
+function statusStyle(status: 'OPEN' | 'MAKEUP' | 'UPCOMING' | 'MISSED' | 'COMPLETED') {
   if (status === 'OPEN') return { bg: '#dcfce7', border: '#86efac', text: '#166534', label: 'Berlangsung' };
+  if (status === 'MAKEUP') return { bg: '#fff7ed', border: '#fdba74', text: '#c2410c', label: 'Susulan' };
   if (status === 'COMPLETED') return { bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8', label: 'Selesai' };
   if (status === 'MISSED') return { bg: '#fee2e2', border: '#fca5a5', text: '#991b1b', label: 'Terlewat' };
   return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e', label: 'Akan Datang' };
@@ -199,6 +205,7 @@ export default function StudentExamsScreen() {
     () => [
       { value: 'ALL', label: 'Semua Status' },
       { value: 'OPEN', label: 'Sedang Dibuka' },
+      { value: 'MAKEUP', label: 'Susulan' },
       { value: 'UPCOMING', label: 'Akan Datang' },
       { value: 'COMPLETED', label: 'Selesai' },
       { value: 'MISSED', label: 'Terlewat' },
@@ -219,7 +226,7 @@ export default function StudentExamsScreen() {
     const q = searchQuery.trim().toLowerCase();
     return rows.filter((item) => {
       const type = normalizeProgramCode(item.packet.programCode || item.packet.type);
-      const status = normalizeStatus(item.status, item.has_submitted);
+      const status = normalizeStatus(item.status, item.has_submitted, item.makeupAvailable);
       if (effectiveTypeFilter !== 'ALL' && type !== effectiveTypeFilter) return false;
       if (statusFilter !== 'ALL' && status !== statusFilter) return false;
       if (!q) return true;
@@ -377,7 +384,7 @@ export default function StudentExamsScreen() {
           <View>
             {filtered.map((item: StudentExamItem) => {
               const type = normalizeProgramCode(item.packet.programCode || item.packet.type);
-              const status = normalizeStatus(item.status, item.has_submitted);
+              const status = normalizeStatus(item.status, item.has_submitted, item.makeupAvailable);
               const style = statusStyle(status);
               const resolvedSubject = resolveSubjectLabel(item);
               const subjectName = resolvedSubject.name;
@@ -415,7 +422,9 @@ export default function StudentExamsScreen() {
                         fontWeight: '700',
                       }}
                     >
-                      {style.label}
+                      {status === 'UPCOMING' && item.makeupMode === 'FORMAL' && item.makeupScheduled
+                        ? 'Jadwal Susulan'
+                        : style.label}
                     </Text>
                   </View>
                   <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4 }}>
@@ -429,6 +438,21 @@ export default function StudentExamsScreen() {
                   <Text style={{ color: '#334155', fontSize: 12, marginBottom: 6 }}>
                     Selesai: {formatDateTime(item.endTime)} • Durasi: {item.packet.duration} menit
                   </Text>
+                  {item.makeupMode === 'FORMAL' && item.makeupStartTime ? (
+                    <Text style={{ color: '#c2410c', fontSize: 12, marginBottom: 4 }}>
+                      Jadwal susulan: {formatDateTime(item.makeupStartTime)}
+                    </Text>
+                  ) : null}
+                  {item.makeupDeadline ? (
+                    <Text style={{ color: '#c2410c', fontSize: 12, marginBottom: 4 }}>
+                      {status === 'MAKEUP' ? 'Susulan sampai' : 'Batas susulan'}: {formatDateTime(item.makeupDeadline)}
+                    </Text>
+                  ) : null}
+                  {item.makeupReason ? (
+                    <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>
+                      Alasan susulan: {item.makeupReason}
+                    </Text>
+                  ) : null}
                   {item.isBlocked ? (
                     <View
                       style={{
@@ -495,10 +519,16 @@ export default function StudentExamsScreen() {
                   ) : null}
                   <Pressable
                     onPress={async () => {
-                      if (status === 'OPEN' && !item.isBlocked) {
+                      if ((status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked) {
                         router.push(`/exams/${item.id}/take` as never);
                         return;
                       }
+                      const upcomingMessage =
+                        item.makeupMode === 'FORMAL' && item.makeupScheduled
+                          ? 'Jadwal susulan belum dimulai. Silakan tunggu waktu susulan yang ditetapkan.'
+                          : isApplicantMode
+                            ? 'Tes BKK belum dimulai. Silakan tunggu jadwal mulai.'
+                            : 'Ujian belum dimulai. Silakan tunggu jadwal mulai.';
                       Alert.alert(
                         isApplicantMode ? 'Tes BKK' : 'Ujian Mobile',
                         status === 'COMPLETED'
@@ -510,26 +540,32 @@ export default function StudentExamsScreen() {
                               ? 'Waktu tes BKK sudah berakhir.'
                               : 'Waktu ujian sudah berakhir.'
                             : status === 'UPCOMING'
+                              ? upcomingMessage
+                            : status === 'MAKEUP'
                               ? isApplicantMode
-                                ? 'Tes BKK belum dimulai. Silakan tunggu jadwal mulai.'
-                                : 'Ujian belum dimulai. Silakan tunggu jadwal mulai.'
+                                ? 'Tes BKK susulan tidak tersedia saat ini.'
+                                : 'Ujian susulan tidak tersedia saat ini.'
                               : isApplicantMode
                                 ? 'Tes BKK tidak dapat dikerjakan dari mobile untuk status ini.'
                                 : 'Ujian tidak dapat dikerjakan dari mobile untuk status ini.',
                       );
                     }}
                     style={{
-                      backgroundColor: status === 'OPEN' && !item.isBlocked ? '#1d4ed8' : '#cbd5e1',
+                      backgroundColor: (status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked ? '#1d4ed8' : '#cbd5e1',
                       borderRadius: 8,
                       paddingVertical: 9,
                       alignItems: 'center',
                     }}
                   >
                     <Text style={{ color: '#fff', fontWeight: '700' }}>
-                      {status === 'OPEN' && !item.isBlocked
+                      {(status === 'OPEN' || status === 'MAKEUP') && !item.isBlocked
                         ? isApplicantMode
-                          ? 'Mulai Tes BKK'
-                          : 'Mulai Ujian'
+                          ? status === 'MAKEUP'
+                            ? 'Mulai Tes Susulan'
+                            : 'Mulai Tes BKK'
+                          : status === 'MAKEUP'
+                            ? 'Mulai Susulan'
+                            : 'Mulai Ujian'
                         : isApplicantMode
                           ? 'Detail Tes BKK'
                           : 'Detail Ujian'}

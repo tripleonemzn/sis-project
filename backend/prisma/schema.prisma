@@ -188,6 +188,9 @@ model User {
   bpbkCounselingAsCounselor                          BpBkCounseling[]                    @relation("BpBkCounselingCounselor")
   studentExamRestrictions                            StudentExamRestriction[]
   studentExamProgramRestrictions                     StudentExamProgramRestriction[]
+  studentExamMakeupAccesses                          ExamScheduleMakeupAccess[]          @relation("ExamMakeupStudent")
+  grantedExamMakeupAccesses                          ExamScheduleMakeupAccess[]          @relation("ExamMakeupGrantedBy")
+  revokedExamMakeupAccesses                          ExamScheduleMakeupAccess[]          @relation("ExamMakeupRevokedBy")
   studentPermissions                                 StudentPermission[]                 @relation("StudentPermissions")
   academicMemberships                                StudentAcademicMembership[]
   promotionRunsCreated                               PromotionRun[]                      @relation("PromotionRunCreatedBy")
@@ -277,6 +280,31 @@ model StudentExamProgramRestriction {
   @@unique([studentId, academicYearId, semester, programCode])
   @@index([academicYearId, semester, programCode])
   @@map("student_exam_program_restrictions")
+}
+
+model ExamScheduleMakeupAccess {
+  id          Int       @id @default(autoincrement())
+  scheduleId  Int
+  studentId   Int
+  startTime   DateTime
+  endTime     DateTime
+  reason      String?
+  isActive    Boolean   @default(true)
+  grantedById Int
+  grantedAt   DateTime  @default(now())
+  revokedById Int?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  schedule    ExamSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  student     User      @relation("ExamMakeupStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  grantedBy   User      @relation("ExamMakeupGrantedBy", fields: [grantedById], references: [id], onDelete: Restrict)
+  revokedBy   User?     @relation("ExamMakeupRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@unique([scheduleId, studentId])
+  @@index([scheduleId, isActive, startTime])
+  @@index([studentId, isActive, endTime])
+  @@map("exam_schedule_makeup_accesses")
 }
 
 enum BehaviorType {
@@ -2262,6 +2290,7 @@ model ExamSchedule {
   jobVacancy        JobVacancy?            @relation(fields: [jobVacancyId], references: [id], onDelete: Cascade)
   subject           Subject?               @relation(fields: [subjectId], references: [id])
   sessions          StudentExamSession[]
+  makeupAccesses    ExamScheduleMakeupAccess[]
 
   @@index([packetId])
   @@index([jobVacancyId])

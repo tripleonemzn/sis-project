@@ -144,6 +144,12 @@ export type StudentExamItem = {
     warningOnly?: boolean;
     reason?: string | null;
   } | null;
+  makeupAvailable?: boolean;
+  makeupMode?: 'AUTO' | 'FORMAL' | null;
+  makeupScheduled?: boolean;
+  makeupStartTime?: string | null;
+  makeupDeadline?: string | null;
+  makeupReason?: string | null;
   subject?: {
     id: number;
     name: string;
@@ -275,6 +281,66 @@ export type TeacherExamSchedule = {
     name: string;
     isActive?: boolean;
   } | null;
+};
+
+export type ExamScheduleMakeupAccessSummary = {
+  id: number;
+  startTime: string;
+  endTime: string;
+  reason: string | null;
+  isActive: boolean;
+  grantedAt: string;
+  revokedAt: string | null;
+  state: 'NONE' | 'UPCOMING' | 'OPEN' | 'EXPIRED' | 'REVOKED';
+  grantedBy?: {
+    id: number;
+    name: string;
+  } | null;
+  revokedBy?: {
+    id: number;
+    name: string;
+  } | null;
+};
+
+export type ExamScheduleMakeupStudentRow = {
+  student: {
+    id: number;
+    name: string;
+    nis: string | null;
+    nisn: string | null;
+  };
+  session: {
+    id: number;
+    status: string;
+    startTime: string;
+    endTime: string | null;
+    submitTime: string | null;
+    score: number | null;
+  } | null;
+  hasAttempt: boolean;
+  canManageMakeup: boolean;
+  makeupAccess: ExamScheduleMakeupAccessSummary | null;
+};
+
+export type ExamScheduleMakeupOverview = {
+  schedule: {
+    id: number;
+    classId: number;
+    className: string;
+    startTime: string;
+    endTime: string;
+    examType: string;
+    subject: {
+      id: number;
+      name: string;
+      code: string;
+    };
+    packet: {
+      id: number;
+      title: string;
+    };
+  };
+  students: ExamScheduleMakeupStudentRow[];
 };
 
 export type ExamSittingListItem = {

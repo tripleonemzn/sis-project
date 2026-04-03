@@ -15,7 +15,14 @@ import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { useSearchParams } from 'react-router-dom';
 import type { AcademicYear } from '../../../services/academicYear.service';
-import { examService, type ExamPacket, type ExamProgram, type ExamProgramSession } from '../../../services/exam.service';
+import {
+  examService,
+  type ExamPacket,
+  type ExamProgram,
+  type ExamProgramSession,
+  type ExamScheduleMakeupOverview,
+  type ExamScheduleMakeupStudentRow,
+} from '../../../services/exam.service';
 import { isNonScheduledExamProgram, resolveProgramCodeFromParam } from '../../../lib/examProgramMenu';
 
 interface Subject {
@@ -141,6 +148,52 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
+const toInputDateValue = (value: string | null | undefined) => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return format(parsed, 'yyyy-MM-dd');
+};
+
+const toInputTimeValue = (value: string | null | undefined) => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return format(parsed, 'HH:mm');
+};
+
+const getMakeupStateMeta = (state?: string | null) => {
+  const normalized = String(state || '').trim().toUpperCase();
+  if (normalized === 'OPEN') {
+    return {
+      label: 'Sedang Dibuka',
+      className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    };
+  }
+  if (normalized === 'UPCOMING') {
+    return {
+      label: 'Akan Datang',
+      className: 'bg-amber-50 text-amber-700 border border-amber-200',
+    };
+  }
+  if (normalized === 'EXPIRED') {
+    return {
+      label: 'Terlewat',
+      className: 'bg-rose-50 text-rose-700 border border-rose-200',
+    };
+  }
+  if (normalized === 'REVOKED') {
+    return {
+      label: 'Dicabut',
+      className: 'bg-slate-100 text-slate-600 border border-slate-200',
+    };
+  }
+  return {
+    label: 'Belum Diatur',
+    className: 'bg-slate-50 text-slate-600 border border-slate-200',
+  };
+};
+
 const ExamScheduleManagementPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const programParamKey = 'jadwalProgram';
@@ -149,10 +202,23 @@ const ExamScheduleManagementPage = () => {
   const [schedules, setSchedules] = useState<ExamSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showMakeupModal, setShowMakeupModal] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   const [programSessions, setProgramSessions] = useState<ExamProgramSession[]>([]);
   const [newSessionLabel, setNewSessionLabel] = useState('');
   const [creatingSession, setCreatingSession] = useState(false);
+  const [selectedMakeupSchedule, setSelectedMakeupSchedule] = useState<ExamSchedule | null>(null);
+  const [makeupOverview, setMakeupOverview] = useState<ExamScheduleMakeupOverview | null>(null);
+  const [loadingMakeup, setLoadingMakeup] = useState(false);
+  const [savingMakeup, setSavingMakeup] = useState(false);
+  const [makeupSearch, setMakeupSearch] = useState('');
+  const [makeupForm, setMakeupForm] = useState({
+    studentId: '',
+    date: '',
+    startTime: '',
+    endTime: '',
+    reason: '',
+  });
 
   // Form Data
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -729,6 +795,103 @@ const ExamScheduleManagementPage = () => {
     }
   };
 
+  const resetMakeupForm = () => {
+    setMakeupForm({
+      studentId: '',
+      date: '',
+      startTime: '',
+      endTime: '',
+      reason: '',
+    });
+  };
+
+  const closeMakeupModal = () => {
+    setShowMakeupModal(false);
+    setSelectedMakeupSchedule(null);
+    setMakeupOverview(null);
+    setMakeupSearch('');
+    resetMakeupForm();
+  };
+
+  const loadMakeupOverview = useCallback(async (scheduleId: number) => {
+    setLoadingMakeup(true);
+    try {
+      const response = await examService.getScheduleMakeupAccess(scheduleId);
+      setMakeupOverview(response.data);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Gagal memuat data susulan.'));
+      setMakeupOverview(null);
+    } finally {
+      setLoadingMakeup(false);
+    }
+  }, []);
+
+  const openMakeupModal = async (schedule: ExamSchedule) => {
+    setSelectedMakeupSchedule(schedule);
+    setShowMakeupModal(true);
+    setMakeupSearch('');
+    resetMakeupForm();
+    await loadMakeupOverview(schedule.id);
+  };
+
+  const handleFillMakeupForm = (row: ExamScheduleMakeupStudentRow) => {
+    setMakeupForm({
+      studentId: String(row.student.id),
+      date: toInputDateValue(row.makeupAccess?.startTime || null),
+      startTime: toInputTimeValue(row.makeupAccess?.startTime || null),
+      endTime: toInputTimeValue(row.makeupAccess?.endTime || null),
+      reason: row.makeupAccess?.reason || '',
+    });
+  };
+
+  const handleSaveMakeup = async () => {
+    if (!selectedMakeupSchedule) {
+      toast.error('Pilih jadwal ujian terlebih dahulu.');
+      return;
+    }
+    if (!makeupForm.studentId || !makeupForm.date || !makeupForm.startTime || !makeupForm.endTime) {
+      toast.error('Lengkapi siswa, tanggal, jam mulai, dan jam selesai susulan.');
+      return;
+    }
+
+    setSavingMakeup(true);
+    try {
+      await examService.upsertScheduleMakeupAccess(selectedMakeupSchedule.id, {
+        studentId: Number(makeupForm.studentId),
+        date: makeupForm.date,
+        startTime: makeupForm.startTime,
+        endTime: makeupForm.endTime,
+        reason: makeupForm.reason.trim() || undefined,
+      });
+      toast.success('Jadwal susulan berhasil disimpan.');
+      await loadMakeupOverview(selectedMakeupSchedule.id);
+      resetMakeupForm();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Gagal menyimpan jadwal susulan.'));
+    } finally {
+      setSavingMakeup(false);
+    }
+  };
+
+  const handleRevokeMakeup = async (row: ExamScheduleMakeupStudentRow) => {
+    if (!selectedMakeupSchedule) return;
+    if (!confirm(`Cabut jadwal susulan untuk ${row.student.name}?`)) return;
+
+    setSavingMakeup(true);
+    try {
+      await examService.revokeScheduleMakeupAccess(selectedMakeupSchedule.id, row.student.id);
+      toast.success('Jadwal susulan berhasil dicabut.');
+      await loadMakeupOverview(selectedMakeupSchedule.id);
+      if (String(row.student.id) === String(makeupForm.studentId)) {
+        resetMakeupForm();
+      }
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Gagal mencabut jadwal susulan.'));
+    } finally {
+      setSavingMakeup(false);
+    }
+  };
+
   const toggleClassSelection = (classId: string) => {
     setFormData(prev => {
       const current = prev.classIds;
@@ -801,6 +964,19 @@ const ExamScheduleManagementPage = () => {
   };
 
   const groupedSchedules = getGroupedSchedules();
+  const filteredMakeupStudents = useMemo(() => {
+    const rows = makeupOverview?.students || [];
+    const keyword = makeupSearch.trim().toLowerCase();
+    if (!keyword) return rows;
+    return rows.filter((row) => {
+      const haystacks = [
+        row.student.name || '',
+        row.student.nis || '',
+        row.student.nisn || '',
+      ];
+      return haystacks.some((value) => value.toLowerCase().includes(keyword));
+    });
+  }, [makeupOverview?.students, makeupSearch]);
 
   return (
     <div className="w-full space-y-6">
@@ -1034,13 +1210,24 @@ const ExamScheduleManagementPage = () => {
                                           )}
                                         </td>
                                         <td className="px-4 py-2 text-right">
-                                          <button 
-                                            onClick={() => handleDelete(schedule.id)}
-                                            className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded"
-                                            title="Hapus Jadwal"
-                                          >
-                                            <Trash2 size={14} />
-                                          </button>
+                                          <div className="flex items-center justify-end gap-2">
+                                            {schedule.class?.name ? (
+                                              <button
+                                                type="button"
+                                                onClick={() => void openMakeupModal(schedule)}
+                                                className="px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold"
+                                              >
+                                                Kelola Susulan
+                                              </button>
+                                            ) : null}
+                                            <button 
+                                              onClick={() => handleDelete(schedule.id)}
+                                              className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded"
+                                              title="Hapus Jadwal"
+                                            >
+                                              <Trash2 size={14} />
+                                            </button>
+                                          </div>
                                         </td>
                                       </tr>
                                     ))}
@@ -1059,6 +1246,251 @@ const ExamScheduleManagementPage = () => {
           </div>
         )}
       </div>
+
+      {showMakeupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[92vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Kelola Ujian Susulan</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Atur susulan per siswa untuk jadwal kelas yang belum sempat mengikuti ujian reguler.
+                </p>
+              </div>
+              <button onClick={closeMakeupModal} className="text-gray-400 hover:text-gray-600">
+                &times;
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {selectedMakeupSchedule ? (
+                <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <div className="text-gray-500">Mapel</div>
+                      <div className="font-semibold text-gray-900">
+                        {makeupOverview?.schedule.subject.name || selectedMakeupSchedule.subject?.name || '-'}
+                        {makeupOverview?.schedule.subject.code
+                          ? ` (${makeupOverview.schedule.subject.code})`
+                          : selectedMakeupSchedule.subject?.code
+                            ? ` (${selectedMakeupSchedule.subject.code})`
+                            : ''}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-gray-500">Kelas</div>
+                      <div className="font-semibold text-gray-900">
+                        {makeupOverview?.schedule.className || selectedMakeupSchedule.class?.name || '-'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-gray-500">Jadwal Reguler</div>
+                      <div className="font-semibold text-gray-900">
+                        {format(new Date(makeupOverview?.schedule.startTime || selectedMakeupSchedule.startTime), 'EEEE, d MMM yyyy HH:mm', { locale: id })}
+                        {' - '}
+                        {format(new Date(makeupOverview?.schedule.endTime || selectedMakeupSchedule.endTime), 'HH:mm')}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-gray-500">Packet</div>
+                      <div className="font-semibold text-gray-900">
+                        {makeupOverview?.schedule.packet.title || selectedMakeupSchedule.packet?.title || '-'}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-blue-700 mt-3">
+                    Susulan formal hanya untuk siswa yang belum mulai ujian reguler. Waktu susulan harus sesudah jadwal reguler berakhir.
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Atur Jadwal Susulan</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Siswa</label>
+                    <select
+                      value={makeupForm.studentId}
+                      onChange={(e) => setMakeupForm((prev) => ({ ...prev, studentId: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Pilih siswa...</option>
+                      {(makeupOverview?.students || [])
+                        .filter((row) => row.canManageMakeup || row.makeupAccess)
+                        .map((row) => (
+                          <option key={row.student.id} value={row.student.id}>
+                            {row.student.name}
+                            {row.student.nis ? ` • ${row.student.nis}` : ''}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Catatan / Alasan</label>
+                    <input
+                      type="text"
+                      value={makeupForm.reason}
+                      onChange={(e) => setMakeupForm((prev) => ({ ...prev, reason: e.target.value }))}
+                      placeholder="Contoh: sakit, izin resmi, kendala teknis"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal Susulan</label>
+                    <input
+                      type="date"
+                      value={makeupForm.date}
+                      onChange={(e) => setMakeupForm((prev) => ({ ...prev, date: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Jam Mulai</label>
+                    <input
+                      type="time"
+                      value={makeupForm.startTime}
+                      onChange={(e) => setMakeupForm((prev) => ({ ...prev, startTime: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Jam Selesai</label>
+                    <input
+                      type="time"
+                      value={makeupForm.endTime}
+                      onChange={(e) => setMakeupForm((prev) => ({ ...prev, endTime: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 mt-4">
+                  <button
+                    type="button"
+                    onClick={resetMakeupForm}
+                    className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  >
+                    Reset Form
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveMakeup()}
+                    disabled={savingMakeup || loadingMakeup}
+                    className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+                  >
+                    {savingMakeup ? 'Menyimpan...' : 'Simpan Jadwal Susulan'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white">
+                <div className="p-4 border-b border-gray-100 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">Daftar Siswa</h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Gunakan tombol isi form untuk mempercepat penjadwalan atau perubahan susulan.
+                    </p>
+                  </div>
+                  <input
+                    type="text"
+                    value={makeupSearch}
+                    onChange={(e) => setMakeupSearch(e.target.value)}
+                    placeholder="Cari nama siswa / NIS / NISN"
+                    className="w-full md:w-80 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                {loadingMakeup ? (
+                  <div className="p-6 text-sm text-gray-500">Memuat data susulan...</div>
+                ) : filteredMakeupStudents.length === 0 ? (
+                  <div className="p-6 text-sm text-gray-500">Tidak ada siswa yang sesuai.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b border-gray-100">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Siswa</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Status Ujian Reguler</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Status Susulan</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Jadwal Susulan</th>
+                          <th className="px-4 py-3 text-right font-medium text-gray-700">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {filteredMakeupStudents.map((row) => {
+                          const makeupState = getMakeupStateMeta(row.makeupAccess?.state);
+                          return (
+                            <tr key={row.student.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3">
+                                <div className="font-medium text-gray-900">{row.student.name}</div>
+                                <div className="text-xs text-gray-500">
+                                  {row.student.nis ? `NIS ${row.student.nis}` : 'Tanpa NIS'}
+                                  {row.student.nisn ? ` • NISN ${row.student.nisn}` : ''}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                {row.session ? (
+                                  <div>
+                                    <div className="font-medium text-gray-900">{row.session.status}</div>
+                                    <div className="text-xs text-gray-500">
+                                      Mulai: {format(new Date(row.session.startTime), 'dd MMM yyyy HH:mm')}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-500">Belum mulai</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${makeupState.className}`}>
+                                  {makeupState.label}
+                                </span>
+                                {row.makeupAccess?.reason ? (
+                                  <div className="text-xs text-gray-500 mt-1">{row.makeupAccess.reason}</div>
+                                ) : null}
+                              </td>
+                              <td className="px-4 py-3">
+                                {row.makeupAccess ? (
+                                  <div className="text-xs text-gray-600">
+                                    <div>{format(new Date(row.makeupAccess.startTime), 'dd MMM yyyy HH:mm')}</div>
+                                    <div>s.d. {format(new Date(row.makeupAccess.endTime), 'dd MMM yyyy HH:mm')}</div>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400">Belum diatur</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleFillMakeupForm(row)}
+                                    className="px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold"
+                                  >
+                                    Isi Form
+                                  </button>
+                                  {row.makeupAccess && row.makeupAccess.state !== 'REVOKED' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleRevokeMakeup(row)}
+                                      className="px-2.5 py-1.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-semibold"
+                                    >
+                                      Cabut
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Form */}
       {showModal && (

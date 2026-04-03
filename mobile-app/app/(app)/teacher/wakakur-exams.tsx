@@ -35,6 +35,8 @@ import {
 } from '../../../src/features/exams/examApi';
 import {
   ExamDisplayType,
+  ExamScheduleMakeupOverview,
+  ExamScheduleMakeupStudentRow,
   ExamSittingDetail,
   ExamSittingListItem,
   TeacherExamSchedule,
@@ -307,6 +309,64 @@ function formatDateTime(value: string) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function toInputDateValue(value?: string | null) {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toISOString().slice(0, 10);
+}
+
+function toInputTimeValue(value?: string | null) {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  const hours = String(parsed.getHours()).padStart(2, '0');
+  const minutes = String(parsed.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+function getMakeupStateMeta(state?: string | null) {
+  const normalized = String(state || '').trim().toUpperCase();
+  if (normalized === 'OPEN') {
+    return {
+      label: 'Sedang Dibuka',
+      bg: '#ecfdf5',
+      border: '#86efac',
+      text: '#166534',
+    } as const;
+  }
+  if (normalized === 'UPCOMING') {
+    return {
+      label: 'Akan Datang',
+      bg: '#fff7ed',
+      border: '#fdba74',
+      text: '#c2410c',
+    } as const;
+  }
+  if (normalized === 'EXPIRED') {
+    return {
+      label: 'Terlewat',
+      bg: '#fff1f2',
+      border: '#fda4af',
+      text: '#be123c',
+    } as const;
+  }
+  if (normalized === 'REVOKED') {
+    return {
+      label: 'Dicabut',
+      bg: '#f8fafc',
+      border: '#cbd5e1',
+      text: '#475569',
+    } as const;
+  }
+  return {
+    label: 'Belum Diatur',
+    bg: '#f8fafc',
+    border: '#cbd5e1',
+    text: '#475569',
+  } as const;
 }
 
 function resolveExamTypeLabel(type: string, labels: ExamLabelMap): string {
@@ -607,6 +667,19 @@ export default function TeacherWakakurExamsScreen() {
   const [examTypeFilter, setExamTypeFilter] = useState<ExamTypeFilter>('ALL');
   const [search, setSearch] = useState('');
   const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
+  const [selectedMakeupSchedule, setSelectedMakeupSchedule] = useState<TeacherExamSchedule | null>(null);
+  const [makeupOverview, setMakeupOverview] = useState<ExamScheduleMakeupOverview | null>(null);
+  const [makeupModalVisible, setMakeupModalVisible] = useState(false);
+  const [loadingMakeup, setLoadingMakeup] = useState(false);
+  const [savingMakeup, setSavingMakeup] = useState(false);
+  const [makeupSearch, setMakeupSearch] = useState('');
+  const [makeupForm, setMakeupForm] = useState({
+    studentId: '',
+    date: '',
+    startTime: '',
+    endTime: '',
+    reason: '',
+  });
   const [teacherSearch, setTeacherSearch] = useState('');
   const [programDrafts, setProgramDrafts] = useState<ExamProgramDraft[]>([]);
   const [programBaseline, setProgramBaseline] = useState<string>('[]');
@@ -1409,6 +1482,126 @@ export default function TeacherWakakurExamsScreen() {
     () => snapshotComponentDrafts(componentDrafts) !== componentBaseline,
     [componentBaseline, componentDrafts],
   );
+
+  const filteredMakeupStudents = useMemo(() => {
+    const rows = makeupOverview?.students || [];
+    const keyword = makeupSearch.trim().toLowerCase();
+    if (!keyword) return rows;
+    return rows.filter((row) => {
+      const haystacks = [row.student.name || '', row.student.nis || '', row.student.nisn || ''];
+      return haystacks.some((value) => value.toLowerCase().includes(keyword));
+    });
+  }, [makeupOverview?.students, makeupSearch]);
+
+  const resetMakeupForm = () => {
+    setMakeupForm({
+      studentId: '',
+      date: '',
+      startTime: '',
+      endTime: '',
+      reason: '',
+    });
+  };
+
+  const closeMakeupModal = () => {
+    setMakeupModalVisible(false);
+    setSelectedMakeupSchedule(null);
+    setMakeupOverview(null);
+    setMakeupSearch('');
+    resetMakeupForm();
+  };
+
+  const loadScheduleMakeupOverview = async (scheduleId: number) => {
+    setLoadingMakeup(true);
+    try {
+      const data = await examApi.getTeacherScheduleMakeupAccess(scheduleId);
+      setMakeupOverview(data);
+    } catch (error: unknown) {
+      const apiError = error as { response?: { data?: { message?: string } }; message?: string };
+      const message = apiError?.response?.data?.message || apiError?.message || 'Gagal memuat data susulan.';
+      Alert.alert('Gagal', message);
+      setMakeupOverview(null);
+    } finally {
+      setLoadingMakeup(false);
+    }
+  };
+
+  const openMakeupModal = async (schedule: TeacherExamSchedule) => {
+    setSelectedMakeupSchedule(schedule);
+    setMakeupModalVisible(true);
+    setMakeupSearch('');
+    resetMakeupForm();
+    await loadScheduleMakeupOverview(schedule.id);
+  };
+
+  const fillMakeupForm = (row: ExamScheduleMakeupStudentRow) => {
+    setMakeupForm({
+      studentId: String(row.student.id),
+      date: toInputDateValue(row.makeupAccess?.startTime),
+      startTime: toInputTimeValue(row.makeupAccess?.startTime),
+      endTime: toInputTimeValue(row.makeupAccess?.endTime),
+      reason: row.makeupAccess?.reason || '',
+    });
+  };
+
+  const handleSaveMakeup = async () => {
+    if (!selectedMakeupSchedule) {
+      Alert.alert('Validasi', 'Pilih jadwal ujian terlebih dahulu.');
+      return;
+    }
+    if (!makeupForm.studentId || !makeupForm.date || !makeupForm.startTime || !makeupForm.endTime) {
+      Alert.alert('Validasi', 'Lengkapi siswa, tanggal, jam mulai, dan jam selesai susulan.');
+      return;
+    }
+
+    setSavingMakeup(true);
+    try {
+      await examApi.upsertTeacherScheduleMakeupAccess(selectedMakeupSchedule.id, {
+        studentId: Number(makeupForm.studentId),
+        date: makeupForm.date,
+        startTime: makeupForm.startTime,
+        endTime: makeupForm.endTime,
+        reason: makeupForm.reason.trim() || undefined,
+      });
+      await loadScheduleMakeupOverview(selectedMakeupSchedule.id);
+      resetMakeupForm();
+      Alert.alert('Sukses', 'Jadwal susulan berhasil disimpan.');
+    } catch (error: unknown) {
+      const apiError = error as { response?: { data?: { message?: string } }; message?: string };
+      const message = apiError?.response?.data?.message || apiError?.message || 'Gagal menyimpan jadwal susulan.';
+      Alert.alert('Gagal', message);
+    } finally {
+      setSavingMakeup(false);
+    }
+  };
+
+  const handleRevokeMakeup = (row: ExamScheduleMakeupStudentRow) => {
+    if (!selectedMakeupSchedule) return;
+    Alert.alert('Cabut Jadwal Susulan', `Cabut jadwal susulan untuk ${row.student.name}?`, [
+      { text: 'Batal', style: 'cancel' },
+      {
+        text: 'Cabut',
+        style: 'destructive',
+        onPress: async () => {
+          setSavingMakeup(true);
+          try {
+            await examApi.revokeTeacherScheduleMakeupAccess(selectedMakeupSchedule.id, row.student.id);
+            await loadScheduleMakeupOverview(selectedMakeupSchedule.id);
+            if (String(row.student.id) === String(makeupForm.studentId)) {
+              resetMakeupForm();
+            }
+            Alert.alert('Sukses', 'Jadwal susulan berhasil dicabut.');
+          } catch (error: unknown) {
+            const apiError = error as { response?: { data?: { message?: string } }; message?: string };
+            const message = apiError?.response?.data?.message || apiError?.message || 'Gagal mencabut jadwal susulan.';
+            Alert.alert('Gagal', message);
+          } finally {
+            setSavingMakeup(false);
+          }
+        },
+      },
+    ]);
+  };
 
   const handleDeleteSchedule = (scheduleId: number) => {
     Alert.alert('Hapus Jadwal', 'Yakin ingin menghapus jadwal ujian ini?', [
@@ -2861,24 +3054,41 @@ export default function TeacherWakakurExamsScreen() {
                           <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
                             Packet: {item.packet?.title || '-'}
                           </Text>
-                          <Pressable
-                            onPress={() => handleDeleteSchedule(item.id)}
-                            disabled={deleteScheduleMutation.isPending}
-                            style={{
-                              marginTop: 8,
-                              alignSelf: 'flex-start',
-                              borderWidth: 1,
-                              borderColor: '#fecaca',
-                              backgroundColor: '#fff1f2',
-                              borderRadius: 8,
-                              paddingVertical: 6,
-                              paddingHorizontal: 10,
-                            }}
-                          >
-                            <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 12 }}>
-                              {deleteScheduleMutation.isPending ? 'Memproses...' : 'Hapus Jadwal'}
-                            </Text>
-                          </Pressable>
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                            {item.class?.name ? (
+                              <Pressable
+                                onPress={() => void openMakeupModal(item)}
+                                style={{
+                                  borderWidth: 1,
+                                  borderColor: '#bfdbfe',
+                                  backgroundColor: '#eff6ff',
+                                  borderRadius: 8,
+                                  paddingVertical: 6,
+                                  paddingHorizontal: 10,
+                                }}
+                              >
+                                <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>
+                                  Kelola Susulan
+                                </Text>
+                              </Pressable>
+                            ) : null}
+                            <Pressable
+                              onPress={() => handleDeleteSchedule(item.id)}
+                              disabled={deleteScheduleMutation.isPending}
+                              style={{
+                                borderWidth: 1,
+                                borderColor: '#fecaca',
+                                backgroundColor: '#fff1f2',
+                                borderRadius: 8,
+                                paddingVertical: 6,
+                                paddingHorizontal: 10,
+                              }}
+                            >
+                              <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 12 }}>
+                                {deleteScheduleMutation.isPending ? 'Memproses...' : 'Hapus Jadwal'}
+                              </Text>
+                            </Pressable>
+                          </View>
                         </View>
                       ))}
                     </View>
@@ -3159,6 +3369,291 @@ export default function TeacherWakakurExamsScreen() {
       >
         <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
       </Pressable>
+
+      <MobileDetailModal
+        visible={makeupModalVisible}
+        title="Kelola Ujian Susulan"
+        subtitle="Atur susulan per siswa yang belum sempat mengikuti ujian reguler."
+        iconName="clock"
+        accentColor="#1d4ed8"
+        onClose={closeMakeupModal}
+      >
+        {selectedMakeupSchedule ? (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              backgroundColor: '#f8fbff',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 10,
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>
+              {makeupOverview?.schedule.subject.name || resolveScheduleSubject(selectedMakeupSchedule).subjectName}
+              {' '}
+              (
+              {makeupOverview?.schedule.subject.code || resolveScheduleSubject(selectedMakeupSchedule).subjectCode}
+              )
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 2 }}>
+              Kelas: {makeupOverview?.schedule.className || selectedMakeupSchedule.class?.name || '-'}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+              Jadwal reguler: {formatDateTime(makeupOverview?.schedule.startTime || selectedMakeupSchedule.startTime)}
+              {' - '}
+              {formatDateTime(makeupOverview?.schedule.endTime || selectedMakeupSchedule.endTime)}
+            </Text>
+            <Text style={{ color: '#1d4ed8', fontSize: 11, marginTop: 8 }}>
+              Susulan formal hanya untuk siswa yang belum mulai ujian reguler, dan waktunya harus sesudah jadwal reguler berakhir.
+            </Text>
+          </View>
+        ) : null}
+
+        <MobileSelectField
+          label="Pilih Siswa"
+          value={makeupForm.studentId}
+          options={(makeupOverview?.students || [])
+            .filter((row) => row.canManageMakeup || row.makeupAccess)
+            .map((row) => ({
+              value: String(row.student.id),
+              label: `${row.student.name}${row.student.nis ? ` • ${row.student.nis}` : ''}`,
+            }))}
+          onChange={(value) => setMakeupForm((prev) => ({ ...prev, studentId: String(value || '') }))}
+          placeholder="Pilih siswa"
+        />
+
+        <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Catatan / Alasan</Text>
+        <TextInput
+          value={makeupForm.reason}
+          onChangeText={(value) => setMakeupForm((prev) => ({ ...prev, reason: value }))}
+          placeholder="Contoh: sakit, izin resmi, kendala teknis"
+          placeholderTextColor="#94a3b8"
+          style={{
+            borderWidth: 1,
+            borderColor: '#d5e1f5',
+            borderRadius: 10,
+            backgroundColor: '#fff',
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            color: BRAND_COLORS.textDark,
+            marginBottom: 10,
+          }}
+        />
+
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Tanggal Susulan</Text>
+            <TextInput
+              value={makeupForm.date}
+              onChangeText={(value) => setMakeupForm((prev) => ({ ...prev, date: value }))}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#94a3b8"
+              style={{
+                borderWidth: 1,
+                borderColor: '#d5e1f5',
+                borderRadius: 10,
+                backgroundColor: '#fff',
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                color: BRAND_COLORS.textDark,
+              }}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Jam Mulai</Text>
+            <TextInput
+              value={makeupForm.startTime}
+              onChangeText={(value) => setMakeupForm((prev) => ({ ...prev, startTime: value }))}
+              placeholder="HH:MM"
+              placeholderTextColor="#94a3b8"
+              style={{
+                borderWidth: 1,
+                borderColor: '#d5e1f5',
+                borderRadius: 10,
+                backgroundColor: '#fff',
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                color: BRAND_COLORS.textDark,
+              }}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Jam Selesai</Text>
+            <TextInput
+              value={makeupForm.endTime}
+              onChangeText={(value) => setMakeupForm((prev) => ({ ...prev, endTime: value }))}
+              placeholder="HH:MM"
+              placeholderTextColor="#94a3b8"
+              style={{
+                borderWidth: 1,
+                borderColor: '#d5e1f5',
+                borderRadius: 10,
+                backgroundColor: '#fff',
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                color: BRAND_COLORS.textDark,
+              }}
+            />
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+          <Pressable
+            onPress={resetMakeupForm}
+            style={{
+              flex: 1,
+              borderWidth: 1,
+              borderColor: '#d5e1f5',
+              borderRadius: 10,
+              backgroundColor: '#fff',
+              paddingVertical: 10,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textMuted, fontWeight: '700' }}>Reset Form</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => void handleSaveMakeup()}
+            disabled={savingMakeup || loadingMakeup}
+            style={{
+              flex: 1,
+              borderRadius: 10,
+              backgroundColor: savingMakeup || loadingMakeup ? '#94a3b8' : BRAND_COLORS.blue,
+              paddingVertical: 10,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>
+              {savingMakeup ? 'Menyimpan...' : 'Simpan Susulan'}
+            </Text>
+          </Pressable>
+        </View>
+
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Daftar Siswa</Text>
+        <TextInput
+          value={makeupSearch}
+          onChangeText={setMakeupSearch}
+          placeholder="Cari nama siswa / NIS / NISN"
+          placeholderTextColor="#94a3b8"
+          style={{
+            borderWidth: 1,
+            borderColor: '#d5e1f5',
+            borderRadius: 10,
+            backgroundColor: '#fff',
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            color: BRAND_COLORS.textDark,
+            marginBottom: 10,
+          }}
+        />
+
+        {loadingMakeup ? (
+          <QueryStateView type="loading" message="Memuat data susulan..." />
+        ) : filteredMakeupStudents.length === 0 ? (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderStyle: 'dashed',
+              borderRadius: 10,
+              padding: 14,
+              backgroundColor: '#fff',
+            }}
+          >
+            <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada siswa yang sesuai untuk dikelola.</Text>
+          </View>
+        ) : (
+          filteredMakeupStudents.map((row) => {
+            const makeupState = getMakeupStateMeta(row.makeupAccess?.state);
+            return (
+              <View
+                key={row.student.id}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 8,
+                  backgroundColor: '#fff',
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{row.student.name}</Text>
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
+                      {row.student.nis ? `NIS ${row.student.nis}` : 'Tanpa NIS'}
+                      {row.student.nisn ? ` • NISN ${row.student.nisn}` : ''}
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: makeupState.border,
+                      backgroundColor: makeupState.bg,
+                      borderRadius: 999,
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                      alignSelf: 'flex-start',
+                    }}
+                  >
+                    <Text style={{ color: makeupState.text, fontWeight: '700', fontSize: 11 }}>
+                      {makeupState.label}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>
+                  Status reguler: {row.session ? row.session.status : 'Belum mulai'}
+                </Text>
+                {row.makeupAccess ? (
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
+                    Susulan: {formatDateTime(row.makeupAccess.startTime)} - {formatDateTime(row.makeupAccess.endTime)}
+                  </Text>
+                ) : null}
+                {row.makeupAccess?.reason ? (
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                    Alasan: {row.makeupAccess.reason}
+                  </Text>
+                ) : null}
+
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                  <Pressable
+                    onPress={() => fillMakeupForm(row)}
+                    style={{
+                      flex: 1,
+                      borderWidth: 1,
+                      borderColor: '#bfdbfe',
+                      backgroundColor: '#eff6ff',
+                      borderRadius: 10,
+                      paddingVertical: 9,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: '#1d4ed8', fontWeight: '700', fontSize: 12 }}>Isi Form</Text>
+                  </Pressable>
+                  {row.makeupAccess && row.makeupAccess.state !== 'REVOKED' ? (
+                    <Pressable
+                      onPress={() => handleRevokeMakeup(row)}
+                      style={{
+                        flex: 1,
+                        borderWidth: 1,
+                        borderColor: '#fecaca',
+                        backgroundColor: '#fff1f2',
+                        borderRadius: 10,
+                        paddingVertical: 9,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#be123c', fontWeight: '700', fontSize: 12 }}>Cabut</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              </View>
+            );
+          })
+        )}
+      </MobileDetailModal>
 
       <MobileDetailModal
         visible={Boolean(activeSummaryId && activeSummaryMeta)}

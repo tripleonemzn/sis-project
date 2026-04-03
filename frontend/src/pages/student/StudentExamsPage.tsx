@@ -80,7 +80,11 @@ type ExamAvailabilityPayload = {
     reason?: string | null
   } | null
   makeupAvailable?: boolean
+  makeupMode?: 'AUTO' | 'FORMAL' | null
+  makeupScheduled?: boolean
+  makeupStartTime?: string | null
   makeupDeadline?: string | null
+  makeupReason?: string | null
   jobVacancy?: {
     id?: string | number
     title?: string
@@ -250,7 +254,11 @@ interface Exam {
     reason?: string | null
   } | null
   makeupAvailable?: boolean
+  makeupMode?: 'AUTO' | 'FORMAL' | null
+  makeupScheduled?: boolean
+  makeupStartTime?: string | null
   makeupDeadline?: string | null
+  makeupReason?: string | null
   jobVacancy?: {
     id: string
     title: string
@@ -512,7 +520,11 @@ export default function StudentExamsPage() {
           blockReason: item.blockReason,
           financeClearance: item.financeClearance || null,
           makeupAvailable: Boolean(item.makeupAvailable),
+          makeupMode: item.makeupMode || null,
+          makeupScheduled: Boolean(item.makeupScheduled),
+          makeupStartTime: item.makeupStartTime || null,
           makeupDeadline: item.makeupDeadline || null,
+          makeupReason: item.makeupReason || null,
           jobVacancy: item.jobVacancy
             ? {
                 id: String(item.jobVacancy.id || ''),
@@ -759,7 +771,7 @@ export default function StudentExamsPage() {
         return (
           <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-medium rounded inline-flex items-center gap-1">
             <Clock className="w-3 h-3" />
-            Akan Datang
+            {exam.makeupMode === 'FORMAL' && exam.makeupScheduled ? 'Jadwal Susulan' : 'Akan Datang'}
           </span>
         )
       case 'makeup':
@@ -1063,10 +1075,21 @@ export default function StudentExamsPage() {
                               <Calendar className="w-3 h-3" />
                               <span>Selesai: {formatDateShort(exam.end_time)}</span>
                             </div>
+                            {exam.makeupMode === 'FORMAL' && exam.makeupStartTime ? (
+                              <div className="flex items-center gap-1 text-orange-600 mt-1">
+                                <Clock className="w-3 h-3" />
+                                <span>Jadwal susulan: {formatDateShort(exam.makeupStartTime)}</span>
+                              </div>
+                            ) : null}
                             {getExamStatus(exam) === 'makeup' && exam.makeupDeadline ? (
                               <div className="flex items-center gap-1 text-orange-600 mt-1">
                                 <Clock className="w-3 h-3" />
                                 <span>Susulan sampai: {formatDateShort(exam.makeupDeadline)}</span>
+                              </div>
+                            ) : null}
+                            {exam.makeupMode === 'FORMAL' && exam.makeupReason ? (
+                              <div className="text-[11px] text-orange-700 mt-1">
+                                Alasan susulan: {exam.makeupReason}
                               </div>
                             ) : null}
                           </div>

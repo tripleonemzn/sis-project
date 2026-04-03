@@ -181,6 +181,66 @@ export interface ExamSchedule {
     };
 }
 
+export interface ExamScheduleMakeupAccessSummary {
+    id: number;
+    startTime: string;
+    endTime: string;
+    reason: string | null;
+    isActive: boolean;
+    grantedAt: string;
+    revokedAt: string | null;
+    state: 'NONE' | 'UPCOMING' | 'OPEN' | 'EXPIRED' | 'REVOKED';
+    grantedBy?: {
+        id: number;
+        name: string;
+    } | null;
+    revokedBy?: {
+        id: number;
+        name: string;
+    } | null;
+}
+
+export interface ExamScheduleMakeupStudentRow {
+    student: {
+        id: number;
+        name: string;
+        nis: string | null;
+        nisn: string | null;
+    };
+    session: {
+        id: number;
+        status: string;
+        startTime: string;
+        endTime: string | null;
+        submitTime: string | null;
+        score: number | null;
+    } | null;
+    hasAttempt: boolean;
+    canManageMakeup: boolean;
+    makeupAccess: ExamScheduleMakeupAccessSummary | null;
+}
+
+export interface ExamScheduleMakeupOverview {
+    schedule: {
+        id: number;
+        classId: number;
+        className: string;
+        startTime: string;
+        endTime: string;
+        examType: string;
+        subject: {
+            id: number;
+            name: string;
+            code: string;
+        };
+        packet: {
+            id: number;
+            title: string;
+        };
+    };
+    students: ExamScheduleMakeupStudentRow[];
+}
+
 export interface ExamProgramSession {
     id: number;
     academicYearId: number;
@@ -643,6 +703,42 @@ export const examService = {
     ) => {
         const response = await api.patch(`/exams/schedules/${id}`, data);
         return response.data;
+    },
+    getScheduleMakeupAccess: async (id: number) => {
+        const response = await api.get(`/exams/schedules/${id}/makeup-access`);
+        return response.data as {
+            statusCode: number;
+            success: boolean;
+            message: string;
+            data: ExamScheduleMakeupOverview;
+        };
+    },
+    upsertScheduleMakeupAccess: async (
+        id: number,
+        data: {
+            studentId: number;
+            date: string;
+            startTime: string;
+            endTime: string;
+            reason?: string;
+        },
+    ) => {
+        const response = await api.put(`/exams/schedules/${id}/makeup-access`, data);
+        return response.data as {
+            statusCode: number;
+            success: boolean;
+            message: string;
+            data: ExamScheduleMakeupAccessSummary;
+        };
+    },
+    revokeScheduleMakeupAccess: async (id: number, studentId: number) => {
+        const response = await api.delete(`/exams/schedules/${id}/makeup-access/${studentId}`);
+        return response.data as {
+            statusCode: number;
+            success: boolean;
+            message: string;
+            data: null;
+        };
     },
     deleteSchedule: async (id: number) => {
         const response = await api.delete(`/exams/schedules/${id}`);

@@ -1190,6 +1190,85 @@ function isMakeupWindowOpen(now: Date, endTime: Date): boolean {
     return now <= resolveMakeupDeadline(endTime);
 }
 
+type ManualExamMakeupAccessSummary = {
+    id: number;
+    startTime: Date;
+    endTime: Date;
+    reason: string | null;
+    isActive: boolean;
+};
+
+type ResolvedExamMakeupContext = {
+    mode: 'AUTO' | 'FORMAL' | null;
+    accessId: number | null;
+    availableNow: boolean;
+    scheduled: boolean;
+    expired: boolean;
+    startTime: Date | null;
+    endTime: Date | null;
+    reason: string | null;
+};
+
+function resolveExamMakeupContext(params: {
+    now: Date;
+    scheduleEndTime: Date;
+    hasSessionAttempt: boolean;
+    manualAccess?: ManualExamMakeupAccessSummary | null;
+}): ResolvedExamMakeupContext {
+    if (params.hasSessionAttempt) {
+        return {
+            mode: null,
+            accessId: null,
+            availableNow: false,
+            scheduled: false,
+            expired: false,
+            startTime: null,
+            endTime: null,
+            reason: null,
+        };
+    }
+
+    const manualAccess = params.manualAccess;
+    if (manualAccess && manualAccess.isActive) {
+        const startsAt = manualAccess.startTime;
+        const endsAt = manualAccess.endTime;
+        return {
+            mode: 'FORMAL',
+            accessId: manualAccess.id,
+            availableNow: params.now >= startsAt && params.now <= endsAt,
+            scheduled: params.now < startsAt,
+            expired: params.now > endsAt,
+            startTime: startsAt,
+            endTime: endsAt,
+            reason: manualAccess.reason || null,
+        };
+    }
+
+    if (isMakeupWindowOpen(params.now, params.scheduleEndTime)) {
+        return {
+            mode: 'AUTO',
+            accessId: null,
+            availableNow: true,
+            scheduled: false,
+            expired: false,
+            startTime: params.scheduleEndTime,
+            endTime: resolveMakeupDeadline(params.scheduleEndTime),
+            reason: null,
+        };
+    }
+
+    return {
+        mode: null,
+        accessId: null,
+        availableNow: false,
+        scheduled: false,
+        expired: false,
+        startTime: null,
+        endTime: null,
+        reason: null,
+    };
+}
+
 async function loadStartExamSchedule(scheduleId: number): Promise<StartExamSchedulePayload | null> {
     const schedule = await prisma.examSchedule.findUnique({
         where: { id: scheduleId },
@@ -2647,6 +2726,105 @@ async function assertAcademicExamScheduleManagementAccess(
     }
 
     throw new ApiError(403, 'Jadwal ujian akademik hanya bisa diatur oleh Wakasek/sekretaris kurikulum.');
+}
+
+type FormalMakeupManagedSchedule = {
+    id: number;
+    classId: number | null;
+    academicYearId: number | null;
+    startTime: Date;
+    endTime: Date;
+    examType: string | null;
+    class: { id: number; name: string } | null;
+    packet: {
+        id: number;
+        title: string;
+        type: ExamType;
+        programCode: string | null;
+        academicYearId: number;
+        semester: Semester;
+        subject: {
+            id: number;
+            name: string;
+            code: string;
+        };
+        authorId: number;
+    } | null;
+};
+
+async function loadFormalMakeupManagedSchedule(scheduleId: number): Promise<FormalMakeupManagedSchedule | null> {
+    return prisma.examSchedule.findUnique({
+        where: { id: scheduleId },
+        select: {
+            id: true,
+            classId: true,
+            academicYearId: true,
+            startTime: true,
+            endTime: true,
+            examType: true,
+            class: {
+                select: {
+                    id: true,
+                    name: true,
+                },
+            },
+            packet: {
+                select: {
+                    id: true,
+                    title: true,
+                    type: true,
+                    programCode: true,
+                    academicYearId: true,
+                    semester: true,
+                    authorId: true,
+                    subject: {
+                        select: {
+                            id: true,
+                            name: true,
+                            code: true,
+                        },
+                    },
+                },
+            },
+        },
+    });
+}
+
+function assertFormalMakeupSupportedSchedule(
+    schedule: FormalMakeupManagedSchedule | null,
+): asserts schedule is FormalMakeupManagedSchedule & {
+    classId: number;
+    class: { id: number; name: string };
+    packet: NonNullable<FormalMakeupManagedSchedule['packet']>;
+} {
+    if (!schedule) {
+        throw new ApiError(404, 'Jadwal ujian tidak ditemukan.');
+    }
+    if (!schedule.classId || !schedule.class) {
+        throw new ApiError(400, 'Ujian susulan formal hanya tersedia untuk jadwal siswa berbasis kelas.');
+    }
+    if (!schedule.packet) {
+        throw new ApiError(400, 'Jadwal ini belum memiliki packet ujian yang valid.');
+    }
+    if (!Number.isFinite(Number(schedule.packet.academicYearId || schedule.academicYearId || 0))) {
+        throw new ApiError(400, 'Tahun ajaran jadwal tidak valid untuk pengelolaan susulan.');
+    }
+}
+
+function resolveFormalMakeupAccessState(
+    now: Date,
+    access: {
+        isActive: boolean;
+        startTime: Date;
+        endTime: Date;
+        revokedAt?: Date | null;
+    } | null,
+): 'NONE' | 'UPCOMING' | 'OPEN' | 'EXPIRED' | 'REVOKED' {
+    if (!access) return 'NONE';
+    if (!access.isActive || access.revokedAt) return 'REVOKED';
+    if (now < access.startTime) return 'UPCOMING';
+    if (now > access.endTime) return 'EXPIRED';
+    return 'OPEN';
 }
 
 function resolveScheduleDateTime(input: {
@@ -6101,6 +6279,411 @@ export const deleteSchedule = asyncHandler(async (req: Request, res: Response) =
     res.json(new ApiResponse(200, null, 'Exam schedule deleted successfully'));
 });
 
+export const getScheduleMakeupAccess = asyncHandler(async (req: Request, res: Response) => {
+    const scheduleId = Number(req.params.id);
+    if (!Number.isFinite(scheduleId) || scheduleId <= 0) {
+        throw new ApiError(400, 'id jadwal tidak valid.');
+    }
+
+    const schedule = await loadFormalMakeupManagedSchedule(scheduleId);
+    assertFormalMakeupSupportedSchedule(schedule);
+
+    await assertAcademicExamScheduleManagementAccess(req, {
+        programCode: schedule.packet?.programCode || schedule.examType || schedule.packet?.type || null,
+        packetAuthorId: schedule.packet?.authorId,
+        allowPacketAuthorForNonScheduled: true,
+    });
+
+    const academicYearId = Number(schedule.packet?.academicYearId || schedule.academicYearId || 0);
+    const classId = Number(schedule.classId || 0);
+    const studentSnapshots = await listHistoricalStudentsForAcademicYear({
+        academicYearId,
+        classId,
+    });
+    const studentIds = studentSnapshots.map((item) => item.id);
+
+    const [sessions, accesses] = await Promise.all([
+        studentIds.length > 0
+            ? prisma.studentExamSession.findMany({
+                  where: {
+                      scheduleId,
+                      studentId: { in: studentIds },
+                  },
+                  select: {
+                      id: true,
+                      studentId: true,
+                      startTime: true,
+                      endTime: true,
+                      submitTime: true,
+                      status: true,
+                      score: true,
+                      updatedAt: true,
+                  },
+              })
+            : Promise.resolve([]),
+        studentIds.length > 0
+            ? prisma.examScheduleMakeupAccess.findMany({
+                  where: {
+                      scheduleId,
+                      studentId: { in: studentIds },
+                  },
+                  select: {
+                      id: true,
+                      studentId: true,
+                      startTime: true,
+                      endTime: true,
+                      reason: true,
+                      isActive: true,
+                      grantedAt: true,
+                      revokedAt: true,
+                      grantedBy: {
+                          select: {
+                              id: true,
+                              name: true,
+                          },
+                      },
+                      revokedBy: {
+                          select: {
+                              id: true,
+                              name: true,
+                          },
+                      },
+                  },
+                  orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+              })
+            : Promise.resolve([]),
+    ]);
+
+    const now = new Date();
+    const sessionMap = new Map<number, (typeof sessions)[number]>();
+    sessions.forEach((session) => {
+        const current = sessionMap.get(session.studentId);
+        const picked = pickBestSession(current ? [current, session] : [session]);
+        if (picked) {
+            sessionMap.set(session.studentId, picked);
+        }
+    });
+    const accessMap = new Map<number, (typeof accesses)[number]>();
+    accesses.forEach((access) => {
+        if (!accessMap.has(access.studentId)) {
+            accessMap.set(access.studentId, access);
+        }
+    });
+
+    const students = studentSnapshots
+        .map((student) => {
+            const session = sessionMap.get(student.id) || null;
+            const access = accessMap.get(student.id) || null;
+            const sessionStatus = String(session?.status || '').toUpperCase();
+            const hasAttempt = Boolean(session);
+            const makeupState = resolveFormalMakeupAccessState(now, access);
+            return {
+                student: {
+                    id: student.id,
+                    name: student.name,
+                    nis: student.nis || null,
+                    nisn: student.nisn || null,
+                },
+                session: session
+                    ? {
+                          id: session.id,
+                          status: sessionStatus || 'IN_PROGRESS',
+                          startTime: session.startTime.toISOString(),
+                          endTime: session.endTime ? session.endTime.toISOString() : null,
+                          submitTime: session.submitTime ? session.submitTime.toISOString() : null,
+                          score: session.score ?? null,
+                      }
+                    : null,
+                hasAttempt,
+                canManageMakeup: !hasAttempt,
+                makeupAccess: access
+                    ? {
+                          id: access.id,
+                          startTime: access.startTime.toISOString(),
+                          endTime: access.endTime.toISOString(),
+                          reason: access.reason || null,
+                          isActive: access.isActive,
+                          grantedAt: access.grantedAt.toISOString(),
+                          revokedAt: access.revokedAt ? access.revokedAt.toISOString() : null,
+                          state: makeupState,
+                          grantedBy: access.grantedBy
+                              ? {
+                                    id: access.grantedBy.id,
+                                    name: access.grantedBy.name,
+                                }
+                              : null,
+                          revokedBy: access.revokedBy
+                              ? {
+                                    id: access.revokedBy.id,
+                                    name: access.revokedBy.name,
+                                }
+                              : null,
+                      }
+                    : null,
+            };
+        })
+        .sort((left, right) => String(left.student.name || '').localeCompare(String(right.student.name || ''), 'id'));
+
+    res.json(
+        new ApiResponse(200, {
+            schedule: {
+                id: schedule.id,
+                classId: classId,
+                className: schedule.class?.name || '',
+                startTime: schedule.startTime.toISOString(),
+                endTime: schedule.endTime.toISOString(),
+                examType: normalizeProgramCode(schedule.packet?.programCode || schedule.examType || schedule.packet?.type),
+                subject: {
+                    id: Number(schedule.packet?.subject.id || 0),
+                    name: String(schedule.packet?.subject.name || ''),
+                    code: String(schedule.packet?.subject.code || ''),
+                },
+                packet: {
+                    id: Number(schedule.packet?.id || 0),
+                    title: String(schedule.packet?.title || ''),
+                },
+            },
+            students,
+        }),
+    );
+});
+
+export const upsertScheduleMakeupAccess = asyncHandler(async (req: Request, res: Response) => {
+    const scheduleId = Number(req.params.id);
+    if (!Number.isFinite(scheduleId) || scheduleId <= 0) {
+        throw new ApiError(400, 'id jadwal tidak valid.');
+    }
+
+    const schedule = await loadFormalMakeupManagedSchedule(scheduleId);
+    assertFormalMakeupSupportedSchedule(schedule);
+
+    await assertAcademicExamScheduleManagementAccess(req, {
+        programCode: schedule.packet?.programCode || schedule.examType || schedule.packet?.type || null,
+        packetAuthorId: schedule.packet?.authorId,
+        allowPacketAuthorForNonScheduled: true,
+    });
+
+    const actor = (req as Request & { user?: { id?: number | string } }).user;
+    const grantedById = Number(actor?.id || 0);
+    if (!Number.isFinite(grantedById) || grantedById <= 0) {
+        throw new ApiError(401, 'Sesi login tidak valid.');
+    }
+
+    const academicYearId = Number(schedule.packet?.academicYearId || schedule.academicYearId || 0);
+    const classId = Number(schedule.classId || 0);
+    const parsedStudentId = Number(req.body?.studentId);
+    if (!Number.isFinite(parsedStudentId) || parsedStudentId <= 0) {
+        throw new ApiError(400, 'studentId tidak valid.');
+    }
+
+    const [studentSnapshot, existingSession] = await Promise.all([
+        getHistoricalStudentSnapshotForAcademicYear(parsedStudentId, academicYearId),
+        prisma.studentExamSession.findFirst({
+            where: {
+                scheduleId,
+                studentId: parsedStudentId,
+            },
+            select: {
+                id: true,
+                startTime: true,
+                status: true,
+            },
+        }),
+    ]);
+
+    if (!studentSnapshot || Number(studentSnapshot.studentClass?.id || 0) !== classId) {
+        throw new ApiError(400, 'Siswa tidak valid untuk kelas pada jadwal ini.');
+    }
+
+    if (existingSession) {
+        throw new ApiError(
+            400,
+            'Siswa sudah memiliki sesi ujian. Susulan formal hanya untuk siswa yang belum mulai ujian reguler.',
+        );
+    }
+
+    const startTime = resolveScheduleDateTime({
+        date: req.body?.date,
+        time: req.body?.startTime,
+        dateTime: req.body?.startDateTime,
+        fieldLabel: 'Waktu mulai susulan',
+    });
+    const endTime = resolveScheduleDateTime({
+        date: req.body?.date,
+        time: req.body?.endTime,
+        dateTime: req.body?.endDateTime,
+        fieldLabel: 'Waktu selesai susulan',
+    });
+    if (endTime <= startTime) {
+        throw new ApiError(400, 'Waktu selesai susulan harus sesudah waktu mulai.');
+    }
+    if (startTime <= schedule.endTime) {
+        throw new ApiError(400, 'Jadwal susulan harus dimulai setelah jadwal reguler berakhir.');
+    }
+    if (endTime <= new Date()) {
+        throw new ApiError(400, 'Jadwal susulan sudah lewat. Pilih waktu yang masih akan datang.');
+    }
+
+    const normalizedReason = String(req.body?.reason || '').trim() || null;
+
+    const access = await prisma.examScheduleMakeupAccess.upsert({
+        where: {
+            scheduleId_studentId: {
+                scheduleId,
+                studentId: parsedStudentId,
+            },
+        },
+        update: {
+            startTime,
+            endTime,
+            reason: normalizedReason,
+            isActive: true,
+            grantedById,
+            grantedAt: new Date(),
+            revokedById: null,
+            revokedAt: null,
+        },
+        create: {
+            scheduleId,
+            studentId: parsedStudentId,
+            startTime,
+            endTime,
+            reason: normalizedReason,
+            isActive: true,
+            grantedById,
+        },
+        select: {
+            id: true,
+            startTime: true,
+            endTime: true,
+            reason: true,
+            isActive: true,
+            grantedAt: true,
+            grantedBy: {
+                select: {
+                    id: true,
+                    name: true,
+                },
+            },
+        },
+    });
+
+    availableExamsCache.delete(parsedStudentId);
+
+    const examLabel = String(schedule.packet?.title || schedule.packet?.subject.name || 'ujian');
+    const dateLabel = startTime.toLocaleString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+    await createInAppNotification({
+        data: {
+            userId: parsedStudentId,
+            title: 'Jadwal Susulan Ujian',
+            message: `Anda mendapat jadwal susulan untuk ${examLabel} pada ${dateLabel}.`,
+            type: 'EXAM',
+            data: {
+                scheduleId,
+                makeupAccessId: access.id,
+                route: '/student/exams',
+            },
+        },
+    });
+
+    res.json(
+        new ApiResponse(200, {
+            id: access.id,
+            startTime: access.startTime.toISOString(),
+            endTime: access.endTime.toISOString(),
+            reason: access.reason || null,
+            isActive: access.isActive,
+            grantedAt: access.grantedAt.toISOString(),
+            grantedBy: access.grantedBy
+                ? {
+                      id: access.grantedBy.id,
+                      name: access.grantedBy.name,
+                  }
+                : null,
+        }, 'Jadwal susulan berhasil disimpan'),
+    );
+});
+
+export const revokeScheduleMakeupAccess = asyncHandler(async (req: Request, res: Response) => {
+    const scheduleId = Number(req.params.id);
+    const parsedStudentId = Number(req.params.studentId);
+    if (!Number.isFinite(scheduleId) || scheduleId <= 0) {
+        throw new ApiError(400, 'id jadwal tidak valid.');
+    }
+    if (!Number.isFinite(parsedStudentId) || parsedStudentId <= 0) {
+        throw new ApiError(400, 'studentId tidak valid.');
+    }
+
+    const schedule = await loadFormalMakeupManagedSchedule(scheduleId);
+    assertFormalMakeupSupportedSchedule(schedule);
+
+    await assertAcademicExamScheduleManagementAccess(req, {
+        programCode: schedule.packet?.programCode || schedule.examType || schedule.packet?.type || null,
+        packetAuthorId: schedule.packet?.authorId,
+        allowPacketAuthorForNonScheduled: true,
+    });
+
+    const actor = (req as Request & { user?: { id?: number | string } }).user;
+    const revokedById = Number(actor?.id || 0);
+    if (!Number.isFinite(revokedById) || revokedById <= 0) {
+        throw new ApiError(401, 'Sesi login tidak valid.');
+    }
+
+    const existingAccess = await prisma.examScheduleMakeupAccess.findUnique({
+        where: {
+            scheduleId_studentId: {
+                scheduleId,
+                studentId: parsedStudentId,
+            },
+        },
+        select: {
+            id: true,
+            isActive: true,
+        },
+    });
+
+    if (!existingAccess) {
+        throw new ApiError(404, 'Jadwal susulan siswa tidak ditemukan.');
+    }
+
+    await prisma.examScheduleMakeupAccess.update({
+        where: {
+            scheduleId_studentId: {
+                scheduleId,
+                studentId: parsedStudentId,
+            },
+        },
+        data: {
+            isActive: false,
+            revokedById,
+            revokedAt: new Date(),
+        },
+    });
+
+    availableExamsCache.delete(parsedStudentId);
+
+    await createInAppNotification({
+        data: {
+            userId: parsedStudentId,
+            title: 'Jadwal Susulan Dibatalkan',
+            message: 'Jadwal susulan ujian Anda telah dicabut. Hubungi sekolah bila membutuhkan klarifikasi.',
+            type: 'EXAM',
+            data: {
+                scheduleId,
+                route: '/student/exams',
+            },
+        },
+    });
+
+    res.json(new ApiResponse(200, null, 'Jadwal susulan berhasil dicabut.'));
+});
+
 // ==========================================
 // Student Exam Access
 // ==========================================
@@ -6191,6 +6774,19 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
                 status: true,
                 score: true,
                 updatedAt: true,
+            },
+        },
+        makeupAccesses: {
+            where: {
+                studentId,
+                isActive: true,
+            },
+            select: {
+                id: true,
+                startTime: true,
+                endTime: true,
+                reason: true,
+                isActive: true,
             },
         },
     } satisfies Prisma.ExamScheduleSelect;
@@ -6713,8 +7309,13 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
                   );
               })
             : false;
-        const makeupAvailable = !hasSessionAttempt && isMakeupWindowOpen(now, schedule.endTime);
-        const makeupDeadline = makeupAvailable ? resolveMakeupDeadline(schedule.endTime) : null;
+        const manualMakeupAccess = (Array.isArray(schedule.makeupAccesses) ? schedule.makeupAccesses : [])[0] || null;
+        const makeupContext = resolveExamMakeupContext({
+            now,
+            scheduleEndTime: schedule.endTime,
+            hasSessionAttempt,
+            manualAccess: manualMakeupAccess,
+        });
         const status = session
             ? ['COMPLETED', 'TIMEOUT', 'IN_PROGRESS', 'NOT_STARTED'].includes(normalizedSessionStatus)
                 ? normalizedSessionStatus
@@ -6723,15 +7324,15 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
                     : now < schedule.startTime
                         ? 'UPCOMING'
                         : 'OPEN'
-            : makeupAvailable
+            : makeupContext.availableNow
                 ? 'MAKEUP_AVAILABLE'
+                : makeupContext.scheduled
+                    ? 'UPCOMING'
                 : now > schedule.endTime
                     ? 'MISSED'
                     : now < schedule.startTime
                         ? 'UPCOMING'
                         : 'OPEN';
-
-        const adjustedStatus = !session && makeupAvailable ? 'MAKEUP_AVAILABLE' : status;
 
         const packet = schedule.packet
             ? (() => {
@@ -6782,13 +7383,17 @@ export const getAvailableExams = asyncHandler(async (req: Request, res: Response
                   }
                 : null,
             packet,
-            status: adjustedStatus,
+            status,
             has_submitted: normalizedSessionStatus === 'COMPLETED' || normalizedSessionStatus === 'TIMEOUT',
             isBlocked,
             blockReason,
             financeClearance,
-            makeupAvailable,
-            makeupDeadline: makeupDeadline ? makeupDeadline.toISOString() : null,
+            makeupAvailable: makeupContext.availableNow,
+            makeupMode: makeupContext.mode,
+            makeupScheduled: makeupContext.scheduled,
+            makeupStartTime: makeupContext.startTime ? makeupContext.startTime.toISOString() : null,
+            makeupDeadline: makeupContext.endTime ? makeupContext.endTime.toISOString() : null,
+            makeupReason: makeupContext.reason,
         };
     });
 
@@ -6813,7 +7418,10 @@ async function buildStartExamPayload(params: {
         publishedQuestionCount: number | null;
         questions: Record<string, unknown>[];
         isMakeup: boolean;
+        makeupStartTime: Date | null;
         makeupDeadline: Date | null;
+        makeupMode: 'AUTO' | 'FORMAL' | null;
+        makeupReason: string | null;
     };
 }> {
     const { scheduleId, studentId, accessRole } = params;
@@ -6905,8 +7513,37 @@ async function buildStartExamPayload(params: {
         Boolean(session) &&
         String(session?.status || '').toUpperCase() === 'IN_PROGRESS' &&
         !session?.submitTime;
-    const makeupAllowed = isMakeupWindowOpen(now, schedule.endTime);
-    if (now > schedule.endTime && !resumeInProgressSession && !makeupAllowed) {
+    const manualMakeupAccess =
+        accessRole === 'STUDENT'
+            ? await prisma.examScheduleMakeupAccess.findUnique({
+                  where: {
+                      scheduleId_studentId: {
+                          scheduleId: schedule.id,
+                          studentId,
+                      },
+                  },
+                  select: {
+                      id: true,
+                      startTime: true,
+                      endTime: true,
+                      reason: true,
+                      isActive: true,
+                  },
+              })
+            : null;
+    const makeupContext = resolveExamMakeupContext({
+        now,
+        scheduleEndTime: schedule.endTime,
+        hasSessionAttempt: Boolean(session),
+        manualAccess: manualMakeupAccess,
+    });
+    if (now > schedule.endTime && !resumeInProgressSession && !makeupContext.availableNow) {
+        if (makeupContext.mode === 'FORMAL' && makeupContext.scheduled) {
+            throw new ApiError(400, 'Jadwal susulan belum dimulai.');
+        }
+        if (makeupContext.mode === 'FORMAL' && makeupContext.expired) {
+            throw new ApiError(400, 'Jadwal susulan sudah berakhir.');
+        }
         throw new ApiError(400, 'Exam has ended');
     }
 
@@ -6994,8 +7631,11 @@ async function buildStartExamPayload(params: {
                     ? Number(configuredLimit)
                     : null,
             questions: randomizedQuestions,
-            isMakeup: now > schedule.endTime,
-            makeupDeadline: now > schedule.endTime ? resolveMakeupDeadline(schedule.endTime) : null,
+            isMakeup: makeupContext.availableNow,
+            makeupStartTime: makeupContext.startTime,
+            makeupDeadline: makeupContext.endTime,
+            makeupMode: makeupContext.mode,
+            makeupReason: makeupContext.reason,
         },
     };
 }

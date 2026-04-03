@@ -1,5 +1,7 @@
 import { apiClient } from '../../lib/api/client';
 import {
+  ExamScheduleMakeupAccessSummary,
+  ExamScheduleMakeupOverview,
   ExamSittingDetail,
   ExamSittingListItem,
   ExamSittingRoom,
@@ -71,6 +73,20 @@ type TeacherScheduleMutationResponse = {
   success: boolean;
   message: string;
   data: TeacherExamSchedule | null;
+};
+
+type TeacherScheduleMakeupOverviewResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: ExamScheduleMakeupOverview;
+};
+
+type TeacherScheduleMakeupMutationResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: ExamScheduleMakeupAccessSummary | null;
 };
 
 type ExamSittingsResponse = {
@@ -473,6 +489,37 @@ export const examApi = {
       payload,
     );
     return response.data.data;
+  },
+  async getTeacherScheduleMakeupAccess(scheduleId: number) {
+    const response = await apiClient.get<TeacherScheduleMakeupOverviewResponse>(
+      `/exams/schedules/${scheduleId}/makeup-access`,
+    );
+    return response.data.data;
+  },
+  async upsertTeacherScheduleMakeupAccess(
+    scheduleId: number,
+    payload: {
+      studentId: number;
+      date: string;
+      startTime: string;
+      endTime: string;
+      reason?: string;
+    },
+  ) {
+    const response = await apiClient.put<TeacherScheduleMakeupMutationResponse>(
+      `/exams/schedules/${scheduleId}/makeup-access`,
+      payload,
+    );
+    return response.data.data;
+  },
+  async revokeTeacherScheduleMakeupAccess(scheduleId: number, studentId: number) {
+    const response = await apiClient.delete<{
+      statusCode: number;
+      success: boolean;
+      message: string;
+      data: null;
+    }>(`/exams/schedules/${scheduleId}/makeup-access/${studentId}`);
+    return response.data;
   },
   async deleteTeacherSchedule(scheduleId: number) {
     const response = await apiClient.delete<TeacherScheduleMutationResponse>(`/exams/schedules/${scheduleId}`);

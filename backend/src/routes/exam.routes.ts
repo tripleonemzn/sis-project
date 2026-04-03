@@ -25,7 +25,10 @@ import {
     startExam,
     submitAnswers,
     getExamRestrictions,
-    updateExamRestriction
+    updateExamRestriction,
+    getScheduleMakeupAccess,
+    upsertScheduleMakeupAccess,
+    revokeScheduleMakeupAccess,
 } from '../controllers/exam.controller';
 import {
     getExamGradeComponents,
@@ -78,6 +81,9 @@ router.post('/program-sessions', roleMiddleware(['TEACHER', 'ADMIN']), createPro
 // Schedules
 router.get('/schedules', getSchedules);
 router.post('/schedules', roleMiddleware(['TEACHER', 'ADMIN']), createSchedule);
+router.get('/schedules/:id/makeup-access', roleMiddleware(['TEACHER', 'ADMIN']), getScheduleMakeupAccess);
+router.put('/schedules/:id/makeup-access', roleMiddleware(['TEACHER', 'ADMIN']), upsertScheduleMakeupAccess);
+router.delete('/schedules/:id/makeup-access/:studentId', roleMiddleware(['TEACHER', 'ADMIN']), revokeScheduleMakeupAccess);
 router.patch('/schedules/:id', roleMiddleware(['TEACHER', 'ADMIN']), updateSchedule);
 router.delete('/schedules/:id', roleMiddleware(['TEACHER', 'ADMIN']), deleteSchedule);
 
