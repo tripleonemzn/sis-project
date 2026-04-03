@@ -4,8 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
-import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
-import { MobileTabChip } from '../../../src/components/MobileTabChip';
+import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -128,6 +128,21 @@ export default function TeacherHomeroomAttendanceScreen() {
   const effectiveSelectedClassId = selectedClassId ?? classItems[0]?.id ?? null;
   const selectedClass = classItems.find((item) => item.id === effectiveSelectedClassId) || null;
   const selectedAcademicYearId = selectedClass?.academicYear?.id || activeYearQuery.data?.id || null;
+  const classSelectOptions = useMemo(
+    () =>
+      classItems.map((classItem) => ({
+        value: String(classItem.id),
+        label: classItem.major?.code ? `${classItem.name} • ${classItem.major.code}` : classItem.name,
+      })),
+    [classItems],
+  );
+  const semesterSelectOptions = useMemo(
+    () => [
+      { value: 'ODD', label: 'Semester Ganjil' },
+      { value: 'EVEN', label: 'Semester Genap' },
+    ],
+    [],
+  );
 
   const dailyQuery = useQuery({
     queryKey: ['mobile-homeroom-daily', effectiveSelectedClassId, selectedAcademicYearId, selectedDateIso],
@@ -375,41 +390,27 @@ export default function TeacherHomeroomAttendanceScreen() {
 
       {!classesQuery.isLoading && !classesQuery.isError ? (
         classItems.length > 0 ? (
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Pilih Kelas</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
-              {classItems.map((classItem) => {
-                const selected = effectiveSelectedClassId === classItem.id;
-                return (
-                  <View key={classItem.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-                    <Pressable
-                      onPress={() => {
-                        setSelectedClassId(classItem.id);
-                        setDraftOverrides({});
-                      }}
-                      style={{
-                        borderWidth: 1,
-                        borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',
-                        backgroundColor: selected ? '#e9f1ff' : '#fff',
-                        borderRadius: 10,
-                        paddingVertical: 10,
-                        paddingHorizontal: 10,
-                      }}
-                    >
-                      <Text
-                        numberOfLines={1}
-                        style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}
-                      >
-                        {classItem.name}
-                      </Text>
-                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
-                        {classItem.major?.code || classItem.major?.name || '-'}
-                      </Text>
-                    </Pressable>
-                  </View>
-                );
-              })}
-            </View>
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <MobileSelectField
+              label="Kelas Wali"
+              value={effectiveSelectedClassId ? String(effectiveSelectedClassId) : ''}
+              options={classSelectOptions}
+              onChange={(next) => {
+                setSelectedClassId(next ? Number(next) : null);
+                setDraftOverrides({});
+              }}
+              placeholder="Pilih kelas wali"
+              helperText={selectedClass ? `${selectedClass.major?.name || '-'} • ${selectedClass.teacher?.name || 'Wali kelas'}` : undefined}
+            />
           </View>
         ) : (
           <View
@@ -444,24 +445,18 @@ export default function TeacherHomeroomAttendanceScreen() {
         }}
       >
         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Mode Tampilan</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={{ flexDirection: 'row', paddingRight: 4 }}>
-            {[
-              { key: 'DAILY' as TabKey, label: 'Harian' },
-              { key: 'RECAP' as TabKey, label: 'Rekap' },
-              { key: 'LATE' as TabKey, label: 'Telat' },
-            ].map((item) => (
-              <View key={item.key} style={{ marginRight: 8 }}>
-                <MobileMenuTab
-                  active={tab === item.key}
-                  label={item.label}
-                  onPress={() => setTab(item.key)}
-                  minWidth={92}
-                />
-              </View>
-            ))}
-          </View>
-        </ScrollView>
+        <MobileMenuTabBar
+          items={[
+            { key: 'DAILY', label: 'Harian', iconName: 'sun' },
+            { key: 'RECAP', label: 'Rekap', iconName: 'bar-chart-2' },
+            { key: 'LATE', label: 'Telat', iconName: 'alert-circle' },
+          ]}
+          activeKey={tab}
+          onChange={(next) => setTab(next as TabKey)}
+          minTabWidth={86}
+          maxTabWidth={104}
+          compact
+        />
       </View>
 
       {tab === 'RECAP' ? (
@@ -475,13 +470,13 @@ export default function TeacherHomeroomAttendanceScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Semester Rekap</Text>
-          <View style={{ flexDirection: 'row' }}>
-            <View style={{ marginRight: 8 }}>
-              <MobileTabChip active={semester === 'ODD'} label="Ganjil" onPress={() => setSemester('ODD')} compact minWidth={96} />
-            </View>
-            <MobileTabChip active={semester === 'EVEN'} label="Genap" onPress={() => setSemester('EVEN')} compact minWidth={96} />
-          </View>
+          <MobileSelectField
+            label="Semester Rekap"
+            value={semester}
+            options={semesterSelectOptions}
+            onChange={(next) => setSemester((next as Semester) || defaultSemesterByDate())}
+            placeholder="Pilih semester"
+          />
         </View>
       ) : null}
 

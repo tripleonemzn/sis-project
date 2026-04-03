@@ -13,6 +13,9 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { ENV } from '../../../src/config/env';
@@ -81,53 +84,6 @@ function resolveFileUrl(fileUrl: string | null | undefined) {
   return `${webBaseUrl}/${fileUrl}`;
 }
 
-function FilterChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 22, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
-
 export default function TeacherHomeroomPermissionsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -140,6 +96,7 @@ export default function TeacherHomeroomPermissionsScreen() {
   const [search, setSearch] = useState('');
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
   const [rejectionNotes, setRejectionNotes] = useState<Record<number, string>>({});
+  const [summaryDetailVisible, setSummaryDetailVisible] = useState(false);
 
   const isAllowed = user?.role === 'TEACHER' && isHomeroomTeacher(user?.additionalDuties, user?.teacherClasses?.length);
 
@@ -171,6 +128,30 @@ export default function TeacherHomeroomPermissionsScreen() {
 
   const classItems = classesQuery.data || [];
   const effectiveSelectedClassId = selectedClassId ?? classItems[0]?.id ?? null;
+  const classSelectOptions = useMemo(
+    () =>
+      classItems.map((classItem) => ({
+        value: String(classItem.id),
+        label: classItem.major?.code ? `${classItem.name} • ${classItem.major.code}` : classItem.name,
+      })),
+    [classItems],
+  );
+  const statusFilterOptions = useMemo(
+    () =>
+      (Object.keys(STATUS_LABEL) as StatusFilter[]).map((status) => ({
+        value: status,
+        label: STATUS_LABEL[status],
+      })),
+    [],
+  );
+  const typeFilterOptions = useMemo(
+    () =>
+      (Object.keys(TYPE_LABEL) as TypeFilter[]).map((type) => ({
+        value: type,
+        label: TYPE_LABEL[type],
+      })),
+    [],
+  );
 
   const permissionsQuery = useQuery({
     queryKey: [
@@ -247,7 +228,7 @@ export default function TeacherHomeroomPermissionsScreen() {
     openWebModuleRoute(router, {
       moduleKey: 'teacher-homeroom-permissions',
       webPath: url,
-      label: 'Lampiran Izin',
+      label: 'Bukti Izin',
     });
   };
 
@@ -360,38 +341,23 @@ export default function TeacherHomeroomPermissionsScreen() {
 
       {!classesQuery.isLoading && !classesQuery.isError ? (
         classItems.length > 0 ? (
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Pilih Kelas</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
-              {classItems.map((classItem) => {
-                const selected = effectiveSelectedClassId === classItem.id;
-                return (
-                  <View key={classItem.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-                    <Pressable
-                      onPress={() => setSelectedClassId(classItem.id)}
-                      style={{
-                        borderWidth: 1,
-                        borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',
-                        backgroundColor: selected ? '#e9f1ff' : '#fff',
-                        borderRadius: 10,
-                        paddingVertical: 10,
-                        paddingHorizontal: 10,
-                      }}
-                    >
-                      <Text
-                        numberOfLines={1}
-                        style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}
-                      >
-                        {classItem.name}
-                      </Text>
-                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
-                        {classItem.major?.code || classItem.major?.name || '-'}
-                      </Text>
-                    </Pressable>
-                  </View>
-                );
-              })}
-            </View>
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <MobileSelectField
+              label="Kelas Wali"
+              value={effectiveSelectedClassId ? String(effectiveSelectedClassId) : ''}
+              options={classSelectOptions}
+              onChange={(next) => setSelectedClassId(next ? Number(next) : null)}
+              placeholder="Pilih kelas wali"
+            />
           </View>
         ) : (
           <View
@@ -433,13 +399,52 @@ export default function TeacherHomeroomPermissionsScreen() {
         </View>
       ) : null}
 
-      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
-        <SummaryCard title="Total Pengajuan" value={`${summary.total}`} subtitle="Sesuai filter saat ini" />
-        <SummaryCard title="Menunggu Proses" value={`${summary.pending}`} subtitle="Perlu verifikasi wali kelas" />
-      </View>
-      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-        <SummaryCard title="Disetujui" value={`${summary.approved}`} subtitle={`Sakit ${summary.sick} • Izin ${summary.permission}`} />
-        <SummaryCard title="Ditolak" value={`${summary.rejected}`} subtitle={`Lainnya ${summary.other}`} />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
+        {[
+          {
+            key: 'total',
+            title: 'Total Pengajuan',
+            value: `${summary.total}`,
+            subtitle: 'Sesuai filter saat ini',
+            iconName: 'inbox' as const,
+            accentColor: '#2563eb',
+          },
+          {
+            key: 'pending',
+            title: 'Menunggu Proses',
+            value: `${summary.pending}`,
+            subtitle: 'Perlu verifikasi wali kelas',
+            iconName: 'clock' as const,
+            accentColor: '#f97316',
+          },
+          {
+            key: 'approved',
+            title: 'Disetujui',
+            value: `${summary.approved}`,
+            subtitle: `Sakit ${summary.sick} • Izin ${summary.permission}`,
+            iconName: 'check-circle' as const,
+            accentColor: '#16a34a',
+          },
+          {
+            key: 'rejected',
+            title: 'Ditolak',
+            value: `${summary.rejected}`,
+            subtitle: `Lainnya ${summary.other}`,
+            iconName: 'x-circle' as const,
+            accentColor: '#dc2626',
+          },
+        ].map((item) => (
+          <View key={item.key} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <MobileSummaryCard
+              title={item.title}
+              value={item.value}
+              subtitle={item.subtitle}
+              iconName={item.iconName}
+              accentColor={item.accentColor}
+              onPress={() => setSummaryDetailVisible(true)}
+            />
+          </View>
+        ))}
       </View>
 
       <View
@@ -469,26 +474,30 @@ export default function TeacherHomeroomPermissionsScreen() {
         />
       </View>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-        {(Object.keys(STATUS_LABEL) as StatusFilter[]).map((status) => (
-          <FilterChip
-            key={status}
-            active={statusFilter === status}
-            label={STATUS_LABEL[status]}
-            onPress={() => setStatusFilter(status)}
-          />
-        ))}
-      </View>
-
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        {(Object.keys(TYPE_LABEL) as TypeFilter[]).map((type) => (
-          <FilterChip
-            key={type}
-            active={typeFilter === type}
-            label={TYPE_LABEL[type]}
-            onPress={() => setTypeFilter(type)}
-          />
-        ))}
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#dbe7fb',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <MobileSelectField
+          label="Filter Status"
+          value={statusFilter}
+          options={statusFilterOptions}
+          onChange={(next) => setStatusFilter((next as StatusFilter) || 'ALL')}
+          placeholder="Pilih status pengajuan"
+        />
+        <MobileSelectField
+          label="Filter Jenis Izin"
+          value={typeFilter}
+          options={typeFilterOptions}
+          onChange={(next) => setTypeFilter((next as TypeFilter) || 'ALL')}
+          placeholder="Pilih jenis izin"
+        />
       </View>
 
       {permissionsQuery.isLoading ? <QueryStateView type="loading" message="Mengambil data izin siswa..." /> : null}
@@ -604,9 +613,9 @@ export default function TeacherHomeroomPermissionsScreen() {
                       justifyContent: 'center',
                       gap: 6,
                     }}
-                  >
-                    <Feather name="paperclip" size={14} color="#334155" />
-                    <Text style={{ color: '#334155', fontWeight: '600' }}>Lampiran</Text>
+                    >
+                      <Feather name="paperclip" size={14} color="#334155" />
+                    <Text style={{ color: '#334155', fontWeight: '600' }}>Lihat Bukti</Text>
                   </Pressable>
                 </View>
 
@@ -683,6 +692,77 @@ export default function TeacherHomeroomPermissionsScreen() {
           </View>
         )
       ) : null}
+
+      <MobileDetailModal
+        visible={summaryDetailVisible}
+        title="Ringkasan Persetujuan Izin"
+        subtitle="Detail ringkas status pengajuan izin pada kelas dan filter yang sedang aktif."
+        iconName="check-square"
+        accentColor="#2563eb"
+        onClose={() => setSummaryDetailVisible(false)}
+      >
+        <View style={{ gap: 10 }}>
+          {[
+            {
+              label: 'Total Pengajuan',
+              value: `${summary.total}`,
+              note: 'Jumlah pengajuan yang tampil sesuai kelas dan pencarian aktif',
+            },
+            {
+              label: 'Menunggu Proses',
+              value: `${summary.pending}`,
+              note: 'Masih menunggu verifikasi wali kelas',
+            },
+            {
+              label: 'Disetujui',
+              value: `${summary.approved}`,
+              note: `Sakit ${summary.sick} • Izin ${summary.permission}`,
+            },
+            {
+              label: 'Ditolak',
+              value: `${summary.rejected}`,
+              note: `Kategori lainnya ${summary.other}`,
+            },
+          ].map((item) => (
+            <View
+              key={item.label}
+              style={{
+                borderWidth: 1,
+                borderColor: '#dbe7fb',
+                borderRadius: 14,
+                paddingHorizontal: 12,
+                paddingVertical: 11,
+                backgroundColor: '#f8fbff',
+              }}
+            >
+              <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>{item.label}</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>{item.value}</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 3 }}>{item.note}</Text>
+            </View>
+          ))}
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#e2e8f0',
+              borderRadius: 14,
+              paddingHorizontal: 12,
+              paddingVertical: 11,
+              backgroundColor: '#fff',
+            }}
+          >
+            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Konteks Aktif</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>
+              Kelas: {selectedClass?.name || 'Semua kelas wali'}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600', marginTop: 2 }}>
+              Status: {STATUS_LABEL[statusFilter]}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600', marginTop: 2 }}>
+              Jenis: {TYPE_LABEL[typeFilter]}
+            </Text>
+          </View>
+        </View>
+      </MobileDetailModal>
 
     </ScrollView>
   );

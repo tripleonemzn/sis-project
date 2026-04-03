@@ -4,8 +4,9 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
 import { Alert, Pressable, Text, TextInput, View } from 'react-native';
+import { MobileDetailModal } from '../../components/MobileDetailModal';
 import { MobileSelectField } from '../../components/MobileSelectField';
-import { MobileTabChip } from '../../components/MobileTabChip';
+import { MobileSummaryCard } from '../../components/MobileSummaryCard';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { ENV } from '../../config/env';
@@ -126,27 +127,6 @@ function resolveApiErrorMessage(error: unknown, fallback: string) {
   return apiError?.response?.data?.message || apiError?.message || fallback;
 }
 
-const SectionChip = MobileTabChip;
-
-function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
-
 function TextField({
   label,
   value,
@@ -238,6 +218,7 @@ export function WorkProgramBudgetOwnerSection({
   const [statusFilter, setStatusFilter] = useState<BudgetStatusFilter>('ALL');
   const [dutyFilter, setDutyFilter] = useState<string>('ALL');
   const [search, setSearch] = useState('');
+  const [summaryDetailVisible, setSummaryDetailVisible] = useState(false);
 
   const [formVisible, setFormVisible] = useState(false);
   const [budgetForm, setBudgetForm] = useState<BudgetFormState>(DEFAULT_BUDGET_FORM);
@@ -538,6 +519,14 @@ export function WorkProgramBudgetOwnerSection({
   const lpjReadyCount = budgets.filter((budget) => budget.status === 'APPROVED' && !!budget.realizationConfirmedAt).length;
 
   const lpjInvoices = useMemo(() => lpjQuery.data?.invoices || [], [lpjQuery.data?.invoices]);
+  const lpjInvoiceSelectOptions = useMemo(
+    () =>
+      lpjInvoices.map((invoice, index) => ({
+        value: String(invoice.id),
+        label: invoice.title || `Invoice #${index + 1}`,
+      })),
+    [lpjInvoices],
+  );
   const selectedInvoice =
     lpjInvoices.find((invoice) => invoice.id === selectedInvoiceId) ||
     (lpjInvoices.length > 0 ? lpjInvoices[lpjInvoices.length - 1] : null);
@@ -620,13 +609,52 @@ export function WorkProgramBudgetOwnerSection({
         {'.'}
       </Text>
 
-      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
-        <SummaryCard title="Pengajuan Terfilter" value={String(filteredBudgets.length)} subtitle="Data saat ini" />
-        <SummaryCard title="Total Nominal" value={formatCurrency(totalAmount)} subtitle="Akumulasi terfilter" />
-      </View>
-      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-        <SummaryCard title="Menunggu" value={String(pendingCount)} subtitle="Butuh tindak lanjut" />
-        <SummaryCard title="Siap LPJ" value={String(lpjReadyCount)} subtitle="Realisasi sudah dikonfirmasi" />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
+        {[
+          {
+            key: 'filtered',
+            title: 'Pengajuan Terfilter',
+            value: String(filteredBudgets.length),
+            subtitle: 'Data sesuai filter',
+            iconName: 'filter' as const,
+            accentColor: '#2563eb',
+          },
+          {
+            key: 'amount',
+            title: 'Total Nominal',
+            value: formatCurrency(totalAmount),
+            subtitle: 'Akumulasi terfilter',
+            iconName: 'credit-card' as const,
+            accentColor: '#f59e0b',
+          },
+          {
+            key: 'pending',
+            title: 'Menunggu',
+            value: String(pendingCount),
+            subtitle: 'Butuh tindak lanjut',
+            iconName: 'clock' as const,
+            accentColor: '#f97316',
+          },
+          {
+            key: 'lpj-ready',
+            title: 'Siap LPJ',
+            value: String(lpjReadyCount),
+            subtitle: 'Realisasi terkonfirmasi',
+            iconName: 'check-square' as const,
+            accentColor: '#16a34a',
+          },
+        ].map((item) => (
+          <View key={item.key} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <MobileSummaryCard
+              title={item.title}
+              value={item.value}
+              subtitle={item.subtitle}
+              iconName={item.iconName}
+              accentColor={item.accentColor}
+              onPress={() => setSummaryDetailVisible(true)}
+            />
+          </View>
+        ))}
       </View>
 
       <Pressable
@@ -1100,17 +1128,14 @@ export function WorkProgramBudgetOwnerSection({
 
               {lpjInvoices.length > 0 ? (
                 <View style={{ marginBottom: 10 }}>
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Daftar Invoice</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {lpjInvoices.map((invoice, index) => (
-                      <SectionChip
-                        key={invoice.id}
-                        active={selectedInvoice?.id === invoice.id}
-                        label={invoice.title || `Invoice #${index + 1}`}
-                        onPress={() => setSelectedInvoiceId(invoice.id)}
-                      />
-                    ))}
-                  </View>
+                  <MobileSelectField
+                    label="Invoice LPJ"
+                    value={selectedInvoiceId ? String(selectedInvoiceId) : ''}
+                    options={lpjInvoiceSelectOptions}
+                    onChange={(next) => setSelectedInvoiceId(next ? Number(next) : null)}
+                    placeholder="Pilih invoice LPJ"
+                    helperText={`${lpjInvoices.length} invoice tersedia untuk pengajuan ini`}
+                  />
                 </View>
               ) : (
                 <Text style={{ color: '#64748b', marginBottom: 8 }}>Belum ada invoice LPJ.</Text>
@@ -1366,6 +1391,74 @@ export function WorkProgramBudgetOwnerSection({
           ) : null}
         </View>
       ) : null}
+
+      <MobileDetailModal
+        visible={summaryDetailVisible}
+        title={budgetSectionTitle}
+        subtitle="Ringkasan singkat pengajuan anggaran dan kesiapan LPJ pada filter aktif."
+        iconName="briefcase"
+        accentColor="#2563eb"
+        onClose={() => setSummaryDetailVisible(false)}
+      >
+        <View style={{ gap: 10 }}>
+          {[
+            {
+              label: 'Pengajuan Terfilter',
+              value: String(filteredBudgets.length),
+              note: `Dari ${budgets.length} total pengajuan yang tersedia`,
+            },
+            {
+              label: 'Total Nominal',
+              value: formatCurrency(totalAmount),
+              note: 'Akumulasi nominal sesuai duty dan status yang sedang dipilih',
+            },
+            {
+              label: 'Menunggu Persetujuan',
+              value: String(pendingCount),
+              note: 'Masih menunggu tindak lanjut approval',
+            },
+            {
+              label: 'Siap LPJ',
+              value: String(lpjReadyCount),
+              note: 'Pengajuan yang realisasinya sudah dikonfirmasi',
+            },
+          ].map((item) => (
+            <View
+              key={item.label}
+              style={{
+                borderWidth: 1,
+                borderColor: '#dbe7fb',
+                borderRadius: 14,
+                paddingHorizontal: 12,
+                paddingVertical: 11,
+                backgroundColor: '#f8fbff',
+              }}
+            >
+              <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>{item.label}</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>{item.value}</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 3 }}>{item.note}</Text>
+            </View>
+          ))}
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#e2e8f0',
+              borderRadius: 14,
+              paddingHorizontal: 12,
+              paddingVertical: 11,
+              backgroundColor: '#fff',
+            }}
+          >
+            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Filter Aktif</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>
+              Status: {statusFilterOptions.find((option) => option.value === statusFilter)?.label || 'Semua Status'}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600', marginTop: 2 }}>
+              Duty: {dutyFilterSelectOptions.find((option) => option.value === dutyFilter)?.label || 'Semua Duty'}
+            </Text>
+          </View>
+        </View>
+      </MobileDetailModal>
     </View>
   );
 }
