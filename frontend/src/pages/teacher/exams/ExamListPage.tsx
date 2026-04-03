@@ -684,7 +684,8 @@ export const ExamListPage = () => {
             refetchPackets();
         } catch (error) {
             console.error('Error saving schedule modal:', error);
-            toast.error('Gagal menyimpan jadwal ujian.');
+            const err = error as { response?: { data?: { message?: string } } };
+            toast.error(err.response?.data?.message || 'Gagal menyimpan jadwal ujian.');
         } finally {
             setIsScheduleSaving(false);
         }

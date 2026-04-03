@@ -5609,10 +5609,12 @@ export const createSchedule = asyncHandler(async (req: Request, res: Response) =
         packet?.type ||
         null;
 
-    if (normalizedExamType && isNonScheduledExamProgramCode(normalizedExamType)) {
+    // Formatif/UH tetap tidak memakai sesi terjadwal seperti program besar kurikulum,
+    // tetapi guru masih boleh membuat jadwal kelas langsung dari packet ujian.
+    if (normalizedExamType && isNonScheduledExamProgramCode(normalizedExamType) && !packet?.id) {
         throw new ApiError(
             400,
-            'Program Ulangan Harian (UH/Formatif) tidak dijadwalkan dari menu Wakasek Kurikulum.',
+            'Program Ulangan Harian (UH/Formatif) hanya bisa dijadwalkan dari packet ujian guru yang sudah dibuat.',
         );
     }
 
