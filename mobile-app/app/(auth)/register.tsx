@@ -7,6 +7,8 @@ import { Feather } from '@expo/vector-icons';
 import {
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -140,85 +142,93 @@ function AuthCanvas({ children }: { children: ReactNode }) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: BRAND_COLORS.blue }}>
       <StatusBar style="light" />
-      <View style={{ flex: 1 }}>
-        <View style={{ paddingHorizontal: 24, paddingTop: 58, paddingBottom: 92 }}>
-          <View style={{ alignItems: 'center' }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}
+      >
+        <View style={{ flex: 1 }}>
+          <View style={{ paddingHorizontal: 24, paddingTop: 58, paddingBottom: 92 }}>
+            <View style={{ alignItems: 'center' }}>
+              <View
+                style={{
+                  marginBottom: 12,
+                  shadowColor: '#000000',
+                  shadowOffset: { width: 0, height: 7 },
+                  shadowOpacity: 0.24,
+                  shadowRadius: 12,
+                  elevation: 12,
+                }}
+              >
+                <Image source={logoSource} style={{ width: 74, height: 74 }} resizeMode="contain" />
+              </View>
+              <Text style={{ color: '#e0ecff', fontWeight: '700', fontSize: 21, marginBottom: 6 }}>
+                Sistem Integrasi Sekolah
+              </Text>
+              <Text style={{ color: '#dbeafe', fontSize: 14, textAlign: 'center' }}>
+                SMKS Karya Guna Bhakti 2
+              </Text>
+            </View>
+          </View>
+
+          <View
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: 222,
+              bottom: 0,
+              backgroundColor: BRAND_COLORS.white,
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              overflow: 'hidden',
+            }}
+          >
             <View
               style={{
-                marginBottom: 12,
-                shadowColor: '#000000',
-                shadowOffset: { width: 0, height: 7 },
-                shadowOpacity: 0.24,
-                shadowRadius: 12,
-                elevation: 12,
+                position: 'absolute',
+                top: -52,
+                left: -20,
+                width: 140,
+                height: 110,
+                borderRadius: 100,
+                backgroundColor: '#ebf3ff',
               }}
+            />
+            <View
+              style={{
+                position: 'absolute',
+                top: -62,
+                left: 92,
+                width: 170,
+                height: 120,
+                borderRadius: 100,
+                backgroundColor: '#f1f7ff',
+              }}
+            />
+            <View
+              style={{
+                position: 'absolute',
+                top: -46,
+                right: -20,
+                width: 150,
+                height: 100,
+                borderRadius: 100,
+                backgroundColor: '#ecf4ff',
+              }}
+            />
+
+            <ScrollView
+              contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 38, paddingBottom: 64, flexGrow: 1 }}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+              automaticallyAdjustKeyboardInsets
             >
-              <Image source={logoSource} style={{ width: 74, height: 74 }} resizeMode="contain" />
-            </View>
-            <Text style={{ color: '#e0ecff', fontWeight: '700', fontSize: 21, marginBottom: 6 }}>
-              Sistem Integrasi Sekolah
-            </Text>
-            <Text style={{ color: '#dbeafe', fontSize: 14, textAlign: 'center' }}>
-              SMKS Karya Guna Bhakti 2
-            </Text>
+              {children}
+            </ScrollView>
           </View>
         </View>
-
-        <View
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            top: 222,
-            bottom: 0,
-            backgroundColor: BRAND_COLORS.white,
-            borderTopLeftRadius: 28,
-            borderTopRightRadius: 28,
-            overflow: 'hidden',
-          }}
-        >
-          <View
-            style={{
-              position: 'absolute',
-              top: -52,
-              left: -20,
-              width: 140,
-              height: 110,
-              borderRadius: 100,
-              backgroundColor: '#ebf3ff',
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              top: -62,
-              left: 92,
-              width: 170,
-              height: 120,
-              borderRadius: 100,
-              backgroundColor: '#f1f7ff',
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              top: -46,
-              right: -20,
-              width: 150,
-              height: 100,
-              borderRadius: 100,
-              backgroundColor: '#ecf4ff',
-            }}
-          />
-
-          <ScrollView
-            contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 38, paddingBottom: 24 }}
-            keyboardShouldPersistTaps="handled"
-          >
-            {children}
-          </ScrollView>
-        </View>
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
