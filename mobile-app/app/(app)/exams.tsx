@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
+import { MobileSelectField } from '../../src/components/MobileSelectField';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { useAuth } from '../../src/features/auth/AuthProvider';
@@ -178,6 +179,29 @@ export default function StudentExamsScreen() {
   }, [activePrograms]);
 
   const examTypeLabel = (type: string) => resolveExamTypeLabel(type, examTypeLabels);
+  const typeFilterOptions = useMemo(
+    () => [
+      {
+        value: 'ALL',
+        label: isApplicantMode ? 'Semua Tes BKK' : isCandidateMode ? 'Semua Tes Seleksi' : 'Semua Ujian',
+      },
+      ...activePrograms.map((program) => ({
+        value: normalizeProgramCode(program.code),
+        label: resolveExamTypeLabel(program.code, examTypeLabels),
+      })),
+    ],
+    [activePrograms, examTypeLabels, isApplicantMode, isCandidateMode],
+  );
+  const statusFilterOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'Semua Status' },
+      { value: 'OPEN', label: 'Sedang Dibuka' },
+      { value: 'UPCOMING', label: 'Akan Datang' },
+      { value: 'COMPLETED', label: 'Selesai' },
+      { value: 'MISSED', label: 'Terlewat' },
+    ],
+    [],
+  );
 
   const filtered = useMemo(() => {
     const rows = examsQuery.data?.exams || [];
@@ -257,10 +281,21 @@ export default function StudentExamsScreen() {
         </View>
       ) : null}
 
+      <Text
+        style={{
+          color: '#334155',
+          fontSize: 12,
+          fontWeight: '600',
+          marginBottom: 4,
+        }}
+      >
+        Cari Tes
+      </Text>
       <TextInput
         value={searchQuery}
         onChangeText={setSearchQuery}
         placeholder={isApplicantMode ? 'Cari judul tes / lowongan...' : 'Cari judul ujian / mapel...'}
+        placeholderTextColor="#94a3b8"
         style={{
           borderWidth: 1,
           borderColor: '#cbd5e1',
@@ -273,31 +308,13 @@ export default function StudentExamsScreen() {
       />
 
       {!lockedProgramCode ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 10 }}>
-          {(['ALL', ...activePrograms.map((program) => normalizeProgramCode(program.code))] as Array<'ALL' | string>).map((item) => {
-            const selected = effectiveTypeFilter === item;
-            return (
-              <View key={item} style={{ paddingHorizontal: 4, marginBottom: 8 }}>
-                <Pressable
-                  onPress={() => setTypeFilter(item)}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                    backgroundColor: selected ? '#eff6ff' : '#fff',
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontSize: 11, fontWeight: '700' }}>
-                    {item === 'ALL' ? 'Semua' : examTypeLabel(item)}
-                  </Text>
-                </Pressable>
-              </View>
-            );
-          })}
-        </View>
+        <MobileSelectField
+          label={isApplicantMode ? 'Filter Jenis Tes' : 'Filter Jenis Ujian'}
+          value={effectiveTypeFilter}
+          options={typeFilterOptions}
+          onChange={(next) => setTypeFilter(next || 'ALL')}
+          placeholder={isApplicantMode ? 'Pilih jenis tes' : 'Pilih jenis ujian'}
+        />
       ) : (
         <View style={{ marginBottom: 10 }}>
           <View
@@ -318,38 +335,13 @@ export default function StudentExamsScreen() {
         </View>
       )}
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 10 }}>
-        {(['ALL', 'OPEN', 'UPCOMING', 'COMPLETED', 'MISSED'] as StatusFilter[]).map((item) => {
-          const selectedStatus = statusFilter === item;
-          return (
-            <View key={item} style={{ width: '20%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <Pressable
-                onPress={() => setStatusFilter(item)}
-                style={{
-                  borderWidth: 1,
-                  borderColor: selectedStatus ? '#1d4ed8' : '#cbd5e1',
-                  backgroundColor: selectedStatus ? '#eff6ff' : '#fff',
-                  borderRadius: 8,
-                  paddingVertical: 8,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: selectedStatus ? '#1d4ed8' : '#334155', fontSize: 10, fontWeight: '700' }}>
-                  {item === 'ALL'
-                    ? 'Semua'
-                    : item === 'OPEN'
-                      ? 'Buka'
-                      : item === 'UPCOMING'
-                        ? 'Akan Datang'
-                        : item === 'COMPLETED'
-                          ? 'Selesai'
-                          : 'Terlewat'}
-                </Text>
-              </Pressable>
-            </View>
-          );
-        })}
-      </View>
+      <MobileSelectField
+        label="Filter Status"
+        value={statusFilter}
+        options={statusFilterOptions}
+        onChange={(next) => setStatusFilter((next as StatusFilter) || 'ALL')}
+        placeholder="Pilih status tes"
+      />
 
       {examsQuery.isLoading ? <QueryStateView type="loading" message="Mengambil daftar ujian..." /> : null}
       {examsQuery.isError ? (
