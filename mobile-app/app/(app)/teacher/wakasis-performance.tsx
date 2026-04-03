@@ -12,7 +12,9 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
-import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
+import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -24,6 +26,7 @@ import { kesiswaanApi } from '../../../src/features/kesiswaan/kesiswaanApi';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
 type PerformanceSection = 'RINGKASAN' | 'RISIKO_SISWA' | 'DISIPLIN_KELAS';
+type PerformanceSummaryId = 'students' | 'attendance' | 'risk' | 'behavior';
 
 type ClassPerformanceRow = {
   classId: number;
@@ -79,36 +82,11 @@ function resolveRiskLevel(percentage: number) {
   return { label: 'Rendah', bg: '#dcfce7', border: '#86efac', text: '#166534' };
 }
 
-const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
-  <MobileMenuTab active={active} label={label} onPress={onPress} minWidth={94} />
-);
-
-function SummaryCard({
-  title,
-  value,
-  subtitle,
-}: {
-  title: string;
-  value: string;
-  subtitle: string;
-}) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 22, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
+const SECTION_ITEMS: Array<{ key: PerformanceSection; label: string; iconName: React.ComponentProps<typeof Feather>['name'] }> = [
+  { key: 'RINGKASAN', label: 'Ringkasan', iconName: 'grid' },
+  { key: 'RISIKO_SISWA', label: 'Risiko Siswa', iconName: 'alert-triangle' },
+  { key: 'DISIPLIN_KELAS', label: 'Disiplin Kelas', iconName: 'shield' },
+];
 
 function ProgressRow({
   label,
@@ -172,6 +150,7 @@ export default function TeacherWakasisPerformanceScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [section, setSection] = useState<PerformanceSection>('RINGKASAN');
+  const [activeSummaryId, setActiveSummaryId] = useState<PerformanceSummaryId | null>(null);
   const [search, setSearch] = useState('');
 
   const isAllowed = user?.role === 'TEACHER' && hasStudentAffairsDuty(user?.additionalDuties);
@@ -350,6 +329,63 @@ export default function TeacherWakasisPerformanceScreen() {
     };
   }, [classRows, riskRows]);
 
+  const summaryCards = useMemo<
+    Array<{
+      id: PerformanceSummaryId;
+      title: string;
+      value: string;
+      subtitle: string;
+      iconName: React.ComponentProps<typeof Feather>['name'];
+      accentColor: string;
+    }>
+  >(
+    () => [
+      {
+        id: 'students',
+        title: 'Total Siswa',
+        value: formatNumber(studentTotalsQuery.data?.totalStudents || 0),
+        subtitle: `${formatNumber(studentTotalsQuery.data?.activeStudents || 0)} siswa aktif`,
+        iconName: 'users',
+        accentColor: '#2563eb',
+      },
+      {
+        id: 'attendance',
+        title: 'Rata-rata Kehadiran',
+        value: formatPercent(summary.avgAttendance),
+        subtitle: `${formatNumber(summary.classesWithRisk)} kelas punya siswa berisiko`,
+        iconName: 'activity',
+        accentColor: '#0f766e',
+      },
+      {
+        id: 'risk',
+        title: 'Risiko Siswa',
+        value: formatNumber(summary.totalRiskStudents),
+        subtitle: `${formatNumber(summary.highRiskStudents)} kategori tinggi (<75%)`,
+        iconName: 'alert-triangle',
+        accentColor: '#ef4444',
+      },
+      {
+        id: 'behavior',
+        title: 'Perilaku Negatif',
+        value: formatNumber(summary.totalNegativeBehavior),
+        subtitle: `Positif: ${formatNumber(summary.totalPositiveBehavior)}`,
+        iconName: 'shield',
+        accentColor: '#f59e0b',
+      },
+    ],
+    [
+      studentTotalsQuery.data?.activeStudents,
+      studentTotalsQuery.data?.totalStudents,
+      summary.avgAttendance,
+      summary.classesWithRisk,
+      summary.highRiskStudents,
+      summary.totalNegativeBehavior,
+      summary.totalPositiveBehavior,
+      summary.totalRiskStudents,
+    ],
+  );
+  const activeSummaryMeta = summaryCards.find((item) => item.id === activeSummaryId) || null;
+
   if (isLoading) return <AppLoadingScreen message="Memuat monitoring kinerja siswa..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
@@ -476,19 +512,15 @@ export default function TeacherWakasisPerformanceScreen() {
 
       {classPerformanceQuery.data ? (
         <>
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-            <SectionChip active={section === 'RINGKASAN'} label="Ringkasan" onPress={() => setSection('RINGKASAN')} />
-            <SectionChip
-              active={section === 'RISIKO_SISWA'}
-              label="Risiko Siswa"
-              onPress={() => setSection('RISIKO_SISWA')}
-            />
-            <SectionChip
-              active={section === 'DISIPLIN_KELAS'}
-              label="Disiplin Kelas"
-              onPress={() => setSection('DISIPLIN_KELAS')}
-            />
-          </View>
+          <MobileMenuTabBar
+            items={SECTION_ITEMS}
+            activeKey={section}
+            onChange={(key) => setSection(key as PerformanceSection)}
+            style={{ marginBottom: 12 }}
+            contentContainerStyle={{ paddingRight: 8 }}
+            minTabWidth={74}
+            maxTabWidth={108}
+          />
 
           <View
             style={{
@@ -519,30 +551,19 @@ export default function TeacherWakasisPerformanceScreen() {
 
           {section === 'RINGKASAN' ? (
             <>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <SummaryCard
-                  title="Total Siswa"
-                  value={formatNumber(studentTotalsQuery.data?.totalStudents || 0)}
-                  subtitle={`${formatNumber(studentTotalsQuery.data?.activeStudents || 0)} siswa aktif`}
-                />
-                <SummaryCard
-                  title="Rata-rata Kehadiran"
-                  value={formatPercent(summary.avgAttendance)}
-                  subtitle={`${formatNumber(summary.classesWithRisk)} kelas punya siswa berisiko`}
-                />
-              </View>
-
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <SummaryCard
-                  title="Risiko Siswa"
-                  value={formatNumber(summary.totalRiskStudents)}
-                  subtitle={`${formatNumber(summary.highRiskStudents)} kategori tinggi (<75%)`}
-                />
-                <SummaryCard
-                  title="Perilaku Negatif"
-                  value={formatNumber(summary.totalNegativeBehavior)}
-                  subtitle={`Positif: ${formatNumber(summary.totalPositiveBehavior)}`}
-                />
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 10 }}>
+                {summaryCards.map((item) => (
+                  <View key={item.id} style={{ width: '48.5%', marginBottom: 8 }}>
+                    <MobileSummaryCard
+                      title={item.title}
+                      value={item.value}
+                      subtitle={item.subtitle}
+                      iconName={item.iconName}
+                      accentColor={item.accentColor}
+                      onPress={() => setActiveSummaryId(item.id)}
+                    />
+                  </View>
+                ))}
               </View>
 
               <View
@@ -712,6 +733,36 @@ export default function TeacherWakasisPerformanceScreen() {
 
         </>
       ) : null}
+
+      <MobileDetailModal
+        visible={Boolean(activeSummaryId && activeSummaryMeta)}
+        title={activeSummaryMeta?.title || 'Ringkasan Kinerja'}
+        subtitle="Detail ringkasan dipindahkan ke popup agar tampilan utama tetap rapi di layar mobile."
+        iconName={activeSummaryMeta?.iconName || 'bar-chart-2'}
+        accentColor={activeSummaryMeta?.accentColor || BRAND_COLORS.blue}
+        onClose={() => setActiveSummaryId(null)}
+      >
+        {activeSummaryId === 'students' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Total siswa terdaftar: {formatNumber(studentTotalsQuery.data?.totalStudents || 0)}. Dari jumlah itu, siswa aktif saat ini sebanyak {formatNumber(studentTotalsQuery.data?.activeStudents || 0)}.
+          </Text>
+        ) : null}
+        {activeSummaryId === 'attendance' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Rata-rata kehadiran seluruh kelas: {formatPercent(summary.avgAttendance)}. Saat ini ada {formatNumber(summary.classesWithRisk)} kelas yang punya siswa berisiko berdasarkan absensi.
+          </Text>
+        ) : null}
+        {activeSummaryId === 'risk' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Total siswa berisiko: {formatNumber(summary.totalRiskStudents)}. Kategori tinggi di bawah 75% berjumlah {formatNumber(summary.highRiskStudents)} siswa.
+          </Text>
+        ) : null}
+        {activeSummaryId === 'behavior' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Perilaku negatif tercatat: {formatNumber(summary.totalNegativeBehavior)} data. Sebagai pembanding, perilaku positif yang masuk sistem berjumlah {formatNumber(summary.totalPositiveBehavior)} data.
+          </Text>
+        ) : null}
+      </MobileDetailModal>
     </ScrollView>
   );
 }

@@ -12,8 +12,10 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
-import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
-import { MobileTabChip } from '../../../src/components/MobileTabChip';
+import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -27,6 +29,7 @@ import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
 type ReportSection = 'RINGKASAN' | 'PER_KELAS' | 'PERIZINAN';
 type SemesterFilter = 'ODD' | 'EVEN';
+type ReportSummaryId = 'permissions' | 'attendance' | 'approved' | 'absent';
 
 type ClassPermissionSummary = {
   total: number;
@@ -145,28 +148,11 @@ function makeMonthLabel(monthKey: string) {
   });
 }
 
-const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
-  <MobileMenuTab active={active} label={label} onPress={onPress} minWidth={96} />
-);
-
-function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 22, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
+const SECTION_ITEMS: Array<{ key: ReportSection; label: string; iconName: React.ComponentProps<typeof Feather>['name'] }> = [
+  { key: 'RINGKASAN', label: 'Ringkasan', iconName: 'grid' },
+  { key: 'PER_KELAS', label: 'Per Kelas', iconName: 'layout' },
+  { key: 'PERIZINAN', label: 'Perizinan', iconName: 'file-text' },
+];
 
 function ProgressRow({ label, valueText, percent }: { label: string; valueText: string; percent: number }) {
   const safePercent = Math.max(0, Math.min(100, percent));
@@ -204,6 +190,7 @@ export default function TeacherWakasisReportsScreen() {
 
   const [section, setSection] = useState<ReportSection>('RINGKASAN');
   const [semester, setSemester] = useState<SemesterFilter>(defaultSemesterByDate());
+  const [activeSummaryId, setActiveSummaryId] = useState<ReportSummaryId | null>(null);
   const [search, setSearch] = useState('');
 
   const isAllowed = user?.role === 'TEACHER' && hasStudentAffairsDuty(user?.additionalDuties);
@@ -427,6 +414,70 @@ export default function TeacherWakasisReportsScreen() {
     };
   }, [classReports, permissions]);
 
+  const semesterOptions = useMemo(
+    () => [
+      { label: 'Semester Ganjil', value: 'ODD' },
+      { label: 'Semester Genap', value: 'EVEN' },
+    ],
+    [],
+  );
+  const summaryCards = useMemo<
+    Array<{
+      id: ReportSummaryId;
+      title: string;
+      value: string;
+      subtitle: string;
+      iconName: React.ComponentProps<typeof Feather>['name'];
+      accentColor: string;
+    }>
+  >(
+    () => [
+      {
+        id: 'permissions',
+        title: 'Total Pengajuan',
+        value: formatNumber(summary.totalPermissions),
+        subtitle: `${formatNumber(summary.pendingPermissions)} menunggu persetujuan`,
+        iconName: 'file-text',
+        accentColor: '#2563eb',
+      },
+      {
+        id: 'attendance',
+        title: 'Rata-rata Kehadiran',
+        value: formatPercent(summary.avgAttendance),
+        subtitle: `${formatNumber(summary.classLowAttendanceCount)} kelas di bawah 85%`,
+        iconName: 'activity',
+        accentColor: '#0f766e',
+      },
+      {
+        id: 'approved',
+        title: 'Status Disetujui',
+        value: formatNumber(summary.approvedPermissions),
+        subtitle: `Ditolak: ${formatNumber(summary.rejectedPermissions)}`,
+        iconName: 'check-circle',
+        accentColor: '#16a34a',
+      },
+      {
+        id: 'absent',
+        title: 'Absensi Kumulatif',
+        value: formatNumber(summary.totalAbsent),
+        subtitle: `Telat: ${formatNumber(summary.totalLate)}`,
+        iconName: 'alert-circle',
+        accentColor: '#ef4444',
+      },
+    ],
+    [
+      summary.approvedPermissions,
+      summary.avgAttendance,
+      summary.classLowAttendanceCount,
+      summary.pendingPermissions,
+      summary.rejectedPermissions,
+      summary.totalAbsent,
+      summary.totalLate,
+      summary.totalPermissions,
+    ],
+  );
+  const activeSummaryMeta = summaryCards.find((item) => item.id === activeSummaryId) || null;
+
   const topRiskClasses = useMemo(() => {
     return [...classReports]
       .sort((a, b) => {
@@ -527,16 +578,23 @@ export default function TeacherWakasisReportsScreen() {
         Ringkasan laporan absensi, perizinan siswa, dan temuan kelas prioritas.
       </Text>
 
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-        <SectionChip active={semester === 'ODD'} label="Semester Ganjil" onPress={() => setSemester('ODD')} />
-        <SectionChip active={semester === 'EVEN'} label="Semester Genap" onPress={() => setSemester('EVEN')} />
-      </View>
+      <MobileSelectField
+        label="Semester"
+        value={semester}
+        options={semesterOptions}
+        onChange={(value) => setSemester(value as SemesterFilter)}
+        placeholder="Pilih semester"
+      />
 
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-        <SectionChip active={section === 'RINGKASAN'} label="Ringkasan" onPress={() => setSection('RINGKASAN')} />
-        <SectionChip active={section === 'PER_KELAS'} label="Per Kelas" onPress={() => setSection('PER_KELAS')} />
-        <SectionChip active={section === 'PERIZINAN'} label="Perizinan" onPress={() => setSection('PERIZINAN')} />
-      </View>
+      <MobileMenuTabBar
+        items={SECTION_ITEMS}
+        activeKey={section}
+        onChange={(key) => setSection(key as ReportSection)}
+        style={{ marginBottom: 12 }}
+        contentContainerStyle={{ paddingRight: 8 }}
+        minTabWidth={74}
+        maxTabWidth={108}
+      />
 
       <View
         style={{
@@ -575,30 +633,19 @@ export default function TeacherWakasisReportsScreen() {
         <>
           {section === 'RINGKASAN' ? (
             <>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <SummaryCard
-                  title="Total Pengajuan"
-                  value={formatNumber(summary.totalPermissions)}
-                  subtitle={`${formatNumber(summary.pendingPermissions)} menunggu persetujuan`}
-                />
-                <SummaryCard
-                  title="Rata-rata Kehadiran"
-                  value={formatPercent(summary.avgAttendance)}
-                  subtitle={`${formatNumber(summary.classLowAttendanceCount)} kelas di bawah 85%`}
-                />
-              </View>
-
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <SummaryCard
-                  title="Status Disetujui"
-                  value={formatNumber(summary.approvedPermissions)}
-                  subtitle={`Ditolak: ${formatNumber(summary.rejectedPermissions)}`}
-                />
-                <SummaryCard
-                  title="Absensi Kumulatif"
-                  value={formatNumber(summary.totalAbsent)}
-                  subtitle={`Telat: ${formatNumber(summary.totalLate)}`}
-                />
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 10 }}>
+                {summaryCards.map((item) => (
+                  <View key={item.id} style={{ width: '48.5%', marginBottom: 8 }}>
+                    <MobileSummaryCard
+                      title={item.title}
+                      value={item.value}
+                      subtitle={item.subtitle}
+                      iconName={item.iconName}
+                      accentColor={item.accentColor}
+                      onPress={() => setActiveSummaryId(item.id)}
+                    />
+                  </View>
+                ))}
               </View>
 
               <View
@@ -707,17 +754,25 @@ export default function TeacherWakasisReportsScreen() {
 
           {section === 'PERIZINAN' ? (
             <>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <SummaryCard
-                  title="Izin Sakit"
-                  value={formatNumber(summary.sickPermissions)}
-                  subtitle={`Lainnya: ${formatNumber(summary.otherPermissions)}`}
-                />
-                <SummaryCard
-                  title="Izin Umum"
-                  value={formatNumber(summary.permissionPermissions)}
-                  subtitle={`Pending: ${formatNumber(summary.pendingPermissions)}`}
-                />
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 10 }}>
+                <View style={{ width: '48.5%', marginBottom: 8 }}>
+                  <MobileSummaryCard
+                    title="Izin Sakit"
+                    value={formatNumber(summary.sickPermissions)}
+                    subtitle={`Lainnya: ${formatNumber(summary.otherPermissions)}`}
+                    iconName="heart"
+                    accentColor="#ef4444"
+                  />
+                </View>
+                <View style={{ width: '48.5%', marginBottom: 8 }}>
+                  <MobileSummaryCard
+                    title="Izin Umum"
+                    value={formatNumber(summary.permissionPermissions)}
+                    subtitle={`Pending: ${formatNumber(summary.pendingPermissions)}`}
+                    iconName="file-text"
+                    accentColor="#2563eb"
+                  />
+                </View>
               </View>
 
               <View
@@ -798,6 +853,36 @@ export default function TeacherWakasisReportsScreen() {
 
         </>
       ) : null}
+
+      <MobileDetailModal
+        visible={Boolean(activeSummaryId && activeSummaryMeta)}
+        title={activeSummaryMeta?.title || 'Ringkasan Laporan'}
+        subtitle="Ringkasan detail ditampilkan di popup agar layar utama mobile tetap hemat ruang."
+        iconName={activeSummaryMeta?.iconName || 'bar-chart-2'}
+        accentColor={activeSummaryMeta?.accentColor || BRAND_COLORS.blue}
+        onClose={() => setActiveSummaryId(null)}
+      >
+        {activeSummaryId === 'permissions' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Total pengajuan masuk: {formatNumber(summary.totalPermissions)}. Yang masih menunggu persetujuan saat ini sebanyak {formatNumber(summary.pendingPermissions)}.
+          </Text>
+        ) : null}
+        {activeSummaryId === 'attendance' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Rata-rata kehadiran seluruh kelas: {formatPercent(summary.avgAttendance)}. Kelas yang berada di bawah 85% saat ini berjumlah {formatNumber(summary.classLowAttendanceCount)}.
+          </Text>
+        ) : null}
+        {activeSummaryId === 'approved' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Pengajuan yang sudah disetujui: {formatNumber(summary.approvedPermissions)}. Pengajuan yang ditolak: {formatNumber(summary.rejectedPermissions)}.
+          </Text>
+        ) : null}
+        {activeSummaryId === 'absent' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Total alpha kumulatif: {formatNumber(summary.totalAbsent)}. Total keterlambatan kumulatif: {formatNumber(summary.totalLate)}.
+          </Text>
+        ) : null}
+      </MobileDetailModal>
     </ScrollView>
   );
 }

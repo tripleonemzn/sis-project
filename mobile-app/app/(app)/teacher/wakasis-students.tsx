@@ -12,7 +12,9 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
-import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
+import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -24,6 +26,7 @@ import { KesiswaanTutorAssignment } from '../../../src/features/kesiswaan/types'
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
 type StudentSection = 'RINGKASAN' | 'SISWA' | 'ORTU' | 'PEMBINA' | 'EKSKUL' | 'ABSENSI';
+type StudentSummaryId = 'students' | 'parents' | 'advisors' | 'clubs';
 
 type AttendanceClassRow = {
   classId: number;
@@ -74,36 +77,14 @@ function resolveStudentStatusStyle(status: string | null | undefined) {
   return { bg: '#e2e8f0', border: '#cbd5e1', text: '#334155' };
 }
 
-const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
-  <MobileMenuTab active={active} label={label} onPress={onPress} minWidth={94} />
-);
-
-function SummaryCard({
-  title,
-  value,
-  subtitle,
-}: {
-  title: string;
-  value: string;
-  subtitle: string;
-}) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 22, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
+const SECTION_ITEMS: Array<{ key: StudentSection; label: string; iconName: React.ComponentProps<typeof Feather>['name'] }> = [
+  { key: 'RINGKASAN', label: 'Ringkasan', iconName: 'grid' },
+  { key: 'SISWA', label: 'Siswa', iconName: 'user' },
+  { key: 'ORTU', label: 'Orang Tua', iconName: 'users' },
+  { key: 'PEMBINA', label: 'Pembina', iconName: 'shield' },
+  { key: 'EKSKUL', label: 'Ekstrakurikuler', iconName: 'activity' },
+  { key: 'ABSENSI', label: 'Absensi', iconName: 'check-square' },
+];
 
 function StatusBadge({ status }: { status: string | null | undefined }) {
   const style = resolveStudentStatusStyle(status);
@@ -140,6 +121,7 @@ export default function TeacherWakasisStudentsScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [section, setSection] = useState<StudentSection>('RINGKASAN');
+  const [activeSummaryId, setActiveSummaryId] = useState<StudentSummaryId | null>(null);
   const [search, setSearch] = useState('');
   const openStudentCrud = (target: 'STUDENT' | 'PARENT' | 'ADVISORS' | 'EXTRACURRICULARS' | 'ATTENDANCE') => {
     if (target === 'EXTRACURRICULARS') {
@@ -395,6 +377,63 @@ export default function TeacherWakasisStudentsScreen() {
     };
   }, [attendanceClassQuery.data]);
 
+  const summaryCards = useMemo<
+    Array<{
+      id: StudentSummaryId;
+      title: string;
+      value: string;
+      subtitle: string;
+      iconName: React.ComponentProps<typeof Feather>['name'];
+      accentColor: string;
+    }>
+  >(
+    () => [
+      {
+        id: 'students',
+        title: 'Total Siswa',
+        value: formatNumber(studentStats.total),
+        subtitle: `${formatNumber(studentStats.active)} siswa aktif`,
+        iconName: 'user',
+        accentColor: '#2563eb',
+      },
+      {
+        id: 'parents',
+        title: 'Orang Tua',
+        value: formatNumber(summary.parentsTotal),
+        subtitle: `${formatNumber(summary.parentsWithChildren)} sudah terhubung`,
+        iconName: 'users',
+        accentColor: '#7c3aed',
+      },
+      {
+        id: 'advisors',
+        title: 'Pembina Aktif',
+        value: formatNumber(summary.tutorsTotal),
+        subtitle: `${formatNumber(summary.tutorsAssigned)} sudah ditugaskan`,
+        iconName: 'shield',
+        accentColor: '#0ea5e9',
+      },
+      {
+        id: 'clubs',
+        title: 'Ekstrakurikuler',
+        value: formatNumber(summary.extracurricularTotal),
+        subtitle: `${formatNumber(summary.extracurricularAssigned)} sudah ada pembina`,
+        iconName: 'activity',
+        accentColor: '#ec4899',
+      },
+    ],
+    [
+      studentStats.total,
+      studentStats.active,
+      summary.parentsTotal,
+      summary.parentsWithChildren,
+      summary.tutorsTotal,
+      summary.tutorsAssigned,
+      summary.extracurricularTotal,
+      summary.extracurricularAssigned,
+    ],
+  );
+  const activeSummaryMeta = summaryCards.find((item) => item.id === activeSummaryId) || null;
+
   if (isLoading) return <AppLoadingScreen message="Memuat modul kesiswaan..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
@@ -513,16 +552,15 @@ export default function TeacherWakasisStudentsScreen() {
 
       {baseDataQuery.data ? (
         <>
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-            <SectionChip active={section === 'RINGKASAN'} label="Ringkasan" onPress={() => setSection('RINGKASAN')} />
-            <SectionChip active={section === 'SISWA'} label="Siswa" onPress={() => setSection('SISWA')} />
-            <SectionChip active={section === 'ORTU'} label="Orang Tua" onPress={() => setSection('ORTU')} />
-          </View>
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-            <SectionChip active={section === 'PEMBINA'} label="Pembina" onPress={() => setSection('PEMBINA')} />
-            <SectionChip active={section === 'EKSKUL'} label="Ekstrakurikuler" onPress={() => setSection('EKSKUL')} />
-            <SectionChip active={section === 'ABSENSI'} label="Absensi" onPress={() => setSection('ABSENSI')} />
-          </View>
+          <MobileMenuTabBar
+            items={SECTION_ITEMS}
+            activeKey={section}
+            onChange={(key) => setSection(key as StudentSection)}
+            style={{ marginBottom: 12 }}
+            contentContainerStyle={{ paddingRight: 8 }}
+            minTabWidth={74}
+            maxTabWidth={110}
+          />
 
           <View
             style={{
@@ -553,30 +591,19 @@ export default function TeacherWakasisStudentsScreen() {
 
           {section === 'RINGKASAN' ? (
             <>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <SummaryCard
-                  title="Total Siswa"
-                  value={formatNumber(studentStats.total)}
-                  subtitle={`${formatNumber(studentStats.active)} siswa aktif`}
-                />
-                <SummaryCard
-                  title="Orang Tua"
-                  value={formatNumber(summary.parentsTotal)}
-                  subtitle={`${formatNumber(summary.parentsWithChildren)} sudah terhubung`}
-                />
-              </View>
-
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <SummaryCard
-                  title="Pembina Aktif"
-                  value={formatNumber(summary.tutorsTotal)}
-                  subtitle={`${formatNumber(summary.tutorsAssigned)} sudah ditugaskan`}
-                />
-                <SummaryCard
-                  title="Ekstrakurikuler"
-                  value={formatNumber(summary.extracurricularTotal)}
-                  subtitle={`${formatNumber(summary.extracurricularAssigned)} sudah ada pembina`}
-                />
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 10 }}>
+                {summaryCards.map((item) => (
+                  <View key={item.id} style={{ width: '48.5%', marginBottom: 8 }}>
+                    <MobileSummaryCard
+                      title={item.title}
+                      value={item.value}
+                      subtitle={item.subtitle}
+                      iconName={item.iconName}
+                      accentColor={item.accentColor}
+                      onPress={() => setActiveSummaryId(item.id)}
+                    />
+                  </View>
+                ))}
               </View>
 
               <View
@@ -896,30 +923,43 @@ export default function TeacherWakasisStudentsScreen() {
 
               {attendanceClassQuery.data ? (
                 <>
-                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                    <SummaryCard
-                      title="Rata-rata Kehadiran"
-                      value={formatPercent(attendanceSummary.avgAttendance)}
-                      subtitle={`${formatNumber(attendanceSummary.classesWithRisk)} kelas di bawah 85%`}
-                    />
-                    <SummaryCard
-                      title="Total Terlambat"
-                      value={formatNumber(attendanceSummary.totalLate)}
-                      subtitle="Akumulasi seluruh kelas"
-                    />
-                  </View>
-
-                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
-                    <SummaryCard
-                      title="Total Alpha"
-                      value={formatNumber(attendanceSummary.totalAbsent)}
-                      subtitle="Akumulasi seluruh kelas"
-                    />
-                    <SummaryCard
-                      title="Kelas Terekap"
-                      value={formatNumber((attendanceClassQuery.data || []).length)}
-                      subtitle="Kelas dengan data absensi"
-                    />
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <View style={{ width: '48.5%', marginBottom: 8 }}>
+                      <MobileSummaryCard
+                        title="Rata-rata Kehadiran"
+                        value={formatPercent(attendanceSummary.avgAttendance)}
+                        subtitle={`${formatNumber(attendanceSummary.classesWithRisk)} kelas di bawah 85%`}
+                        iconName="activity"
+                        accentColor="#0f766e"
+                      />
+                    </View>
+                    <View style={{ width: '48.5%', marginBottom: 8 }}>
+                      <MobileSummaryCard
+                        title="Total Terlambat"
+                        value={formatNumber(attendanceSummary.totalLate)}
+                        subtitle="Akumulasi seluruh kelas"
+                        iconName="clock"
+                        accentColor="#f59e0b"
+                      />
+                    </View>
+                    <View style={{ width: '48.5%', marginBottom: 8 }}>
+                      <MobileSummaryCard
+                        title="Total Alpha"
+                        value={formatNumber(attendanceSummary.totalAbsent)}
+                        subtitle="Akumulasi seluruh kelas"
+                        iconName="alert-circle"
+                        accentColor="#ef4444"
+                      />
+                    </View>
+                    <View style={{ width: '48.5%', marginBottom: 8 }}>
+                      <MobileSummaryCard
+                        title="Kelas Terekap"
+                        value={formatNumber((attendanceClassQuery.data || []).length)}
+                        subtitle="Kelas dengan data absensi"
+                        iconName="layout"
+                        accentColor="#2563eb"
+                      />
+                    </View>
                   </View>
 
                   <View style={{ gap: 10 }}>
@@ -960,6 +1000,36 @@ export default function TeacherWakasisStudentsScreen() {
 
         </>
       ) : null}
+
+      <MobileDetailModal
+        visible={Boolean(activeSummaryId && activeSummaryMeta)}
+        title={activeSummaryMeta?.title || 'Ringkasan Kesiswaan'}
+        subtitle="Ringkasan utama dibuat compact, sedangkan detailnya ditampilkan lewat popup."
+        iconName={activeSummaryMeta?.iconName || 'bar-chart-2'}
+        accentColor={activeSummaryMeta?.accentColor || BRAND_COLORS.blue}
+        onClose={() => setActiveSummaryId(null)}
+      >
+        {activeSummaryId === 'students' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Total siswa terdaftar: {formatNumber(studentStats.total)}. Siswa aktif saat ini: {formatNumber(studentStats.active)}, lulus: {formatNumber(studentStats.graduated)}, pindah: {formatNumber(studentStats.moved)}, dan drop out: {formatNumber(studentStats.droppedOut)}.
+          </Text>
+        ) : null}
+        {activeSummaryId === 'parents' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Total akun orang tua: {formatNumber(summary.parentsTotal)}. Yang sudah terhubung dengan data anak: {formatNumber(summary.parentsWithChildren)}.
+          </Text>
+        ) : null}
+        {activeSummaryId === 'advisors' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Total pembina/tutor terdata: {formatNumber(summary.tutorsTotal)}. Yang sudah mendapat penugasan aktif: {formatNumber(summary.tutorsAssigned)}.
+          </Text>
+        ) : null}
+        {activeSummaryId === 'clubs' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Total ekstrakurikuler: {formatNumber(summary.extracurricularTotal)}. Yang sudah memiliki pembina aktif: {formatNumber(summary.extracurricularAssigned)}.
+          </Text>
+        ) : null}
+      </MobileDetailModal>
     </ScrollView>
   );
 }

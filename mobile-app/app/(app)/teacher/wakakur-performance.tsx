@@ -12,7 +12,9 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
-import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
+import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -24,6 +26,13 @@ import { teachingResourceProgramApi } from '../../../src/features/learningResour
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
 type PerformanceSection = 'RINGKASAN' | 'GURU' | 'UJIAN';
+type PerformanceSummaryId =
+  | 'teachers'
+  | 'assignments'
+  | 'hours'
+  | 'readiness'
+  | 'resources'
+  | 'revisions';
 
 type TeacherKpiRow = {
   teacherId: number;
@@ -72,36 +81,11 @@ function toPercent(numerator: number, denominator: number) {
   return (numerator / denominator) * 100;
 }
 
-const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
-  <MobileMenuTab active={active} label={label} onPress={onPress} minWidth={94} />
-);
-
-function SummaryCard({
-  title,
-  value,
-  subtitle,
-}: {
-  title: string;
-  value: string;
-  subtitle: string;
-}) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 22, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
+const SECTION_ITEMS: Array<{ key: PerformanceSection; label: string; iconName: React.ComponentProps<typeof Feather>['name'] }> = [
+  { key: 'RINGKASAN', label: 'Ringkasan', iconName: 'grid' },
+  { key: 'GURU', label: 'Per Guru', iconName: 'users' },
+  { key: 'UJIAN', label: 'Per Ujian', iconName: 'clipboard' },
+];
 
 function ProgressRow({
   label,
@@ -144,6 +128,7 @@ export default function TeacherWakakurPerformanceScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [section, setSection] = useState<PerformanceSection>('RINGKASAN');
+  const [activeSummaryId, setActiveSummaryId] = useState<PerformanceSummaryId | null>(null);
   const [search, setSearch] = useState('');
 
   const isAllowed = user?.role === 'TEACHER' && hasCurriculumDuty(user?.additionalDuties);
@@ -385,6 +370,83 @@ export default function TeacherWakakurPerformanceScreen() {
     };
   }, [assignments, assignmentTotal, schedules, teachingLoad, teacherRows, classTotal, subjectTotal]);
 
+  const summaryCards = useMemo<
+    Array<{
+      id: PerformanceSummaryId;
+      title: string;
+      value: string;
+      subtitle: string;
+      iconName: React.ComponentProps<typeof Feather>['name'];
+      accentColor: string;
+    }>
+  >(
+    () => [
+      {
+        id: 'teachers',
+        title: 'Guru Aktif',
+        value: formatNumber(summary.teacherCount),
+        subtitle: `${formatNumber(summary.teachingTeacherCount)} guru punya jam mengajar`,
+        iconName: 'users',
+        accentColor: '#2563eb',
+      },
+      {
+        id: 'assignments',
+        title: 'Total Assignment',
+        value: formatNumber(summary.assignmentTotal),
+        subtitle: `${formatNumber(summary.classCovered)} kelas tercakup`,
+        iconName: 'layout',
+        accentColor: '#0ea5e9',
+      },
+      {
+        id: 'hours',
+        title: 'Rata-rata Jam',
+        value: summary.averageHours.toFixed(1).replace('.', ','),
+        subtitle: 'Jam per guru (teaching load)',
+        iconName: 'clock',
+        accentColor: '#f59e0b',
+      },
+      {
+        id: 'readiness',
+        title: 'Kesiapan Ujian',
+        value: formatPercent(summary.scheduleReadyPercent),
+        subtitle: `${formatNumber(summary.scheduleReadyCount)} dari ${formatNumber(summary.scheduleTotal)} jadwal siap`,
+        iconName: 'check-circle',
+        accentColor: '#16a34a',
+      },
+      {
+        id: 'resources',
+        title: 'Perangkat Pending',
+        value: formatNumber(teachingResourceSummary.submitted),
+        subtitle: `${formatNumber(teachingResourceSummary.approved)} disetujui`,
+        iconName: 'book-open',
+        accentColor: '#7c3aed',
+      },
+      {
+        id: 'revisions',
+        title: 'Perlu Revisi',
+        value: formatNumber(teachingResourceSummary.rejected),
+        subtitle: `${formatNumber(teachingResourceSummary.draft)} draft tersisa`,
+        iconName: 'edit-3',
+        accentColor: '#ef4444',
+      },
+    ],
+    [
+      summary.teacherCount,
+      summary.teachingTeacherCount,
+      summary.assignmentTotal,
+      summary.classCovered,
+      summary.averageHours,
+      summary.scheduleReadyPercent,
+      summary.scheduleReadyCount,
+      summary.scheduleTotal,
+      teachingResourceSummary.submitted,
+      teachingResourceSummary.approved,
+      teachingResourceSummary.rejected,
+      teachingResourceSummary.draft,
+    ],
+  );
+  const activeSummaryMeta = summaryCards.find((item) => item.id === activeSummaryId) || null;
+
   if (isLoading) return <AppLoadingScreen message="Memuat monitoring kinerja..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
@@ -496,11 +558,15 @@ export default function TeacherWakakurPerformanceScreen() {
 
       {performanceQuery.data ? (
         <>
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-            <SectionChip active={section === 'RINGKASAN'} label="Ringkasan" onPress={() => setSection('RINGKASAN')} />
-            <SectionChip active={section === 'GURU'} label="Per Guru" onPress={() => setSection('GURU')} />
-            <SectionChip active={section === 'UJIAN'} label="Per Ujian" onPress={() => setSection('UJIAN')} />
-          </View>
+          <MobileMenuTabBar
+            items={SECTION_ITEMS}
+            activeKey={section}
+            onChange={(key) => setSection(key as PerformanceSection)}
+            style={{ marginBottom: 12 }}
+            contentContainerStyle={{ paddingRight: 8 }}
+            minTabWidth={74}
+            maxTabWidth={108}
+          />
 
           <View
             style={{
@@ -531,43 +597,19 @@ export default function TeacherWakakurPerformanceScreen() {
 
           {section === 'RINGKASAN' ? (
             <>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <SummaryCard
-                  title="Guru Aktif"
-                  value={formatNumber(summary.teacherCount)}
-                  subtitle={`${formatNumber(summary.teachingTeacherCount)} guru punya jam mengajar`}
-                />
-                <SummaryCard
-                  title="Total Assignment"
-                  value={formatNumber(summary.assignmentTotal)}
-                  subtitle={`${formatNumber(summary.classCovered)} kelas tercakup`}
-                />
-              </View>
-
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <SummaryCard
-                  title="Rata-rata Jam"
-                  value={summary.averageHours.toFixed(1).replace('.', ',')}
-                  subtitle="Jam per guru (teaching load)"
-                />
-                <SummaryCard
-                  title="Kesiapan Ujian"
-                  value={formatPercent(summary.scheduleReadyPercent)}
-                  subtitle={`${formatNumber(summary.scheduleReadyCount)} dari ${formatNumber(summary.scheduleTotal)} jadwal siap`}
-                />
-              </View>
-
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <SummaryCard
-                  title="Perangkat Ajar Pending Review"
-                  value={formatNumber(teachingResourceSummary.submitted)}
-                  subtitle={`${formatNumber(teachingResourceSummary.approved)} disetujui`}
-                />
-                <SummaryCard
-                  title="Perlu Revisi Perangkat"
-                  value={formatNumber(teachingResourceSummary.rejected)}
-                  subtitle={`${formatNumber(teachingResourceSummary.draft)} draft tersisa`}
-                />
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 10 }}>
+                {summaryCards.map((item) => (
+                  <View key={item.id} style={{ width: '48.5%', marginBottom: 8 }}>
+                    <MobileSummaryCard
+                      title={item.title}
+                      value={item.value}
+                      subtitle={item.subtitle}
+                      iconName={item.iconName}
+                      accentColor={item.accentColor}
+                      onPress={() => setActiveSummaryId(item.id)}
+                    />
+                  </View>
+                ))}
               </View>
 
               <View
@@ -707,29 +749,43 @@ export default function TeacherWakakurPerformanceScreen() {
 
           {section === 'UJIAN' ? (
             <>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <SummaryCard
-                  title="Total Jadwal"
-                  value={formatNumber(summary.scheduleTotal)}
-                  subtitle={`${formatNumber(summary.scheduleReadyCount)} jadwal siap`}
-                />
-                <SummaryCard
-                  title="Tanpa Pengawas"
-                  value={formatNumber(summary.scheduleNoProctorCount)}
-                  subtitle="Perlu assignment pengawas"
-                />
-              </View>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
-                <SummaryCard
-                  title="Tanpa Ruang"
-                  value={formatNumber(summary.scheduleNoRoomCount)}
-                  subtitle="Perlu penetapan ruang"
-                />
-                <SummaryCard
-                  title="Tanpa Paket"
-                  value={formatNumber(summary.scheduleNoPacketCount)}
-                  subtitle="Perlu paket soal"
-                />
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 10 }}>
+                <View style={{ width: '48.5%', marginBottom: 8 }}>
+                  <MobileSummaryCard
+                    title="Total Jadwal"
+                    value={formatNumber(summary.scheduleTotal)}
+                    subtitle={`${formatNumber(summary.scheduleReadyCount)} jadwal siap`}
+                    iconName="calendar"
+                    accentColor="#2563eb"
+                  />
+                </View>
+                <View style={{ width: '48.5%', marginBottom: 8 }}>
+                  <MobileSummaryCard
+                    title="Tanpa Pengawas"
+                    value={formatNumber(summary.scheduleNoProctorCount)}
+                    subtitle="Perlu assignment pengawas"
+                    iconName="user-x"
+                    accentColor="#ef4444"
+                  />
+                </View>
+                <View style={{ width: '48.5%', marginBottom: 8 }}>
+                  <MobileSummaryCard
+                    title="Tanpa Ruang"
+                    value={formatNumber(summary.scheduleNoRoomCount)}
+                    subtitle="Perlu penetapan ruang"
+                    iconName="home"
+                    accentColor="#0ea5e9"
+                  />
+                </View>
+                <View style={{ width: '48.5%', marginBottom: 8 }}>
+                  <MobileSummaryCard
+                    title="Tanpa Paket"
+                    value={formatNumber(summary.scheduleNoPacketCount)}
+                    subtitle="Perlu paket soal"
+                    iconName="clipboard"
+                    accentColor="#f59e0b"
+                  />
+                </View>
               </View>
 
               <View style={{ gap: 10 }}>
@@ -776,6 +832,46 @@ export default function TeacherWakakurPerformanceScreen() {
 
         </>
       ) : null}
+
+      <MobileDetailModal
+        visible={Boolean(activeSummaryId && activeSummaryMeta)}
+        title={activeSummaryMeta?.title || 'Ringkasan Kinerja'}
+        subtitle="Detail ringkasan ditampilkan di popup agar halaman utama tetap padat dan mudah dipindai."
+        iconName={activeSummaryMeta?.iconName || 'bar-chart-2'}
+        accentColor={activeSummaryMeta?.accentColor || BRAND_COLORS.blue}
+        onClose={() => setActiveSummaryId(null)}
+      >
+        {activeSummaryId === 'teachers' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Total guru aktif yang ikut terhitung: {formatNumber(summary.teacherCount)}. Dari jumlah itu, {formatNumber(summary.teachingTeacherCount)} guru sudah memiliki jam mengajar terdata.
+          </Text>
+        ) : null}
+        {activeSummaryId === 'assignments' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Total assignment guru pada tahun aktif: {formatNumber(summary.assignmentTotal)}. Assignment ini sudah mencakup {formatNumber(summary.classCovered)} kelas dan {formatNumber(summary.subjectCovered)} mapel.
+          </Text>
+        ) : null}
+        {activeSummaryId === 'hours' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Rata-rata beban mengajar saat ini {summary.averageHours.toFixed(1).replace('.', ',')} jam per guru. Guru beban tinggi ({'>= '}30 jam): {formatNumber(summary.highLoadTeacherCount)}.
+          </Text>
+        ) : null}
+        {activeSummaryId === 'readiness' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Kesiapan ujian berada di {formatPercent(summary.scheduleReadyPercent)}. Jadwal siap: {formatNumber(summary.scheduleReadyCount)} dari {formatNumber(summary.scheduleTotal)} total jadwal.
+          </Text>
+        ) : null}
+        {activeSummaryId === 'resources' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Perangkat ajar yang masih menunggu review: {formatNumber(teachingResourceSummary.submitted)}. Yang sudah disetujui: {formatNumber(teachingResourceSummary.approved)}.
+          </Text>
+        ) : null}
+        {activeSummaryId === 'revisions' ? (
+          <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20 }}>
+            Perangkat yang perlu revisi: {formatNumber(teachingResourceSummary.rejected)}. Draft yang masih tersisa: {formatNumber(teachingResourceSummary.draft)}.
+          </Text>
+        ) : null}
+      </MobileDetailModal>
     </ScrollView>
   );
 }
