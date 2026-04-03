@@ -5,6 +5,9 @@ import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } f
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -66,53 +69,6 @@ function typeStyle(type: KesiswaanBehaviorType) {
   return { text: '#b91c1c', border: '#fca5a5', bg: '#fee2e2', label: 'Negatif' };
 }
 
-function FilterChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 22, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
-
 export default function TeacherHomeroomBehaviorScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -126,6 +82,7 @@ export default function TeacherHomeroomBehaviorScreen() {
   const [editingBehaviorId, setEditingBehaviorId] = useState<number | null>(null);
   const [form, setForm] = useState<BehaviorFormState>(createDefaultForm());
   const [showForm, setShowForm] = useState(false);
+  const [summaryDetailVisible, setSummaryDetailVisible] = useState(false);
 
   const isAllowed = user?.role === 'TEACHER' && isHomeroomTeacher(user?.additionalDuties, user?.teacherClasses?.length);
 
@@ -156,6 +113,14 @@ export default function TeacherHomeroomBehaviorScreen() {
   });
 
   const classItems = useMemo(() => classesQuery.data || [], [classesQuery.data]);
+  const classSelectOptions = useMemo(
+    () =>
+      classItems.map((classItem) => ({
+        value: String(classItem.id),
+        label: classItem.major?.code ? `${classItem.name} • ${classItem.major.code}` : classItem.name,
+      })),
+    [classItems],
+  );
   const activeClassId = useMemo(() => {
     if (selectedClassId && classItems.some((item) => item.id === selectedClassId)) return selectedClassId;
     return classItems[0]?.id ?? null;
@@ -169,6 +134,29 @@ export default function TeacherHomeroomBehaviorScreen() {
   });
 
   const students = useMemo(() => classDetailQuery.data?.students || [], [classDetailQuery.data?.students]);
+  const studentSelectOptions = useMemo(
+    () =>
+      students.map((student) => ({
+        value: String(student.id),
+        label: student.nis ? `${student.name} • NIS ${student.nis}` : student.name,
+      })),
+    [students],
+  );
+  const behaviorTypeOptions = useMemo(
+    () => [
+      { value: 'POSITIVE', label: 'Positif' },
+      { value: 'NEGATIVE', label: 'Negatif' },
+    ],
+    [],
+  );
+  const typeFilterOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'Semua Jenis' },
+      { value: 'POSITIVE', label: 'Positif' },
+      { value: 'NEGATIVE', label: 'Negatif' },
+    ],
+    [],
+  );
   const activeStudentId = useMemo(() => {
     if (form.studentId && students.some((student) => student.id === form.studentId)) return form.studentId;
     return students[0]?.id ?? null;
@@ -433,38 +421,23 @@ export default function TeacherHomeroomBehaviorScreen() {
 
       {!classesQuery.isLoading && !classesQuery.isError ? (
         classItems.length > 0 ? (
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Pilih Kelas</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
-              {classItems.map((classItem) => {
-                const selected = activeClassId === classItem.id;
-                return (
-                  <View key={classItem.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-                    <Pressable
-                      onPress={() => setSelectedClassId(classItem.id)}
-                      style={{
-                        borderWidth: 1,
-                        borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',
-                        backgroundColor: selected ? '#e9f1ff' : '#fff',
-                        borderRadius: 10,
-                        paddingVertical: 10,
-                        paddingHorizontal: 10,
-                      }}
-                    >
-                      <Text
-                        numberOfLines={1}
-                        style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}
-                      >
-                        {classItem.name}
-                      </Text>
-                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
-                        {classItem.major?.code || classItem.major?.name || '-'}
-                      </Text>
-                    </Pressable>
-                  </View>
-                );
-              })}
-            </View>
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <MobileSelectField
+              label="Kelas Wali"
+              value={activeClassId ? String(activeClassId) : ''}
+              options={classSelectOptions}
+              onChange={(next) => setSelectedClassId(next ? Number(next) : null)}
+              placeholder="Pilih kelas wali"
+            />
           </View>
         ) : (
           <View
@@ -506,13 +479,27 @@ export default function TeacherHomeroomBehaviorScreen() {
         </View>
       ) : null}
 
-      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
-        <SummaryCard title="Total Catatan" value={`${summary.total}`} subtitle="Sesuai filter saat ini" />
-        <SummaryCard
-          title="Positif / Negatif"
-          value={`${summary.positive} / ${summary.negative}`}
-          subtitle={`Poin +${summary.positivePoints} / -${summary.negativePoints}`}
-        />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 10 }}>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <MobileSummaryCard
+            title="Total Catatan"
+            value={`${summary.total}`}
+            subtitle="Sesuai filter saat ini"
+            iconName="file-text"
+            accentColor="#2563eb"
+            onPress={() => setSummaryDetailVisible(true)}
+          />
+        </View>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <MobileSummaryCard
+            title="Positif / Negatif"
+            value={`${summary.positive} / ${summary.negative}`}
+            subtitle={`Poin +${summary.positivePoints} / -${summary.negativePoints}`}
+            iconName="activity"
+            accentColor="#16a34a"
+            onPress={() => setSummaryDetailVisible(true)}
+          />
+        </View>
       </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
@@ -556,57 +543,37 @@ export default function TeacherHomeroomBehaviorScreen() {
             {editingBehaviorId ? 'Edit Catatan Perilaku' : 'Tambah Catatan Perilaku'}
           </Text>
 
-          <Text style={{ color: '#334155', fontWeight: '600', marginBottom: 6 }}>Siswa</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 10 }}>
-            {students.length > 0 ? (
-              students.map((student) => {
-                const selected = activeStudentId === student.id;
-                return (
-                  <View key={student.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-                    <Pressable
-                      disabled={!!editingBehaviorId}
-                      onPress={() =>
-                        setForm((prev) => ({
-                          ...prev,
-                          studentId: student.id,
-                        }))
-                      }
-                      style={{
-                        borderWidth: 1,
-                        borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',
-                        backgroundColor: selected ? '#e9f1ff' : '#fff',
-                        borderRadius: 9,
-                        paddingVertical: 8,
-                        paddingHorizontal: 8,
-                        opacity: editingBehaviorId ? 0.75 : 1,
-                      }}
-                    >
-                      <Text numberOfLines={1} style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}>
-                        {student.name}
-                      </Text>
-                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 11 }}>
-                        NIS: {student.nis || '-'}
-                      </Text>
-                    </Pressable>
-                  </View>
-                );
-              })
-            ) : (
-              <View
-                style={{
-                  width: '100%',
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  borderStyle: 'dashed',
-                  borderRadius: 10,
-                  backgroundColor: '#fff',
-                  padding: 12,
-                }}
-              >
-                <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada siswa pada kelas ini.</Text>
-              </View>
-            )}
-          </View>
+          {students.length > 0 ? (
+            <MobileSelectField
+              label="Siswa"
+              value={activeStudentId ? String(activeStudentId) : ''}
+              options={studentSelectOptions}
+              onChange={(next) =>
+                setForm((prev) => ({
+                  ...prev,
+                  studentId: next ? Number(next) : null,
+                }))
+              }
+              placeholder="Pilih siswa"
+              disabled={!!editingBehaviorId}
+              helperText={editingBehaviorId ? 'Siswa tidak dapat diubah saat mengedit catatan.' : undefined}
+            />
+          ) : (
+            <View
+              style={{
+                width: '100%',
+                borderWidth: 1,
+                borderColor: '#cbd5e1',
+                borderStyle: 'dashed',
+                borderRadius: 10,
+                backgroundColor: '#fff',
+                padding: 12,
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Tidak ada siswa pada kelas ini.</Text>
+            </View>
+          )}
 
           <Text style={{ color: '#334155', fontWeight: '600', marginBottom: 6 }}>Tanggal (YYYY-MM-DD)</Text>
           <TextInput
@@ -626,41 +593,18 @@ export default function TeacherHomeroomBehaviorScreen() {
             }}
           />
 
-          <Text style={{ color: '#334155', fontWeight: '600', marginBottom: 6 }}>Jenis Perilaku</Text>
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
-            <Pressable
-              onPress={() => setForm((prev) => ({ ...prev, type: 'POSITIVE' }))}
-              style={{
-                flex: 1,
-                borderWidth: 1,
-                borderColor: form.type === 'POSITIVE' ? '#86efac' : '#d5e1f5',
-                borderRadius: 8,
-                backgroundColor: form.type === 'POSITIVE' ? '#dcfce7' : '#fff',
-                alignItems: 'center',
-                paddingVertical: 9,
-              }}
-            >
-              <Text style={{ color: form.type === 'POSITIVE' ? '#166534' : BRAND_COLORS.textMuted, fontWeight: '700' }}>
-                Positif
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setForm((prev) => ({ ...prev, type: 'NEGATIVE' }))}
-              style={{
-                flex: 1,
-                borderWidth: 1,
-                borderColor: form.type === 'NEGATIVE' ? '#fca5a5' : '#d5e1f5',
-                borderRadius: 8,
-                backgroundColor: form.type === 'NEGATIVE' ? '#fee2e2' : '#fff',
-                alignItems: 'center',
-                paddingVertical: 9,
-              }}
-            >
-              <Text style={{ color: form.type === 'NEGATIVE' ? '#b91c1c' : BRAND_COLORS.textMuted, fontWeight: '700' }}>
-                Negatif
-              </Text>
-            </Pressable>
-          </View>
+          <MobileSelectField
+            label="Jenis Perilaku"
+            value={form.type}
+            options={behaviorTypeOptions}
+            onChange={(next) =>
+              setForm((prev) => ({
+                ...prev,
+                type: (next as KesiswaanBehaviorType) || 'POSITIVE',
+              }))
+            }
+            placeholder="Pilih jenis perilaku"
+          />
 
           <Text style={{ color: '#334155', fontWeight: '600', marginBottom: 6 }}>Kategori</Text>
           <TextInput
@@ -787,10 +731,23 @@ export default function TeacherHomeroomBehaviorScreen() {
         />
       </View>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        <FilterChip active={typeFilter === 'ALL'} label="Semua Jenis" onPress={() => setTypeFilter('ALL')} />
-        <FilterChip active={typeFilter === 'POSITIVE'} label="Positif" onPress={() => setTypeFilter('POSITIVE')} />
-        <FilterChip active={typeFilter === 'NEGATIVE'} label="Negatif" onPress={() => setTypeFilter('NEGATIVE')} />
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderWidth: 1,
+          borderColor: '#dbe7fb',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <MobileSelectField
+          label="Filter Jenis Perilaku"
+          value={typeFilter}
+          options={typeFilterOptions}
+          onChange={(next) => setTypeFilter((next as TypeFilter) || 'ALL')}
+          placeholder="Pilih jenis perilaku"
+        />
       </View>
 
       {classDetailQuery.isLoading ? <QueryStateView type="loading" message="Memuat data siswa kelas..." /> : null}
@@ -914,6 +871,69 @@ export default function TeacherHomeroomBehaviorScreen() {
           </View>
         )
       ) : null}
+
+      <MobileDetailModal
+        visible={summaryDetailVisible}
+        title="Ringkasan Catatan Perilaku"
+        subtitle="Detail ringkas catatan perilaku pada kelas dan filter yang sedang aktif."
+        iconName="clipboard"
+        accentColor="#2563eb"
+        onClose={() => setSummaryDetailVisible(false)}
+      >
+        <View style={{ gap: 10 }}>
+          {[
+            {
+              label: 'Total Catatan',
+              value: `${summary.total}`,
+              note: 'Jumlah catatan sesuai hasil pencarian dan filter aktif',
+            },
+            {
+              label: 'Perilaku Positif',
+              value: `${summary.positive}`,
+              note: `Akumulasi poin +${summary.positivePoints}`,
+            },
+            {
+              label: 'Perilaku Negatif',
+              value: `${summary.negative}`,
+              note: `Akumulasi poin -${summary.negativePoints}`,
+            },
+          ].map((item) => (
+            <View
+              key={item.label}
+              style={{
+                borderWidth: 1,
+                borderColor: '#dbe7fb',
+                borderRadius: 14,
+                paddingHorizontal: 12,
+                paddingVertical: 11,
+                backgroundColor: '#f8fbff',
+              }}
+            >
+              <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>{item.label}</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>{item.value}</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 3 }}>{item.note}</Text>
+            </View>
+          ))}
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#e2e8f0',
+              borderRadius: 14,
+              paddingHorizontal: 12,
+              paddingVertical: 11,
+              backgroundColor: '#fff',
+            }}
+          >
+            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Konteks Aktif</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>
+              Kelas: {selectedClass?.name || 'Belum dipilih'}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600', marginTop: 2 }}>
+              Jenis: {typeFilter === 'ALL' ? 'Semua Jenis' : typeFilter === 'POSITIVE' ? 'Positif' : 'Negatif'}
+            </Text>
+          </View>
+        </View>
+      </MobileDetailModal>
 
     </ScrollView>
   );

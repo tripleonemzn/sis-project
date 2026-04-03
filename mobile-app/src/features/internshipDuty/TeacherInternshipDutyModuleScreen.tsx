@@ -5,6 +5,9 @@ import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } f
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
+import { MobileDetailModal } from '../../components/MobileDetailModal';
+import { MobileSelectField } from '../../components/MobileSelectField';
+import { MobileSummaryCard } from '../../components/MobileSummaryCard';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { mobileLiveQueryOptions } from '../../lib/query/liveQuery';
@@ -83,9 +86,9 @@ function resolveJournalStatus(status?: string | null): JournalFilter {
 
 function resolveJournalStatusStyle(status?: string | null) {
   const value = resolveJournalStatus(status);
-  if (value === 'VERIFIED') return { text: '#166534', border: '#86efac', bg: '#dcfce7', label: 'Verified' };
-  if (value === 'REJECTED') return { text: '#991b1b', border: '#fca5a5', bg: '#fee2e2', label: 'Rejected' };
-  return { text: '#92400e', border: '#fcd34d', bg: '#fef3c7', label: 'Pending' };
+  if (value === 'VERIFIED') return { text: '#166534', border: '#86efac', bg: '#dcfce7', label: 'Terverifikasi' };
+  if (value === 'REJECTED') return { text: '#991b1b', border: '#fca5a5', bg: '#fee2e2', label: 'Ditolak' };
+  return { text: '#92400e', border: '#fcd34d', bg: '#fef3c7', label: 'Menunggu' };
 }
 
 function resolveAttendanceLabel(status?: string | null) {
@@ -105,25 +108,6 @@ function resolveAttendanceStyle(status?: string | null) {
   return { text: '#991b1b', border: '#fca5a5', bg: '#fee2e2' };
 }
 
-function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
-
 function EmptyStateCard({ message }: { message: string }) {
   return (
     <View
@@ -139,34 +123,6 @@ function EmptyStateCard({ message }: { message: string }) {
       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>Belum ada data</Text>
       <Text style={{ color: '#64748b' }}>{message}</Text>
     </View>
-  );
-}
-
-function FilterChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -203,6 +159,16 @@ export function TeacherInternshipDutyModuleScreen({
   const [scoreRelevance, setScoreRelevance] = useState('');
   const [scoreSystematics, setScoreSystematics] = useState('');
   const [defenseNotes, setDefenseNotes] = useState('');
+  const [summaryDetailVisible, setSummaryDetailVisible] = useState(false);
+  const journalFilterOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'Semua Status' },
+      { value: 'PENDING', label: 'Menunggu' },
+      { value: 'VERIFIED', label: 'Terverifikasi' },
+      { value: 'REJECTED', label: 'Ditolak' },
+    ],
+    [],
+  );
 
   const isTeacher = user?.role === 'TEACHER';
 
@@ -372,7 +338,7 @@ export function TeacherInternshipDutyModuleScreen({
   const requestJournalUpdate = (item: InternshipJournalRow, status: 'VERIFIED' | 'REJECTED') => {
     Alert.alert(
       'Konfirmasi',
-      `Ubah status jurnal menjadi ${status === 'VERIFIED' ? 'VERIFIED' : 'REJECTED'}?`,
+      `Ubah status jurnal menjadi ${status === 'VERIFIED' ? 'Terverifikasi' : 'Ditolak'}?`,
       [
         { text: 'Batal', style: 'cancel' },
         {
@@ -434,24 +400,44 @@ export function TeacherInternshipDutyModuleScreen({
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard title="Total Siswa PKL" value={String(summary.total)} subtitle="Akses sesuai penugasan" />
-        </View>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard
-            title={mode === 'GUIDANCE' ? 'Jurnal Pending' : 'Sidang Terjadwal'}
-            value={mode === 'GUIDANCE' ? String(summary.pendingJournals) : String(summary.scheduled)}
-            subtitle={mode === 'GUIDANCE' ? 'Perlu verifikasi' : 'Siap dipantau'}
-          />
-        </View>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard
-            title={mode === 'GUIDANCE' ? 'Data Absensi' : 'Selesai'}
-            value={mode === 'GUIDANCE' ? String(summary.attendanceRows) : String(summary.completed)}
-            subtitle={mode === 'GUIDANCE' ? 'Tersinkron' : 'Sidang selesai'}
-          />
-        </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 10 }}>
+        {[
+          {
+            key: 'total',
+            title: 'Total Siswa PKL',
+            value: String(summary.total),
+            subtitle: 'Akses sesuai penugasan',
+            iconName: 'users' as const,
+            accentColor: '#2563eb',
+          },
+          {
+            key: 'middle',
+            title: mode === 'GUIDANCE' ? 'Jurnal Menunggu' : 'Sidang Terjadwal',
+            value: mode === 'GUIDANCE' ? String(summary.pendingJournals) : String(summary.scheduled),
+            subtitle: mode === 'GUIDANCE' ? 'Perlu verifikasi' : 'Siap dipantau',
+            iconName: mode === 'GUIDANCE' ? ('clock' as const) : ('calendar' as const),
+            accentColor: '#f59e0b',
+          },
+          {
+            key: 'last',
+            title: mode === 'GUIDANCE' ? 'Data Absensi' : 'Selesai',
+            value: mode === 'GUIDANCE' ? String(summary.attendanceRows) : String(summary.completed),
+            subtitle: mode === 'GUIDANCE' ? 'Tersinkron' : 'Sidang selesai',
+            iconName: mode === 'GUIDANCE' ? ('check-square' as const) : ('check-circle' as const),
+            accentColor: '#16a34a',
+          },
+        ].map((item) => (
+          <View key={item.key} style={{ width: '33.3333%', paddingHorizontal: 4, marginBottom: 8 }}>
+            <MobileSummaryCard
+              title={item.title}
+              value={item.value}
+              subtitle={item.subtitle}
+              iconName={item.iconName}
+              accentColor={item.accentColor}
+              onPress={() => setSummaryDetailVisible(true)}
+            />
+          </View>
+        ))}
       </View>
 
       <View
@@ -573,25 +559,13 @@ export function TeacherInternshipDutyModuleScreen({
             Detail Bimbingan: {toText(selectedInternship.student?.name)}
           </Text>
 
-          <Text style={{ color: '#64748b', marginBottom: 8 }}>Filter status jurnal</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-            <FilterChip active={journalFilter === 'ALL'} label="Semua" onPress={() => setJournalFilter('ALL')} />
-            <FilterChip
-              active={journalFilter === 'PENDING'}
-              label="Pending"
-              onPress={() => setJournalFilter('PENDING')}
-            />
-            <FilterChip
-              active={journalFilter === 'VERIFIED'}
-              label="Verified"
-              onPress={() => setJournalFilter('VERIFIED')}
-            />
-            <FilterChip
-              active={journalFilter === 'REJECTED'}
-              label="Rejected"
-              onPress={() => setJournalFilter('REJECTED')}
-            />
-          </View>
+          <MobileSelectField
+            label="Filter Status Jurnal"
+            value={journalFilter}
+            options={journalFilterOptions}
+            onChange={(next) => setJournalFilter((next as JournalFilter) || 'ALL')}
+            placeholder="Pilih status jurnal"
+          />
 
           {journalsQuery.isLoading ? <QueryStateView type="loading" message="Memuat jurnal..." /> : null}
           {journalsQuery.isError ? (
@@ -880,6 +854,71 @@ export function TeacherInternshipDutyModuleScreen({
           )}
         </View>
       ) : null}
+
+      <MobileDetailModal
+        visible={summaryDetailVisible}
+        title={mode === 'GUIDANCE' ? 'Ringkasan Bimbingan PKL' : 'Ringkasan Sidang PKL'}
+        subtitle="Detail ringkas penugasan PKL sesuai mode yang sedang diakses."
+        iconName={mode === 'GUIDANCE' ? 'users' : 'clipboard'}
+        accentColor="#2563eb"
+        onClose={() => setSummaryDetailVisible(false)}
+      >
+        <View style={{ gap: 10 }}>
+          {[
+            {
+              label: 'Total Siswa PKL',
+              value: String(summary.total),
+              note: 'Data PKL sesuai penugasan guru yang sedang aktif',
+            },
+            {
+              label: mode === 'GUIDANCE' ? 'Jurnal Menunggu' : 'Sidang Terjadwal',
+              value: mode === 'GUIDANCE' ? String(summary.pendingJournals) : String(summary.scheduled),
+              note: mode === 'GUIDANCE' ? 'Masih menunggu verifikasi jurnal' : 'Siap dipantau di menu sidang',
+            },
+            {
+              label: mode === 'GUIDANCE' ? 'Data Absensi' : 'Sidang Selesai',
+              value: mode === 'GUIDANCE' ? String(summary.attendanceRows) : String(summary.completed),
+              note: mode === 'GUIDANCE' ? 'Total baris absensi PKL yang tersinkron' : 'Sudah memiliki hasil akhir sidang',
+            },
+          ].map((item) => (
+            <View
+              key={item.label}
+              style={{
+                borderWidth: 1,
+                borderColor: '#dbe7fb',
+                borderRadius: 14,
+                paddingHorizontal: 12,
+                paddingVertical: 11,
+                backgroundColor: '#f8fbff',
+              }}
+            >
+              <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>{item.label}</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>{item.value}</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 3 }}>{item.note}</Text>
+            </View>
+          ))}
+          {selectedInternship ? (
+            <View
+              style={{
+                borderWidth: 1,
+                borderColor: '#e2e8f0',
+                borderRadius: 14,
+                paddingHorizontal: 12,
+                paddingVertical: 11,
+                backgroundColor: '#fff',
+              }}
+            >
+              <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Data Aktif</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>
+                Siswa: {toText(selectedInternship.student?.name)}
+              </Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600', marginTop: 2 }}>
+                Kelas: {toText(selectedInternship.student?.studentClass?.name)}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </MobileDetailModal>
     </ScrollView>
   );
 }

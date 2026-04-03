@@ -4,6 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { OfflineCacheNotice } from '../../../src/components/OfflineCacheNotice';
 import { BRAND_COLORS } from '../../../src/config/brand';
@@ -29,6 +32,7 @@ export default function PrincipalAttendanceScreen() {
   const [semester, setSemester] = useState<'ODD' | 'EVEN'>(defaultSemesterByDate());
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
+  const [summaryDetailVisible, setSummaryDetailVisible] = useState(false);
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-principal-attendance-active-year'],
@@ -57,6 +61,21 @@ export default function PrincipalAttendanceScreen() {
 
   const classItems = classesQuery.data || [];
   const effectiveSelectedClassId = selectedClassId ?? classItems[0]?.id ?? null;
+  const classSelectOptions = useMemo(
+    () =>
+      classItems.map((classItem) => ({
+        value: String(classItem.id),
+        label: classItem.major?.code ? `${classItem.name} • ${classItem.major.code}` : classItem.name,
+      })),
+    [classItems],
+  );
+  const semesterOptions = useMemo(
+    () => [
+      { value: 'ODD', label: 'Semester Ganjil' },
+      { value: 'EVEN', label: 'Semester Genap' },
+    ],
+    [],
+  );
 
   const recapQuery = useQuery({
     queryKey: ['mobile-principal-attendance-recap', user?.id, effectiveSelectedClassId, activeYearQuery.data?.id, semester],
@@ -171,41 +190,13 @@ export default function PrincipalAttendanceScreen() {
           marginBottom: 12,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Semester</Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Pressable
-            onPress={() => setSemester('ODD')}
-            style={{
-              flex: 1,
-              borderWidth: 1,
-              borderColor: semester === 'ODD' ? BRAND_COLORS.blue : '#d5e1f5',
-              backgroundColor: semester === 'ODD' ? '#e9f1ff' : '#fff',
-              borderRadius: 9,
-              alignItems: 'center',
-              paddingVertical: 10,
-            }}
-          >
-            <Text style={{ color: semester === 'ODD' ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}>
-              Ganjil
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setSemester('EVEN')}
-            style={{
-              flex: 1,
-              borderWidth: 1,
-              borderColor: semester === 'EVEN' ? BRAND_COLORS.blue : '#d5e1f5',
-              backgroundColor: semester === 'EVEN' ? '#e9f1ff' : '#fff',
-              borderRadius: 9,
-              alignItems: 'center',
-              paddingVertical: 10,
-            }}
-          >
-            <Text style={{ color: semester === 'EVEN' ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}>
-              Genap
-            </Text>
-          </Pressable>
-        </View>
+        <MobileSelectField
+          label="Semester"
+          value={semester}
+          options={semesterOptions}
+          onChange={(next) => setSemester((next as 'ODD' | 'EVEN') || defaultSemesterByDate())}
+          placeholder="Pilih semester"
+        />
       </View>
 
       {classesQuery.isLoading ? <QueryStateView type="loading" message="Memuat daftar kelas..." /> : null}
@@ -215,35 +206,23 @@ export default function PrincipalAttendanceScreen() {
 
       {!classesQuery.isLoading && !classesQuery.isError ? (
         classItems.length > 0 ? (
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Pilih Kelas</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
-              {classItems.map((classItem) => {
-                const selected = effectiveSelectedClassId === classItem.id;
-                return (
-                  <View key={classItem.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-                    <Pressable
-                      onPress={() => setSelectedClassId(classItem.id)}
-                      style={{
-                        borderWidth: 1,
-                        borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',
-                        backgroundColor: selected ? '#e9f1ff' : '#fff',
-                        borderRadius: 10,
-                        paddingVertical: 10,
-                        paddingHorizontal: 10,
-                      }}
-                    >
-                      <Text numberOfLines={1} style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}>
-                        {classItem.name}
-                      </Text>
-                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
-                        {classItem.major?.code || classItem.major?.name || '-'}
-                      </Text>
-                    </Pressable>
-                  </View>
-                );
-              })}
-            </View>
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderWidth: 1,
+              borderColor: '#dbe7fb',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <MobileSelectField
+              label="Kelas"
+              value={effectiveSelectedClassId ? String(effectiveSelectedClassId) : ''}
+              options={classSelectOptions}
+              onChange={(next) => setSelectedClassId(next ? Number(next) : null)}
+              placeholder="Pilih kelas"
+            />
           </View>
         ) : (
           <View
@@ -315,48 +294,34 @@ export default function PrincipalAttendanceScreen() {
         <>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 12 }}>
             <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <View
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#dbe7fb',
-                  borderRadius: 10,
-                  padding: 10,
-                }}
-              >
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Rata-rata Kehadiran</Text>
-                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>
-                  {summary.avgAttendance.toFixed(1)}%
-                </Text>
-              </View>
+              <MobileSummaryCard
+                title="Rata-rata Kehadiran"
+                value={`${summary.avgAttendance.toFixed(1)}%`}
+                subtitle="Siswa sesuai filter"
+                iconName="bar-chart-2"
+                accentColor="#2563eb"
+                onPress={() => setSummaryDetailVisible(true)}
+              />
             </View>
             <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <View
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#dbe7fb',
-                  borderRadius: 10,
-                  padding: 10,
-                }}
-              >
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Total Alpha</Text>
-                <Text style={{ color: '#b91c1c', fontWeight: '700', fontSize: 18 }}>{summary.totalAbsent}</Text>
-              </View>
+              <MobileSummaryCard
+                title="Total Alpha"
+                value={`${summary.totalAbsent}`}
+                subtitle="Akumulasi ketidakhadiran"
+                iconName="x-circle"
+                accentColor="#dc2626"
+                onPress={() => setSummaryDetailVisible(true)}
+              />
             </View>
             <View style={{ width: '100%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <View
-                style={{
-                  backgroundColor: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#dbe7fb',
-                  borderRadius: 10,
-                  padding: 10,
-                }}
-              >
-                <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 3 }}>Total Terlambat</Text>
-                <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 18 }}>{summary.totalLate}</Text>
-              </View>
+              <MobileSummaryCard
+                title="Total Terlambat"
+                value={`${summary.totalLate}`}
+                subtitle="Akumulasi keterlambatan"
+                iconName="clock"
+                accentColor="#f59e0b"
+                onPress={() => setSummaryDetailVisible(true)}
+              />
             </View>
           </View>
 
@@ -426,6 +391,69 @@ export default function PrincipalAttendanceScreen() {
           )}
         </>
       ) : null}
+
+      <MobileDetailModal
+        visible={summaryDetailVisible}
+        title="Ringkasan Rekap Absensi"
+        subtitle="Detail ringkas kehadiran kelas pada semester dan filter yang sedang aktif."
+        iconName="check-square"
+        accentColor="#2563eb"
+        onClose={() => setSummaryDetailVisible(false)}
+      >
+        <View style={{ gap: 10 }}>
+          {[
+            {
+              label: 'Rata-rata Kehadiran',
+              value: `${summary.avgAttendance.toFixed(1)}%`,
+              note: 'Rata-rata persentase kehadiran siswa yang sedang ditampilkan',
+            },
+            {
+              label: 'Total Alpha',
+              value: `${summary.totalAbsent}`,
+              note: 'Akumulasi alpa siswa pada semester aktif',
+            },
+            {
+              label: 'Total Terlambat',
+              value: `${summary.totalLate}`,
+              note: 'Akumulasi keterlambatan siswa pada semester aktif',
+            },
+          ].map((item) => (
+            <View
+              key={item.label}
+              style={{
+                borderWidth: 1,
+                borderColor: '#dbe7fb',
+                borderRadius: 14,
+                paddingHorizontal: 12,
+                paddingVertical: 11,
+                backgroundColor: '#f8fbff',
+              }}
+            >
+              <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>{item.label}</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 18 }}>{item.value}</Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 3 }}>{item.note}</Text>
+            </View>
+          ))}
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#e2e8f0',
+              borderRadius: 14,
+              paddingHorizontal: 12,
+              paddingVertical: 11,
+              backgroundColor: '#fff',
+            }}
+          >
+            <Text style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Konteks Aktif</Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>
+              Kelas: {selectedClass?.name || 'Belum dipilih'}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600', marginTop: 2 }}>
+              Semester: {semester === 'ODD' ? 'Semester Ganjil' : 'Semester Genap'}
+            </Text>
+          </View>
+        </View>
+      </MobileDetailModal>
 
       <Pressable
         onPress={() => router.replace('/home')}
