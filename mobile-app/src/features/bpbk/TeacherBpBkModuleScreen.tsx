@@ -13,6 +13,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
+import { MobileMenuTabBar } from '../../components/MobileMenuTabBar';
+import { MobileSelectField } from '../../components/MobileSelectField';
+import { MobileSummaryCard as SummaryCard } from '../../components/MobileSummaryCard';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { ENV } from '../../config/env';
@@ -64,13 +67,50 @@ type CounselingFormState = {
 const MODULE_TABS: Array<{
   mode: ModuleMode;
   label: string;
+  iconName: React.ComponentProps<typeof Feather>['name'];
   route: '/teacher/bk' | '/teacher/bk/behaviors' | '/teacher/bk/permissions' | '/teacher/bk/counselings';
 }> = [
-  { mode: 'SUMMARY', label: 'Dashboard BP/BK', route: '/teacher/bk' },
-  { mode: 'BEHAVIORS', label: 'Kasus Perilaku', route: '/teacher/bk/behaviors' },
-  { mode: 'PERMISSIONS', label: 'Perizinan Siswa', route: '/teacher/bk/permissions' },
-  { mode: 'COUNSELINGS', label: 'Konseling & Tindak Lanjut', route: '/teacher/bk/counselings' },
+  { mode: 'SUMMARY', label: 'Dashboard', iconName: 'grid', route: '/teacher/bk' },
+  { mode: 'BEHAVIORS', label: 'Perilaku', iconName: 'alert-circle', route: '/teacher/bk/behaviors' },
+  { mode: 'PERMISSIONS', label: 'Perizinan', iconName: 'file-text', route: '/teacher/bk/permissions' },
+  { mode: 'COUNSELINGS', label: 'Konseling', iconName: 'message-circle', route: '/teacher/bk/counselings' },
 ];
+
+const BEHAVIOR_FILTER_OPTIONS: Array<{ value: BehaviorTypeFilter; label: string }> = [
+  { value: 'ALL', label: 'Semua Perilaku' },
+  { value: 'NEGATIVE', label: 'Negatif' },
+  { value: 'POSITIVE', label: 'Positif' },
+];
+
+const BEHAVIOR_TYPE_OPTIONS: Array<{ value: KesiswaanBehaviorType; label: string }> = [
+  { value: 'NEGATIVE', label: 'Negatif' },
+  { value: 'POSITIVE', label: 'Positif' },
+];
+
+const PERMISSION_STATUS_OPTIONS: Array<{ value: PermissionStatusFilter; label: string }> = [
+  { value: 'ALL', label: 'Semua Status' },
+  { value: 'PENDING', label: 'Menunggu' },
+  { value: 'APPROVED', label: 'Disetujui' },
+  { value: 'REJECTED', label: 'Ditolak' },
+];
+
+const COUNSELING_STATUS_OPTIONS: Array<{ value: CounselingStatusFilter; label: string }> = [
+  { value: 'ALL', label: 'Semua Status' },
+  { value: 'OPEN', label: 'Baru' },
+  { value: 'IN_PROGRESS', label: 'Diproses' },
+  { value: 'CLOSED', label: 'Selesai' },
+];
+
+const COUNSELING_FORM_STATUS_OPTIONS: Array<{ value: CounselingFormState['status']; label: string }> = [
+  { value: 'OPEN', label: 'Baru' },
+  { value: 'IN_PROGRESS', label: 'Diproses' },
+  { value: 'CLOSED', label: 'Selesai' },
+];
+
+const SUMMON_PARENT_OPTIONS = [
+  { value: 'NO', label: 'Tanpa Surat Panggilan' },
+  { value: 'YES', label: 'Butuh Surat Panggilan' },
+] as const;
 
 function normalizeDuty(value?: string) {
   return String(value || '').trim().toUpperCase();
@@ -146,7 +186,7 @@ function permissionBadge(status: 'PENDING' | 'APPROVED' | 'REJECTED') {
   if (status === 'REJECTED') {
     return { label: 'Ditolak', color: '#991b1b', bg: '#fee2e2', border: '#fca5a5' };
   }
-  return { label: 'Pending', color: '#92400e', bg: '#fef3c7', border: '#fcd34d' };
+  return { label: 'Menunggu', color: '#92400e', bg: '#fef3c7', border: '#fcd34d' };
 }
 
 function counselingBadge(status: 'OPEN' | 'IN_PROGRESS' | 'CLOSED') {
@@ -171,64 +211,6 @@ function resolveAttachmentUrl(fileUrl?: string | null) {
   if (/^https?:\/\//i.test(fileUrl)) return fileUrl;
   const webBaseUrl = ENV.API_BASE_URL.replace(/\/api\/?$/, '');
   return fileUrl.startsWith('/') ? `${webBaseUrl}${fileUrl}` : `${webBaseUrl}/${fileUrl}`;
-}
-
-function FilterChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function SummaryCard({
-  title,
-  value,
-  subtitle,
-  accent = BRAND_COLORS.blue,
-}: {
-  title: string;
-  value: string;
-  subtitle: string;
-  accent?: string;
-}) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 14,
-        padding: 12,
-        minWidth: '48%',
-        flexGrow: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: accent, fontWeight: '800', fontSize: 24, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
 }
 
 function SectionCard({
@@ -377,29 +359,6 @@ function Pager({
   );
 }
 
-function SelectionChips<T extends { id: number; name: string }>({
-  items,
-  selectedId,
-  onSelect,
-}: {
-  items: T[];
-  selectedId: string;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-      {items.map((item) => (
-        <FilterChip
-          key={item.id}
-          active={String(item.id) === selectedId}
-          label={item.name}
-          onPress={() => onSelect(String(item.id))}
-        />
-      ))}
-    </ScrollView>
-  );
-}
-
 export function TeacherBpBkModuleScreen({
   mode,
   title,
@@ -472,6 +431,10 @@ export function TeacherBpBkModuleScreen({
     if (selectedClassId === 'ALL') return 'Semua kelas';
     return classes.find((item) => item.id === selectedClassId)?.name || `Kelas ${selectedClassId}`;
   }, [classes, selectedClassId]);
+  const classFilterOptions = useMemo(
+    () => [{ value: 'ALL', label: 'Semua Kelas' }, ...classes.map((item) => ({ value: String(item.id), label: item.name }))],
+    [classes],
+  );
 
   const activeBehaviorFormClassId = Number(behaviorForm.classId || defaultClassId || 0);
   const activeCounselingFormClassId = Number(counselingForm.classId || defaultClassId || 0);
@@ -509,6 +472,14 @@ export function TeacherBpBkModuleScreen({
       return haystack.includes(query);
     });
   }, [behaviorStudentSearch, behaviorStudents]);
+  const behaviorStudentOptions = useMemo(
+    () =>
+      filteredBehaviorStudents.map((item: AdminClassDetailStudent) => ({
+        value: String(item.id),
+        label: `${item.name} (${item.nisn || item.nis || '-'})`,
+      })),
+    [filteredBehaviorStudents],
+  );
 
   const filteredCounselingStudents = useMemo(() => {
     const query = counselingStudentSearch.trim().toLowerCase();
@@ -518,6 +489,14 @@ export function TeacherBpBkModuleScreen({
       return haystack.includes(query);
     });
   }, [counselingStudentSearch, counselingStudents]);
+  const counselingStudentOptions = useMemo(
+    () =>
+      filteredCounselingStudents.map((item: AdminClassDetailStudent) => ({
+        value: String(item.id),
+        label: `${item.name} (${item.nisn || item.nis || '-'})`,
+      })),
+    [filteredCounselingStudents],
+  );
 
   const summaryQuery = useQuery({
     queryKey: ['mobile-teacher-bpbk-summary', activeYearId, selectedClassId],
@@ -999,16 +978,20 @@ export function TeacherBpBkModuleScreen({
           </View>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-          {MODULE_TABS.map((tab) => (
-            <FilterChip
-              key={tab.mode}
-              active={tab.mode === mode}
-              label={tab.label}
-              onPress={() => router.replace(tab.route)}
-            />
-          ))}
-        </ScrollView>
+        <MobileMenuTabBar
+          items={MODULE_TABS.map((tab) => ({
+            key: tab.mode,
+            label: tab.label,
+            iconName: tab.iconName,
+          }))}
+          activeKey={mode}
+          onChange={(key) => {
+            const nextTab = MODULE_TABS.find((tab) => tab.mode === key);
+            if (nextTab) router.replace(nextTab.route);
+          }}
+          minTabWidth={90}
+          maxTabWidth={118}
+        />
 
         <View
           style={{
@@ -1020,32 +1003,18 @@ export function TeacherBpBkModuleScreen({
             gap: 8,
           }}
         >
-          <Text style={{ color: '#64748b', fontSize: 12 }}>Filter kelas</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-            <FilterChip
-              active={selectedClassId === 'ALL'}
-              label="Semua kelas"
-              onPress={() => {
-                setSelectedClassId('ALL');
-                setBehaviorPage(1);
-                setPermissionPage(1);
-                setCounselingPage(1);
-              }}
-            />
-            {classes.map((item: AdminClass) => (
-              <FilterChip
-                key={item.id}
-                active={selectedClassId === item.id}
-                label={item.name}
-                onPress={() => {
-                  setSelectedClassId(item.id);
-                  setBehaviorPage(1);
-                  setPermissionPage(1);
-                  setCounselingPage(1);
-                }}
-              />
-            ))}
-          </ScrollView>
+          <MobileSelectField
+            label="Filter Kelas"
+            value={selectedClassId === 'ALL' ? 'ALL' : String(selectedClassId)}
+            options={classFilterOptions}
+            onChange={(value) => {
+              setSelectedClassId(value === 'ALL' ? 'ALL' : Number(value));
+              setBehaviorPage(1);
+              setPermissionPage(1);
+              setCounselingPage(1);
+            }}
+            placeholder="Pilih kelas"
+          />
         </View>
       </View>
 
@@ -1060,49 +1029,57 @@ export function TeacherBpBkModuleScreen({
               title="Kasus Negatif"
               value={String(summary?.negativeCases || 0)}
               subtitle={`Bulan ini ${summary?.negativeCasesThisMonth || 0}`}
-              accent="#b91c1c"
+              iconName="alert-triangle"
+              accentColor="#b91c1c"
             />
             <SummaryCard
               title="Kasus Positif"
               value={String(summary?.positiveCases || 0)}
               subtitle={`Total kasus ${summary?.totalCases || 0}`}
-              accent="#15803d"
+              iconName="thumbs-up"
+              accentColor="#15803d"
             />
             <SummaryCard
               title="Izin Pending"
               value={String(summary?.pendingPermissions || 0)}
               subtitle={`Approved ${summary?.approvedPermissions || 0} • Rejected ${summary?.rejectedPermissions || 0}`}
-              accent="#1d4ed8"
+              iconName="file-text"
+              accentColor="#1d4ed8"
             />
             <SummaryCard
               title="Siswa Risiko Tinggi"
               value={String(summary?.highRiskStudents || 0)}
               subtitle="Threshold otomatis BP/BK"
-              accent="#a16207"
+              iconName="activity"
+              accentColor="#a16207"
             />
             <SummaryCard
               title="Konseling Baru"
               value={String(summary?.openCounselings || 0)}
               subtitle="Masih menunggu tindak lanjut"
-              accent="#dc2626"
+              iconName="message-circle"
+              accentColor="#dc2626"
             />
             <SummaryCard
               title="Konseling Diproses"
               value={String(summary?.inProgressCounselings || 0)}
               subtitle="Sedang ditangani"
-              accent="#d97706"
+              iconName="clock"
+              accentColor="#d97706"
             />
             <SummaryCard
               title="Konseling Selesai"
               value={String(summary?.closedCounselings || 0)}
               subtitle="Sudah ditutup"
-              accent="#16a34a"
+              iconName="check-circle"
+              accentColor="#16a34a"
             />
             <SummaryCard
               title="Surat Panggilan Aktif"
               value={String(summary?.summonPendingCounselings || 0)}
               subtitle={selectedClassName}
-              accent="#7c3aed"
+              iconName="mail"
+              accentColor="#7c3aed"
             />
           </View>
 
@@ -1267,22 +1244,28 @@ export function TeacherBpBkModuleScreen({
               }}
               placeholder="Cari nama / NIS / NISN / deskripsi..."
             />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-              <FilterChip active={behaviorType === 'ALL'} label="Semua" onPress={() => { setBehaviorType('ALL'); setBehaviorPage(1); }} />
-              <FilterChip active={behaviorType === 'NEGATIVE'} label="Negatif" onPress={() => { setBehaviorType('NEGATIVE'); setBehaviorPage(1); }} />
-              <FilterChip active={behaviorType === 'POSITIVE'} label="Positif" onPress={() => { setBehaviorType('POSITIVE'); setBehaviorPage(1); }} />
-            </ScrollView>
+            <MobileSelectField
+              label="Filter Jenis Perilaku"
+              value={behaviorType}
+              options={BEHAVIOR_FILTER_OPTIONS}
+              onChange={(value) => {
+                setBehaviorType(value as BehaviorTypeFilter);
+                setBehaviorPage(1);
+              }}
+              placeholder="Pilih jenis perilaku"
+            />
 
             {showBehaviorForm ? (
               <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 12, gap: 12 }}>
-                <FieldLabel>Kelas</FieldLabel>
-                <SelectionChips
-                  items={classes}
-                  selectedId={String(activeBehaviorFormClassId || '')}
-                  onSelect={(value) => {
+                <MobileSelectField
+                  label="Kelas"
+                  value={String(activeBehaviorFormClassId || '')}
+                  options={classes.map((item) => ({ value: String(item.id), label: item.name }))}
+                  onChange={(value) => {
                     setBehaviorStudentSearch('');
                     setBehaviorForm((prev) => ({ ...prev, classId: value, studentId: '' }));
                   }}
+                  placeholder="Pilih kelas"
                 />
 
                 <View style={{ gap: 8 }}>
@@ -1295,13 +1278,11 @@ export function TeacherBpBkModuleScreen({
                   {behaviorStudentsQuery.isLoading ? (
                     <QueryStateView type="loading" message="Memuat siswa kelas..." />
                   ) : filteredBehaviorStudents.length > 0 ? (
-                    <SelectionChips
-                      items={filteredBehaviorStudents.map((item: AdminClassDetailStudent) => ({
-                        id: item.id,
-                        name: `${item.name} (${item.nisn || item.nis || '-'})`,
-                      }))}
-                      selectedId={activeBehaviorStudentId}
-                      onSelect={(value) => setBehaviorForm((prev) => ({ ...prev, studentId: value }))}
+                    <MobileSelectField
+                      value={activeBehaviorStudentId}
+                      options={behaviorStudentOptions}
+                      onChange={(value) => setBehaviorForm((prev) => ({ ...prev, studentId: value }))}
+                      placeholder="Pilih siswa"
                     />
                   ) : (
                     <EmptyStateCard message="Siswa untuk kelas ini belum tersedia." />
@@ -1314,19 +1295,13 @@ export function TeacherBpBkModuleScreen({
                     <Input value={behaviorForm.date} onChangeText={(value) => setBehaviorForm((prev) => ({ ...prev, date: value }))} placeholder="YYYY-MM-DD" />
                   </View>
                   <View style={{ flex: 1, minWidth: 160 }}>
-                    <FieldLabel>Tipe</FieldLabel>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                      <FilterChip
-                        active={behaviorForm.type === 'NEGATIVE'}
-                        label="Negatif"
-                        onPress={() => setBehaviorForm((prev) => ({ ...prev, type: 'NEGATIVE' }))}
-                      />
-                      <FilterChip
-                        active={behaviorForm.type === 'POSITIVE'}
-                        label="Positif"
-                        onPress={() => setBehaviorForm((prev) => ({ ...prev, type: 'POSITIVE' }))}
-                      />
-                    </ScrollView>
+                    <MobileSelectField
+                      label="Tipe"
+                      value={behaviorForm.type}
+                      options={BEHAVIOR_TYPE_OPTIONS}
+                      onChange={(value) => setBehaviorForm((prev) => ({ ...prev, type: value as KesiswaanBehaviorType }))}
+                      placeholder="Pilih tipe perilaku"
+                    />
                   </View>
                 </View>
 
@@ -1464,12 +1439,16 @@ export function TeacherBpBkModuleScreen({
             }}
             placeholder="Cari nama / NIS / NISN / alasan..."
           />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-            <FilterChip active={permissionStatus === 'ALL'} label="Semua" onPress={() => { setPermissionStatus('ALL'); setPermissionPage(1); }} />
-            <FilterChip active={permissionStatus === 'PENDING'} label="Pending" onPress={() => { setPermissionStatus('PENDING'); setPermissionPage(1); }} />
-            <FilterChip active={permissionStatus === 'APPROVED'} label="Disetujui" onPress={() => { setPermissionStatus('APPROVED'); setPermissionPage(1); }} />
-            <FilterChip active={permissionStatus === 'REJECTED'} label="Ditolak" onPress={() => { setPermissionStatus('REJECTED'); setPermissionPage(1); }} />
-          </ScrollView>
+          <MobileSelectField
+            label="Filter Status Perizinan"
+            value={permissionStatus}
+            options={PERMISSION_STATUS_OPTIONS}
+            onChange={(value) => {
+              setPermissionStatus(value as PermissionStatusFilter);
+              setPermissionPage(1);
+            }}
+            placeholder="Pilih status perizinan"
+          />
 
           {permissionsQuery.isLoading ? (
             <QueryStateView type="loading" message="Mengambil daftar perizinan..." />
@@ -1644,23 +1623,28 @@ export function TeacherBpBkModuleScreen({
             }}
             placeholder="Cari ringkasan / nama siswa / surat..."
           />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-            <FilterChip active={counselingStatus === 'ALL'} label="Semua" onPress={() => { setCounselingStatus('ALL'); setCounselingPage(1); }} />
-            <FilterChip active={counselingStatus === 'OPEN'} label="Baru" onPress={() => { setCounselingStatus('OPEN'); setCounselingPage(1); }} />
-            <FilterChip active={counselingStatus === 'IN_PROGRESS'} label="Diproses" onPress={() => { setCounselingStatus('IN_PROGRESS'); setCounselingPage(1); }} />
-            <FilterChip active={counselingStatus === 'CLOSED'} label="Selesai" onPress={() => { setCounselingStatus('CLOSED'); setCounselingPage(1); }} />
-          </ScrollView>
+          <MobileSelectField
+            label="Filter Status Konseling"
+            value={counselingStatus}
+            options={COUNSELING_STATUS_OPTIONS}
+            onChange={(value) => {
+              setCounselingStatus(value as CounselingStatusFilter);
+              setCounselingPage(1);
+            }}
+            placeholder="Pilih status konseling"
+          />
 
           {showCounselingForm ? (
             <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 12, gap: 12 }}>
-              <FieldLabel>Kelas</FieldLabel>
-                <SelectionChips
-                  items={classes}
-                  selectedId={String(activeCounselingFormClassId || '')}
-                  onSelect={(value) => {
-                    setCounselingStudentSearch('');
-                    setCounselingForm((prev) => ({ ...prev, classId: value, studentId: '' }));
+              <MobileSelectField
+                label="Kelas"
+                value={String(activeCounselingFormClassId || '')}
+                options={classes.map((item) => ({ value: String(item.id), label: item.name }))}
+                onChange={(value) => {
+                  setCounselingStudentSearch('');
+                  setCounselingForm((prev) => ({ ...prev, classId: value, studentId: '' }));
                 }}
+                placeholder="Pilih kelas"
               />
 
               <View style={{ gap: 8 }}>
@@ -1673,14 +1657,12 @@ export function TeacherBpBkModuleScreen({
                 {counselingStudentsQuery.isLoading ? (
                   <QueryStateView type="loading" message="Memuat siswa kelas..." />
                 ) : filteredCounselingStudents.length > 0 ? (
-                    <SelectionChips
-                      items={filteredCounselingStudents.map((item: AdminClassDetailStudent) => ({
-                        id: item.id,
-                        name: `${item.name} (${item.nisn || item.nis || '-'})`,
-                      }))}
-                      selectedId={activeCounselingStudentId}
-                      onSelect={(value) => setCounselingForm((prev) => ({ ...prev, studentId: value }))}
-                    />
+                  <MobileSelectField
+                    value={activeCounselingStudentId}
+                    options={counselingStudentOptions}
+                    onChange={(value) => setCounselingForm((prev) => ({ ...prev, studentId: value }))}
+                    placeholder="Pilih siswa"
+                  />
                 ) : (
                   <EmptyStateCard message="Siswa untuk kelas ini belum tersedia." />
                 )}
@@ -1696,12 +1678,15 @@ export function TeacherBpBkModuleScreen({
                   />
                 </View>
                 <View style={{ flex: 1, minWidth: 160 }}>
-                  <FieldLabel>Status</FieldLabel>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                    <FilterChip active={counselingForm.status === 'OPEN'} label="Baru" onPress={() => setCounselingForm((prev) => ({ ...prev, status: 'OPEN' }))} />
-                    <FilterChip active={counselingForm.status === 'IN_PROGRESS'} label="Diproses" onPress={() => setCounselingForm((prev) => ({ ...prev, status: 'IN_PROGRESS' }))} />
-                    <FilterChip active={counselingForm.status === 'CLOSED'} label="Selesai" onPress={() => setCounselingForm((prev) => ({ ...prev, status: 'CLOSED' }))} />
-                  </ScrollView>
+                  <MobileSelectField
+                    label="Status"
+                    value={counselingForm.status}
+                    options={COUNSELING_FORM_STATUS_OPTIONS}
+                    onChange={(value) =>
+                      setCounselingForm((prev) => ({ ...prev, status: value as CounselingFormState['status'] }))
+                    }
+                    placeholder="Pilih status konseling"
+                  />
                 </View>
               </View>
 
@@ -1735,25 +1720,19 @@ export function TeacherBpBkModuleScreen({
                 />
               </View>
 
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                <FilterChip
-                  active={!counselingForm.summonParent}
-                  label="Tanpa panggilan"
-                  onPress={() =>
-                    setCounselingForm((prev) => ({
-                      ...prev,
-                      summonParent: false,
-                      summonDate: '',
-                      summonLetterNumber: '',
-                    }))
-                  }
-                />
-                <FilterChip
-                  active={counselingForm.summonParent}
-                  label="Butuh surat panggilan"
-                  onPress={() => setCounselingForm((prev) => ({ ...prev, summonParent: true }))}
-                />
-              </ScrollView>
+              <MobileSelectField
+                label="Surat Panggilan Orang Tua"
+                value={counselingForm.summonParent ? 'YES' : 'NO'}
+                options={SUMMON_PARENT_OPTIONS.map((option) => ({ ...option }))}
+                onChange={(value) =>
+                  setCounselingForm((prev) => ({
+                    ...prev,
+                    summonParent: value === 'YES',
+                    ...(value === 'YES' ? {} : { summonDate: '', summonLetterNumber: '' }),
+                  }))
+                }
+                placeholder="Pilih kebutuhan surat panggilan"
+              />
 
               {counselingForm.summonParent ? (
                 <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
