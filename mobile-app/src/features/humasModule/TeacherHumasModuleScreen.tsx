@@ -5,6 +5,9 @@ import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } f
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
+import { MobileMenuTabBar } from '../../components/MobileMenuTabBar';
+import { MobileSelectField } from '../../components/MobileSelectField';
+import { MobileSummaryCard as SummaryCard } from '../../components/MobileSummaryCard';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { mobileLiveQueryOptions } from '../../lib/query/liveQuery';
@@ -81,6 +84,44 @@ const DEFAULT_VACANCY_FORM: VacancyFormState = {
   isOpen: true,
 };
 
+const APPROVAL_STATUS_OPTIONS: Array<{ value: ApprovalStatusFilter; label: string }> = [
+  { value: 'ALL', label: 'Semua Status' },
+  { value: 'PROPOSED', label: 'Diajukan' },
+  { value: 'WAITING_ACCEPTANCE_LETTER', label: 'Menunggu Surat' },
+  { value: 'APPROVED', label: 'Disetujui' },
+  { value: 'ACTIVE', label: 'Aktif PKL' },
+  { value: 'REJECTED', label: 'Ditolak' },
+];
+
+const JOURNAL_STATUS_OPTIONS: Array<{ value: JournalStatusFilter; label: string }> = [
+  { value: 'ALL', label: 'Semua Status' },
+  { value: 'PENDING', label: 'Menunggu Verifikasi' },
+  { value: 'VERIFIED', label: 'Terverifikasi' },
+  { value: 'REJECTED', label: 'Ditolak' },
+];
+
+const PARTNER_TAB_ITEMS = [
+  { key: 'PARTNERS', label: 'Mitra Industri', iconName: 'users' as const },
+  { key: 'VACANCIES', label: 'Lowongan BKK', iconName: 'briefcase' as const },
+];
+
+const PKL_GRADE_OPTIONS: Array<{ value: PklEligibleGrades; label: string }> = [
+  { value: 'XI', label: 'Kelas XI' },
+  { value: 'XII', label: 'Kelas XII' },
+  { value: 'XI, XII', label: 'XI & XII' },
+];
+
+const COOPERATION_STATUS_OPTIONS: Array<{ value: PartnerStatus; label: string }> = [
+  { value: 'AKTIF', label: 'Aktif' },
+  { value: 'NON_AKTIF', label: 'Non Aktif' },
+  { value: 'PROSES', label: 'Proses' },
+];
+
+const VACANCY_STATUS_OPTIONS = [
+  { value: 'OPEN', label: 'Dibuka' },
+  { value: 'CLOSED', label: 'Ditutup' },
+] as const;
+
 function formatDateTime(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
@@ -153,53 +194,6 @@ function resolveJournalStatus(status?: string | null): JournalStatusFilter {
   if (value === 'VERIFIED') return 'VERIFIED';
   if (value === 'REJECTED') return 'REJECTED';
   return 'PENDING';
-}
-
-function FilterChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
 }
 
 function EmptyStateCard({ message }: { message: string }) {
@@ -559,6 +553,17 @@ export function TeacherHumasModuleScreen({
     return rows.filter((item) => String(item.cooperationStatus || '').toUpperCase() === 'AKTIF');
   }, [partnersQuery.data]);
 
+  const activePartnerSelectOptions = useMemo(
+    () => [
+      { value: '', label: 'Perusahaan Umum' },
+      ...activePartnerOptions.map((partner) => ({
+        value: String(partner.id),
+        label: partner.name,
+      })),
+    ],
+    [activePartnerOptions],
+  );
+
   const editPartner = (item: HumasPartnerRow) => {
     setEditingPartnerId(item.id);
     setPartnerForm({
@@ -770,8 +775,8 @@ export function TeacherHumasModuleScreen({
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
+        <View style={{ flexBasis: '31%', flexGrow: 1 }}>
           <SummaryCard
             title={mode === 'COMPONENTS' ? 'Komponen Aktif' : mode === 'PARTNERS' ? 'Mitra Industri' : 'Total PKL'}
             value={
@@ -779,7 +784,7 @@ export function TeacherHumasModuleScreen({
                 ? String(summary.activeComponents)
                 : mode === 'PARTNERS'
                   ? String(summary.partnersTotal)
-                  : String(summary.internshipTotal)
+                : String(summary.internshipTotal)
             }
             subtitle={
               mode === 'COMPONENTS'
@@ -788,26 +793,32 @@ export function TeacherHumasModuleScreen({
                   ? 'Data kemitraan'
                   : 'Data lintas status'
             }
+            iconName={mode === 'COMPONENTS' ? 'sliders' : mode === 'PARTNERS' ? 'users' : 'briefcase'}
+            accentColor={mode === 'COMPONENTS' ? '#7c3aed' : mode === 'PARTNERS' ? '#0f766e' : '#2563eb'}
           />
         </View>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
+        <View style={{ flexBasis: '31%', flexGrow: 1 }}>
           <SummaryCard
             title={mode === 'PARTNERS' ? 'Lowongan Aktif' : mode === 'COMPONENTS' ? 'Total Komponen' : 'Menunggu'}
             value={
               mode === 'PARTNERS'
                 ? String(summary.openVacancies)
                 : mode === 'COMPONENTS'
-                  ? String(summary.componentsTotal)
+                ? String(summary.componentsTotal)
                   : String(summary.internshipPending)
             }
             subtitle={mode === 'PARTNERS' ? 'BKK terbuka' : mode === 'COMPONENTS' ? 'Komponen tersimpan' : 'Perlu tindak lanjut'}
+            iconName={mode === 'PARTNERS' ? 'briefcase' : mode === 'COMPONENTS' ? 'layers' : 'clock'}
+            accentColor={mode === 'PARTNERS' ? '#ea580c' : mode === 'COMPONENTS' ? '#7c3aed' : '#2563eb'}
           />
         </View>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
+        <View style={{ flexBasis: '31%', flexGrow: 1 }}>
           <SummaryCard
             title={mode === 'PARTNERS' ? 'Total Lowongan' : 'Ditolak'}
             value={mode === 'PARTNERS' ? String(summary.vacanciesTotal) : String(summary.internshipRejected)}
             subtitle={mode === 'PARTNERS' ? 'Data lowongan' : 'Pengajuan ditolak'}
+            iconName={mode === 'PARTNERS' ? 'archive' : 'x-circle'}
+            accentColor={mode === 'PARTNERS' ? '#9333ea' : '#dc2626'}
           />
         </View>
       </View>
@@ -847,19 +858,13 @@ export function TeacherHumasModuleScreen({
             marginBottom: 10,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Filter Status Pengajuan</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            <FilterChip active={approvalFilter === 'ALL'} label="Semua" onPress={() => setApprovalFilter('ALL')} />
-            <FilterChip active={approvalFilter === 'PROPOSED'} label="Diajukan" onPress={() => setApprovalFilter('PROPOSED')} />
-            <FilterChip
-              active={approvalFilter === 'WAITING_ACCEPTANCE_LETTER'}
-              label="Menunggu Surat"
-              onPress={() => setApprovalFilter('WAITING_ACCEPTANCE_LETTER')}
-            />
-            <FilterChip active={approvalFilter === 'APPROVED'} label="Disetujui" onPress={() => setApprovalFilter('APPROVED')} />
-            <FilterChip active={approvalFilter === 'ACTIVE'} label="Aktif" onPress={() => setApprovalFilter('ACTIVE')} />
-            <FilterChip active={approvalFilter === 'REJECTED'} label="Ditolak" onPress={() => setApprovalFilter('REJECTED')} />
-          </View>
+          <MobileSelectField
+            label="Filter Status Pengajuan"
+            value={approvalFilter}
+            options={APPROVAL_STATUS_OPTIONS}
+            onChange={(value) => setApprovalFilter(value as ApprovalStatusFilter)}
+            placeholder="Pilih status pengajuan"
+          />
         </View>
       ) : null}
 
@@ -874,13 +879,13 @@ export function TeacherHumasModuleScreen({
             marginBottom: 10,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Filter Status Jurnal</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            <FilterChip active={journalStatusFilter === 'ALL'} label="Semua" onPress={() => setJournalStatusFilter('ALL')} />
-            <FilterChip active={journalStatusFilter === 'PENDING'} label="Pending" onPress={() => setJournalStatusFilter('PENDING')} />
-            <FilterChip active={journalStatusFilter === 'VERIFIED'} label="Verified" onPress={() => setJournalStatusFilter('VERIFIED')} />
-            <FilterChip active={journalStatusFilter === 'REJECTED'} label="Rejected" onPress={() => setJournalStatusFilter('REJECTED')} />
-          </View>
+          <MobileSelectField
+            label="Filter Status Jurnal"
+            value={journalStatusFilter}
+            options={JOURNAL_STATUS_OPTIONS}
+            onChange={(value) => setJournalStatusFilter(value as JournalStatusFilter)}
+            placeholder="Pilih status jurnal"
+          />
         </View>
       ) : null}
 
@@ -896,10 +901,13 @@ export function TeacherHumasModuleScreen({
           }}
         >
           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Tipe Data</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <FilterChip active={partnerTab === 'PARTNERS'} label="Mitra Industri" onPress={() => setPartnerTab('PARTNERS')} />
-            <FilterChip active={partnerTab === 'VACANCIES'} label="Lowongan BKK" onPress={() => setPartnerTab('VACANCIES')} />
-          </View>
+          <MobileMenuTabBar
+            items={PARTNER_TAB_ITEMS}
+            activeKey={partnerTab}
+            onChange={(key) => setPartnerTab(key as PartnerTab)}
+            minTabWidth={112}
+            maxTabWidth={136}
+          />
         </View>
       ) : null}
 
@@ -924,15 +932,13 @@ export function TeacherHumasModuleScreen({
                 Kelas PKL berjalan: {activeYearQuery.data?.pklEligibleGrades || '-'}
               </Text>
 
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
-                <FilterChip active={selectedPklGrade === 'XI'} label="Kelas XI" onPress={() => setSelectedPklGrade('XI')} />
-                <FilterChip active={selectedPklGrade === 'XII'} label="Kelas XII" onPress={() => setSelectedPklGrade('XII')} />
-                <FilterChip
-                  active={selectedPklGrade === 'XI, XII'}
-                  label="XI & XII"
-                  onPress={() => setSelectedPklGrade('XI, XII')}
-                />
-              </View>
+              <MobileSelectField
+                label="Kelas PKL Aktif"
+                value={selectedPklGrade}
+                options={PKL_GRADE_OPTIONS}
+                onChange={(value) => setSelectedPklGrade(value as PklEligibleGrades)}
+                placeholder="Pilih kelas PKL"
+              />
 
               <Pressable
                 onPress={() => {
@@ -1441,23 +1447,13 @@ export function TeacherHumasModuleScreen({
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6, marginTop: 2 }}>
                     Status Kerja Sama
                   </Text>
-                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
-                    <FilterChip
-                      active={partnerForm.cooperationStatus === 'AKTIF'}
-                      label="Aktif"
-                      onPress={() => setPartnerForm((prev) => ({ ...prev, cooperationStatus: 'AKTIF' }))}
-                    />
-                    <FilterChip
-                      active={partnerForm.cooperationStatus === 'NON_AKTIF'}
-                      label="Non Aktif"
-                      onPress={() => setPartnerForm((prev) => ({ ...prev, cooperationStatus: 'NON_AKTIF' }))}
-                    />
-                    <FilterChip
-                      active={partnerForm.cooperationStatus === 'PROSES'}
-                      label="Proses"
-                      onPress={() => setPartnerForm((prev) => ({ ...prev, cooperationStatus: 'PROSES' }))}
-                    />
-                  </View>
+                  <MobileSelectField
+                    label="Status Kerja Sama"
+                    value={partnerForm.cooperationStatus}
+                    options={COOPERATION_STATUS_OPTIONS}
+                    onChange={(value) => setPartnerForm((prev) => ({ ...prev, cooperationStatus: value as PartnerStatus }))}
+                    placeholder="Pilih status kerja sama"
+                  />
 
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <Pressable
@@ -1531,28 +1527,14 @@ export function TeacherHumasModuleScreen({
                   <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
                     Mitra Industri (opsional)
                   </Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <FilterChip
-                        active={!vacancyForm.industryPartnerId}
-                        label="Perusahaan Umum"
-                        onPress={() => setVacancyForm((prev) => ({ ...prev, industryPartnerId: '' }))}
-                      />
-                      {activePartnerOptions.map((partner) => (
-                        <FilterChip
-                          key={partner.id}
-                          active={vacancyForm.industryPartnerId === String(partner.id)}
-                          label={partner.name}
-                          onPress={() =>
-                            setVacancyForm((prev) => ({
-                              ...prev,
-                              industryPartnerId: prev.industryPartnerId === String(partner.id) ? '' : String(partner.id),
-                            }))
-                          }
-                        />
-                      ))}
-                    </View>
-                  </ScrollView>
+                  <MobileSelectField
+                    label="Mitra Industri"
+                    value={vacancyForm.industryPartnerId}
+                    options={activePartnerSelectOptions}
+                    onChange={(value) => setVacancyForm((prev) => ({ ...prev, industryPartnerId: value }))}
+                    placeholder="Pilih mitra industri"
+                    helperText="Pilih Perusahaan Umum bila lowongan tidak terikat ke mitra aktif."
+                  />
 
                   {!vacancyForm.industryPartnerId ? (
                     <TextInput
@@ -1640,18 +1622,13 @@ export function TeacherHumasModuleScreen({
                     />
                   </View>
 
-                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
-                    <FilterChip
-                      active={vacancyForm.isOpen}
-                      label="Status Dibuka"
-                      onPress={() => setVacancyForm((prev) => ({ ...prev, isOpen: true }))}
-                    />
-                    <FilterChip
-                      active={!vacancyForm.isOpen}
-                      label="Status Ditutup"
-                      onPress={() => setVacancyForm((prev) => ({ ...prev, isOpen: false }))}
-                    />
-                  </View>
+                  <MobileSelectField
+                    label="Status Lowongan"
+                    value={vacancyForm.isOpen ? 'OPEN' : 'CLOSED'}
+                    options={VACANCY_STATUS_OPTIONS.map((option) => ({ ...option }))}
+                    onChange={(value) => setVacancyForm((prev) => ({ ...prev, isOpen: value === 'OPEN' }))}
+                    placeholder="Pilih status lowongan"
+                  />
 
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <Pressable

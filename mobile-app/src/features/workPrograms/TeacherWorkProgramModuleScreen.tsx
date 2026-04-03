@@ -6,6 +6,7 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
 import { MobileSelectField } from '../../components/MobileSelectField';
+import { MobileSummaryCard as SummaryCard } from '../../components/MobileSummaryCard';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
@@ -138,25 +139,6 @@ function getActionErrorMessage(error: unknown, fallback: string) {
     };
   };
   return err.response?.data?.message || err.message || fallback;
-}
-
-function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
 }
 
 function TextField({
@@ -748,18 +730,20 @@ export function TeacherWorkProgramModuleScreen({
         </View>
       ) : null}
 
-      <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard title="Total Program" value={String(summary.total)} subtitle="Seluruh data aktif" />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
+        <View style={{ flexBasis: '31%', flexGrow: 1 }}>
+          <SummaryCard title="Total Program" value={String(summary.total)} subtitle="Seluruh data aktif" iconName="layers" accentColor="#2563eb" />
         </View>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard title="Menunggu" value={String(summary.pending)} subtitle="Butuh tindak lanjut" />
+        <View style={{ flexBasis: '31%', flexGrow: 1 }}>
+          <SummaryCard title="Menunggu" value={String(summary.pending)} subtitle="Butuh tindak lanjut" iconName="clock" accentColor="#ea580c" />
         </View>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
+        <View style={{ flexBasis: '31%', flexGrow: 1 }}>
           <SummaryCard
             title={mode === 'APPROVAL' ? 'Siap Ditindak' : 'Progress Item'}
             value={mode === 'APPROVAL' ? String(filteredRecords.length) : `${summary.doneItems}/${summary.totalItems}`}
             subtitle={mode === 'APPROVAL' ? 'Hasil filter saat ini' : 'Item selesai / total item'}
+            iconName={mode === 'APPROVAL' ? 'check-square' : 'check-circle'}
+            accentColor={mode === 'APPROVAL' ? '#0f766e' : '#16a34a'}
           />
         </View>
       </View>

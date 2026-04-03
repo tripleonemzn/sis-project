@@ -5,6 +5,9 @@ import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } f
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
+import { MobileMenuTabBar } from '../../components/MobileMenuTabBar';
+import { MobileSelectField } from '../../components/MobileSelectField';
+import { MobileSummaryCard as SummaryCard } from '../../components/MobileSummaryCard';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { getApiErrorMessage } from '../../lib/api/errorMessage';
@@ -65,6 +68,29 @@ const DEFAULT_VACANCY_FORM: VacancyFormState = {
   deadline: '',
   isOpen: true,
 };
+
+const PKL_STATUS_OPTIONS: Array<{ value: InternshipStatusFilter; label: string }> = [
+  { value: 'ALL', label: 'Semua Status' },
+  { value: 'PENDING', label: 'Menunggu' },
+  { value: 'ONGOING', label: 'Berjalan' },
+  { value: 'DONE', label: 'Selesai' },
+];
+
+const PARTNER_TAB_ITEMS = [
+  { key: 'PARTNERS', label: 'Mitra Industri', iconName: 'users' as const },
+  { key: 'VACANCIES', label: 'Lowongan BKK', iconName: 'briefcase' as const },
+];
+
+const COOPERATION_STATUS_OPTIONS: Array<{ value: PartnerStatus; label: string }> = [
+  { value: 'AKTIF', label: 'Aktif' },
+  { value: 'NON_AKTIF', label: 'Non Aktif' },
+  { value: 'PROSES', label: 'Proses' },
+];
+
+const VACANCY_STATUS_OPTIONS = [
+  { value: 'OPEN', label: 'Dibuka' },
+  { value: 'CLOSED', label: 'Ditutup' },
+] as const;
 
 function formatDateTime(value?: string | null) {
   if (!value) return '-';
@@ -131,53 +157,6 @@ function modeIcon(mode: ModuleMode): keyof typeof Feather.glyphMap {
   if (mode === 'CLASSES') return 'book-open';
   if (mode === 'PKL') return 'briefcase';
   return 'users';
-}
-
-function FilterChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
 }
 
 function EmptyStateCard({ message }: { message: string }) {
@@ -676,6 +655,17 @@ export function TeacherHeadProgramModuleScreen({
     return rows.filter((item) => String(item.cooperationStatus || '').toUpperCase() === 'AKTIF');
   }, [partnersQuery.data]);
 
+  const activePartnerSelectOptions = useMemo(
+    () => [
+      { value: '', label: 'Perusahaan Umum' },
+      ...activePartnerOptions.map((partner) => ({
+        value: String(partner.id),
+        label: partner.name,
+      })),
+    ],
+    [activePartnerOptions],
+  );
+
   const editPartner = (item: IndustryPartnerRow) => {
     setEditingPartnerId(item.id);
     setPartnerForm({
@@ -842,15 +832,17 @@ export function TeacherHeadProgramModuleScreen({
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
+        <View style={{ flexBasis: '31%', flexGrow: 1 }}>
           <SummaryCard
             title={mode === 'PARTNERS' ? 'Mitra' : 'Kelas'}
             value={String(mode === 'PARTNERS' ? summary.totalPartners : summary.totalClasses)}
             subtitle={mode === 'PARTNERS' ? 'Total perusahaan' : 'Data kompetensi'}
+            iconName={mode === 'PARTNERS' ? 'users' : 'book-open'}
+            accentColor={mode === 'PARTNERS' ? '#0f766e' : '#2563eb'}
           />
         </View>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
+        <View style={{ flexBasis: '31%', flexGrow: 1 }}>
           <SummaryCard
             title={mode === 'PKL' ? 'PKL Berjalan' : mode === 'PARTNERS' ? 'Lowongan Aktif' : 'Total Siswa'}
             value={
@@ -863,9 +855,11 @@ export function TeacherHeadProgramModuleScreen({
             subtitle={
               mode === 'PKL' ? 'Status ongoing' : mode === 'PARTNERS' ? 'BKK masih buka' : 'Akumulasi siswa'
             }
+            iconName={mode === 'PKL' ? 'briefcase' : mode === 'PARTNERS' ? 'clipboard' : 'users'}
+            accentColor={mode === 'PKL' ? '#2563eb' : mode === 'PARTNERS' ? '#ea580c' : '#0f766e'}
           />
         </View>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
+        <View style={{ flexBasis: '31%', flexGrow: 1 }}>
           <SummaryCard
             title={mode === 'PKL' ? 'PKL Selesai' : mode === 'PARTNERS' ? 'Total Lowongan' : 'Jurusan Dikelola'}
             value={
@@ -876,6 +870,8 @@ export function TeacherHeadProgramModuleScreen({
                   : String(managedMajors.length)
             }
             subtitle={mode === 'PKL' ? `Dari ${summary.pklTotal} data` : mode === 'PARTNERS' ? 'Semua data BKK' : 'Sesuai akun'}
+            iconName={mode === 'PKL' ? 'check-circle' : mode === 'PARTNERS' ? 'archive' : 'layers'}
+            accentColor={mode === 'PKL' ? '#16a34a' : mode === 'PARTNERS' ? '#9333ea' : '#7c3aed'}
           />
         </View>
       </View>
@@ -971,13 +967,13 @@ export function TeacherHeadProgramModuleScreen({
             marginBottom: 10,
           }}
         >
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Filter Status PKL</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            <FilterChip active={statusFilter === 'ALL'} label="Semua" onPress={() => setStatusFilter('ALL')} />
-            <FilterChip active={statusFilter === 'PENDING'} label="Menunggu" onPress={() => setStatusFilter('PENDING')} />
-            <FilterChip active={statusFilter === 'ONGOING'} label="Berjalan" onPress={() => setStatusFilter('ONGOING')} />
-            <FilterChip active={statusFilter === 'DONE'} label="Selesai" onPress={() => setStatusFilter('DONE')} />
-          </View>
+          <MobileSelectField
+            label="Filter Status PKL"
+            value={statusFilter}
+            options={PKL_STATUS_OPTIONS}
+            onChange={(value) => setStatusFilter(value as InternshipStatusFilter)}
+            placeholder="Pilih status PKL"
+          />
         </View>
       ) : null}
 
@@ -993,10 +989,13 @@ export function TeacherHeadProgramModuleScreen({
           }}
         >
           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Tipe Data</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <FilterChip active={partnerTab === 'PARTNERS'} label="Mitra Industri" onPress={() => setPartnerTab('PARTNERS')} />
-            <FilterChip active={partnerTab === 'VACANCIES'} label="Informasi BKK" onPress={() => setPartnerTab('VACANCIES')} />
-          </View>
+          <MobileMenuTabBar
+            items={PARTNER_TAB_ITEMS}
+            activeKey={partnerTab}
+            onChange={(key) => setPartnerTab(key as PartnerTab)}
+            minTabWidth={112}
+            maxTabWidth={136}
+          />
         </View>
       ) : null}
 
@@ -1153,23 +1152,13 @@ export function TeacherHeadProgramModuleScreen({
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6, marginTop: 2 }}>
               Status Kerja Sama
             </Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
-              <FilterChip
-                active={partnerForm.cooperationStatus === 'AKTIF'}
-                label="Aktif"
-                onPress={() => setPartnerForm((prev) => ({ ...prev, cooperationStatus: 'AKTIF' }))}
-              />
-              <FilterChip
-                active={partnerForm.cooperationStatus === 'NON_AKTIF'}
-                label="Non Aktif"
-                onPress={() => setPartnerForm((prev) => ({ ...prev, cooperationStatus: 'NON_AKTIF' }))}
-              />
-              <FilterChip
-                active={partnerForm.cooperationStatus === 'PROSES'}
-                label="Proses"
-                onPress={() => setPartnerForm((prev) => ({ ...prev, cooperationStatus: 'PROSES' }))}
-              />
-            </View>
+            <MobileSelectField
+              label="Status Kerja Sama"
+              value={partnerForm.cooperationStatus}
+              options={COOPERATION_STATUS_OPTIONS}
+              onChange={(value) => setPartnerForm((prev) => ({ ...prev, cooperationStatus: value as PartnerStatus }))}
+              placeholder="Pilih status kerja sama"
+            />
 
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Pressable
@@ -1243,28 +1232,14 @@ export function TeacherHeadProgramModuleScreen({
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
               Mitra Industri (opsional)
             </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <FilterChip
-                  active={!vacancyForm.industryPartnerId}
-                  label="Perusahaan Umum"
-                  onPress={() => setVacancyForm((prev) => ({ ...prev, industryPartnerId: '' }))}
-                />
-                {activePartnerOptions.map((partner) => (
-                  <FilterChip
-                    key={partner.id}
-                    active={vacancyForm.industryPartnerId === String(partner.id)}
-                    label={partner.name}
-                    onPress={() =>
-                      setVacancyForm((prev) => ({
-                        ...prev,
-                        industryPartnerId: prev.industryPartnerId === String(partner.id) ? '' : String(partner.id),
-                      }))
-                    }
-                  />
-                ))}
-              </View>
-            </ScrollView>
+            <MobileSelectField
+              label="Mitra Industri"
+              value={vacancyForm.industryPartnerId}
+              options={activePartnerSelectOptions}
+              onChange={(value) => setVacancyForm((prev) => ({ ...prev, industryPartnerId: value }))}
+              placeholder="Pilih mitra industri"
+              helperText="Pilih Perusahaan Umum bila lowongan tidak terikat ke mitra aktif."
+            />
 
             {!vacancyForm.industryPartnerId ? (
               <TextInput
@@ -1352,18 +1327,13 @@ export function TeacherHeadProgramModuleScreen({
               />
             </View>
 
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
-              <FilterChip
-                active={vacancyForm.isOpen}
-                label="Status Dibuka"
-                onPress={() => setVacancyForm((prev) => ({ ...prev, isOpen: true }))}
-              />
-              <FilterChip
-                active={!vacancyForm.isOpen}
-                label="Status Ditutup"
-                onPress={() => setVacancyForm((prev) => ({ ...prev, isOpen: false }))}
-              />
-            </View>
+            <MobileSelectField
+              label="Status Lowongan"
+              value={vacancyForm.isOpen ? 'OPEN' : 'CLOSED'}
+              options={VACANCY_STATUS_OPTIONS.map((option) => ({ ...option }))}
+              onChange={(value) => setVacancyForm((prev) => ({ ...prev, isOpen: value === 'OPEN' }))}
+              placeholder="Pilih status lowongan"
+            />
 
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Pressable

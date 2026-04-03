@@ -6,6 +6,8 @@ import { Redirect, useRouter } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
+import { MobileSelectField } from '../../components/MobileSelectField';
+import { MobileSummaryCard as SummaryCard } from '../../components/MobileSummaryCard';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
@@ -226,82 +228,6 @@ function SectionCard({
   );
 }
 
-function FilterChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontSize: 12, fontWeight: '700' }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function SummaryCard({
-  title,
-  value,
-  helper,
-  tone,
-  icon,
-}: {
-  title: string;
-  value: string;
-  helper: string;
-  tone: { bg: string; border: string; iconBg: string; iconColor: string };
-  icon: keyof typeof Feather.glyphMap;
-}) {
-  return (
-    <View
-      style={{
-        flexBasis: '48%',
-        flexGrow: 1,
-        backgroundColor: tone.bg,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: tone.border,
-        padding: 14,
-      }}
-    >
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: '#64748b', fontSize: 12 }}>{title}</Text>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 24, marginTop: 6 }}>{value}</Text>
-        </View>
-        <View
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 12,
-            backgroundColor: tone.iconBg,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Feather name={icon} size={18} color={tone.iconColor} />
-        </View>
-      </View>
-      <Text style={{ color: '#64748b', fontSize: 11, marginTop: 8 }}>{helper}</Text>
-    </View>
-  );
-}
-
 function OutlineButton({
   label,
   icon,
@@ -408,6 +334,14 @@ export function StaffHeadTuExamCardsScreen() {
       ).sort((a, b) => a.localeCompare(b, 'id-ID', { sensitivity: 'base' })),
     [examRows],
   );
+  const classFilterOptions = useMemo(
+    () => [{ value: 'ALL', label: 'Semua Kelas' }, ...classOptions.map((item) => ({ value: item, label: item }))],
+    [classOptions],
+  );
+  const examTypeFilterOptions = useMemo(
+    () => [{ value: 'ALL', label: 'Semua Jenis Ujian' }, ...examTypeOptions.map((item) => ({ value: item, label: item }))],
+    [examTypeOptions],
+  );
 
   const filteredRows = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -485,23 +419,23 @@ export function StaffHeadTuExamCardsScreen() {
         <SummaryCard
           title="Total Siswa"
           value={String(examRows.length)}
-          helper="Data kartu ujian yang terbentuk"
-          tone={{ bg: '#eff6ff', border: '#bfdbfe', iconBg: '#dbeafe', iconColor: '#1d4ed8' }}
-          icon="users"
+          subtitle="Data kartu ujian yang terbentuk"
+          iconName="users"
+          accentColor="#1d4ed8"
         />
         <SummaryCard
           title="Kelas Aktif"
           value={String(classOptions.length)}
-          helper="Kelas yang memiliki peserta ujian"
-          tone={{ bg: '#ecfdf5', border: '#a7f3d0', iconBg: '#d1fae5', iconColor: '#047857' }}
-          icon="grid"
+          subtitle="Kelas yang memiliki peserta ujian"
+          iconName="grid"
+          accentColor="#047857"
         />
         <SummaryCard
           title="Jenis Ujian"
           value={String(examTypeOptions.length)}
-          helper="Program ujian pada data aktif"
-          tone={{ bg: '#fff7ed', border: '#fdba74', iconBg: '#ffedd5', iconColor: '#c2410c' }}
-          icon="clipboard"
+          subtitle="Program ujian pada data aktif"
+          iconName="clipboard"
+          accentColor="#c2410c"
         />
       </View>
 
@@ -523,21 +457,23 @@ export function StaffHeadTuExamCardsScreen() {
           }}
         />
 
-        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 12 }}>Filter kelas</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 6 }}>
-          <FilterChip active={classFilter === 'ALL'} label="Semua kelas" onPress={() => setClassFilter('ALL')} />
-          {classOptions.map((item) => (
-            <FilterChip key={item} active={classFilter === item} label={item} onPress={() => setClassFilter(item)} />
-          ))}
-        </ScrollView>
+        <View style={{ marginTop: 12 }}>
+          <MobileSelectField
+            label="Filter Kelas"
+            value={classFilter}
+            options={classFilterOptions}
+            onChange={setClassFilter}
+            placeholder="Pilih kelas"
+          />
+        </View>
 
-        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 4, marginTop: 8 }}>Filter jenis ujian</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 6 }}>
-          <FilterChip active={examTypeFilter === 'ALL'} label="Semua jenis" onPress={() => setExamTypeFilter('ALL')} />
-          {examTypeOptions.map((item) => (
-            <FilterChip key={item} active={examTypeFilter === item} label={item} onPress={() => setExamTypeFilter(item)} />
-          ))}
-        </ScrollView>
+        <MobileSelectField
+          label="Filter Jenis Ujian"
+          value={examTypeFilter}
+          options={examTypeFilterOptions}
+          onChange={setExamTypeFilter}
+          placeholder="Pilih jenis ujian"
+        />
 
         <View style={{ marginTop: 12 }}>
           <OutlineButton

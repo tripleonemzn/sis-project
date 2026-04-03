@@ -7,6 +7,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
+import { MobileSelectField } from '../../components/MobileSelectField';
+import { MobileSummaryCard as SummaryCard } from '../../components/MobileSummaryCard';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { ENV } from '../../config/env';
@@ -229,54 +231,6 @@ function buildLetterHtml(options: {
   </html>`;
 }
 
-function SummaryCard({
-  title,
-  value,
-  helper,
-  tone,
-  icon,
-}: {
-  title: string;
-  value: string;
-  helper: string;
-  tone: { bg: string; border: string; iconBg: string; iconColor: string };
-  icon: keyof typeof Feather.glyphMap;
-}) {
-  return (
-    <View
-      style={{
-        flexBasis: '48%',
-        flexGrow: 1,
-        backgroundColor: tone.bg,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: tone.border,
-        padding: 14,
-      }}
-    >
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: '#64748b', fontSize: 12 }}>{title}</Text>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 24, marginTop: 6 }}>{value}</Text>
-        </View>
-        <View
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 12,
-            backgroundColor: tone.iconBg,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Feather name={icon} size={18} color={tone.iconColor} />
-        </View>
-      </View>
-      <Text style={{ color: '#64748b', fontSize: 11, marginTop: 8 }}>{helper}</Text>
-    </View>
-  );
-}
-
 function SectionCard({
   title,
   helper,
@@ -301,34 +255,6 @@ function SectionCard({
       {helper ? <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>{helper}</Text> : null}
       <View style={{ marginTop: 10 }}>{children}</View>
     </View>
-  );
-}
-
-function FilterChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontSize: 12, fontWeight: '700' }}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -592,6 +518,22 @@ export function StaffHeadTuLettersScreen() {
   const officeLetters = lettersQuery.data?.letters || [];
   const officeSummary = summaryQuery.data;
   const principalName = principalsQuery.data?.[0]?.name || '-';
+  const letterTypeOptions = useMemo(
+    () => LETTER_TYPE_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+    [],
+  );
+  const archiveTypeOptions = useMemo(
+    () => LETTER_ARCHIVE_FILTERS.map((option) => ({ value: option.value, label: option.label })),
+    [],
+  );
+  const recipientSelectOptions = useMemo(
+    () =>
+      recipientOptions.map((item) => ({
+        value: String(item.id),
+        label: item.context ? `${item.name} • ${item.context}` : item.name,
+      })),
+    [recipientOptions],
+  );
 
   const updateCandidateForm = (
     updater: (prev: CandidateLetterFormState) => CandidateLetterFormState,
@@ -816,37 +758,34 @@ export function StaffHeadTuLettersScreen() {
         <SummaryCard
           title="Total Arsip Surat"
           value={String(officeSummary?.totalLetters || 0)}
-          helper="Semua surat tahun ajaran aktif"
-          tone={{ bg: '#f8fafc', border: '#e2e8f0', iconBg: '#e2e8f0', iconColor: '#475569' }}
-          icon="archive"
+          subtitle="Semua surat tahun ajaran aktif"
+          iconName="archive"
+          accentColor="#475569"
         />
         <SummaryCard
           title="Surat Bulan Ini"
           value={String(officeSummary?.monthlyLetters || 0)}
-          helper="Tercatat otomatis saat surat disimpan"
-          tone={{ bg: '#eff6ff', border: '#bfdbfe', iconBg: '#dbeafe', iconColor: '#1d4ed8' }}
-          icon="calendar"
+          subtitle="Tercatat otomatis saat surat disimpan"
+          iconName="calendar"
+          accentColor="#1d4ed8"
         />
         <SummaryCard
           title="Tipe Surat Aktif"
           value={String(officeSummary?.byType?.length || 0)}
-          helper="Jenis surat yang pernah diterbitkan"
-          tone={{ bg: '#ecfdf5', border: '#a7f3d0', iconBg: '#d1fae5', iconColor: '#047857' }}
-          icon="layers"
+          subtitle="Jenis surat yang pernah diterbitkan"
+          iconName="layers"
+          accentColor="#047857"
         />
       </View>
 
       <SectionCard title="Buat Surat Administrasi" helper={`Tahun ajaran aktif: ${activeYearQuery.data.name}`}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 6 }}>
-          {LETTER_TYPE_OPTIONS.map((option) => (
-            <FilterChip
-              key={option.value}
-              active={letterType === option.value}
-              label={option.label}
-              onPress={() => setLetterType(option.value)}
-            />
-          ))}
-        </ScrollView>
+        <MobileSelectField
+          label="Jenis Surat"
+          value={letterType}
+          options={letterTypeOptions}
+          onChange={(value) => setLetterType(value as OfficeLetterType)}
+          placeholder="Pilih jenis surat"
+        />
 
         <View
           style={{
@@ -859,16 +798,17 @@ export function StaffHeadTuLettersScreen() {
           }}
         >
           <Text style={{ fontWeight: '700', color: BRAND_COLORS.textDark }}>Penerima</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginTop: 10 }}>
-            {recipientOptions.map((item) => (
-              <FilterChip
-                key={item.id}
-                active={effectiveSelectedRecipientId === item.id}
-                label={`${item.name}${item.context ? ` • ${item.context}` : ''}`}
-                onPress={() => setSelectedRecipientId(item.id)}
-              />
-            ))}
-          </ScrollView>
+          <View style={{ marginTop: 10 }}>
+            <MobileSelectField
+              value={String(effectiveSelectedRecipientId || '')}
+              options={recipientSelectOptions}
+              onChange={(value) => setSelectedRecipientId(value ? Number(value) : null)}
+              placeholder="Pilih penerima surat"
+              helperText={
+                recipientOptions.length ? `${recipientOptions.length} penerima tersedia sesuai jenis surat.` : 'Belum ada penerima yang tersedia.'
+              }
+            />
+          </View>
           {selectedRecipient ? (
             <View style={{ marginTop: 10 }}>
               <Text style={{ color: '#64748b', fontSize: 12 }}>
@@ -941,23 +881,23 @@ export function StaffHeadTuLettersScreen() {
           <SummaryCard
             title="Antrean Surat"
             value={String(candidateList.length)}
-            helper="Calon siswa siap difinalkan"
-            tone={{ bg: '#eff6ff', border: '#bfdbfe', iconBg: '#dbeafe', iconColor: '#1d4ed8' }}
-            icon="users"
+            subtitle="Calon siswa siap difinalkan"
+            iconName="users"
+            accentColor="#1d4ed8"
           />
           <SummaryCard
             title="Sudah Final Draft"
             value={String(candidateList.filter((item) => item.decisionLetter?.isFinalized).length)}
-            helper="Draft sudah difinalkan"
-            tone={{ bg: '#ecfdf5', border: '#a7f3d0', iconBg: '#d1fae5', iconColor: '#047857' }}
-            icon="check-circle"
+            subtitle="Draft sudah difinalkan"
+            iconName="check-circle"
+            accentColor="#047857"
           />
           <SummaryCard
             title="Surat Resmi"
             value={String(candidateList.filter((item) => item.decisionLetter?.officialFileUrl).length)}
-            helper="PDF resmi aktif"
-            tone={{ bg: '#fff7ed', border: '#fdba74', iconBg: '#ffedd5', iconColor: '#c2410c' }}
-            icon="file"
+            subtitle="PDF resmi aktif"
+            iconName="file"
+            accentColor="#c2410c"
           />
         </View>
 
@@ -1167,16 +1107,13 @@ export function StaffHeadTuLettersScreen() {
           onChangeText={setArchiveSearch}
           placeholder="Cari nomor surat, penerima, atau keperluan"
         />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 6 }}>
-          {LETTER_ARCHIVE_FILTERS.map((option) => (
-            <FilterChip
-              key={option.value}
-              active={archiveType === option.value}
-              label={option.label}
-              onPress={() => setArchiveType(option.value)}
-            />
-          ))}
-        </ScrollView>
+        <MobileSelectField
+          label="Filter Arsip"
+          value={archiveType}
+          options={archiveTypeOptions}
+          onChange={(value) => setArchiveType(value as 'ALL' | OfficeLetterType)}
+          placeholder="Pilih arsip surat"
+        />
 
         <View style={{ marginTop: 12, gap: 10 }}>
           {lettersQuery.isLoading ? (
