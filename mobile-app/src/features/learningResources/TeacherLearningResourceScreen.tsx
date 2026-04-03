@@ -5,8 +5,10 @@ import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } f
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
-import { MobileMenuTab } from '../../components/MobileMenuTab';
+import { MobileDetailModal } from '../../components/MobileDetailModal';
+import { MobileMenuTabBar } from '../../components/MobileMenuTabBar';
 import { MobileSelectField } from '../../components/MobileSelectField';
+import { MobileSummaryCard } from '../../components/MobileSummaryCard';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
@@ -27,6 +29,7 @@ type SectionConfig = {
   subtitle: string;
   icon: keyof typeof Feather.glyphMap;
 };
+type LearningSummaryId = 'assignments' | 'status' | 'updated';
 
 const SECTION_CONFIG: Record<LearningResourceSection, SectionConfig> = {
   CP: {
@@ -212,37 +215,6 @@ function toPayloadRows(rows: CpAnalysisRowDraft[]): CpTpAnalysisItem[] {
   }));
 }
 
-const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
-  <MobileMenuTab active={active} label={label} onPress={onPress} minWidth={98} />
-);
-
-function SummaryCard({
-  title,
-  value,
-  subtitle,
-}: {
-  title: string;
-  value: string;
-  subtitle: string;
-}) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 20, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
-
 export function TeacherLearningResourceScreen({ section }: { section: LearningResourceSection }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -251,6 +223,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const config = SECTION_CONFIG[section];
   const isCpSection = section === 'CP';
+  const [activeSummaryId, setActiveSummaryId] = useState<LearningSummaryId | null>(null);
 
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
   const [cpRows, setCpRows] = useState<CpAnalysisRowDraft[]>([]);
@@ -323,7 +296,6 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
     () => navigationItems.find((item) => item.code === section)?.label || config.title,
     [config.title, navigationItems, section],
   );
-
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!relevantAssignments.length) {
@@ -401,6 +373,52 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
     }),
     [cpRows.length, cpStatusQuery.data?.principalName, cpStatusQuery.data?.updatedAt, lastSavedAt, principalName],
   );
+  const summaryCards = useMemo<
+    Array<{
+      id: LearningSummaryId;
+      title: string;
+      value: string;
+      subtitle: string;
+      iconName: React.ComponentProps<typeof Feather>['name'];
+      accentColor: string;
+    }>
+  >(
+    () => [
+      {
+        id: 'assignments',
+        title: 'Assignment Aktif',
+        value: String(relevantAssignments.length),
+        subtitle: activeYearQuery.data?.name || 'Tahun ajaran',
+        iconName: 'layers',
+        accentColor: '#2563eb',
+      },
+      {
+        id: 'status',
+        title: isCpSection ? 'Status CP' : 'Status Modul',
+        value: isCpSection ? (cpSummary.hasData ? 'Tersimpan' : 'Belum Ada') : 'Dinamis',
+        subtitle: isCpSection ? `Baris analisis ${cpSummary.rows}` : 'Mengikuti program perangkat ajar aktif',
+        iconName: isCpSection ? 'check-square' : 'layout',
+        accentColor: isCpSection ? '#0f766e' : '#7c3aed',
+      },
+      {
+        id: 'updated',
+        title: 'Update Terakhir',
+        value: isCpSection ? (cpSummary.updatedAt ? 'Ada Data' : '-') : 'Aktif',
+        subtitle: isCpSection ? formatDateTime(cpSummary.updatedAt) : 'Modul dinamis siap dipakai',
+        iconName: 'clock',
+        accentColor: '#f59e0b',
+      },
+    ],
+    [
+      activeYearQuery.data?.name,
+      cpSummary.hasData,
+      cpSummary.rows,
+      cpSummary.updatedAt,
+      isCpSection,
+      relevantAssignments.length,
+    ],
+  );
+  const activeSummaryMeta = summaryCards.find((item) => item.id === activeSummaryId) || null;
 
   type SaveCpMutationInput = {
     rows: CpAnalysisRowDraft[];
@@ -700,43 +718,33 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
         }}
       >
         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Navigasi Perangkat Ajar</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {navigationItems.map((item) => (
-            <SectionChip
-              key={item.code}
-              active={item.code === section}
-              label={item.label}
-              onPress={() => {
-                if (item.code === section) return;
-                router.replace(item.route as never);
-              }}
-            />
-          ))}
-        </View>
+        <MobileMenuTabBar
+          items={navigationItems.map((item) => ({ key: item.code, label: item.label }))}
+          activeKey={section}
+          onChange={(key) => {
+            const nextItem = navigationItems.find((item) => item.code === key);
+            if (!nextItem || nextItem.code === section) return;
+            router.replace(nextItem.route as never);
+          }}
+          contentContainerStyle={{ paddingRight: 8 }}
+          minTabWidth={72}
+          maxTabWidth={104}
+        />
       </View>
 
-      <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard
-            title="Assignment Aktif"
-            value={String(relevantAssignments.length)}
-            subtitle={activeYearQuery.data?.name || 'Tahun ajaran'}
-          />
-        </View>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard
-            title={isCpSection ? 'Status CP' : 'Status Modul'}
-            value={isCpSection ? (cpSummary.hasData ? 'Tersimpan' : 'Belum Ada') : 'Dinamis'}
-            subtitle={isCpSection ? `Baris analisis ${cpSummary.rows}` : 'Kelola dokumen via modul program terkait'}
-          />
-        </View>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <SummaryCard
-            title="Update Terakhir"
-            value={isCpSection ? (cpSummary.updatedAt ? 'Ada Data' : '-') : 'Aktif'}
-            subtitle={isCpSection ? formatDateTime(cpSummary.updatedAt) : 'Silakan lanjutkan melalui chip navigasi modul'}
-          />
-        </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 10 }}>
+        {summaryCards.map((item) => (
+          <View key={item.id} style={{ width: '48.5%', marginBottom: 8 }}>
+            <MobileSummaryCard
+              title={item.title}
+              value={item.value}
+              subtitle={item.subtitle}
+              iconName={item.iconName}
+              accentColor={item.accentColor}
+              onPress={() => setActiveSummaryId(item.id)}
+            />
+          </View>
+        ))}
       </View>
 
       {assignmentsQuery.isLoading ? <QueryStateView type="loading" message="Memuat assignment guru..." /> : null}
@@ -1183,6 +1191,64 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
           </Text>
         </View>
       )}
+      <MobileDetailModal
+        visible={Boolean(activeSummaryId && activeSummaryMeta)}
+        title={activeSummaryMeta?.title || 'Ringkasan Perangkat Ajar'}
+        subtitle={activeSummaryMeta?.subtitle}
+        iconName={activeSummaryMeta?.iconName}
+        accentColor={activeSummaryMeta?.accentColor}
+        onClose={() => setActiveSummaryId(null)}
+      >
+        {activeSummaryId === 'assignments' ? (
+          <View style={{ gap: 10 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Assignment aktif tahun berjalan</Text>
+            {assignmentOptions.length > 0 ? (
+              assignmentOptions.map((option) => (
+                <View
+                  key={`learning-assignment-${option.value}`}
+                  style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}
+                >
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '600' }}>{option.label}</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada assignment aktif untuk tahun ajaran ini.</Text>
+            )}
+          </View>
+        ) : null}
+
+        {activeSummaryId === 'status' ? (
+          <View style={{ gap: 10 }}>
+            <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                {isCpSection ? 'Status dokumen CP' : `Status ${currentProgramLabel}`}
+              </Text>
+              <Text style={{ color: BRAND_COLORS.textDark, marginTop: 6 }}>
+                {isCpSection
+                  ? cpSummary.hasData
+                    ? `Dokumen sudah tersimpan dengan ${cpSummary.rows} baris analisis.`
+                    : 'Dokumen CP belum diisi untuk assignment yang dipilih.'
+                  : 'Modul ini sudah mengikuti konfigurasi perangkat ajar dinamis seperti di web.'}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {activeSummaryId === 'updated' ? (
+          <View style={{ gap: 10 }}>
+            <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Catatan update</Text>
+              <Text style={{ color: BRAND_COLORS.textDark, marginTop: 6 }}>
+                {isCpSection
+                  ? cpSummary.updatedAt
+                    ? formatDateTime(cpSummary.updatedAt)
+                    : 'Belum ada update tersimpan.'
+                  : 'Modul dinamis aktif dan mengikuti konfigurasi perangkat ajar sekolah.'}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+      </MobileDetailModal>
     </ScrollView>
   );
 }

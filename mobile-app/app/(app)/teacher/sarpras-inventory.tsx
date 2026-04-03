@@ -13,8 +13,10 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
-import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
-import { MobileTabChip } from '../../../src/components/MobileTabChip';
+import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -23,7 +25,6 @@ import {
   SarprasInventoryItem,
   SarprasLibraryBookLoan,
   SarprasLibraryBorrowerStatus,
-  SarprasLibraryClassOption,
   SarprasLibraryLoanDisplayStatus,
   SarprasLibraryLoanSettings,
   SarprasRoom,
@@ -41,6 +42,29 @@ import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 type SarprasSection = 'RINGKASAN' | 'RUANGAN' | 'INVENTARIS' | 'PEMINJAMAN';
 type InventoryScope = 'ALL' | 'LAB' | 'LIBRARY';
 type InventoryAttributeMap = Record<string, string | number>;
+type SarprasSummaryId = 'categories' | 'rooms' | 'items' | 'units' | 'loans' | 'returns';
+
+const SARPRAS_SECTION_ITEMS: Array<{
+  key: SarprasSection;
+  label: string;
+  iconName: React.ComponentProps<typeof Feather>['name'];
+}> = [
+  { key: 'RINGKASAN', label: 'Ringkasan', iconName: 'grid' },
+  { key: 'RUANGAN', label: 'Ruangan', iconName: 'home' },
+  { key: 'INVENTARIS', label: 'Inventaris', iconName: 'package' },
+  { key: 'PEMINJAMAN', label: 'Peminjaman', iconName: 'book-open' },
+];
+
+const ROOM_CONDITION_OPTIONS = [
+  { value: 'BAIK', label: 'Baik' },
+  { value: 'RUSAK_RINGAN', label: 'Rusak Ringan' },
+  { value: 'RUSAK_BERAT', label: 'Rusak Berat' },
+] as const;
+
+const BORROWER_STATUS_OPTIONS = [
+  { value: 'STUDENT', label: 'Siswa' },
+  { value: 'TEACHER', label: 'Guru' },
+] as const;
 
 function parseBooleanParam(value?: string | string[] | null) {
   const normalized = String(Array.isArray(value) ? value[0] : value || '')
@@ -222,29 +246,6 @@ function normalizeItemAttributes(item?: SarprasInventoryItem | null): InventoryA
     }
   }
   return next;
-}
-
-const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
-  <MobileMenuTab active={active} label={label} onPress={onPress} minWidth={96} />
-);
-
-function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 22, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
 }
 
 function ConditionBadge({ condition }: { condition: string | null | undefined }) {
@@ -558,6 +559,7 @@ export default function TeacherSarprasInventoryScreen() {
           : 'Kelola data ruang dan inventaris sarana prasarana sekolah.');
 
   const [section, setSection] = useState<SarprasSection>('RINGKASAN');
+  const [activeSummaryId, setActiveSummaryId] = useState<SarprasSummaryId | null>(null);
   const [search, setSearch] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
@@ -874,6 +876,122 @@ export default function TeacherSarprasInventoryScreen() {
       student,
     };
   }, [libraryLoans]);
+
+  const sectionItems = useMemo(
+    () =>
+      SARPRAS_SECTION_ITEMS.filter((item) => {
+        if (inventoryScope !== 'LIBRARY' && item.key === 'PEMINJAMAN') return false;
+        if (inventoryScope === 'LIBRARY' && item.key === 'INVENTARIS') {
+          return true;
+        }
+        return true;
+      }).map((item) => ({
+        ...item,
+        label:
+          item.key === 'INVENTARIS' && inventoryScope === 'LIBRARY'
+            ? 'Inventaris'
+            : item.label,
+      })),
+    [inventoryScope],
+  );
+  const categoryOptions = useMemo(
+    () =>
+      scopedCategories.map((category) => ({
+        value: String(category.id),
+        label: `${category.name} • ${formatNumber(Number(category._count?.rooms || 0))} ruang`,
+      })),
+    [scopedCategories],
+  );
+  const loanClassOptions = useMemo(
+    () =>
+      libraryLoanClassOptions.map((classRow) => ({
+        value: String(classRow.id),
+        label: classRow.name,
+      })),
+    [libraryLoanClassOptions],
+  );
+  const summaryCards = useMemo<
+    Array<{
+      id: SarprasSummaryId;
+      title: string;
+      value: string;
+      subtitle: string;
+      iconName: React.ComponentProps<typeof Feather>['name'];
+      accentColor: string;
+    }>
+  >(
+    () => {
+      const base = [
+        {
+          id: 'categories' as SarprasSummaryId,
+          title: 'Kategori',
+          value: formatNumber(scopedCategories.length),
+          subtitle: 'Kategori ruang aktif',
+          iconName: 'layers' as const,
+          accentColor: '#8b5cf6',
+        },
+        {
+          id: 'rooms' as SarprasSummaryId,
+          title: 'Ruangan',
+          value: formatNumber(rooms.length),
+          subtitle: selectedCategory?.name || 'Kategori terpilih',
+          iconName: 'home' as const,
+          accentColor: '#16a34a',
+        },
+        {
+          id: 'items' as SarprasSummaryId,
+          title: 'Jenis Item',
+          value: formatNumber(inventorySummary.itemCount),
+          subtitle: selectedRoom?.name || 'Pilih ruangan',
+          iconName: 'package' as const,
+          accentColor: '#f97316',
+        },
+        {
+          id: 'units' as SarprasSummaryId,
+          title: 'Total Unit',
+          value: formatNumber(inventorySummary.totalUnits),
+          subtitle: 'Akumulasi unit inventaris',
+          iconName: 'archive' as const,
+          accentColor: '#2563eb',
+        },
+      ];
+      if (inventoryScope !== 'LIBRARY') return base;
+      return [
+        ...base,
+        {
+          id: 'loans' as SarprasSummaryId,
+          title: 'Peminjaman',
+          value: formatNumber(loanSummary.total),
+          subtitle: `${formatNumber(loanSummary.student)} siswa • ${formatNumber(loanSummary.teacher)} guru`,
+          iconName: 'book-open' as const,
+          accentColor: '#7c3aed',
+        },
+        {
+          id: 'returns' as SarprasSummaryId,
+          title: 'Pengembalian',
+          value: formatNumber(loanSummary.notReturned),
+          subtitle: `${formatNumber(loanSummary.returned)} sudah kembali`,
+          iconName: 'rotate-ccw' as const,
+          accentColor: '#0f766e',
+        },
+      ];
+    },
+    [
+      inventoryScope,
+      inventorySummary.itemCount,
+      inventorySummary.totalUnits,
+      loanSummary.notReturned,
+      loanSummary.returned,
+      loanSummary.student,
+      loanSummary.teacher,
+      loanSummary.total,
+      rooms.length,
+      scopedCategories.length,
+      selectedCategory?.name,
+      selectedRoom?.name,
+    ],
+  );
+  const activeSummaryMeta = summaryCards.find((item) => item.id === activeSummaryId) || null;
 
   const resetCategoryEditor = () => {
     setEditingCategoryId(null);
@@ -1471,22 +1589,15 @@ export default function TeacherSarprasInventoryScreen() {
       <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 6, color: BRAND_COLORS.textDark }}>{pageTitle}</Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{pageSubtitle}</Text>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        <SectionChip active={section === 'RINGKASAN'} label="Ringkasan" onPress={() => setSection('RINGKASAN')} />
-        <SectionChip active={section === 'RUANGAN'} label="Ruangan" onPress={() => setSection('RUANGAN')} />
-        <SectionChip
-          active={section === 'INVENTARIS'}
-          label={inventoryScope === 'LIBRARY' ? 'Inventaris Perpustakaan' : 'Inventaris'}
-          onPress={() => setSection('INVENTARIS')}
-        />
-        {inventoryScope === 'LIBRARY' ? (
-          <SectionChip
-            active={section === 'PEMINJAMAN'}
-            label="Daftar Peminjaman Buku"
-            onPress={() => setSection('PEMINJAMAN')}
-          />
-        ) : null}
-      </View>
+      <MobileMenuTabBar
+        items={sectionItems}
+        activeKey={section}
+        onChange={(key) => setSection(key as SarprasSection)}
+        style={{ marginBottom: 12 }}
+        contentContainerStyle={{ paddingRight: 8 }}
+        minTabWidth={72}
+        maxTabWidth={104}
+      />
 
       {section !== 'PEMINJAMAN' ? (
         <>
@@ -1512,40 +1623,22 @@ export default function TeacherSarprasInventoryScreen() {
                 }}
               >
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Kategori Ruang</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {scopedCategories.map((category) => {
-                      const selected = selectedCategoryId === category.id;
-                      return (
-                        <Pressable
-                          key={category.id}
-                          onPress={() => setSelectedCategoryId(category.id)}
-                          style={{
-                            borderWidth: 1,
-                            borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',
-                            backgroundColor: selected ? '#e9f1ff' : '#fff',
-                            borderRadius: 999,
-                            paddingHorizontal: 12,
-                            paddingVertical: 8,
-                          }}
-                        >
-                          <Text style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}>
-                            {category.name}
-                          </Text>
-                          <Text style={{ color: '#64748b', fontSize: 11 }}>
-                            {formatNumber(Number(category._count?.rooms || 0))} ruang • Template{' '}
-                            {getInventoryTemplateProfile(
-                              resolveInventoryTemplateKey({
-                                templateKey: category.inventoryTemplateKey,
-                                categoryName: category.name,
-                              }),
-                            ).label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </ScrollView>
+                <MobileSelectField
+                  value={selectedCategoryId ? String(selectedCategoryId) : ''}
+                  options={categoryOptions}
+                  onChange={(next) => setSelectedCategoryId(next ? Number(next) : null)}
+                  placeholder="Pilih kategori ruang"
+                  helperText={
+                    selectedCategory
+                      ? `Template ${getInventoryTemplateProfile(
+                          resolveInventoryTemplateKey({
+                            templateKey: selectedCategory.inventoryTemplateKey,
+                            categoryName: selectedCategory.name,
+                          }),
+                        ).label}`
+                      : undefined
+                  }
+                />
 
                 {canManageStructure && selectedCategory ? (
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
@@ -1678,19 +1771,16 @@ export default function TeacherSarprasInventoryScreen() {
               placeholderTextColor="#94a3b8"
               multiline
             />
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Template Inventaris</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                {INVENTORY_TEMPLATE_OPTIONS.map((option) => (
-                  <SectionChip
-                    key={`template-${option.key}`}
-                    active={categoryFormTemplateKey === option.key}
-                    label={option.label}
-                    onPress={() => setCategoryFormTemplateKey(option.key)}
-                  />
-                ))}
-              </View>
-            </ScrollView>
+            <MobileSelectField
+              label="Template Inventaris"
+              value={categoryFormTemplateKey}
+              options={INVENTORY_TEMPLATE_OPTIONS.map((option) => ({
+                value: option.key,
+                label: option.label,
+              }))}
+              onChange={(next) => setCategoryFormTemplateKey((next || 'STANDARD') as InventoryTemplateKey)}
+              placeholder="Pilih template inventaris"
+            />
             <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
               {
                 INVENTORY_TEMPLATE_OPTIONS.find((option) => option.key === categoryFormTemplateKey)?.hint
@@ -1793,20 +1883,13 @@ export default function TeacherSarprasInventoryScreen() {
                 placeholderTextColor="#94a3b8"
               />
             </View>
-            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Kondisi Ruang</Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-              <SectionChip active={roomFormCondition === 'BAIK'} label="Baik" onPress={() => setRoomFormCondition('BAIK')} />
-              <SectionChip
-                active={roomFormCondition === 'RUSAK_RINGAN'}
-                label="Rusak Ringan"
-                onPress={() => setRoomFormCondition('RUSAK_RINGAN')}
-              />
-              <SectionChip
-                active={roomFormCondition === 'RUSAK_BERAT'}
-                label="Rusak Berat"
-                onPress={() => setRoomFormCondition('RUSAK_BERAT')}
-              />
-            </View>
+            <MobileSelectField
+              label="Kondisi Ruang"
+              value={roomFormCondition}
+              options={ROOM_CONDITION_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+              onChange={(next) => setRoomFormCondition((next || 'BAIK') as 'BAIK' | 'RUSAK_RINGAN' | 'RUSAK_BERAT')}
+              placeholder="Pilih kondisi ruang"
+            />
             <TextInput
               value={roomFormDescription}
               onChangeText={setRoomFormDescription}
@@ -2325,22 +2408,22 @@ export default function TeacherSarprasInventoryScreen() {
                 }}
                 placeholderTextColor="#94a3b8"
               />
-              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Status Peminjam</Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <SectionChip active={loanBorrowerStatus === 'STUDENT'} label="Siswa" onPress={() => setLoanBorrowerStatus('STUDENT')} />
-                <SectionChip
-                  active={loanBorrowerStatus === 'TEACHER'}
-                  label="Guru"
-                  onPress={() => {
-                    setLoanBorrowerStatus('TEACHER');
+              <MobileSelectField
+                label="Status Peminjam"
+                value={loanBorrowerStatus}
+                options={BORROWER_STATUS_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+                onChange={(next) => {
+                  const normalized = (next || 'STUDENT') as SarprasLibraryBorrowerStatus;
+                  setLoanBorrowerStatus(normalized);
+                  if (normalized === 'TEACHER') {
                     setLoanClassId(null);
-                  }}
-                />
-              </View>
+                  }
+                }}
+                placeholder="Pilih status peminjam"
+              />
 
               {loanBorrowerStatus === 'STUDENT' ? (
                 <>
-                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Pilih Kelas</Text>
                   {libraryLoanClassesQuery.isLoading ? (
                     <QueryStateView type="loading" message="Memuat daftar kelas..." />
                   ) : libraryLoanClassesQuery.isError ? (
@@ -2350,18 +2433,13 @@ export default function TeacherSarprasInventoryScreen() {
                       onRetry={() => libraryLoanClassesQuery.refetch()}
                     />
                   ) : (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        {libraryLoanClassOptions.map((classRow: SarprasLibraryClassOption) => (
-                          <SectionChip
-                            key={`loan-class-${classRow.id}`}
-                            active={loanClassId === classRow.id}
-                            label={classRow.name}
-                            onPress={() => setLoanClassId(classRow.id)}
-                          />
-                        ))}
-                      </View>
-                    </ScrollView>
+                    <MobileSelectField
+                      label="Pilih Kelas"
+                      value={loanClassId ? String(loanClassId) : ''}
+                      options={loanClassOptions}
+                      onChange={(next) => setLoanClassId(next ? Number(next) : null)}
+                      placeholder="Pilih kelas peminjam"
+                    />
                   )}
                 </>
               ) : null}
@@ -2464,45 +2542,20 @@ export default function TeacherSarprasInventoryScreen() {
 
       {section === 'RINGKASAN' ? (
         <>
-          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
-            <SummaryCard
-              title="Kategori Aktif"
-              value={formatNumber(scopedCategories.length)}
-              subtitle="Total kategori ruang"
-            />
-            <SummaryCard
-              title="Ruang pada Kategori"
-              value={formatNumber(rooms.length)}
-              subtitle={selectedCategory?.name || '-'}
-            />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 12 }}>
+            {summaryCards.map((item) => (
+              <View key={item.id} style={{ width: '48.5%', marginBottom: 8 }}>
+                <MobileSummaryCard
+                  title={item.title}
+                  value={item.value}
+                  subtitle={item.subtitle}
+                  iconName={item.iconName}
+                  accentColor={item.accentColor}
+                  onPress={() => setActiveSummaryId(item.id)}
+                />
+              </View>
+            ))}
           </View>
-          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-            <SummaryCard
-              title="Jenis Item"
-              value={formatNumber(inventorySummary.itemCount)}
-              subtitle={selectedRoom?.name || 'Pilih ruangan'}
-            />
-            <SummaryCard
-              title="Total Unit"
-              value={formatNumber(inventorySummary.totalUnits)}
-              subtitle="Jumlah keseluruhan unit"
-            />
-          </View>
-
-          {inventoryScope === 'LIBRARY' ? (
-            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-              <SummaryCard
-                title="Total Peminjaman"
-                value={formatNumber(loanSummary.total)}
-                subtitle={`Siswa: ${formatNumber(loanSummary.student)} • Guru: ${formatNumber(loanSummary.teacher)}`}
-              />
-              <SummaryCard
-                title="Status Pengembalian"
-                value={formatNumber(loanSummary.notReturned)}
-                subtitle={`Belum • Sudah: ${formatNumber(loanSummary.returned)}`}
-              />
-            </View>
-          ) : null}
 
           <View
             style={{
@@ -2848,7 +2901,167 @@ export default function TeacherSarprasInventoryScreen() {
           ) : null}
         </>
       ) : null}
+      <MobileDetailModal
+        visible={Boolean(activeSummaryId && activeSummaryMeta)}
+        title={activeSummaryMeta?.title || 'Ringkasan Sarpras'}
+        subtitle={activeSummaryMeta?.subtitle}
+        iconName={activeSummaryMeta?.iconName}
+        accentColor={activeSummaryMeta?.accentColor}
+        onClose={() => setActiveSummaryId(null)}
+      >
+        {activeSummaryId === 'categories' ? (
+          <View style={{ gap: 10 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Kategori ruang aktif</Text>
+            {scopedCategories.length > 0 ? (
+              scopedCategories.map((category) => (
+                <View
+                  key={`summary-category-${category.id}`}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#dbe7fb',
+                    borderRadius: 12,
+                    backgroundColor: '#f8fbff',
+                    padding: 12,
+                  }}
+                >
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{category.name}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3 }}>
+                    {formatNumber(Number(category._count?.rooms || 0))} ruang • Template{' '}
+                    {getInventoryTemplateProfile(
+                      resolveInventoryTemplateKey({
+                        templateKey: category.inventoryTemplateKey,
+                        categoryName: category.name,
+                      }),
+                    ).label}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada kategori ruang untuk konteks ini.</Text>
+            )}
+          </View>
+        ) : null}
 
+        {activeSummaryId === 'rooms' ? (
+          <View style={{ gap: 10 }}>
+            {[
+              { label: 'Baik', value: roomConditionSummary.good, color: '#166534', bg: '#dcfce7' },
+              { label: 'Rusak Ringan', value: roomConditionSummary.minor, color: '#92400e', bg: '#fef3c7' },
+              { label: 'Rusak Berat', value: roomConditionSummary.major, color: '#991b1b', bg: '#fee2e2' },
+              { label: 'Belum Diisi', value: roomConditionSummary.empty, color: '#334155', bg: '#e2e8f0' },
+            ].map((item) => (
+              <View
+                key={`summary-room-${item.label}`}
+                style={{
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  backgroundColor: item.bg,
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: item.color, fontWeight: '700' }}>{item.label}</Text>
+                <Text style={{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+                  {formatNumber(item.value)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {activeSummaryId === 'items' ? (
+          <View style={{ gap: 10 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+              Ringkasan kondisi item pada {selectedRoom?.name || 'ruangan terpilih'}
+            </Text>
+            {[
+              { label: 'Baik', value: inventorySummary.good, color: '#166534' },
+              { label: 'Rusak Ringan', value: inventorySummary.minor, color: '#92400e' },
+              { label: 'Rusak Berat', value: inventorySummary.major, color: '#991b1b' },
+            ].map((item) => (
+              <View
+                key={`summary-item-${item.label}`}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 12,
+                  backgroundColor: '#fff',
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.label}</Text>
+                <Text style={{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+                  {formatNumber(item.value)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {activeSummaryId === 'units' ? (
+          <View style={{ gap: 10 }}>
+            <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Total unit tersimpan</Text>
+              <Text style={{ color: BRAND_COLORS.blue, fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+                {formatNumber(inventorySummary.totalUnits)}
+              </Text>
+              <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
+                Tersebar di {formatNumber(inventorySummary.itemCount)} jenis item inventaris.
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {activeSummaryId === 'loans' ? (
+          <View style={{ gap: 10 }}>
+            {[
+              { label: 'Peminjaman Siswa', value: loanSummary.student, color: '#2563eb' },
+              { label: 'Peminjaman Guru', value: loanSummary.teacher, color: '#7c3aed' },
+            ].map((item) => (
+              <View
+                key={`summary-loan-${item.label}`}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 12,
+                  backgroundColor: '#fff',
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.label}</Text>
+                <Text style={{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+                  {formatNumber(item.value)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {activeSummaryId === 'returns' ? (
+          <View style={{ gap: 10 }}>
+            {[
+              { label: 'Belum Kembali', value: loanSummary.notReturned, color: '#b45309' },
+              { label: 'Sudah Kembali', value: loanSummary.returned, color: '#15803d' },
+            ].map((item) => (
+              <View
+                key={`summary-return-${item.label}`}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 12,
+                  backgroundColor: '#fff',
+                  padding: 12,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.label}</Text>
+                <Text style={{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+                  {formatNumber(item.value)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </MobileDetailModal>
     </ScrollView>
   );
 }

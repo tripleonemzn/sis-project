@@ -13,6 +13,9 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -27,6 +30,7 @@ import { getApiErrorMessage } from '../../../src/lib/api/errorMessage';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
 type StatusFilter = 'ALL' | SarprasBudgetStatus;
+type SarprasBudgetSummaryId = 'filtered' | 'amount' | 'pending' | 'lpj';
 
 const STATUS_LABEL: Record<StatusFilter, string> = {
   ALL: 'Semua',
@@ -107,53 +111,6 @@ function lpjProgressLabel(budget: SarprasBudgetRequest) {
   return 'LPJ tersedia untuk audit Sarpras';
 }
 
-function StatusChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 22, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
-
 export default function TeacherSarprasBudgetsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -164,6 +121,7 @@ export default function TeacherSarprasBudgetsScreen() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [search, setSearch] = useState('');
   const [dutyFilter, setDutyFilter] = useState<string>('ALL');
+  const [activeSummaryId, setActiveSummaryId] = useState<SarprasBudgetSummaryId | null>(null);
   const [auditBudgetId, setAuditBudgetId] = useState<number | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
   const [auditReportDrafts, setAuditReportDrafts] = useState<Record<number, string>>({});
@@ -258,6 +216,10 @@ export default function TeacherSarprasBudgetsScreen() {
     }
     return Array.from(map.entries()).map(([key, label]) => ({ key, label }));
   }, [budgets]);
+  const statusOptions = useMemo(
+    () => (Object.keys(STATUS_LABEL) as StatusFilter[]).map((status) => ({ value: status, label: STATUS_LABEL[status] })),
+    [],
+  );
 
   const filteredBudgets = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -279,7 +241,62 @@ export default function TeacherSarprasBudgetsScreen() {
   const totalAmount = filteredBudgets.reduce((sum, budget) => sum + Number(budget.totalAmount || 0), 0);
   const pendingCount = budgets.filter((budget) => budget.status === 'PENDING').length;
   const lpjReadyCount = budgets.filter((budget) => budget.status === 'APPROVED' && !!budget.lpjSubmittedAt).length;
+  const summaryCards = useMemo<
+    Array<{
+      id: SarprasBudgetSummaryId;
+      title: string;
+      value: string;
+      subtitle: string;
+      iconName: React.ComponentProps<typeof Feather>['name'];
+      accentColor: string;
+    }>
+  >(
+    () => [
+      {
+        id: 'filtered',
+        title: 'Terfilter',
+        value: `${filteredBudgets.length}`,
+        subtitle: 'Pengajuan sesuai filter',
+        iconName: 'filter',
+        accentColor: '#2563eb',
+      },
+      {
+        id: 'amount',
+        title: 'Total Nominal',
+        value: formatCurrency(totalAmount),
+        subtitle: 'Akumulasi dana terfilter',
+        iconName: 'credit-card',
+        accentColor: '#0f766e',
+      },
+      {
+        id: 'pending',
+        title: 'Menunggu',
+        value: `${pendingCount}`,
+        subtitle: 'Butuh tindak lanjut',
+        iconName: 'clock',
+        accentColor: '#f59e0b',
+      },
+      {
+        id: 'lpj',
+        title: 'LPJ Siap',
+        value: `${lpjReadyCount}`,
+        subtitle: 'LPJ sudah diajukan guru',
+        iconName: 'file-text',
+        accentColor: '#7c3aed',
+      },
+    ],
+    [filteredBudgets.length, lpjReadyCount, pendingCount, totalAmount],
+  );
+  const activeSummaryMeta = summaryCards.find((item) => item.id === activeSummaryId) || null;
   const lpjInvoices = useMemo(() => lpjAuditQuery.data?.invoices || [], [lpjAuditQuery.data?.invoices]);
+  const invoiceOptions = useMemo(
+    () =>
+      lpjInvoices.map((invoice, index) => ({
+        value: String(invoice.id),
+        label: `${invoice.title || `Invoice #${index + 1}`} (${lpjStatusLabel(invoice.status)})`,
+      })),
+    [lpjInvoices],
+  );
   const activeSelectedInvoiceId = useMemo(() => {
     if (!lpjInvoices.length) return null;
     if (selectedInvoiceId && lpjInvoices.some((invoice) => invoice.id === selectedInvoiceId)) return selectedInvoiceId;
@@ -388,13 +405,19 @@ export default function TeacherSarprasBudgetsScreen() {
         {activeYearQuery.data?.name ? ` • ${activeYearQuery.data.name}` : ''}.
       </Text>
 
-      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
-        <SummaryCard title="Pengajuan Terfilter" value={`${filteredBudgets.length}`} subtitle="Data pengajuan saat ini" />
-        <SummaryCard title="Total Nominal" value={formatCurrency(totalAmount)} subtitle="Akumulasi dana terfilter" />
-      </View>
-      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-        <SummaryCard title="Menunggu Proses" value={`${pendingCount}`} subtitle="Butuh tindakan Sarpras" />
-        <SummaryCard title="LPJ Siap Audit" value={`${lpjReadyCount}`} subtitle="LPJ sudah diajukan guru" />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 12 }}>
+        {summaryCards.map((item) => (
+          <View key={item.id} style={{ width: '48.5%', marginBottom: 8 }}>
+            <MobileSummaryCard
+              title={item.title}
+              value={item.value}
+              subtitle={item.subtitle}
+              iconName={item.iconName}
+              accentColor={item.accentColor}
+              onPress={() => setActiveSummaryId(item.id)}
+            />
+          </View>
+        ))}
       </View>
 
       <View
@@ -424,34 +447,22 @@ export default function TeacherSarprasBudgetsScreen() {
         />
       </View>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-        {(Object.keys(STATUS_LABEL) as StatusFilter[]).map((status) => (
-          <StatusChip
-            key={status}
-            active={statusFilter === status}
-            label={STATUS_LABEL[status]}
-            onPress={() => setStatusFilter(status)}
-          />
-        ))}
-      </View>
+      <MobileSelectField
+        label="Filter Status"
+        value={statusFilter}
+        options={statusOptions}
+        onChange={(next) => setStatusFilter((next || 'ALL') as StatusFilter)}
+        placeholder="Pilih status pengajuan"
+      />
 
       {dutyOptions.length > 0 ? (
-        <View style={{ marginBottom: 12 }}>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Filter Unit</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <StatusChip active={dutyFilter === 'ALL'} label="Semua Unit" onPress={() => setDutyFilter('ALL')} />
-              {dutyOptions.map((option) => (
-                <StatusChip
-                  key={option.key}
-                  active={dutyFilter === option.key}
-                  label={option.label}
-                  onPress={() => setDutyFilter(option.key)}
-                />
-              ))}
-            </View>
-          </ScrollView>
-        </View>
+        <MobileSelectField
+          label="Filter Unit"
+          value={dutyFilter}
+          options={[{ value: 'ALL', label: 'Semua Unit' }, ...dutyOptions.map((option) => ({ value: option.key, label: option.label }))]}
+          onChange={(next) => setDutyFilter(next || 'ALL')}
+          placeholder="Pilih unit pengaju"
+        />
       ) : null}
 
       {budgetsQuery.isLoading ? <QueryStateView type="loading" message="Mengambil data pengajuan anggaran..." /> : null}
@@ -649,19 +660,13 @@ export default function TeacherSarprasBudgetsScreen() {
           {!lpjAuditQuery.isLoading && !lpjAuditQuery.isError ? (
             lpjInvoices.length > 0 ? (
               <View style={{ marginTop: 10 }}>
-                <Text style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: 8 }}>Pilih Invoice LPJ</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {lpjInvoices.map((invoice, index) => (
-                      <StatusChip
-                        key={invoice.id}
-                        active={selectedInvoice?.id === invoice.id}
-                        label={`${invoice.title || `Invoice #${index + 1}`} (${lpjStatusLabel(invoice.status)})`}
-                        onPress={() => setSelectedInvoiceId(invoice.id)}
-                      />
-                    ))}
-                  </View>
-                </ScrollView>
+                <MobileSelectField
+                  label="Pilih Invoice LPJ"
+                  value={selectedInvoice?.id ? String(selectedInvoice.id) : ''}
+                  options={invoiceOptions}
+                  onChange={(next) => setSelectedInvoiceId(next ? Number(next) : null)}
+                  placeholder="Pilih invoice LPJ"
+                />
 
                 {selectedInvoice ? (
                   <View
@@ -895,7 +900,64 @@ export default function TeacherSarprasBudgetsScreen() {
           ) : null}
         </View>
       ) : null}
+      <MobileDetailModal
+        visible={Boolean(activeSummaryId && activeSummaryMeta)}
+        title={activeSummaryMeta?.title || 'Ringkasan Anggaran'}
+        subtitle={activeSummaryMeta?.subtitle}
+        iconName={activeSummaryMeta?.iconName}
+        accentColor={activeSummaryMeta?.accentColor}
+        onClose={() => setActiveSummaryId(null)}
+      >
+        {activeSummaryId === 'filtered' ? (
+          <View style={{ gap: 10 }}>
+            <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Jumlah pengajuan terfilter</Text>
+              <Text style={{ color: '#2563eb', fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+                {filteredBudgets.length}
+              </Text>
+            </View>
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              Data di daftar utama sudah mengikuti pencarian, status, dan unit yang sedang dipilih.
+            </Text>
+          </View>
+        ) : null}
 
+        {activeSummaryId === 'amount' ? (
+          <View style={{ gap: 10 }}>
+            <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Akumulasi dana terfilter</Text>
+              <Text style={{ color: '#0f766e', fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+                {formatCurrency(totalAmount)}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {activeSummaryId === 'pending' ? (
+          <View style={{ gap: 10 }}>
+            <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#fffbeb', padding: 12 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Pengajuan menunggu proses</Text>
+              <Text style={{ color: '#b45309', fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+                {pendingCount}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {activeSummaryId === 'lpj' ? (
+          <View style={{ gap: 10 }}>
+            <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f5f3ff', padding: 12 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>LPJ siap audit</Text>
+              <Text style={{ color: '#7c3aed', fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+                {lpjReadyCount}
+              </Text>
+            </View>
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              LPJ siap audit berarti pengajuan sudah disetujui dan guru sudah mengunggah berkas LPJ.
+            </Text>
+          </View>
+        ) : null}
+      </MobileDetailModal>
     </ScrollView>
   );
 }

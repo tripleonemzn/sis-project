@@ -12,7 +12,9 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
-import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
+import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -22,6 +24,17 @@ import { SarprasBudgetRequest, SarprasRoom } from '../../../src/features/sarpras
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
 type SarprasReportSection = 'RINGKASAN' | 'ASET' | 'ANGGARAN';
+type SarprasReportSummaryId = 'coverage' | 'items' | 'budgets' | 'amounts';
+
+const SECTION_ITEMS: Array<{
+  key: SarprasReportSection;
+  label: string;
+  iconName: React.ComponentProps<typeof Feather>['name'];
+}> = [
+  { key: 'RINGKASAN', label: 'Ringkasan', iconName: 'grid' },
+  { key: 'ASET', label: 'Aset', iconName: 'package' },
+  { key: 'ANGGARAN', label: 'Anggaran', iconName: 'credit-card' },
+];
 
 function hasSarprasDuty(userDuties?: string[]) {
   const duties = (userDuties || []).map((item) => item.trim().toUpperCase());
@@ -83,29 +96,6 @@ function resolveConditionLabel(room: SarprasRoom) {
   return 'Belum diisi';
 }
 
-const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
-  <MobileMenuTab active={active} label={label} onPress={onPress} minWidth={94} />
-);
-
-function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 22, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
-
 export default function TeacherSarprasReportsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -113,6 +103,7 @@ export default function TeacherSarprasReportsScreen() {
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
 
   const [section, setSection] = useState<SarprasReportSection>('RINGKASAN');
+  const [activeSummaryId, setActiveSummaryId] = useState<SarprasReportSummaryId | null>(null);
   const [search, setSearch] = useState('');
 
   const isAllowed = user?.role === 'TEACHER' && hasSarprasDuty(user?.additionalDuties);
@@ -290,6 +281,61 @@ export default function TeacherSarprasReportsScreen() {
         return haystacks.some((value) => value.toLowerCase().includes(query));
       });
   }, [budgets, query]);
+  const summaryCards = useMemo<
+    Array<{
+      id: SarprasReportSummaryId;
+      title: string;
+      value: string;
+      subtitle: string;
+      iconName: React.ComponentProps<typeof Feather>['name'];
+      accentColor: string;
+    }>
+  >(
+    () => [
+      {
+        id: 'coverage',
+        title: 'Kategori / Ruang',
+        value: `${formatNumber(categories.length)} / ${formatNumber(roomSummary.totalRooms)}`,
+        subtitle: 'Cakupan aset sekolah',
+        iconName: 'layers',
+        accentColor: '#8b5cf6',
+      },
+      {
+        id: 'items',
+        title: 'Total Item',
+        value: formatNumber(roomSummary.totalItems),
+        subtitle: 'Inventaris seluruh ruang',
+        iconName: 'package',
+        accentColor: '#f97316',
+      },
+      {
+        id: 'budgets',
+        title: 'Pengajuan',
+        value: formatNumber(budgetSummary.total),
+        subtitle: `${formatNumber(budgetSummary.pending)} menunggu proses`,
+        iconName: 'file-text',
+        accentColor: '#2563eb',
+      },
+      {
+        id: 'amounts',
+        title: 'Nominal',
+        value: formatCurrency(budgetSummary.totalAmount),
+        subtitle: `${formatCurrency(budgetSummary.approvedAmount)} disetujui`,
+        iconName: 'credit-card',
+        accentColor: '#0f766e',
+      },
+    ],
+    [
+      budgetSummary.approvedAmount,
+      budgetSummary.pending,
+      budgetSummary.total,
+      budgetSummary.totalAmount,
+      categories.length,
+      roomSummary.totalItems,
+      roomSummary.totalRooms,
+    ],
+  );
+  const activeSummaryMeta = summaryCards.find((item) => item.id === activeSummaryId) || null;
 
   if (isLoading) return <AppLoadingScreen message="Memuat laporan sarpras..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -361,11 +407,15 @@ export default function TeacherSarprasReportsScreen() {
         {activeYearQuery.data?.name ? ` • ${activeYearQuery.data.name}` : ''}.
       </Text>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-        <SectionChip active={section === 'RINGKASAN'} label="Ringkasan" onPress={() => setSection('RINGKASAN')} />
-        <SectionChip active={section === 'ASET'} label="Aset" onPress={() => setSection('ASET')} />
-        <SectionChip active={section === 'ANGGARAN'} label="Anggaran" onPress={() => setSection('ANGGARAN')} />
-      </View>
+      <MobileMenuTabBar
+        items={SECTION_ITEMS}
+        activeKey={section}
+        onChange={(key) => setSection(key as SarprasReportSection)}
+        style={{ marginBottom: 10 }}
+        contentContainerStyle={{ paddingRight: 8 }}
+        minTabWidth={72}
+        maxTabWidth={104}
+      />
 
       <View
         style={{
@@ -403,29 +453,19 @@ export default function TeacherSarprasReportsScreen() {
         <>
           {section === 'RINGKASAN' ? (
             <>
-              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
-                <SummaryCard
-                  title="Kategori / Ruangan"
-                  value={`${formatNumber(categories.length)} / ${formatNumber(roomSummary.totalRooms)}`}
-                  subtitle="Cakupan data aset"
-                />
-                <SummaryCard
-                  title="Total Item Ruang"
-                  value={formatNumber(roomSummary.totalItems)}
-                  subtitle="Akumulasi item inventaris"
-                />
-              </View>
-              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-                <SummaryCard
-                  title="Pengajuan Anggaran"
-                  value={formatNumber(budgetSummary.total)}
-                  subtitle={`${formatNumber(budgetSummary.pending)} menunggu proses`}
-                />
-                <SummaryCard
-                  title="Nominal Anggaran"
-                  value={formatCurrency(budgetSummary.totalAmount)}
-                  subtitle={`${formatCurrency(budgetSummary.approvedAmount)} sudah disetujui`}
-                />
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 12 }}>
+                {summaryCards.map((item) => (
+                  <View key={item.id} style={{ width: '48.5%', marginBottom: 8 }}>
+                    <MobileSummaryCard
+                      title={item.title}
+                      value={item.value}
+                      subtitle={item.subtitle}
+                      iconName={item.iconName}
+                      accentColor={item.accentColor}
+                      onPress={() => setActiveSummaryId(item.id)}
+                    />
+                  </View>
+                ))}
               </View>
 
               <View
@@ -704,7 +744,91 @@ export default function TeacherSarprasReportsScreen() {
           ) : null}
         </>
       ) : null}
+      <MobileDetailModal
+        visible={Boolean(activeSummaryId && activeSummaryMeta)}
+        title={activeSummaryMeta?.title || 'Ringkasan Sarpras'}
+        subtitle={activeSummaryMeta?.subtitle}
+        iconName={activeSummaryMeta?.iconName}
+        accentColor={activeSummaryMeta?.accentColor}
+        onClose={() => setActiveSummaryId(null)}
+      >
+        {activeSummaryId === 'coverage' ? (
+          <View style={{ gap: 10 }}>
+            <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Kategori Aktif</Text>
+              <Text style={{ color: '#8b5cf6', fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+                {formatNumber(categories.length)}
+              </Text>
+            </View>
+            <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Total Ruangan</Text>
+              <Text style={{ color: '#16a34a', fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+                {formatNumber(roomSummary.totalRooms)}
+              </Text>
+            </View>
+          </View>
+        ) : null}
 
+        {activeSummaryId === 'items' ? (
+          <View style={{ gap: 10 }}>
+            {[
+              { label: 'Baik', value: roomSummary.good, color: '#166534', bg: '#dcfce7' },
+              { label: 'Rusak Ringan', value: roomSummary.minor, color: '#92400e', bg: '#fef3c7' },
+              { label: 'Rusak Berat', value: roomSummary.major, color: '#991b1b', bg: '#fee2e2' },
+              { label: 'Belum Diisi', value: roomSummary.empty, color: '#334155', bg: '#e2e8f0' },
+            ].map((item) => (
+              <View
+                key={`report-item-${item.label}`}
+                style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: item.bg, padding: 12 }}
+              >
+                <Text style={{ color: item.color, fontWeight: '700' }}>{item.label}</Text>
+                <Text style={{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+                  {formatNumber(item.value)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {activeSummaryId === 'budgets' ? (
+          <View style={{ gap: 10 }}>
+            {[
+              { label: 'Pending', value: budgetSummary.pending, color: '#b45309' },
+              { label: 'Disetujui', value: budgetSummary.approved, color: '#15803d' },
+              { label: 'Ditolak', value: budgetSummary.rejected, color: '#b91c1c' },
+              { label: 'LPJ Siap Audit', value: budgetSummary.lpjReady, color: '#1d4ed8' },
+              { label: 'Menunggu Realisasi', value: budgetSummary.waitingRealization, color: '#7c3aed' },
+            ].map((item) => (
+              <View
+                key={`report-budget-${item.label}`}
+                style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#fff', padding: 12 }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.label}</Text>
+                <Text style={{ color: item.color, fontSize: 20, fontWeight: '700', marginTop: 4 }}>
+                  {formatNumber(item.value)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {activeSummaryId === 'amounts' ? (
+          <View style={{ gap: 10 }}>
+            <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Total Pengajuan</Text>
+              <Text style={{ color: '#0f766e', fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+                {formatCurrency(budgetSummary.totalAmount)}
+              </Text>
+            </View>
+            <View style={{ borderWidth: 1, borderColor: '#dbe7fb', borderRadius: 12, backgroundColor: '#f8fbff', padding: 12 }}>
+              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Nominal Disetujui</Text>
+              <Text style={{ color: '#2563eb', fontSize: 22, fontWeight: '700', marginTop: 4 }}>
+                {formatCurrency(budgetSummary.approvedAmount)}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+      </MobileDetailModal>
     </ScrollView>
   );
 }
