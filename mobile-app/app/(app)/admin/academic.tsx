@@ -6,8 +6,10 @@ import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } f
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
 import { ExamHtmlContent, plainTextFromExamRichText } from '../../../src/components/ExamHtmlContent';
-import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
+import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
 import { MobileSelectField } from '../../../src/components/MobileSelectField';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -40,6 +42,7 @@ type AcademicSection =
   | 'report-cards'
   | 'question-bank'
   | 'exam-sessions';
+type AcademicOverviewSummaryId = 'classes' | 'assignments' | 'subjects' | 'years';
 
 type FeatherIconName = React.ComponentProps<typeof Feather>['name'];
 
@@ -69,19 +72,19 @@ const ACADEMIC_SECTIONS: Array<{
   },
   {
     key: 'academic-calendar',
-    label: 'Kalender',
-    description: 'Pantau rentang semester akademik.',
+    label: 'Kalender Akademik',
+    description: 'Pantau rentang semester dan event akademik.',
     icon: 'calendar',
   },
   {
     key: 'teacher-assignments',
-    label: 'Assignment',
+    label: 'Assignment Guru',
     description: 'Pantau assignment guru-mapel-kelas aktif.',
     icon: 'users',
   },
   {
     key: 'schedule',
-    label: 'Jadwal',
+    label: 'Jadwal Pelajaran',
     description: 'Kelola input jadwal per jam per kelas + konfigurasi waktu.',
     icon: 'clock',
   },
@@ -99,13 +102,13 @@ const ACADEMIC_SECTIONS: Array<{
   },
   {
     key: 'attendance-recap',
-    label: 'Absensi',
+    label: 'Rekap Absensi',
     description: 'Ringkasan keterlambatan siswa per kelas.',
     icon: 'check-square',
   },
   {
     key: 'report-cards',
-    label: 'Rapor',
+    label: 'Laporan / Rapor',
     description: 'Ringkasan data rapor kelas aktif.',
     icon: 'file-text',
   },
@@ -262,8 +265,8 @@ const EXAM_TYPE_OPTIONS: Array<{ value: 'ALL' | AdminExamType; label: string }> 
   { value: 'SBTS', label: 'SBTS' },
   { value: 'SAS', label: 'SAS' },
   { value: 'SAT', label: 'SAT' },
-  { value: 'US_PRACTICE', label: 'US Practice' },
-  { value: 'US_THEORY', label: 'US Theory' },
+  { value: 'US_PRACTICE', label: 'US Praktik' },
+  { value: 'US_THEORY', label: 'US Teori' },
 ];
 
 const getExamTypeLabel = (value?: string | null) =>
@@ -544,29 +547,6 @@ function SectionCard({
   );
 }
 
-function SectionChip({
-  active,
-  label,
-  icon,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  icon: FeatherIconName;
-  onPress: () => void;
-}) {
-  const iconColor = active ? BRAND_COLORS.blue : '#64748b';
-  return (
-    <MobileMenuTab
-      active={active}
-      label={label}
-      onPress={onPress}
-      iconName={icon}
-      minWidth={96}
-    />
-  );
-}
-
 function SelectChip({
   active,
   label,
@@ -640,6 +620,7 @@ export default function AdminAcademicScreen() {
     ? requestedSection
     : defaultSection;
   const sectionMeta = ACADEMIC_SECTION_BY_KEY.get(activeSection) || ACADEMIC_SECTIONS[0];
+  const [activeOverviewSummaryId, setActiveOverviewSummaryId] = useState<AcademicOverviewSummaryId | null>(null);
   const [assignmentTeacherId, setAssignmentTeacherId] = useState('');
   const [assignmentSubjectId, setAssignmentSubjectId] = useState('');
   const [assignmentSelectedClassIds, setAssignmentSelectedClassIds] = useState<number[]>([]);
@@ -2293,6 +2274,96 @@ export default function AdminAcademicScreen() {
     () => (academicQuery.data?.teachers || []).filter((item) => item.role === 'TEACHER'),
     [academicQuery.data?.teachers],
   );
+  const topSectionItems = useMemo(
+    () =>
+      ACADEMIC_SECTIONS.filter((item) => allowedSectionSet.has(item.key)).map((item) => ({
+        key: item.key,
+        label: item.label,
+        iconName: item.icon,
+      })),
+    [allowedSectionSet],
+  );
+  const overviewSummaryCards = useMemo<
+    Array<{
+      id: AcademicOverviewSummaryId;
+      title: string;
+      value: string;
+      subtitle: string;
+      iconName: FeatherIconName;
+      accentColor: string;
+    }>
+  >(
+    () => [
+      {
+        id: 'classes',
+        title: 'Total Kelas Aktif',
+        value: String(academicQuery.data?.classes.pagination.total || 0),
+        subtitle: 'Berdasarkan tahun ajaran aktif',
+        iconName: 'layout',
+        accentColor: '#2563eb',
+      },
+      {
+        id: 'assignments',
+        title: 'Assignment Guru',
+        value: String(academicQuery.data?.assignments.pagination.total || 0),
+        subtitle: 'Penugasan guru aktif',
+        iconName: 'users',
+        accentColor: '#8b5cf6',
+      },
+      {
+        id: 'subjects',
+        title: 'Total Mata Pelajaran',
+        value: String(academicQuery.data?.subjects.pagination.total || 0),
+        subtitle: 'Seluruh mapel tersimpan',
+        iconName: 'book-open',
+        accentColor: '#0f766e',
+      },
+      {
+        id: 'years',
+        title: 'Total Tahun Ajaran',
+        value: String(academicQuery.data?.years.pagination.total || 0),
+        subtitle: 'Riwayat tahun akademik',
+        iconName: 'calendar',
+        accentColor: '#f59e0b',
+      },
+    ],
+    [
+      academicQuery.data?.assignments.pagination.total,
+      academicQuery.data?.classes.pagination.total,
+      academicQuery.data?.subjects.pagination.total,
+      academicQuery.data?.years.pagination.total,
+    ],
+  );
+  const activeOverviewSummaryMeta =
+    overviewSummaryCards.find((item) => item.id === activeOverviewSummaryId) || null;
+  const academicYearSelectOptions = useMemo(
+    () =>
+      (academicQuery.data?.years.items || []).map((item) => ({
+        value: String(item.id),
+        label: `${item.name}${item.isActive ? ' (Aktif)' : ''}`,
+      })),
+    [academicQuery.data?.years.items],
+  );
+  const attendanceClassSelectOptions = useMemo(
+    () => filteredAttendanceClassOptions.map((item) => ({ value: String(item.id), label: item.name })),
+    [filteredAttendanceClassOptions],
+  );
+  const reportClassSelectOptions = useMemo(
+    () => filteredReportClassOptions.map((item) => ({ value: String(item.id), label: item.name })),
+    [filteredReportClassOptions],
+  );
+  const examSessionPacketSelectOptions = useMemo(
+    () =>
+      filteredExamSessionPacketOptions.map((item) => ({
+        value: String(item.id),
+        label: `${item.title} (${item.type || '-'})`,
+      })),
+    [filteredExamSessionPacketOptions],
+  );
+  const teacherUserSelectOptions = useMemo(
+    () => [{ value: '', label: 'Tanpa Pengawas' }, ...teacherUsers.slice(0, 120).map((item) => ({ value: String(item.id), label: item.name }))],
+    [teacherUsers],
+  );
   const filteredTeacherOptions = useMemo(() => {
     const q = assignmentTeacherSearch.trim().toLowerCase();
     if (!q) return teacherUsers.slice(0, 30);
@@ -2755,21 +2826,15 @@ export default function AdminAcademicScreen() {
       </View>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{sectionMeta.description}</Text>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-        <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-          {ACADEMIC_SECTIONS.map((item) => (
-            allowedSectionSet.has(item.key) ? (
-              <SectionChip
-                key={item.key}
-                label={item.label}
-                icon={item.icon}
-                active={activeSection === item.key}
-                onPress={() => openSection(item.key)}
-              />
-            ) : null
-          ))}
-        </View>
-      </ScrollView>
+      <MobileMenuTabBar
+        items={topSectionItems}
+        activeKey={activeSection}
+        onChange={(key) => openSection(key as AcademicSection)}
+        style={{ marginBottom: 12 }}
+        contentContainerStyle={{ paddingRight: 8 }}
+        minTabWidth={72}
+        maxTabWidth={106}
+      />
 
       {academicQuery.isLoading ? <QueryStateView type="loading" message="Memuat data akademik..." /> : null}
       {academicQuery.isError ? (
@@ -2778,30 +2843,19 @@ export default function AdminAcademicScreen() {
 
       {!academicQuery.isLoading && !academicQuery.isError ? (
         <>
-          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
-            <StatCard
-              title="Total Kelas Aktif"
-              value={String(academicQuery.data?.classes.pagination.total || 0)}
-              subtitle="Berdasarkan tahun ajaran aktif"
-            />
-            <StatCard
-              title="Total Assignment"
-              value={String(academicQuery.data?.assignments.pagination.total || 0)}
-              subtitle="Penugasan guru aktif"
-            />
-          </View>
-
-          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-            <StatCard
-              title="Total Mata Pelajaran"
-              value={String(academicQuery.data?.subjects.pagination.total || 0)}
-              subtitle="Seluruh mapel tersimpan"
-            />
-            <StatCard
-              title="Total Tahun Ajaran"
-              value={String(academicQuery.data?.years.pagination.total || 0)}
-              subtitle="Riwayat tahun akademik"
-            />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 12 }}>
+            {overviewSummaryCards.map((item) => (
+              <View key={item.id} style={{ width: '48.5%', marginBottom: 8 }}>
+                <MobileSummaryCard
+                  title={item.title}
+                  value={item.value}
+                  subtitle={item.subtitle}
+                  iconName={item.iconName}
+                  accentColor={item.accentColor}
+                  onPress={() => setActiveOverviewSummaryId(item.id)}
+                />
+              </View>
+            ))}
           </View>
 
           {shouldShow('academic-years') || shouldShow('academic-calendar') ? (
@@ -3054,33 +3108,21 @@ export default function AdminAcademicScreen() {
                 </View>
               ) : (
                 <>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Sumber</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                    <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                      {(academicQuery.data?.years.items || []).map((item) => (
-                        <SelectChip
-                          key={`rollover-source-${item.id}`}
-                          active={promotionSourceAcademicYearId === String(item.id)}
-                          label={`${item.name}${item.isActive ? ' (Aktif)' : ''}`}
-                          onPress={() => setPromotionSourceAcademicYearId(String(item.id))}
-                        />
-                      ))}
-                    </View>
-                  </ScrollView>
+                  <MobileSelectField
+                    label="Tahun Sumber"
+                    value={promotionSourceAcademicYearId || (effectivePromotionSourceAcademicYearId ? String(effectivePromotionSourceAcademicYearId) : '')}
+                    options={academicYearSelectOptions}
+                    onChange={setPromotionSourceAcademicYearId}
+                    placeholder="Pilih tahun sumber"
+                  />
 
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Target</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-                    <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                      {(academicQuery.data?.years.items || []).map((item) => (
-                        <SelectChip
-                          key={`rollover-target-${item.id}`}
-                          active={promotionTargetAcademicYearId === String(item.id)}
-                          label={`${item.name}${item.isActive ? ' (Aktif)' : ''}`}
-                          onPress={() => setPromotionTargetAcademicYearId(String(item.id))}
-                        />
-                      ))}
-                    </View>
-                  </ScrollView>
+                  <MobileSelectField
+                    label="Tahun Target"
+                    value={promotionTargetAcademicYearId || (effectivePromotionTargetAcademicYearId ? String(effectivePromotionTargetAcademicYearId) : '')}
+                    options={academicYearSelectOptions}
+                    onChange={setPromotionTargetAcademicYearId}
+                    placeholder="Pilih tahun target"
+                  />
 
                   <Pressable
                     onPress={handleCreateRolloverTarget}
@@ -3403,33 +3445,21 @@ export default function AdminAcademicScreen() {
                 </View>
               ) : (
                 <>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Sumber</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                    <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                      {(academicQuery.data?.years.items || []).map((item) => (
-                        <SelectChip
-                          key={`promotion-source-${item.id}`}
-                          active={promotionSourceAcademicYearId === String(item.id)}
-                          label={`${item.name}${item.isActive ? ' (Aktif)' : ''}`}
-                          onPress={() => setPromotionSourceAcademicYearId(String(item.id))}
-                        />
-                      ))}
-                    </View>
-                  </ScrollView>
+                  <MobileSelectField
+                    label="Tahun Sumber"
+                    value={promotionSourceAcademicYearId || (effectivePromotionSourceAcademicYearId ? String(effectivePromotionSourceAcademicYearId) : '')}
+                    options={academicYearSelectOptions}
+                    onChange={setPromotionSourceAcademicYearId}
+                    placeholder="Pilih tahun sumber"
+                  />
 
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Target</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-                    <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                      {(academicQuery.data?.years.items || []).map((item) => (
-                        <SelectChip
-                          key={`promotion-target-${item.id}`}
-                          active={promotionTargetAcademicYearId === String(item.id)}
-                          label={`${item.name}${item.isActive ? ' (Aktif)' : ''}`}
-                          onPress={() => setPromotionTargetAcademicYearId(String(item.id))}
-                        />
-                      ))}
-                    </View>
-                  </ScrollView>
+                  <MobileSelectField
+                    label="Tahun Target"
+                    value={promotionTargetAcademicYearId || (effectivePromotionTargetAcademicYearId ? String(effectivePromotionTargetAcademicYearId) : '')}
+                    options={academicYearSelectOptions}
+                    onChange={setPromotionTargetAcademicYearId}
+                    placeholder="Pilih tahun target"
+                  />
 
                   <Pressable
                     onPress={() => setActivateTargetYearAfterCommit((current) => !current)}
@@ -3638,36 +3668,24 @@ export default function AdminAcademicScreen() {
                           </View>
                         ) : (
                           <>
-                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>
-                              Pilih Kelas Target
-                            </Text>
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6 }}>
-                              <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                                <SelectChip
-                                  active={!selectedTargetClassId}
-                                  label="Kosongkan"
-                                  onPress={() =>
-                                    setPromotionMappingDrafts((current) => ({
-                                      ...current,
-                                      [item.sourceClassId]: null,
-                                    }))
-                                  }
-                                />
-                                {item.targetOptions.map((option) => (
-                                  <SelectChip
-                                    key={`promotion-option-${item.sourceClassId}-${option.id}`}
-                                    active={selectedTargetClassId === option.id}
-                                    label={`${option.name} (${option.currentStudentCount})`}
-                                    onPress={() =>
-                                      setPromotionMappingDrafts((current) => ({
-                                        ...current,
-                                        [item.sourceClassId]: option.id,
-                                      }))
-                                    }
-                                  />
-                                ))}
-                              </View>
-                            </ScrollView>
+                            <MobileSelectField
+                              label="Pilih Kelas Target"
+                              value={selectedTargetClassId ? String(selectedTargetClassId) : ''}
+                              options={[
+                                { value: '', label: 'Kosongkan' },
+                                ...item.targetOptions.map((option) => ({
+                                  value: String(option.id),
+                                  label: `${option.name} (${option.currentStudentCount})`,
+                                })),
+                              ]}
+                              onChange={(next) =>
+                                setPromotionMappingDrafts((current) => ({
+                                  ...current,
+                                  [item.sourceClassId]: next ? Number(next) : null,
+                                }))
+                              }
+                              placeholder="Pilih kelas target"
+                            />
                             <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
                               Saran: {suggestedTargetLabel}
                             </Text>
@@ -3816,50 +3834,33 @@ export default function AdminAcademicScreen() {
               title="Kalender Akademik"
               subtitle="Kelola event penting (libur, ujian, rapor, dan kegiatan sekolah) langsung dari mobile."
             >
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Filter Tahun Ajaran</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  {(academicQuery.data?.years.items || []).map((item) => (
-                    <SelectChip
-                      key={`calendar-year-${item.id}`}
-                      active={effectiveCalendarAcademicYearId === item.id}
-                      label={item.name}
-                      onPress={() => setCalendarAcademicYearId(String(item.id))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Filter Tahun Ajaran"
+                value={calendarAcademicYearId || (effectiveCalendarAcademicYearId ? String(effectiveCalendarAcademicYearId) : '')}
+                options={academicYearSelectOptions}
+                onChange={setCalendarAcademicYearId}
+                placeholder="Pilih tahun ajaran"
+              />
 
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Filter Semester</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-                {(['ALL', 'ODD', 'EVEN'] as const).map((item) => (
-                  <SelectChip
-                    key={`calendar-semester-${item}`}
-                    active={calendarSemesterFilter === item}
-                    label={item === 'ALL' ? 'Semua' : item === 'ODD' ? 'Ganjil' : 'Genap'}
-                    onPress={() => setCalendarSemesterFilter(item)}
-                  />
-                ))}
-              </View>
+              <MobileSelectField
+                label="Filter Semester"
+                value={calendarSemesterFilter}
+                options={[
+                  { value: 'ALL', label: 'Semua Semester' },
+                  { value: 'ODD', label: 'Semester Ganjil' },
+                  { value: 'EVEN', label: 'Semester Genap' },
+                ]}
+                onChange={(next) => setCalendarSemesterFilter((next as 'ALL' | 'ODD' | 'EVEN') || 'ALL')}
+                placeholder="Pilih semester"
+              />
 
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Filter Jenis Event</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  <SelectChip
-                    active={calendarTypeFilter === 'ALL'}
-                    label="Semua"
-                    onPress={() => setCalendarTypeFilter('ALL')}
-                  />
-                  {ACADEMIC_EVENT_TYPE_OPTIONS.map((item) => (
-                    <SelectChip
-                      key={`calendar-type-${item.value}`}
-                      active={calendarTypeFilter === item.value}
-                      label={item.label}
-                      onPress={() => setCalendarTypeFilter(item.value)}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Filter Jenis Event"
+                value={calendarTypeFilter}
+                options={[{ value: 'ALL', label: 'Semua Jenis Event' }, ...ACADEMIC_EVENT_TYPE_OPTIONS.map((item) => ({ value: item.value, label: item.label }))]}
+                onChange={(next) => setCalendarTypeFilter((next as 'ALL' | typeof ACADEMIC_EVENT_TYPE_OPTIONS[number]['value']) || 'ALL')}
+                placeholder="Pilih jenis event"
+              />
 
               <View
                 style={{
@@ -3946,38 +3947,32 @@ export default function AdminAcademicScreen() {
                   }}
                 />
 
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Semester Event</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-                  <SelectChip
-                    active={academicEventForm.semester === ''}
-                    label="Semua Semester"
-                    onPress={() => setAcademicEventForm((prev) => ({ ...prev, semester: '' }))}
-                  />
-                  <SelectChip
-                    active={academicEventForm.semester === 'ODD'}
-                    label="Ganjil"
-                    onPress={() => setAcademicEventForm((prev) => ({ ...prev, semester: 'ODD' }))}
-                  />
-                  <SelectChip
-                    active={academicEventForm.semester === 'EVEN'}
-                    label="Genap"
-                    onPress={() => setAcademicEventForm((prev) => ({ ...prev, semester: 'EVEN' }))}
-                  />
-                </View>
+                <MobileSelectField
+                  label="Semester Event"
+                  value={academicEventForm.semester}
+                  options={[
+                    { value: '', label: 'Semua Semester' },
+                    { value: 'ODD', label: 'Semester Ganjil' },
+                    { value: 'EVEN', label: 'Semester Genap' },
+                  ]}
+                  onChange={(next) =>
+                    setAcademicEventForm((prev) => ({ ...prev, semester: (next as '' | 'ODD' | 'EVEN') || '' }))
+                  }
+                  placeholder="Pilih semester event"
+                />
 
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Kategori Hari</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-                  <SelectChip
-                    active={!academicEventForm.isHoliday}
-                    label="Hari Sekolah"
-                    onPress={() => setAcademicEventForm((prev) => ({ ...prev, isHoliday: false }))}
-                  />
-                  <SelectChip
-                    active={academicEventForm.isHoliday}
-                    label="Hari Libur"
-                    onPress={() => setAcademicEventForm((prev) => ({ ...prev, isHoliday: true }))}
-                  />
-                </View>
+                <MobileSelectField
+                  label="Kategori Hari"
+                  value={academicEventForm.isHoliday ? 'HOLIDAY' : 'SCHOOL'}
+                  options={[
+                    { value: 'SCHOOL', label: 'Hari Sekolah' },
+                    { value: 'HOLIDAY', label: 'Hari Libur' },
+                  ]}
+                  onChange={(next) =>
+                    setAcademicEventForm((prev) => ({ ...prev, isHoliday: next === 'HOLIDAY' }))
+                  }
+                  placeholder="Pilih kategori hari"
+                />
 
                 <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Deskripsi (Opsional)</Text>
                 <TextInput
@@ -5039,16 +5034,18 @@ export default function AdminAcademicScreen() {
                   marginBottom: 8,
                 }}
               />
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-                {(['ALL', 'X', 'XI', 'XII'] as const).map((item) => (
-                  <SelectChip
-                    key={`kkm-level-${item}`}
-                    active={kkmLevelFilter === item}
-                    label={item === 'ALL' ? 'Semua Level' : `Kelas ${item}`}
-                    onPress={() => setKkmLevelFilter(item)}
-                  />
-                ))}
-              </View>
+              <MobileSelectField
+                label="Filter Level"
+                value={kkmLevelFilter}
+                options={[
+                  { value: 'ALL', label: 'Semua Level' },
+                  { value: 'X', label: 'Kelas X' },
+                  { value: 'XI', label: 'Kelas XI' },
+                  { value: 'XII', label: 'Kelas XII' },
+                ]}
+                onChange={(next) => setKkmLevelFilter((next as 'ALL' | 'X' | 'XI' | 'XII') || 'ALL')}
+                placeholder="Pilih level"
+              />
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                 <StatCard
                   title="Rata-rata KKM X"
@@ -5091,19 +5088,13 @@ export default function AdminAcademicScreen() {
               title="Rekap Absensi Kelas"
               subtitle="Filter tahun ajaran, kelas, dan periode untuk melihat rekap harian + ringkasan keterlambatan."
             >
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Ajaran</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  {(academicQuery.data?.years.items || []).map((item) => (
-                    <SelectChip
-                      key={`attendance-year-${item.id}`}
-                      active={effectiveOperationalAcademicYearId === item.id}
-                      label={item.name}
-                      onPress={() => setOperationalAcademicYearId(String(item.id))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Tahun Ajaran"
+                value={operationalAcademicYearId || (effectiveOperationalAcademicYearId ? String(effectiveOperationalAcademicYearId) : '')}
+                options={academicYearSelectOptions}
+                onChange={setOperationalAcademicYearId}
+                placeholder="Pilih tahun ajaran"
+              />
               <TextInput
                 value={attendanceClassSearch}
                 onChangeText={setAttendanceClassSearch}
@@ -5119,37 +5110,28 @@ export default function AdminAcademicScreen() {
                   marginBottom: 8,
                 }}
               />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  {filteredAttendanceClassOptions.map((item) => (
-                    <SelectChip
-                      key={`attendance-class-${item.id}`}
-                      active={attendanceClassId === String(item.id)}
-                      label={item.name}
-                      onPress={() => setAttendanceClassId(String(item.id))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Pilih Kelas"
+                value={attendanceClassId}
+                options={attendanceClassSelectOptions}
+                onChange={setAttendanceClassId}
+                placeholder="Pilih kelas"
+              />
               <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
                 Kelas terpilih: {selectedAttendanceClass?.name || '-'}
               </Text>
 
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Periode</Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                {([
+              <MobileSelectField
+                label="Periode"
+                value={attendanceSemesterFilter}
+                options={[
                   { value: 'ALL', label: 'Satu Tahun' },
                   { value: 'ODD', label: 'Semester Ganjil' },
                   { value: 'EVEN', label: 'Semester Genap' },
-                ] as const).map((item) => (
-                  <SelectChip
-                    key={`attendance-semester-${item.value}`}
-                    active={attendanceSemesterFilter === item.value}
-                    label={item.label}
-                    onPress={() => setAttendanceSemesterFilter(item.value)}
-                  />
-                ))}
-              </View>
+                ]}
+                onChange={(next) => setAttendanceSemesterFilter((next as 'ALL' | 'ODD' | 'EVEN') || 'ALL')}
+                placeholder="Pilih periode"
+              />
 
               {dailyAttendanceRecapQuery.data?.meta?.dateRange ? (
                 <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
@@ -5245,19 +5227,13 @@ export default function AdminAcademicScreen() {
 
           {shouldShow('report-cards') ? (
             <SectionCard title="Ringkasan Rapor Kelas" subtitle="Mode Leger dan Peringkat kelas (semester) seperti modul web." >
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Ajaran</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  {(academicQuery.data?.years.items || []).map((item) => (
-                    <SelectChip
-                      key={`report-year-${item.id}`}
-                      active={effectiveOperationalAcademicYearId === item.id}
-                      label={item.name}
-                      onPress={() => setOperationalAcademicYearId(String(item.id))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Tahun Ajaran"
+                value={operationalAcademicYearId || (effectiveOperationalAcademicYearId ? String(effectiveOperationalAcademicYearId) : '')}
+                options={academicYearSelectOptions}
+                onChange={setOperationalAcademicYearId}
+                placeholder="Pilih tahun ajaran"
+              />
               <TextInput
                 value={reportClassSearch}
                 onChangeText={setReportClassSearch}
@@ -5273,51 +5249,39 @@ export default function AdminAcademicScreen() {
                   marginBottom: 8,
                 }}
               />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  {filteredReportClassOptions.map((item) => (
-                    <SelectChip
-                      key={`report-class-${item.id}`}
-                      active={reportClassId === String(item.id)}
-                      label={item.name}
-                      onPress={() => setReportClassId(String(item.id))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Pilih Kelas"
+                value={reportClassId}
+                options={reportClassSelectOptions}
+                onChange={setReportClassId}
+                placeholder="Pilih kelas"
+              />
               <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
                 Kelas terpilih: {selectedReportClass?.name || '-'}
               </Text>
 
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <SelectChip
-                  active={reportViewMode === 'REPORT'}
-                  label="Leger Nilai"
-                  onPress={() => setReportViewMode('REPORT')}
-                />
-                <SelectChip
-                  active={reportViewMode === 'RANKING'}
-                  label="Peringkat Kelas"
-                  onPress={() => setReportViewMode('RANKING')}
-                />
-              </View>
+              <MobileSelectField
+                label="Mode Tampilan"
+                value={reportViewMode}
+                options={[
+                  { value: 'REPORT', label: 'Leger Nilai' },
+                  { value: 'RANKING', label: 'Peringkat Kelas' },
+                ]}
+                onChange={(next) => setReportViewMode((next as 'REPORT' | 'RANKING') || 'REPORT')}
+                placeholder="Pilih mode tampilan"
+              />
 
               {reportViewMode === 'RANKING' ? (
-                <>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Semester</Text>
-                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                    <SelectChip
-                      active={reportSemesterFilter === 'ODD'}
-                      label="Semester Ganjil"
-                      onPress={() => setReportSemesterFilter('ODD')}
-                    />
-                    <SelectChip
-                      active={reportSemesterFilter === 'EVEN'}
-                      label="Semester Genap"
-                      onPress={() => setReportSemesterFilter('EVEN')}
-                    />
-                  </View>
-                </>
+                <MobileSelectField
+                  label="Semester"
+                  value={reportSemesterFilter}
+                  options={[
+                    { value: 'ODD', label: 'Semester Ganjil' },
+                    { value: 'EVEN', label: 'Semester Genap' },
+                  ]}
+                  onChange={(next) => setReportSemesterFilter((next as '' | 'ODD' | 'EVEN') || '')}
+                  placeholder="Pilih semester"
+                />
               ) : null}
 
               {reportViewMode === 'REPORT' && classReportSummaryQuery.isLoading ? (
@@ -5706,33 +5670,21 @@ export default function AdminAcademicScreen() {
 
           {shouldShow('exam-sessions') ? (
             <SectionCard title="Sesi Ujian" subtitle="Buat, aktif/nonaktifkan, dan hapus sesi ujian langsung dari mobile.">
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Ajaran</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  {(academicQuery.data?.years.items || []).map((item) => (
-                    <SelectChip
-                      key={`exam-session-year-${item.id}`}
-                      active={effectiveExamSessionAcademicYearId === item.id}
-                      label={item.name}
-                      onPress={() => setExamSessionAcademicYearId(String(item.id))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Tahun Ajaran"
+                value={examSessionAcademicYearId || (effectiveExamSessionAcademicYearId ? String(effectiveExamSessionAcademicYearId) : '')}
+                options={academicYearSelectOptions}
+                onChange={setExamSessionAcademicYearId}
+                placeholder="Pilih tahun ajaran"
+              />
 
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Filter Tipe Ujian</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  {EXAM_TYPE_OPTIONS.map((item) => (
-                    <SelectChip
-                      key={`exam-session-type-${item.value}`}
-                      active={examSessionTypeFilter === item.value}
-                      label={item.label}
-                      onPress={() => setExamSessionTypeFilter(item.value)}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Filter Tipe Ujian"
+                value={examSessionTypeFilter}
+                options={EXAM_TYPE_OPTIONS.map((item) => ({ value: item.value, label: item.label }))}
+                onChange={(next) => setExamSessionTypeFilter((next as 'ALL' | AdminExamType) || 'ALL')}
+                placeholder="Pilih tipe ujian"
+              />
 
               <TextInput
                 value={examSessionSearch}
@@ -5781,19 +5733,13 @@ export default function AdminAcademicScreen() {
                 }}
               >
                 <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Buat Sesi Ujian</Text>
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Paket Ujian</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6 }}>
-                  <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                    {filteredExamSessionPacketOptions.map((item) => (
-                      <SelectChip
-                        key={`exam-session-packet-${item.id}`}
-                        active={examSessionPacketId === String(item.id)}
-                        label={`${item.title} (${item.type || '-'})`}
-                        onPress={() => setExamSessionPacketId(String(item.id))}
-                      />
-                    ))}
-                  </View>
-                </ScrollView>
+                <MobileSelectField
+                  label="Paket Ujian"
+                  value={examSessionPacketId}
+                  options={examSessionPacketSelectOptions}
+                  onChange={setExamSessionPacketId}
+                  placeholder="Pilih paket ujian"
+                />
                 <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
                   Paket terpilih: {selectedExamSessionPacket?.title || '-'}
                 </Text>
@@ -5928,20 +5874,13 @@ export default function AdminAcademicScreen() {
                   }}
                 />
 
-                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Pengawas (opsional)</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                  <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                    <SelectChip active={!examSessionProctorId} label="Tanpa Pengawas" onPress={() => setExamSessionProctorId('')} />
-                    {teacherUsers.slice(0, 120).map((item) => (
-                      <SelectChip
-                        key={`exam-session-proctor-${item.id}`}
-                        active={examSessionProctorId === String(item.id)}
-                        label={item.name}
-                        onPress={() => setExamSessionProctorId(String(item.id))}
-                      />
-                    ))}
-                  </View>
-                </ScrollView>
+                <MobileSelectField
+                  label="Pengawas (opsional)"
+                  value={examSessionProctorId}
+                  options={teacherUserSelectOptions}
+                  onChange={setExamSessionProctorId}
+                  placeholder="Pilih pengawas"
+                />
 
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <Pressable
@@ -6072,6 +6011,47 @@ export default function AdminAcademicScreen() {
           ) : null}
         </>
       ) : null}
+      <MobileDetailModal
+        visible={Boolean(activeOverviewSummaryId && activeOverviewSummaryMeta)}
+        title={activeOverviewSummaryMeta?.title || 'Ringkasan Akademik'}
+        subtitle={activeOverviewSummaryMeta?.subtitle}
+        iconName={activeOverviewSummaryMeta?.iconName}
+        accentColor={activeOverviewSummaryMeta?.accentColor}
+        onClose={() => setActiveOverviewSummaryId(null)}
+      >
+        {activeOverviewSummaryId === 'classes' ? (
+          <View style={{ gap: 10 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Kelas aktif pada tahun berjalan</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              Total kelas yang siap dipakai pada konteks tahun ajaran aktif.
+            </Text>
+          </View>
+        ) : null}
+        {activeOverviewSummaryId === 'assignments' ? (
+          <View style={{ gap: 10 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Ringkasan assignment guru</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              Menghitung penugasan guru, mata pelajaran, dan kelas yang sudah terbentuk.
+            </Text>
+          </View>
+        ) : null}
+        {activeOverviewSummaryId === 'subjects' ? (
+          <View style={{ gap: 10 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Mata pelajaran tersimpan</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              Mencakup seluruh mapel yang tersedia di sistem akademik.
+            </Text>
+          </View>
+        ) : null}
+        {activeOverviewSummaryId === 'years' ? (
+          <View style={{ gap: 10 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>Riwayat tahun ajaran</Text>
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              Menunjukkan jumlah tahun ajaran yang sudah pernah dibentuk di sistem.
+            </Text>
+          </View>
+        ) : null}
+      </MobileDetailModal>
     </ScrollView>
   );
 }
