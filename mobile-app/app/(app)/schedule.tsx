@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
-import { MobileMenuTab } from '../../src/components/MobileMenuTab';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { useAuth } from '../../src/features/auth/AuthProvider';
 import { DayOfWeek, ScheduleEntry } from '../../src/features/schedule/types';
@@ -19,6 +19,7 @@ const DAY_ORDER: DayOfWeek[] = [
   'FRIDAY',
   'SATURDAY',
 ];
+const DEFAULT_WEEKDAYS: DayOfWeek[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'];
 
 const DAY_LABELS: Record<DayOfWeek, string> = {
   MONDAY: 'Senin',
@@ -77,8 +78,14 @@ export default function ScheduleScreen() {
   const [activeDay, setActiveDay] = useState<DayOfWeek>('MONDAY');
   const pageContentPadding = getStandardPagePadding(insets);
   const entries = useMemo(() => scheduleQuery.data?.entries || [], [scheduleQuery.data?.entries]);
-  const dayTabs = DAY_ORDER;
-  const effectiveActiveDay = DAY_ORDER.includes(activeDay) ? activeDay : DAY_ORDER[0];
+  const dayTabs = useMemo(() => {
+    const availableDays = DAY_ORDER.filter((day) =>
+      entries.some((entry) => entry.dayOfWeek === day && entry.teachingHour !== null),
+    );
+    return availableDays.length > 0 ? availableDays : DEFAULT_WEEKDAYS;
+  }, [entries]);
+  const effectiveActiveDay = dayTabs.includes(activeDay) ? activeDay : dayTabs[0] || 'MONDAY';
+  const dayTabWidth = `${100 / Math.max(dayTabs.length, 1)}%` as `${number}%`;
 
   if (isLoading) return <AppLoadingScreen message="Memuat jadwal..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -118,20 +125,58 @@ export default function ScheduleScreen() {
 
       {!scheduleQuery.isLoading && !scheduleQuery.isError ? (
         <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-            <View style={{ flexDirection: 'row', gap: 8, paddingRight: 4 }}>
-              {dayTabs.map((day) => (
-                <MobileMenuTab
-                  key={day}
-                  active={effectiveActiveDay === day}
-                  label={getDayLabel(day)}
-                  onPress={() => setActiveDay(day)}
-                  iconName="calendar"
-                  minWidth={84}
-                />
-              ))}
-            </View>
-          </ScrollView>
+          <View style={{ flexDirection: 'row', marginHorizontal: -3, marginBottom: 12 }}>
+            {dayTabs.map((day) => {
+              const active = effectiveActiveDay === day;
+              return (
+                <View key={day} style={{ width: dayTabWidth, paddingHorizontal: 3 }}>
+                  <Pressable
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: active }}
+                    onPress={() => setActiveDay(day)}
+                    style={({ pressed }) => ({
+                      borderWidth: 1,
+                      borderColor: active ? '#bfdbfe' : '#e2e8f0',
+                      backgroundColor: active ? '#f8fbff' : '#fff',
+                      borderRadius: 12,
+                      minHeight: 62,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingHorizontal: 4,
+                      paddingVertical: 7,
+                      opacity: pressed ? 0.88 : 1,
+                    })}
+                  >
+                    <View
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 9,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: active ? 'rgba(37, 99, 235, 0.14)' : 'rgba(148, 163, 184, 0.12)',
+                        marginBottom: 4,
+                      }}
+                    >
+                      <Feather name="calendar" size={12} color={active ? '#2563eb' : '#64748b'} />
+                    </View>
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        textAlign: 'center',
+                        fontSize: 10,
+                        lineHeight: 12,
+                        fontWeight: active ? '700' : '600',
+                        color: active ? '#1d4ed8' : '#334155',
+                      }}
+                    >
+                      {getDayLabel(day)}
+                    </Text>
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
 
           {dayEntries.length > 0 ? (
             <View>
