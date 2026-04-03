@@ -1043,7 +1043,7 @@ export default function ProfileScreen() {
       `Alamat: ${form.address ? 'Sudah diisi' : 'Belum diisi'}`,
     ];
   }, [educationSummary.completedLevels, form.address, form.email, form.employeeStatus, form.institution, form.phone, form.ptkType, form.staffPosition, isCandidate, isEmployee, isParent, isStudent, profile, supportingDocuments.length, verificationMeta.label]);
-  const employeeProfileInsights = useMemo<
+  const profileInsights = useMemo<
     Array<{
       id: ProfileInsightId;
       iconName: React.ComponentProps<typeof Feather>['name'];
@@ -1052,9 +1052,18 @@ export default function ProfileScreen() {
       accentColor: string;
     }>
   >(() => {
-    if (!profile || !isEmployee) {
+    if (!profile) {
       return [];
     }
+    const summaryIconName: React.ComponentProps<typeof Feather>['name'] = isCandidate
+      ? 'user-plus'
+      : isStudent
+        ? 'user'
+        : isParent
+          ? 'users'
+          : isEmployee
+            ? 'briefcase'
+            : 'shield';
     return [
       {
         id: 'structure' as const,
@@ -1072,14 +1081,14 @@ export default function ProfileScreen() {
       },
       {
         id: 'summary' as const,
-        iconName: 'briefcase',
+        iconName: summaryIconName,
         title: profileCopy.summaryTitle,
         subtitle: summaryLines[0] || verificationMeta.label,
         accentColor: '#7c3aed',
       },
     ];
-  }, [completeness.percent, isEmployee, profile, profileCopy.readinessTitle, profileCopy.summaryTitle, summaryLines, verificationMeta.label]);
-  const activeInsightMeta = employeeProfileInsights.find((item) => item.id === activeProfileInsight) || null;
+  }, [completeness.percent, isCandidate, isEmployee, isParent, isStudent, profile, profileCopy.readinessTitle, profileCopy.summaryTitle, summaryLines, verificationMeta.label]);
+  const activeInsightMeta = profileInsights.find((item) => item.id === activeProfileInsight) || null;
 
   useFocusEffect(
     useCallback(() => {
@@ -1533,138 +1542,19 @@ export default function ProfileScreen() {
 
       {profile ? (
         <>
-          {isEmployee ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5, marginBottom: 10 }}>
-              {employeeProfileInsights.map((card) => (
-                <View key={card.id} style={{ width: '33.3333%', paddingHorizontal: 5, marginBottom: 10 }}>
-                  <ProfileInsightCard
-                    iconName={card.iconName}
-                    title={card.title}
-                    subtitle={card.subtitle}
-                    accentColor={card.accentColor}
-                    onPress={() => setActiveProfileInsight(card.id)}
-                  />
-                </View>
-              ))}
-            </View>
-          ) : (
-            <>
-              <View
-                style={{
-                  ...cardStyle,
-                  backgroundColor: '#f8fbff',
-                  borderColor: '#dbeafe',
-                }}
-              >
-                <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 }}>STRUKTUR PROFIL</Text>
-                <Text style={{ color: '#0f172a', fontSize: 20, fontWeight: '700', marginTop: 8 }}>
-                  {ROLE_LABELS[profile.role] || profile.role}
-                </Text>
-                <Text style={{ color: '#475569', fontSize: 13, lineHeight: 20, marginTop: 10 }}>
-                  {profileCopy.readinessHelper}
-                </Text>
-                <View style={{ marginTop: 14 }}>
-                  {summaryLines.map((line) => (
-                    <View
-                      key={line}
-                      style={{
-                        borderWidth: 1,
-                        borderColor: '#e2e8f0',
-                        backgroundColor: '#fff',
-                        borderRadius: 14,
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <Text style={{ color: '#475569', fontSize: 13 }}>{line}</Text>
-                    </View>
-                  ))}
-                </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5, marginBottom: 10 }}>
+            {profileInsights.map((card) => (
+              <View key={card.id} style={{ width: '33.3333%', paddingHorizontal: 5, marginBottom: 10 }}>
+                <ProfileInsightCard
+                  iconName={card.iconName}
+                  title={card.title}
+                  subtitle={card.subtitle}
+                  accentColor={card.accentColor}
+                  onPress={() => setActiveProfileInsight(card.id)}
+                />
               </View>
-
-              <View style={cardStyle}>
-                <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 }}>
-                  {profileCopy.readinessTitle.toUpperCase()}
-                </Text>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
-                  <View style={{ flex: 1, paddingRight: 12 }}>
-                    <Text style={{ color: '#0f172a', fontSize: 28, fontWeight: '700' }}>{completeness.percent}%</Text>
-                    <Text style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
-                      {completeness.completed} dari {completeness.total} data prioritas sudah terisi
-                    </Text>
-                  </View>
-                  <View
-                    style={{
-                      borderRadius: 14,
-                      backgroundColor: '#f1f5f9',
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                    }}
-                  >
-                    <Text style={{ color: '#334155', fontSize: 13, fontWeight: '700' }}>
-                      {completeness.missing.length === 0 ? 'Siap' : `${completeness.missing.length} belum`}
-                    </Text>
-                  </View>
-                </View>
-                <View
-                  style={{
-                    height: 8,
-                    borderRadius: 999,
-                    backgroundColor: '#e2e8f0',
-                    overflow: 'hidden',
-                    marginTop: 14,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: `${completeness.percent}%`,
-                      height: '100%',
-                      borderRadius: 999,
-                      backgroundColor: '#2563eb',
-                    }}
-                  />
-                </View>
-                <Text style={{ color: '#475569', fontSize: 13, lineHeight: 20, marginTop: 12 }}>
-                  {completeness.missing.length === 0
-                    ? 'Data prioritas yang tersedia di sistem sudah terisi rapi.'
-                    : `Masih perlu dilengkapi: ${completeness.missing.slice(0, 3).join(', ')}${completeness.missing.length > 3 ? ', dan lainnya.' : '.'}`}
-                </Text>
-              </View>
-
-              <View style={cardStyle}>
-                <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 }}>
-                  {profileCopy.summaryTitle.toUpperCase()}
-                </Text>
-                <View
-                  style={{
-                    marginTop: 12,
-                    borderWidth: 1,
-                    borderColor: '#e2e8f0',
-                    backgroundColor: '#f8fafc',
-                    borderRadius: 14,
-                    padding: 12,
-                  }}
-                >
-                  <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700', letterSpacing: 1.2 }}>USERNAME</Text>
-                  <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700', marginTop: 4 }}>{profile.username}</Text>
-                </View>
-                <View
-                  style={{
-                    marginTop: 10,
-                    borderWidth: 1,
-                    borderColor: '#e2e8f0',
-                    backgroundColor: '#f8fafc',
-                    borderRadius: 14,
-                    padding: 12,
-                  }}
-                >
-                  <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700', letterSpacing: 1.2 }}>STATUS AKUN</Text>
-                  <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700', marginTop: 4 }}>{verificationMeta.label}</Text>
-                </View>
-              </View>
-            </>
-          )}
+            ))}
+          </View>
 
           {isCandidate ? (
             <Pressable

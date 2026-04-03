@@ -5,7 +5,7 @@ import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 're
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
 import { ExamHtmlContent, plainTextFromExamRichText } from '../../components/ExamHtmlContent';
-import { MobileTabChip } from '../../components/MobileTabChip';
+import { MobileSelectField } from '../../components/MobileSelectField';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { useAuth } from '../auth/AuthProvider';
@@ -298,6 +298,23 @@ export function TeacherExamPacketsModuleScreen({
   }, [activePrograms]);
 
   const examTypeLabel = (type: string) => resolveExamTypeLabel(type, examTypeLabels);
+  const typeFilterOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'Semua Program' },
+      ...activePrograms.map((program) => ({
+        value: normalizeProgramCode(program.code),
+        label: resolveExamTypeLabel(program.code, examTypeLabels),
+      })),
+    ],
+    [activePrograms, examTypeLabels],
+  );
+  const semesterFilterOptions = useMemo(
+    () => [
+      { value: 'ODD', label: 'Ganjil' },
+      { value: 'EVEN', label: 'Genap' },
+    ],
+    [],
+  );
   const resolvedTitle = lockedProgramCode ? `Ujian ${examTypeLabel(lockedProgramCode)}` : title;
   const resolvedSubtitle = lockedProgramCode
     ? `Kelola paket ujian ${examTypeLabel(lockedProgramCode)} untuk kelas dan mata pelajaran yang Anda ampu.`
@@ -557,22 +574,13 @@ export function TeacherExamPacketsModuleScreen({
       </View>
 
       {!lockedProgramCode ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-          <View style={{ flexDirection: 'row', paddingRight: 4 }}>
-            {(['ALL', ...activePrograms.map((program) => normalizeProgramCode(program.code))] as ExamTypeFilter[]).map(
-              (item) => (
-                <View key={item} style={{ marginRight: 8 }}>
-                  <MobileTabChip
-                    active={effectiveTypeFilter === item}
-                    label={item === 'ALL' ? 'Semua' : examTypeLabel(item)}
-                    onPress={() => setTypeFilter(item)}
-                    compact
-                  />
-                </View>
-              ),
-            )}
-          </View>
-        </ScrollView>
+        <MobileSelectField
+          label="Program Ujian"
+          value={effectiveTypeFilter}
+          options={typeFilterOptions}
+          onChange={(next) => setTypeFilter((next as ExamTypeFilter) || 'ALL')}
+          placeholder="Pilih program ujian"
+        />
       ) : (
         <View style={{ marginBottom: 10 }}>
           <View
@@ -612,29 +620,14 @@ export function TeacherExamPacketsModuleScreen({
           </View>
         </View>
       ) : (
-        <View style={{ marginBottom: 10 }}>
-          <Text style={{ color: '#475569', fontSize: 12, fontWeight: '700', marginBottom: 6 }}>
-            Semester Paket: {semesterLabel(effectiveSemesterFilter)}
-          </Text>
-          <View style={{ flexDirection: 'row' }}>
-            {([
-              { key: 'ODD', label: 'Ganjil' },
-              { key: 'EVEN', label: 'Genap' },
-            ] as Array<{ key: SemesterFilter; label: string }>).map((item, index) => (
-              <View key={item.key} style={{ marginRight: index === 0 ? 8 : 0 }}>
-                <MobileTabChip
-                  active={effectiveSemesterFilter === item.key}
-                  label={item.label}
-                  onPress={() => {
-                    setSemesterFilter(item.key);
-                  }}
-                  compact
-                  minWidth={100}
-                />
-              </View>
-            ))}
-          </View>
-        </View>
+        <MobileSelectField
+          label="Semester Paket"
+          value={effectiveSemesterFilter}
+          options={semesterFilterOptions}
+          onChange={(next) => setSemesterFilter(next === 'EVEN' ? 'EVEN' : 'ODD')}
+          placeholder="Pilih semester"
+          helperText={`Semester aktif: ${semesterLabel(effectiveSemesterFilter)}`}
+        />
       )}
 
       {teacherAssignmentsQuery.isLoading || packetsQuery.isLoading ? (

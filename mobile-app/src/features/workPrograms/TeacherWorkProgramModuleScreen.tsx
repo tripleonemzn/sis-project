@@ -5,7 +5,7 @@ import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } f
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
-import { MobileTabChip } from '../../components/MobileTabChip';
+import { MobileSelectField } from '../../components/MobileSelectField';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
@@ -139,8 +139,6 @@ function getActionErrorMessage(error: unknown, fallback: string) {
   };
   return err.response?.data?.message || err.message || fallback;
 }
-
-const SectionChip = MobileTabChip;
 
 function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
   return (
@@ -295,6 +293,34 @@ export function TeacherWorkProgramModuleScreen({
     return Array.from(new Set(normalized));
   })();
   const ownerDutyFilter = dutyOptions.length === 1 ? dutyOptions[0] : undefined;
+  const dutySelectOptions = useMemo(
+    () => dutyOptions.map((item) => ({ value: item, label: formatDuty(item) })),
+    [dutyOptions],
+  );
+  const majorSelectOptions = useMemo(
+    () =>
+      managedMajors.map((major) => ({
+        value: String(major.id),
+        label: major.code ? `${major.code} - ${major.name}` : major.name,
+      })),
+    [managedMajors],
+  );
+  const semesterSelectOptions = useMemo(
+    () => [
+      { value: 'ODD', label: 'Ganjil' },
+      { value: 'EVEN', label: 'Genap' },
+    ],
+    [],
+  );
+  const statusFilterOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'Semua Status' },
+      { value: 'PENDING', label: 'Menunggu' },
+      { value: 'APPROVED', label: 'Disetujui' },
+      { value: 'REJECTED', label: 'Ditolak' },
+    ],
+    [],
+  );
   const normalizedOwnerDuty = normalizeDutyCode(ownerDutyFilter || forcedDuty);
   const isOsisOwnerDuty = mode === 'OWNER' && normalizedOwnerDuty === 'PEMBINA_OSIS';
 
@@ -805,51 +831,37 @@ export function TeacherWorkProgramModuleScreen({
             multiline
           />
 
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Tugas Tambahan</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-            {dutyOptions.length > 0 ? (
-              dutyOptions.map((item) => (
-                <SectionChip
-                  key={item}
-                  label={formatDuty(item)}
-                  active={programForm.additionalDuty === item}
-                  onPress={() => setProgramForm((prev) => ({ ...prev, additionalDuty: item }))}
-                />
-              ))
-            ) : (
-              <Text style={{ color: '#64748b' }}>Tidak ada duty pengaju pada akun Anda.</Text>
-            )}
-          </View>
+          {dutyOptions.length > 0 ? (
+            <MobileSelectField
+              label="Tugas Tambahan"
+              value={programForm.additionalDuty}
+              options={dutySelectOptions}
+              onChange={(additionalDuty) => setProgramForm((prev) => ({ ...prev, additionalDuty }))}
+              placeholder="Pilih tugas tambahan"
+            />
+          ) : (
+            <Text style={{ color: '#64748b', marginBottom: 10 }}>Tidak ada duty pengaju pada akun Anda.</Text>
+          )}
 
           {programForm.additionalDuty === 'KAPROG' ? (
-            <>
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Jurusan</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-                {managedMajors.map((major) => (
-                  <SectionChip
-                    key={major.id}
-                    label={major.code ? `${major.code} - ${major.name}` : major.name}
-                    active={String(major.id) === programForm.majorId}
-                    onPress={() => setProgramForm((prev) => ({ ...prev, majorId: String(major.id) }))}
-                  />
-                ))}
-              </View>
-            </>
+            <MobileSelectField
+              label="Jurusan"
+              value={programForm.majorId}
+              options={majorSelectOptions}
+              onChange={(majorId) => setProgramForm((prev) => ({ ...prev, majorId }))}
+              placeholder="Pilih jurusan"
+            />
           ) : null}
 
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Semester</Text>
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
-            <SectionChip
-              label="Ganjil"
-              active={programForm.semester === 'ODD'}
-              onPress={() => setProgramForm((prev) => ({ ...prev, semester: 'ODD' }))}
-            />
-            <SectionChip
-              label="Genap"
-              active={programForm.semester === 'EVEN'}
-              onPress={() => setProgramForm((prev) => ({ ...prev, semester: 'EVEN' }))}
-            />
-          </View>
+          <MobileSelectField
+            label="Semester"
+            value={programForm.semester}
+            options={semesterSelectOptions}
+            onChange={(semester) =>
+              setProgramForm((prev) => ({ ...prev, semester: semester === 'EVEN' ? 'EVEN' : 'ODD' }))
+            }
+            placeholder="Pilih semester"
+          />
 
           <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
             <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -943,13 +955,13 @@ export function TeacherWorkProgramModuleScreen({
           marginBottom: 10,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Filter Status</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          <SectionChip active={statusFilter === 'ALL'} label="Semua" onPress={() => setStatusFilter('ALL')} />
-          <SectionChip active={statusFilter === 'PENDING'} label="Menunggu" onPress={() => setStatusFilter('PENDING')} />
-          <SectionChip active={statusFilter === 'APPROVED'} label="Disetujui" onPress={() => setStatusFilter('APPROVED')} />
-          <SectionChip active={statusFilter === 'REJECTED'} label="Ditolak" onPress={() => setStatusFilter('REJECTED')} />
-        </View>
+        <MobileSelectField
+          label="Filter Status"
+          value={statusFilter}
+          options={statusFilterOptions}
+          onChange={(next) => setStatusFilter((next as FilterStatus) || 'ALL')}
+          placeholder="Pilih status"
+        />
       </View>
 
       <View

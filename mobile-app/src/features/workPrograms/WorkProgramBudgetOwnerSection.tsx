@@ -4,6 +4,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
 import { Alert, Pressable, Text, TextInput, View } from 'react-native';
+import { MobileSelectField } from '../../components/MobileSelectField';
 import { MobileTabChip } from '../../components/MobileTabChip';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
@@ -495,6 +496,26 @@ export function WorkProgramBudgetOwnerSection({
     }
     return Array.from(keys);
   }, [budgets, dutyOptions]);
+  const dutySelectOptions = useMemo(
+    () => dutyOptions.map((duty) => ({ value: duty, label: toDutyLabel(duty) })),
+    [dutyOptions],
+  );
+  const dutyFilterSelectOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'Semua Duty' },
+      ...dutyFilterOptions.map((duty) => ({ value: duty, label: toDutyLabel(duty) })),
+    ],
+    [dutyFilterOptions],
+  );
+  const statusFilterOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'Semua Status' },
+      { value: 'PENDING', label: 'Menunggu' },
+      { value: 'APPROVED', label: 'Disetujui' },
+      { value: 'REJECTED', label: 'Ditolak' },
+    ],
+    [],
+  );
 
   const filteredBudgets = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -663,21 +684,17 @@ export function WorkProgramBudgetOwnerSection({
             />
           )}
 
-          <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Tugas Tambahan</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-            {dutyOptions.length > 0 ? (
-              dutyOptions.map((duty) => (
-                <SectionChip
-                  key={duty}
-                  active={budgetForm.additionalDuty === duty}
-                  label={toDutyLabel(duty)}
-                  onPress={() => setBudgetForm((prev) => ({ ...prev, additionalDuty: duty }))}
-                />
-              ))
-            ) : (
-              <Text style={{ color: '#64748b' }}>Tidak ada duty tambahan pada akun Anda.</Text>
-            )}
-          </View>
+          {dutyOptions.length > 0 ? (
+            <MobileSelectField
+              label="Tugas Tambahan"
+              value={budgetForm.additionalDuty}
+              options={dutySelectOptions}
+              onChange={(additionalDuty) => setBudgetForm((prev) => ({ ...prev, additionalDuty }))}
+              placeholder="Pilih tugas tambahan"
+            />
+          ) : (
+            <Text style={{ color: '#64748b', marginBottom: 10 }}>Tidak ada duty tambahan pada akun Anda.</Text>
+          )}
 
           <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
             <View style={{ flex: 1, paddingHorizontal: 4 }}>
@@ -800,25 +817,20 @@ export function WorkProgramBudgetOwnerSection({
           marginBottom: 10,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Filter Status</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-          <SectionChip active={statusFilter === 'ALL'} label="Semua" onPress={() => setStatusFilter('ALL')} />
-          <SectionChip active={statusFilter === 'PENDING'} label="Menunggu" onPress={() => setStatusFilter('PENDING')} />
-          <SectionChip active={statusFilter === 'APPROVED'} label="Disetujui" onPress={() => setStatusFilter('APPROVED')} />
-          <SectionChip active={statusFilter === 'REJECTED'} label="Ditolak" onPress={() => setStatusFilter('REJECTED')} />
-        </View>
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Filter Tugas</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          <SectionChip active={dutyFilter === 'ALL'} label="Semua Duty" onPress={() => setDutyFilter('ALL')} />
-          {dutyFilterOptions.map((duty) => (
-            <SectionChip
-              key={duty}
-              active={dutyFilter === duty}
-              label={toDutyLabel(duty)}
-              onPress={() => setDutyFilter(duty)}
-            />
-          ))}
-        </View>
+        <MobileSelectField
+          label="Filter Status"
+          value={statusFilter}
+          options={statusFilterOptions}
+          onChange={(next) => setStatusFilter((next as BudgetStatusFilter) || 'ALL')}
+          placeholder="Pilih status"
+        />
+        <MobileSelectField
+          label="Filter Tugas"
+          value={dutyFilter}
+          options={dutyFilterSelectOptions}
+          onChange={(next) => setDutyFilter(next || 'ALL')}
+          placeholder="Pilih tugas"
+        />
       </View>
 
       <View

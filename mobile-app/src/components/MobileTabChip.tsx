@@ -114,12 +114,12 @@ export function MobileTabChip({
           minWidth: stacked ? minWidth || 96 : minWidth,
           maxWidth: stacked ? 126 : undefined,
           borderWidth: 1,
-          borderColor: active ? '#2563eb' : '#d7e3f7',
-          backgroundColor: active ? '#eef4ff' : '#ffffff',
-          borderRadius: stacked ? 18 : 999,
-          paddingHorizontal: stacked ? 10 : compact ? 14 : 16,
-          paddingVertical: stacked ? 10 : compact ? 9 : 11,
-          minHeight: stacked ? 82 : undefined,
+          borderColor: active ? '#bfdbfe' : '#d7e3f7',
+          backgroundColor: active ? '#f8fbff' : '#ffffff',
+          borderRadius: stacked ? 18 : 14,
+          paddingHorizontal: stacked ? 10 : compact ? 12 : 14,
+          paddingVertical: stacked ? 10 : compact ? 10 : 11,
+          minHeight: stacked ? 82 : 44,
           alignItems: 'center',
           justifyContent: 'center',
           opacity: pressed ? 0.88 : 1,
@@ -157,7 +157,15 @@ export function MobileTabChip({
                     marginBottom: 6,
                     backgroundColor: hexToRgba(iconTint, active ? 0.16 : 0.1),
                   }
-                : { marginRight: 6 }
+                : {
+                    width: 22,
+                    height: 22,
+                    borderRadius: 11,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 6,
+                    backgroundColor: hexToRgba(iconTint, active ? 0.14 : 0.08),
+                  }
             }
           >
             {resolvedIcon}
@@ -168,8 +176,8 @@ export function MobileTabChip({
           style={[
             {
               color: active ? '#1d4ed8' : BRAND_COLORS.textDark,
-              fontWeight: '700',
-              fontSize: stacked ? 11.5 : compact ? 12 : 13,
+              fontWeight: active ? '700' : '600',
+              fontSize: stacked ? 11.5 : compact ? 11.5 : 12.5,
               lineHeight: stacked ? 14 : undefined,
               letterSpacing: 0.1,
               textAlign: stacked ? 'center' : 'left',
