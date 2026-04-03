@@ -9,6 +9,8 @@ type MobileMenuTabProps = {
   onPress: () => void;
   iconName?: FeatherIconName;
   minWidth?: number;
+  maxWidth?: number;
+  compact?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -63,7 +65,16 @@ function resolveIconMeta(label: string, explicitIconName?: FeatherIconName) {
   return matched || { iconName: 'grid', color: '#2563eb' };
 }
 
-export function MobileMenuTab({ active, label, onPress, iconName, minWidth = 94, style }: MobileMenuTabProps) {
+export function MobileMenuTab({
+  active,
+  label,
+  onPress,
+  iconName,
+  minWidth = 76,
+  maxWidth = 114,
+  compact = true,
+  style,
+}: MobileMenuTabProps) {
   const iconMeta = resolveIconMeta(label, iconName);
   return (
     <Pressable
@@ -72,56 +83,65 @@ export function MobileMenuTab({ active, label, onPress, iconName, minWidth = 94,
       onPress={onPress}
       style={({ pressed }) => [
         {
-          width: minWidth,
           minWidth,
-          maxWidth: minWidth,
+          maxWidth,
           borderWidth: 1,
           borderColor: active ? '#bfdbfe' : '#e2e8f0',
           backgroundColor: active ? '#f8fbff' : '#fff',
-          borderRadius: 14,
-          paddingHorizontal: 8,
-          paddingTop: 10,
-          paddingBottom: 8,
+          borderRadius: compact ? 16 : 18,
+          paddingHorizontal: compact ? 10 : 12,
+          paddingTop: compact ? 9 : 11,
+          paddingBottom: compact ? 8 : 10,
           alignItems: 'center',
           justifyContent: 'center',
+          alignSelf: 'flex-start',
           opacity: pressed ? 0.88 : 1,
+          ...(active
+            ? {
+                shadowColor: '#2563eb',
+                shadowOpacity: 0.1,
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 3 },
+                elevation: 2,
+              }
+            : null),
         },
         style,
       ]}
     >
       <View
         style={{
-          width: 30,
-          height: 30,
-          borderRadius: 12,
+          width: compact ? 28 : 32,
+          height: compact ? 28 : 32,
+          borderRadius: compact ? 11 : 12,
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: hexToRgba(iconMeta.color, active ? 0.14 : 0.08),
-          marginBottom: 6,
+          marginBottom: compact ? 5 : 6,
         }}
       >
-        <Feather name={iconMeta.iconName} size={16} color={active ? iconMeta.color : '#475569'} />
+        <Feather name={iconMeta.iconName} size={compact ? 15 : 16} color={active ? iconMeta.color : '#475569'} />
       </View>
       <Text
         numberOfLines={2}
         style={{
           textAlign: 'center',
-          fontSize: 11,
-          lineHeight: 14,
+          fontSize: compact ? 10.5 : 11.5,
+          lineHeight: compact ? 13 : 14,
           fontWeight: active ? '700' : '600',
           color: active ? '#1d4ed8' : '#334155',
-          minHeight: 28,
+          minHeight: compact ? 24 : 28,
         }}
       >
         {label}
       </Text>
       <View
         style={{
-          width: 28,
+          width: compact ? 22 : 28,
           height: 2,
           borderRadius: 999,
           backgroundColor: active ? '#2563eb' : 'transparent',
-          marginTop: 6,
+          marginTop: compact ? 5 : 6,
         }}
       />
     </Pressable>

@@ -12,7 +12,9 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
-import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
+import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -27,34 +29,20 @@ import { academicYearApi } from '../../../src/features/academicYear/academicYear
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
 type CurriculumSection = 'OVERVIEW' | 'CATEGORIES' | 'SUBJECTS' | 'ASSIGNMENTS' | 'LOAD';
+type CurriculumSummaryId = 'categories' | 'subjects' | 'assignments' | 'load';
 
 function hasCurriculumDuty(userDuties?: string[]) {
   const duties = (userDuties || []).map((item) => item.trim().toUpperCase());
   return duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
 }
 
-const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
-  <MobileMenuTab active={active} label={label} onPress={onPress} minWidth={94} />
-);
-
-function SummaryCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 22, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
+const SECTION_ITEMS: Array<{ key: CurriculumSection; label: string; iconName: React.ComponentProps<typeof Feather>['name'] }> = [
+  { key: 'OVERVIEW', label: 'Ringkasan', iconName: 'grid' },
+  { key: 'CATEGORIES', label: 'Kategori', iconName: 'layers' },
+  { key: 'SUBJECTS', label: 'Mapel', iconName: 'book-open' },
+  { key: 'ASSIGNMENTS', label: 'Assignment', iconName: 'users' },
+  { key: 'LOAD', label: 'Jam Mengajar', iconName: 'clock' },
+];
 
 export default function TeacherWakakurCurriculumScreen() {
   const router = useRouter();
@@ -62,6 +50,7 @@ export default function TeacherWakakurCurriculumScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [section, setSection] = useState<CurriculumSection>('OVERVIEW');
+  const [activeSummaryId, setActiveSummaryId] = useState<CurriculumSummaryId | null>(null);
   const [search, setSearch] = useState('');
   const openCurriculumCrud = (target: 'subject-categories' | 'subjects' | 'teacher-assignments' | 'schedule' | 'teaching-load') => {
     if (target === 'subject-categories' || target === 'subjects') {
@@ -193,6 +182,55 @@ export default function TeacherWakakurCurriculumScreen() {
     [filteredTeachingLoad],
   );
 
+  const summaryCards = useMemo<
+    Array<{
+      id: CurriculumSummaryId;
+      title: string;
+      value: string;
+      subtitle: string;
+      iconName: React.ComponentProps<typeof Feather>['name'];
+      accentColor: string;
+    }>
+  >(
+    () => [
+      {
+        id: 'categories',
+        title: 'Kategori Mapel',
+        value: String(filteredCategories.length),
+        subtitle: 'Kategori aktif & hasil filter',
+        iconName: 'layers',
+        accentColor: '#8b5cf6',
+      },
+      {
+        id: 'subjects',
+        title: 'Mata Pelajaran',
+        value: String(curriculumQuery.data?.subjectTotal || 0),
+        subtitle: 'Total mapel sekolah',
+        iconName: 'book-open',
+        accentColor: '#0f766e',
+      },
+      {
+        id: 'assignments',
+        title: 'Assignment Guru',
+        value: String(curriculumQuery.data?.assignmentTotal || 0),
+        subtitle: 'Penugasan tahun aktif',
+        iconName: 'users',
+        accentColor: '#2563eb',
+      },
+      {
+        id: 'load',
+        title: 'Rekap Guru',
+        value: String(teachingLoad.length),
+        subtitle: 'Guru dengan jam terdata',
+        iconName: 'clock',
+        accentColor: '#f59e0b',
+      },
+    ],
+    [curriculumQuery.data?.assignmentTotal, curriculumQuery.data?.subjectTotal, filteredCategories.length, teachingLoad.length],
+  );
+
+  const activeSummaryMeta = summaryCards.find((item) => item.id === activeSummaryId) || null;
+
   if (isLoading) return <AppLoadingScreen message="Memuat modul kurikulum..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
@@ -282,29 +320,19 @@ export default function TeacherWakakurCurriculumScreen() {
         Ringkasan kurikulum, assignment guru, dan beban jam mengajar.
       </Text>
 
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-        <SummaryCard
-          title="Kategori Mapel"
-          value={String(filteredCategories.length)}
-          subtitle="Kategori aktif"
-        />
-        <SummaryCard
-          title="Mata Pelajaran"
-          value={String(curriculumQuery.data?.subjectTotal || 0)}
-          subtitle="Total mapel"
-        />
-      </View>
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-        <SummaryCard
-          title="Assignment Guru"
-          value={String(curriculumQuery.data?.assignmentTotal || 0)}
-          subtitle="Tahun aktif"
-        />
-        <SummaryCard
-          title="Rekap Guru"
-          value={String(teachingLoad.length)}
-          subtitle="Guru terjadwal"
-        />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 12 }}>
+        {summaryCards.map((item) => (
+          <View key={item.id} style={{ width: '48.5%', marginBottom: 8 }}>
+            <MobileSummaryCard
+              title={item.title}
+              value={item.value}
+              subtitle={item.subtitle}
+              iconName={item.iconName}
+              accentColor={item.accentColor}
+              onPress={() => setActiveSummaryId(item.id)}
+            />
+          </View>
+        ))}
       </View>
 
       <View
@@ -329,13 +357,15 @@ export default function TeacherWakakurCurriculumScreen() {
         />
       </View>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        <SectionChip active={section === 'OVERVIEW'} label="Ringkasan" onPress={() => setSection('OVERVIEW')} />
-        <SectionChip active={section === 'CATEGORIES'} label="Kategori" onPress={() => setSection('CATEGORIES')} />
-        <SectionChip active={section === 'SUBJECTS'} label="Mapel" onPress={() => setSection('SUBJECTS')} />
-        <SectionChip active={section === 'ASSIGNMENTS'} label="Assignment" onPress={() => setSection('ASSIGNMENTS')} />
-        <SectionChip active={section === 'LOAD'} label="Jam Mengajar" onPress={() => setSection('LOAD')} />
-      </View>
+      <MobileMenuTabBar
+        items={SECTION_ITEMS}
+        activeKey={section}
+        onChange={(key) => setSection(key as CurriculumSection)}
+        style={{ marginBottom: 12 }}
+        contentContainerStyle={{ paddingRight: 8 }}
+        minTabWidth={74}
+        maxTabWidth={108}
+      />
 
       {curriculumQuery.isLoading ? <QueryStateView type="loading" message="Memuat data kurikulum..." /> : null}
       {curriculumQuery.isError ? (
@@ -672,6 +702,140 @@ export default function TeacherWakakurCurriculumScreen() {
       >
         <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
       </Pressable>
+
+      <MobileDetailModal
+        visible={Boolean(activeSummaryId && activeSummaryMeta)}
+        title={activeSummaryMeta?.title || 'Ringkasan Kurikulum'}
+        subtitle="Ringkasan detail ditampilkan dalam popup agar tampilan utama mobile tetap ringkas."
+        iconName={activeSummaryMeta?.iconName || 'bar-chart-2'}
+        accentColor={activeSummaryMeta?.accentColor || BRAND_COLORS.blue}
+        onClose={() => setActiveSummaryId(null)}
+      >
+        {activeSummaryId === 'categories' ? (
+          <>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+              Total kategori sesuai filter: {filteredCategories.length}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+              Gunakan ringkasan ini untuk melihat sebaran kategori mapel yang aktif dan jumlah mapel pada tiap kategori.
+            </Text>
+            {categories.slice(0, 8).map((item) => (
+              <View
+                key={item.id}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  borderRadius: 12,
+                  padding: 10,
+                  marginBottom: 8,
+                  backgroundColor: '#fff',
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                  {item.code} - {item.name}
+                </Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  Total mapel: {subjectPerCategory.get(item.id) || item._count?.subjects || 0}
+                </Text>
+              </View>
+            ))}
+          </>
+        ) : null}
+
+        {activeSummaryId === 'subjects' ? (
+          <>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+              Total mata pelajaran: {curriculumQuery.data?.subjectTotal || 0}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+              Nilai ini menghitung seluruh mapel yang sudah tersusun pada data kurikulum aktif.
+            </Text>
+            {filteredSubjects.slice(0, 8).map((item) => (
+              <View
+                key={item.id}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  borderRadius: 12,
+                  padding: 10,
+                  marginBottom: 8,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                  {item.code} - {item.name}
+                </Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  Kategori: {item.category?.name || '-'}
+                </Text>
+              </View>
+            ))}
+          </>
+        ) : null}
+
+        {activeSummaryId === 'assignments' ? (
+          <>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+              Total assignment guru: {curriculumQuery.data?.assignmentTotal || 0}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+              Distribusi ini membantu melihat kelas mana yang paling padat assignment-nya.
+            </Text>
+            {assignmentPerClass.length > 0 ? (
+              assignmentPerClass.map((item) => (
+                <View
+                  key={item.className}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    borderRadius: 12,
+                    padding: 10,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.className}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                    Total assignment: {item.total}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data assignment untuk ditampilkan.</Text>
+            )}
+          </>
+        ) : null}
+
+        {activeSummaryId === 'load' ? (
+          <>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+              Total guru dengan rekap jam: {teachingLoad.length}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+              Ringkasan ini menunjukkan guru dengan total jam mengajar tertinggi pada tahun ajaran aktif.
+            </Text>
+            {topTeachersByLoad.length > 0 ? (
+              topTeachersByLoad.map((item) => (
+                <View
+                  key={item.teacherId}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    borderRadius: 12,
+                    padding: 10,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.teacherName}</Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                    {item.totalHours} jam • {item.totalSessions} sesi • {item.totalClasses} kelas
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada data beban mengajar untuk ditampilkan.</Text>
+            )}
+          </>
+        ) : null}
+      </MobileDetailModal>
     </ScrollView>
   );
 }

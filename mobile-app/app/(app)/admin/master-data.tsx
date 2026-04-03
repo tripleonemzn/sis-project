@@ -5,7 +5,10 @@ import { useQuery } from '@tanstack/react-query';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
-import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
+import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -26,6 +29,7 @@ type MasterDataSection =
   | 'subjects'
   | 'subject-categories'
   | 'extracurriculars';
+type MasterDataSummaryId = 'majors' | 'subjects' | 'classes' | 'categories';
 
 const MASTER_DATA_SECTIONS: Array<{
   key: MasterDataSection;
@@ -47,24 +51,6 @@ const getSingleParam = (value: string | string[] | undefined) => (Array.isArray(
 function hasAnyDuty(userDuties: string[] | undefined, expected: string[]) {
   const owned = new Set((userDuties || []).map((item) => String(item || '').trim().toUpperCase()));
   return expected.some((item) => owned.has(String(item || '').trim().toUpperCase()));
-}
-
-function SummaryCard({ title, value }: { title: string; value: number }) {
-  return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: BRAND_COLORS.white,
-        borderWidth: 1,
-        borderColor: '#d6e0f2',
-        borderRadius: 14,
-        padding: 12,
-      }}
-    >
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontSize: 22, fontWeight: '700', marginTop: 4 }}>{value}</Text>
-    </View>
-  );
 }
 
 function SectionCard({
@@ -94,38 +80,6 @@ function SectionCard({
   );
 }
 
-const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
-  <MobileMenuTab active={active} label={label} onPress={onPress} minWidth={96} />
-);
-
-function SelectChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d6e0f2',
-        backgroundColor: active ? '#eaf1ff' : '#fff',
-      }}
-    >
-      <Text style={{ fontSize: 12, fontWeight: '700', color: active ? BRAND_COLORS.blue : BRAND_COLORS.textMuted }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
 const toNullableNumber = (value: string) => {
   const raw = String(value || '').trim();
   if (!raw) return null;
@@ -143,6 +97,7 @@ export default function AdminMasterDataScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const pageContentPadding = getStandardPagePadding(insets);
   const [search, setSearch] = useState('');
+  const [activeSummaryId, setActiveSummaryId] = useState<MasterDataSummaryId | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
 
   const [majorForm, setMajorForm] = useState({ code: '', name: '', description: '' });
@@ -361,6 +316,108 @@ export default function AdminMasterDataScreen() {
   const selectedClassTeacher = teachers.find((item) => String(item.id) === classForm.teacherId) || null;
   const selectedTrainingInstructor = teachers.find((item) => String(item.id) === trainingForm.instructorId) || null;
   const selectedSubjectCategory = categories.find((item) => String(item.id) === subjectForm.subjectCategoryId) || null;
+  const sectionItems = useMemo(
+    () =>
+      MASTER_DATA_SECTIONS.filter((item) => allowedSectionSet.has(item.key)).map((item) => ({
+        key: item.key,
+        label: item.label,
+      })),
+    [allowedSectionSet],
+  );
+  const summaryCards = useMemo<
+    Array<{
+      id: MasterDataSummaryId;
+      title: string;
+      value: string;
+      subtitle: string;
+      iconName: React.ComponentProps<typeof Feather>['name'];
+      accentColor: string;
+    }>
+  >(
+    () => [
+      {
+        id: 'majors',
+        title: 'Total Jurusan',
+        value: String(majors.length),
+        subtitle: 'Kompetensi aktif',
+        iconName: 'briefcase',
+        accentColor: '#7c3aed',
+      },
+      {
+        id: 'subjects',
+        title: 'Total Mapel',
+        value: String(subjects.length),
+        subtitle: 'Mapel tersusun',
+        iconName: 'book-open',
+        accentColor: '#0f766e',
+      },
+      {
+        id: 'classes',
+        title: 'Total Kelas',
+        value: String(classes.length),
+        subtitle: 'Kelas aktif',
+        iconName: 'layout',
+        accentColor: '#2563eb',
+      },
+      {
+        id: 'categories',
+        title: 'Kategori Mapel',
+        value: String(categories.length),
+        subtitle: 'Kategori kurikulum',
+        iconName: 'layers',
+        accentColor: '#f59e0b',
+      },
+    ],
+    [categories.length, classes.length, majors.length, subjects.length],
+  );
+  const activeSummaryMeta = summaryCards.find((item) => item.id === activeSummaryId) || null;
+  const subjectCategoryOptions = useMemo(
+    () => categories.map((item) => ({ label: item.name, value: String(item.id) })),
+    [categories],
+  );
+  const classLevelOptions = useMemo(
+    () => ['X', 'XI', 'XII'].map((level) => ({ label: level, value: level })),
+    [],
+  );
+  const academicYearOptions = useMemo(
+    () => academicYears.map((item) => ({ label: item.name, value: String(item.id) })),
+    [academicYears],
+  );
+  const majorOptions = useMemo(
+    () => majors.map((item) => ({ label: `${item.code} - ${item.name}`, value: String(item.id) })),
+    [majors],
+  );
+  const classTeacherOptions = useMemo(
+    () => [
+      { label: 'Tanpa wali kelas', value: '' },
+      ...filteredTeachersForClass.map((item) => ({
+        label: `${item.name} (@${item.username})`,
+        value: String(item.id),
+      })),
+    ],
+    [filteredTeachersForClass],
+  );
+  const trainingInstructorOptions = useMemo(
+    () => [
+      { label: 'Tanpa instruktur', value: '' },
+      ...filteredTeachersForTraining.map((item) => ({
+        label: `${item.name} (@${item.username})`,
+        value: String(item.id),
+      })),
+    ],
+    [filteredTeachersForTraining],
+  );
+  const trainingStatusOptions = useMemo(
+    () => [
+      { label: 'Aktif', value: 'ACTIVE' },
+      { label: 'Nonaktif', value: 'INACTIVE' },
+    ],
+    [],
+  );
+  const extracurricularCategoryOptions = useMemo(
+    () => EXTRACURRICULAR_CATEGORY_OPTIONS.map((item) => ({ label: item.label, value: item.value })),
+    [],
+  );
   const shouldShow = (section: MasterDataSection) =>
     allowedSectionSet.has(section) && (activeSection === 'overview' || activeSection === section);
 
@@ -836,20 +893,15 @@ export default function AdminMasterDataScreen() {
       </View>
       <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>{sectionMeta.description}</Text>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-        <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-          {MASTER_DATA_SECTIONS.map((item) => (
-            allowedSectionSet.has(item.key) ? (
-              <SectionChip
-                key={item.key}
-                label={item.label}
-                active={activeSection === item.key}
-                onPress={() => openSection(item.key)}
-              />
-            ) : null
-          ))}
-        </View>
-      </ScrollView>
+      <MobileMenuTabBar
+        items={sectionItems}
+        activeKey={activeSection}
+        onChange={(key) => openSection(key as MasterDataSection)}
+        style={{ marginBottom: 12 }}
+        contentContainerStyle={{ paddingRight: 8 }}
+        minTabWidth={74}
+        maxTabWidth={108}
+      />
 
       <View
         style={{
@@ -880,13 +932,19 @@ export default function AdminMasterDataScreen() {
 
       {!masterDataQuery.isLoading && !masterDataQuery.isError ? (
         <>
-          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
-            <SummaryCard title="Total Jurusan" value={majors.length} />
-            <SummaryCard title="Total Mapel" value={subjects.length} />
-          </View>
-          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-            <SummaryCard title="Total Kelas" value={classes.length} />
-            <SummaryCard title="Kategori Mapel" value={categories.length} />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 12 }}>
+            {summaryCards.map((item) => (
+              <View key={item.id} style={{ width: '48.5%', marginBottom: 8 }}>
+                <MobileSummaryCard
+                  title={item.title}
+                  value={item.value}
+                  subtitle={item.subtitle}
+                  iconName={item.iconName}
+                  accentColor={item.accentColor}
+                  onPress={() => setActiveSummaryId(item.id)}
+                />
+              </View>
+            ))}
           </View>
 
           {shouldShow('majors') ? (
@@ -1188,21 +1246,14 @@ export default function AdminMasterDataScreen() {
                   marginBottom: 8,
                 }}
               />
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
-                Kategori terpilih: {selectedSubjectCategory?.name || '-'}
-              </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  {categories.map((item) => (
-                    <SelectChip
-                      key={item.id}
-                      active={String(item.id) === subjectForm.subjectCategoryId}
-                      label={item.name}
-                      onPress={() => setSubjectForm((prev) => ({ ...prev, subjectCategoryId: String(item.id) }))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Kategori Mapel"
+                value={subjectForm.subjectCategoryId}
+                options={subjectCategoryOptions}
+                onChange={(value) => setSubjectForm((prev) => ({ ...prev, subjectCategoryId: value }))}
+                placeholder="Pilih kategori mapel"
+                helperText={`Kategori terpilih: ${selectedSubjectCategory?.name || '-'}`}
+              />
               <TextInput
                 value={subjectForm.description}
                 onChangeText={(value) => setSubjectForm((prev) => ({ ...prev, description: value }))}
@@ -1355,45 +1406,31 @@ export default function AdminMasterDataScreen() {
               title={editingClassId ? 'Edit Kelas' : 'Tambah Kelas'}
               subtitle="Setara modul web: create (multi-rombel), update, delete kelas."
             >
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Pilih Level</Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                {['X', 'XI', 'XII'].map((level) => (
-                  <SelectChip
-                    key={level}
-                    active={classForm.level === level}
-                    label={level}
-                    onPress={() => setClassForm((prev) => ({ ...prev, level }))}
-                  />
-                ))}
-              </View>
+              <MobileSelectField
+                label="Level"
+                value={classForm.level}
+                options={classLevelOptions}
+                onChange={(value) => setClassForm((prev) => ({ ...prev, level: value }))}
+                placeholder="Pilih level"
+              />
 
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Ajaran</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  {academicYears.map((item) => (
-                    <SelectChip
-                      key={item.id}
-                      active={classForm.academicYearId === String(item.id)}
-                      label={item.name}
-                      onPress={() => setClassForm((prev) => ({ ...prev, academicYearId: String(item.id) }))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Tahun Ajaran"
+                value={classForm.academicYearId}
+                options={academicYearOptions}
+                onChange={(value) => setClassForm((prev) => ({ ...prev, academicYearId: value }))}
+                placeholder="Pilih tahun ajaran"
+                maxHeight={260}
+              />
 
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Jurusan</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  {majors.map((item) => (
-                    <SelectChip
-                      key={item.id}
-                      active={classForm.majorId === String(item.id)}
-                      label={`${item.code} - ${item.name}`}
-                      onPress={() => setClassForm((prev) => ({ ...prev, majorId: String(item.id) }))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Jurusan"
+                value={classForm.majorId}
+                options={majorOptions}
+                onChange={(value) => setClassForm((prev) => ({ ...prev, majorId: value }))}
+                placeholder="Pilih jurusan"
+                maxHeight={260}
+              />
 
               <TextInput
                 value={classForm.baseName}
@@ -1444,26 +1481,15 @@ export default function AdminMasterDataScreen() {
                   marginBottom: 6,
                 }}
               />
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
-                Wali kelas terpilih: {selectedClassTeacher?.name || 'Tidak dipilih'}
-              </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  <SelectChip
-                    active={!classForm.teacherId}
-                    label="Tanpa wali kelas"
-                    onPress={() => setClassForm((prev) => ({ ...prev, teacherId: '' }))}
-                  />
-                  {filteredTeachersForClass.map((item) => (
-                    <SelectChip
-                      key={item.id}
-                      active={classForm.teacherId === String(item.id)}
-                      label={`${item.name} (@${item.username})`}
-                      onPress={() => setClassForm((prev) => ({ ...prev, teacherId: String(item.id) }))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Wali Kelas"
+                value={classForm.teacherId}
+                options={classTeacherOptions}
+                onChange={(value) => setClassForm((prev) => ({ ...prev, teacherId: value }))}
+                placeholder="Pilih wali kelas"
+                helperText={`Wali kelas terpilih: ${selectedClassTeacher?.name || 'Tidak dipilih'}`}
+                maxHeight={260}
+              />
 
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
                 <Pressable
@@ -1571,19 +1597,14 @@ export default function AdminMasterDataScreen() {
                   marginBottom: 8,
                 }}
               />
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Tahun Ajaran</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  {academicYears.map((item) => (
-                    <SelectChip
-                      key={item.id}
-                      active={trainingForm.academicYearId === String(item.id)}
-                      label={item.name}
-                      onPress={() => setTrainingForm((prev) => ({ ...prev, academicYearId: String(item.id) }))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Tahun Ajaran"
+                value={trainingForm.academicYearId}
+                options={academicYearOptions}
+                onChange={(value) => setTrainingForm((prev) => ({ ...prev, academicYearId: value }))}
+                placeholder="Pilih tahun ajaran"
+                maxHeight={260}
+              />
               <TextInput
                 value={trainingInstructorSearch}
                 onChangeText={setTrainingInstructorSearch}
@@ -1599,26 +1620,15 @@ export default function AdminMasterDataScreen() {
                   marginBottom: 6,
                 }}
               />
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>
-                Instruktur terpilih: {selectedTrainingInstructor?.name || 'Tidak dipilih'}
-              </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  <SelectChip
-                    active={!trainingForm.instructorId}
-                    label="Tanpa instruktur"
-                    onPress={() => setTrainingForm((prev) => ({ ...prev, instructorId: '' }))}
-                  />
-                  {filteredTeachersForTraining.map((item) => (
-                    <SelectChip
-                      key={item.id}
-                      active={trainingForm.instructorId === String(item.id)}
-                      label={`${item.name} (@${item.username})`}
-                      onPress={() => setTrainingForm((prev) => ({ ...prev, instructorId: String(item.id) }))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Instruktur"
+                value={trainingForm.instructorId}
+                options={trainingInstructorOptions}
+                onChange={(value) => setTrainingForm((prev) => ({ ...prev, instructorId: value }))}
+                placeholder="Pilih instruktur"
+                helperText={`Instruktur terpilih: ${selectedTrainingInstructor?.name || 'Tidak dipilih'}`}
+                maxHeight={260}
+              />
               <TextInput
                 value={trainingForm.maxCapacity}
                 onChangeText={(value) => setTrainingForm((prev) => ({ ...prev, maxCapacity: value.replace(/[^0-9]/g, '') }))}
@@ -1652,18 +1662,13 @@ export default function AdminMasterDataScreen() {
                   marginBottom: 8,
                 }}
               />
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                <SelectChip
-                  active={trainingForm.isActive}
-                  label="Status: Aktif"
-                  onPress={() => setTrainingForm((prev) => ({ ...prev, isActive: true }))}
-                />
-                <SelectChip
-                  active={!trainingForm.isActive}
-                  label="Status: Nonaktif"
-                  onPress={() => setTrainingForm((prev) => ({ ...prev, isActive: false }))}
-                />
-              </View>
+              <MobileSelectField
+                label="Status Kelas Training"
+                value={trainingForm.isActive ? 'ACTIVE' : 'INACTIVE'}
+                options={trainingStatusOptions}
+                onChange={(value) => setTrainingForm((prev) => ({ ...prev, isActive: value === 'ACTIVE' }))}
+                placeholder="Pilih status"
+              />
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
                 <Pressable
                   onPress={() => {
@@ -1784,19 +1789,15 @@ export default function AdminMasterDataScreen() {
                   marginBottom: 8,
                 }}
               />
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Kategori</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                  {EXTRACURRICULAR_CATEGORY_OPTIONS.map((option) => (
-                    <SelectChip
-                      key={option.value}
-                      active={extracurricularForm.category === option.value}
-                      label={option.label}
-                      onPress={() => setExtracurricularForm((prev) => ({ ...prev, category: option.value }))}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <MobileSelectField
+                label="Kategori"
+                value={extracurricularForm.category}
+                options={extracurricularCategoryOptions}
+                onChange={(value) =>
+                  setExtracurricularForm((prev) => ({ ...prev, category: value as ExtracurricularCategory }))
+                }
+                placeholder="Pilih kategori"
+              />
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
                 <Pressable
                   onPress={() => {
@@ -1879,6 +1880,103 @@ export default function AdminMasterDataScreen() {
           ) : null}
         </>
       ) : null}
+
+      <MobileDetailModal
+        visible={Boolean(activeSummaryId && activeSummaryMeta)}
+        title={activeSummaryMeta?.title || 'Ringkasan Master Data'}
+        subtitle="Detail dipindahkan ke popup agar halaman utama mobile tetap ringkas dan mudah dipindai."
+        iconName={activeSummaryMeta?.iconName || 'bar-chart-2'}
+        accentColor={activeSummaryMeta?.accentColor || BRAND_COLORS.blue}
+        onClose={() => setActiveSummaryId(null)}
+      >
+        {activeSummaryId === 'majors' ? (
+          <>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+              Total jurusan: {majors.length}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+              Gunakan daftar ini untuk memeriksa jurusan yang sudah aktif di master data.
+            </Text>
+            {majors.slice(0, 8).map((item) => (
+              <View
+                key={item.id}
+                style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 10, marginBottom: 8 }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                  {item.code} - {item.name}
+                </Text>
+              </View>
+            ))}
+          </>
+        ) : null}
+
+        {activeSummaryId === 'subjects' ? (
+          <>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+              Total mata pelajaran: {subjects.length}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+              Ringkasan ini menampilkan beberapa mapel awal yang sudah tersusun pada master data.
+            </Text>
+            {subjects.slice(0, 8).map((item) => (
+              <View
+                key={item.id}
+                style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 10, marginBottom: 8 }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                  {item.code} - {item.name}
+                </Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  Kategori: {item.category?.name || '-'}
+                </Text>
+              </View>
+            ))}
+          </>
+        ) : null}
+
+        {activeSummaryId === 'classes' ? (
+          <>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+              Total kelas aktif: {classes.length}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+              Detail ini membantu memeriksa kelas yang sudah tersedia pada tahun ajaran aktif.
+            </Text>
+            {classes.slice(0, 8).map((item) => (
+              <View
+                key={item.id}
+                style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 10, marginBottom: 8 }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.name}</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  {item.level} • {item.major?.name || '-'}
+                </Text>
+              </View>
+            ))}
+          </>
+        ) : null}
+
+        {activeSummaryId === 'categories' ? (
+          <>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+              Total kategori mapel: {categories.length}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+              Kategori ini dipakai untuk mengelompokkan mapel dan mendukung struktur kurikulum.
+            </Text>
+            {categories.slice(0, 8).map((item) => (
+              <View
+                key={item.id}
+                style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 10, marginBottom: 8 }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                  {item.code} - {item.name}
+                </Text>
+              </View>
+            ))}
+          </>
+        ) : null}
+      </MobileDetailModal>
     </ScrollView>
   );
 }

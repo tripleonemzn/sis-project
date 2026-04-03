@@ -13,7 +13,10 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
-import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
+import { MobileDetailModal } from '../../../src/components/MobileDetailModal';
+import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -40,6 +43,15 @@ import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
 type ExamHubSection = 'JADWAL' | 'RUANG' | 'MENGAWAS' | 'PROGRAM';
 type ExamTypeFilter = 'ALL' | ExamDisplayType;
+type ExamSummaryId =
+  | 'schedules'
+  | 'packets'
+  | 'proctors'
+  | 'rooms'
+  | 'programs'
+  | 'active-programs'
+  | 'components'
+  | 'active-components';
 type ExamLabelMap = Record<string, string>;
 type ExamSittingStudentRow = NonNullable<ExamSittingDetail['students']>[number];
 type ExamProgramDraft = {
@@ -577,64 +589,12 @@ function createNewComponentDraft(rows: GradeComponentDraft[]): GradeComponentDra
   };
 }
 
-const SectionChip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
-  <MobileMenuTab active={active} label={label} onPress={onPress} minWidth={96} />
-);
-
-function TypeChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        borderRadius: 8,
-        paddingHorizontal: 10,
-        paddingVertical: 7,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function SummaryCard({
-  title,
-  value,
-  subtitle,
-}: {
-  title: string;
-  value: string;
-  subtitle: string;
-}) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#dbe7fb',
-        borderRadius: 12,
-        padding: 12,
-        flex: 1,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 11 }}>{title}</Text>
-      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 22, marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
+const EXAM_SECTION_ITEMS: Array<{ key: ExamHubSection; label: string; iconName: React.ComponentProps<typeof Feather>['name'] }> = [
+  { key: 'JADWAL', label: 'Jadwal Ujian', iconName: 'calendar' },
+  { key: 'RUANG', label: 'Ruang Ujian', iconName: 'home' },
+  { key: 'MENGAWAS', label: 'Jadwal Mengawas', iconName: 'user-check' },
+  { key: 'PROGRAM', label: 'Program Ujian', iconName: 'layout' },
+];
 
 export default function TeacherWakakurExamsScreen() {
   const router = useRouter();
@@ -643,6 +603,7 @@ export default function TeacherWakakurExamsScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [section, setSection] = useState<ExamHubSection>('JADWAL');
+  const [activeSummaryId, setActiveSummaryId] = useState<ExamSummaryId | null>(null);
   const [examTypeFilter, setExamTypeFilter] = useState<ExamTypeFilter>('ALL');
   const [search, setSearch] = useState('');
   const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
@@ -1020,6 +981,15 @@ export default function TeacherWakakurExamsScreen() {
     return ['ALL', ...Array.from(codes)] as ExamTypeFilter[];
   }, [examProgramsQuery.data?.programs, schedules]);
 
+  const examTypeSelectOptions = useMemo(
+    () =>
+      examTypeFilterOptions.map((item) => ({
+        value: item,
+        label: item === 'ALL' ? 'Semua Tipe Ujian' : examTypeLabel(item),
+      })),
+    [examTypeFilterOptions, examTypeLabel],
+  );
+
   useEffect(() => {
     if (examTypeFilter === 'ALL') return;
     if (!examTypeFilterOptions.includes(examTypeFilter)) {
@@ -1336,6 +1306,101 @@ export default function TeacherWakakurExamsScreen() {
     };
   }, [componentDrafts]);
 
+  const summaryCards = useMemo<
+    Array<{
+      id: ExamSummaryId;
+      title: string;
+      value: string;
+      subtitle: string;
+      iconName: React.ComponentProps<typeof Feather>['name'];
+      accentColor: string;
+    }>
+  >(
+    () =>
+      isProgramSection
+        ? [
+            {
+              id: 'programs',
+              title: 'Total Program',
+              value: String(programStats.total),
+              subtitle: 'Semua program ujian',
+              iconName: 'layout',
+              accentColor: '#7c3aed',
+            },
+            {
+              id: 'active-programs',
+              title: 'Program Aktif',
+              value: String(programStats.activeCount),
+              subtitle: 'Siap digunakan',
+              iconName: 'check-circle',
+              accentColor: '#16a34a',
+            },
+            {
+              id: 'components',
+              title: 'Total Komponen',
+              value: String(componentStats.total),
+              subtitle: 'Master komponen nilai',
+              iconName: 'clipboard',
+              accentColor: '#f59e0b',
+            },
+            {
+              id: 'active-components',
+              title: 'Komponen Aktif',
+              value: String(componentStats.activeCount),
+              subtitle: 'Siap dipakai program',
+              iconName: 'check-circle',
+              accentColor: '#16a34a',
+            },
+          ]
+        : [
+            {
+              id: 'schedules',
+              title: 'Jadwal Ujian',
+              value: String(stats.totalSchedules),
+              subtitle: 'Sesuai filter aktif',
+              iconName: 'calendar',
+              accentColor: '#2563eb',
+            },
+            {
+              id: 'packets',
+              title: 'Paket Siap',
+              value: String(stats.readyPacketCount),
+              subtitle: 'Sudah linked',
+              iconName: 'clipboard',
+              accentColor: '#f59e0b',
+            },
+            {
+              id: 'proctors',
+              title: 'Belum Pengawas',
+              value: String(stats.noProctorCount),
+              subtitle: 'Perlu assignment',
+              iconName: 'user-x',
+              accentColor: '#ef4444',
+            },
+            {
+              id: 'rooms',
+              title: 'Ruang Aktif',
+              value: String(stats.totalRooms),
+              subtitle: 'Ruang terpakai',
+              iconName: 'home',
+              accentColor: '#0ea5e9',
+            },
+          ],
+    [
+      componentStats.activeCount,
+      componentStats.total,
+      isProgramSection,
+      programStats.activeCount,
+      programStats.total,
+      stats.noProctorCount,
+      stats.readyPacketCount,
+      stats.totalRooms,
+      stats.totalSchedules,
+    ],
+  );
+
+  const activeSummaryMeta = summaryCards.find((item) => item.id === activeSummaryId) || null;
+
   const programDirty = useMemo(
     () => snapshotProgramDrafts(programDrafts) !== programBaseline,
     [programBaseline, programDrafts],
@@ -1561,22 +1626,31 @@ export default function TeacherWakakurExamsScreen() {
         Pengelolaan jadwal ujian, ruang ujian, jadwal mengawas, dan program ujian.
       </Text>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-        <SectionChip active={section === 'JADWAL'} label="Jadwal Ujian" onPress={() => setSection('JADWAL')} />
-        <SectionChip active={section === 'RUANG'} label="Ruang Ujian" onPress={() => setSection('RUANG')} />
-        <SectionChip active={section === 'MENGAWAS'} label="Jadwal Mengawas" onPress={() => setSection('MENGAWAS')} />
-        <SectionChip active={section === 'PROGRAM'} label="Program Ujian" onPress={() => setSection('PROGRAM')} />
-      </View>
+      <MobileMenuTabBar
+        items={EXAM_SECTION_ITEMS}
+        activeKey={section}
+        onChange={(key) => setSection(key as ExamHubSection)}
+        style={{ marginBottom: 10 }}
+        contentContainerStyle={{ paddingRight: 8 }}
+        minTabWidth={74}
+        maxTabWidth={108}
+      />
 
       {!isProgramSection ? (
         <>
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-            <SummaryCard title="Jadwal Ujian" value={String(stats.totalSchedules)} subtitle="Sesuai filter" />
-            <SummaryCard title="Paket Siap" value={String(stats.readyPacketCount)} subtitle="Sudah linked" />
-          </View>
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-            <SummaryCard title="Belum Pengawas" value={String(stats.noProctorCount)} subtitle="Perlu assignment" />
-            <SummaryCard title="Ruang Aktif" value={String(stats.totalRooms)} subtitle="Ruang terpakai" />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 12 }}>
+            {summaryCards.map((item) => (
+              <View key={item.id} style={{ width: '48.5%', marginBottom: 8 }}>
+                <MobileSummaryCard
+                  title={item.title}
+                  value={item.value}
+                  subtitle={item.subtitle}
+                  iconName={item.iconName}
+                  accentColor={item.accentColor}
+                  onPress={() => setActiveSummaryId(item.id)}
+                />
+              </View>
+            ))}
           </View>
 
           <View
@@ -1601,16 +1675,13 @@ export default function TeacherWakakurExamsScreen() {
             />
           </View>
 
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-            {examTypeFilterOptions.map((item) => (
-              <TypeChip
-                key={item}
-                active={examTypeFilter === item}
-                label={item === 'ALL' ? 'Semua Tipe' : examTypeLabel(item)}
-                onPress={() => setExamTypeFilter(item)}
-              />
-            ))}
-          </View>
+          <MobileSelectField
+            label="Filter tipe ujian"
+            value={examTypeFilter}
+            options={examTypeSelectOptions}
+            onChange={(value) => setExamTypeFilter(value as ExamTypeFilter)}
+            placeholder="Pilih tipe ujian"
+          />
 
           <Pressable
             onPress={openExamSessionCrud}
@@ -1646,9 +1717,19 @@ export default function TeacherWakakurExamsScreen() {
               Atur Master Komponen Nilai lalu susun Program Ujian agar menu guru/siswa mengikuti kebijakan kurikulum aktif.
             </Text>
           </View>
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
-            <SummaryCard title="Total Komponen" value={String(componentStats.total)} subtitle="Master komponen nilai" />
-            <SummaryCard title="Komponen Aktif" value={String(componentStats.activeCount)} subtitle="Siap dipakai" />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 10 }}>
+            {summaryCards.map((item) => (
+              <View key={item.id} style={{ width: '48.5%', marginBottom: 8 }}>
+                <MobileSummaryCard
+                  title={item.title}
+                  value={item.value}
+                  subtitle={item.subtitle}
+                  iconName={item.iconName}
+                  accentColor={item.accentColor}
+                  onPress={() => setActiveSummaryId(item.id)}
+                />
+              </View>
+            ))}
           </View>
           <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
             <Pressable
@@ -1998,10 +2079,6 @@ export default function TeacherWakakurExamsScreen() {
             ))
           ) : null}
 
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
-            <SummaryCard title="Total Program" value={String(programStats.total)} subtitle="Semua program ujian" />
-            <SummaryCard title="Program Aktif" value={String(programStats.activeCount)} subtitle="Siap digunakan" />
-          </View>
           <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
             <Pressable
               onPress={addProgramDraft}
@@ -3082,6 +3159,158 @@ export default function TeacherWakakurExamsScreen() {
       >
         <Text style={{ color: '#fff', fontWeight: '700' }}>Kembali ke Home</Text>
       </Pressable>
+
+      <MobileDetailModal
+        visible={Boolean(activeSummaryId && activeSummaryMeta)}
+        title={activeSummaryMeta?.title || 'Ringkasan Ujian'}
+        subtitle="Detail lengkap dipindahkan ke popup supaya tampilan utama mobile tetap rapi dan fokus."
+        iconName={activeSummaryMeta?.iconName || 'bar-chart-2'}
+        accentColor={activeSummaryMeta?.accentColor || BRAND_COLORS.blue}
+        onClose={() => setActiveSummaryId(null)}
+      >
+        {activeSummaryId === 'schedules' ? (
+          <>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+              Total jadwal sesuai filter: {stats.totalSchedules}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+              Daftar ini mengikuti pencarian dan tipe ujian yang sedang aktif di halaman.
+            </Text>
+            {groupedSchedules.slice(0, 6).map((group) => (
+              <View
+                key={group.key}
+                style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 10, marginBottom: 8 }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                  {group.subjectName} ({group.subjectCode})
+                </Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  {group.schedules.length} jadwal • {group.examType}
+                </Text>
+              </View>
+            ))}
+          </>
+        ) : null}
+
+        {activeSummaryId === 'packets' ? (
+          <>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+              Paket siap pakai: {stats.readyPacketCount}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+              Nilai ini menunjukkan jadwal yang sudah terhubung dengan packet ujian.
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              Sisa jadwal tanpa packet: {Math.max(stats.totalSchedules - stats.readyPacketCount, 0)}
+            </Text>
+          </>
+        ) : null}
+
+        {activeSummaryId === 'proctors' ? (
+          <>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+              Jadwal tanpa pengawas: {stats.noProctorCount}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+              Gunakan section <Text style={{ fontWeight: '700', color: BRAND_COLORS.textDark }}>Jadwal Mengawas</Text> untuk melengkapi assignment pengawas yang belum terisi.
+            </Text>
+            {filteredSchedules
+              .filter((item) => !item.proctorId)
+              .slice(0, 6)
+              .map((item) => (
+                <View
+                  key={item.id}
+                  style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 10, marginBottom: 8 }}
+                >
+                  <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                    {item.class?.name || '-'} • {resolveScheduleSubject(item).subjectName}
+                  </Text>
+                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                    {formatDateTime(item.startTime)}
+                  </Text>
+                </View>
+              ))}
+          </>
+        ) : null}
+
+        {activeSummaryId === 'rooms' ? (
+          <>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+              Total ruang aktif: {stats.totalRooms}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+              Ringkasan ini mengikuti ruang yang benar-benar terpakai pada jadwal sesuai filter.
+            </Text>
+            {managedSittings.slice(0, 6).map((item) => (
+              <View
+                key={item.id}
+                style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 10, marginBottom: 8 }}
+              >
+                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{item.roomName || '-'}</Text>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 3 }}>
+                  {item.studentCount} siswa • {item.classes.join(', ') || '-'}
+                </Text>
+              </View>
+            ))}
+          </>
+        ) : null}
+
+        {activeSummaryId === 'components' ? (
+          <>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+              Total master komponen: {componentStats.total}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+              Komponen ini menjadi dasar penilaian yang bisa dipakai dalam program ujian aktif.
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              Program aktif saat ini: {programStats.activeCount} dari {programStats.total}
+            </Text>
+          </>
+        ) : null}
+
+        {activeSummaryId === 'programs' ? (
+          <>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+              Total program ujian: {programStats.total}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+              Program ujian menentukan tipe ujian, visibilitas menu, dan aturan kebijakan yang berlaku di guru maupun siswa.
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              Program tampil di guru: {programStats.teacherVisible} • tampil di siswa: {programStats.studentVisible}
+            </Text>
+          </>
+        ) : null}
+
+        {activeSummaryId === 'active-programs' ? (
+          <>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+              Program aktif siap pakai: {programStats.activeCount}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+              Hanya program aktif yang ikut tersedia sebagai pilihan saat operasional ujian berjalan.
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              Total program tersusun: {programStats.total}
+            </Text>
+          </>
+        ) : null}
+
+        {activeSummaryId === 'active-components' ? (
+          <>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>
+              Komponen aktif siap pakai: {componentStats.activeCount}
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted, lineHeight: 20, marginBottom: 12 }}>
+              Hanya komponen aktif yang akan ikut tersedia saat kurikulum menyusun program ujian berjalan.
+            </Text>
+            <Text style={{ color: BRAND_COLORS.textMuted }}>
+              Program tampil di guru: {programStats.teacherVisible} • tampil di siswa: {programStats.studentVisible}
+            </Text>
+          </>
+        ) : null}
+      </MobileDetailModal>
     </ScrollView>
   );
 }

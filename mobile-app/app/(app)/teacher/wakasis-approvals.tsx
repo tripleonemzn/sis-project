@@ -13,6 +13,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { ENV } from '../../../src/config/env';
@@ -178,6 +179,35 @@ export default function TeacherWakasisApprovalsScreen() {
     if (selectedClassId === 'ALL') return 'Semua kelas';
     return classesQuery.data?.find((item) => item.id === selectedClassId)?.name || `Kelas ${selectedClassId}`;
   }, [selectedClassId, classesQuery.data]);
+
+  const statusOptions = useMemo(
+    () =>
+      (Object.keys(STATUS_LABEL) as StatusFilter[]).map((status) => ({
+        label: STATUS_LABEL[status],
+        value: status,
+      })),
+    [],
+  );
+
+  const typeOptions = useMemo(
+    () =>
+      (Object.keys(TYPE_LABEL) as TypeFilter[]).map((type) => ({
+        label: TYPE_LABEL[type],
+        value: type,
+      })),
+    [],
+  );
+
+  const classOptions = useMemo(
+    () => [
+      { label: 'Semua kelas', value: 'ALL' },
+      ...(classesQuery.data || []).map((item) => ({
+        label: item.name,
+        value: String(item.id),
+      })),
+    ],
+    [classesQuery.data],
+  );
 
   const statusStats = (() => {
     const result = { PENDING: 0, APPROVED: 0, REJECTED: 0 };
@@ -354,90 +384,30 @@ export default function TeacherWakasisApprovalsScreen() {
           />
         </View>
 
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Filter status</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
-          {(Object.keys(STATUS_LABEL) as StatusFilter[]).map((status) => (
-            <View key={status} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <Pressable
-                onPress={() => setStatusFilter(status)}
-                style={{
-                  borderWidth: 1,
-                  borderColor: statusFilter === status ? BRAND_COLORS.blue : '#d6e2f7',
-                  backgroundColor: statusFilter === status ? '#e9f1ff' : '#fff',
-                  borderRadius: 9,
-                  paddingVertical: 8,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: statusFilter === status ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}>
-                  {STATUS_LABEL[status]}
-                </Text>
-              </Pressable>
-            </View>
-          ))}
-        </View>
+        <MobileSelectField
+          label="Filter status"
+          value={statusFilter}
+          options={statusOptions}
+          onChange={(value) => setStatusFilter(value as StatusFilter)}
+          placeholder="Pilih status"
+        />
 
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Filter jenis izin</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
-          {(Object.keys(TYPE_LABEL) as TypeFilter[]).map((type) => (
-            <View key={type} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-              <Pressable
-                onPress={() => setTypeFilter(type)}
-                style={{
-                  borderWidth: 1,
-                  borderColor: typeFilter === type ? BRAND_COLORS.blue : '#d6e2f7',
-                  backgroundColor: typeFilter === type ? '#e9f1ff' : '#fff',
-                  borderRadius: 9,
-                  paddingVertical: 8,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: typeFilter === type ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700' }}>
-                  {TYPE_LABEL[type]}
-                </Text>
-              </Pressable>
-            </View>
-          ))}
-        </View>
+        <MobileSelectField
+          label="Filter jenis izin"
+          value={typeFilter}
+          options={typeOptions}
+          onChange={(value) => setTypeFilter(value as TypeFilter)}
+          placeholder="Pilih jenis izin"
+        />
 
-        <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Filter kelas</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 10 }}>
-          <Pressable
-            onPress={() => setSelectedClassId('ALL')}
-            style={{
-              borderWidth: 1,
-              borderColor: selectedClassId === 'ALL' ? BRAND_COLORS.blue : '#d6e2f7',
-              backgroundColor: selectedClassId === 'ALL' ? '#e9f1ff' : '#fff',
-              borderRadius: 999,
-              paddingVertical: 7,
-              paddingHorizontal: 12,
-              marginRight: 8,
-            }}
-          >
-            <Text style={{ color: selectedClassId === 'ALL' ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
-              Semua Kelas
-            </Text>
-          </Pressable>
-          {(classesQuery.data || []).map((item) => (
-            <Pressable
-              key={item.id}
-              onPress={() => setSelectedClassId(item.id)}
-              style={{
-                borderWidth: 1,
-                borderColor: selectedClassId === item.id ? BRAND_COLORS.blue : '#d6e2f7',
-                backgroundColor: selectedClassId === item.id ? '#e9f1ff' : '#fff',
-                borderRadius: 999,
-                paddingVertical: 7,
-                paddingHorizontal: 12,
-                marginRight: 8,
-              }}
-            >
-              <Text style={{ color: selectedClassId === item.id ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
-                {item.name}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+        <MobileSelectField
+          label="Filter kelas"
+          value={selectedClassId === 'ALL' ? 'ALL' : String(selectedClassId)}
+          options={classOptions}
+          onChange={(value) => setSelectedClassId(value === 'ALL' ? 'ALL' : Number(value))}
+          placeholder="Pilih kelas"
+          maxHeight={260}
+        />
 
         <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginTop: 10 }}>
           Filter aktif: <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{selectedClassLabel}</Text>
