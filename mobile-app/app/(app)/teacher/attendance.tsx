@@ -509,17 +509,29 @@ export default function TeacherAttendanceScreen() {
                                         borderWidth: 1,
                                         borderColor: selected ? option.border : '#cbd5e1',
                                         backgroundColor: selected ? option.bg : '#fff',
-                                        borderRadius: 999,
-                                        minHeight: 34,
+                                        borderRadius: 12,
+                                        minHeight: 46,
                                         alignItems: 'center',
                                         justifyContent: 'center',
+                                        paddingVertical: 5,
                                       }}
                                     >
                                       <Feather
                                         name={option.iconName}
-                                        size={15}
+                                        size={14}
                                         color={selected ? option.text : '#64748b'}
                                       />
+                                      <Text
+                                        style={{
+                                          color: selected ? option.text : '#64748b',
+                                          fontSize: 8,
+                                          fontWeight: '700',
+                                          marginTop: 3,
+                                        }}
+                                        numberOfLines={1}
+                                      >
+                                        {option.label}
+                                      </Text>
                                     </Pressable>
                                   </View>
                                 );
