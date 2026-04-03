@@ -14,6 +14,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { ENV } from '../../../src/config/env';
@@ -307,54 +309,6 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-function StatCard({
-  title,
-  value,
-  helper,
-  tone,
-  icon,
-}: {
-  title: string;
-  value: string;
-  helper: string;
-  tone: { bg: string; border: string; iconBg: string; iconColor: string };
-  icon: keyof typeof Feather.glyphMap;
-}) {
-  return (
-    <View
-      style={{
-        flexBasis: '48%',
-        flexGrow: 1,
-        backgroundColor: tone.bg,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: tone.border,
-        padding: 14,
-      }}
-    >
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: '#64748b', fontSize: 12 }}>{title}</Text>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 24, marginTop: 6 }}>{value}</Text>
-        </View>
-        <View
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 12,
-            backgroundColor: tone.iconBg,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Feather name={icon} size={18} color={tone.iconColor} />
-        </View>
-      </View>
-      <Text style={{ color: '#64748b', fontSize: 11, marginTop: 8 }}>{helper}</Text>
-    </View>
-  );
-}
-
 function Chip({
   label,
   meta,
@@ -376,34 +330,6 @@ function Chip({
     >
       <Text style={{ color: meta.text, fontSize: 11, fontWeight: '700' }}>{label}</Text>
     </View>
-  );
-}
-
-function FilterChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontSize: 12, fontWeight: '700' }}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -508,6 +434,24 @@ export default function AdminCandidateAdmissionsScreen() {
   });
 
   const detail = detailQuery.data || null;
+  const statusFilterOptions = useMemo(
+    () => STATUS_FILTERS.map((item) => ({ value: item.value, label: item.label })),
+    [],
+  );
+  const majorFilterOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'Semua Jurusan' },
+      ...(majorsQuery.data?.items || []).map((major) => ({
+        value: String(major.id),
+        label: `${major.code} - ${major.name}`,
+      })),
+    ],
+    [majorsQuery.data?.items],
+  );
+  const reviewStatusOptions = useMemo(
+    () => REVIEW_OPTIONS.map((item) => ({ value: item.value, label: item.label })),
+    [],
+  );
 
   useEffect(() => {
     setReviewForm(buildReviewForm(detail));
@@ -639,42 +583,52 @@ export default function AdminCandidateAdmissionsScreen() {
         </View>
       </SectionCard>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
-        <StatCard
-          title="Total Pendaftar"
-          value={String(listPayload.summary.total)}
-          helper={`${listPayload.summary.submitted} sudah dikirim`}
-          icon="users"
-          tone={{ bg: '#eff6ff', border: '#bfdbfe', iconBg: '#dbeafe', iconColor: '#1d4ed8' }}
-        />
-        <StatCard
-          title="Perlu Tindakan"
-          value={String(listPayload.summary.submitted + listPayload.summary.needsRevision + listPayload.summary.testScheduled)}
-          helper={`${listPayload.summary.needsRevision} revisi`}
-          icon="alert-circle"
-          tone={{ bg: '#fffbeb', border: '#fde68a', iconBg: '#fef3c7', iconColor: '#b45309' }}
-        />
-        <StatCard
-          title="Direview"
-          value={String(listPayload.summary.underReview)}
-          helper={`${listPayload.summary.draft} masih draft`}
-          icon="search"
-          tone={{ bg: '#ecfeff', border: '#a5f3fc', iconBg: '#cffafe', iconColor: '#0f766e' }}
-        />
-        <StatCard
-          title="Lulus / Diterima"
-          value={String(listPayload.summary.passedTest + listPayload.summary.accepted)}
-          helper={`${listPayload.summary.accepted} diterima`}
-          icon="check-circle"
-          tone={{ bg: '#ecfdf5', border: '#a7f3d0', iconBg: '#d1fae5', iconColor: '#047857' }}
-        />
-        <StatCard
-          title="Tidak Lulus"
-          value={String(listPayload.summary.failedTest + listPayload.summary.rejected)}
-          helper={`${listPayload.summary.rejected} ditolak`}
-          icon="x-circle"
-          tone={{ bg: '#fef2f2', border: '#fecaca', iconBg: '#fee2e2', iconColor: '#b91c1c' }}
-        />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 14 }}>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <MobileSummaryCard
+            title="Total Pendaftar"
+            value={String(listPayload.summary.total)}
+            subtitle={`${listPayload.summary.submitted} sudah dikirim`}
+            iconName="users"
+            accentColor="#2563eb"
+          />
+        </View>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <MobileSummaryCard
+            title="Perlu Tindakan"
+            value={String(listPayload.summary.submitted + listPayload.summary.needsRevision + listPayload.summary.testScheduled)}
+            subtitle={`${listPayload.summary.needsRevision} revisi`}
+            iconName="alert-circle"
+            accentColor="#d97706"
+          />
+        </View>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <MobileSummaryCard
+            title="Direview"
+            value={String(listPayload.summary.underReview)}
+            subtitle={`${listPayload.summary.draft} masih draft`}
+            iconName="search"
+            accentColor="#0f766e"
+          />
+        </View>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <MobileSummaryCard
+            title="Lulus / Diterima"
+            value={String(listPayload.summary.passedTest + listPayload.summary.accepted)}
+            subtitle={`${listPayload.summary.accepted} diterima`}
+            iconName="check-circle"
+            accentColor="#16a34a"
+          />
+        </View>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <MobileSummaryCard
+            title="Tidak Lulus"
+            value={String(listPayload.summary.failedTest + listPayload.summary.rejected)}
+            subtitle={`${listPayload.summary.rejected} ditolak`}
+            iconName="x-circle"
+            accentColor="#dc2626"
+          />
+        </View>
       </View>
 
       <SectionCard title="Filter & Daftar Pendaftar">
@@ -688,43 +642,27 @@ export default function AdminCandidateAdmissionsScreen() {
           placeholder="Cari nama, NISN, username, atau nomor pendaftaran"
         />
 
-        <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Status</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 6 }}>
-          {STATUS_FILTERS.map((item) => (
-            <FilterChip
-              key={item.value}
-              active={statusFilter === item.value}
-              label={item.label}
-              onPress={() => {
-                setStatusFilter(item.value);
-                setPage(1);
-              }}
-            />
-          ))}
-        </ScrollView>
+        <MobileSelectField
+          label="Status"
+          value={statusFilter}
+          options={statusFilterOptions}
+          onChange={(next) => {
+            setStatusFilter((next as StatusFilter) || 'ALL');
+            setPage(1);
+          }}
+          placeholder="Pilih status pendaftaran"
+        />
 
-        <Text style={{ color: '#64748b', fontSize: 12, marginTop: 10, marginBottom: 6 }}>Jurusan</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 6 }}>
-          <FilterChip
-            active={majorFilter === 'ALL'}
-            label="Semua Jurusan"
-            onPress={() => {
-              setMajorFilter('ALL');
-              setPage(1);
-            }}
-          />
-          {(majorsQuery.data?.items || []).map((major) => (
-            <FilterChip
-              key={major.id}
-              active={majorFilter === major.id}
-              label={major.code}
-              onPress={() => {
-                setMajorFilter(major.id);
-                setPage(1);
-              }}
-            />
-          ))}
-        </ScrollView>
+        <MobileSelectField
+          label="Jurusan"
+          value={String(majorFilter)}
+          options={majorFilterOptions}
+          onChange={(next) => {
+            setMajorFilter(next === 'ALL' ? 'ALL' : Number(next));
+            setPage(1);
+          }}
+          placeholder="Pilih jurusan tujuan"
+        />
 
         {listQuery.isLoading ? (
           <View style={{ paddingVertical: 28 }}>
@@ -1299,17 +1237,15 @@ export default function AdminCandidateAdmissionsScreen() {
           </SectionCard>
 
           <SectionCard title="Form Review Admin">
-            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Status Review</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 8 }}>
-              {REVIEW_OPTIONS.map((item) => (
-                <FilterChip
-                  key={item.value}
-                  active={reviewForm.status === item.value}
-                  label={item.label}
-                  onPress={() => setReviewForm((prev) => ({ ...prev, status: item.value }))}
-                />
-              ))}
-            </ScrollView>
+            <MobileSelectField
+              label="Status Review"
+              value={reviewForm.status}
+              options={reviewStatusOptions}
+              onChange={(next) =>
+                setReviewForm((prev) => ({ ...prev, status: (next as MobileCandidateAdmissionStatus) || 'UNDER_REVIEW' }))
+              }
+              placeholder="Pilih status review"
+            />
 
             <Field
               label="Catatan Review"

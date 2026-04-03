@@ -6,6 +6,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -69,6 +70,39 @@ const ADDITIONAL_DUTY_OPTIONS = [
   'SEKRETARIS_HUMAS',
   'IT_CENTER',
 ] as const;
+
+const ROLE_FILTER_LABELS: Record<RoleFilterValue, string> = {
+  ALL: 'Semua Role',
+  ADMIN: 'Admin',
+  TEACHER: 'Guru',
+  STUDENT: 'Siswa',
+  EXAMINER: 'Penguji',
+  PRINCIPAL: 'Kepala Sekolah',
+  STAFF: 'Staf',
+  PARENT: 'Orang Tua',
+  CALON_SISWA: 'Calon Siswa',
+  UMUM: 'Umum / BKK',
+  EXTRACURRICULAR_TUTOR: 'Pembina Ekskul',
+};
+
+const VERIFICATION_LABELS: Record<VerificationFilterValue, string> = {
+  ALL: 'Semua Verifikasi',
+  PENDING: 'Pending',
+  VERIFIED: 'Terverifikasi',
+  REJECTED: 'Ditolak',
+};
+
+const STUDENT_STATUS_LABELS: Record<StudentStatusValue, string> = {
+  ACTIVE: 'Aktif',
+  GRADUATED: 'Lulus',
+  MOVED: 'Pindah',
+  DROPPED_OUT: 'Putus Sekolah',
+};
+
+const GENDER_LABELS: Record<GenderValue, string> = {
+  MALE: 'Laki-laki',
+  FEMALE: 'Perempuan',
+};
 
 type RoleFilterValue = (typeof ROLE_OPTIONS)[number];
 type VerificationFilterValue = (typeof VERIFICATION_OPTIONS)[number];
@@ -175,7 +209,7 @@ const createEmptyUserForm = (role: AdminUser['role']): UserFormState => ({
   verificationStatus: '',
 });
 
-function FilterChip({
+function MultiSelectChip({
   active,
   label,
   onPress,
@@ -630,6 +664,70 @@ export default function AdminUserManagementScreen() {
     : [...TEACHER_KESISWAAN_ROLES];
   const defaultRoleForForm: AdminUser['role'] =
     roleFilter === 'ALL' ? (isAdmin ? 'TEACHER' : 'STUDENT') : roleFilter;
+  const roleFilterOptions = useMemo(
+    () => visibleRoleOptions.map((item) => ({ value: item, label: ROLE_FILTER_LABELS[item] || item })),
+    [visibleRoleOptions],
+  );
+  const verificationFilterOptions = useMemo(
+    () => VERIFICATION_OPTIONS.map((item) => ({ value: item, label: VERIFICATION_LABELS[item] || item })),
+    [],
+  );
+  const formRoleOptions = useMemo(
+    () => manageableRoleOptions.map((item) => ({ value: item, label: ROLE_FILTER_LABELS[item as RoleFilterValue] || item })),
+    [manageableRoleOptions],
+  );
+  const studentStatusSelectOptions = useMemo(
+    () => STUDENT_STATUS_OPTIONS.map((item) => ({ value: item, label: STUDENT_STATUS_LABELS[item] || item })),
+    [],
+  );
+  const genderSelectOptions = useMemo(
+    () => [
+      { value: '', label: 'Tidak Diisi' },
+      ...GENDER_OPTIONS.map((item) => ({ value: item, label: GENDER_LABELS[item] || item })),
+    ],
+    [],
+  );
+  const verificationStatusFormOptions = useMemo(
+    () => [
+      { value: '', label: 'Tidak Ubah' },
+      { value: 'PENDING', label: 'Pending' },
+      { value: 'VERIFIED', label: 'Terverifikasi' },
+      { value: 'REJECTED', label: 'Ditolak' },
+    ],
+    [],
+  );
+  const classSelectOptions = useMemo(() => {
+    const options = filteredClassOptions.slice(0, 40).map((item) => ({
+      value: String(item.id),
+      label: `${item.name}${item.major?.code ? ` (${item.major.code})` : ''}`,
+    }));
+    if (form.classId) {
+      const selected = classOptions.find((item) => String(item.id) === form.classId);
+      if (selected && !options.some((item) => item.value === String(selected.id))) {
+        options.unshift({
+          value: String(selected.id),
+          label: `${selected.name}${selected.major?.code ? ` (${selected.major.code})` : ''}`,
+        });
+      }
+    }
+    return [{ value: '', label: 'Tanpa Kelas' }, ...options];
+  }, [classOptions, filteredClassOptions, form.classId]);
+  const examinerMajorOptions = useMemo(() => {
+    const options = filteredMajorOptions.slice(0, 40).map((item) => ({
+      value: String(item.id),
+      label: `${item.code} - ${item.name}`,
+    }));
+    if (form.examinerMajorId) {
+      const selected = majorOptions.find((item) => String(item.id) === form.examinerMajorId);
+      if (selected && !options.some((item) => item.value === String(selected.id))) {
+        options.unshift({
+          value: String(selected.id),
+          label: `${selected.code} - ${selected.name}`,
+        });
+      }
+    }
+    return [{ value: '', label: 'Tidak Diisi' }, ...options];
+  }, [filteredMajorOptions, form.examinerMajorId, majorOptions]);
 
   const openCreateForm = () => {
     setForm(createEmptyUserForm(defaultRoleForForm));
@@ -687,6 +785,19 @@ export default function AdminUserManagementScreen() {
     setParentStudentSearch('');
     setClassSearch('');
     setMajorSearch('');
+  };
+
+  const handleFormRoleChange = (nextRole: AdminUser['role']) => {
+    setForm((prev) => ({
+      ...prev,
+      role: nextRole,
+      classId: nextRole === 'STUDENT' ? prev.classId : '',
+      studentStatus: nextRole === 'STUDENT' ? prev.studentStatus : 'ACTIVE',
+      examinerMajorId: nextRole === 'EXAMINER' ? prev.examinerMajorId : '',
+      additionalDuties: nextRole === 'TEACHER' || nextRole === 'STAFF' ? prev.additionalDuties : [],
+      managedMajorIds: nextRole === 'TEACHER' ? prev.managedMajorIds : [],
+      childNisns: nextRole === 'PARENT' ? prev.childNisns : [],
+    }));
   };
 
   const toggleDuty = (duty: string) => {
@@ -942,24 +1053,21 @@ export default function AdminUserManagementScreen() {
         />
       </View>
 
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Filter Role</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        {visibleRoleOptions.map((item) => (
-          <FilterChip key={item} label={item} active={roleFilter === item} onPress={() => setRoleFilter(item)} />
-        ))}
-      </View>
+      <MobileSelectField
+        label="Filter Role"
+        value={roleFilter}
+        options={roleFilterOptions}
+        onChange={(next) => setRoleFilter((next as RoleFilterValue) || 'ALL')}
+        placeholder="Pilih role"
+      />
 
-      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Filter Verifikasi</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        {VERIFICATION_OPTIONS.map((item) => (
-          <FilterChip
-            key={item}
-            label={item}
-            active={verificationFilter === item}
-            onPress={() => setVerificationFilter(item)}
-          />
-        ))}
-      </View>
+      <MobileSelectField
+        label="Filter Verifikasi"
+        value={verificationFilter}
+        options={verificationFilterOptions}
+        onChange={(next) => setVerificationFilter((next as VerificationFilterValue) || 'ALL')}
+        placeholder="Pilih status verifikasi"
+      />
 
       {sectionParam === 'import-export' && canUseImportExport ? (
         <View
@@ -1122,31 +1230,13 @@ export default function AdminUserManagementScreen() {
                 {editingUserId ? `Edit User #${editingUserId}` : 'Tambah User Baru'}
               </Text>
 
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>Role</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-                {manageableRoleOptions.map((item) => (
-                  <FilterChip
-                    key={`role-form-${item}`}
-                    label={item}
-                    active={form.role === item}
-                    onPress={() =>
-                      setForm((prev) => ({
-                        ...prev,
-                        role: item,
-                        classId: item === 'STUDENT' ? prev.classId : '',
-                        studentStatus: item === 'STUDENT' ? prev.studentStatus : 'ACTIVE',
-                        examinerMajorId: item === 'EXAMINER' ? prev.examinerMajorId : '',
-                        additionalDuties:
-                          item === 'TEACHER' || item === 'STAFF'
-                            ? prev.additionalDuties
-                            : [],
-                        managedMajorIds: item === 'TEACHER' ? prev.managedMajorIds : [],
-                        childNisns: item === 'PARENT' ? prev.childNisns : [],
-                      }))
-                    }
-                  />
-                ))}
-              </View>
+              <MobileSelectField
+                label="Role"
+                value={form.role}
+                options={formRoleOptions}
+                onChange={(next) => handleFormRoleChange((next as AdminUser['role']) || 'TEACHER')}
+                placeholder="Pilih role user"
+              />
 
               <FormInput
                 label="Nama"
@@ -1188,21 +1278,14 @@ export default function AdminUserManagementScreen() {
                     }}
                   />
 
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-                    <FilterChip
-                      label="Tanpa Kelas"
-                      active={form.classId === ''}
-                      onPress={() => setForm((prev) => ({ ...prev, classId: '' }))}
-                    />
-                    {filteredClassOptions.slice(0, 40).map((item) => (
-                      <FilterChip
-                        key={`class-${item.id}`}
-                        label={`${item.name}${item.major?.code ? ` (${item.major.code})` : ''}`}
-                        active={form.classId === String(item.id)}
-                        onPress={() => setForm((prev) => ({ ...prev, classId: String(item.id) }))}
-                      />
-                    ))}
-                  </View>
+                  <MobileSelectField
+                    label="Pilih Kelas"
+                    value={form.classId}
+                    options={classSelectOptions}
+                    onChange={(next) => setForm((prev) => ({ ...prev, classId: next || '' }))}
+                    placeholder="Pilih kelas siswa"
+                    helperText={filteredClassOptions.length > 40 ? 'Menampilkan 40 kelas pertama sesuai pencarian.' : undefined}
+                  />
 
                   {selectedClass ? (
                     <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 8 }}>
@@ -1210,17 +1293,13 @@ export default function AdminUserManagementScreen() {
                     </Text>
                   ) : null}
 
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Status Siswa</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-                    {STUDENT_STATUS_OPTIONS.map((item) => (
-                      <FilterChip
-                        key={`student-status-${item}`}
-                        label={item}
-                        active={form.studentStatus === item}
-                        onPress={() => setForm((prev) => ({ ...prev, studentStatus: item }))}
-                      />
-                    ))}
-                  </View>
+                  <MobileSelectField
+                    label="Status Siswa"
+                    value={form.studentStatus}
+                    options={studentStatusSelectOptions}
+                    onChange={(next) => setForm((prev) => ({ ...prev, studentStatus: (next as StudentStatusValue) || 'ACTIVE' }))}
+                    placeholder="Pilih status siswa"
+                  />
                 </>
               ) : null}
 
@@ -1247,22 +1326,13 @@ export default function AdminUserManagementScreen() {
                 placeholder="NIP (opsional)"
               />
 
-              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Gender</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-                <FilterChip
-                  label="Tidak Diisi"
-                  active={form.gender === ''}
-                  onPress={() => setForm((prev) => ({ ...prev, gender: '' }))}
-                />
-                {GENDER_OPTIONS.map((item) => (
-                  <FilterChip
-                    key={`gender-${item}`}
-                    label={item}
-                    active={form.gender === item}
-                    onPress={() => setForm((prev) => ({ ...prev, gender: item }))}
-                  />
-                ))}
-              </View>
+              <MobileSelectField
+                label="Gender"
+                value={form.gender}
+                options={genderSelectOptions}
+                onChange={(next) => setForm((prev) => ({ ...prev, gender: (next as GenderValue | '') || '' }))}
+                placeholder="Pilih gender"
+              />
 
               <FormInput
                 label="Tempat Lahir"
@@ -1303,7 +1373,7 @@ export default function AdminUserManagementScreen() {
                   <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Additional Duties</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
                     {ADDITIONAL_DUTY_OPTIONS.map((item) => (
-                      <FilterChip
+                      <MultiSelectChip
                         key={`duty-${item}`}
                         label={item}
                         active={form.additionalDuties.includes(item)}
@@ -1335,7 +1405,7 @@ export default function AdminUserManagementScreen() {
                       />
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
                         {filteredMajorOptions.slice(0, 40).map((item) => (
-                          <FilterChip
+                          <MultiSelectChip
                             key={`managed-major-${item.id}`}
                             label={`${item.code} - ${item.name}`}
                             active={form.managedMajorIds.includes(item.id)}
@@ -1367,21 +1437,14 @@ export default function AdminUserManagementScreen() {
                       marginBottom: 8,
                     }}
                   />
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-                    <FilterChip
-                      label="Tidak Diisi"
-                      active={form.examinerMajorId === ''}
-                      onPress={() => setForm((prev) => ({ ...prev, examinerMajorId: '' }))}
-                    />
-                    {filteredMajorOptions.slice(0, 40).map((item) => (
-                      <FilterChip
-                        key={`examiner-major-${item.id}`}
-                        label={`${item.code} - ${item.name}`}
-                        active={form.examinerMajorId === String(item.id)}
-                        onPress={() => setForm((prev) => ({ ...prev, examinerMajorId: String(item.id) }))}
-                      />
-                    ))}
-                  </View>
+                  <MobileSelectField
+                    label="Pilih Jurusan Penguji"
+                    value={form.examinerMajorId}
+                    options={examinerMajorOptions}
+                    onChange={(next) => setForm((prev) => ({ ...prev, examinerMajorId: next || '' }))}
+                    placeholder="Pilih jurusan penguji"
+                    helperText={filteredMajorOptions.length > 40 ? 'Menampilkan 40 jurusan pertama sesuai pencarian.' : undefined}
+                  />
                 </>
               ) : null}
 
@@ -1406,7 +1469,7 @@ export default function AdminUserManagementScreen() {
                   />
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
                     {filteredParentStudentOptions.slice(0, 60).map((item) => (
-                      <FilterChip
+                      <MultiSelectChip
                         key={`parent-child-${item.id}`}
                         label={`${item.name} (${item.nisn || '-'})`}
                         active={form.childNisns.includes(item.nisn || '')}
@@ -1425,22 +1488,15 @@ export default function AdminUserManagementScreen() {
 
               {editingUserId ? (
                 <>
-                  <Text style={{ color: BRAND_COLORS.textMuted, fontSize: 12, marginBottom: 4 }}>Status Verifikasi</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-                    <FilterChip
-                      label="Tidak Ubah"
-                      active={form.verificationStatus === ''}
-                      onPress={() => setForm((prev) => ({ ...prev, verificationStatus: '' }))}
-                    />
-                    {(['PENDING', 'VERIFIED', 'REJECTED'] as const).map((item) => (
-                      <FilterChip
-                        key={`verification-${item}`}
-                        label={item}
-                        active={form.verificationStatus === item}
-                        onPress={() => setForm((prev) => ({ ...prev, verificationStatus: item }))}
-                      />
-                    ))}
-                  </View>
+                  <MobileSelectField
+                    label="Status Verifikasi"
+                    value={form.verificationStatus}
+                    options={verificationStatusFormOptions}
+                    onChange={(next) =>
+                      setForm((prev) => ({ ...prev, verificationStatus: (next as '' | 'PENDING' | 'VERIFIED' | 'REJECTED') || '' }))
+                    }
+                    placeholder="Pilih status verifikasi"
+                  />
                 </>
               ) : null}
 

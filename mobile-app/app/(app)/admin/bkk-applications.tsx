@@ -5,6 +5,8 @@ import { Feather } from '@expo/vector-icons';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { AdminBkkApplication, AdminBkkApplicationStatus, adminApi } from '../../../src/features/admin/adminApi';
@@ -74,54 +76,6 @@ function getVerificationMeta(status?: string | null) {
   return { label: 'Pending', bg: '#fef3c7', border: '#fde68a', text: '#b45309' };
 }
 
-function StatCard({
-  title,
-  value,
-  helper,
-  tone,
-  icon,
-}: {
-  title: string;
-  value: string;
-  helper: string;
-  tone: { bg: string; border: string; iconBg: string; iconColor: string };
-  icon: keyof typeof Feather.glyphMap;
-}) {
-  return (
-    <View
-      style={{
-        flexBasis: '48%',
-        flexGrow: 1,
-        backgroundColor: tone.bg,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: tone.border,
-        padding: 14,
-      }}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: '#64748b', fontSize: 12 }}>{title}</Text>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', fontSize: 24, marginTop: 6 }}>{value}</Text>
-        </View>
-        <View
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 12,
-            backgroundColor: tone.iconBg,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Feather name={icon} size={18} color={tone.iconColor} />
-        </View>
-      </View>
-      <Text style={{ color: '#64748b', fontSize: 11, marginTop: 8 }}>{helper}</Text>
-    </View>
-  );
-}
-
 function Chip({
   label,
   meta,
@@ -145,40 +99,16 @@ function Chip({
   );
 }
 
-function FilterChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontSize: 12, fontWeight: '700' }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
 export default function AdminBkkApplicationsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { isAuthenticated, isLoading, user } = useAuth();
   const pagePadding = getStandardPagePadding(insets, { bottom: 120 });
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const statusFilterOptions = useMemo(
+    () => STATUS_FILTERS.map((item) => ({ value: item.value, label: item.label })),
+    [],
+  );
 
   const applicantUsersQuery = useQuery({
     queryKey: ['mobile-admin-bkk-users-summary'],
@@ -274,35 +204,43 @@ export default function AdminBkkApplicationsScreen() {
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
-        <StatCard
-          title="Akun Pelamar"
-          value={String(applicantSummary.total)}
-          helper={`${applicantSummary.verified} terverifikasi`}
-          icon="users"
-          tone={{ bg: '#eff6ff', border: '#bfdbfe', iconBg: '#dbeafe', iconColor: '#1d4ed8' }}
-        />
-        <StatCard
-          title="Menunggu Verifikasi"
-          value={String(applicantSummary.pending)}
-          helper={`${applicantSummary.rejected} ditolak`}
-          icon="shield"
-          tone={{ bg: '#fffbeb', border: '#fde68a', iconBg: '#fef3c7', iconColor: '#b45309' }}
-        />
-        <StatCard
-          title="Total Lamaran"
-          value={String(applicationsQuery.data?.total || 0)}
-          helper={`${inProgressApplications} sedang diproses`}
-          icon="clipboard"
-          tone={{ bg: '#ecfdf5', border: '#a7f3d0', iconBg: '#d1fae5', iconColor: '#047857' }}
-        />
-        <StatCard
-          title="Diterima Mitra"
-          value={String(acceptedApplications)}
-          helper={`${applicationSummary.partnerInterview} interview mitra`}
-          icon="briefcase"
-          tone={{ bg: '#f5f3ff', border: '#ddd6fe', iconBg: '#ede9fe', iconColor: '#6d28d9' }}
-        />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 14 }}>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <MobileSummaryCard
+            title="Akun Pelamar"
+            value={String(applicantSummary.total)}
+            subtitle={`${applicantSummary.verified} terverifikasi`}
+            iconName="users"
+            accentColor="#2563eb"
+          />
+        </View>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <MobileSummaryCard
+            title="Menunggu Verifikasi"
+            value={String(applicantSummary.pending)}
+            subtitle={`${applicantSummary.rejected} ditolak`}
+            iconName="shield"
+            accentColor="#d97706"
+          />
+        </View>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <MobileSummaryCard
+            title="Total Lamaran"
+            value={String(applicationsQuery.data?.total || 0)}
+            subtitle={`${inProgressApplications} sedang diproses`}
+            iconName="clipboard"
+            accentColor="#047857"
+          />
+        </View>
+        <View style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
+          <MobileSummaryCard
+            title="Diterima Mitra"
+            value={String(acceptedApplications)}
+            subtitle={`${applicationSummary.partnerInterview} interview mitra`}
+            iconName="briefcase"
+            accentColor="#6d28d9"
+          />
+        </View>
       </View>
 
       <View
@@ -359,12 +297,14 @@ export default function AdminBkkApplicationsScreen() {
           marginBottom: 14,
         }}
       >
-        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16 }}>Filter Status</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-          {STATUS_FILTERS.map((item) => (
-            <FilterChip key={item.value} active={statusFilter === item.value} label={item.label} onPress={() => setStatusFilter(item.value)} />
-          ))}
-        </View>
+        <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: 16, marginBottom: 10 }}>Filter Status</Text>
+        <MobileSelectField
+          label="Status Lamaran"
+          value={statusFilter}
+          options={statusFilterOptions}
+          onChange={(next) => setStatusFilter((next as StatusFilter) || 'ALL')}
+          placeholder="Pilih status lamaran"
+        />
       </View>
 
       <View

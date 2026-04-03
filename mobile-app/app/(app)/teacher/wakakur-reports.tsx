@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
+import { MobileSummaryCard } from '../../../src/components/MobileSummaryCard';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { BRAND_COLORS } from '../../../src/config/brand';
 import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
@@ -45,67 +47,6 @@ function formatNumber(value: number) {
 function formatScore(value: number | null | undefined) {
   if (!Number.isFinite(Number(value))) return '-';
   return Number(value).toFixed(2).replace('.', ',');
-}
-
-function StatCard({
-  title,
-  value,
-  subtitle,
-  bg,
-  border,
-  text,
-}: {
-  title: string;
-  value: string;
-  subtitle: string;
-  bg: string;
-  border: string;
-  text: string;
-}) {
-  return (
-    <View
-      style={{
-        backgroundColor: bg,
-        borderWidth: 1,
-        borderColor: border,
-        borderRadius: 12,
-        padding: 12,
-        minWidth: 148,
-      }}
-    >
-      <Text style={{ color: text, fontSize: 11, fontWeight: '600' }}>{title}</Text>
-      <Text style={{ color: '#0f172a', fontSize: 24, fontWeight: '800', marginTop: 4 }}>{value}</Text>
-      <Text style={{ color: '#475569', fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
-    </View>
-  );
-}
-
-function FilterChip({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        borderWidth: 1,
-        borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-        backgroundColor: active ? '#e9f1ff' : '#fff',
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-      }}
-    >
-      <Text style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
 }
 
 function SummaryMetric({
@@ -267,6 +208,20 @@ export default function TeacherWakakurReportsScreen() {
     () => (classesQuery.data || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'id')),
     [classesQuery.data],
   );
+  const semesterOptions = useMemo(
+    () => (['ALL', 'ODD', 'EVEN'] as SemesterChoice[]).map((choice) => ({ value: choice, label: semesterLabel[choice] })),
+    [],
+  );
+  const classFilterOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'Semua Kelas' },
+      ...classOptions.map((classItem) => ({
+        value: String(classItem.id),
+        label: classItem.name || `Kelas ${classItem.id}`,
+      })),
+    ],
+    [classOptions],
+  );
 
   const previewRows = useMemo(() => (ledgerQuery.data?.rows || []).slice(0, 20), [ledgerQuery.data?.rows]);
 
@@ -386,38 +341,21 @@ export default function TeacherWakakurReportsScreen() {
           </View>
         </View>
 
-        <View>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Semester</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-            {(['ALL', 'ODD', 'EVEN'] as SemesterChoice[]).map((choice) => (
-              <FilterChip
-                key={choice}
-                active={selectedSemester === choice}
-                label={semesterLabel[choice]}
-                onPress={() => setSelectedSemester(choice)}
-              />
-            ))}
-          </ScrollView>
-        </View>
+        <MobileSelectField
+          label="Semester"
+          value={selectedSemester}
+          options={semesterOptions}
+          onChange={(next) => setSelectedSemester((next as SemesterChoice) || 'ALL')}
+          placeholder="Pilih semester"
+        />
 
-        <View>
-          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Filter Kelas</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-            <FilterChip
-              active={selectedClassId === 'ALL'}
-              label="Semua Kelas"
-              onPress={() => setSelectedClassId('ALL')}
-            />
-            {classOptions.map((classItem) => (
-              <FilterChip
-                key={classItem.id}
-                active={selectedClassId === classItem.id}
-                label={classItem.name || `Kelas ${classItem.id}`}
-                onPress={() => setSelectedClassId(classItem.id)}
-              />
-            ))}
-          </ScrollView>
-        </View>
+        <MobileSelectField
+          label="Filter Kelas"
+          value={String(selectedClassId)}
+          options={classFilterOptions}
+          onChange={(next) => setSelectedClassId(next === 'ALL' ? 'ALL' : Number(next))}
+          placeholder="Pilih kelas"
+        />
       </View>
 
       {activeYearQuery.isLoading || ledgerQuery.isLoading ? (
@@ -441,46 +379,51 @@ export default function TeacherWakakurReportsScreen() {
       {ledgerQuery.data ? (
         <>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, marginBottom: 12 }}>
-            <StatCard
-              title="Total Siswa (Preview)"
-              value={formatNumber(ledgerQuery.data.summary.totalStudents || 0)}
-              subtitle="Siswa pada filter aktif"
-              bg="#eff6ff"
-              border="#bfdbfe"
-              text="#1d4ed8"
-            />
-            <StatCard
-              title="Rata-rata Nilai Akhir"
-              value={formatScore(ledgerQuery.data.summary.averageFinal)}
-              subtitle="Akumulasi seluruh hasil"
-              bg="#ecfdf5"
-              border="#a7f3d0"
-              text="#047857"
-            />
-            <StatCard
-              title="Rata-rata US"
-              value={formatScore(ledgerQuery.data.summary.averageUs)}
-              subtitle="Ujian sekolah"
-              bg="#f5f3ff"
-              border="#ddd6fe"
-              text="#6d28d9"
-            />
-            <StatCard
-              title="Rata-rata Portofolio"
-              value={formatScore(ledgerQuery.data.summary.averagePortfolio)}
-              subtitle="Portofolio siswa"
-              bg="#fefce8"
-              border="#fde68a"
-              text="#a16207"
-            />
-            <StatCard
-              title="Siswa Sudah Terhitung"
-              value={formatNumber(ledgerQuery.data.summary.studentsWithResult || 0)}
-              subtitle="Sudah punya hasil akhir"
-              bg="#f8fafc"
-              border="#cbd5e1"
-              text="#475569"
-            />
+            <View style={{ width: 168 }}>
+              <MobileSummaryCard
+                title="Total Siswa (Preview)"
+                value={formatNumber(ledgerQuery.data.summary.totalStudents || 0)}
+                subtitle="Siswa pada filter aktif"
+                iconName="users"
+                accentColor="#2563eb"
+              />
+            </View>
+            <View style={{ width: 168 }}>
+              <MobileSummaryCard
+                title="Rata-rata Nilai Akhir"
+                value={formatScore(ledgerQuery.data.summary.averageFinal)}
+                subtitle="Akumulasi seluruh hasil"
+                iconName="bar-chart-2"
+                accentColor="#16a34a"
+              />
+            </View>
+            <View style={{ width: 168 }}>
+              <MobileSummaryCard
+                title="Rata-rata US"
+                value={formatScore(ledgerQuery.data.summary.averageUs)}
+                subtitle="Ujian sekolah"
+                iconName="award"
+                accentColor="#6d28d9"
+              />
+            </View>
+            <View style={{ width: 168 }}>
+              <MobileSummaryCard
+                title="Rata-rata Portofolio"
+                value={formatScore(ledgerQuery.data.summary.averagePortfolio)}
+                subtitle="Portofolio siswa"
+                iconName="book-open"
+                accentColor="#ca8a04"
+              />
+            </View>
+            <View style={{ width: 168 }}>
+              <MobileSummaryCard
+                title="Siswa Sudah Terhitung"
+                value={formatNumber(ledgerQuery.data.summary.studentsWithResult || 0)}
+                subtitle="Sudah punya hasil akhir"
+                iconName="check-circle"
+                accentColor="#475569"
+              />
+            </View>
           </ScrollView>
 
           <View
