@@ -4,10 +4,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { useTeacherAssignmentsQuery } from '../../../src/features/teacherAssignments/useTeacherAssignmentsQuery';
 import { teacherAssignmentApi } from '../../../src/features/teacherAssignments/teacherAssignmentApi';
+import {
+  buildTeacherAssignmentOptionLabel,
+  filterRegularTeacherAssignments,
+} from '../../../src/features/teacherAssignments/utils';
 import { attendanceApi } from '../../../src/features/attendance/attendanceApi';
 import { TeacherAttendanceStatus } from '../../../src/features/attendance/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
@@ -61,9 +66,20 @@ export default function TeacherAttendanceScreen() {
   const [draftOverrides, setDraftOverrides] = useState<Record<number, TeacherAttendanceStatus>>({});
   const [search, setSearch] = useState('');
 
-  const assignments = assignmentsQuery.data?.assignments || [];
+  const assignments = useMemo(
+    () => filterRegularTeacherAssignments(assignmentsQuery.data?.assignments || []),
+    [assignmentsQuery.data?.assignments],
+  );
   const effectiveSelectedAssignmentId = selectedAssignmentId ?? assignments[0]?.id ?? null;
   const selectedAssignment = assignments.find((item) => item.id === effectiveSelectedAssignmentId) || null;
+  const assignmentOptions = useMemo(
+    () =>
+      assignments.map((item) => ({
+        value: String(item.id),
+        label: buildTeacherAssignmentOptionLabel(item),
+      })),
+    [assignments],
+  );
   const selectedDateIso = toIsoDateLocal(selectedDate);
 
   const detailQuery = useQuery({
@@ -241,35 +257,15 @@ export default function TeacherAttendanceScreen() {
               }}
             >
               <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Pilih Kelas & Mapel</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
-                {assignments.map((item) => {
-                  const selected = effectiveSelectedAssignmentId === item.id;
-                  return (
-                    <View key={item.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-                      <Pressable
-                        onPress={() => {
-                          setSelectedAssignmentId(item.id);
-                          setDraftOverrides({});
-                        }}
-                        style={{
-                          borderWidth: 1,
-                          borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                          backgroundColor: selected ? '#eff6ff' : '#fff',
-                          borderRadius: 9,
-                          padding: 9,
-                        }}
-                      >
-                        <Text style={{ fontWeight: '700', color: selected ? '#1d4ed8' : '#0f172a', fontSize: 12 }} numberOfLines={2}>
-                          {item.subject.name}
-                        </Text>
-                        <Text style={{ color: '#334155', fontSize: 12 }} numberOfLines={1}>
-                          Kelas: {item.class.name}
-                        </Text>
-                      </Pressable>
-                    </View>
-                  );
-                })}
-              </View>
+              <MobileSelectField
+                value={effectiveSelectedAssignmentId ? String(effectiveSelectedAssignmentId) : ''}
+                options={assignmentOptions}
+                onChange={(next) => {
+                  setSelectedAssignmentId(next ? Number(next) : null);
+                  setDraftOverrides({});
+                }}
+                placeholder="Pilih kelas & mapel"
+              />
             </View>
 
             <View

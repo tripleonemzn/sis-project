@@ -4,10 +4,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { useTeacherAssignmentsQuery } from '../../../src/features/teacherAssignments/useTeacherAssignmentsQuery';
 import { teacherAssignmentApi } from '../../../src/features/teacherAssignments/teacherAssignmentApi';
+import {
+  buildTeacherAssignmentOptionLabel,
+  filterRegularTeacherAssignments,
+} from '../../../src/features/teacherAssignments/utils';
 import { teacherGradeApi, type GradeComponent } from '../../../src/features/teacherGrades/teacherGradeApi';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
@@ -200,7 +205,7 @@ export default function TeacherGradesScreen() {
   const pageContentPadding = getStandardPagePadding(insets);
   const assignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
   const assignments = useMemo(
-    () => assignmentsQuery.data?.assignments || [],
+    () => filterRegularTeacherAssignments(assignmentsQuery.data?.assignments || []),
     [assignmentsQuery.data?.assignments],
   );
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
@@ -214,6 +219,21 @@ export default function TeacherGradesScreen() {
   const [competencySettings, setCompetencySettings] = useState<CompetencySettings>(emptyCompetencySettings());
 
   const selectedAssignment = assignments.find((item) => item.id === selectedAssignmentId) || null;
+  const assignmentOptions = useMemo(
+    () =>
+      assignments.map((item) => ({
+        value: String(item.id),
+        label: buildTeacherAssignmentOptionLabel(item),
+      })),
+    [assignments],
+  );
+  const semesterOptions = useMemo(
+    () => [
+      { value: 'ODD', label: 'Semester Ganjil' },
+      { value: 'EVEN', label: 'Semester Genap' },
+    ],
+    [],
+  );
 
   const assignmentDetailQuery = useQuery({
     queryKey: ['mobile-grade-assignment-detail', user?.id, selectedAssignmentId],
@@ -251,6 +271,14 @@ export default function TeacherGradesScreen() {
   });
   const selectedKkm = selectedAssignment?.kkm ?? assignmentDetailQuery.data?.kkm ?? 75;
   const components = useMemo(() => componentsQuery.data || [], [componentsQuery.data]);
+  const componentOptions = useMemo(
+    () =>
+      components.map((component) => ({
+        value: String(component.id),
+        label: formatComponentLabel(component),
+      })),
+    [components],
+  );
   const selectedComponent = components.find((component) => component.id === selectedComponentId) || null;
   const selectedComponentEntryMode = resolveComponentEntryMode(selectedComponent);
   const selectedComponentSlotCode = resolveComponentSlotCode(selectedComponent);
@@ -734,83 +762,34 @@ export default function TeacherGradesScreen() {
               }}
             >
               <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Pilih Kelas & Mapel</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
-                {assignments.map((item) => {
-                  const selected = selectedAssignmentId === item.id;
-                  return (
-                    <View key={item.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-                      <Pressable
-                        disabled={!semester}
-                        onPress={() => {
-                          if (!semester) return;
-                          setSelectedAssignmentId(item.id);
-                        }}
-                        style={{
-                          borderWidth: 1,
-                          borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                          backgroundColor: !semester ? '#f8fafc' : selected ? '#eff6ff' : '#fff',
-                          borderRadius: 8,
-                          padding: 9,
-                          opacity: semester ? 1 : 0.6,
-                        }}
-                        >
-                          <Text style={{ color: selected ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: 12 }} numberOfLines={2}>
-                          {item.subject.name}
-                          </Text>
-                          <Text style={{ color: '#334155', fontSize: 12 }} numberOfLines={1}>
-                          Kelas: {item.class.name}
-                          </Text>
-                          <Text style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>KKM: {item.kkm}</Text>
-                        </Pressable>
-                    </View>
-                  );
-                })}
-              </View>
+              <MobileSelectField
+                value={selectedAssignmentId ? String(selectedAssignmentId) : ''}
+                options={assignmentOptions}
+                onChange={(next) => {
+                  if (!semester) return;
+                  setSelectedAssignmentId(next ? Number(next) : null);
+                }}
+                placeholder="Pilih kelas & mapel"
+                helperText={!semester ? 'Pilih semester terlebih dahulu.' : undefined}
+                disabled={!semester}
+              />
               {!semester ? (
                 <Text style={{ color: '#dc2626', fontSize: 12, marginTop: 2 }}>Silahkan Pilih Semester</Text>
               ) : null}
             </View>
 
-            <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
-              <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                <Pressable
-                  onPress={() => {
-                    setSemester('ODD');
-                    setSelectedAssignmentId(null);
-                    setSelectedComponentId(null);
-                  }}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: semester === 'ODD' ? '#1d4ed8' : '#cbd5e1',
-                    backgroundColor: semester === 'ODD' ? '#eff6ff' : '#fff',
-                    borderRadius: 8,
-                    paddingVertical: 10,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: semester === 'ODD' ? '#1d4ed8' : '#334155', fontWeight: '700' }}>Ganjil</Text>
-                </Pressable>
-              </View>
-              <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                <Pressable
-                  onPress={() => {
-                    setSemester('EVEN');
-                    setSelectedAssignmentId(null);
-                    setSelectedComponentId(null);
-                  }}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: semester === 'EVEN' ? '#1d4ed8' : '#cbd5e1',
-                    backgroundColor: semester === 'EVEN' ? '#eff6ff' : '#fff',
-                    borderRadius: 8,
-                    paddingVertical: 10,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: semester === 'EVEN' ? '#1d4ed8' : '#334155', fontWeight: '700' }}>Genap</Text>
-                </Pressable>
-              </View>
-            </View>
+            <MobileSelectField
+              label="Semester"
+              value={semester}
+              options={semesterOptions}
+              onChange={(next) => {
+                if (next !== 'ODD' && next !== 'EVEN') return;
+                setSemester(next);
+                setSelectedAssignmentId(null);
+                setSelectedComponentId(null);
+              }}
+              placeholder="Pilih semester"
+            />
 
             <View
               style={{
@@ -826,34 +805,14 @@ export default function TeacherGradesScreen() {
               {componentsQuery.isLoading ? (
                 <Text style={{ color: '#64748b', fontSize: 12 }}>Memuat komponen mapel...</Text>
               ) : components.length > 0 ? (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
-                  {components.map((component) => {
-                    const selected = selectedComponentId === component.id;
-                    return (
-                      <View key={component.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-                        <Pressable
-                          disabled={!selectedAssignmentId}
-                          onPress={() => {
-                            if (!selectedAssignmentId) return;
-                            setSelectedComponentId(component.id);
-                          }}
-                          style={{
-                            borderWidth: 1,
-                            borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                            backgroundColor: !selectedAssignmentId ? '#f8fafc' : selected ? '#eff6ff' : '#fff',
-                            borderRadius: 8,
-                            padding: 9,
-                            opacity: selectedAssignmentId ? 1 : 0.6,
-                          }}
-                        >
-                          <Text style={{ color: selected ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: 12 }}>
-                            {formatComponentLabel(component)}
-                          </Text>
-                        </Pressable>
-                      </View>
-                    );
-                  })}
-                </View>
+                <MobileSelectField
+                  value={selectedComponentId ? String(selectedComponentId) : ''}
+                  options={componentOptions}
+                  onChange={(next) => setSelectedComponentId(next ? Number(next) : null)}
+                  placeholder="Pilih komponen nilai"
+                  helperText={!selectedAssignmentId ? 'Pilih kelas & mapel terlebih dahulu.' : undefined}
+                  disabled={!selectedAssignmentId}
+                />
               ) : (
                 <Text style={{ color: '#64748b', fontSize: 12 }}>
                   Komponen nilai untuk mapel ini belum tersedia.

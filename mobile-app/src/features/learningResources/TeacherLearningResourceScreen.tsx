@@ -6,6 +6,7 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
 import { MobileMenuTab } from '../../components/MobileMenuTab';
+import { MobileSelectField } from '../../components/MobileSelectField';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
@@ -13,7 +14,12 @@ import { notifyApiError, notifyInfo, notifySuccess } from '../../lib/ui/feedback
 import { academicYearApi } from '../academicYear/academicYearApi';
 import { useAuth } from '../auth/AuthProvider';
 import { useTeacherAssignmentsQuery } from '../teacherAssignments/useTeacherAssignmentsQuery';
+import {
+  buildTeacherAssignmentOptionLabel,
+  filterRegularTeacherAssignments,
+} from '../teacherAssignments/utils';
 import { learningResourcesApi } from './learningResourcesApi';
+import { teachingResourceProgramApi } from './teachingResourceProgramApi';
 import { CpTpAnalysisItem, LearningResourceSection } from './types';
 
 type SectionConfig = {
@@ -73,6 +79,28 @@ const SECTION_LINKS: Array<{
   { section: 'KKTP', route: '/teacher/learning-kktp', label: 'KKTP' },
   { section: 'MATRIKS_SEBARAN', route: '/teacher/learning-matriks-sebaran', label: 'Matriks Sebaran' },
 ];
+
+function normalizeProgramCode(raw?: string | null) {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function resolveProgramRoute(code: string, label: string) {
+  const normalizedCode = normalizeProgramCode(code);
+  if (normalizedCode === 'MODUL_AJAR' || normalizedCode === 'MODULES') {
+    return { route: '/teacher/learning-modules', label: label || 'Modul Ajar' };
+  }
+  const fallback = SECTION_LINKS.find((item) => item.section === normalizedCode);
+  if (fallback) return { route: fallback.route, label: label || fallback.label };
+  return {
+    route: `/teacher/learning-program/${encodeURIComponent(normalizedCode)}?label=${encodeURIComponent(label)}&code=${encodeURIComponent(normalizedCode)}`,
+    label,
+  };
+}
 
 type CpAnalysisItemDraft = {
   id: string;
@@ -250,15 +278,51 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
     enabled: isAuthenticated,
     user,
   });
+  const programsQuery = useQuery({
+    queryKey: ['mobile-learning-program-config', activeYearQuery.data?.id],
+    enabled: isAuthenticated && user?.role === 'TEACHER' && !!activeYearQuery.data?.id,
+    queryFn: async () =>
+      teachingResourceProgramApi.getTeachingResourcePrograms({
+        academicYearId: Number(activeYearQuery.data?.id),
+        roleContext: 'teacher',
+      }),
+    staleTime: 2 * 60 * 1000,
+  });
 
   const assignments = useMemo(
-    () => assignmentsQuery.data?.assignments ?? [],
+    () => filterRegularTeacherAssignments(assignmentsQuery.data?.assignments ?? []),
     [assignmentsQuery.data?.assignments],
   );
   const relevantAssignments = useMemo(() => {
     if (!activeYearQuery.data?.id) return assignments;
     return assignments.filter((item) => Number(item.academicYear.id) === Number(activeYearQuery.data?.id));
   }, [assignments, activeYearQuery.data?.id]);
+  const assignmentOptions = useMemo(
+    () =>
+      relevantAssignments.map((assignment) => ({
+        value: String(assignment.id),
+        label: buildTeacherAssignmentOptionLabel(assignment),
+      })),
+    [relevantAssignments],
+  );
+  const navigationItems = useMemo(() => {
+    const visiblePrograms = (programsQuery.data?.programs || [])
+      .filter((program) => program.isActive && program.showOnTeacherMenu)
+      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || a.code.localeCompare(b.code));
+    if (visiblePrograms.length === 0) {
+      return SECTION_LINKS.map((item) => ({ code: item.section, route: item.route, label: item.label }));
+    }
+    return visiblePrograms.map((program) => {
+      const normalizedCode = normalizeProgramCode(program.code);
+      const label = String(program.label || program.shortLabel || program.code).trim() || normalizedCode;
+      const target = resolveProgramRoute(normalizedCode, label);
+      return { code: normalizedCode, route: target.route, label: target.label };
+    });
+  }, [programsQuery.data?.programs]);
+  const currentProgramLabel = useMemo(
+    () => navigationItems.find((item) => item.code === section)?.label || config.title,
+    [config.title, navigationItems, section],
+  );
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -637,13 +701,13 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
       >
         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Navigasi Perangkat Ajar</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {SECTION_LINKS.map((item) => (
+          {navigationItems.map((item) => (
             <SectionChip
-              key={item.section}
-              active={item.section === section}
+              key={item.code}
+              active={item.code === section}
               label={item.label}
               onPress={() => {
-                if (item.section === section) return;
+                if (item.code === section) return;
                 router.replace(item.route as never);
               }}
             />
@@ -699,33 +763,12 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
             }}
           >
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Pilih Kelas dan Mata Pelajaran</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
-              {relevantAssignments.map((assignment) => {
-                const selected = assignment.id === selectedAssignmentId;
-                return (
-                  <View key={assignment.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-                    <Pressable
-                      onPress={() => setSelectedAssignmentId(assignment.id)}
-                      style={{
-                        borderWidth: 1,
-                        borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',
-                        backgroundColor: selected ? '#e9f1ff' : '#fff',
-                        borderRadius: 10,
-                        paddingVertical: 9,
-                        paddingHorizontal: 10,
-                      }}
-                    >
-                      <Text style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}>
-                        {assignment.class.name}
-                      </Text>
-                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
-                        {assignment.subject.name}
-                      </Text>
-                    </Pressable>
-                  </View>
-                );
-              })}
-            </View>
+            <MobileSelectField
+              value={selectedAssignmentId ? String(selectedAssignmentId) : ''}
+              options={assignmentOptions}
+              onChange={(next) => setSelectedAssignmentId(next ? Number(next) : null)}
+              placeholder="Pilih kelas & mata pelajaran"
+            />
           </View>
         ) : (
           <View
@@ -1136,8 +1179,7 @@ export function TeacherLearningResourceScreen({ section }: { section: LearningRe
             Status modul: Siap
           </Text>
           <Text style={{ color: '#64748b', marginTop: 4 }}>
-            Modul {SECTION_LINKS.find((item) => item.section === section)?.label} berjalan native dan terhubung ke API
-            perangkat ajar dinamis yang sama dengan web.
+            Modul {currentProgramLabel} berjalan native dan terhubung ke API perangkat ajar dinamis yang sama dengan web.
           </Text>
         </View>
       )}

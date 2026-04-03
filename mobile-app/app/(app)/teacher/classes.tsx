@@ -6,6 +6,7 @@ import { QueryStateView } from '../../../src/components/QueryStateView';
 import { OfflineCacheNotice } from '../../../src/components/OfflineCacheNotice';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { useTeacherAssignmentsQuery } from '../../../src/features/teacherAssignments/useTeacherAssignmentsQuery';
+import { filterRegularTeacherAssignments } from '../../../src/features/teacherAssignments/utils';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 
 function AssignmentCard({
@@ -143,7 +144,7 @@ export default function TeacherClassesScreen() {
     );
   }
 
-  const assignments = assignmentsQuery.data?.assignments || [];
+  const assignments = filterRegularTeacherAssignments(assignmentsQuery.data?.assignments || []);
   const totalStudents = assignments.reduce((acc, item) => acc + (item.class._count?.students || 0), 0);
 
   return (

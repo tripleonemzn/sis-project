@@ -14,9 +14,15 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ENV } from '../../../src/config/env';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileMenuTab } from '../../../src/components/MobileMenuTab';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { useTeacherAssignmentsQuery } from '../../../src/features/teacherAssignments/useTeacherAssignmentsQuery';
+import {
+  buildTeacherAssignmentOptionLabel,
+  filterRegularTeacherAssignments,
+} from '../../../src/features/teacherAssignments/utils';
 import { teacherMaterialsApi } from '../../../src/features/teacherMaterials/teacherMaterialsApi';
 import { TeacherAssignmentItem, TeacherMaterial } from '../../../src/features/teacherMaterials/types';
 import { useTeacherMaterialsQuery } from '../../../src/features/teacherMaterials/useTeacherMaterialsQuery';
@@ -111,8 +117,20 @@ export default function TeacherMaterialsScreen() {
   const [assignmentFile, setAssignmentFile] = useState<{ uri: string; name?: string; mimeType?: string } | null>(null);
 
   const assignmentOptions = useMemo(
-    () => teacherAssignmentsQuery.data?.assignments || [],
+    () => filterRegularTeacherAssignments(teacherAssignmentsQuery.data?.assignments || []),
     [teacherAssignmentsQuery.data?.assignments],
+  );
+  const assignmentSelectOptions = useMemo(
+    () =>
+      assignmentOptions.map((item) => ({
+        value: String(item.id),
+        label: buildTeacherAssignmentOptionLabel(item),
+      })),
+    [assignmentOptions],
+  );
+  const filterSelectOptions = useMemo(
+    () => [{ value: '', label: 'Semua kelas & mapel' }, ...assignmentSelectOptions],
+    [assignmentSelectOptions],
   );
 
   const getPublicFileUrl = useCallback((fileUrl?: string | null) => {
@@ -522,41 +540,21 @@ export default function TeacherMaterialsScreen() {
         Kelola materi dan tugas siswa langsung dari mobile.
       </Text>
 
-      <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <Pressable
-            onPress={() => setActiveTab('materials')}
-            style={{
-              borderWidth: 1,
-              borderColor: activeTab === 'materials' ? '#1d4ed8' : '#cbd5e1',
-              backgroundColor: activeTab === 'materials' ? '#eff6ff' : '#fff',
-              borderRadius: 9,
-              paddingVertical: 10,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ color: activeTab === 'materials' ? '#1d4ed8' : '#334155', fontWeight: '700' }}>
-              Materi
-            </Text>
-          </Pressable>
-        </View>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <Pressable
-            onPress={() => setActiveTab('assignments')}
-            style={{
-              borderWidth: 1,
-              borderColor: activeTab === 'assignments' ? '#1d4ed8' : '#cbd5e1',
-              backgroundColor: activeTab === 'assignments' ? '#eff6ff' : '#fff',
-              borderRadius: 9,
-              paddingVertical: 10,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ color: activeTab === 'assignments' ? '#1d4ed8' : '#334155', fontWeight: '700' }}>
-              Tugas
-            </Text>
-          </Pressable>
-        </View>
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+        <MobileMenuTab
+          active={activeTab === 'materials'}
+          label="Materi"
+          onPress={() => setActiveTab('materials')}
+          iconName="book-open"
+          minWidth={110}
+        />
+        <MobileMenuTab
+          active={activeTab === 'assignments'}
+          label="Tugas"
+          onPress={() => setActiveTab('assignments')}
+          iconName="clipboard"
+          minWidth={110}
+        />
       </View>
 
       <Text style={{ color: '#334155', fontSize: 12, fontWeight: '600', marginBottom: 4 }}>
@@ -581,50 +579,13 @@ export default function TeacherMaterialsScreen() {
         }}
       />
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingRight: 8, marginBottom: 12 }}
-      >
-        <Pressable
-          onPress={() => setFilterAssignmentId(null)}
-          style={{
-            borderWidth: 1,
-            borderColor: filterAssignmentId === null ? '#1d4ed8' : '#cbd5e1',
-            backgroundColor: filterAssignmentId === null ? '#eff6ff' : '#fff',
-            borderRadius: 999,
-            paddingHorizontal: 12,
-            paddingVertical: 8,
-            marginRight: 8,
-          }}
-        >
-          <Text style={{ color: filterAssignmentId === null ? '#1d4ed8' : '#334155', fontWeight: '700', fontSize: 12 }}>
-            Semua Kelas
-          </Text>
-        </Pressable>
-        {assignmentOptions.map((item) => {
-          const selected = filterAssignmentId === item.id;
-          return (
-            <Pressable
-              key={`filter-${item.id}`}
-              onPress={() => setFilterAssignmentId(item.id)}
-              style={{
-                borderWidth: 1,
-                borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                backgroundColor: selected ? '#eff6ff' : '#fff',
-                borderRadius: 999,
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                marginRight: 8,
-              }}
-            >
-              <Text style={{ color: selected ? '#1d4ed8' : '#334155', fontWeight: '700', fontSize: 12 }}>
-                {item.class.name} • {item.subject.name}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      <MobileSelectField
+        label="Filter Kelas & Mapel"
+        value={filterAssignmentId ? String(filterAssignmentId) : ''}
+        options={filterSelectOptions}
+        onChange={(next) => setFilterAssignmentId(next ? Number(next) : null)}
+        placeholder="Semua kelas & mapel"
+      />
 
       {teacherAssignmentsQuery.isLoading || materialsQuery.isLoading ? (
         <QueryStateView type="loading" message="Memuat data..." />
@@ -666,32 +627,13 @@ export default function TeacherMaterialsScreen() {
                   </Text>
                 ) : null}
 
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
-                  {assignmentOptions.map((item) => {
-                    const selected = materialAssignmentSelectionId === item.id;
-                    return (
-                      <View key={item.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-                        <Pressable
-                          onPress={() => setMaterialAssignmentId(item.id)}
-                          style={{
-                            borderWidth: 1,
-                            borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                            backgroundColor: selected ? '#eff6ff' : '#fff',
-                            borderRadius: 8,
-                            padding: 8,
-                          }}
-                        >
-                          <Text style={{ color: selected ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: 11 }}>
-                            {item.class.name}
-                          </Text>
-                          <Text style={{ color: '#334155', fontSize: 11 }} numberOfLines={2}>
-                            {item.subject.name}
-                          </Text>
-                        </Pressable>
-                      </View>
-                    );
-                  })}
-                </View>
+                <MobileSelectField
+                  label="Kelas & Mapel"
+                  value={materialAssignmentSelectionId ? String(materialAssignmentSelectionId) : ''}
+                  options={assignmentSelectOptions}
+                  onChange={(next) => setMaterialAssignmentId(next ? Number(next) : null)}
+                  placeholder="Pilih kelas & mapel"
+                />
 
                 <Text style={{ color: '#334155', fontSize: 12, fontWeight: '600', marginBottom: 4 }}>Judul Materi</Text>
                 <TextInput
@@ -862,32 +804,13 @@ export default function TeacherMaterialsScreen() {
                   </Text>
                 ) : null}
 
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
-                  {assignmentOptions.map((item) => {
-                    const selected = assignmentAssignmentSelectionId === item.id;
-                    return (
-                      <View key={item.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-                        <Pressable
-                          onPress={() => setAssignmentAssignmentId(item.id)}
-                          style={{
-                            borderWidth: 1,
-                            borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                            backgroundColor: selected ? '#eff6ff' : '#fff',
-                            borderRadius: 8,
-                            padding: 8,
-                          }}
-                        >
-                          <Text style={{ color: selected ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: 11 }}>
-                            {item.class.name}
-                          </Text>
-                          <Text style={{ color: '#334155', fontSize: 11 }} numberOfLines={2}>
-                            {item.subject.name}
-                          </Text>
-                        </Pressable>
-                      </View>
-                    );
-                  })}
-                </View>
+                <MobileSelectField
+                  label="Kelas & Mapel"
+                  value={assignmentAssignmentSelectionId ? String(assignmentAssignmentSelectionId) : ''}
+                  options={assignmentSelectOptions}
+                  onChange={(next) => setAssignmentAssignmentId(next ? Number(next) : null)}
+                  placeholder="Pilih kelas & mapel"
+                />
 
                 <Text style={{ color: '#334155', fontSize: 12, fontWeight: '600', marginBottom: 4 }}>Judul Tugas</Text>
                 <TextInput

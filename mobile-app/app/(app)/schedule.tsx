@@ -3,7 +3,7 @@ import { Redirect, useRouter } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
-import { MobileTabChip } from '../../src/components/MobileTabChip';
+import { MobileMenuTab } from '../../src/components/MobileMenuTab';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { useAuth } from '../../src/features/auth/AuthProvider';
 import { DayOfWeek, ScheduleEntry } from '../../src/features/schedule/types';
@@ -77,12 +77,8 @@ export default function ScheduleScreen() {
   const [activeDay, setActiveDay] = useState<DayOfWeek>('MONDAY');
   const pageContentPadding = getStandardPagePadding(insets);
   const entries = useMemo(() => scheduleQuery.data?.entries || [], [scheduleQuery.data?.entries]);
-  const availableDays = useMemo(
-    () => DAY_ORDER.filter((day) => entries.some((entry) => entry.dayOfWeek === day)),
-    [entries],
-  );
-  const dayTabs = availableDays.length > 0 ? availableDays : DAY_ORDER;
-  const effectiveActiveDay = dayTabs.includes(activeDay) ? activeDay : dayTabs[0];
+  const dayTabs = DAY_ORDER;
+  const effectiveActiveDay = DAY_ORDER.includes(activeDay) ? activeDay : DAY_ORDER[0];
 
   if (isLoading) return <AppLoadingScreen message="Memuat jadwal..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -123,17 +119,16 @@ export default function ScheduleScreen() {
       {!scheduleQuery.isLoading && !scheduleQuery.isError ? (
         <>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-            <View style={{ flexDirection: 'row', paddingRight: 4 }}>
+            <View style={{ flexDirection: 'row', gap: 8, paddingRight: 4 }}>
               {dayTabs.map((day) => (
-                <View key={day} style={{ marginRight: 8 }}>
-                  <MobileTabChip
-                    active={effectiveActiveDay === day}
-                    label={getDayLabel(day)}
-                    onPress={() => setActiveDay(day)}
-                    compact
-                    minWidth={92}
-                  />
-                </View>
+                <MobileMenuTab
+                  key={day}
+                  active={effectiveActiveDay === day}
+                  label={getDayLabel(day)}
+                  onPress={() => setActiveDay(day)}
+                  iconName="calendar"
+                  minWidth={84}
+                />
               ))}
             </View>
           </ScrollView>

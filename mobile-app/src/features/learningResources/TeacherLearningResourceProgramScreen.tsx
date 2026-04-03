@@ -14,6 +14,8 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
+import { MobileMenuTab } from '../../components/MobileMenuTab';
+import { MobileSelectField } from '../../components/MobileSelectField';
 import { QueryStateView } from '../../components/QueryStateView';
 import { BRAND_COLORS } from '../../config/brand';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
@@ -22,6 +24,10 @@ import { academicYearApi } from '../academicYear/academicYearApi';
 import { useAuth } from '../auth/AuthProvider';
 import { useTeacherAssignmentsQuery } from '../teacherAssignments/useTeacherAssignmentsQuery';
 import { TeacherAssignment } from '../teacherAssignments/types';
+import {
+  buildTeacherAssignmentOptionLabel,
+  filterRegularTeacherAssignments,
+} from '../teacherAssignments/utils';
 import {
   teachingResourceProgramApi,
   TeachingResourceEntryItem,
@@ -400,13 +406,21 @@ export function TeacherLearningResourceProgramScreen({
   });
 
   const assignments = useMemo(
-    () => ensureArray<TeacherAssignment>(assignmentsQuery.data?.assignments),
+    () => filterRegularTeacherAssignments(ensureArray<TeacherAssignment>(assignmentsQuery.data?.assignments)),
     [assignmentsQuery.data?.assignments],
   );
   const relevantAssignments = useMemo(() => {
     if (!activeYearQuery.data?.id) return assignments;
     return assignments.filter((item) => Number(item.academicYear.id) === Number(activeYearQuery.data?.id));
   }, [assignments, activeYearQuery.data?.id]);
+  const assignmentOptions = useMemo(
+    () =>
+      relevantAssignments.map((assignment) => ({
+        value: String(assignment.id),
+        label: buildTeacherAssignmentOptionLabel(assignment),
+      })),
+    [relevantAssignments],
+  );
 
   const effectiveSelectedAssignmentId = useMemo(() => {
     if (!relevantAssignments.length) return null;
@@ -440,6 +454,32 @@ export function TeacherLearningResourceProgramScreen({
     const programs = ensureArray<TeachingResourceProgramItem>(programsQuery.data?.programs);
     return programs.find((item) => normalizeProgramCode(item.code) === normalizedProgramCode) || null;
   }, [normalizedProgramCode, programsQuery.data?.programs]);
+  const navigationItems = useMemo(() => {
+    const programs = ensureArray<TeachingResourceProgramItem>(programsQuery.data?.programs)
+      .filter((item) => item.isActive && item.showOnTeacherMenu)
+      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || a.code.localeCompare(b.code));
+
+    if (programs.length === 0) {
+      return PROGRAM_NAVIGATION.map((item) => ({
+        code: normalizeProgramCode(item.code),
+        route: item.route,
+        label: item.label,
+      }));
+    }
+
+    return programs.map((program) => {
+      const normalizedCode = normalizeProgramCode(program.code);
+      const fallback = PROGRAM_NAVIGATION.find((item) => normalizeProgramCode(item.code) === normalizedCode);
+      const label = String(program.label || program.shortLabel || program.code).trim() || normalizedCode;
+      return {
+        code: normalizedCode,
+        route:
+          fallback?.route ||
+          `/teacher/learning-program/${encodeURIComponent(normalizedCode)}?label=${encodeURIComponent(label)}&code=${encodeURIComponent(normalizedCode)}`,
+        label,
+      };
+    });
+  }, [programsQuery.data?.programs]);
 
   const effectiveTitle = useMemo(() => {
     const value = String(activeProgram?.label || '').trim();
@@ -857,7 +897,7 @@ export function TeacherLearningResourceProgramScreen({
     });
   };
 
-  const onSelectAssignment = (assignmentId: number) => {
+  const onSelectAssignment = (assignmentId: number | null) => {
     setSelectedAssignmentId(assignmentId);
     if (!isEditorOpen || Boolean(editingEntry) || !usesSheetTemplate) return;
     const nextAssignment = relevantAssignments.find((item) => item.id === assignmentId) || null;
@@ -969,38 +1009,25 @@ export function TeacherLearningResourceProgramScreen({
           }}
         >
           <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Navigasi Perangkat Ajar</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-            {PROGRAM_NAVIGATION.map((item) => {
-              const active = normalizeProgramCode(item.code) === normalizedProgramCode;
-              return (
-                <Pressable
-                  key={item.code}
-                  onPress={() => {
-                    if (active) return;
-                    router.replace(item.route as never);
-                  }}
-                  style={{
-                    maxWidth: '100%',
-                    borderWidth: 1,
-                    borderColor: active ? BRAND_COLORS.blue : '#d5e1f5',
-                    backgroundColor: active ? '#e9f1ff' : '#fff',
-                    borderRadius: 999,
-                    paddingHorizontal: 12,
-                    paddingVertical: 7,
-                    marginRight: 8,
-                    marginBottom: 8,
-                  }}
-                >
-                  <Text
-                    style={{ color: active ? BRAND_COLORS.navy : BRAND_COLORS.textMuted, fontWeight: '700', fontSize: 12 }}
-                    numberOfLines={2}
-                  >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={{ flexDirection: 'row', gap: 8, paddingRight: 4 }}>
+              {navigationItems.map((item) => {
+                const active = item.code === normalizedProgramCode;
+                return (
+                  <MobileMenuTab
+                    key={item.code}
+                    active={active}
+                    label={item.label}
+                    onPress={() => {
+                      if (active) return;
+                      router.replace(item.route as never);
+                    }}
+                    minWidth={96}
+                  />
+                );
+              })}
+            </View>
+          </ScrollView>
         </View>
 
         {!assignmentsQuery.isLoading && !assignmentsQuery.isError ? (
@@ -1016,35 +1043,12 @@ export function TeacherLearningResourceProgramScreen({
           >
             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 8 }}>Konteks Kelas & Mata Pelajaran</Text>
             {relevantAssignments.length > 0 ? (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-                {relevantAssignments.map((assignment) => {
-                  const selected = assignment.id === effectiveSelectedAssignmentId;
-                  return (
-                    <Pressable
-                      key={assignment.id}
-                      onPress={() => onSelectAssignment(assignment.id)}
-                      style={{
-                        borderWidth: 1,
-                        borderColor: selected ? BRAND_COLORS.blue : '#d5e1f5',
-                        backgroundColor: selected ? '#e9f1ff' : '#fff',
-                        borderRadius: 10,
-                        paddingVertical: 9,
-                        paddingHorizontal: 10,
-                        marginRight: 8,
-                        marginBottom: 8,
-                        minWidth: '48%',
-                      }}
-                    >
-                      <Text style={{ color: selected ? BRAND_COLORS.navy : BRAND_COLORS.textDark, fontWeight: '700' }}>
-                        {assignment.class.name}
-                      </Text>
-                      <Text numberOfLines={1} style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
-                        {assignment.subject.name}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <MobileSelectField
+                value={effectiveSelectedAssignmentId ? String(effectiveSelectedAssignmentId) : ''}
+                options={assignmentOptions}
+                onChange={(next) => onSelectAssignment(next ? Number(next) : null)}
+                placeholder="Pilih kelas & mata pelajaran"
+              />
             ) : (
               <Text style={{ color: '#64748b' }}>Belum ada assignment aktif pada tahun ajaran ini.</Text>
             )}

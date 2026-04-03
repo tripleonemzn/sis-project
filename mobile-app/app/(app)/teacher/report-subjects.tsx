@@ -4,9 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { useTeacherAssignmentsQuery } from '../../../src/features/teacherAssignments/useTeacherAssignmentsQuery';
+import {
+  buildTeacherAssignmentOptionLabel,
+  filterRegularTeacherAssignments,
+} from '../../../src/features/teacherAssignments/utils';
 import {
   TeacherSubjectReportItem,
   TeacherSubjectReportMeta,
@@ -87,7 +92,10 @@ export default function TeacherSubjectReportScreen() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const pageContentPadding = getStandardPagePadding(insets);
   const assignmentsQuery = useTeacherAssignmentsQuery({ enabled: isAuthenticated, user });
-  const assignments = assignmentsQuery.data?.assignments || [];
+  const assignments = useMemo(
+    () => filterRegularTeacherAssignments(assignmentsQuery.data?.assignments || []),
+    [assignmentsQuery.data?.assignments],
+  );
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
   const [semester, setSemester] = useState<Semester>('ODD');
   const [searchQuery, setSearchQuery] = useState('');
@@ -96,6 +104,21 @@ export default function TeacherSubjectReportScreen() {
   const [editingDescription, setEditingDescription] = useState('');
   const effectiveSelectedAssignmentId = selectedAssignmentId ?? assignments[0]?.id ?? null;
   const selectedAssignment = assignments.find((item) => item.id === effectiveSelectedAssignmentId) || null;
+  const assignmentOptions = useMemo(
+    () =>
+      assignments.map((item) => ({
+        value: String(item.id),
+        label: buildTeacherAssignmentOptionLabel(item),
+      })),
+    [assignments],
+  );
+  const semesterOptions = useMemo(
+    () => [
+      { value: 'ODD', label: 'Semester Ganjil' },
+      { value: 'EVEN', label: 'Semester Genap' },
+    ],
+    [],
+  );
 
   const reportQuery = useQuery({
     queryKey: ['mobile-teacher-subject-report', user?.id, effectiveSelectedAssignmentId, semester],
@@ -267,66 +290,25 @@ export default function TeacherSubjectReportScreen() {
               }}
             >
               <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Pilih Kelas & Mapel</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
-                {assignments.map((item) => {
-                  const selected = effectiveSelectedAssignmentId === item.id;
-                  return (
-                    <View key={item.id} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 8 }}>
-                      <Pressable
-                        onPress={() => setSelectedAssignmentId(item.id)}
-                        style={{
-                          borderWidth: 1,
-                          borderColor: selected ? '#1d4ed8' : '#cbd5e1',
-                          backgroundColor: selected ? '#eff6ff' : '#fff',
-                          borderRadius: 8,
-                          padding: 9,
-                        }}
-                        >
-                          <Text style={{ color: selected ? '#1d4ed8' : '#0f172a', fontWeight: '700', fontSize: 12 }} numberOfLines={2}>
-                          {item.subject.name}
-                          </Text>
-                          <Text style={{ color: '#334155', fontSize: 12 }} numberOfLines={1}>
-                          Kelas: {item.class.name}
-                          </Text>
-                        </Pressable>
-                    </View>
-                  );
-                })}
-              </View>
+              <MobileSelectField
+                value={effectiveSelectedAssignmentId ? String(effectiveSelectedAssignmentId) : ''}
+                options={assignmentOptions}
+                onChange={(next) => setSelectedAssignmentId(next ? Number(next) : null)}
+                placeholder="Pilih kelas & mapel"
+              />
             </View>
 
-            <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
-              <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                <Pressable
-                  onPress={() => setSemester('ODD')}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: semester === 'ODD' ? '#1d4ed8' : '#cbd5e1',
-                    backgroundColor: semester === 'ODD' ? '#eff6ff' : '#fff',
-                    borderRadius: 8,
-                    paddingVertical: 10,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: semester === 'ODD' ? '#1d4ed8' : '#334155', fontWeight: '700' }}>Ganjil</Text>
-                </Pressable>
-              </View>
-              <View style={{ flex: 1, paddingHorizontal: 4 }}>
-                <Pressable
-                  onPress={() => setSemester('EVEN')}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: semester === 'EVEN' ? '#1d4ed8' : '#cbd5e1',
-                    backgroundColor: semester === 'EVEN' ? '#eff6ff' : '#fff',
-                    borderRadius: 8,
-                    paddingVertical: 10,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: semester === 'EVEN' ? '#1d4ed8' : '#334155', fontWeight: '700' }}>Genap</Text>
-                </Pressable>
-              </View>
-            </View>
+            <MobileSelectField
+              label="Semester"
+              value={semester}
+              options={semesterOptions}
+              onChange={(next) => {
+                if (next === 'ODD' || next === 'EVEN') {
+                  setSemester(next);
+                }
+              }}
+              placeholder="Pilih semester"
+            />
 
             <TextInput
               value={searchQuery}

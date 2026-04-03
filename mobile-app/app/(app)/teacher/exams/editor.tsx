@@ -153,6 +153,15 @@ function assertFixedSemesterMatch(fixedSemester: 'ODD' | 'EVEN' | null | undefin
   }
 }
 
+function normalizeClassLevelToken(raw?: string | null): string {
+  const value = String(raw || '').trim().toUpperCase();
+  if (!value) return '';
+  if (value.startsWith('XII')) return 'XII';
+  if (value.startsWith('XI')) return 'XI';
+  if (value.startsWith('X')) return 'X';
+  return value;
+}
+
 function getScoreSyncHint(program?: ExamProgramItem | null): string {
   if (!program) {
     return 'Nilai ujian otomatis tersinkron ke komponen nilai sesuai konfigurasi Program Ujian.';
@@ -333,10 +342,22 @@ export default function TeacherExamEditorScreen() {
     const ids = Array.isArray(selectedProgram?.allowedSubjectIds) ? selectedProgram.allowedSubjectIds : [];
     return new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0));
   }, [selectedProgram]);
+  const allowedClassLevelsByProgram = useMemo(() => {
+    const levels = Array.isArray(selectedProgram?.targetClassLevels) ? selectedProgram.targetClassLevels : [];
+    return new Set(levels.map((level) => normalizeClassLevelToken(String(level || ''))).filter(Boolean));
+  }, [selectedProgram]);
   const filteredAssignments = useMemo(() => {
-    if (!selectedProgram || allowedSubjectIdsByProgram.size === 0) return assignments;
-    return assignments.filter((assignment) => allowedSubjectIdsByProgram.has(Number(assignment.subject?.id)));
-  }, [selectedProgram, allowedSubjectIdsByProgram, assignments]);
+    if (!selectedProgram) return assignments;
+    return assignments.filter((assignment) => {
+      const allowedSubject =
+        allowedSubjectIdsByProgram.size === 0 ||
+        allowedSubjectIdsByProgram.has(Number(assignment.subject?.id));
+      if (!allowedSubject) return false;
+
+      const assignmentLevel = normalizeClassLevelToken(assignment.class?.level);
+      return allowedClassLevelsByProgram.size === 0 || Boolean(assignmentLevel && allowedClassLevelsByProgram.has(assignmentLevel));
+    });
+  }, [selectedProgram, allowedSubjectIdsByProgram, allowedClassLevelsByProgram, assignments]);
   const assignmentOptions = useMemo(
     () =>
       filteredAssignments.map((assignment) => ({
@@ -366,11 +387,6 @@ export default function TeacherExamEditorScreen() {
     () => String(selectedProgram?.description || '').trim() || getScoreSyncHint(selectedProgram),
     [selectedProgram],
   );
-  const completedQuestions = useMemo(
-    () => questions.filter((question) => question.content.trim().length > 0).length,
-    [questions],
-  );
-
   useEffect(() => {
     if (filteredAssignments.length === 0) {
       if (selectedAssignmentId !== null) {
@@ -618,13 +634,13 @@ export default function TeacherExamEditorScreen() {
           marginBottom: 10,
         }}
       >
-        <MobileMenuTab active={activeSection === 'INFO'} label="Informasi Ujian" onPress={() => setActiveSection('INFO')} iconName="file-text" minWidth={108} />
+        <MobileMenuTab active={activeSection === 'INFO'} label="Informasi" onPress={() => setActiveSection('INFO')} iconName="file-text" minWidth={94} />
         <MobileMenuTab
           active={activeSection === 'QUESTIONS'}
-          label={`Butir Soal ${completedQuestions}/${questions.length}`}
+          label="Butir Soal"
           onPress={() => setActiveSection('QUESTIONS')}
           iconName="clipboard"
-          minWidth={108}
+          minWidth={94}
         />
       </View>
 
