@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ActivityIndicator,
   Image,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -125,6 +126,7 @@ type FormFieldProps = {
   maxLength?: number;
 };
 type ProfileDocument = NonNullable<AuthUser['documents']>[number] & { originalname?: string | null };
+type ProfileInsightId = 'structure' | 'readiness' | 'summary';
 
 const cardStyle = {
   backgroundColor: '#fff',
@@ -719,6 +721,56 @@ function ChoiceChips({
   );
 }
 
+function ProfileInsightCard({
+  iconName,
+  title,
+  subtitle,
+  accentColor,
+  onPress,
+}: {
+  iconName: React.ComponentProps<typeof Feather>['name'];
+  title: string;
+  subtitle: string;
+  accentColor: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        borderWidth: 1,
+        borderColor: '#dbeafe',
+        backgroundColor: '#fff',
+        borderRadius: 14,
+        paddingHorizontal: 10,
+        paddingVertical: 11,
+        minHeight: 108,
+        opacity: pressed ? 0.9 : 1,
+      })}
+    >
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 12,
+          backgroundColor: `${accentColor}18`,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 10,
+        }}
+      >
+        <Feather name={iconName} size={17} color={accentColor} />
+      </View>
+      <Text style={{ color: '#0f172a', fontSize: 11, fontWeight: '700', lineHeight: 15 }} numberOfLines={2}>
+        {title}
+      </Text>
+      <Text style={{ color: '#475569', fontSize: 11, lineHeight: 15, marginTop: 4 }} numberOfLines={3}>
+        {subtitle}
+      </Text>
+    </Pressable>
+  );
+}
+
 export default function ProfileScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -727,6 +779,7 @@ export default function ProfileScreen() {
   const profileQuery = useProfileQuery(isAuthenticated);
   const pageContentPadding = getStandardPagePadding(insets, { bottom: 120 });
   const [activeTab, setActiveTab] = useState<ProfileTabId>('account');
+  const [activeProfileInsight, setActiveProfileInsight] = useState<ProfileInsightId | null>(null);
   const [form, setForm] = useState<EditableProfileForm>(emptyForm);
   const [educationHistories, setEducationHistories] = useState<ProfileEducationHistory[]>([]);
 
@@ -990,6 +1043,43 @@ export default function ProfileScreen() {
       `Alamat: ${form.address ? 'Sudah diisi' : 'Belum diisi'}`,
     ];
   }, [educationSummary.completedLevels, form.address, form.email, form.employeeStatus, form.institution, form.phone, form.ptkType, form.staffPosition, isCandidate, isEmployee, isParent, isStudent, profile, supportingDocuments.length, verificationMeta.label]);
+  const employeeProfileInsights = useMemo<
+    Array<{
+      id: ProfileInsightId;
+      iconName: React.ComponentProps<typeof Feather>['name'];
+      title: string;
+      subtitle: string;
+      accentColor: string;
+    }>
+  >(() => {
+    if (!profile || !isEmployee) {
+      return [];
+    }
+    return [
+      {
+        id: 'structure' as const,
+        iconName: 'layers',
+        title: 'Struktur Profil',
+        subtitle: ROLE_LABELS[profile.role] || profile.role,
+        accentColor: '#2563eb',
+      },
+      {
+        id: 'readiness' as const,
+        iconName: 'pie-chart',
+        title: profileCopy.readinessTitle,
+        subtitle: `${completeness.percent}% data inti sudah terisi`,
+        accentColor: '#0f766e',
+      },
+      {
+        id: 'summary' as const,
+        iconName: 'briefcase',
+        title: profileCopy.summaryTitle,
+        subtitle: summaryLines[0] || verificationMeta.label,
+        accentColor: '#7c3aed',
+      },
+    ];
+  }, [completeness.percent, isEmployee, profile, profileCopy.readinessTitle, profileCopy.summaryTitle, summaryLines, verificationMeta.label]);
+  const activeInsightMeta = employeeProfileInsights.find((item) => item.id === activeProfileInsight) || null;
 
   useFocusEffect(
     useCallback(() => {
@@ -1443,120 +1533,138 @@ export default function ProfileScreen() {
 
       {profile ? (
         <>
-          <View
-            style={{
-              ...cardStyle,
-              backgroundColor: '#f8fbff',
-              borderColor: '#dbeafe',
-            }}
-          >
-            <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 }}>STRUKTUR PROFIL</Text>
-            <Text style={{ color: '#0f172a', fontSize: 20, fontWeight: '700', marginTop: 8 }}>
-              {ROLE_LABELS[profile.role] || profile.role}
-            </Text>
-            <Text style={{ color: '#475569', fontSize: 13, lineHeight: 20, marginTop: 10 }}>
-              {profileCopy.readinessHelper}
-            </Text>
-            <View style={{ marginTop: 14 }}>
-              {summaryLines.map((line) => (
-                <View
-                  key={line}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#e2e8f0',
-                    backgroundColor: '#fff',
-                    borderRadius: 14,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    marginBottom: 8,
-                  }}
-                >
-                  <Text style={{ color: '#475569', fontSize: 13 }}>{line}</Text>
+          {isEmployee ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5, marginBottom: 10 }}>
+              {employeeProfileInsights.map((card) => (
+                <View key={card.id} style={{ width: '33.3333%', paddingHorizontal: 5, marginBottom: 10 }}>
+                  <ProfileInsightCard
+                    iconName={card.iconName}
+                    title={card.title}
+                    subtitle={card.subtitle}
+                    accentColor={card.accentColor}
+                    onPress={() => setActiveProfileInsight(card.id)}
+                  />
                 </View>
               ))}
             </View>
-          </View>
-
-          <View style={cardStyle}>
-            <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 }}>
-              {profileCopy.readinessTitle.toUpperCase()}
-            </Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
-              <View style={{ flex: 1, paddingRight: 12 }}>
-                <Text style={{ color: '#0f172a', fontSize: 28, fontWeight: '700' }}>{completeness.percent}%</Text>
-                <Text style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
-                  {completeness.completed} dari {completeness.total} data prioritas sudah terisi
-                </Text>
-              </View>
+          ) : (
+            <>
               <View
                 style={{
-                  borderRadius: 14,
-                  backgroundColor: '#f1f5f9',
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
+                  ...cardStyle,
+                  backgroundColor: '#f8fbff',
+                  borderColor: '#dbeafe',
                 }}
               >
-                <Text style={{ color: '#334155', fontSize: 13, fontWeight: '700' }}>
-                  {completeness.missing.length === 0 ? 'Siap' : `${completeness.missing.length} belum`}
+                <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 }}>STRUKTUR PROFIL</Text>
+                <Text style={{ color: '#0f172a', fontSize: 20, fontWeight: '700', marginTop: 8 }}>
+                  {ROLE_LABELS[profile.role] || profile.role}
+                </Text>
+                <Text style={{ color: '#475569', fontSize: 13, lineHeight: 20, marginTop: 10 }}>
+                  {profileCopy.readinessHelper}
+                </Text>
+                <View style={{ marginTop: 14 }}>
+                  {summaryLines.map((line) => (
+                    <View
+                      key={line}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#e2e8f0',
+                        backgroundColor: '#fff',
+                        borderRadius: 14,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <Text style={{ color: '#475569', fontSize: 13 }}>{line}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+
+              <View style={cardStyle}>
+                <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 }}>
+                  {profileCopy.readinessTitle.toUpperCase()}
+                </Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
+                  <View style={{ flex: 1, paddingRight: 12 }}>
+                    <Text style={{ color: '#0f172a', fontSize: 28, fontWeight: '700' }}>{completeness.percent}%</Text>
+                    <Text style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+                      {completeness.completed} dari {completeness.total} data prioritas sudah terisi
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      borderRadius: 14,
+                      backgroundColor: '#f1f5f9',
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                    }}
+                  >
+                    <Text style={{ color: '#334155', fontSize: 13, fontWeight: '700' }}>
+                      {completeness.missing.length === 0 ? 'Siap' : `${completeness.missing.length} belum`}
+                    </Text>
+                  </View>
+                </View>
+                <View
+                  style={{
+                    height: 8,
+                    borderRadius: 999,
+                    backgroundColor: '#e2e8f0',
+                    overflow: 'hidden',
+                    marginTop: 14,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: `${completeness.percent}%`,
+                      height: '100%',
+                      borderRadius: 999,
+                      backgroundColor: '#2563eb',
+                    }}
+                  />
+                </View>
+                <Text style={{ color: '#475569', fontSize: 13, lineHeight: 20, marginTop: 12 }}>
+                  {completeness.missing.length === 0
+                    ? 'Data prioritas yang tersedia di sistem sudah terisi rapi.'
+                    : `Masih perlu dilengkapi: ${completeness.missing.slice(0, 3).join(', ')}${completeness.missing.length > 3 ? ', dan lainnya.' : '.'}`}
                 </Text>
               </View>
-            </View>
-            <View
-              style={{
-                height: 8,
-                borderRadius: 999,
-                backgroundColor: '#e2e8f0',
-                overflow: 'hidden',
-                marginTop: 14,
-              }}
-            >
-              <View
-                style={{
-                  width: `${completeness.percent}%`,
-                  height: '100%',
-                  borderRadius: 999,
-                  backgroundColor: '#2563eb',
-                }}
-              />
-            </View>
-            <Text style={{ color: '#475569', fontSize: 13, lineHeight: 20, marginTop: 12 }}>
-              {completeness.missing.length === 0
-                ? 'Data prioritas yang tersedia di sistem sudah terisi rapi.'
-                : `Masih perlu dilengkapi: ${completeness.missing.slice(0, 3).join(', ')}${completeness.missing.length > 3 ? ', dan lainnya.' : '.'}`}
-            </Text>
-          </View>
 
-          <View style={cardStyle}>
-            <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 }}>
-              {profileCopy.summaryTitle.toUpperCase()}
-            </Text>
-            <View
-              style={{
-                marginTop: 12,
-                borderWidth: 1,
-                borderColor: '#e2e8f0',
-                backgroundColor: '#f8fafc',
-                borderRadius: 14,
-                padding: 12,
-              }}
-            >
-              <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700', letterSpacing: 1.2 }}>USERNAME</Text>
-              <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700', marginTop: 4 }}>{profile.username}</Text>
-            </View>
-            <View
-              style={{
-                marginTop: 10,
-                borderWidth: 1,
-                borderColor: '#e2e8f0',
-                backgroundColor: '#f8fafc',
-                borderRadius: 14,
-                padding: 12,
-              }}
-            >
-              <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700', letterSpacing: 1.2 }}>STATUS AKUN</Text>
-              <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700', marginTop: 4 }}>{verificationMeta.label}</Text>
-            </View>
-          </View>
+              <View style={cardStyle}>
+                <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 }}>
+                  {profileCopy.summaryTitle.toUpperCase()}
+                </Text>
+                <View
+                  style={{
+                    marginTop: 12,
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    backgroundColor: '#f8fafc',
+                    borderRadius: 14,
+                    padding: 12,
+                  }}
+                >
+                  <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700', letterSpacing: 1.2 }}>USERNAME</Text>
+                  <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700', marginTop: 4 }}>{profile.username}</Text>
+                </View>
+                <View
+                  style={{
+                    marginTop: 10,
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    backgroundColor: '#f8fafc',
+                    borderRadius: 14,
+                    padding: 12,
+                  }}
+                >
+                  <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700', letterSpacing: 1.2 }}>STATUS AKUN</Text>
+                  <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700', marginTop: 4 }}>{verificationMeta.label}</Text>
+                </View>
+              </View>
+            </>
+          )}
 
           {isCandidate ? (
             <Pressable
@@ -1595,6 +1703,227 @@ export default function ProfileScreen() {
               );
             })}
           </ScrollView>
+
+          <Modal
+            visible={Boolean(activeProfileInsight && activeInsightMeta)}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setActiveProfileInsight(null)}
+          >
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: 'rgba(15, 23, 42, 0.45)',
+                justifyContent: 'center',
+                paddingHorizontal: 18,
+              }}
+            >
+              <View
+                style={{
+                  backgroundColor: '#fff',
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: '#dbeafe',
+                  maxHeight: '78%',
+                  overflow: 'hidden',
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingHorizontal: 16,
+                    paddingTop: 14,
+                    paddingBottom: 12,
+                    borderBottomWidth: 1,
+                    borderBottomColor: '#e2e8f0',
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 10 }}>
+                    {activeInsightMeta ? (
+                      <View
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 12,
+                          backgroundColor: `${activeInsightMeta.accentColor}18`,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginRight: 10,
+                        }}
+                      >
+                        <Feather name={activeInsightMeta.iconName} size={18} color={activeInsightMeta.accentColor} />
+                      </View>
+                    ) : null}
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#0f172a', fontSize: 16, fontWeight: '700' }}>
+                        {activeInsightMeta?.title || 'Detail Profil'}
+                      </Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        Ketuk area luar untuk menutup popup ini.
+                      </Text>
+                    </View>
+                  </View>
+                  <Pressable
+                    onPress={() => setActiveProfileInsight(null)}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 999,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: '#f8fafc',
+                    }}
+                  >
+                    <Feather name="x" size={18} color="#475569" />
+                  </Pressable>
+                </View>
+
+                <ScrollView contentContainerStyle={{ padding: 16 }}>
+                  {activeProfileInsight === 'structure' ? (
+                    <>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#dbeafe',
+                          backgroundColor: '#f8fbff',
+                          borderRadius: 14,
+                          padding: 14,
+                        }}
+                      >
+                        <Text style={{ color: '#2563eb', fontSize: 11, fontWeight: '700', letterSpacing: 1.3 }}>
+                          STRUKTUR PROFIL
+                        </Text>
+                        <Text style={{ color: '#0f172a', fontSize: 20, fontWeight: '700', marginTop: 8 }}>
+                          {ROLE_LABELS[profile.role] || profile.role}
+                        </Text>
+                        <Text style={{ color: '#475569', fontSize: 13, lineHeight: 20, marginTop: 10 }}>
+                          {profileCopy.readinessHelper}
+                        </Text>
+                      </View>
+
+                      <View style={{ marginTop: 14 }}>
+                        {summaryLines.map((line) => (
+                          <View
+                            key={line}
+                            style={{
+                              borderWidth: 1,
+                              borderColor: '#e2e8f0',
+                              backgroundColor: '#fff',
+                              borderRadius: 14,
+                              paddingHorizontal: 12,
+                              paddingVertical: 11,
+                              marginBottom: 8,
+                            }}
+                          >
+                            <Text style={{ color: '#475569', fontSize: 13, lineHeight: 19 }}>{line}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </>
+                  ) : null}
+
+                  {activeProfileInsight === 'readiness' ? (
+                    <>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1, paddingRight: 12 }}>
+                          <Text style={{ color: '#0f172a', fontSize: 28, fontWeight: '700' }}>{completeness.percent}%</Text>
+                          <Text style={{ color: '#64748b', fontSize: 13, marginTop: 4, lineHeight: 19 }}>
+                            {completeness.completed} dari {completeness.total} data prioritas sudah terisi
+                          </Text>
+                        </View>
+                        <View
+                          style={{
+                            borderRadius: 14,
+                            backgroundColor: '#f1f5f9',
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                          }}
+                        >
+                          <Text style={{ color: '#334155', fontSize: 13, fontWeight: '700' }}>
+                            {completeness.missing.length === 0 ? 'Siap' : `${completeness.missing.length} belum`}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View
+                        style={{
+                          height: 8,
+                          borderRadius: 999,
+                          backgroundColor: '#e2e8f0',
+                          overflow: 'hidden',
+                          marginTop: 14,
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: `${completeness.percent}%`,
+                            height: '100%',
+                            borderRadius: 999,
+                            backgroundColor: '#2563eb',
+                          }}
+                        />
+                      </View>
+
+                      <Text style={{ color: '#475569', fontSize: 13, lineHeight: 20, marginTop: 12 }}>
+                        {completeness.missing.length === 0
+                          ? 'Data prioritas yang tersedia di sistem sudah terisi rapi.'
+                          : `Masih perlu dilengkapi: ${completeness.missing.join(', ')}.`}
+                      </Text>
+                    </>
+                  ) : null}
+
+                  {activeProfileInsight === 'summary' ? (
+                    <>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#e2e8f0',
+                          backgroundColor: '#f8fafc',
+                          borderRadius: 14,
+                          padding: 12,
+                          marginBottom: 10,
+                        }}
+                      >
+                        <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700', letterSpacing: 1.2 }}>USERNAME</Text>
+                        <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700', marginTop: 4 }}>{profile.username}</Text>
+                      </View>
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#e2e8f0',
+                          backgroundColor: '#f8fafc',
+                          borderRadius: 14,
+                          padding: 12,
+                          marginBottom: 14,
+                        }}
+                      >
+                        <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700', letterSpacing: 1.2 }}>STATUS AKUN</Text>
+                        <Text style={{ color: '#0f172a', fontSize: 14, fontWeight: '700', marginTop: 4 }}>{verificationMeta.label}</Text>
+                      </View>
+                      {summaryLines.map((line) => (
+                        <View
+                          key={line}
+                          style={{
+                            borderWidth: 1,
+                            borderColor: '#ede9fe',
+                            backgroundColor: '#faf5ff',
+                            borderRadius: 14,
+                            paddingHorizontal: 12,
+                            paddingVertical: 11,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <Text style={{ color: '#5b21b6', fontSize: 13, lineHeight: 19 }}>{line}</Text>
+                        </View>
+                      ))}
+                    </>
+                  ) : null}
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
 
           {activeTab === 'account' ? (
             <View style={cardStyle}>

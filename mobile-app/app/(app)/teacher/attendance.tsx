@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,17 +22,18 @@ type StatusConfig = {
   value: TeacherAttendanceStatus;
   label: string;
   shortLabel: string;
+  iconName: React.ComponentProps<typeof Feather>['name'];
   bg: string;
   border: string;
   text: string;
 };
 
 const STATUS_OPTIONS: StatusConfig[] = [
-  { value: 'PRESENT', label: 'Hadir', shortLabel: 'H', bg: '#dcfce7', border: '#86efac', text: '#166534' },
-  { value: 'SICK', label: 'Sakit', shortLabel: 'S', bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8' },
-  { value: 'PERMISSION', label: 'Izin', shortLabel: 'I', bg: '#ffedd5', border: '#fdba74', text: '#9a3412' },
-  { value: 'ABSENT', label: 'Alpha', shortLabel: 'A', bg: '#fee2e2', border: '#fca5a5', text: '#991b1b' },
-  { value: 'LATE', label: 'Telat', shortLabel: 'T', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' },
+  { value: 'PRESENT', label: 'Hadir', shortLabel: 'H', iconName: 'check', bg: '#dcfce7', border: '#86efac', text: '#166534' },
+  { value: 'SICK', label: 'Sakit', shortLabel: 'S', iconName: 'activity', bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8' },
+  { value: 'PERMISSION', label: 'Izin', shortLabel: 'I', iconName: 'file-text', bg: '#ffedd5', border: '#fdba74', text: '#9a3412' },
+  { value: 'ABSENT', label: 'Alpha', shortLabel: 'A', iconName: 'x', bg: '#fee2e2', border: '#fca5a5', text: '#991b1b' },
+  { value: 'LATE', label: 'Telat', shortLabel: 'T', iconName: 'clock', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' },
 ];
 
 function toIsoDateLocal(date: Date) {
@@ -358,7 +360,7 @@ export default function TeacherAttendanceScreen() {
                   <Text style={{ color: '#bfdbfe', fontSize: 12, marginBottom: 6 }}>
                     {detailQuery.data.subject.name} • {detailQuery.data.class.name}
                   </Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
+                  <View style={{ flexDirection: 'row', marginHorizontal: -3 }}>
                     {[
                       { label: 'Hadir', value: stats.present },
                       { label: 'Sakit', value: stats.sick },
@@ -366,17 +368,19 @@ export default function TeacherAttendanceScreen() {
                       { label: 'Alpha', value: stats.absent },
                       { label: 'Telat', value: stats.late },
                     ].map((item) => (
-                      <View key={item.label} style={{ width: '33.3333%', paddingHorizontal: 4, marginBottom: 8 }}>
+                      <View key={item.label} style={{ width: '20%', paddingHorizontal: 3 }}>
                         <View
                           style={{
                             backgroundColor: 'rgba(255,255,255,0.12)',
                             borderRadius: 8,
-                            paddingVertical: 8,
+                            paddingVertical: 7,
                             alignItems: 'center',
                           }}
                         >
-                          <Text style={{ color: '#bfdbfe', fontSize: 11 }}>{item.label}</Text>
-                          <Text style={{ color: '#fff', fontWeight: '700' }}>{item.value}</Text>
+                          <Text style={{ color: '#bfdbfe', fontSize: 10 }} numberOfLines={1}>
+                            {item.label}
+                          </Text>
+                          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>{item.value}</Text>
                         </View>
                       </View>
                     ))}
@@ -407,9 +411,9 @@ export default function TeacherAttendanceScreen() {
                       />
                     </View>
 
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 10 }}>
+                    <View style={{ flexDirection: 'row', marginHorizontal: -3, marginBottom: 10 }}>
                       {STATUS_OPTIONS.map((statusOption) => (
-                        <View key={statusOption.value} style={{ width: '33.3333%', paddingHorizontal: 4, marginBottom: 8 }}>
+                        <View key={statusOption.value} style={{ width: '20%', paddingHorizontal: 3 }}>
                           <Pressable
                             onPress={() => markAll(statusOption.value)}
                             style={{
@@ -418,10 +422,16 @@ export default function TeacherAttendanceScreen() {
                               borderColor: statusOption.border,
                               borderRadius: 8,
                               paddingVertical: 8,
+                              paddingHorizontal: 4,
                               alignItems: 'center',
+                              minHeight: 44,
+                              justifyContent: 'center',
                             }}
                           >
-                            <Text style={{ color: statusOption.text, fontWeight: '700', fontSize: 12 }}>
+                            <Text
+                              style={{ color: statusOption.text, fontWeight: '700', fontSize: 10, textAlign: 'center' }}
+                              numberOfLines={2}
+                            >
                               Semua {statusOption.label}
                             </Text>
                           </Pressable>
@@ -487,40 +497,34 @@ export default function TeacherAttendanceScreen() {
                               </View>
                             </View>
 
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                              <View style={{ flexDirection: 'row' }}>
-                                {STATUS_OPTIONS.map((option) => {
-                                  const selected = (draft[student.id] || 'PRESENT') === option.value;
-                                  return (
+                            <View style={{ flexDirection: 'row', marginHorizontal: -3 }}>
+                              {STATUS_OPTIONS.map((option) => {
+                                const selected = (draft[student.id] || 'PRESENT') === option.value;
+                                return (
+                                  <View key={option.value} style={{ width: '20%', paddingHorizontal: 3 }}>
                                     <Pressable
-                                      key={option.value}
+                                      accessibilityLabel={option.label}
                                       onPress={() => handleStatusChange(student.id, option.value)}
                                       style={{
-                                        marginRight: 6,
                                         borderWidth: 1,
                                         borderColor: selected ? option.border : '#cbd5e1',
                                         backgroundColor: selected ? option.bg : '#fff',
                                         borderRadius: 999,
-                                        paddingHorizontal: 10,
-                                        paddingVertical: 6,
-                                        minWidth: 64,
+                                        minHeight: 34,
                                         alignItems: 'center',
+                                        justifyContent: 'center',
                                       }}
                                     >
-                                      <Text
-                                        style={{
-                                          color: selected ? option.text : '#475569',
-                                          fontSize: 11,
-                                          fontWeight: '700',
-                                        }}
-                                      >
-                                        {option.shortLabel} • {option.label}
-                                      </Text>
+                                      <Feather
+                                        name={option.iconName}
+                                        size={15}
+                                        color={selected ? option.text : '#64748b'}
+                                      />
                                     </Pressable>
-                                  );
-                                })}
-                              </View>
-                            </ScrollView>
+                                  </View>
+                                );
+                              })}
+                            </View>
                           </View>
                         ))
                       ) : (
